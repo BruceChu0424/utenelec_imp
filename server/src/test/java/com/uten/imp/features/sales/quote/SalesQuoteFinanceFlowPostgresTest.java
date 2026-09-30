@@ -108,6 +108,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     @Autowired private TaskClaimService claims;
     @Autowired private DocumentDraftCountController documentCounts;
     @Autowired private ApplicationEvents events;
+    @Autowired private com.uten.imp.common.columns.BusinessColumnService businessColumns;
 
     /** 学习出口由主档包实现; 这里替换成可核对入参的替身(ADR-134: 保存事务内调用一次)。 */
     @MockitoBean private SalesMasterLearningPort learning;
@@ -115,6 +116,52 @@ class SalesQuoteFinanceFlowPostgresTest {
     @AfterEach
     void clearAuth() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void quoteFeeAndEnglishSnapshotSurviveFinanceMaskedConversionAndQuantityChange() {
+        Fixture f = fixture("columns");
+        UUID listed = goods("扩展列货品", BigDecimal.TEN);
+        jdbc.update("UPDATE goods SET name_en='Original clip' WHERE id=?", listed);
+        loginAs(f.sales());
+        var definition = businessColumns.create(new com.uten.imp.common.columns.BusinessColumnService.Create(
+                "sales_quote", "客户包装费", "AMOUNT", "ADD"));
+        assertThat(businessColumns.search("sales_quote", "包装费用"))
+                .extracting(com.uten.imp.common.columns.BusinessColumnService.Definition::id).contains(definition.id());
+        QuoteSaveRequest request = quoteRequest(f.client(), line(listed, "2", null, "1", null));
+        request.getItems().getFirst().setExtraColumns(List.of(
+                new com.uten.imp.common.columns.ExtraColumnInput(definition.id(), "5")));
+        QuoteDetail quote = quotes.create(request);
+        assertThat(quote.getItems().getFirst().getAmountOriginal()).isEqualByComparingTo("25");
+        assertThat(quote.getItems().getFirst().getGoodsNameEn()).isEqualTo("Original clip");
+        quotes.submit(quote.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, quote.getId().toString());
+        var review = finance.confirm(quote.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        assertThat(review.lines().getFirst().extraColumns().getFirst().value()).isEqualTo("5");
+        assertThat(review.lines().getFirst().goodsNameEn()).isEqualTo("Original clip");
+        jdbc.update("UPDATE goods SET name_en='Renamed master' WHERE id=?", listed);
+        loginAs(f.sales());
+        AuthUser original = (AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var maskedPermissions = new java.util.HashSet<>(original.getPermissions());
+        maskedPermissions.remove("sales_order:price:view");
+        AuthUser masked = new AuthUser(original.getId(), original.getEmployeeId(), original.getLoginAccount(),
+                maskedPermissions, false, true, false);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(masked, null, masked.getAuthorities()));
+        OrderDetail order = quotes.convertToOrder(quote.getId());
+        assertThat(order.getItems().getFirst().getExtraColumns().getFirst().value()).isNull();
+        assertThat(order.getItems().getFirst().getGoodsNameEn()).isEqualTo("Original clip");
+        OrderSaveRequest edit = orderRequest(order);
+        edit.getItems().getFirst().setQty(new BigDecimal("3"));
+        orders.update(order.getId(), edit);
+        assertThat(jdbc.queryForObject("SELECT amount_original FROM sales_order_items WHERE order_id=? AND NOT is_deleted",
+                BigDecimal.class, order.getId())).isEqualByComparingTo("35");
+        loginAs(f.finance());
+        var orderReview = orderFinance.review(order.getId());
+        assertThat(orderReview.items().getFirst().extraColumns().getFirst().value()).isEqualTo("5");
+        assertThat(orderReview.items().getFirst().goodsNameEn()).isEqualTo("Original clip");
+        assertThat(orderReview.items().getFirst().matchesQuote()).isTrue();
     }
 
     // =====================================================================

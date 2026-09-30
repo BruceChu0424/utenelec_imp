@@ -72,6 +72,7 @@ import '../models/goods_node.dart';
 import '../repositories/goods_bom_repository.dart';
 import 'goods_bom_import_dialog.dart';
 import 'master_data_table_view.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import 'uten_goods_picker.dart';
 import 'goods_bom_learning_panel.dart';
 import 'periodic_bom_confirmation.dart';
@@ -746,15 +747,14 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
       // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再堆路径行与编号
       // 副标题（编号看「编号」列），副标题仅剩懒加载中的提示。
-      // 系统学出的组件在格内右侧叠「系统学习」标记(ADR-129)。
+      // 系统学习标记独立成「学习来源」列（2026-09-29 用户口径：名称格只放
+      // 名称/层级；原格内叠加标记退役）。
       MasterColumnDef(
         key: 'treeIdentity',
         label: '层级 / 组件',
         width: 340,
-        value: (r) => [
-          '${r.seq} 组件 ${r.depth + 1} 级 ${r.node.item.componentName ?? ''}',
-          if (r.node.item.systemLearned) l10n.bomLearnedEdge,
-        ].join(' '),
+        value: (r) =>
+            '${r.seq} 组件 ${r.depth + 1} 级 ${r.node.item.componentName ?? ''}',
         cellBuilderHandlesSemantics: true,
         // 树列吃满整行高度 + 连线跨过数据格纵向内边距，否则层级竖线会在
         // 行与行之间断开（与物料分析主表 / 级联页同一处理，2026-09-15）。
@@ -778,43 +778,31 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             ancestorContinuations: r.ancestorContinuations,
             isLastChild: r.isLastChild,
           );
-          if (!r.node.item.systemLearned) return cell;
-          // passthrough：树格照旧拿到整行的高度约束(层级竖线不断)，标记
-          // 浮在右侧、树格让出等宽，名称省略号不被压住；不裁剪，树轨要画进
-          // 上下相邻行的内边距(guideBleed)。槽宽按标记文字实测(各语言、
-          // 字号档都完整显示)，再留一点与名称的间距。
-          final badgeSlot =
-              UtenStatusBadge.measureWidth(
-                context,
-                l10n.bomLearnedEdge,
-                size: UtenStatusBadgeSize.small,
-              ) +
-              UtenSpacing.s8;
-          return Stack(
-            fit: StackFit.passthrough,
-            clipBehavior: Clip.none,
-            children: [
-              Padding(
-                padding: EdgeInsets.only(right: badgeSlot),
-                child: cell,
-              ),
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: badgeSlot,
-                child: Center(
-                  child: UtenStatusBadge(
-                    key: ValueKey('goods-bom-learned-${r.node.item.id}'),
-                    label: l10n.bomLearnedEdge,
-                    type: UtenStatusBadgeType.info,
-                    size: UtenStatusBadgeSize.small,
-                  ),
-                ),
-              ),
-            ],
-          );
+          return cell;
         },
+      ),
+      // 系统学习来源列（2026-09-29）：系统学出的组件标「系统学习」(ADR-129)，
+      // 整格铺品牌青底色（2026-09-27 状态列口径）；人工维护行不铺色留空。
+      MasterColumnDef(
+        key: 'learned',
+        label: '学习来源',
+        width: 110,
+        value: (r) => r.node.item.systemLearned ? l10n.bomLearnedEdge : null,
+        cellColor: (context, r) => r.node.item.systemLearned
+            ? udenStatusBadgeCellColor(context, UtenStatusBadgeType.info)
+            : null,
+        // key 是既有用例锚点（goods_bom_columns_test：按行定位学习标记）。
+        cellBuilder: (context, r) => r.node.item.systemLearned
+            ? KeyedSubtree(
+                key: ValueKey('goods-bom-learned-${r.node.item.id}'),
+                child: Text(
+                  l10n.bomLearnedEdge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            : const SizedBox.shrink(),
+        cardRole: MasterColumnCardRole.hidden,
       ),
       // 已审列（V256）：审计标记持久在服务端，但只在做核对的人眼前出现——
       // 进「审计模式」才显示 ✓ 列（改标记要 goods:bom:audit），关闭即正常清单。
@@ -961,6 +949,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         // 统一表格（与货品资料列表同款）：Excel 表头分隔线 + 拖拽列宽 + 底部横滑条。
         Positioned.fill(
           child: MasterDataTableView<_BomRow>(
+            tableKey:
+                'features.basic_data.widgets.goods_bom_tab.GoodsBomTabState.build.1',
             // 按 selectable/审计模式分键，进出审计模式时整棵表重建而不是原地重排
             // （「已审」列的出现/消失会把行子树换父级，SelectionArea 的
             // SelectionKeepAlive 带着 GlobalKey 一起被搬走，同一帧里

@@ -641,6 +641,8 @@ class _RequestState
                     ),
                   ),
                   body: MasterDataTableView<DiscoveryRequestMaterialRow>(
+                    tableKey:
+                        'features.production.pages.production_material_discovery_request_page.RequestState.build.1',
                     key: const Key('discovery-request-table'),
                     primary: true,
                     enableTextSelection: false,

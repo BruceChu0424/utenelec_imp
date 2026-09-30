@@ -292,6 +292,8 @@ class _SubcontractLossClaimPanelState
         ),
         Expanded(
           child: MasterDataTableView<SubcontractLossClaimSummary>(
+            tableKey:
+                'features.finance.payables.widgets.subcontract_loss_claim_panel.SubcontractLossClaimPanelState.build.1',
             primary: true,
             columns: _columns(canViewFinancialAmounts: canViewFinancialAmounts),
             items: _result?.items ?? const [],

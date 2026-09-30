@@ -23,12 +23,78 @@ import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/features/expense/models/expense_item.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 
 import 'memory_form_draft_storage.dart';
 
 const _iqcPath = '${RouteName.warehouseInspections}/PURCHASE/receipt-1';
 
 void main() {
+  testWidgets(
+    'legacy expense rows without unique local IDs never share extension values',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      final env = await _open(tester, storage, '/expense/new');
+      final editor =
+          tester.state(find.byType(ExpenseClaimEditPage))
+              as FormDraftMixin<ExpenseClaimEditPage>;
+      await editor.restoreFormDraft({
+        'title': '旧报销草稿',
+        'items': [
+          for (final description in ['住宿', '车费'])
+            {
+              'category': 'TRAVEL',
+              'date': '2026-09-29',
+              'amount': 10,
+              'description': description,
+            },
+          {
+            'id': 'kept',
+            'category': 'TRAVEL',
+            'date': '2026-09-29',
+            'amount': 20,
+          },
+          {
+            'id': 'kept',
+            'category': 'TRAVEL',
+            'date': '2026-09-29',
+            'amount': 30,
+          },
+        ],
+      });
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<ExpenseItem>>(
+        find.byType(MasterDataTableView<ExpenseItem>),
+      );
+      expect(table.items.map((item) => item.id).toSet(), hasLength(4));
+      expect(table.items.every((item) => item.id.isNotEmpty), isTrue);
+      expect(table.items[2].id, 'kept');
+      final fields = table.platformBinding!.draftOf!(table.items.first)!;
+      fields.setValue(
+        const PlatformColumnDefinition(
+          id: 'note',
+          scope: 'expense_claim_item',
+          name: '用途',
+        ),
+        '项目A',
+      );
+      expect(table.platformBinding!.draftOf!(table.items[1])!.cells, isEmpty);
+      expect(
+        table.items.map(table.platformBinding!.recordIdOf),
+        everyElement(isNull),
+      );
+      await editor.saveFormDraftNow();
+      final restoredRows = (editor.captureFormDraft()['items'] as List)
+          .cast<Map<String, dynamic>>();
+      final firstFields = restoredRows[0]['platformFieldDraft'] as Map;
+      final secondFields = restoredRows[1]['platformFieldDraft'] as Map;
+      final firstCell = (firstFields['cells'] as List).first as Map;
+      expect(firstCell['value'], '项目A');
+      expect(secondFields['cells'], isEmpty);
+      await _dispose(tester, env);
+    },
+  );
   testWidgets(
     'unfinished expense item survives hard disposal without losing raw input',
     (tester) async {

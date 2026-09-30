@@ -20,6 +20,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -659,6 +660,8 @@ class _WorkshopMaterialReportsPageState
     final rows = _usage ?? const <WmBinUsageRow>[];
     final showCost = rows.any((r) => r.hasCost);
     return MasterDataTableView<WmBinUsageRow>(
+      tableKey:
+          'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._usageTable.1',
       key: ValueKey('wm-usage-table-$showCost'),
       columns: [
         MasterColumnDef(
@@ -668,13 +671,21 @@ class _WorkshopMaterialReportsPageState
           filterFromRows: true,
           value: (r) => _periodText(r.periodNo, r.startDate, r.endDate),
         ),
+        // 2026-09-29 用户口径：名称列只放名称，原「名称 颜色」拼接拆独立颜色列。
         MasterColumnDef(
           key: 'material',
           label: l10n.wmReportMaterial,
           width: 180,
           filterFromRows: true,
-          value: (r) =>
-              [r.goodsName, r.colorName].whereType<String>().join(' '),
+          value: (r) => r.goodsName,
+        ),
+        MasterColumnDef(
+          key: 'materialColor',
+          label: '颜色',
+          width: 84,
+          filterFromRows: true,
+          value: (r) => UtenGoodsAttributeCell.text(r.colorName),
+          cellBuilder: (_, r) => UtenGoodsAttributeCell(r.colorName),
         ),
         MasterColumnDef(
           key: 'costBasis',
@@ -759,6 +770,8 @@ class _WorkshopMaterialReportsPageState
     final rows = _product ?? const <WmProductUsageRow>[];
     final showCost = rows.any((r) => r.hasCost);
     return MasterDataTableView<WmProductUsageRow>(
+      tableKey:
+          'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._productTable.1',
       key: ValueKey('wm-product-table-$showCost'),
       columns: [
         MasterColumnDef(
@@ -768,23 +781,36 @@ class _WorkshopMaterialReportsPageState
           filterFromRows: true,
           value: (r) => _periodText(r.periodNo, r.startDate, r.endDate),
         ),
+        // 2026-09-29 用户口径：名称列只放名称，编号/颜色各占一列。
         MasterColumnDef(
           key: 'product',
           label: '产品',
-          width: 200,
+          width: 180,
           filterFromRows: true,
-          value: (r) =>
-              [r.productCode, r.productName].whereType<String>().join(' '),
+          value: (r) => r.productName,
+        ),
+        MasterColumnDef(
+          key: 'productCode',
+          label: '编号',
+          width: 110,
+          filterFromRows: true,
+          value: (r) => UtenGoodsAttributeCell.text(r.productCode),
+          cellBuilder: (_, r) => UtenGoodsAttributeCell(r.productCode),
         ),
         MasterColumnDef(
           key: 'material',
           label: l10n.wmReportMaterial,
           width: 170,
           filterFromRows: true,
-          value: (r) => [
-            r.materialName,
-            r.materialColorName,
-          ].whereType<String>().join(' '),
+          value: (r) => r.materialName,
+        ),
+        MasterColumnDef(
+          key: 'materialColor',
+          label: '颜色',
+          width: 84,
+          filterFromRows: true,
+          value: (r) => UtenGoodsAttributeCell.text(r.materialColorName),
+          cellBuilder: (_, r) => UtenGoodsAttributeCell(r.materialColorName),
         ),
         _productQtyCol('output', '完工', (r) => r.outputQty),
         MasterColumnDef(
@@ -953,6 +979,8 @@ class _WorkshopMaterialReportsPageState
   Widget _missingTable(AppLocalizations l10n) {
     final rows = _missing ?? const <WmMissingWeightRow>[];
     return MasterDataTableView<WmMissingWeightRow>(
+      tableKey:
+          'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._missingTable.1',
       key: const ValueKey('wm-missing-table'),
       columns: [
         MasterColumnDef(
@@ -962,21 +990,32 @@ class _WorkshopMaterialReportsPageState
           filterFromRows: true,
           value: (r) => _periodText(r.periodNo, r.startDate, r.endDate),
         ),
+        // 2026-09-29 用户口径：名称列只放名称，编号/颜色各占一列。
         MasterColumnDef(
           key: 'product',
           label: '产品',
-          width: 220,
-          value: (r) =>
-              [r.productCode, r.productName].whereType<String>().join(' '),
+          width: 180,
+          value: (r) => r.productName,
+        ),
+        MasterColumnDef(
+          key: 'productCode',
+          label: '编号',
+          width: 110,
+          value: (r) => UtenGoodsAttributeCell.text(r.productCode),
+          cellBuilder: (_, r) => UtenGoodsAttributeCell(r.productCode),
         ),
         MasterColumnDef(
           key: 'material',
           label: l10n.wmReportMaterial,
           width: 180,
-          value: (r) => [
-            r.materialName,
-            r.materialColorName,
-          ].whereType<String>().join(' '),
+          value: (r) => r.materialName,
+        ),
+        MasterColumnDef(
+          key: 'materialColor',
+          label: '颜色',
+          width: 84,
+          value: (r) => UtenGoodsAttributeCell.text(r.materialColorName),
+          cellBuilder: (_, r) => UtenGoodsAttributeCell(r.materialColorName),
         ),
         MasterColumnDef(
           key: 'output',
@@ -1021,6 +1060,8 @@ class _WorkshopMaterialReportsPageState
     final page = _ledger;
     final rows = page?.items ?? const <WmLedgerRow>[];
     return MasterDataTableView<WmLedgerRow>(
+      tableKey:
+          'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._ledgerTable.1',
       key: const ValueKey('wm-ledger-table'),
       columns: [
         MasterColumnDef(
@@ -1038,13 +1079,21 @@ class _WorkshopMaterialReportsPageState
           value: (r) =>
               _ledgerKindText(r.sourceKind) + (r.isSupplement ? ' (补录)' : ''),
         ),
+        // 2026-09-29 用户口径：名称列只放名称，原「名称 颜色」拼接拆独立颜色列。
         MasterColumnDef(
           key: 'material',
           label: l10n.wmReportMaterial,
           width: 180,
           filterFromRows: true,
-          value: (r) =>
-              [r.goodsName, r.colorName].whereType<String>().join(' '),
+          value: (r) => r.goodsName,
+        ),
+        MasterColumnDef(
+          key: 'materialColor',
+          label: '颜色',
+          width: 84,
+          filterFromRows: true,
+          value: (r) => UtenGoodsAttributeCell.text(r.colorName),
+          cellBuilder: (_, r) => UtenGoodsAttributeCell(r.colorName),
         ),
         MasterColumnDef(
           key: 'qty',

@@ -23,6 +23,22 @@ class SalesLearningPlannerTest {
     private static final UUID DOC = UUID.fromString("00000000-0000-0000-0000-0000000000d1");
 
     @Test
+    void ordinaryQuantitySavePreservesExistingAliasSourcesWithoutTeachingOrIncrementing() {
+        var plan=SalesLearningPlanner.plan(request(new LearnedLine(GOODS_A," GZ23/D ","DOUBLE SOCKET",null,false,false)),IntakeJobLines.empty());
+        assertThat(plan.aliases()).isEmpty();assertThat(plan.nameEn()).isEmpty();
+        assertThat(plan.retainedSources()).containsExactlyInAnyOrder(
+                new SalesLearningPlanner.RetainedAlias(CLIENT,AliasKind.PART_NO,"GZ23/D",GOODS_A),
+                new SalesLearningPlanner.RetainedAlias(null,AliasKind.PART_NO,"GZ23/D",GOODS_A),
+                new SalesLearningPlanner.RetainedAlias(CLIENT,AliasKind.DESCRIPTION,"double socket",GOODS_A),
+                new SalesLearningPlanner.RetainedAlias(null,AliasKind.DESCRIPTION,"double socket",GOODS_A));
+    }
+    @Test
+    void clearedCustomerLabelsDoNotRetainOldDocumentEvidence() {
+        var plan=SalesLearningPlanner.plan(request(new LearnedLine(GOODS_A,null," ",null,false,false)),IntakeJobLines.empty());
+        assertThat(plan.aliases()).isEmpty();assertThat(plan.retainedSources()).isEmpty();
+    }
+
+    @Test
     void matchedLineLeftUnchangedLearnsClientAndGlobalAliasesWithTheJobContext() {
         IntakeJobLines job = job(line("S1R9", "GZ23/D", "DOUBLE 3 PIN UNIVERSAL SOCCKET WITH SWITCH", "两开多功能三极插座",
                 "Z9|白", "MATCHED", GOODS_A, null));

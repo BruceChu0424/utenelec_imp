@@ -17,7 +17,6 @@ import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -94,9 +93,7 @@ final class IntakeFixture {
                     text(c, "code"), text(c, "name"), text(c, "fullName"), text(c, "nameEn"), text(c, "placeId"));
             clients.put(client.key(), client);
         }
-        Iterator<Map.Entry<String, JsonNode>> it = root.get("history").fields();
-        while (it.hasNext()) {
-            Map.Entry<String, JsonNode> e = it.next();
+        for (Map.Entry<String, JsonNode> e : root.get("history").properties()) {
             List<HistoryItem> items = new ArrayList<>();
             for (JsonNode h : e.getValue()) {
                 items.add(new HistoryItem(UUID.fromString(h.get("goodsId").asText()), h.get("orderCount").asInt(),
@@ -108,7 +105,7 @@ final class IntakeFixture {
             Map<Integer, Map<String, String>> rows = new LinkedHashMap<>();
             for (JsonNode r : d.get("rows")) {
                 Map<String, String> cells = new LinkedHashMap<>();
-                r.get("cells").fields().forEachRemaining(e -> cells.put(e.getKey(), e.getValue().asText()));
+                r.get("cells").properties().forEach(e -> cells.put(e.getKey(), e.getValue().asText()));
                 rows.put(r.get("row").asInt(), cells);
             }
             List<TruthLine> lines = new ArrayList<>();

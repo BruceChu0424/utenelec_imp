@@ -562,7 +562,7 @@ public class GoodsService {
         cols.add(new ExportColumn("colorName", "主颜色", ExportColumn.TEXT));
         cols.add(new ExportColumn("series", "系列", ExportColumn.TEXT));
         cols.add(new ExportColumn("owningWarehouseName", "所属仓库", ExportColumn.TEXT));
-        cols.add(new ExportColumn("owningWorkshopName", "归属车间", ExportColumn.TEXT));
+        cols.add(new ExportColumn("owningWorkshopName", "生产车间", ExportColumn.TEXT));
         cols.add(new ExportColumn("model", "型号", ExportColumn.TEXT));
         cols.add(new ExportColumn("spec", "规格", ExportColumn.TEXT));
         cols.add(new ExportColumn("paper", "备注", ExportColumn.TEXT));
@@ -584,6 +584,7 @@ public class GoodsService {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("name", g.getName());
                     row.put("nameEn", g.getNameEn());
+                    row.put("_platformRecordId", g.getId());
                     row.put("code", g.getCode());
                     row.put("categoryPath", categoryPath.get(g.getCategoryId()));
                     row.put("colorName", g.getColorName());
@@ -772,7 +773,8 @@ public class GoodsService {
                         owningWarehouseIdOf(g) == null
                                 ? null : owningWarehouseNames.get(owningWarehouseIdOf(g)),
                         owningWorkshopIdOf(g) == null
-                                ? null : owningWorkshopNames.get(owningWorkshopIdOf(g))))
+                                ? null : owningWorkshopNames.get(owningWorkshopIdOf(g)),
+                        g.getNameEn()))
                 .toList();
     }
 

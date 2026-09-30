@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.assertj.core.api.InstanceOfAssertFactories;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -81,6 +82,31 @@ class SalesIntakePipelineTest {
             wb.write(out);
             return out.toByteArray();
         }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void extraFileColumnsPreserveDuplicateHeadersAndNeverGuessArithmetic() throws IOException {
+        byte[] bytes;
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Quote");
+            String[] headers = {"Model", "Description", "Qty", "Unit Price", "Freight", "Freight", "Certification"};
+            var header = sheet.createRow(0);
+            for (int col = 0; col < headers.length; col++) header.createCell(col).setCellValue(headers[col]);
+            var row = sheet.createRow(1);
+            row.createCell(0).setCellValue("GZ23/D"); row.createCell(1).setCellValue("DOUBLE SOCKET");
+            row.createCell(2).setCellValue(10); row.createCell(3).setCellValue(21);
+            row.createCell(4).setCellValue(2.5); row.createCell(5).setCellValue(8);
+            row.createCell(6).setCellValue("CE");
+            workbook.write(out); bytes = out.toByteArray();
+        }
+        Map<String, Object> result = run(FakeJobContext.of("quote.xlsx", "XLSX", bytes, "quote"), false);
+        var extras = (List<Map<String, Object>>) result.get("extraColumns");
+        assertThat(extras).extracting(c -> c.get("key")).doesNotHaveDuplicates();
+        assertThat(extras).extracting(c -> c.get("label")).contains("Freight", "Freight (F)", "Certification");
+        assertThat(extras).allMatch(c -> "NONE".equals(c.get("suggestedOperation")));
+        Map<String, String> values = (Map<String, String>) lines(result).getFirst().get("extraValues");
+        assertThat(values).containsEntry("file_E", "2.5").containsEntry("file_F", "8").containsEntry("file_G", "CE");
     }
 
     @Test
@@ -181,7 +207,8 @@ class SalesIntakePipelineTest {
             throw new AiCallException(AiErrorCategory.RATE_LIMIT, "调用太频繁或额度不足, 请稍后再试");
         };
         Map<String, Object> result = run(ctx, false);
-        assertThat((List<Object>) (List<?>) result.get("notices")).contains(IntakeTexts.NOTICE_AI_FAILED);
+        assertThat(result.get("notices")).asInstanceOf(InstanceOfAssertFactories.LIST)
+                .contains(IntakeTexts.NOTICE_AI_FAILED);
         assertThat(lines(result)).hasSize(38);
     }
 
@@ -239,9 +266,10 @@ class SalesIntakePipelineTest {
         Map<?, ?> header = (Map<?, ?>) result.get("header");
         assertThat(header.get("buyerName")).isEqualTo("DELTA FOR ELECTRICAL INDUSTRIES CO. LTD");
         assertThat(header.get("docNo")).isEqualTo("PI-778");
-        assertThat((List<Object>) (List<?>) header.get("emails")).contains("buyer@delta-example.test");
+        assertThat(header.get("emails")).asInstanceOf(InstanceOfAssertFactories.LIST)
+                .contains("buyer@delta-example.test");
         assertThat(((Map<?, ?>) result.get("currency")).get("fileCurrency")).isEqualTo("USD");
-        assertThat((List<Object>) (List<?>) result.get("notices")).anyMatch(n -> n.toString().contains("看不清"));
+        assertThat((List<?>) result.get("notices")).anyMatch(n -> n.toString().contains("看不清"));
         assertThat(((Map<?, ?>) result.get("extraction")).get("layoutFingerprint")).isNull();
     }
 
@@ -304,7 +332,7 @@ class SalesIntakePipelineTest {
         assertThat(duplicates).extracting(d -> d.get("id")).containsExactlyInAnyOrder(sameNo.toString(), sameFile.toString(),
                 sameLines.toString());
         assertThat(duplicates).extracting(d -> d.get("reason")).contains("同一个客户单号", "同一个文件", "明细基本相同");
-        assertThat((List<Object>) (List<?>) result.get("notices")).anyMatch(n -> n.toString().contains("要先做报价单交给财务定价"));
+        assertThat((List<?>) result.get("notices")).anyMatch(n -> n.toString().contains("要先做报价单交给财务定价"));
     }
 
     @Test
@@ -330,7 +358,7 @@ class SalesIntakePipelineTest {
                 null, null, "约旦", null, null, null, "使用", List.of(), List.of(), false));
         FakeJobContext readOnly = FakeJobContext.of("UJ23.xlsx", "XLSX", IntakeFixture.toXlsx(doc), "quote");
         readOnly.params.put("clientId", client.toString());
-        assertThat((List<Object>) (List<?>) ((Map<?, ?>) run(readOnly, false).get("client")).get("enrichment")).isEmpty();
+        assertThat((List<?>) ((Map<?, ?>) run(readOnly, false).get("client")).get("enrichment")).isEmpty();
     }
 
     @Test
@@ -339,7 +367,8 @@ class SalesIntakePipelineTest {
         FakeJobContext ctx = FakeJobContext.of("SUNAS.xlsx", "XLSX", IntakeFixture.toXlsx(fixture.document("SUNAS")), "quote");
         Map<String, Object> result = run(ctx, false);
         assertThat(((Map<?, ?>) result.get("client")).get("status")).isEqualTo("NO_VISIBLE_CLIENTS");
-        assertThat((List<Object>) (List<?>) result.get("notices")).contains(IntakeTexts.NOTICE_NO_VISIBLE_CLIENTS);
+        assertThat(result.get("notices")).asInstanceOf(InstanceOfAssertFactories.LIST)
+                .contains(IntakeTexts.NOTICE_NO_VISIBLE_CLIENTS);
 
         lookup.visibleOverride = null;
         lookup.hiddenClients.addAll(fixture.clients.values().stream().map(IntakeFixture.FixtureClient::id).toList());
@@ -368,7 +397,8 @@ class SalesIntakePipelineTest {
         assertThat(r19.get("status")).isEqualTo("MATCHED");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> candidates = (List<Map<String, Object>>) r19.get("candidates");
-        assertThat(candidates.getFirst().get("reasons")).asList().contains("已学习的对应关系");
+        assertThat(candidates.getFirst().get("reasons"))
+                .asInstanceOf(InstanceOfAssertFactories.LIST).contains("已学习的对应关系");
         assertThat(r19.get("setNameEnDefault")).isEqualTo(true);
         assertThat(r19.get("nameEnText")).isEqualTo("13A SINGLE SOCKET WITH SWITCH+ A+C DOUBLE USB");
         Map<String, Object> r9 = line(result, 9);
@@ -498,7 +528,8 @@ class SalesIntakePipelineTest {
         assertThat(sent).contains("curtain switch with ⟨SELLER_1⟩ logo").doesNotContain("HSBC").doesNotContain("8123");
         assertThat(lines(result)).hasSize(1);
         assertThat(lines(result).getFirst().get("description")).isEqualTo("curtain switch with UTEN logo");
-        assertThat((List<Object>) (List<?>) result.get("notices")).contains("有 3 行看不清, 已跳过");
+        assertThat(result.get("notices")).asInstanceOf(InstanceOfAssertFactories.LIST)
+                .contains("有 3 行看不清, 已跳过");
     }
 
     @Test

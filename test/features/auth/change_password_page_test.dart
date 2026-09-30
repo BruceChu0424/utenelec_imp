@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/auth/pages/change_password_page.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -40,10 +41,8 @@ void main() {
           (oldPassword: ' old password ', newPassword: scenario.password),
         ]);
         expect(find.byType(ChangePasswordPage), findsNothing);
-        expect(
-          find.text(forced ? 'dashboard-home' : 'settings-home'),
-          findsOneWidget,
-        );
+        // 改密成功（含普通修改模式）统一回工作台。
+        expect(find.text('dashboard-home'), findsOneWidget);
       });
     }
 
@@ -85,6 +84,29 @@ void main() {
       expect(find.byType(ChangePasswordPage), findsOneWidget);
     });
   }
+
+  testWidgets('服务端已改密但本机收尾失败：提示已修改并引导重新登录', (tester) async {
+    final session = _CommitFailedSessionNotifier();
+    await _openPage(tester, session, forced: false);
+    await _fillForm(
+      tester,
+      oldPassword: 'old',
+      newPassword: '1',
+      confirmation: '1',
+    );
+    // 不走 _submit 的 pumpAndSettle：顶部通知 2.5s 自动消失，settle 会把它等没。
+    await tester.ensureVisible(find.text('确认'));
+    await tester.tap(find.text('确认'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('密码已修改，请使用新密码重新登录'), findsOneWidget);
+    expect(session.logouts, 1);
+    // 不再显示与「未改成」混淆的兜底文案。
+    expect(find.text('出错了，请稍后重试'), findsNothing);
+
+    await tester.pumpAndSettle();
+  });
 }
 
 Finder _field(String label) => find.descendant(
@@ -113,7 +135,7 @@ Future<void> _submit(WidgetTester tester) async {
 
 Future<void> _openPage(
   WidgetTester tester,
-  _RecordingSessionNotifier session, {
+  SessionNotifier session, {
   required bool forced,
 }) async {
   await tester.binding.setSurfaceSize(const Size(900, 1000));
@@ -146,6 +168,16 @@ Future<void> _openPage(
       ],
       child: MaterialApp.router(
         routerConfig: router,
+        // 顶部通知宿主：appError/appSuccess 的卡片由它渲染。
+        builder: (context, child) => Stack(
+          children: [
+            child!,
+            const Align(
+              alignment: Alignment.topCenter,
+              child: AppNotificationHost(),
+            ),
+          ],
+        ),
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -177,5 +209,28 @@ class _RecordingSessionNotifier extends SessionNotifier {
   }) async {
     submissions.add((oldPassword: oldPassword, newPassword: newPassword));
     state = const SessionState(status: AuthStatus.authenticated);
+  }
+}
+
+/// 模拟「服务端已接受改密，本机会话收尾失败」：changePassword 抛
+/// PasswordChangeCommittedError，页面应提示已修改并调用 logout。
+class _CommitFailedSessionNotifier extends SessionNotifier {
+  var logouts = 0;
+
+  @override
+  SessionState build() => const SessionState(status: AuthStatus.authenticated);
+
+  @override
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    throw const PasswordChangeCommittedError();
+  }
+
+  @override
+  Future<void> logout() async {
+    logouts++;
+    state = const SessionState();
   }
 }

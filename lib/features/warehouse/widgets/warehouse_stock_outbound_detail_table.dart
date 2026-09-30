@@ -43,6 +43,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
         Localizations.of<AppLocalizations>(context, AppLocalizations) ??
         AppLocalizationsZh();
     return MasterDataTableView<WarehouseStockOutboundRow>(
+      tableKey:
+          'features.warehouse.widgets.warehouse_stock_outbound_detail_table.WarehouseStockOutboundDetailTable.build.1',
       key: const Key('warehouse-stock-outbound-detail-table'),
       primary: primary,
       showFullscreenToggle: false,

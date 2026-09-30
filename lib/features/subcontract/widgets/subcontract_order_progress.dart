@@ -1,3 +1,5 @@
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
 // 委外订货单「全链路进度」区（V304 · 委外全链路重设计）。
 //
 // 委外模块只留订货单 + 进度：本区把 财务审批 → 目标件准备/出仓 → 加工回厂/IQC/仓库入库 →
@@ -611,43 +613,92 @@ class _SubcontractOrderProgressSectionState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Table(
-            columnWidths: const {
-              0: FlexColumnWidth(3),
-              1: FlexColumnWidth(2),
-              2: FlexColumnWidth(2),
-              3: FlexColumnWidth(2),
-              4: FlexColumnWidth(2),
-              5: FlexColumnWidth(2),
-              6: FlexColumnWidth(2),
-              7: FlexColumnWidth(2),
-            },
-            children: [
-              // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-              _tableHead(theme, const [
-                '货品名称',
-                '编号',
-                '颜色',
-                '发出',
-                '已加工/消费',
-                '已退',
-                '损耗',
-                '结存',
-              ]),
-              for (final l in p.supplierLedger)
-                TableRow(
-                  children: [
-                    _cell(theme, l.goodsName ?? '', sub: l.unitName),
-                    _cell(theme, l.goodsCode ?? ''),
-                    _cell(theme, l.colorName ?? ''),
-                    _cell(theme, _fmt(l.atSupplierQty)),
-                    _cell(theme, _fmt(l.consumedQty)),
-                    _cell(theme, _fmt(l.returnedQty)),
-                    _cell(theme, _fmt(l.wastedQty)),
-                    _cell(theme, _fmt(l.supplierEnding), strong: true),
-                  ],
+          MasterDataTableView<SubcontractSupplierLedgerLine>(
+            tableKey: 'subcontract.order.supplierLedger',
+            embedded: true,
+            compactCards: true,
+            platformBinding: PlatformTableBinding(
+              tableKey: 'subcontract.order.supplierLedger',
+              scope: 'view_subcontract',
+              recordIdOf: (_) => null,
+              factValuesOf: (row) => {
+                'atSupplierQty': row.atSupplierQty.toString(),
+                'consumedQty': row.consumedQty.toString(),
+                'returnedQty': row.returnedQty.toString(),
+                'wastedQty': row.wastedQty.toString(),
+                'supplierEnding': row.supplierEnding.toString(),
+              },
+            ),
+            columns: [
+              MasterColumnDef(
+                key: 'goodsName',
+                label: '货品名称',
+                width: 180,
+                value: (row) => row.goodsName,
+              ),
+              MasterColumnDef(
+                key: 'goodsCode',
+                label: '编号',
+                width: 130,
+                value: (row) => row.goodsCode,
+              ),
+              MasterColumnDef(
+                key: 'colorName',
+                label: '颜色',
+                width: 90,
+                value: (row) => row.colorName,
+              ),
+              MasterColumnDef(
+                key: 'unitName',
+                label: '单位',
+                width: 80,
+                value: (row) => row.unitName,
+              ),
+              MasterColumnDef(
+                key: 'atSupplierQty',
+                label: '发出',
+                width: 120,
+                type: 'number',
+                value: (row) => _fmt(row.atSupplierQty),
+              ),
+              MasterColumnDef(
+                key: 'consumedQty',
+                label: '已加工/消费',
+                width: 140,
+                type: 'number',
+                value: (row) => _fmt(row.consumedQty),
+              ),
+              MasterColumnDef(
+                key: 'returnedQty',
+                label: '已退',
+                width: 110,
+                type: 'number',
+                value: (row) => _fmt(row.returnedQty),
+              ),
+              MasterColumnDef(
+                key: 'wastedQty',
+                label: '损耗',
+                width: 110,
+                type: 'number',
+                value: (row) => _fmt(row.wastedQty),
+              ),
+              MasterColumnDef(
+                key: 'supplierEnding',
+                label: '结存',
+                width: 120,
+                type: 'number',
+                value: (row) => _fmt(row.supplierEnding),
+                cellBuilder: (_, row) => Text(
+                  _fmt(row.supplierEnding),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
+              ),
             ],
+            items: p.supplierLedger,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
           ),
           if (p.supplierLedger.any((l) => l.supplierEnding > 0.0001))
             Padding(
@@ -739,52 +790,6 @@ class _SubcontractOrderProgressSectionState
       ),
     ),
   );
-
-  TableRow _tableHead(ThemeData theme, List<String> labels) => TableRow(
-    children: [
-      for (final l in labels)
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-          child: Text(
-            l,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-    ],
-  );
-
-  Widget _cell(
-    ThemeData theme,
-    String text, {
-    String? sub,
-    bool strong = false,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s4, right: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            text.isEmpty ? '—' : text,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontWeight: strong ? FontWeight.w700 : null,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (sub != null && sub.isNotEmpty)
-            Text(
-              sub,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-        ],
-      ),
-    );
-  }
 
   String? _iqcText(String? iqcStatus) =>
       switch (iqcStatus?.trim().toUpperCase()) {

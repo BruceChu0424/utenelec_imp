@@ -195,6 +195,7 @@ public class ReferenceMethodService {
         for (SettlementMethodAdminItem m : items) {
             boolean lockedBySystemRole = m.systemRole() != null && !m.systemRole().isEmpty();
             Map<String, Object> row = new LinkedHashMap<>();
+            row.put("_platformRecordId", m.id());
             row.put("code", m.code());
             row.put("name", m.name());
             row.put("status", m.status());

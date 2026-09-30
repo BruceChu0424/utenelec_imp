@@ -966,8 +966,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     );
   }
 
-  /// 货品行统一一行文案：名字(编号) · 颜色（2026-09-24 用户口径：列表一行显示，
-  /// 只显示名字/编号/颜色——带单位/规格/库位会把行撑得太宽）。
+  /// 已选摘要栏的一行文案：名字(编号) · 颜色（底栏空间窄，保持单行摘要；
+  /// 列表选项本身已改主行名称+副行编号·颜色，见 _buildGoodsList）。
   String _goodsLabel(GoodsListItem g) =>
       '${g.name ?? '—'}'
       '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}'
@@ -1046,12 +1046,27 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           // 选中行淡绿背景（全站表格统一口径 utenTableSelectedRowColor，
           // 2026-09-13 起全站统一、2026-09-22 加深后的同一份色值）。
           selectedTileColor: utenTableSelectedRowColor(theme),
-          // 一行显示：名字(编号) · 颜色（不显单位/规格/库位，见 _goodsLabel 注释）。
+          // 2026-09-29 用户口径（与表格「名称列只放名称」同源）：选项主行
+          // 只显名称，副行显 编号 · 颜色；不带单位/规格/库位。
           title: Text(
-            _goodsLabel(g),
+            g.name ?? '—',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
+          subtitle:
+              [
+                g.code,
+                g.colorName,
+              ].where((v) => v != null && v.isNotEmpty).join(' · ').isEmpty
+              ? null
+              : Text(
+                  [
+                    g.code,
+                    g.colorName,
+                  ].where((v) => v != null && v.isNotEmpty).join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
           trailing: showPicked
               ? Icon(
                   Icons.check_circle_rounded,

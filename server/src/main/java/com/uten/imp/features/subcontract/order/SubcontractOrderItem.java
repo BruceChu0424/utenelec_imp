@@ -30,7 +30,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "subcontract_order_items")
-public class SubcontractOrderItem extends BaseEntity {
+public class SubcontractOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity {
 
     @Column(name = "is_deleted", nullable = false)
     private boolean deleted;

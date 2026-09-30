@@ -33,10 +33,22 @@ class SalesIntakeStore implements IntakeReferenceData {
 
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper json;
+    private com.uten.imp.features.sales.template.SalesQuoteTemplateStore templateStore;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setTemplateStore(com.uten.imp.features.sales.template.SalesQuoteTemplateStore templateStore) {
+        this.templateStore = templateStore;
+    }
 
     SalesIntakeStore(NamedParameterJdbcTemplate jdbc, ObjectMapper json) {
         this.jdbc = jdbc;
         this.json = json;
+    }
+
+    @Override
+    public void stageTemplate(UUID jobId, UUID actor, String name,
+                              com.uten.imp.features.sales.template.QuoteTemplateWorkbook.Candidate template) {
+        if (templateStore != null) templateStore.stage(jobId, actor, name, template);
     }
 
     @Override
@@ -175,6 +187,21 @@ class SalesIntakeStore implements IntakeReferenceData {
                         last_used_at = EXCLUDED.last_used_at,
                         updated_at = now()
                 """, params);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void learnLayoutOnce(SalesIntakeUsedEvent event, String fingerprint, String headerTexts,
+            Map<String,String> roles, int offset, boolean touchOnly) {
+        if (event.clientId() == null) return;
+        int inserted = jdbc.update("""
+                INSERT INTO sales_intake_layout_learning_evidence(job_id,doc_type,doc_id) VALUES(:job,:type,:doc)
+                ON CONFLICT(job_id,doc_type,doc_id) DO NOTHING
+                """, Map.of("job",event.jobId(),"type",event.docType(),"doc",event.docId()));
+        if (inserted == 0) return;
+        // Self calls deliberately share this transaction with the evidence insert.
+        if (touchOnly) touchLayout(fingerprint, event.clientId());
+        else upsertLayout(fingerprint,event.clientId(),headerTexts,roles,offset);
     }
 
     @Override

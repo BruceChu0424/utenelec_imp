@@ -1318,8 +1318,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         // 所属仓库 (V587)：货品平时归哪个仓管，不是下面那几行的单据落点仓。
         // V590 起任何入库自动回写为最新入库仓。
         MasterDetailRow('所属仓库', d.owningWarehouseName),
-        // 归属生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读。
-        MasterDetailRow('归属车间', d.owningWorkshopName),
+        // 生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读。
+        MasterDetailRow('生产车间', d.owningWorkshopName),
         MasterDetailRow('库存量(合计)', s(d.stockQty)),
         // 重量合计由服务端算好 (千克, 不含内料仓; ADR-135), 前端只按显示单位换算。
         if (d.stockWeightKg != null || d.stockWeightUnknown > 0)
@@ -1437,21 +1437,16 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     if (_detail == null) {
       return _emptyTab('请先在「基本信息」保存货品后维护成本预算');
     }
-    // 宽屏下成本表单与基本信息同宽居中（960），保持三个页签视觉对齐。
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 960),
-        child: GoodsCostTab(
-          key: ValueKey('cost-$_goodsId'),
-          detail: _detail!,
-          canEdit: _canEditSaved,
-          materialTotal: _detail!.sourceE,
-          onSaved: () {
-            _refreshDetail();
-            widget.onDataChanged?.call();
-          },
-        ),
-      ),
+    // 成本树表使用整个详情内容宽度；列宽、横滚和窄屏由公共表格处理。
+    return GoodsCostTab(
+      key: ValueKey('cost-$_goodsId'),
+      detail: _detail!,
+      canEdit: _canEditSaved,
+      materialTotal: _detail!.sourceE,
+      onSaved: () {
+        _refreshDetail();
+        widget.onDataChanged?.call();
+      },
     );
   }
 

@@ -655,6 +655,8 @@ class _StartConfirmationSheetState
                         const SizedBox(height: UtenSpacing.s12),
                         if (_rows.isNotEmpty)
                           UtenEditableGrid<_StartRow>(
+                            tableKey:
+                                'features.production.widgets.start_confirmation_sheet.StartConfirmationSheetState.build.1',
                             controller: _grid,
                             columns: _columns(l10n),
                             showAddRow: false,
@@ -789,6 +791,8 @@ class _StartConfirmationSheetState
     ),
     EditableGridColumn(
       key: 'taskCount',
+      exactValueOf: (row) => row.tasks.length.toString(),
+      exactListenableOf: (row) => row.changes,
       label: '本次任务数',
       width: 100,
       numeric: true,

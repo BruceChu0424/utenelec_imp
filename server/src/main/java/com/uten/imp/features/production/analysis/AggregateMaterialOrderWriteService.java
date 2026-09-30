@@ -163,7 +163,9 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             Set<UUID> commandPlans=results.stream().map(BatchResult::planId).filter(Objects::nonNull).collect(Collectors.toSet());
             Map<UUID,Map<UUID,BigDecimal>> originalFlow=originalPrivateFlow(input,group,current);
             List<SourceAdoptionIntent> adoptionIntents;
-            if(originalFlow!=null&&!retainedMakeResponsibility) {
+            // ADR-099 修订(2026-09-29)：skipAutoClaim = 用户明确选择「足额下单，不扣可用
+            // 数量」，两类自动认领(自制公共超产/同主仓公共在途)一并不做，按核对数量足额下达。
+            if(originalFlow!=null&&!retainedMakeResponsibility&&!request.skipClaims()) {
                 Map<UUID,BigDecimal> desired=originalFlowTotals(input,originalFlow);
                 Set<UUID> repairOrigins=current.flatMaterials().stream()
                         .filter(row->desired.getOrDefault(row.materialLineId(),BigDecimal.ZERO).signum()>0
@@ -191,7 +193,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     originalFlow=originalPrivateFlow(remainingIntent,group,current);
                 }
             } else {
-            Map<UUID,BigDecimal> makeClaims=retainedMakeResponsibility?Map.of():commands.claimAggregateMakeFuture(analysisId,current,group,
+            Map<UUID,BigDecimal> makeClaims=retainedMakeResponsibility||request.skipClaims()?Map.of():commands.claimAggregateMakeFuture(analysisId,current,group,
                     stepKey(request.idempotencyKey(),group.clientGroupKey(),"MAKE-PUBLIC-CLAIM"),commandPlans,adoptedClaims::add);
             if(!makeClaims.isEmpty()) {
                 List<SourcePreview> sources=group.sources().stream().map(source->source(source,
@@ -200,7 +202,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 analysis.refreshLocked(analysisId);
                 current=analysis.detailInternal(analysisId,false);
             }
-            if(!retainedMakeResponsibility) {
+            if(!retainedMakeResponsibility&&!request.skipClaims()) {
                 Map<UUID,BigDecimal> claimed=commands.claimAggregateFuture(analysisId,current,group,stepKey(request.idempotencyKey(),group.clientGroupKey(),"CLAIM"),hash,adoptedClaims::add);
                 List<SourcePreview> sources=group.sources().stream().map(source->source(source,source.allocatedQty().subtract(claimed.getOrDefault(source.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO))).toList();
                 group=quantities(group,sources,sum(sources).add(group.publicExtraQty()));
@@ -441,7 +443,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     group.billDate(),group.deliveryDate(),group.departmentId(),null,group.workerId(),group.teamDepartmentId(),group.productNo(),
                     anchor.remainingQty().signum()==0&&group.publicExtraQty().signum()>0,requestedRate);
             var result=commands.issueWorkshopPlans(analysisId,new MaterialAnalysisContracts.IssueWorkshopPlansRequest(
-                    current.version(),current.fingerprint(),key,request.warehouseId(),group.billDate(),group.deliveryDate(),request.approveNow(),List.of(line)));
+                    current.version(),current.fingerprint(),key,request.warehouseId(),group.billDate(),group.deliveryDate(),request.approveNow(),List.of(line),
+                    request.skipClaims()?Boolean.TRUE:null));
             var plan=result.plans().getFirst();
             return new BatchResult(null,group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),
                     anchor.analysisLineId(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan);
@@ -451,7 +454,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 && "SUPPLY".equals(actions.get(ref.actionId()).operationType()));
         if(!legacy)return null;
         var result=commands.notifySupply(analysisId,new MaterialAnalysisContracts.NotifyRequest(current.version(),current.fingerprint(),key,
-                group.route(),List.of(id),null,List.of(new MaterialAnalysisContracts.SupplyQuantityInput(null,id,group.requestedQty(),BigDecimal.ZERO))));
+                group.route(),List.of(id),null,List.of(new MaterialAnalysisContracts.SupplyQuantityInput(null,id,group.requestedQty(),BigDecimal.ZERO)),
+                request.skipClaims()?Boolean.TRUE:null));
         MaterialView updated=result.flatMaterials().stream().filter(value->value.materialLineId().equals(id)).findFirst().orElseThrow();
         var ref=updated.downstreamReferences().stream().filter(value->Objects.equals(group.route(),value.route())&&!"CANCELLED".equals(value.status()))
                 .max(Comparator.comparingInt(value->result.supplyActions().stream().filter(action->action.actionId().equals(value.actionId()))
@@ -889,7 +893,10 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     private static GroupPreview quantities(GroupPreview group,List<SourcePreview> sources,BigDecimal quantity){return new GroupPreview(group.clientGroupKey(),group.compatibilityKey(),group.route(),group.goodsId(),group.goodsCode(),group.goodsName(),group.colorId(),group.colorName(),group.unitId(),group.unitName(),group.sourceRequiredQty(),group.orderedQty(),group.remainingQty(),quantity,group.publicExtraQty(),group.safetyQty(),group.departmentId(),group.workerId(),group.teamDepartmentId(),group.billDate(),group.deliveryDate(),group.productNo(),group.allowedOverproductionRate(),sources,group.sharedBomChildren(),group.blockedReason());}
     private static SourcePreview source(SourcePreview source,BigDecimal qty){return new SourcePreview(source.materialLineId(),source.analysisLineId(),source.sourceLabel(),source.allocationPriority(),source.needDate(),source.sourceRequiredQty(),source.remainingQty(),qty,source.orderedQty(),source.originalMaterialLineIds());}
     private static BigDecimal sum(List<SourcePreview> sources){return sources.stream().map(SourcePreview::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add);}
-    private String hashRequest(UUID analysisId,SubmitRequest request){ObjectNode data=mapper.valueToTree(request);data.remove("idempotencyKey");return CanonicalFingerprint.sha256(List.of("AGGREGATE-ORDER-V1",analysisId.toString(),data.toString()));}
+    private String hashRequest(UUID analysisId,SubmitRequest request){ObjectNode data=mapper.valueToTree(request);data.remove("idempotencyKey");
+        // ADR-099 修订(2026-09-29)：未跳过认领时移除该字段，哈希与历史逐字节一致。
+        if(!request.skipClaims())data.remove("skipAutoClaim");
+        return CanonicalFingerprint.sha256(List.of("AGGREGATE-ORDER-V1",analysisId.toString(),data.toString()));}
     private static String stepKey(String key,String group,String stage){return "AGG-"+CanonicalFingerprint.sha256(List.of(key,group,stage));}
     private static BigDecimal decimal(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static void validateRequest(SubmitRequest request){if(request==null||request.groups().isEmpty()||request.idempotencyKey()==null||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("汇总下单缺少有效内容或幂等键");AggregateMaterialOrderPreviewService.requireSourceScope(request.groups());}

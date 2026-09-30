@@ -5,7 +5,9 @@ import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/features/notice/providers/notice_page_clear_events.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/providers/notice_route_read_bridge.dart';
+import 'package:uten_imp/features/notice/providers/notice_unread_index_provider.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 /// 通知落点已读桥契约（2026-09-18 无状态重写）：
 /// - 任何路由落定都触发 read-by-route（action_route 精确清理），无需预登记；
@@ -31,6 +33,15 @@ class _FakeNoticeRepository implements NoticeRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
+
+class _UnknownIndex extends NoticeUnreadIndexNotifier {
+  @override
+  NoticeUnreadIndex? build() => null;
+}
+
+final _testScope = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'staff-test'),
+);
 
 void main() {
   test('noticeClearEventsForLocation matches exact key and subpaths only', () {
@@ -62,7 +73,11 @@ void main() {
   ) async {
     final repo = _FakeNoticeRepository();
     final container = ProviderContainer(
-      overrides: [noticeRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        noticeRepositoryProvider.overrideWithValue(repo),
+        authenticatedScopeProvider.overrideWith((ref) => ref.watch(_testScope)),
+        noticeUnreadIndexProvider.overrideWith(_UnknownIndex.new),
+      ],
     );
     addTearDown(container.dispose);
 
@@ -124,4 +139,75 @@ void main() {
     expect(repo.routeCalls.last, ['/operations/workbench/purchase']);
     expect(repo.sourceCalls.last, contains('PREPLAN_SUPPLY_DOCUMENT_CREATED'));
   });
+
+  testWidgets(
+    'anonymous, password-gated and public routes never mark notices read',
+    (tester) async {
+      final repo = _FakeNoticeRepository();
+      final container = ProviderContainer(
+        overrides: [
+          noticeRepositoryProvider.overrideWithValue(repo),
+          authenticatedScopeProvider.overrideWith(
+            (ref) => ref.watch(_testScope),
+          ),
+          noticeUnreadIndexProvider.overrideWith(_UnknownIndex.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(_testScope.notifier).state = null;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: NoticeRouteReadBridge()),
+        ),
+      );
+      void landOn(String location) {
+        final current = container.read(pageResumeProvider);
+        container.read(pageResumeProvider.notifier).state = (
+          location: location,
+          tick: current.tick + 1,
+        );
+      }
+
+      // Reproduces cold startup /login and an expired session still on a queue.
+      for (final route in [
+        '/login',
+        '/change-password',
+        '/warehouse/tasks/draw',
+      ]) {
+        landOn(route);
+        await tester.pump();
+      }
+      expect(repo.routeCalls, isEmpty);
+      expect(repo.sourceCalls, isEmpty);
+      container.read(_testScope.notifier).state = const AuthenticatedScope(
+        userId: 'staff-test',
+      );
+      // Public/visitor pages do not consume staff notices even if staff is signed in.
+      for (final route in [
+        '/login',
+        '/entry',
+        '/change-password',
+        '/visitor/home',
+      ]) {
+        landOn(route);
+        await tester.pump();
+      }
+      expect(repo.routeCalls, isEmpty);
+      expect(repo.sourceCalls, isEmpty);
+      landOn('/warehouse/tasks/draw');
+      await tester.pump();
+      expect(repo.routeCalls, [
+        ['/warehouse/tasks/draw'],
+      ]);
+      expect(repo.sourceCalls, [
+        ['PRODUCTION_DRAW_PENDING'],
+      ]);
+      container.read(_testScope.notifier).state = null;
+      landOn('/finance/sales-order-confirmations');
+      await tester.pump();
+      expect(repo.routeCalls, hasLength(1));
+      expect(repo.sourceCalls, hasLength(1));
+    },
+  );
 }

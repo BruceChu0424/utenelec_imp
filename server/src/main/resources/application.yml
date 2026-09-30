@@ -61,6 +61,10 @@ spring:
     url: ${spring.datasource.url}
     user: ${spring.datasource.username}
     password: ${spring.datasource.password}
+    # PostgreSQL IF NOT EXISTS/IF EXISTS emit NOTICE, which Flyway otherwise logs
+    # as WARN. Scope this to migration connections; real WARNING and ERROR remain.
+    init-sqls:
+      - SET client_min_messages = WARNING
     locations: classpath:db/migration
     baseline-on-migrate: ${UTEN_FLYWAY_BASELINE_ON_MIGRATE:false}
     clean-disabled: true

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
@@ -5,6 +7,7 @@ import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/providers/notice_unread_index_provider.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 
@@ -19,12 +22,20 @@ class _FakeNoticeRepository implements NoticeRepository {
   final bool failRouteRead;
   final List<List<String>> routeCalls = [];
   int listCalls = 0;
+  final List<List<String>> sourceCalls = [];
+  Completer<int>? routeResult;
 
   @override
   Future<int> markReadByRoute(List<String> routes) async {
     routeCalls.add(routes);
     if (failRouteRead) throw StateError('network down');
-    return routes.length;
+    return routeResult?.future ?? routes.length;
+  }
+
+  @override
+  Future<int> markReadBySource(List<String> events) async {
+    sourceCalls.add(events);
+    return 0;
   }
 
   @override
@@ -45,6 +56,9 @@ void main() {
       final badges = FixedBadgeSummaryNotifier(badgeSummaryFixture());
       final container = ProviderContainer(
         overrides: [
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'staff'),
+          ),
           noticeRepositoryProvider.overrideWithValue(repo),
           badgeSummaryProvider.overrideWith(() => badges),
         ],
@@ -78,7 +92,13 @@ void main() {
     () async {
       final repo = _FakeNoticeRepository(failRouteRead: true);
       final container = ProviderContainer(
-        overrides: [noticeRepositoryProvider.overrideWithValue(repo)],
+        overrides: [
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'staff'),
+          ),
+          noticeUnreadIndexProvider.overrideWith(_UnknownIndex.new),
+          noticeRepositoryProvider.overrideWithValue(repo),
+        ],
       );
       addTearDown(container.dispose);
 
@@ -111,6 +131,9 @@ void main() {
       final repo = _FakeNoticeRepository();
       final container = ProviderContainer(
         overrides: [
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'staff'),
+          ),
           noticeRepositoryProvider.overrideWithValue(repo),
           noticeUnreadIndexProvider.overrideWith(_KnownIndex.new),
         ],
@@ -129,6 +152,92 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'anonymous direct calls cannot turn an unknown index into a write',
+    () async {
+      final repo = _FakeNoticeRepository();
+      final container = ProviderContainer(
+        overrides: [
+          authenticatedScopeProvider.overrideWithValue(null),
+          noticeRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
+      addTearDown(container.dispose);
+      expect(
+        await markNoticesReadByRoute(container, ['/purchase/orders/x']),
+        0,
+      );
+      expect(
+        await markNoticesReadBySource(container, ['PRODUCTION_DRAW_PENDING']),
+        0,
+      );
+      expect(repo.routeCalls, isEmpty);
+      expect(repo.sourceCalls, isEmpty);
+    },
+  );
+
+  test(
+    'public routes are excluded from mixed authenticated route requests',
+    () async {
+      final repo = _FakeNoticeRepository();
+      final badges = FixedBadgeSummaryNotifier(badgeSummaryFixture());
+      final container = ProviderContainer(
+        overrides: [
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'staff'),
+          ),
+          noticeUnreadIndexProvider.overrideWith(_UnknownIndex.new),
+          noticeRepositoryProvider.overrideWithValue(repo),
+          badgeSummaryProvider.overrideWith(() => badges),
+        ],
+      );
+      addTearDown(container.dispose);
+      await markNoticesReadByRoute(container, [
+        '/login',
+        '/visitor/home',
+        '/entry',
+        '/',
+        '/purchase/orders/x',
+      ]);
+      expect(repo.routeCalls, [
+        ['/purchase/orders/x'],
+      ]);
+    },
+  );
+
+  test(
+    'response from an old session cannot invalidate the new session index',
+    () async {
+      final scope = StateProvider<AuthenticatedScope?>(
+        (ref) => const AuthenticatedScope(userId: 'old'),
+      );
+      final repo = _FakeNoticeRepository()..routeResult = Completer<int>();
+      final badges = FixedBadgeSummaryNotifier(badgeSummaryFixture());
+      final container = ProviderContainer(
+        overrides: [
+          authenticatedScopeProvider.overrideWith((ref) => ref.watch(scope)),
+          noticeUnreadIndexProvider.overrideWith(_KnownIndex.new),
+          noticeRepositoryProvider.overrideWithValue(repo),
+          badgeSummaryProvider.overrideWith(() => badges),
+        ],
+      );
+      addTearDown(container.dispose);
+      final pending = markNoticesReadByRoute(container, ['/purchase/orders/x']);
+      container.read(scope.notifier).state = const AuthenticatedScope(
+        userId: 'new',
+      );
+      repo.routeResult!.complete(1);
+      expect(await pending, 1);
+      expect(container.read(noticeUnreadIndexProvider)!.items, hasLength(1));
+      expect(badges.refreshCalls, 0);
+    },
+  );
+}
+
+class _UnknownIndex extends NoticeUnreadIndexNotifier {
+  @override
+  NoticeUnreadIndex? build() => null;
 }
 
 /// 已拉到的未读索引: 只有一条指向采购订单 x 的未读。

@@ -73,11 +73,14 @@ void main() {
     await tester.pumpWidget(_app(gateway));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('iqc-rejection-compact-list')), findsOneWidget);
-    expect(find.byKey(const Key('iqc-rejection-task-table')), findsNothing);
-    expect(find.textContaining('金额 ***'), findsOneWidget);
-    // ADR-128：列表金额是本币，不挂单据币种。
-    expect(find.textContaining('本币金额 25.00'), findsOneWidget);
+    // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管，统一挂
+    // 表格 key；compact-list 键退役。
+    expect(find.byKey(const Key('iqc-rejection-compact-list')), findsNothing);
+    expect(find.byKey(const Key('iqc-rejection-task-table')), findsOneWidget);
+    // 通用卡片明细按列名渲染（2026-09-29 共用表）：掩码行金额 ***，
+    // 未掩码行 25.00——服务端金额掩码在卡片形态同样生效（ADR-128 本币口径）。
+    expect(find.textContaining('***', findRichText: true), findsOneWidget);
+    expect(find.textContaining('25.00', findRichText: true), findsOneWidget);
     expect(find.text('财务投影异常'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -96,13 +99,15 @@ void main() {
         await tester.pumpWidget(_app(_Gateway(items: [_case()])));
         await tester.pumpAndSettle();
 
+        // 2026-09-29「大小屏共用一张表」：表格组件常驻（compact 由其内建
+        // 卡片形态渲染，同一把 key）；不再有独立 compact-list 键。
         expect(
           find.byKey(const Key('iqc-rejection-compact-list')),
-          scenario.compact ? findsOneWidget : findsNothing,
+          findsNothing,
         );
         expect(
           find.byKey(const Key('iqc-rejection-task-table')),
-          scenario.compact ? findsNothing : findsOneWidget,
+          findsOneWidget,
         );
         expect(tester.takeException(), isNull);
       },

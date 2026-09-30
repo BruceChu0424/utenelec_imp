@@ -1,3 +1,4 @@
+import '../../shared/platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -103,8 +104,12 @@ class UtenRevisionTable<T> extends StatelessWidget {
     this.summaryBar,
     this.bottomContentPadding = 0,
     this.stickyHeaderPinned,
+    this.tableKey,
+    this.platformBinding,
   });
 
+  final String? tableKey;
+  final PlatformTableBinding<T>? platformBinding;
   final List<MasterColumnDef<T>> columns;
   final List<UtenRevisionRow<T>> rows;
   final bool embedded;
@@ -114,74 +119,131 @@ class UtenRevisionTable<T> extends StatelessWidget {
   final ValueNotifier<bool>? stickyHeaderPinned;
 
   @override
-  Widget build(BuildContext context) => MasterDataTableView<UtenRevisionRow<T>>(
-    embedded: embedded,
-    primary: primary,
-    bottomContentPadding: bottomContentPadding,
-    stickyHeaderPinned: stickyHeaderPinned,
-    columns: [
-      MasterColumnDef(
-        key: '_revision',
-        label: '变更',
-        width: 108,
-        value: (row) =>
-            '${switch (row.kind) {
-              UtenRevisionKind.unchanged => '=',
-              UtenRevisionKind.removed => '−',
-              UtenRevisionKind.added => '+',
-            }} ${row.statusLabel}',
-      ),
-      for (final column in columns)
-        MasterColumnDef(
-          key: column.key,
-          label: column.label,
-          width: column.width,
-          type: column.type,
-          info: column.info,
-          value: (row) => column.value(row.value),
-          cellBuilder: (cellContext, row) => Text(
-            row.kind == UtenRevisionKind.added &&
-                    row.changedKeys.contains(column.key) &&
-                    (column.value(row.value)?.isEmpty ?? true)
-                ? '未填写'
-                : column.value(row.value) ?? '',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style:
-                row.kind == UtenRevisionKind.added &&
-                    row.changedKeys.contains(column.key)
-                ? TextStyle(
-                    color: utenRevisionForeground(
-                      cellContext,
-                      UtenRevisionKind.removed,
-                    ),
-                    fontWeight: FontWeight.w800,
-                  )
-                : DefaultTextStyle.of(cellContext).style,
+  Widget build(BuildContext context) {
+    final binding =
+        platformBinding ??
+        PlatformTableCatalogScope.resolve(
+          context,
+          PlatformTableDescriptor<T>(
+            kind: 'revision',
+            tableKey: tableKey,
+            columnKeys: columns.map((c) => c.key).toList(),
+            rows: rows.map((row) => row.value).toList(),
           ),
-          // Diffs deliberately use plain, copyable values. A source column may
-          // have an action or its own color; neither belongs in an old snapshot.
-        ),
-    ],
-    items: rows,
-    facets: const {},
-    nullCounts: const {},
-    filters: const {},
-    onFilterChanged: (_, _) {},
-    rowColor: (row) => utenRevisionBackground(context, row.kind),
-    rowForegroundColor: (row) => utenRevisionForeground(context, row.kind),
-    rowDecorationBuilder: (context, row, child) => Semantics(
-      label: row.statusLabel,
-      child: row.kind == UtenRevisionKind.removed
-          ? UtenRevisionStrike(
-              color: utenRevisionForeground(context, row.kind)!,
-              child: child,
+        );
+    return MasterDataTableView<UtenRevisionRow<T>>(
+      tableKey: tableKey,
+      platformBinding: binding == null
+          ? null
+          : PlatformTableBinding<UtenRevisionRow<T>>(
+              tableKey: binding.tableKey,
+              scope: binding.scope,
+              columnAliases: binding.columnAliases,
+              defaultColumnOrder: binding.defaultColumnOrder,
+              defaultVisibleColumnKeys: binding.defaultVisibleColumnKeys == null
+                  ? null
+                  : ['_revision', ...binding.defaultVisibleColumnKeys!],
+              revealPopulatedColumnKeys: binding.revealPopulatedColumnKeys,
+              recordIdOf: (row) => binding.recordIdOf(row.value),
+              snapshotOf: (row) => binding.snapshotOf?.call(row.value),
+              factListenablesOf: binding.factListenablesOf == null
+                  ? null
+                  : (row) => binding.factListenablesOf!(row.value),
+              factValuesOf: binding.factValuesOf == null
+                  ? null
+                  : (row) => binding.factValuesOf!(row.value),
+            ),
+      embedded: embedded,
+      platformCellDecorator: (context, row, key, value, child) =>
+          row.kind == UtenRevisionKind.added && row.changedKeys.contains(key)
+          ? Text(
+              value?.isNotEmpty == true ? value! : '未填写',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: utenRevisionForeground(
+                  context,
+                  UtenRevisionKind.removed,
+                ),
+                fontWeight: FontWeight.w800,
+              ),
             )
           : child,
-    ),
-    summaryBar: summaryBar,
-    summaryBarInline: true,
-  );
+      primary: primary,
+      bottomContentPadding: bottomContentPadding,
+      stickyHeaderPinned: stickyHeaderPinned,
+      columns: [
+        MasterColumnDef(
+          key: '_revision',
+          label: '变更',
+          width: 108,
+          value: (row) =>
+              '${switch (row.kind) {
+                UtenRevisionKind.unchanged => '=',
+                UtenRevisionKind.removed => '−',
+                UtenRevisionKind.added => '+',
+              }} ${row.statusLabel}',
+        ),
+        for (final column in columns)
+          MasterColumnDef(
+            key: column.key,
+            label: column.label,
+            width: column.width,
+            type: column.type,
+            info: column.info,
+            defaultVisible: column.defaultVisible,
+            exportDefinition: column.exportDefinition,
+            exactListenableOf: column.exactListenableOf == null
+                ? null
+                : (row) => column.exactListenableOf!(row.value),
+            exactValueOf: column.exactValueOf == null
+                ? null
+                : (row) => column.exactValueOf!(row.value),
+            value: (row) => column.value(row.value),
+            cellBuilder: (cellContext, row) => Text(
+              row.kind == UtenRevisionKind.added &&
+                      row.changedKeys.contains(column.key) &&
+                      (column.value(row.value)?.isEmpty ?? true)
+                  ? '未填写'
+                  : column.value(row.value) ?? '',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  row.kind == UtenRevisionKind.added &&
+                      row.changedKeys.contains(column.key)
+                  ? TextStyle(
+                      color: utenRevisionForeground(
+                        cellContext,
+                        UtenRevisionKind.removed,
+                      ),
+                      fontWeight: FontWeight.w800,
+                    )
+                  : DefaultTextStyle.of(cellContext).style,
+            ),
+            // Diffs deliberately use plain, copyable values. A source column may
+            // have an action or its own color; neither belongs in an old snapshot.
+          ),
+      ],
+      items: rows,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      rowColor: (row) => utenRevisionBackground(context, row.kind),
+      rowForegroundColor: (row) => utenRevisionForeground(context, row.kind),
+      rowDecorationBuilder: (context, row, child) => Semantics(
+        label: row.statusLabel,
+        child: row.kind == UtenRevisionKind.removed
+            ? UtenRevisionStrike(
+                color: utenRevisionForeground(context, row.kind)!,
+                child: child,
+              )
+            : child,
+      ),
+      summaryBar: summaryBar,
+      summaryBarInline: true,
+    );
+  }
 }
 
 class UtenRevisionField {

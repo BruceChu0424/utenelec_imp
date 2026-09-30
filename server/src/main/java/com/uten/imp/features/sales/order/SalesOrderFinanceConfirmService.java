@@ -50,6 +50,10 @@ public class SalesOrderFinanceConfirmService {
     private static final int MAX_BATCH_CONFIRM_ORDERS = 100;
 
     private final EntityManager em;
+    private com.uten.imp.common.columns.BusinessColumnService businessColumns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setBusinessColumns(com.uten.imp.common.columns.BusinessColumnService service) { this.businessColumns = service; }
     private final SalesOrderRepository orderRepo;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
@@ -391,7 +395,8 @@ public class SalesOrderFinanceConfirmService {
                        i.qty, i.weight, i.price, i.discount, i.amount_original,
                        COALESCE(i.remark, ''),
                        i.client_goods_name, i.client_price,
-                       i.goods_id, i.color_id, i.unit_rate
+                       i.goods_id, i.color_id, i.unit_rate, CAST(i.extra_columns AS text),
+                       i.goods_name_en_snapshot
                 FROM sales_order_items i
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -424,7 +429,8 @@ public class SalesOrderFinanceConfirmService {
                     r[15] == null ? null : (BigDecimal) r[15],
                     quoted == null ? null : quoted.price(),
                     quoted == null ? null : quoted.discount(),
-                    matchesQuote));
+                    matchesQuote, r.length > 19 ? businessColumns.parse(r[19]) : List.of(),
+                    r.length > 20 ? (String) r[20] : null));
         }
         @SuppressWarnings("unchecked")
         List<Object[]> changeRows = em.createNativeQuery("""
@@ -529,7 +535,8 @@ public class SalesOrderFinanceConfirmService {
                         (UUID) r[16], (UUID) r[17], (UUID) r[5],
                         r[18] == null ? null : (BigDecimal) r[18],
                         r[10] == null ? null : (BigDecimal) r[10],
-                        r[11] == null ? null : (BigDecimal) r[11]))
+                        r[11] == null ? null : (BigDecimal) r[11],
+                        r.length > 19 ? businessColumns.parse(r[19]) : List.of()))
                 .toList();
         List<com.uten.imp.features.sales.quote.SalesQuoteItem> quoteItems =
                 quoteItemsByQuote(List.of(order.getSourceQuoteId()))
@@ -549,7 +556,7 @@ public class SalesOrderFinanceConfirmService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT i.order_id, i.line_no, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
-                               i.price, i.discount
+                               i.price, i.discount, CAST(i.extra_columns AS text)
                         FROM sales_order_items i
                         WHERE i.order_id IN (:ids) AND i.is_deleted = FALSE
                         ORDER BY i.order_id, i.line_no NULLS LAST, i.id
@@ -561,7 +568,8 @@ public class SalesOrderFinanceConfirmService {
             linesByOrder.computeIfAbsent((UUID) r[0], ignored -> new ArrayList<>()).add(new QuoteMatchLine(
                     r[1] == null ? null : ((Number) r[1]).intValue(),
                     (UUID) r[2], (UUID) r[3], (UUID) r[4],
-                    (BigDecimal) r[5], (BigDecimal) r[6], (BigDecimal) r[7]));
+                    (BigDecimal) r[5], (BigDecimal) r[6], (BigDecimal) r[7],
+                    r.length > 8 ? businessColumns.parse(r[8]) : List.of()));
         }
         Map<UUID, List<com.uten.imp.features.sales.quote.SalesQuoteItem>> quoteItems =
                 quoteItemsByQuote(quoteByOrder.values());
@@ -590,7 +598,12 @@ public class SalesOrderFinanceConfirmService {
 
     /** 一行订单明细的配对键与单价/折扣(对照来源报价用)。 */
     record QuoteMatchLine(Integer lineNo, UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
-                          BigDecimal price, BigDecimal discount) {
+                          BigDecimal price, BigDecimal discount,
+                          List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {
+        QuoteMatchLine(Integer lineNo, UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
+                       BigDecimal price, BigDecimal discount) {
+            this(lineNo, goodsId, colorId, unitId, unitRate, price, discount, List.of());
+        }
     }
 
     /** 对照结果: 逐行配上的报价条款(没配上为 null)、逐行是否一致、是否全部一致。 */
@@ -617,9 +630,16 @@ public class SalesOrderFinanceConfirmService {
             BigDecimal discount = comparableDiscount(line.discount());
             matches.add(quoted != null && line.price() != null && discount != null
                     && quoted.price().compareTo(line.price()) == 0
-                    && quoted.discount().compareTo(discount) == 0);
+                    && quoted.discount().compareTo(discount) == 0
+                    && financialColumns(quoted.extraColumns()).equals(financialColumns(line.extraColumns())));
         }
         return new QuoteMatch(terms, matches, matches.stream().allMatch(Boolean::booleanValue));
+    }
+
+    private static List<com.uten.imp.common.columns.ExtraColumnSnapshot> financialColumns(
+            List<com.uten.imp.common.columns.ExtraColumnSnapshot> columns) {
+        return columns == null ? List.of() : columns.stream()
+                .filter(com.uten.imp.common.columns.ExtraColumnSnapshot::financial).toList();
     }
 
     /** 订单行折扣按保存口径归一(空/0 = 1); 历史脏值(超出 0~1 或多于 4 位)算不一致, 不让列表报错。 */

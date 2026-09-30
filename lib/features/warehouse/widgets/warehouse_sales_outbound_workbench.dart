@@ -414,6 +414,8 @@ class _WarehouseSalesOutboundWorkbenchState
           : _seg!.history && _historyTime.isNone
           ? const UtenHistoryTimePlaceholder()
           : MasterDataTableView<WarehouseSalesOutboundSummary>(
+              tableKey:
+                  'features.warehouse.widgets.warehouse_sales_outbound_workbench.WarehouseSalesOutboundWorkbenchState.build.1',
               // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
               primary: true,
               key: const Key('warehouse-sales-outbound-table'),

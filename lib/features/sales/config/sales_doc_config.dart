@@ -52,6 +52,7 @@ class SalesDocConfig {
     this.sellerRequired = false,
     this.hasSender = false,
     this.hasValidUntil = false,
+    this.validUntilRequired = false,
     this.hasDeliverDate = false,
     this.deliverDateRequired = false,
     this.hasContractNo = false,
@@ -109,6 +110,10 @@ class SalesDocConfig {
   final bool sellerRequired;
   final bool hasSender;
   final bool hasValidUntil;
+
+  /// 有效期是否必填([hasValidUntil] 为真时生效；报价必填——没有有效期的报价
+  /// 无法约束核价与转单时效，订货类无此字段)。
+  final bool validUntilRequired;
   final bool hasDeliverDate;
 
   /// 交货日期是否必填(订货必填，报价选填)。
@@ -178,9 +183,10 @@ class SalesDocConfig {
     hasExchangeRate: false,
     hasSettlement: true,
     hasSeller: true,
+    hasValidUntil: true,
+    validUntilRequired: true,
     hasDeliverDate: true,
     hasContractNo: true,
-    hasValidUntil: true,
     skipListOnCreate: true,
   );
 

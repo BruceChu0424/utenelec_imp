@@ -71,6 +71,8 @@ class SuggestionListPage extends ConsumerWidget {
             return createAction.emptyState();
           }
           return MasterDataTableView<Suggestion>(
+            tableKey:
+                'features.suggestion.pages.suggestion_list_page.SuggestionListPage.build.1',
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             key: const Key('suggestion-list-table'),
             columns: _columns,

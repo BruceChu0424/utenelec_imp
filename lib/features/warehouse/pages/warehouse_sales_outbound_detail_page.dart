@@ -367,54 +367,54 @@ class _WarehouseSalesOutboundDetailPageState
                           ),
                         ),
                         // body：明细表占满内滚（primary 拾取联动控制器）。
-                        body:
-                            MasterDataTableView<WarehouseSalesOutboundTableRow>(
-                              key: const Key(
-                                'warehouse-sales-outbound-detail-table',
-                              ),
-                              primary: true,
-                              bottomContentPadding:
-                                  UtenFloatingActionGroup.scrollClearance,
-                              columns: warehouseSalesOutboundTableColumns(
-                                l10n:
-                                    Localizations.of<AppLocalizations>(
-                                      context,
-                                      AppLocalizations,
-                                    ) ??
-                                    AppLocalizationsZh(),
-                                rows: rows,
-                                // V631：发出仓按行在表格里选，预填建议仓。
-                                draftOf: (_) => _picking,
-                                onDraftChanged: () => setState(() {}),
-                                stockPlaceControllerOf:
-                                    detail.header.allows(
-                                      WarehouseSalesOutboundAction
-                                          .confirmShipment,
-                                    )
-                                    ? (row) => _picking?.places[row.line.id]
-                                    : null,
-                                editingEnabled:
-                                    !_acting && !_confirming && !_needsReview,
-                                weightParams: _weightCache,
-                                weightEntryUnit: weightUnits.entry,
-                              ),
-                              toolbarActions: weightEntries.isEmpty
-                                  ? null
-                                  : const [WeightEntryUnitButton()],
-                              summaryBar: weightEntries.isEmpty
-                                  ? null
-                                  : OutboundWeightSummaryBar(
-                                      entries: weightEntries,
-                                      params: _weightCache,
-                                    ),
-                              items: rows,
-                              rowKeyOf: (row) => row.key,
-                              facets: const {},
-                              nullCounts: const {},
-                              filters: const {},
-                              onFilterChanged: (_, _) {},
-                              emptyMessage: '该任务暂无出库明细',
-                            ),
+                        body: MasterDataTableView<WarehouseSalesOutboundTableRow>(
+                          tableKey:
+                              'features.warehouse.pages.warehouse_sales_outbound_detail_page.WarehouseSalesOutboundDetailPageState.build.1',
+                          key: const Key(
+                            'warehouse-sales-outbound-detail-table',
+                          ),
+                          primary: true,
+                          bottomContentPadding:
+                              UtenFloatingActionGroup.scrollClearance,
+                          columns: warehouseSalesOutboundTableColumns(
+                            l10n:
+                                Localizations.of<AppLocalizations>(
+                                  context,
+                                  AppLocalizations,
+                                ) ??
+                                AppLocalizationsZh(),
+                            rows: rows,
+                            // V631：发出仓按行在表格里选，预填建议仓。
+                            draftOf: (_) => _picking,
+                            onDraftChanged: () => setState(() {}),
+                            stockPlaceControllerOf:
+                                detail.header.allows(
+                                  WarehouseSalesOutboundAction.confirmShipment,
+                                )
+                                ? (row) => _picking?.places[row.line.id]
+                                : null,
+                            editingEnabled:
+                                !_acting && !_confirming && !_needsReview,
+                            weightParams: _weightCache,
+                            weightEntryUnit: weightUnits.entry,
+                          ),
+                          toolbarActions: weightEntries.isEmpty
+                              ? null
+                              : const [WeightEntryUnitButton()],
+                          summaryBar: weightEntries.isEmpty
+                              ? null
+                              : OutboundWeightSummaryBar(
+                                  entries: weightEntries,
+                                  params: _weightCache,
+                                ),
+                          items: rows,
+                          rowKeyOf: (row) => row.key,
+                          facets: const {},
+                          nullCounts: const {},
+                          filters: const {},
+                          onFilterChanged: (_, _) {},
+                          emptyMessage: '该任务暂无出库明细',
+                        ),
                       ),
                     ),
             ),

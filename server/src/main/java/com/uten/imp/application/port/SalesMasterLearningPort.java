@@ -22,6 +22,8 @@ public interface SalesMasterLearningPort {
      * 处理, 审计操作人绑定为保存人)。学习失败只记日志, 不影响已经提交的保存。
      */
     void learnAfterCommit(SalesLearningRequest request);
+    /** Clearing all customer labels must still retract this document's prior evidence. */
+    default boolean hasDocumentLearning(String docType, UUID docId) { return false; }
 
     /**
      * 一次保存的学习请求。
@@ -37,13 +39,32 @@ public interface SalesMasterLearningPort {
      * @param intakeJobId     本次保存所用的 AI 识别任务 id; 没有识别为空(此时只学手打原文的客户对照)
      */
     record SalesLearningRequest(String docType, UUID docId, UUID clientId, UUID actorUserId, UUID actorEmployeeId,
-                                List<LearnedLine> lines, Map<String, String> clientFields, UUID intakeJobId) {
+                                List<LearnedLine> lines, Map<String, String> clientFields, UUID intakeJobId,
+                                List<UUID> additionalIntakeJobIds, UUID learningReceiptId) {
+        public SalesLearningRequest(String docType, UUID docId, UUID clientId, UUID actorUserId, UUID actorEmployeeId,
+                                    List<LearnedLine> lines, Map<String, String> clientFields, UUID intakeJobId,
+                                    List<UUID> additionalIntakeJobIds) {
+            this(docType, docId, clientId, actorUserId, actorEmployeeId, lines, clientFields, intakeJobId, additionalIntakeJobIds, null);
+        }
+        public SalesLearningRequest(String docType, UUID docId, UUID clientId, UUID actorUserId, UUID actorEmployeeId,
+                                    List<LearnedLine> lines, Map<String, String> clientFields, UUID intakeJobId) {
+            this(docType, docId, clientId, actorUserId, actorEmployeeId, lines, clientFields, intakeJobId, List.of(), null);
+        }
         public SalesLearningRequest {
             Objects.requireNonNull(docType, "docType");
             Objects.requireNonNull(docId, "docId");
             lines = lines == null ? List.of() : List.copyOf(lines);
             clientFields = clientFields == null
                     ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(clientFields));
+            additionalIntakeJobIds = additionalIntakeJobIds == null ? List.of()
+                    : additionalIntakeJobIds.stream().filter(Objects::nonNull).distinct().toList();
+        }
+
+        public List<UUID> intakeJobIds() {
+            var ids = new java.util.LinkedHashSet<UUID>();
+            if (intakeJobId != null) ids.add(intakeJobId);
+            ids.addAll(additionalIntakeJobIds);
+            return List.copyOf(ids);
         }
     }
 

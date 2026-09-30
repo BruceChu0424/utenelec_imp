@@ -235,6 +235,8 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
       ),
     EditableGridColumn<WmIssueLineRow>(
       key: 'bags',
+      exactValueOf: (r) => r.bags.text,
+      exactListenableOf: (r) => r.bags,
       label: l10n.wmBags,
       width: 100,
       numeric: true,
@@ -257,6 +259,8 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
     ),
     EditableGridColumn<WmIssueLineRow>(
       key: 'qty',
+      exactValueOf: (r) => r.qty.text,
+      exactListenableOf: (r) => r.qty,
       label: qtyLabel ?? l10n.wmKg,
       width: 120,
       numeric: true,

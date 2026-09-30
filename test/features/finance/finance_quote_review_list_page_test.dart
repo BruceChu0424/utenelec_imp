@@ -283,8 +283,13 @@ void main() {
     tester,
   ) async {
     await _pump(tester, size: const Size(420, 900));
-    expect(find.byKey(const Key('quote-finance-mobile-list')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('quote-finance-open-p2')));
+    // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管（统一挂
+    // 表格 key）；点卡片即打开（原卡片上的显式按钮退役）。
+    expect(
+      find.byKey(const Key('quote-finance-desktop-table')),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('XB-p2'));
     await tester.pumpAndSettle();
     expect(find.text('detail-p2'), findsOneWidget);
   });

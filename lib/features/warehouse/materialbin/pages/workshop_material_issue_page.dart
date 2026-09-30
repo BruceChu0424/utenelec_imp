@@ -690,6 +690,8 @@ class _WorkshopMaterialIssuePageState
 
     children.add(
       UtenEditableGrid<WmIssueLineRow>(
+        tableKey:
+            'features.warehouse.materialbin.pages.workshop_material_issue_page.WorkshopMaterialIssuePageState._form.1',
         key: const Key('wm-issue-grid'),
         controller: _grid,
         columns: wmIssueLineColumns(

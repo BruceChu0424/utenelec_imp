@@ -24,6 +24,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -848,6 +849,8 @@ class _SubcontractBusinessListPageState
                     ? const UtenHistoryTimePlaceholder()
                     : _withDraftCategory(
                         MasterDataTableView<SubcontractDocListItem>(
+                          tableKey:
+                              'features.subcontract.pages.subcontract_business_list_pages.SubcontractBusinessListPageState.build.1',
                           // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                           primary: true,
                           columns: _p.columns(
@@ -1048,12 +1051,10 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     label: statusLabel,
     width: 170,
     value: (row) => row.statusOverride ?? subcontractStatusLabel(row.status),
-    // 状态徽章（草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
-    cellBuilder: (_, row) => UtenStatusBadge(
-      label: row.statusOverride ?? subcontractStatusLabel(row.status),
-      type: docStatusBadgeType(row.status),
-      size: UtenStatusBadgeSize.small,
-    ),
+    // 状态分类色铺整格底色（2026-09-27 用户口径「格内胶囊改单元格背景色」，
+    // 草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
+    cellColor: (context, row) =>
+        udenStatusBadgeCellColor(context, docStatusBadgeType(row.status)),
   ),
   if (closed)
     MasterColumnDef(
@@ -1080,13 +1081,11 @@ List<MasterColumnDef<SubcontractDocListItem>> _orderColumns(
     label: '财务 / 执行状态',
     width: 190,
     value: _orderStatusText,
-    // 财务态徽章：等待财务审核=警告黄 / 财务退回=危险红 / 财务已通过=成功绿 /
+    // 财务态分类色铺整格底色（2026-09-27 用户口径「格内胶囊改单元格背景色」）：
+    // 等待财务审核=警告黄 / 财务退回=危险红 / 财务已通过=成功绿 /
     // 待提交财务=中性 / 已红冲=危险红；value 仍是纯文本供列宽/排序/筛选。
-    cellBuilder: (_, row) => UtenStatusBadge(
-      label: _orderStatusText(row),
-      type: _orderStatusBadgeType(row),
-      size: UtenStatusBadgeSize.small,
-    ),
+    cellColor: (context, row) =>
+        udenStatusBadgeCellColor(context, _orderStatusBadgeType(row)),
   );
   return columns;
 }

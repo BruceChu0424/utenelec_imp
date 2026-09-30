@@ -21,6 +21,7 @@ class EditableGridTotalsBar<T extends EditableGridRow> extends StatefulWidget {
     this.density = true,
     // 2026-09-15 用户口径：合计条顶部分隔线全站退役（与 UtenTotalsSummaryBar 同步）。
     this.showDivider = false,
+    this.showRowCount = true,
   });
 
   final UtenEditableGridController<T> controller;
@@ -33,6 +34,9 @@ class EditableGridTotalsBar<T extends EditableGridRow> extends StatefulWidget {
 
   final bool density;
   final bool showDivider;
+
+  /// 合计条最前带「总行数: N 行」（2026-09-29 用户口径，默认开）。
+  final bool showRowCount;
 
   @override
   State<EditableGridTotalsBar<T>> createState() =>
@@ -108,6 +112,7 @@ class _EditableGridTotalsBarState<T extends EditableGridRow>
     return UtenTotalsSummaryBar(
       density: widget.density,
       showDivider: widget.showDivider,
+      rowCount: widget.showRowCount ? widget.controller.rows.length : null,
       entries: widget.entriesBuilder(widget.controller.rows),
     );
   }

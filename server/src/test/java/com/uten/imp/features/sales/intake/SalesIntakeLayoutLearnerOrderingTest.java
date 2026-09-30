@@ -230,6 +230,8 @@ class SalesIntakeLayoutLearnerOrderingTest {
             ctx.registerBean(AiJobUsagePort.class, () -> mock(AiJobUsagePort.class));
             ctx.registerBean(com.uten.imp.security.SecurityContextCurrentUser.class);
             ctx.scan("com.uten.imp.features.sales.intake");
+            ctx.registerBean(com.uten.imp.features.sales.template.SalesQuoteTemplateStore.class,
+                    () -> mock(com.uten.imp.features.sales.template.SalesQuoteTemplateStore.class));
             ctx.refresh();
             assertThat(ctx.getBeansOfType(com.uten.imp.application.port.AiJobHandler.class)).hasSize(1);
             assertThat(ctx.getBean(com.uten.imp.application.port.AiJobHandler.class).kind())
@@ -237,6 +239,20 @@ class SalesIntakeLayoutLearnerOrderingTest {
             assertThat(ctx.getBean(SalesIntakeLayoutLearner.class)).isNotNull();
             assertThat(ctx.getBean(IntakeReferenceData.class)).isNotNull();
         }
+    }
+
+    @Test
+    void explicitSourceKeysMustExistInTheOwnedResultBeforeLearningLayout() {
+        AiJobUsagePort usage = mock(AiJobUsagePort.class);
+        IntakeReferenceData store = mock(IntakeReferenceData.class);
+        UUID job = UUID.randomUUID(), actor = UUID.randomUUID(), doc = UUID.randomUUID();
+        Map<String, Object> facts = new LinkedHashMap<>(result());
+        facts.put("lines", List.of(Map.of("key", "S1R9")));
+        when(usage.resultFor(job, actor)).thenReturn(Optional.of(facts));
+        var learner = new SalesIntakeLayoutLearner(usage, store, new NoOpTransactionManager());
+        assertThat(learner.capture(new SalesIntakeUsedEvent(job, actor, "quote", doc, null, List.of()))).isNull();
+        assertThat(learner.capture(new SalesIntakeUsedEvent(job, actor, "quote", doc, null, List.of("S1R999")))).isNull();
+        assertThat(learner.capture(new SalesIntakeUsedEvent(job, actor, "quote", doc, null, List.of("S1R9")))).isNotNull();
     }
 
     @Test

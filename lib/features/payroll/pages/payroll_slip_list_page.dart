@@ -17,6 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -48,6 +50,8 @@ class PayrollSlipListPage extends ConsumerWidget {
       data: (page) => RefreshIndicator(
         onRefresh: () => ref.read(payrollListProvider.notifier).refresh(),
         child: MasterDataTableView<PayrollSlip>(
+          tableKey:
+              'features.payroll.pages.payroll_slip_list_page.PayrollSlipListPage.build.1',
           key: const Key('payroll-slip-table'),
           columns: _columns,
           items: page.items,
@@ -157,6 +161,15 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     width: 100,
     info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
     value: (s) => s.status.label,
+    // 2026-09-27 用户口径「表格状态列整格底色」：待发布=灰 / 已发布=品牌青 /
+    // 已查看=蓝 / 已下载=绿。
+    cellColor: (context, s) =>
+        udenStatusBadgeCellColor(context, switch (s.status) {
+          PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
+          PayrollSlipStatus.published => UtenStatusBadgeType.accent,
+          PayrollSlipStatus.viewed => UtenStatusBadgeType.info,
+          PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
+        }),
   ),
   MasterColumnDef(
     key: 'publishedAt',

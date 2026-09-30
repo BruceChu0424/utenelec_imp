@@ -158,6 +158,18 @@ final class MasterReferenceCatalog {
 
     private static List<Reference> buildReferences() {
         List<Reference> out = new ArrayList<>();
+        // Cost documents retain their root and every frozen component identity; amounts/names are never shown here.
+        out.add(new Reference(GOODS,"goods_cost_sheets","goods_id",RefKind.COST_SHEET,"""
+                SELECT t.id,'COST_SHEET',CAST(s.id AS text),'内部成本记录',NULL::uuid,'public'
+                FROM targets t JOIN goods_cost_sheets s ON s.goods_id=t.id
+                    OR s.calculation @> jsonb_build_object('lines',jsonb_build_array(jsonb_build_object('goodsId',t.id::text)))
+                    OR EXISTS(SELECT 1 FROM goods_cost_snapshots v WHERE v.sheet_id=s.id
+                        AND v.payload->'calculation' @> jsonb_build_object('lines',jsonb_build_array(jsonb_build_object('goodsId',t.id::text))))
+                """));
+        out.add(new Reference(CLIENT,"goods_cost_sheets","client_id",RefKind.COST_SHEET,"""
+                SELECT s.client_id,'COST_SHEET',CAST(s.id AS text),'内部成本记录',NULL::uuid,'public'
+                FROM goods_cost_sheets s WHERE s.client_id IN (SELECT id FROM targets)
+                """));
 
         // 货品主档上的列：有效货品还指着它(导入撤回时同批删除的货品除外)。
         for (String column : List.of("color_id", "default_purchase_price_color_id",
@@ -587,6 +599,9 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.LEGACY, "老库生产计划成本(只读，按年分区)", "production_plan_costs",
                 "goods_id", "master_goods_id", "color_id", "master_color_id", "supplier_id");
 
+        exempt(out, ExemptReason.OWN_CONFIG, "成本费用模板仅匹配有效主档；已实例化费用由成本快照保留，单位只保存快照不锁主档计量", "goods_cost_templates", "goods_id", "client_id");
+        exempt(out, ExemptReason.HISTORY, "成本导入原文件及映射证据；正式成本引用由成本单守卫覆盖", "goods_cost_imports", "goods_id");
+        exempt(out, ExemptReason.HISTORY, "成本导入映射的产品身份快照；正式成本引用由成本单守卫覆盖", "goods_cost_import_mappings", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "客户收货地址", "client_ship_addresses", "client_id");
         exempt(out, ExemptReason.OWN_CONFIG, "客户可见人授权", "client_visibility_grants", "client_id");
         exempt(out, ExemptReason.OWN_CONFIG, "货品在仓库里的默认存放位置", "warehouse_goods_place_preferences",
@@ -599,6 +614,10 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.OWN_CONFIG, "客户货品对照(客户的型号/品名对应我们的货品)", "client_goods_aliases",
                 "client_id", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "客户文件版式(表头对应的列)", "sales_intake_layouts", "client_id");
+        exempt(out, ExemptReason.OWN_CONFIG, "客户报价展示模板；正式单据与模板版本保留各自身份快照", "sales_quote_customer_templates", "client_id");
+        exempt(out, ExemptReason.HISTORY, "客户货品别名学习的已确认来源证据，不创建新的业务引用", "sales_alias_document_evidence", "client_id", "goods_id");
+        exempt(out, ExemptReason.COVERED, "单据学习的派生回执；客户业务引用由对应销售单据守卫覆盖", "sales_document_learning_receipts", "client_id");
+        exempt(out, ExemptReason.HISTORY, "报价模板学习来源证据；有效客户配置由当前模板和销售单据覆盖", "sales_quote_template_evidence", "client_id");
         // V743(ADR-135): 称重设置与单重学习结果都挂在货品下; manual_unit_id 只是设定人工单重时
         // 货品基本单位的快照(与当前单位不一致即作废), 不算「还在用」这个单位。
         exempt(out, ExemptReason.OWN_CONFIG, "货品称重设置", "goods_weight_profiles",

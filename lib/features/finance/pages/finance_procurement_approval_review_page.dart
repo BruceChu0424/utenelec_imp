@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_columns_table.dart';
 // 订货审批审核详情页（财务专用视图，与采购/委外业务订货详情页分离）。
 //
 // 设计目标（对齐销售订单财务审核页 V300 范式 = 大公司审批中心：单据信息 +
@@ -870,6 +871,13 @@ class _FinanceProcurementApprovalReviewPageState
           const SizedBox(height: UtenSpacing.s8),
         ],
         UtenRevisionTable<FinanceProcurementReviewLine>(
+          tableKey: switch (r.orderType) {
+            FinanceProcurementOrderType.purchase => 'purchase.order.items',
+            FinanceProcurementOrderType.subcontract =>
+              'subcontract.order.items',
+            FinanceProcurementOrderType.unknown =>
+              'finance.procurement.unknown.items',
+          },
           key: const Key('procurement-approval-revision-table'),
           embedded: true,
           stickyHeaderPinned: _itemsPinned,
@@ -998,12 +1006,17 @@ class _FinanceProcurementApprovalReviewPageState
               width: 220,
               value: (it) => extra(it, it.remark),
             ),
+            ...businessReadOnlyColumns<FinanceProcurementReviewLine>([
+              ...r.previousItems,
+              ...r.items,
+            ], columnsOf: (line) => line.extraColumns),
           ],
           rows: rows,
         ),
         if (r.items.isNotEmpty)
           UtenTotalsSummaryBar(
             density: true,
+            rowCount: r.items.length,
             entries: [
               // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
               UtenTotalEntry(

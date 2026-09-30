@@ -876,6 +876,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         ),
         actions: [
           UtenExportButton(
+            tableKey: _sessionMode
+                ? 'features.admin.pages.audit_overview_widgets.AuditSessionTable.build.1'
+                : 'features.admin.pages.audit_overview_widgets.AuditEventTable.build.1',
             endpoint: '${ApiEndpoints.adminAuditLogs}/export',
             report: 'filtered',
             queryParams: _exportQueryParams,

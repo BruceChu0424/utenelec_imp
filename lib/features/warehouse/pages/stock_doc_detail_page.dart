@@ -1383,6 +1383,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     );
 
     return MasterDataTableView<StockDocItem>(
+      tableKey: 'warehouse.${widget.docType.name}.items',
       primary: true,
       enableTextSelection: !capturing,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,

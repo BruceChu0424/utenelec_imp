@@ -398,7 +398,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         ),
       );
     }
-    if (p.status == 'probation' && perms.contains(Perm.employeeConfirm)) {
+    // 试用期转正；在职但未登记转正日期（老库导入存量）也显示，走 confirm 补登。
+    if ((p.status == 'probation' ||
+            (p.status == 'active' && p.confirmedAt == null)) &&
+        perms.contains(Perm.employeeConfirm)) {
       actions.add(
         FilledButton.icon(
           icon: const Icon(Icons.how_to_reg_outlined, size: 18),

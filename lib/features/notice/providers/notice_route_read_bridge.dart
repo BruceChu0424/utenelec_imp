@@ -23,6 +23,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/route_names.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import 'notice_page_clear_events.dart';
 import 'notice_providers.dart';
 
@@ -36,7 +38,13 @@ class NoticeRouteReadBridge extends ConsumerWidget {
     ref.listen(pageResumeProvider, (previous, next) {
       if (previous == null) return; // 启动首次落定，页面自有初始化
       final location = next.location;
-      if (location.isEmpty || location == '/') return;
+      // 未读索引 null 同时代表「尚未拉取」和「没有员工会话」。不能把匿名
+      // 登录/访客落点当成未知未读状态，向受保护的员工通知接口发空写请求。
+      if (ref.read(authenticatedScopeProvider) == null ||
+          location == '/' ||
+          sanitizeReturnTo(location, scope: ReturnToScope.employee) == null) {
+        return;
+      }
       final container = ProviderScope.containerOf(context, listen: false);
       // ① 精确清理：action_route 指向当前页面的通知。
       unawaited(markNoticesReadByRoute(container, [location]));

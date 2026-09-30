@@ -128,6 +128,7 @@ public class FinanceOtherIncomeService {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_other_income:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_other_income_item")
     public FinanceOtherIncomeDetail create(FinanceOtherIncomeSaveRequest req) {
         tx.bind();
         if ((req.getItems() != null && !req.getItems().isEmpty())
@@ -149,6 +150,7 @@ public class FinanceOtherIncomeService {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_other_income:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_other_income_item", requestArgument=1, documentIdArgument=0)
     public FinanceOtherIncomeDetail update(UUID id, FinanceOtherIncomeSaveRequest req) {
         tx.bind();
         if ((req.getItems() != null && !req.getItems().isEmpty())

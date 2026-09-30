@@ -9,7 +9,6 @@
 //  - 同一份文件「替换」重新导入, 备注不重复; 明细里给识别行换货品按文件单价重算折扣;
 //  - 重新打开的外币订单换货品: 不知道参考汇率, 折扣留空请销售核对。
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,8 +28,10 @@ import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/ai/ai_status_provider.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
+import 'package:uten_imp/shared/attachments/pending_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -70,11 +71,12 @@ Future<_Env> _pump(
   AiStatus status = AiStatus.unavailable,
   List<GoodsListItem> pickedGoods = const [],
   Map<String, dynamic>? lastTerms,
+  Map<String, dynamic>? intakeResult,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final api = _IntakeApi(detail, lastTerms: lastTerms);
-  final runner = FakeAiJobRunner(result: intakeResultJson());
+  final runner = FakeAiJobRunner(result: intakeResult ?? intakeResultJson());
   final repo = FakeSalesIntakeRepository();
   final presenter = FakeProgressPresenter();
   SharedPreferences.setMockInitialValues({});
@@ -134,13 +136,30 @@ Future<_Env> _pump(
   return _Env(api, runner, repo);
 }
 
-Future<void> _runIntake(WidgetTester tester) async {
-  FilePicker.platform = FakeFilePicker(fakeFile('UJ23 quotation.xlsx'));
-  await tester.tap(find.byKey(const ValueKey('sales-intake-entry-button')));
+/// 把假文件直接加进暂存附件区(与「添加文件」同一条校验链)。
+Future<void> _addPendingFile(WidgetTester tester, String name) async {
+  final controller = tester
+      .widget<PendingAttachmentSection>(find.byType(PendingAttachmentSection))
+      .controller;
+  expect(controller.add(fakeFile(name)), isNull, reason: '文件应能加入暂存');
+  await tester.pumpAndSettle();
+}
+
+/// 点某张暂存卡上的「AI识别」→ 核对面板 → 导入全部。
+Future<void> _tapIntakeAction(WidgetTester tester, String name) async {
+  await tester.tap(find.byKey(ValueKey('pending-attachment-action-$name')));
   await tester.pumpAndSettle();
   expect(find.text('核对识别结果'), findsOneWidget);
   await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
   await tester.pumpAndSettle();
+}
+
+Future<void> _runIntake(
+  WidgetTester tester, {
+  String name = 'UJ23 quotation.xlsx',
+}) async {
+  await _addPendingFile(tester, name);
+  await _tapIntakeAction(tester, name);
 }
 
 TextField _fieldLabelled(WidgetTester tester, String label) => tester
@@ -169,20 +188,251 @@ Map<String, dynamic> _orderDetail({
   'items': items,
 };
 
+Map<String, dynamic> _draftSnapshot(WidgetTester tester) =>
+    (tester.state(find.byType(SalesDocEditPage))
+            as FormDraftMixin<SalesDocEditPage>)
+        .captureFormDraft();
+
 void main() {
+  testWidgets(
+    'batch stops after first extra-column failure without launching next file',
+    (tester) async {
+      final result = intakeResultJson();
+      result['extraColumns'] = [
+        {'key': 'packing', 'label': '包装说明', 'dataType': 'TEXT'},
+      ];
+      ((result['lines'] as List).first as Map<String, dynamic>)['extraValues'] =
+          {'packing': 'Carton'};
+      final env = await _pump(
+        tester,
+        docType: SalesDocType.quote,
+        intakeResult: result,
+      );
+      env.api.failBusinessColumns = true;
+      final grid = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller;
+      final original = grid.rows.single..qty.text = '77';
+      await _addPendingFile(tester, 'A quotation.xlsx');
+      await _addPendingFile(tester, 'B quotation.xlsx');
+      await tester.tap(find.byKey(const ValueKey('sales-intake-batch-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('sales-intake-batch-select-all')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('sales-intake-batch-confirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('sales-intake-replace')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+      await tester.pumpAndSettle();
+      expect(env.runner.requests, hasLength(1));
+      expect(grid.rows.single, same(original));
+      expect(original.qty.text, '77');
+      expect(find.text('核对识别结果'), findsNothing);
+      expect(find.textContaining('批量识别完成'), findsNothing);
+      final section = tester.widget<PendingAttachmentSection>(
+        find.byType(PendingAttachmentSection),
+      );
+      expect(
+        section.controller.items.every(
+          (item) => !section.actionFor!(item)!.done,
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  for (final currencies in <(String?, String?)>[(null, 'USD'), ('USD', null)]) {
+    testWidgets(
+      'append rejects file-price currency mismatch ${currencies.$1} to ${currencies.$2}',
+      (tester) async {
+        final result = intakeResultJson();
+        final currency = result['currency'] as Map<String, dynamic>;
+        if (currencies.$1 == null) {
+          currency.remove('fileCurrency');
+        } else {
+          currency['fileCurrency'] = currencies.$1!;
+        }
+        await _pump(tester, docType: SalesDocType.quote, intakeResult: result);
+        await _runIntake(tester, name: 'A quotation.xlsx');
+        final grid = tester
+            .widget<UtenEditableGrid<SalesGridRow>>(
+              find.byType(UtenEditableGrid<SalesGridRow>),
+            )
+            .controller;
+        final originals = grid.rows;
+        if (currencies.$2 == null) {
+          currency.remove('fileCurrency');
+        } else {
+          currency['fileCurrency'] = currencies.$2!;
+        }
+        await _runIntake(tester, name: 'B quotation.xlsx');
+        await tester.tap(find.byKey(const ValueKey('sales-intake-append')));
+        await tester.pumpAndSettle();
+        expect(grid.rows, orderedEquals(originals));
+        expect(_draftSnapshot(tester)['clientFileCurrency'], currencies.$1);
+        final section = tester.widget<PendingAttachmentSection>(
+          find.byType(PendingAttachmentSection),
+        );
+        expect(
+          section.actionFor!(section.controller.items.last)!.done,
+          isFalse,
+        );
+      },
+    );
+  }
+
+  testWidgets(
+    'replacement with unknown currency clears previous file currency',
+    (tester) async {
+      final result = intakeResultJson();
+      await _pump(tester, docType: SalesDocType.quote, intakeResult: result);
+      await _runIntake(tester, name: 'A quotation.xlsx');
+      expect(_draftSnapshot(tester)['clientFileCurrency'], 'USD');
+      (result['currency'] as Map<String, dynamic>).remove('fileCurrency');
+      await _runIntake(tester, name: 'B quotation.xlsx');
+      await tester.tap(find.byKey(const ValueKey('sales-intake-replace')));
+      await tester.pumpAndSettle();
+      final draft = _draftSnapshot(tester);
+      expect(draft['clientFileCurrency'], isNull);
+      expect(
+        (draft['aiIntake'] as Map<String, dynamic>)['clientFileCurrency'],
+        isNull,
+      );
+      final section = tester.widget<PendingAttachmentSection>(
+        find.byType(PendingAttachmentSection),
+      );
+      expect(section.actionFor!(section.controller.items.last)!.done, isTrue);
+    },
+  );
+
+  testWidgets(
+    'information-only append preserves existing price currency and rate',
+    (tester) async {
+      final result = intakeResultJson();
+      await _pump(tester, docType: SalesDocType.quote, intakeResult: result);
+      await _runIntake(tester, name: 'A quotation.xlsx');
+      final currency = result['currency'] as Map<String, dynamic>;
+      currency['fileCurrency'] = 'EUR';
+      currency['financeRate'] = '9.5';
+      currency['rateMissing'] = true;
+      for (final line
+          in (result['lines'] as List).cast<Map<String, dynamic>>()) {
+        line.remove('customerUnitPrice');
+      }
+      await _runIntake(tester, name: 'B quotation.xlsx');
+      await tester.tap(find.byKey(const ValueKey('sales-intake-append')));
+      await tester.pumpAndSettle();
+      final draft = _draftSnapshot(tester);
+      expect(draft['clientFileCurrency'], 'USD');
+      final session = draft['aiIntake'] as Map<String, dynamic>;
+      expect(session['clientFileCurrency'], 'USD');
+      expect(session['financeRate'], '7.1');
+      expect(session['rateMissing'], isFalse);
+      final grid = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller;
+      expect(grid.rows, hasLength(10));
+      expect(grid.rows.skip(5).every((row) => row.clientPrice == null), isTrue);
+      final section = tester.widget<PendingAttachmentSection>(
+        find.byType(PendingAttachmentSection),
+      );
+      expect(section.actionFor!(section.controller.items.last)!.done, isTrue);
+    },
+  );
+
+  testWidgets(
+    'failed extra-column resolution preserves existing rows and leaves file unadopted',
+    (tester) async {
+      final result = intakeResultJson();
+      result['extraColumns'] = [
+        {
+          'key': 'packing',
+          'label': '包装说明',
+          'dataType': 'TEXT',
+          'suggestedOperation': 'NONE',
+        },
+      ];
+      ((result['lines'] as List).first as Map<String, dynamic>)['extraValues'] =
+          {'packing': 'Carton'};
+      final env = await _pump(
+        tester,
+        docType: SalesDocType.quote,
+        intakeResult: result,
+      );
+      env.api.failBusinessColumns = true;
+      final grid = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller;
+      final original = grid.rows.single..qty.text = '77';
+      await _runIntake(tester);
+      await tester.tap(find.byKey(const ValueKey('sales-intake-replace')));
+      await tester.pumpAndSettle();
+      expect(grid.rows.single, same(original));
+      expect(original.qty.text, '77');
+      final section = tester.widget<PendingAttachmentSection>(
+        find.byType(PendingAttachmentSection),
+      );
+      expect(
+        section.actionFor!(section.controller.items.single)!.done,
+        isFalse,
+      );
+      expect(env.api.lastPostBody, isNull);
+    },
+  );
+
+  testWidgets(
+    'canceling replacement keeps user data and file available for recognition',
+    (tester) async {
+      await _pump(tester, docType: SalesDocType.quote);
+      final grid = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller;
+      final original = grid.rows.single..qty.text = '77';
+      await _runIntake(tester);
+      await tester.tap(
+        find
+            .descendant(of: find.byType(AlertDialog), matching: find.text('取消'))
+            .last,
+        warnIfMissed: false,
+      );
+      await tester.pumpAndSettle();
+      expect(grid.rows.single, same(original));
+      expect(original.qty.text, '77');
+      final section = tester.widget<PendingAttachmentSection>(
+        find.byType(PendingAttachmentSection),
+      );
+      expect(
+        section.actionFor!(section.controller.items.single)!.done,
+        isFalse,
+      );
+    },
+  );
+
   testWidgets('新建报价: 识别客户文件 → 表头/明细带入 → 保存请求体带识别与学习字段', (tester) async {
     final env = await _pump(tester, docType: SalesDocType.quote);
-    expect(
-      find.byKey(const ValueKey('sales-intake-entry-card')),
-      findsOneWidget,
-    );
-    // AI 没开: 只加一句提示(Excel 仍可识别)。
-    expect(
-      find.byKey(const ValueKey('sales-intake-ai-off-hint')),
-      findsOneWidget,
-    );
+    // 2026-09-29 入口统一进附件卡片区: 顶部横幅与表头上方按钮都已退役。
+    expect(find.byKey(const ValueKey('sales-intake-entry-card')), findsNothing);
     expect(
       find.byKey(const ValueKey('sales-intake-toolbar-button')),
+      findsNothing,
+    );
+    expect(find.text('拖入或点击添加客户文件，加入后可在文件卡上 AI 识别'), findsOneWidget);
+    // 没有附件上传权限也能加文件识别(manageWithoutUploadPerm 通道)。
+    expect(
+      find.byKey(const ValueKey('pending-attachment-add')),
       findsOneWidget,
     );
 
@@ -194,7 +444,8 @@ void main() {
     final remark = _fieldLabelled(tester, '备注').controller!.text;
     expect(remark, contains('EXW; T/T 30% deposit'));
     expect(remark, contains('以下 1 行没找到对应货品: XX-999 MYSTERY PART × 5'));
-    expect(find.text('已从 UJ23 quotation.xlsx 导入 5 行'), findsOneWidget);
+    // 卡片动作转「重新识别」(灰色安静态)；文件单价列带文件币种。
+    expect(find.text('重新识别'), findsOneWidget);
     expect(find.text('文件单价(USD)'), findsOneWidget);
 
     // 只有需要核对的行货品格黄框; 自动对上的不再标。
@@ -233,7 +484,7 @@ void main() {
       'DOUBLE 3 PIN UNIVERSAL SOCKET WITH SWITCH',
     );
     expect(matched['clientPrice'], '21');
-    expect(matched['intakeLineKey'], 'S1R9');
+    expect(matched['intakeLineKey'], 'job-42:S1R9');
     expect(matched['userConfirmed'], isFalse);
     expect(matched['setNameEn'], isTrue);
     expect(matched.containsKey('amountOriginal'), isFalse);
@@ -243,7 +494,7 @@ void main() {
     expect(unpriced.containsKey('discount'), isTrue);
     expect(unpriced['discount'], isNull);
     expect(unpriced['price'], '0');
-    expect(unpriced['intakeLineKey'], 'S1R12');
+    expect(unpriced['intakeLineKey'], 'job-42:S1R12');
 
     final carton = _item(items, 'g-gk12');
     expect(carton['qty'], '600');
@@ -265,13 +516,11 @@ void main() {
     expect(controller.items.single.name, 'UJ23 quotation.xlsx');
     expect(controller.items.single.category, '客户确认');
 
-    // 同一个文件再识别一次: 明细已有内容 → 问替换/追加; 附件不重复。
-    FilePicker.platform = FakeFilePicker(fakeFile('UJ23 quotation.xlsx'));
-    await tester.tap(find.byKey(const ValueKey('sales-intake-entry-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
-    await tester.pumpAndSettle();
+    // 同一个文件再识别一次(已完成卡片仍可点): 明细已有内容 → 问替换/追加; 不重复加文件。
+    await _tapIntakeAction(tester, 'UJ23 quotation.xlsx');
     expect(find.text('明细里已经有货品'), findsOneWidget);
+    // 同一份文件重新识别: 弹窗点名覆盖「它之前识别出的结果」。
+    expect(find.textContaining('之前识别的结果已在明细里'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('sales-intake-replace')));
     await tester.pumpAndSettle();
     expect(controller.items, hasLength(1));
@@ -531,14 +780,121 @@ void main() {
     });
   });
 
-  testWidgets('追加: 旧行不再回传识别行键/英文名勾选; 备注里已有的条款不重复', (tester) async {
+  testWidgets('批量识别: 进选卡模式勾选卡片, 第二份起自动追加不再问', (tester) async {
     await _pump(tester, docType: SalesDocType.quote);
-    await _runIntake(tester);
-    FilePicker.platform = FakeFilePicker(fakeFile('UJ23 quotation.xlsx'));
-    await tester.tap(find.byKey(const ValueKey('sales-intake-entry-button')));
+    await _addPendingFile(tester, 'A quotation.xlsx');
+    await _addPendingFile(tester, 'B quotation.xlsx');
+    expect(
+      find.byKey(const ValueKey('sales-intake-batch-button')),
+      findsOneWidget,
+    );
+    // 点「批量识别」进选卡模式: 卡片动作/删除让位给勾选圈, 出现 取消/全选/识别(N)。
+    await tester.tap(find.byKey(const ValueKey('sales-intake-batch-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('AI识别'), findsNothing, reason: '选卡模式不显示单卡动作');
+    expect(
+      find.byKey(const ValueKey('sales-intake-batch-confirm')),
+      findsOneWidget,
+    );
+    // 勾选两张卡(点卡片本体切换), 确认识别。
+    await tester.tap(find.text('A quotation.xlsx'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('B quotation.xlsx'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sales-intake-batch-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('核对识别结果'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+    await tester.pumpAndSettle();
+    // 第二份自动追加: 不再弹「明细里已经有货品」, 直接进核对面板。
+    expect(find.text('明细里已经有货品'), findsNothing);
+    expect(find.text('核对识别结果'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+    await tester.pumpAndSettle();
+    final rows = tester
+        .widget<UtenEditableGrid<SalesGridRow>>(
+          find.byType(UtenEditableGrid<SalesGridRow>),
+        )
+        .controller
+        .rows;
+    expect(rows, hasLength(10), reason: '两份各 5 行, 追加不替换');
+    expect(find.text('重新识别'), findsNWidgets(2), reason: '两张卡片都转重新识别');
+    // 批量完成退出选卡模式; 队列不再满 2 份, 入口按钮收起。
+    expect(
+      find.byKey(const ValueKey('sales-intake-batch-confirm')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('sales-intake-batch-button')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('批量识别: 只识别勾选的那张卡, 其余不动', (tester) async {
+    await _pump(tester, docType: SalesDocType.quote);
+    await _addPendingFile(tester, 'A quotation.xlsx');
+    await _addPendingFile(tester, 'B quotation.xlsx');
+    await tester.tap(find.byKey(const ValueKey('sales-intake-batch-button')));
+    await tester.pumpAndSettle();
+    // 没勾选时确认按钮置灰。
+    final confirm = find.byKey(const ValueKey('sales-intake-batch-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+    await tester.tap(find.text('A quotation.xlsx'));
+    await tester.pumpAndSettle();
+    await tester.tap(confirm);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
     await tester.pumpAndSettle();
+    final rows = tester
+        .widget<UtenEditableGrid<SalesGridRow>>(
+          find.byType(UtenEditableGrid<SalesGridRow>),
+        )
+        .controller
+        .rows;
+    expect(rows, hasLength(5), reason: '只识别了勾选的那一份');
+    expect(find.text('重新识别'), findsOneWidget);
+    expect(find.text('AI识别'), findsOneWidget, reason: '未勾选的卡仍待识别');
+  });
+
+  testWidgets('批量识别: 明细已有内容先统一问一次, 选追加后每份都追加', (tester) async {
+    await _pump(tester, docType: SalesDocType.quote);
+    await _runIntake(tester);
+    await _addPendingFile(tester, 'B quotation.xlsx');
+    await _addPendingFile(tester, 'C quotation.xlsx');
+    await tester.tap(find.byKey(const ValueKey('sales-intake-batch-button')));
+    await tester.pumpAndSettle();
+    // 全选(含已完成的 UJ23 也可以重新识别, 这里全选)后确认。
+    await tester.tap(
+      find.byKey(const ValueKey('sales-intake-batch-select-all')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sales-intake-batch-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('明细里已经有货品'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sales-intake-append')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+    await tester.pumpAndSettle();
+    // 选了追加之后第二份不再问, 直接进核对面板。
+    expect(find.text('明细里已经有货品'), findsNothing);
+    expect(find.text('核对识别结果'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+    await tester.pumpAndSettle();
+    final rows = tester
+        .widget<UtenEditableGrid<SalesGridRow>>(
+          find.byType(UtenEditableGrid<SalesGridRow>),
+        )
+        .controller
+        .rows;
+    expect(rows, hasLength(20), reason: '已有 5 行 + 三份(全选)各 5 行追加');
+  });
+
+  testWidgets('追加保留旧行识别来源和学习选择; 备注里已有的条款不重复', (tester) async {
+    await _pump(tester, docType: SalesDocType.quote);
+    await _runIntake(tester);
+    await _tapIntakeAction(tester, 'UJ23 quotation.xlsx');
     await tester.tap(find.byKey(const ValueKey('sales-intake-append')));
     await tester.pumpAndSettle();
     final rows = tester
@@ -548,16 +904,17 @@ void main() {
         .controller
         .rows;
     expect(rows, hasLength(10));
-    for (final old in rows.take(5)) {
-      expect(old.intakeLineKey, isNull);
-      expect(old.setNameEn, isFalse);
-    }
+    expect(
+      rows.take(5).map((r) => r.intakeLineKey),
+      rows.skip(5).map((r) => r.intakeLineKey),
+    );
+    expect(rows.first.setNameEn, isTrue);
     expect(rows.skip(5).map((r) => r.intakeLineKey), [
-      'S1R9',
-      'S1R10',
-      'S1R12',
-      'S1R13',
-      'S1R14',
+      'job-42:S1R9',
+      'job-42:S1R10',
+      'job-42:S1R12',
+      'job-42:S1R13',
+      'job-42:S1R14',
     ]);
     final remark = _fieldLabelled(tester, '备注').controller!.text;
     expect('EXW; T/T'.allMatches(remark), hasLength(1));
@@ -570,11 +927,7 @@ void main() {
     final remarkField = _fieldLabelled(tester, '备注').controller!;
     remarkField.text = '客户要求加急\n${remarkField.text}';
     await tester.pumpAndSettle();
-    FilePicker.platform = FakeFilePicker(fakeFile('UJ23 quotation.xlsx'));
-    await tester.tap(find.byKey(const ValueKey('sales-intake-entry-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
-    await tester.pumpAndSettle();
+    await _tapIntakeAction(tester, 'UJ23 quotation.xlsx');
     await tester.tap(find.byKey(const ValueKey('sales-intake-replace')));
     await tester.pumpAndSettle();
     final remark = _fieldLabelled(tester, '备注').controller!.text;
@@ -583,7 +936,9 @@ void main() {
     expect('没找到对应货品'.allMatches(remark), hasLength(1));
   });
 
-  testWidgets('识别行在明细里换货品: 按文件单价重算折扣, 文件品名保留; 空行选货品带出英文名称', (tester) async {
+  testWidgets('识别行在明细里换货品: 按文件单价重算折扣, 文件品名保留; 空行选货品只在基础英文列显示名称', (
+    tester,
+  ) async {
     await _pump(
       tester,
       docType: SalesDocType.quote,
@@ -604,7 +959,7 @@ void main() {
           find.byType(UtenEditableGrid<SalesGridRow>),
         )
         .controller;
-    final row = grid.rows.singleWhere((r) => r.intakeLineKey == 'S1R10');
+    final row = grid.rows.singleWhere((r) => r.intakeLineKey == 'job-42:S1R10');
     expect(row.clientPrice, '19.95');
     await tester.tap(
       find.byKey(const ValueKey('sales-goods-ai-review-g-gz23-gold')),
@@ -619,18 +974,19 @@ void main() {
     // 客户文件里的品名是客户自己的叫法, 换货品不覆盖。
     expect(row.clientGoodsName.text, 'DOUBLE 3 PIN SOCKET GOLD');
 
-    // 空行手工选货品: 文件品名带出货品选择器给出的货品英文名称。
+    // 空行手工选货品: 英文只在独立列，文件原文保持空。
     final blank = SalesGridRow(amountUsesDiscount: true);
     grid.addRow(blank);
     await tester.pumpAndSettle();
     await tester.tap(find.text('点击选择').last);
     await tester.pumpAndSettle();
     expect(blank.goods?.id, 'goods-2');
-    expect(blank.clientGoodsName.text, 'ONE GANG SWITCH');
+    expect(blank.clientGoodsName.text, isEmpty);
+    expect(blank.goods!.nameEn, 'ONE GANG SWITCH');
     expect(blank.discount.text, '1');
   });
 
-  testWidgets('手工选货品带出的英文名称照常保存, 但不当客户叫法学习(不回传 userConfirmed)', (tester) async {
+  testWidgets('手工选货品仅显示基础十列，主档英文不写入客户文件品名', (tester) async {
     final env = await _pump(
       tester,
       docType: SalesDocType.quote,
@@ -666,8 +1022,27 @@ void main() {
     await tester.pumpAndSettle();
     final auto = grid.rows.firstWhere((r) => r.goods?.id == 'goods-2');
     final typed = grid.rows.firstWhere((r) => r.goods?.id == 'goods-3');
-    expect(auto.clientGoodsName.text, 'ONE GANG SWITCH');
-    expect(typed.clientGoodsName.text, 'TWO GANG SWITCH');
+    expect(auto.clientGoodsName.text, isEmpty);
+    expect(typed.clientGoodsName.text, isEmpty);
+    expect(auto.goods!.nameEn, 'ONE GANG SWITCH');
+    expect(typed.goods!.nameEn, 'TWO GANG SWITCH');
+    expect(find.text('文件品名'), findsNothing);
+    expect(find.text('文件型号'), findsNothing);
+    final table = tester.widget<UtenEditableGrid<SalesGridRow>>(
+      find.byType(UtenEditableGrid<SalesGridRow>),
+    );
+    expect(table.columns.where((c) => c.defaultVisible).map((c) => c.key), [
+      'goods',
+      'nameEn',
+      'goodsCode',
+      'color',
+      'qty',
+      'unit',
+      'price',
+      'discount',
+      'amount',
+      'remark',
+    ]);
     // 第二行改成客户自己的叫法。
     typed.clientGoodsName.text = 'SWITCH 2G';
     auto.qty.text = '5';
@@ -678,7 +1053,7 @@ void main() {
     final items = (env.api.lastPostBody!['items'] as List)
         .cast<Map<String, dynamic>>();
     final autoSaved = _item(items, 'goods-2');
-    expect(autoSaved['clientGoodsName'], 'ONE GANG SWITCH');
+    expect(autoSaved['clientGoodsName'], isNull);
     expect(autoSaved.containsKey('userConfirmed'), isFalse);
     expect(autoSaved.containsKey('setNameEn'), isFalse);
     final typedSaved = _item(items, 'goods-3');
@@ -750,6 +1125,7 @@ class _IntakeApi extends ApiClient {
   Map<String, dynamic>? lastPutBody;
   Map<String, dynamic>? lastPostBody;
   String? lastPostPath;
+  bool failBusinessColumns = false;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -790,8 +1166,14 @@ class _IntakeApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    lastPostPath = path;
-    lastPostBody = Map<String, dynamic>.from(body! as Map);
+    if (path == '/business-columns' && failBusinessColumns) {
+      throw StateError('column catalog unavailable');
+    }
+    // 只记录单据本身的写入; 保存后暂存附件的 presign/confirm 不算(否则断言被冲掉)。
+    if (path.startsWith('/sales/')) {
+      lastPostPath = path;
+      lastPostBody = Map<String, dynamic>.from(body! as Map);
+    }
     return {'id': 'quote-1', 'status': 0, 'writable': true};
   }
 

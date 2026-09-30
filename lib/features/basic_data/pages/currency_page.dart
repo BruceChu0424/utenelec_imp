@@ -377,6 +377,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         );
     return UtenPrintTable(
+      columnKeys: [for (final c in _columns) c.key],
+      rowIds: [for (final a in result.items) a.id],
       headers: [for (final c in _columns) c.label],
       rows: [
         for (final a in result.items)
@@ -457,6 +459,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<CurrencyListItem>(
+                    tableKey:
+                        'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
                     columns: _columns,
                     items: _page?.items ?? const [],
                     toolbarActions: [

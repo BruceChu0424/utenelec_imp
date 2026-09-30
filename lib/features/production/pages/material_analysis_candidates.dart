@@ -128,10 +128,10 @@ abstract class _MaterialAnalysisCandidatesState
     }
   }
 
+  // 2026-09-29 用户口径：候选标识不带规格（86X86 等型号不再显示）。
   String _candidateLabel(MaterialAnalysisSalesCandidateLine line) => [
     line.orderNo,
     line.goodsName ?? line.goodsCode,
-    line.spec,
   ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' · ');
 
   /// 销售订单产品「本次分析数量」的合格值：能解析、有限且大于 0，否则 null。
@@ -565,6 +565,8 @@ abstract class _MaterialAnalysisCandidatesState
     MaterialAnalysisSalesCandidatePage? page,
     List<MaterialAnalysisSalesCandidateLine> lines,
   ) => MasterDataTableView<MaterialAnalysisSalesCandidateLine>(
+    tableKey:
+        'features.production.pages.material_analysis_candidates.MaterialAnalysisCandidatesState._salesCandidateTable.1',
     key: const Key('material-analysis-candidate-table'),
     columns: _candidateColumns,
     items: lines,
@@ -1139,11 +1141,11 @@ abstract class _MaterialAnalysisCandidatesState
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    // 2026-09-29 用户口径：副行不带规格，保留单号/编号/颜色。
                     Text(
                       [
                         line.orderNo,
                         line.goodsCode,
-                        line.spec,
                         line.colorName,
                       ].whereType<String>().join(' · '),
                     ),

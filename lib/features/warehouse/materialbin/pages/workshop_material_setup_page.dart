@@ -294,6 +294,8 @@ class _WorkshopMaterialSetupPageState
 
   Widget _enableTable(AppLocalizations l10n, List<WmSetting> settings) {
     return MasterDataTableView<WmSetting>(
+      tableKey:
+          'features.warehouse.materialbin.pages.workshop_material_setup_page.WorkshopMaterialSetupPageState._enableTable.1',
       key: const Key('wm-setup-enable-table'),
       columns: [
         MasterColumnDef(

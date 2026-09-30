@@ -1,5 +1,7 @@
 # UtenExportButton（统一 Excel 导出）
 
+2026-09-29：`UtenExportSelection.extension` 增加 `pdf`，与现有 `xlsx/zip` 共用选择、密码、等待与保存流程。成本调用先创建不可变快照再传快照 ID；实际核对传已展示结果的摘要。PDF 内容/密码由后端 `TabularPdfExportService` 负责，不把 xlsx 字节改扩展名。详情见[货品成本工作台](../03-页面/货品成本工作台.md)。
+
 > 状态：已实现 · 组件：`lib/components/buttons/uten_export_button.dart` · 后端：`common/export/WorkbookDownloadService.java`
 
 `UtenExportButton` 是报表和主档 Excel 下载的唯一交互入口。调用页只提供端点、报表键、当前筛选和文件名，不自行实现密码框、下载、权限提示或文件保存。

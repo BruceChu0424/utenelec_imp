@@ -7,8 +7,16 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_invoice.dart';
 import '../models/expense_item.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
+import '../../../shared/platform_tables/platform_table_models.dart';
 
-const _itemFields = ['category', 'date', 'description', 'amount'];
+const _itemFields = [
+  'category',
+  'date',
+  'description',
+  'amount',
+  'platformFields',
+];
 const _invoiceFields = [
   'invoiceType',
   'invoiceCode',
@@ -39,7 +47,7 @@ Map<String, dynamic>? _readSnapshot(String? text) {
   try {
     final value = jsonDecode(text);
     if (value is! Map<String, dynamic> ||
-        value['schemaVersion'] != 1 ||
+        !{1, 2}.contains(value['schemaVersion']) ||
         value['items'] is! List ||
         value['invoices'] is! List) {
       return null;
@@ -77,6 +85,9 @@ Map<String, dynamic>? _readSnapshot(String? text) {
 // Numeric formatting changes must not turn an unchanged expense into a change.
 // Work with strings throughout so large, exact amounts never lose digits.
 Object? _canonical(String key, Object? value) {
+  if (key == 'platformFields') {
+    return jsonEncode(_canonicalPlatformCells(value));
+  }
   if (value == null || value == '') return null;
   if (!_amountFields.contains(key)) return value;
   var text = value.toString();
@@ -87,6 +98,58 @@ Object? _canonical(String key, Object? value) {
         .replaceFirst(RegExp(r'\.$'), '');
   }
   return text == '-0' ? '0' : text;
+}
+
+Map<String, Object?> _canonicalPlatformCells(Object? raw) {
+  if (raw is! Map || raw['cells'] is! List) return const {};
+  final values = <String, Object?>{};
+  for (final entry in raw['cells'] as List) {
+    if (entry is! Map || entry['columnId'] is! String) continue;
+    final id = entry['columnId'] as String;
+    final masked = entry['masked'] == true;
+    final definition = entry['definition'];
+    final numeric =
+        definition is Map &&
+        {'NUMBER', 'CALCULATED', 'AMOUNT'}.contains(definition['type']);
+    final value = masked
+        ? null
+        : numeric
+        ? _canonical('amount', entry['value'])
+        : entry['value'];
+    values[id] = [value, masked];
+  }
+  final keys = values.keys.toList()..sort();
+  return {for (final key in keys) key: values[key]};
+}
+
+/// An absent legacy snapshot stays empty; it must never fetch today's sidecar values.
+PlatformRowValues expenseSubmissionPlatformSnapshot(Map<String, dynamic> row) {
+  final raw = row['platformFields'];
+  if (raw is Map) {
+    return PlatformRowValues.fromJson({
+      ...Map<String, dynamic>.from(raw),
+      'canWrite': false,
+    });
+  }
+  return PlatformRowValues(recordId: row['id']?.toString() ?? '');
+}
+
+/// Current frozen rows for submitted/approved claims; drafts continue to use their current model.
+List<Map<String, dynamic>>? expenseSubmittedPrintRows(ExpenseClaim claim) {
+  if (!expenseShowsSubmittedRevision(claim)) return null;
+  final snapshot = _readSnapshot(claim.submissionSnapshot);
+  return snapshot == null
+      ? null
+      : (snapshot['items'] as List).cast<Map<String, dynamic>>();
+}
+
+Set<String> _changedPlatformKeys(Object? before, Object? after) {
+  final old = _canonicalPlatformCells(before),
+      now = _canonicalPlatformCells(after);
+  return {
+    for (final id in {...old.keys, ...now.keys})
+      if (jsonEncode(old[id]) != jsonEncode(now[id])) 'platform:$id',
+  };
 }
 
 String _signature(Map<String, dynamic> row, List<String> fields) =>
@@ -190,7 +253,13 @@ List<UtenRevisionRow<Map<String, dynamic>>> _pairedRows(
           for (final field in fields)
             if (_canonical(field, previous[index][field]) !=
                 _canonical(field, current[matches[index]!][field]))
-              field,
+              if (field == 'platformFields')
+                ..._changedPlatformKeys(
+                  previous[index][field],
+                  current[matches[index]!][field],
+                )
+              else
+                field,
         },
       ),
   ],
@@ -271,6 +340,14 @@ class ExpenseSubmissionItemTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => UtenRevisionTable<Map<String, dynamic>>(
+    tableKey: 'expense.claim.items',
+    platformBinding: PlatformTableBinding<Map<String, dynamic>>(
+      tableKey: 'expense.claim.items',
+      scope: 'expense_claim_item',
+      recordIdOf: (row) => row['id']?.toString(),
+      snapshotOf: expenseSubmissionPlatformSnapshot,
+      factValuesOf: (row) => {'amount': row['amount']?.toString()},
+    ),
     embedded: true,
     stickyHeaderPinned: stickyHeaderPinned,
     rows: revision.items,
@@ -332,6 +409,8 @@ class ExpenseSubmissionInvoiceTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => UtenRevisionTable<Map<String, dynamic>>(
+    tableKey:
+        'features.expense.widgets.expense_submission_revision.ExpenseSubmissionInvoiceTable.build.1',
     embedded: true,
     stickyHeaderPinned: stickyHeaderPinned,
     rows: revision.invoices,

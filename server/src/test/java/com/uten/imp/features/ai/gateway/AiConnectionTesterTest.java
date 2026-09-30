@@ -72,7 +72,7 @@ class AiConnectionTesterTest {
         assertThat(result.summary()).isEqualTo("连接成功");
         assertThat(statuses(result)).containsExactly("NETWORK:OK", "AUTH:OK", "MODEL:OK", "JSON:OK");
         assertThat(result.steps()).allSatisfy(step -> assertThat(step.latencyMs()).isNotNull());
-        assertThat(fake.lastChatRequest().body()).contains("Reply in JSON").contains("\"max_tokens\":64")
+        assertThat(fake.lastChatRequest().body()).contains("Reply in JSON").contains("\"max_tokens\":512")
                 .contains("\"thinking\":{\"type\":\"disabled\"}");
         ArgumentCaptor<AiCallLogService.CallRecord> record = ArgumentCaptor.forClass(AiCallLogService.CallRecord.class);
         verify(callLogs).record(record.capture());

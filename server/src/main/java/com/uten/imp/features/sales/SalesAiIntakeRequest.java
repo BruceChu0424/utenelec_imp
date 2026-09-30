@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -20,6 +21,10 @@ public class SalesAiIntakeRequest {
 
     /** 本次保存所用的 AI 识别任务 id(只能是本人提交的任务)。 */
     private UUID jobId;
+
+    /** Other files adopted into the same customer document. Row keys are jobId:sourceKey. */
+    @Size(max = 19, message = "一次最多采用 20 份识别文件")
+    private List<UUID> additionalJobIds;
 
     /** 勾选要补进客户资料的字段; 没有勾选为空。 */
     @Size(max = 12, message = "补进客户资料的字段太多")

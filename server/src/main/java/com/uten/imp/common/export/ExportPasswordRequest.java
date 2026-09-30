@@ -10,5 +10,7 @@ import jakarta.validation.constraints.Size;
  */
 public record ExportPasswordRequest(
         @Size(max = 128, message = "导出密码长度不能超过 128 位")
-        String password) {
+        String password,
+        @jakarta.validation.Valid TableColumnProjection columnProjection) {
+    public ExportPasswordRequest(String password) { this(password, null); }
 }

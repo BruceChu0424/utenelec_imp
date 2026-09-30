@@ -11,6 +11,7 @@
 // 识别客户文件导入或手填; 文件单价只读、仅有值时出现); 报价单价同订货一样锁定、
 // 折扣可编辑(可留空交财务核价); 识别结果里需要核对的行货品格黄框提醒。
 import 'package:flutter/material.dart';
+import '../../../shared/business_columns/business_columns_row.dart';
 import '../intake/sales_intake_l10n.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -49,7 +50,8 @@ bool isValidSalesOrderDiscountText(String raw) {
 /// 颜色/单位 + 上游明细 id 为透传字段（详情回填或上游引入时预填，保存时随行写回，
 /// UI 单元格只读/下拉同步到 row 字段）。报表补列（ machiningPrice 等）
 /// 按 docType 在列定义中显隐对应列。
-class SalesGridRow extends EditableGridRow with AmountRowMixin {
+class SalesGridRow extends EditableGridRow
+    with AmountRowMixin, BusinessColumnsRow {
   /// 订单：金额 = 数量 × 单价 × 折扣(主档折扣仅作默认值，销售可在订单行调整)；
   /// 其它单据类型仍 = 数量 × 单价。
   /// 标志隔离订单折扣语义，避免出货/退货等单据的折扣列影响其金额（与各自后端口径一致）。
@@ -57,6 +59,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 
   SalesGridRow({this.amountUsesDiscount = false}) {
     qty.addListener(_recalc);
+    extraColumnsChanged.addListener(_recalc);
     price.addListener(_recalc);
     discount.addListener(_recalc);
     // 校验红标（保存时标记，用户改动任一必填内容即自动消除）。
@@ -152,13 +155,13 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   /// 文件型号(客户的型号/货号，可编辑；保存后系统学习客户叫法)。
   final clientModel = TextEditingController();
 
-  /// 文件品名(客户的品名，可编辑；手工选货品时带出货品英文名称)。
+  /// 文件品名(客户文件原文或用户明确输入，不从主档英文名称填充)。
   final clientGoodsName = TextEditingController();
 
   /// 文件单价(文件币种，只读参考；折扣按它反推，单价始终以标价为准)。
   String? clientPrice;
 
-  /// 手工选货品时自动带出的英文名称(文件品名仍等于它时，换货品会一并更新)。
+  /// 旧草稿的英文预填标记，只用于防止把旧主档名称学习为客户别名。
   String? prefilledNameEn;
 
   /// 客户编号(历史字段，不展示，仅随保存原样回传避免被清空)。
@@ -242,7 +245,12 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
     bool amountUsesDiscount = true,
   }) {
     final r = SalesGridRow(amountUsesDiscount: amountUsesDiscount)
-      ..goods = GoodsOption(id: p.goodsId, code: p.goodsCode, name: p.goodsName)
+      ..goods = GoodsOption(
+        id: p.goodsId,
+        code: p.goodsCode,
+        name: p.goodsName,
+        nameEn: p.goodsNameEn,
+      )
       ..colorId = p.colorId
       ..unitId = p.unitId
       ..unitRate = 1
@@ -267,27 +275,15 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
   );
 
   void _recalc() {
-    amountExactNotifier.value = exactLineAmountText(
-      qty.text,
-      price.text,
-      discount: amountUsesDiscount ? discount.text : null,
+    amountExactNotifier.value = applyExtraColumnAmount(
+      exactLineAmountText(
+        qty.text,
+        price.text,
+        discount: amountUsesDiscount ? discount.text : null,
+      ),
     );
-    _recalcDouble();
+    recalcAmount(() => double.tryParse(amountExactNotifier.value ?? '') ?? 0);
   }
-
-  void _recalcDouble() => recalcAmount(() {
-    final q = double.tryParse(qty.text) ?? 0;
-    final p = double.tryParse(price.text) ?? 0;
-    if (!amountUsesDiscount) return q * p;
-    // 订单：金额 = 数量 × 单价 × 折扣倍率；空/0 的 1 倍兼容仅用于旧数据回填。
-    final d = double.tryParse(discount.text);
-    final mult = (d == null || !d.isFinite)
-        ? 0.0
-        : d == 0
-        ? 1.0
-        : d;
-    return q * p * mult;
-  });
 
   Map<String, TextEditingController> get _draftTextControllers => {
     'qty': qty,
@@ -306,6 +302,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 
   Iterable<Listenable> get draftListenables => [
     ..._draftTextControllers.values,
+    ...extraColumnListenables,
     aiReviewNotifier,
     goodsNotifier,
     colorIdNotifier,
@@ -317,6 +314,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 
   Map<String, dynamic> exportDraft() => {
     'text': draftTextValues(_draftTextControllers),
+    'extraColumns': exportExtraColumns(),
     'goods': draftGoods(goods),
     'stockPlace': stockPlaceNotifier.value,
     'unitRate': unitRate,
@@ -364,6 +362,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
           ..setNameEn = data['setNameEn'] == true
           ..prefilledNameEn = data['prefilledNameEn'] as String?;
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
+    row.restoreExtraColumns(data['extraColumns']);
     row.requiresOrderPriceRefresh = data['requiresOrderPriceRefresh'] == true;
     row.markAiReview(data['aiReview'] as String?);
     return row;
@@ -380,6 +379,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
       ..unitId = unitId
       ..unitRate = unitRate
       ..unitRateExact = unitRateExact;
+    copyExtraColumnsTo(c);
     c.qty.text = qty.text;
     c.weight.text = weight.text;
     c.requiresOrderPriceRefresh =
@@ -435,6 +435,7 @@ class SalesGridRow extends EditableGridRow with AmountRowMixin {
 /// (保存时由服务端按文件单价计算)。
 List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   required BuildContext context,
+  List<SalesGridRow> rows = const [],
   required Future<void> Function(SalesGridRow row) onPickGoods,
   required SalesDocType docType,
   required Map<String, String> colorEntries,
@@ -533,6 +534,17 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       ),
     ),
     EditableGridColumn<SalesGridRow>(
+      key: 'nameEn',
+      label: intakeText.businessColumnNameEn,
+      width: 180,
+      textOf: (r) => r.goods?.nameEn ?? '',
+      listenableOf: (r) => r.goodsNotifier,
+      cellBuilder: (context, row) => ValueListenableBuilder<GoodsOption?>(
+        valueListenable: row.goodsNotifier,
+        builder: (context, goods, _) => UtenGoodsAttributeCell(goods?.nameEn),
+      ),
+    ),
+    EditableGridColumn<SalesGridRow>(
       key: 'goodsCode',
       label: '编号',
       width: 130,
@@ -556,6 +568,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
     if (hasClientText) ...[
       EditableGridColumn<SalesGridRow>(
         key: 'clientModel',
+        defaultVisible: false,
         label: intakeText.salesIntakeColClientModel,
         width: 130,
         headerInfo: intakeText.salesIntakeColClientModelInfo,
@@ -568,6 +581,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       ),
       EditableGridColumn<SalesGridRow>(
         key: 'clientGoodsName',
+        defaultVisible: false,
         label: intakeText.salesIntakeColClientGoodsName,
         width: 180,
         headerInfo: intakeText.salesIntakeColClientGoodsNameInfo,
@@ -867,6 +881,12 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         decoration: const InputDecoration(isDense: true),
       ),
     ),
+    ...businessEditableColumns<SalesGridRow>(
+      businessColumnsOf(rows),
+      rowOf: (row) => row,
+      amountHint: intakeText.businessColumnAmountHint,
+      priceMasked: priceMasked,
+    ),
   ];
 }
 
@@ -949,6 +969,7 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
     label: label,
     width: 100,
     numeric: true,
+    defaultVisible: false,
     frozenTextOf: (row) => controller(row).text,
     cellBuilder: (context, row) => TextField(
       controller: controller(row),

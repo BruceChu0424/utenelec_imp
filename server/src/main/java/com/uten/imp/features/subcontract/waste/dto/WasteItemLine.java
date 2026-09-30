@@ -13,7 +13,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-public class WasteItemLine implements ServerDerivedAmounts {
+public class WasteItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

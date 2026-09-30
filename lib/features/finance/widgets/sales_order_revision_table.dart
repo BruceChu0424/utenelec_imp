@@ -1,3 +1,5 @@
+import '../../../shared/business_columns/business_column.dart';
+import '../../../shared/business_columns/business_columns_table.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_revision_table.dart';
@@ -47,6 +49,7 @@ Set<String> _changedColumns(
   SalesOrderRevisionLine before,
   SalesOrderRevisionLine after,
 ) => {
+  ...businessColumnChangedKeys(before.extraColumns, after.extraColumns),
   for (final key in {...before.values.keys, ...after.values.keys})
     if (key != '行号' &&
         before.values.containsKey(key) &&
@@ -127,6 +130,8 @@ class SalesOrderRevisionTable extends StatelessWidget {
         const SizedBox(height: UtenSpacing.s8),
         Expanded(
           child: UtenRevisionTable<SalesOrderRevisionLine>(
+            tableKey:
+                'features.finance.widgets.sales_order_revision_table.SalesOrderRevisionTable.build.1',
             key: const Key('sales-order-revision-table'),
             primary: true,
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
@@ -137,6 +142,12 @@ class SalesOrderRevisionTable extends StatelessWidget {
                 label: '货品名称',
                 width: 200,
                 value: (row) => row.goodsName ?? row.values['货品'] ?? '—',
+              ),
+              MasterColumnDef(
+                key: '英文名称',
+                label: '英文名称',
+                width: 180,
+                value: (row) => row.values['英文名称'],
               ),
               MasterColumnDef(
                 key: 'goodsCode',
@@ -152,6 +163,10 @@ class SalesOrderRevisionTable extends StatelessWidget {
                     width: width,
                     value: (row) => row.values[key] ?? '—',
                   ),
+              ...businessReadOnlyColumns<SalesOrderRevisionLine>(
+                allRows,
+                columnsOf: (row) => row.extraColumns,
+              ),
             ],
             summaryBar: summaryBar,
           ),

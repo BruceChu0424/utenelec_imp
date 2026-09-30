@@ -119,7 +119,25 @@ public final class MaterialAnalysisContracts {
             @Size(max = RequestLimits.DOCUMENT_LINES)
             List<@NotBlank @Size(max = 64) String> actionGroupKeys,
             @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid SupplyQuantityInput> quantities) {
+            List<@Valid SupplyQuantityInput> quantities,
+            /**
+             * ADR-099 修订(2026-09-29)：null/false = 原行为——先自动认领同主仓公共在途
+             * 与自制公共超产、只为余下部分新下单；true = 用户明确选择「足额下单，
+             * 不扣可用数量」(本次下单/追加就是为了多备料)，跳过全部自动认领，
+             * 按提交数量直接下给采购/委外。
+             */
+            Boolean skipAutoClaim) {
+
+        public boolean skipClaims() {
+            return Boolean.TRUE.equals(skipAutoClaim);
+        }
+
+        public NotifyRequest(Long version, String fingerprint, String idempotencyKey,
+                String target, List<UUID> materialLineIds, List<String> actionGroupKeys,
+                List<SupplyQuantityInput> quantities) {
+            this(version, fingerprint, idempotencyKey, target, materialLineIds,
+                    actionGroupKeys, quantities, null);
+        }
     }
 
     /**
@@ -184,7 +202,25 @@ public final class MaterialAnalysisContracts {
             LocalDate deliveryDate,
             boolean approveNow,
             @NotEmpty @Size(max = RequestLimits.DOCUMENT_LINES)
-            List<@Valid IssuePlanLine> lines) {
+            List<@Valid IssuePlanLine> lines,
+            /**
+             * ADR-099 修订(2026-09-29)：null/false = 原行为——顶层产品行先自动认领
+             * 自制公共超产与同主仓公共在途、只为余下部分排产；true = 「足额下单，
+             * 不扣可用数量」，跳过认领按提交数量直接生成计划。内部为「先自制委外」
+             * 预排锚点的 notify 腿随本标志一起跳过。
+             */
+            Boolean skipAutoClaim) {
+
+        public boolean skipClaims() {
+            return Boolean.TRUE.equals(skipAutoClaim);
+        }
+
+        public IssueWorkshopPlansRequest(Long version, String fingerprint, String idempotencyKey,
+                UUID warehouseId, LocalDate billDate, LocalDate deliveryDate, boolean approveNow,
+                List<IssuePlanLine> lines) {
+            this(version, fingerprint, idempotencyKey, warehouseId, billDate, deliveryDate,
+                    approveNow, lines, null);
+        }
 
         /** 每行二选一：候选物料行 materialLineId（先建子件任务）或已有产品行 analysisLineId。 */
         public record IssuePlanLine(

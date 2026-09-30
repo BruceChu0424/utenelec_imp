@@ -221,6 +221,8 @@ class FinanceAssetRevisionSection extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           UtenRevisionTable<Map<String, dynamic>>(
+            tableKey:
+                'features.finance.widgets.finance_asset_revision_section.FinanceAssetRevisionSection._workflow.1',
             key: ValueKey('finance-asset-revision-${revision.workflowType}'),
             embedded: true,
             rows: rows,

@@ -207,6 +207,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
     ),
     EditableGridColumn<ProductionGridRow>(
       key: 'qty',
+      exactValueOf: (r) => r.qty.text,
+      exactListenableOf: (r) => r.qty,
       label: '排产量',
       width: 96,
       numeric: true,
@@ -236,6 +238,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
     ),
     EditableGridColumn<ProductionGridRow>(
       key: 'oqty',
+      exactValueOf: (r) => r.oqty.text,
+      exactListenableOf: (r) => r.oqty,
       label: '订货量',
       width: 96,
       numeric: true,

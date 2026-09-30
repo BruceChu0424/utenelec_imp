@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'core/responsive/display_zoom_pointer_binding.dart';
+import 'core/web/browser_drop_guard.dart';
 import 'shared/providers/shared_providers.dart';
 
 /// 主 UI 字体预热：pubspec 声明的字体默认按需懒加载（尤其 Web，首次用到某字形才拉取），
@@ -33,6 +34,8 @@ Future<void> main() async {
   // （UtenContextMenu），不屏蔽会两个菜单叠着出。桌面/移动端无此问题，仅 Web 调。
   if (kIsWeb) {
     unawaited(BrowserContextMenu.disableContextMenu());
+    // 拖文件到页面非接收区时，浏览器默认会打开该文件把整个应用顶掉，一并屏蔽。
+    installBrowserDropGuard();
   }
 
   // 初始化 SharedPreferences（用于偏好持久化）

@@ -10,6 +10,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SalesShipmentReverseGuardTest {
+    @org.junit.jupiter.api.Test
+    void fixedOrderFeeIsAllocatedOnceAndReturnedShareCanBeShippedAgain() {
+        var fee = new com.uten.imp.common.columns.ExtraColumnSnapshot(java.util.UUID.randomUUID(),
+                "包装费", "AMOUNT", "ADD", "10");
+        BigDecimal source = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                new BigDecimal("90"), java.util.List.of(fee));
+        BigDecimal first = SalesShipmentService.authoritativeShipmentAmount(source, new BigDecimal("3"),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ONE);
+        BigDecimal second = SalesShipmentService.authoritativeShipmentAmount(source, new BigDecimal("3"),
+                BigDecimal.ONE, first, BigDecimal.ONE);
+        BigDecimal last = SalesShipmentService.authoritativeShipmentAmount(source, new BigDecimal("3"),
+                new BigDecimal("2"), first.add(second), BigDecimal.ONE);
+        assertThat(first.add(second).add(last)).isEqualByComparingTo("100");
+        // After returning the second shipment, only its exact original share is available again.
+        BigDecimal replacement = SalesShipmentService.authoritativeShipmentAmount(source, new BigDecimal("3"),
+                new BigDecimal("2"), first.add(last), BigDecimal.ONE);
+        assertThat(replacement).isEqualByComparingTo(second);
+        var item = new SalesShipmentItem(); item.setAmountOriginal(replacement);
+        var shipment = new SalesShipment();
+        SalesShipmentService.applyPostingRateSnapshot(shipment, java.util.List.of(item), new BigDecimal("7.1"));
+        assertThat(shipment.getTotalOriginal()).isEqualByComparingTo(second);
+        assertThat(shipment.getTotalLocal()).isEqualByComparingTo(second.multiply(new BigDecimal("7.1")));
+    }
 
     @Test
     void activeReturnedQuantityBlocksShipmentReverse() {

@@ -25,6 +25,8 @@ import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../shared/measurement/widgets/weight_totals.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -382,8 +384,8 @@ Widget inboundTotalsBar<T extends InboundRegistrationLine>({
 }) => UtenTotalsSummaryBar(
   key: key,
   density: true,
+  rowCount: lines.length,
   entries: [
-    UtenTotalEntry('明细', '${lines.length} 行'),
     utenQuantityTotalEntry(
       lines.map(
         (line) => MeasuredAmount(
@@ -530,12 +532,14 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     required String key,
     required String label,
     required String Function(T line) textOf,
+    required String? Function(T line) exactValueOf,
   }) => EditableGridColumn(
     key: key,
     label: label,
     width: 100,
     numeric: true,
     textOf: textOf,
+    exactValueOf: exactValueOf,
     cellBuilder: (context, line) =>
         Text(textOf(line), textAlign: TextAlign.right),
   );
@@ -549,6 +553,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     required bool Function(T line) enabled,
     required String headerInfo,
     String Function(T line)? readOnlyTextOf,
+    String? Function(T line)? readOnlyExactValueOf,
   }) => EditableGridColumn(
     key: 'qty',
     label: '本次实收',
@@ -559,6 +564,9 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     textOf: (line) =>
         controllerOf(line)?.text ?? readOnlyTextOf?.call(line) ?? '',
     listenableOf: controllerOf,
+    exactValueOf: (line) =>
+        controllerOf(line)?.text ?? readOnlyExactValueOf?.call(line),
+    exactListenableOf: controllerOf,
     // 按称重预填的黄标 ⓘ(44)计入量宽。
     chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
     cellBuilder: (context, line) {
@@ -649,6 +657,28 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
           '按学到的单重核对实称重量与数量；超出容差才提示(琥珀 = 有偏差，红 = 偏差较大)，'
           '悬停看折算件数与依据。单重还没学准时不核对，可在行右键「称样校准」。',
       textOf: textOf,
+      // 2026-09-27 用户口径「格内胶囊改单元格背景色」：偏差档位色铺整格
+      // （ALERT 红 / WARN 琥珀 / 无偏差不铺色）；底色随重量/数量输入实时重算。
+      cellColor: (context, line) {
+        final check = checkOf(line);
+        if (check == null) return null;
+        return switch (check.level) {
+          WeightAlertLevel.alert => udenStatusBadgeCellColor(
+            context,
+            UtenStatusBadgeType.danger,
+          ),
+          WeightAlertLevel.warn => udenStatusBadgeCellColor(
+            context,
+            UtenStatusBadgeType.warning,
+          ),
+          WeightAlertLevel.none => null,
+        };
+      },
+      cellColorListenableOf: (line) => Listenable.merge([
+        line.weight,
+        paramsListenable,
+        qtyListenableOf?.call(line),
+      ]),
       cellBuilder: (context, line) => ListenableBuilder(
         listenable: Listenable.merge([
           line.weight,
@@ -659,19 +689,19 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
           final check = checkOf(line);
           final params = paramsOf(line);
           if (check == null || params == null) return const SizedBox.shrink();
+          if (check.level == WeightAlertLevel.none) {
+            return const SizedBox.shrink();
+          }
           final unitName = baseUnitNameOf?.call(line);
-          return Align(
-            alignment: Alignment.centerLeft,
-            child: WeightDeviationChip(
-              key: ValueKey('$keyPrefix-weight-check-${lineKeyOf(line)}'),
-              check: check,
-              unitName: unitName,
-              text: warehouseWeightCheckText(
+          return Tooltip(
+            key: ValueKey('$keyPrefix-weight-check-${lineKeyOf(line)}'),
+            message: weightCheckTooltip(check, params, unitName: unitName),
+            child: Text(
+              warehouseWeightCheckText(
                 check,
                 against: against,
                 unitName: unitName,
               ),
-              tooltip: weightCheckTooltip(check, params, unitName: unitName),
             ),
           );
         },

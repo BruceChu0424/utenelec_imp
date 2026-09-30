@@ -171,7 +171,8 @@ Future<void> _pickWasher(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.text('五金(HW)'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('垫片M5(SC-009)'));
+  // 2026-09-29 货品选择器选项=名称主行，点名称行。
+  await tester.tap(find.text('垫片M5'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('确定'));
   await tester.pumpAndSettle();

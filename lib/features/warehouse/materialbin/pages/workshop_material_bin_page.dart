@@ -621,6 +621,8 @@ class _WorkshopMaterialBinPageState
     final kg = l10n.wmKg;
     String qty(double v) => wmQty(v);
     return MasterDataTableView<WmPositionRow>(
+      tableKey:
+          'features.warehouse.materialbin.pages.workshop_material_bin_page.WorkshopMaterialBinPageState._stockTable.1',
       key: const Key('wm-bin-stock-table'),
       columns: [
         MasterColumnDef(
@@ -725,6 +727,8 @@ class _WorkshopMaterialBinPageState
   Widget _historyTable(AppLocalizations l10n) {
     final page = _history;
     return MasterDataTableView<WmRequisition>(
+      tableKey:
+          'features.warehouse.materialbin.pages.workshop_material_bin_page.WorkshopMaterialBinPageState._historyTable.1',
       key: const Key('wm-bin-history-table'),
       columns: [
         MasterColumnDef(

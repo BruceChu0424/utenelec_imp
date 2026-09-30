@@ -32,6 +32,9 @@ public interface MasterIntakeLookupPort {
     /** 客户资料(补全对比用); 调用人看不到时返回 null。 */
     ClientProfile clientProfile(UUID clientId);
 
+    /** Customer owner write scope, without requiring broad master-data edit permission. */
+    default boolean canLearnClientDocument(UUID clientId) { return false; }
+
     /** 该客户最近 {@code months} 个月已审核订货单里买过的货品(草稿与作废不算): 货品 id → 订单数与最近日期。 */
     Map<UUID, ClientGoodsHistory> clientHistory(UUID clientId, int months);
 

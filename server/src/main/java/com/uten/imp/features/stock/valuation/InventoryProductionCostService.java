@@ -16,9 +16,11 @@ import static com.uten.imp.features.stock.valuation.ValueMath.*;
 public class InventoryProductionCostService extends InventoryValueLedger implements InventoryProductionCostPort {
     private final InventoryValuationService values;
     private final boolean typedScopesInstalled;
+    private final boolean frozenIdentityInstalled;
     public InventoryProductionCostService(NamedParameterJdbcTemplate db,InventoryMutationLock mutex,InventoryValuationService values){
         super(db,mutex);this.values=values;
         this.typedScopesInstalled=Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='stock_value_production_cost_objects' AND column_name='source_kind')",Map.of(),Boolean.class));
+        this.frozenIdentityInstalled=Boolean.TRUE.equals(db.queryForObject("SELECT to_regprocedure('public.fn_production_cost_input_identity(uuid,uuid)') IS NOT NULL",Map.of(),Boolean.class));
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
@@ -334,16 +336,17 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
     private Map<String,Object> snapshot(UUID segment){return db.queryForMap("""
             SELECT (SELECT coalesce(jsonb_agg(jsonb_build_object('node',n.id,'revision',n.revision,'value',n.basis_value_local,'pending',n.pending_parents,
                     'returnedQty',coalesce((to_jsonb(n)->>'returned_consumption_qty')::numeric,0),'quantityBasis',n.quantity_basis,
-                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id') ORDER BY n.id),'[]'::jsonb)
+                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id'%s) ORDER BY n.id),'[]'::jsonb)
                 FROM stock_value_production_cost_inputs i JOIN stock_value_nodes n ON n.id=i.input_node_id WHERE i.execution_segment_id=:segment) inputs,
                 coalesce(jsonb_agg(jsonb_build_object('source',s.source_node_id,'movement',s.movement_id,'qty',s.qty_base,
                     'withdrawnMovement',to_jsonb(s)->>'withdrawn_movement_id',
-                    'from',s.through_qty-s.active_qty,'to',s.through_qty) ORDER BY s.output_sequence),'[]'::jsonb) outputs,
+                    'from',s.through_qty-s.active_qty,'to',s.through_qty%s) ORDER BY s.output_sequence),'[]'::jsonb) outputs,
                 coalesce(sum(s.active_qty),0) output_qty
             FROM (SELECT o.*,CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END active_qty,
                     sum(CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END) OVER(ORDER BY output_sequence) through_qty
                 FROM stock_value_production_cost_outputs o WHERE execution_segment_id=:segment) s
-            """,args("segment",segment));}
+            """.formatted(frozenIdentityInstalled?",'identity',fn_production_cost_input_identity(n.id,i.approved_posting_id),'valueModel',n.value_model,'exactLower',CASE WHEN n.bound_revision=n.revision THEN n.bound_lower END,'exactUpper',CASE WHEN n.bound_revision=n.revision THEN n.bound_upper END":"",
+                    frozenIdentityInstalled?",'identity',fn_production_cost_input_identity(s.source_node_id,NULL)":""),args("segment",segment));}
     private Map<String,Object> object(UUID id,boolean lock){List<Map<String,Object>> rows=db.queryForList("SELECT * FROM stock_value_production_cost_objects WHERE execution_segment_id=:id"+(lock?" FOR UPDATE":""),args("id",id));
         if(rows.size()!=1)throw conflict("生产成本对象尚未建立");return rows.getFirst();}
     private Map<String,Object> plan(UUID id){List<Map<String,Object>> rows=db.queryForList("SELECT * FROM stock_value_production_cost_revisions WHERE id=:id",args("id",id));if(rows.size()!=1)throw conflict("生产成本批准方案不存在");return rows.getFirst();}

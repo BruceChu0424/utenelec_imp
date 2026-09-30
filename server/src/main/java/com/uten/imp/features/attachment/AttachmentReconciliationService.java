@@ -183,7 +183,19 @@ public class AttachmentReconciliationService {
                 provider, storageKey, provider, storageKey, storageVersion)
                 : jdbc.queryForObject(sql, Boolean.class,
                 provider, storageKey, storageVersion, provider, storageKey, provider, storageKey, storageVersion);
-        return Boolean.TRUE.equals(referenced);
+        if (Boolean.TRUE.equals(referenced)) return true;
+        // Generated quotation layouts are private immutable storage objects too (ADR-074).
+        // They intentionally have no employee-visible attachment row or public raw-download URL.
+        if (!"FINAL".equals(location)) return false;
+        // New installations include costing evidence; the old view remains a compatibility fallback
+        // for read-only reconciliation during the migration boundary.
+        boolean allDocuments = Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT to_regclass('public.v_private_document_storage_references') IS NOT NULL", Boolean.class));
+        String references = allDocuments ? "v_private_document_storage_references" : "v_sales_quote_template_storage_references";
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM %s
+                    WHERE storage_provider=? AND storage_key=? AND storage_version IS NOT DISTINCT FROM ?)
+                """.formatted(references), Boolean.class, provider, storageKey, storageVersion));
     }
 
     static String evidenceDigest(String provider, StoredObjectRef object) {

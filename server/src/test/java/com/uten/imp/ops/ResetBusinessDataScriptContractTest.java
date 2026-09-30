@@ -65,6 +65,16 @@ class ResetBusinessDataScriptContractTest {
         assertThat(operationalClear).containsExactlyInAnyOrderElementsOf(
                 BusinessDataResetSqlContractTest.expectedOperationalTables());
         assertThat(registry).contains(
+                "('goods_cost_sheets', 753)",
+                "('goods_cost_snapshots', 753)",
+                "('goods_cost_commands', 753)",
+                "('goods_cost_templates', 753)",
+                "('inventory_cost_gl_policy', 754)",
+                "('inventory_cost_gl_periods', 754)",
+                "('inventory_cost_gl_period_choices', 754)",
+                "('inventory_cost_gl_links', 754)",
+                "('goods_cost_imports', 755)",
+                "('goods_cost_import_mappings', 755)",
                 "('preplan_make_public_claims', 722)",
                 "('preplan_make_public_claim_cancellations', 722)",
                 "('production_draw_issue_batches', 727)",
@@ -153,6 +163,16 @@ class ResetBusinessDataScriptContractTest {
                 .containsEntry("workshop_machine_containers", "PRESERVE")
                 .containsEntry("goods_periodic_material_choices", "PRESERVE");
         assertThat(policy).containsEntry("finance_report_line_bindings", "PRESERVE");
+        assertThat(policy).containsEntry("goods_cost_sheets", "PRESERVE")
+                .containsEntry("goods_cost_snapshots", "PRESERVE")
+                .containsEntry("goods_cost_commands", "PRESERVE")
+                .containsEntry("goods_cost_templates", "PRESERVE")
+                .containsEntry("goods_cost_imports", "PRESERVE")
+                .containsEntry("goods_cost_import_mappings", "PRESERVE")
+                .containsEntry("inventory_cost_gl_policy", "PRESERVE")
+                .containsEntry("inventory_cost_gl_periods", "CLEAR")
+                .containsEntry("inventory_cost_gl_period_choices", "CLEAR")
+                .containsEntry("inventory_cost_gl_links", "CLEAR");
         assertThat(policy).containsEntry("warehouse_keepers", "PRESERVE");
         assertThat(policy).containsEntry("ai_providers", "PRESERVE")
                 .containsEntry("client_goods_aliases", "PRESERVE")

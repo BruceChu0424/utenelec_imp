@@ -15,8 +15,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 货品「归属生产车间 + 归属车间负责人」的学习与预填（单一事实源 = 货品表两列，
- * V590 起原 production_goods_workshop_preferences 偏好表整体搬入并删除）。
+ * 货品「生产车间 + 生产车间负责人」的学习与预填（单一事实源 = 货品表两列，
+ * V590 起原 production_goods_workshop_preferences 偏好表整体搬入并删除；2026-09-29 起展示统一叫「生产车间」）。
  *
  * <p>从一个确认批次里无歧义的执行段学习未来默认车间；后续改派选择同样学习。
  * 这份便利读模型从不取代不可变的执行历史。</p>

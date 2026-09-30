@@ -1095,6 +1095,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                         ))
                 : _withDraftCategory(
                     MasterDataTableView<SalesDocListItem>(
+                      tableKey: 'sales.${widget.docType.name}.list',
                       selectable: _canDeleteDrafts,
                       idOf: (row) =>
                           !draftDeleteBusy &&

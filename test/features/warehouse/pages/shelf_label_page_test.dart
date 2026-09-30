@@ -1,8 +1,9 @@
 // 货架目视化清单页 widget 测试（2026-09-10 信息架构重做后）。
 //
-// 覆盖：货架图 + 统一表格并存、点格定位（表格收敛 + 定位 chip + 再点取消）、
-// 点表格行反查货架图、库行分段重查、「显示已禁用货品」开关、未分层残值桶与 chip、
-// 仓库切换（侧滑面板选仓）三个查询全部带 warehouseId 重查。
+// 覆盖：货架图 + 统一表格并存、点格定位（表格收敛 + 再点取消）、
+// 点表格行反查货架图、「显示已禁用货品」开关、未分层残值桶与 chip、
+// 仓库切换（侧滑面板选仓）查询带 warehouseId 重查。
+// 2026-09-29 口径：库行分段/「已定位库位」提示条已退役（用例随之调整）。
 // 数据全部走假仓储 + 字典接口走 Dio 拦截器（仅仓库字典返真值），不触网。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -52,14 +53,13 @@ void main() {
     expect(repo.includeDisabledCalls, [false]);
   });
 
-  testWidgets('点货架图格子：表格收敛到该库位 + 定位 chip；再点一次取消', (tester) async {
+  testWidgets('点货架图格子：表格收敛到该库位；再点一次取消', (tester) async {
     final repo = _FakeStockQueryRepository();
     await _pumpPage(tester, repo);
 
     await tester.tap(find.byKey(const Key('rack-cell-A31-3-1')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('shelf-label-locate-chip')), findsOneWidget);
     expect(_grid(tester).selectedPlace, 'A31-3-1');
     // 同库位两个货品都留在表里，其余行收敛掉。
     expect(_table(tester).items.length, 2);
@@ -67,7 +67,6 @@ void main() {
 
     await tester.tap(find.byKey(const Key('rack-cell-A31-3-1')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('shelf-label-locate-chip')), findsNothing);
     expect(_grid(tester).selectedPlace, isNull);
     expect(_table(tester).items.length, 4);
   });
@@ -81,27 +80,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_grid(tester).selectedPlace, 'B02-1-4');
-    expect(find.byKey(const Key('shelf-label-locate-chip')), findsNothing);
     expect(_table(tester).items.length, 4);
-  });
-
-  testWidgets('库行分段：选中后带 rack 重查，定位态清空', (tester) async {
-    final repo = _FakeStockQueryRepository();
-    await _pumpPage(tester, repo);
-    expect(repo.rackCalls, [null]); // 初始未选分段 = 全部
-
-    // 「B02 库行」在分段条与货架图卡头各有一处，限定在分段条内点。
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const Key('shelf-label-rack-segments')),
-        matching: find.text('B02 库行'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(repo.rackCalls, [null, 'B02']);
-    expect(_table(tester).items.length, 1);
-    expect(_table(tester).items.single.place, 'B02-1-4');
   });
 
   testWidgets('「显示已禁用货品」开关：带 includeDisabled 重查并标记状态', (tester) async {
@@ -121,8 +100,6 @@ void main() {
     final repo = _FakeStockQueryRepository();
     await _pumpPage(tester, repo);
 
-    // 残值不进库行分段，只进未分层桶。
-    expect(find.text('Y12 库行'), findsNothing);
     expect(find.byKey(const Key('rack-card-unparsed')), findsOneWidget);
     expect(find.text('未分层（1）'), findsOneWidget);
 
@@ -133,11 +110,11 @@ void main() {
     expect(_table(tester).items.single.place, 'Y12');
   });
 
-  testWidgets('切换仓库后清单与库行重查，货架布局只从本次精确行集推导', (tester) async {
+  testWidgets('切换仓库后清单重查，货架布局只从本次精确行集推导', (tester) async {
     final repo = _FakeStockQueryRepository();
     await _pumpPage(tester, repo);
     expect(repo.warehouseCalls, [null]);
-    expect(repo.racksWarehouseCalls, [null]);
+    expect(repo.racksWarehouseCalls, isEmpty);
     expect(repo.layoutWarehouseCalls, isEmpty);
 
     // 仓库筛选 = 侧滑面板（2026-09-11 全站统一）：点字段拉面板，点仓行即选即关。
@@ -148,7 +125,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.warehouseCalls, [null, 'w1']);
-    expect(repo.racksWarehouseCalls, [null, 'w1']);
+    expect(repo.racksWarehouseCalls, isEmpty);
     expect(repo.layoutWarehouseCalls, isEmpty);
   });
 

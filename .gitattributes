@@ -26,6 +26,8 @@
 *.jpeg binary
 *.png binary
 *.ttf binary
+# Font manifests pin these license bytes too; Windows checkout must preserve LF.
+assets/fonts/*.txt text eol=lf
 *.woff binary
 *.woff2 binary
 *.pdf binary

@@ -168,7 +168,7 @@ void main() {
       expect(find.text('上传'), findsNothing, reason: '暂存态没有即时上传按钮');
       expect(find.byTooltip('预览'), findsNothing);
 
-      await tester.tap(find.byTooltip('移除'));
+      await tester.tap(find.byTooltip('删除'));
       await tester.pumpAndSettle();
       expect(controller.isEmpty, isTrue);
       expect(find.text('合同.pdf'), findsNothing);
@@ -238,6 +238,6 @@ void main() {
     controller.notifyListeners();
     await tester.pump();
     expect(find.textContaining('上传失败：扫描服务不可用'), findsOneWidget);
-    expect(find.byTooltip('移除'), findsOneWidget);
+    expect(find.byTooltip('删除'), findsOneWidget);
   });
 }

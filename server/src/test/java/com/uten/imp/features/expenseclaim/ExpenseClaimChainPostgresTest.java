@@ -41,7 +41,37 @@ class ExpenseClaimChainPostgresTest {
     @Autowired ExpenseClaimService claims;
     @Autowired ExpenseClaimSettingsService settings;
     @Autowired FinanceExpenseService expenses;
+    @Autowired com.uten.imp.common.platformcolumns.PlatformColumnService platformColumns;
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
+
+    @Test void submissionFreezesExtraColumnsAcrossRejectionAndRecreatedItemIds() throws Exception {
+        Actor applicant=actor("extra-applicant"),reviewer=actor("extra-reviewer");login(applicant,"expense:apply");
+        var column=platformColumns.create("expense_claim_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("项目说明","TEXT",false,null));
+        var headColumn=platformColumns.create("expense_claim",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("申请归类","TEXT",false,null));
+        var input=new ExpenseClaimItemInput("TRAVEL",new BigDecimal("100.00"),BusinessTime.today(),"住宿费用",
+                new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"第一次说明"))));
+        var draft=claims.create(new ExpenseClaimCreateRequest("扩展字段快照","原始备注",List.of(input),null));
+        platformColumns.write("expense_claim",draft.id(),new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(0,
+                List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(headColumn.id(),"第一阶段"))));
+        attachment(draft.id());var submitted=claims.submit(draft.id(),draft.version());
+        var json=new com.fasterxml.jackson.databind.ObjectMapper();var first=json.readTree(submitted.submissionSnapshot());
+        assertThat(first.path("schemaVersion").asInt()).isEqualTo(2);
+        assertThat(first.path("platformFields").path("cells").get(0).path("value").asText()).isEqualTo("第一阶段");
+        assertThat(first.path("items").get(0).path("platformFields").path("cells").get(0).path("value").asText()).isEqualTo("第一次说明");
+        UUID originalItem=draft.items().getFirst().id();
+        login(reviewer,"expense:approve");var rejected=claims.reject(draft.id(),"补充",submitted.version());
+        login(applicant,"expense:apply");
+        var changed=new ExpenseClaimItemInput("TRAVEL",new BigDecimal("100.00"),BusinessTime.today(),"住宿费用",
+                new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(originalItem,1,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"第二次说明"))));
+        var edited=claims.editVersioned(draft.id(),new ExpenseClaimCreateRequest("扩展字段快照","补充备注",List.of(changed),rejected.version()));
+        assertThat(edited.items().getFirst().id()).isNotEqualTo(originalItem);
+        platformColumns.write("expense_claim",draft.id(),new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(1,
+                List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(headColumn.id(),"第二阶段"))));
+        var resubmitted=claims.submit(draft.id(),edited.version());
+        assertThat(json.readTree(resubmitted.previousSubmissionSnapshot())).isEqualTo(first);
+        assertThat(json.readTree(resubmitted.submissionSnapshot()).path("items").get(0).path("platformFields").path("cells").get(0).path("value").asText()).isEqualTo("第二次说明");
+        assertThat(json.readTree(resubmitted.submissionSnapshot()).path("platformFields").path("cells").get(0).path("value").asText()).isEqualTo("第二阶段");
+    }
 
     @Test void actualClaimRejectResubmitVerifyPayIsAtomicAndIdempotent() throws Exception {
         Actor applicant=actor("applicant"),reviewer=actor("reviewer"),cashier=actor("cashier");

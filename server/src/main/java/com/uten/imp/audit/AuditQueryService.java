@@ -228,7 +228,16 @@ public class AuditQueryService {
         List<Map<String, Object>> rows = page.getContent().stream()
                 .map(value -> toExportRow(value, actors))
                 .toList();
-        return new ExportPayload(EXPORT_COLUMNS, rows, rows.size());
+        List<ExportColumn> currentColumns = new ArrayList<>(EXPORT_COLUMNS);
+        currentColumns.addAll(List.of(
+            new ExportColumn("summary", "操作内容", ExportColumn.TEXT),
+            new ExportColumn("time", "北京时间", ExportColumn.TEXT),
+            new ExportColumn("object", "业务对象", ExportColumn.TEXT),
+            new ExportColumn("risk", "风险", ExportColumn.TEXT),
+            new ExportColumn("department", "部门", ExportColumn.TEXT),
+            new ExportColumn("device", "设备", ExportColumn.TEXT),
+            new ExportColumn("change", "变化摘要", ExportColumn.TEXT)));
+        return new ExportPayload(currentColumns, rows, rows.size());
     }
 
     private Map<String, Object> toExportRow(AuditLog value, AuditActorDirectory.Resolution actors) {
@@ -261,6 +270,13 @@ public class AuditQueryService {
         exported.put("outcome", failed(row) ? "失败" : "成功");
         exported.put("riskLevel", riskLabel(row.getRiskLevel()));
         exported.put("riskReason", row.getRiskReason());
+        exported.put("summary", row.getSummary());
+        exported.put("time", exported.get("createdAt"));
+        exported.put("object", firstNonBlank(row.getTargetDisplayName(), firstNonBlank(row.getTargetName(), row.getObjectLabel())));
+        exported.put("risk", exported.get("riskLevel"));
+        exported.put("department", row.getActorDepartment());
+        exported.put("device", row.getDeviceLabel());
+        exported.put("change", row.getChangeSummary());
         exported.put("eventCategory", categoryLabel(row.getEventCategory()));
         exported.put("eventSource", sourceLabel(row.getEventSource()));
         exported.put("deviceName", value.getDeviceName());

@@ -23,6 +23,36 @@ class SalesOrderQuoteTermsBookTest {
     private final UUID unit = UUID.randomUUID();
 
     @Test
+    void repeatedOrderSavesKeepInformationAddedAfterQuoteConversion() {
+        var fee = new com.uten.imp.common.columns.ExtraColumnSnapshot(UUID.randomUUID(), "费用", "AMOUNT", "ADD", "5");
+        var text = new com.uten.imp.common.columns.ExtraColumnSnapshot(UUID.randomUUID(), "发货要求", "TEXT", "NONE", "分箱");
+        var kept = new SalesOrderItem(); kept.setExtraColumns(List.of(fee, text));
+        var quoted = new SalesOrderService.TrustedQuotePriceBook.Terms(BigDecimal.TEN, BigDecimal.ONE, List.of(fee), "Clip");
+        var service = org.mockito.Mockito.mock(SalesOrderService.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        List<com.uten.imp.common.columns.ExtraColumnSnapshot> result = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "resolveOrderColumns", orderLine(1, goodsA), quoted, kept, true);
+        assertThat(result).containsExactly(fee, text);
+    }
+
+    @Test
+    void financeQuoteMatchIncludesOrderedFeeTermsAndConversionKeepsThem() {
+        SalesQuoteItem quote = quoteLine(1, goodsA, "10", "1");
+        var fee = new com.uten.imp.common.columns.ExtraColumnSnapshot(UUID.randomUUID(), "包装费", "AMOUNT", "ADD", "5");
+        quote.setExtraColumns(List.of(fee));
+        quote.setGoodsNameEnSnapshot("Original packing clip");
+        var terms = new SalesOrderService.TrustedQuotePriceBook(List.of(quote), "XB1", true)
+                .assign(List.of(orderLine(1, goodsA)), true);
+        assertThat(terms.getFirst().extraColumns()).containsExactly(fee);
+        assertThat(terms.getFirst().goodsNameEn()).isEqualTo("Original packing clip");
+        var absent = SalesOrderFinanceConfirmService.matchQuote(List.of(quote), "XB1",
+                List.of(matchLine(1, goodsA, "1", "10", "1")));
+        assertThat(absent.allLinesMatch()).isFalse();
+        var matching = new SalesOrderFinanceConfirmService.QuoteMatchLine(1, goodsA, null, unit,
+                BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ONE, List.of(fee));
+        assertThat(SalesOrderFinanceConfirmService.matchQuote(List.of(quote), "XB1", List.of(matching)).allLinesMatch()).isTrue();
+    }
+
+    @Test
     void conversionPairsByQuoteLineAndCarriesTheFinanceDiscount() {
         var book = new SalesOrderService.TrustedQuotePriceBook(
                 List.of(quoteLine(1, goodsA, "10", "0.95"), quoteLine(2, goodsB, "8", "1")), "XB1", true);

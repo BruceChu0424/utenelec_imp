@@ -288,6 +288,8 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s12),
       child: MasterDataTableView<EmployeeSummary>(
+        tableKey:
+            'features.employee.pages.employee_list_page.EmployeeListPageState._body.1',
         bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
         key: const Key('employee-list-table'),
         columns: _columns(l10n),

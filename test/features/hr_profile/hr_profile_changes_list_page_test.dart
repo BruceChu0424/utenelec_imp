@@ -1,11 +1,14 @@
 // HR 信息变更队列（2026-09-10 表头筛选接后端 + 批量驳回）。
 // 2026-09-18 起页面加载态为 UtenSkeletonList（读性能档→sharedPreferences），
 // 测试需 override sharedPreferencesProvider（与工资条/通知列表测试同款）。
+// 2026-09-29 分段栏换胶囊工具条：待审段红徽章读徽章汇总（hrProfileReview）；
+// 变更字段列显示中文字段名。测试固定 zh locale 锁文案。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_batch_reject_dialog.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -13,6 +16,7 @@ import 'package:uten_imp/features/hr_profile/pages/hr_profile_changes_list_page.
 import 'package:uten_imp/features/profile/models/profile_change_request.dart';
 import 'package:uten_imp/features/profile/repositories/profile_change_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakeProfileChangeRepository extends Fake
@@ -93,19 +97,24 @@ class _FakeProfileChangeRepository extends Fake
   }
 }
 
-Widget _app(_FakeProfileChangeRepository repo, SharedPreferences preferences) =>
-    ProviderScope(
-      overrides: [
-        profileChangeRepositoryProvider.overrideWithValue(repo),
-        currentPermissionsProvider.overrideWithValue({Perm.profileReview}),
-        sharedPreferencesProvider.overrideWithValue(preferences),
-      ],
-      child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: HrProfileChangesListPage(),
-      ),
-    );
+Widget _app(
+  _FakeProfileChangeRepository repo,
+  SharedPreferences preferences, {
+  BadgeSummaryNotifier? badges,
+}) => ProviderScope(
+  overrides: [
+    profileChangeRepositoryProvider.overrideWithValue(repo),
+    currentPermissionsProvider.overrideWithValue({Perm.profileReview}),
+    sharedPreferencesProvider.overrideWithValue(preferences),
+    if (badges != null) badgeSummaryProvider.overrideWith(() => badges),
+  ],
+  child: const MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    locale: Locale('zh'),
+    home: HrProfileChangesListPage(),
+  ),
+);
 
 MasterDataTableView<HrProfileChangeListItem> _table(WidgetTester tester) =>
     tester.widget<MasterDataTableView<HrProfileChangeListItem>>(
@@ -114,7 +123,81 @@ MasterDataTableView<HrProfileChangeListItem> _table(WidgetTester tester) =>
       ),
     );
 
+/// 徽章汇总假实现：入口 hrProfileReview 待办数可注入（待审段红徽章的数据源）。
+class _FakeBadgeSummary extends BadgeSummaryNotifier {
+  BadgeSummary next = const BadgeSummary(
+    loaded: true,
+    entries: {'hrProfileReview': BadgeCounts(5, 0)},
+  );
+
+  @override
+  BadgeSummary build() => next;
+
+  @override
+  Future<void> refresh() async {
+    state = next;
+  }
+}
+
 void main() {
+  testWidgets('pending segment carries the red todo badge from badge summary', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeProfileChangeRepository();
+    await tester.pumpWidget(
+      _app(repo, preferences, badges: _FakeBadgeSummary()),
+    );
+    await tester.pumpAndSettle();
+
+    // 待审段 = 红色通知徽章，数字与徽章汇总入口 hrProfileReview 同源。
+    final badge = tester.widget<UtenNotificationBadge>(
+      find.byType(UtenNotificationBadge),
+    );
+    expect(badge.count, 5);
+    // 浏览型分段（已生效/已驳回）不挂红徽章。
+    expect(find.byType(UtenNotificationBadge), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('tapping a capsule segment switches the queue status', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeProfileChangeRepository();
+    await tester.pumpWidget(_app(repo, preferences));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('已生效'));
+    await tester.pumpAndSettle();
+
+    expect(repo.listCalls.last['status'], 'applied');
+    expect(repo.listCalls.last['page'], 1, reason: '换分段回第 1 页');
+    // 非待审段只读：不再开多选批量
+    expect(_table(tester).selectable, isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('field column shows localized labels instead of machine codes', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeProfileChangeRepository();
+    await tester.pumpWidget(_app(repo, preferences));
+    await tester.pumpAndSettle();
+
+    // batch-1 fieldCodes = ['phone', 'email'] → 中文标签顿号连接；机器码不外露。
+    expect(find.text('手机、邮箱'), findsOneWidget);
+    expect(find.text('phone、email'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('department header facet is pushed to the backend query', (
     tester,
   ) async {

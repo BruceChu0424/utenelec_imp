@@ -498,6 +498,7 @@ class _ProductionPlanListPageState
                     ),
                     tablePane: _withFormDraftRows(
                       MasterDataTableView<ProductionPlanListItem>(
+                        tableKey: 'production.plan.list',
                         // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
                         primary: true,
                         columns: _columns(names),

@@ -24,7 +24,9 @@ import java.util.concurrent.TimeUnit;
  * <ol>
  *   <li>先取模型列表(不耗 token): 连得上 = 网络通; 200 = 密钥有效; 列表里没有配置的模型只提示不判失败;
  *       服务商没有列表接口(404)就跳过, 直接用对话测试。</li>
- *   <li>再发一次很小的对话: {@code Reply in JSON: {"ok": true}}, 最多 64 个输出 token、关闭深度思考。
+ *   <li>再发一次很小的对话: {@code Reply in JSON: {"ok": true}}, 最多 512 个输出 token、关闭深度思考。
+ *       预算要容得下思考型模型的思考块(智谱 Anthropic 端点收到 thinking disabled 也照样思考),
+ *       64 会被偶尔吃光导致正文为空、JSON 步误报。
  *       成功 = 模型可用; 回复能解析出 ok=true 的 JSON = JSON 输出正常。</li>
  * </ol>
  */
@@ -93,7 +95,7 @@ public class AiConnectionTester {
         started = System.nanoTime();
         AiProtocolClient.ChatRequest ping = new AiProtocolClient.ChatRequest(
                 "You are a connectivity check. Reply in JSON. " + AiGateway.JSON_INSTRUCTION,
-                List.of(new AiText("Reply in JSON: {\"ok\": true}", false)), null, null, 64);
+                List.of(new AiText("Reply in JSON: {\"ok\": true}", false)), null, null, 512);
         AiProtocolClient.ChatResponse response;
         try {
             response = gateway.probeChat(runtime, ping, "CONNECTION_TEST");

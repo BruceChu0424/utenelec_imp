@@ -187,6 +187,7 @@ public class SalesReturnService {
 
     @Transactional
     @PreAuthorize("hasAuthority('sales_return:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_return_item")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         mutationFootprint.lockReturn(null, requestedFootprint(req));
@@ -205,6 +206,7 @@ public class SalesReturnService {
 
     @Transactional
     @PreAuthorize("hasAuthority('sales_return:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_return_item", requestArgument=1, documentIdArgument=0)
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
         SalesReturn r = requireWritableReturnForUpdate(id, requestedFootprint(req));

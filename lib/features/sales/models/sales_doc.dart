@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 // 销售单据模型（5 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
 //
 // 5 单据差异由 doc_type 决定可选字段是否非空（报价无仓库/币种；退货明细有 outItemId+
@@ -764,6 +765,8 @@ class SalesDocListItem {
 
 class SalesDocItem {
   const SalesDocItem({
+    this.extraColumns = const [],
+    this.goodsNameEn,
     this.exactDecimals = const {},
     required this.id,
     this.lineNo,
@@ -825,6 +828,8 @@ class SalesDocItem {
     this.priority,
   });
 
+  final List<BusinessColumn> extraColumns;
+  final String? goodsNameEn;
   final String? id;
   final Map<String, String> exactDecimals;
   final int? lineNo;
@@ -898,6 +903,8 @@ class SalesDocItem {
   final int? priority;
 
   factory SalesDocItem.fromJson(Map<String, dynamic> json) => SalesDocItem(
+    extraColumns: BusinessColumn.read(json['extraColumns']),
+    goodsNameEn: json['goodsNameEn']?.toString(),
     exactDecimals: readExactDecimalTexts(json),
     id: json['id'] as String?,
     lineNo: (json['lineNo'] as num?)?.toInt(),

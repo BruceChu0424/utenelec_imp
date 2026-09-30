@@ -92,6 +92,10 @@ public class SalesOrderService {
 
     private final SalesOrderRepository orderRepo;
     private final SalesOrderItemRepository itemRepo;
+    private com.uten.imp.common.columns.BusinessColumnService businessColumns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setBusinessColumns(com.uten.imp.common.columns.BusinessColumnService service) { this.businessColumns = service; }
     private final SalesOrderCostItemRepository costItemRepo;
     private final StockReservationService reservationService;
     private final PlanOrderItemLinkRepository linkRepo;
@@ -1255,6 +1259,12 @@ public class SalesOrderService {
         reservationService.releaseByOrderItems(
                 existing.stream().map(SalesOrderItem::getId).toList());
 
+        // Restore the editable lifecycle before rewriting document column snapshots.
+        // The database rejects changes to those terms while an approved header is visible.
+        order.setStatus(STATUS_DRAFT);
+        order.setFinanceConfirmed(false);
+        orderRepo.saveAndFlush(order);
+
         applyHeader(req, order);
         if (order.getShipmentPolicy() == null || order.getShipmentPolicy().isBlank()
                 || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(order.getShipmentPolicy())) {
@@ -1429,6 +1439,7 @@ public class SalesOrderService {
             requirePreviewPriceMatches(line, authoritativePrice);
             requireSafeCommercialLine(line, authoritativePrice);
             requireOrderableClientPrice(line, quoted, authoritativePrice, fileCurrency, lineIndex + 1);
+            target.setExtraColumns(resolveOrderColumns(line, quoted, kept, masked));
             applyRejectedRevisionLine(
                     order,
                     target,
@@ -1437,6 +1448,7 @@ public class SalesOrderService {
                     goodsSnapshots,
                     authoritativePrice,
                     normalizedDiscount);
+            if (quoted != null) target.setGoodsNameEnSnapshot(quoted.goodsNameEn());
             itemRepo.save(target);
             result.add(toItemDto(target));
             autoLine++;
@@ -1487,8 +1499,8 @@ public class SalesOrderService {
         item.setUnitRate(line.getUnitRate());
         item.setQty(line.getQty());
         item.setPrice(authoritativePrice);
-        item.setAmountOriginal(authoritativeOrderAmount(
-                line.getQty(), authoritativePrice, normalizedDiscount));
+        item.setAmountOriginal(com.uten.imp.common.columns.ExtraColumnCalculator.apply(authoritativeOrderAmount(
+                line.getQty(), authoritativePrice, normalizedDiscount), item.getExtraColumns()));
         item.setAmountLocal(null);
         item.setShippedQty(BigDecimal.ZERO);
         item.setReturnedQty(BigDecimal.ZERO);
@@ -1795,7 +1807,8 @@ public class SalesOrderService {
                             it.getProducedQty());
             BigDecimal amountOriginal = it.getPrice() == null
                     ? it.getAmountOriginal()
-                    : authoritativeOrderAmount(newQty, it.getPrice(), it.getDiscount());
+                    : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                            authoritativeOrderAmount(newQty, it.getPrice(), it.getDiscount()), it.getExtraColumns());
             em.createNativeQuery("""
                     UPDATE sales_order_items
                     SET qty = :q,
@@ -2519,9 +2532,12 @@ public class SalesOrderService {
             requirePreviewPriceMatches(l, authoritativePrice);
             requireSafeCommercialLine(l, authoritativePrice);
             requireOrderableClientPrice(l, quoteTerms.get(index), authoritativePrice, fileCurrency, index + 1);
-            BigDecimal amountOriginal = authoritativeOrderAmount(
-                    l.getQty(), authoritativePrice, normalizedDiscount);
+            List<com.uten.imp.common.columns.ExtraColumnSnapshot> columns =
+                    resolveOrderColumns(l, quoteTerms.get(index), kept, masked);
+            BigDecimal amountOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(authoritativeOrderAmount(
+                    l.getQty(), authoritativePrice, normalizedDiscount), columns);
             SalesOrderItem it = new SalesOrderItem();
+            it.setExtraColumns(columns);
             it.setOrderId(o.getId());
             it.setBillNo(o.getBillNo());
             it.setBillDate(o.getBillDate());
@@ -2532,6 +2548,7 @@ public class SalesOrderService {
                     SalesGoodsSnapshot.require(
                             goodsSnapshots, l.getGoodsId(), "销售订单明细"),
                     null);
+            if (quoteTerms.get(index) != null) it.setGoodsNameEnSnapshot(quoteTerms.get(index).goodsNameEn());
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
@@ -2571,6 +2588,19 @@ public class SalesOrderService {
     }
 
     /** 一行最终折扣与(可选)备注提示。 */
+    private List<com.uten.imp.common.columns.ExtraColumnSnapshot> resolveOrderColumns(
+            OrderItemLine line, TrustedQuotePriceBook.Terms quoted, SalesOrderItem kept, boolean masked) {
+        List<com.uten.imp.common.columns.ExtraColumnSnapshot> previous = kept != null ? kept.getExtraColumns()
+                : quoted == null ? List.of() : quoted.extraColumns();
+        List<com.uten.imp.common.columns.ExtraColumnSnapshot> resolved =
+                com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "sales_order", line.getExtraColumns(), previous, masked);
+        if (quoted != null && !resolved.stream().filter(com.uten.imp.common.columns.ExtraColumnSnapshot::financial).toList()
+                .equals(quoted.extraColumns().stream().filter(com.uten.imp.common.columns.ExtraColumnSnapshot::financial).toList())) {
+            throw new ApiException(ErrorCode.CONFLICT, "费用列已由来源报价核定，如需修改请重新打开报价");
+        }
+        return resolved;
+    }
+
     private record LineDiscount(BigDecimal discount, String note) {
     }
 
@@ -2678,7 +2708,9 @@ public class SalesOrderService {
      */
     static final class TrustedQuotePriceBook {
         /** 报价核定条款: 单价与 4 位折扣。 */
-        record Terms(BigDecimal price, BigDecimal discount) {
+        record Terms(BigDecimal price, BigDecimal discount,
+                     List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns, String goodsNameEn) {
+            Terms(BigDecimal price, BigDecimal discount) { this(price, discount, List.of(), null); }
         }
 
         private static final class Entry {
@@ -2712,7 +2744,7 @@ public class SalesOrderService {
                         QuoteLinePriceIdentity.from(item),
                         com.uten.imp.features.sales.SalesPriceAuthority.identity(
                                 item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getUnitRate()),
-                        new Terms(item.getPrice(), normalizeOrderDiscountForWrite(item.getDiscount()))));
+                        new Terms(item.getPrice(), normalizeOrderDiscountForWrite(item.getDiscount()), item.getExtraColumns(), item.getGoodsNameEnSnapshot())));
             }
         }
 
@@ -2808,6 +2840,7 @@ public class SalesOrderService {
             SalesOrderItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
         item.setGoodsCodeSnapshot(snapshot.code());
         item.setGoodsNameSnapshot(snapshot.name());
+        if (lockedAt == null) item.setGoodsNameEnSnapshot(snapshot.nameEn());
         item.setGoodsSnapshotSource(snapshot.source());
         item.setGoodsSnapshotLockedAt(lockedAt);
     }
@@ -2889,7 +2922,8 @@ public class SalesOrderService {
             BigDecimal expectedOriginal = item.getQty() == null
                     || item.getPrice() == null
                     ? null
-                    : MoneyPolicy.exactProduct(item.getQty(), item.getPrice(), item.getDiscount());
+                    : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                            MoneyPolicy.exactProduct(item.getQty(), item.getPrice(), item.getDiscount()), item.getExtraColumns());
             if (item.getUnitId() == null
                     || item.getUnitRate() == null
                     || item.getUnitRate().signum() <= 0
@@ -2948,7 +2982,7 @@ public class SalesOrderService {
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        OrderItemDto dto = new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(),
                 it.getGoodsSnapshotSource(), it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
@@ -2958,6 +2992,9 @@ public class SalesOrderService {
                 it.getInboundQty(), it.getInNo(), it.getOutNo(), it.getRemark(),
                 it.getReservedQty(), it.getPlannedQty(), it.getProducedQty(), it.getChainStatus(), null,
                 it.getPriority(), it.getClientGoodsName(), it.getClientPrice(), null, false);
+        dto.setExtraColumns(it.getExtraColumns());
+        dto.setGoodsNameEn(it.getGoodsNameEnSnapshot());
+        return dto;
     }
 
     private OrderCostItemDto toCostDto(SalesOrderCostItem c) {
@@ -3024,6 +3061,7 @@ public class SalesOrderService {
 
     /** 价格族字段置 null（数量族/链路量保留——生产/仓库要看出欠与进度，不看钱）。 */
     private void maskItemPrices(OrderItemDto it) {
+        it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.visible(it.getExtraColumns(), true));
         it.setPrice(null);
         it.setAmountOriginal(null);
         it.setAmountLocal(null);

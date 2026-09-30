@@ -306,6 +306,12 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
+      columnKeys: [for (final c in data.columns) c.key],
+      rowIds: [for (final r in data.rows) r['id']?.toString()],
+      factValues: [
+        for (final r in data.rows)
+          {for (final entry in r.entries) entry.key: entry.value?.toString()},
+      ],
       headers: [for (final c in data.columns) c.label],
       rows: [
         for (final r in data.rows)
@@ -500,6 +506,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      tableKey:
+          'features.sales.pages.sales_report_page.SalesReportPageState._buildTable.1',
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
       primary: true,
       columns: columns,
@@ -667,6 +675,9 @@ class _SalesClientDetailDialogState
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
     final headers = <String>[];
+    final columnKeys = <String>[];
+    final rowIds = <String?>[];
+    final factValues = <Map<String, String?>>[];
     final rows = <List<String>>[];
     var page = 1;
     while (true) {
@@ -690,15 +701,26 @@ class _SalesClientDetailDialogState
       final data = parseReportResponse(json, page);
       if (headers.isEmpty) {
         headers.addAll([for (final c in data.columns) c.label]);
+        columnKeys.addAll([for (final c in data.columns) c.key]);
       }
       for (final r in data.rows) {
+        rowIds.add(r['id']?.toString());
+        factValues.add({
+          for (final entry in r.entries) entry.key: entry.value?.toString(),
+        });
         rows.add([for (final c in data.columns) formatReportCell(c, r) ?? '']);
       }
       if (rows.length >= data.total || data.rows.length < 500) break;
       if (rows.length >= 2000) break;
       page++;
     }
-    return UtenPrintTable(headers: headers, rows: rows);
+    return UtenPrintTable(
+      headers: headers,
+      rows: rows,
+      columnKeys: columnKeys,
+      rowIds: rowIds,
+      factValues: factValues,
+    );
   }
 
   @override
@@ -771,6 +793,8 @@ class _SalesClientDetailDialogState
                     : data == null
                     ? const UtenEmpty()
                     : MasterDataTableView<Map<String, dynamic>>(
+                        tableKey:
+                            'features.sales.pages.sales_report_page.SalesClientDetailDialogState.build.1',
                         columns: columns,
                         items: data.rows,
                         facets: const {},

@@ -93,7 +93,7 @@ class ProductionPlanServiceTest {
 
         allocationLock = query();
         plannedIncrement = query();
-        approvalLinks = mock(TypedQuery.class);
+        approvalLinks = typedQuery();
         when(approvalLinks.setParameter(anyString(),any())).thenReturn(approvalLinks);
         when(approvalLinks.getResultList()).thenReturn(List.of());
         when(em.createQuery(anyString(),eq(PlanOrderItemLink.class))).thenReturn(approvalLinks);
@@ -701,5 +701,10 @@ class ProductionPlanServiceTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.setMaxResults(anyInt())).thenReturn(query);
         return query;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> TypedQuery<T> typedQuery() {
+        return mock(TypedQuery.class);
     }
 }

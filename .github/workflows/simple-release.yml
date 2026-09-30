@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           node --test web/update_check.test.cjs
           flutter pub get
-          flutter build web --release --no-pub --no-web-resources-cdn \
+          flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run \
             --dart-define="APP_VERSION=$VERSION" \
             --dart-define="APP_BUILD_ID=$GITHUB_SHA" \
             --dart-define=API_BASE_URL=/api

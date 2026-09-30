@@ -13,6 +13,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SalesOrderRevisionServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
+    @Test void revisionColumnsRemainStructuredAndComeFromTheirOwnHistoricalSnapshot() throws Exception {
+        UUID column = UUID.randomUUID();
+        var before = mapper.readTree("""
+                {"产品明细":{"row":{"行号":1,"扩展列":[{"columnId":"%s","name":"包装费","type":"AMOUNT","operation":"ADD","value":"5"}]}}}
+                """.formatted(column));
+        var after = mapper.readTree("""
+                {"产品明细":{"row":{"行号":1,"扩展列":[{"columnId":"%s","name":"包装费","type":"AMOUNT","operation":"ADD","value":"8"}]}}}
+                """.formatted(column));
+        var diff = SalesOrderRevisionService.buildDiff(before, after, true, "销售员", OffsetDateTime.now());
+        assertThat(diff.beforeItems().getFirst().extraColumns().getFirst().value()).isEqualTo("5");
+        assertThat(diff.afterItems().getFirst().extraColumns().getFirst().value()).isEqualTo("8");
+        assertThat(diff.changedItemIds()).containsExactly("row");
+    }
+
     @Test
     void reviewShowsChangedHeaderAndAddedRemovedAndRevisedLinesWithoutLosingValues() throws Exception {
         var before = mapper.readTree("""

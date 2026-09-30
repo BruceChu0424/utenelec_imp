@@ -102,6 +102,8 @@ public class ExpenseClaimService {
     private final DocNumberService docNumber;
     private final PaymentReferenceLabelsPort paymentLabels;
     private final ExpenseClaimSettingsService settings;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.platformcolumns.PlatformColumnService> platformColumns;
 
     // ---- 查询 -----------------------------------------------------------------
 
@@ -530,6 +532,7 @@ public class ExpenseClaimService {
     @Transactional public ExpenseClaimDto approve(UUID id,Long version) { expectedVersion(id,version);return approve(id); }
     @Transactional public ExpenseClaimDto reject(UUID id,String reason,Long version) { expectedVersion(id,version);return reject(id,reason); }
     @Transactional public void delete(UUID id,Long version) { expectedVersion(id,version);delete(id); }
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="expense_claim_item", requestArgument=1, documentIdArgument=0)
     @Transactional public ExpenseClaimDto editVersioned(UUID id,ExpenseClaimCreateRequest request) { expectedVersion(id,request.expectedVersion());return edit(id,request); }
     @Transactional public ExpenseClaimDto payVersioned(UUID id,ExpenseClaimPaymentRequest request) {
         PaymentStyleHierarchyLock.lock(em);
@@ -605,6 +608,7 @@ public class ExpenseClaimService {
     // ---- 申请人动作 ------------------------------------------------------------
 
     @Transactional
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="expense_claim_item")
     public ExpenseClaimDto create(ExpenseClaimCreateRequest request) {
         tx.bind();
         AuthUser user = requireStaff();
@@ -1320,14 +1324,14 @@ public class ExpenseClaimService {
             List<ExpenseClaimEvent> events, List<AttachmentDto> paymentProofs) {
     }
 
-    private static ExpenseClaimDto mapClaim(
+    private ExpenseClaimDto mapClaim(
             ExpenseClaim claim,
             List<ExpenseClaimItem> items,
             Mapping context) {
         return mapClaim(claim, items, context, List.of(), List.of());
     }
 
-    private static ExpenseClaimDto mapClaim(
+    private ExpenseClaimDto mapClaim(
             ExpenseClaim claim,
             List<ExpenseClaimItem> items,
             Mapping context,
@@ -1369,13 +1373,23 @@ public class ExpenseClaimService {
                 context.attachments(),
                 invoices,
                 events, claim.getVersion(), claim.getApprovedBy(), context.paymentProofs(),
-                claim.getPreviousSubmissionSnapshot(), claim.getSubmissionSnapshot(), claim.isResubmission());
+                visibleSubmissionSnapshot(claim.getPreviousSubmissionSnapshot()), visibleSubmissionSnapshot(claim.getSubmissionSnapshot()), claim.isResubmission());
     }
 
     private String submissionSnapshot(ExpenseClaim claim) {
-        return ExpenseClaimSubmissionSnapshot.capture(claim,
-                itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(List.of(claim.getId())),
-                invoiceRepository.findByClaimIdOrderByLineNoAsc(claim.getId()));
+        var items=itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(List.of(claim.getId()));
+        var invoices=invoiceRepository.findByClaimIdOrderByLineNoAsc(claim.getId());
+        if(platformColumns==null)return ExpenseClaimSubmissionSnapshot.capture(claim,items,invoices);
+        Map<UUID,Map<String,BigDecimal>> facts=new LinkedHashMap<>();
+        for(var item:items)facts.put(item.getId(),item.getAmount()==null?Map.of():Map.of("amount",item.getAmount()));
+        return ExpenseClaimSubmissionSnapshot.capture(claim,items,invoices,
+                platformColumns.getObject().freezeForReview("expense_claim_item",claim.getId(),facts),
+                platformColumns.getObject().freezeForReview("expense_claim",claim.getId(),Map.of(claim.getId(),
+                    claim.getTotalAmount()==null?Map.of():Map.of("totalAmount",claim.getTotalAmount()))).get(claim.getId()));
+    }
+
+    private String visibleSubmissionSnapshot(String snapshot) {
+        return platformColumns==null?snapshot:platformColumns.getObject().maskReviewSnapshot("expense_claim_item",snapshot);
     }
 
     private void preserveSubmittedSnapshot(ExpenseClaim claim) {

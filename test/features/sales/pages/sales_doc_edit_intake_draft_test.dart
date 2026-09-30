@@ -21,6 +21,7 @@ import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
 import 'package:uten_imp/shared/ai/ai_status_provider.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
+import 'package:uten_imp/shared/attachments/pending_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
@@ -132,15 +133,24 @@ UtenEditableGridController<SalesGridRow> _grid(WidgetTester tester) => tester
     )
     .controller;
 
+/// 把假文件加进暂存附件区并点卡片「AI识别」→ 核对面板 → 导入全部(入口已统一进卡片)。
+Future<void> _runIntake(WidgetTester tester, String name) async {
+  final controller = tester
+      .widget<PendingAttachmentSection>(find.byType(PendingAttachmentSection))
+      .controller;
+  expect(controller.add(fakeFile(name)), isNull, reason: '文件应能加入暂存');
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(ValueKey('pending-attachment-action-$name')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('识别后的新建报价草稿: 硬关闭后恢复识别状态与行字段, 保存仍带 aiIntake', (tester) async {
     final storage = MemoryFormDraftStorage();
     var env = await _pump(tester, storage);
-    FilePicker.platform = FakeFilePicker(fakeFile('UJ23 quotation.xlsx'));
-    await tester.tap(find.byKey(const ValueKey('sales-intake-entry-button')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
-    await tester.pumpAndSettle();
+    await _runIntake(tester, 'UJ23 quotation.xlsx');
 
     final state =
         tester.state(find.byType(SalesDocEditPage))
@@ -160,13 +170,14 @@ void main() {
     // 恢复草稿不会再次识别。
     expect(env.runner.lastRequest, isNull);
     expect(env.runner.resumedJobId, isNull);
-    expect(find.text('已从 UJ23 quotation.xlsx 导入 5 行'), findsOneWidget);
+    // 暂存附件(客户原文件)随草稿恢复成卡片; 识别明细行原样回来。
+    expect(find.text('UJ23 quotation.xlsx'), findsOneWidget);
     final rows = _grid(tester).rows;
-    final first = rows.firstWhere((r) => r.intakeLineKey == 'S1R9');
+    final first = rows.firstWhere((r) => r.intakeLineKey == 'job-42:S1R9');
     expect(first.clientModel.text, 'GZ23/D');
     expect(first.clientPrice, '21');
     expect(first.setNameEn, isTrue);
-    final review = rows.firstWhere((r) => r.intakeLineKey == 'S1R10');
+    final review = rows.firstWhere((r) => r.intakeLineKey == 'job-42:S1R10');
     expect(review.aiReview, '颜色没对上');
 
     await tester.tap(find.text('保存'));
@@ -195,7 +206,10 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
     await tester.pumpAndSettle();
     // 报价单规则: 没标价的货品也导入(待财务定价)。
-    expect(_grid(tester).rows.map((r) => r.intakeLineKey), contains('S1R12'));
+    expect(
+      _grid(tester).rows.map((r) => r.intakeLineKey),
+      contains('job-42:S1R12'),
+    );
     await tester.pumpWidget(const SizedBox());
     env.router.dispose();
     env.container.dispose();
@@ -302,8 +316,11 @@ class _Api extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    writes++;
-    lastPostBody = Map<String, dynamic>.from(body! as Map);
+    // 只记录单据本身的写入; 保存后暂存附件的 presign/confirm 不算(否则断言被冲掉)。
+    if (path.startsWith('/sales/')) {
+      writes++;
+      lastPostBody = Map<String, dynamic>.from(body! as Map);
+    }
     return {'id': 'quote-1', 'status': 0, 'writable': true};
   }
 }

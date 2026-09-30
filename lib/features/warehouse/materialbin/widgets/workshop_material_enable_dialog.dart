@@ -362,11 +362,23 @@ class _WorkshopMaterialEnableDialogState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 2026-09-29 用户口径：主行只显名称，颜色/任务数/单重进副行。
           Text(
-            '${p.productDisplay}  ·  本次 ${p.taskCount} 个任务'
-            '${p.unitWeightGrams == null ? '' : '  ·  单个重量 ${wmQty(p.unitWeightGrams)} 克'}',
+            p.productDisplay,
             style: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s2),
+          Text(
+            [
+              if (p.productSubline != null) p.productSubline!,
+              '本次 ${p.taskCount} 个任务',
+              if (p.unitWeightGrams != null)
+                '单个重量 ${wmQty(p.unitWeightGrams)} 克',
+            ].join(' · '),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: UtenSpacing.s6),

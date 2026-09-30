@@ -20,6 +20,7 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -218,9 +219,9 @@ class _FinanceQuoteReviewListPageState
                     padding: const EdgeInsets.symmetric(
                       vertical: UtenSpacing.s16,
                     ),
-                    child: breakpointForWidth(constraints.maxWidth).isExpanded
-                        ? _desktop(context, l10n, result)
-                        : _compact(context, l10n, result),
+                    // 2026-09-29「大小屏共用一张表」：统一走表格；<840（原
+                    // 卡片阈值）由表格内建卡片形态接管。
+                    child: _desktop(context, l10n, result),
                   ),
                 );
               },
@@ -310,8 +311,14 @@ class _FinanceQuoteReviewListPageState
         ],
       ),
       body: MasterDataTableView<SalesQuoteFinanceListItem>(
+        tableKey:
+            'features.finance.pages.finance_quote_review_list_page.FinanceQuoteReviewListPageState._desktop.1',
         key: const Key('quote-finance-desktop-table'),
         primary: true,
+        // 2026-09-29「大小屏共用一张表」：<840（原卡片阈值）由表格内建
+        // 卡片形态接管，本页自绘紧凑行已退役。
+        compactCards: true,
+        cardBelowWidth: UtenBreakpoints.expandedStart,
         columns: _columns(l10n),
         items: result.items,
         facets: const {},
@@ -347,79 +354,6 @@ class _FinanceQuoteReviewListPageState
     );
   }
 
-  Widget _compact(
-    BuildContext context,
-    AppLocalizations l10n,
-    PagedResult<SalesQuoteFinanceListItem> result,
-  ) {
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
-        key: const Key('quote-finance-mobile-list'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
-        children: [
-          _filters(l10n),
-          if (_error != null) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _InlineError(
-              message: _error!,
-              retryLabel: l10n.quoteFinanceRetry,
-              onRetry: () => _load(result.page),
-            ),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          if (result.items.isEmpty)
-            SizedBox(
-              height: 320,
-              child: UtenEmpty(
-                icon: _state == SalesQuoteFinanceState.returned
-                    ? Icons.undo_rounded
-                    : Icons.price_check_rounded,
-                message: _emptyMessage(l10n),
-                description: _emptyDescription(l10n),
-              ),
-            )
-          else
-            for (final item in result.items) ...[
-              _CompactQuoteRow(
-                key: Key('quote-finance-row-${item.quoteId}'),
-                item: item,
-                statusText: _statusText(l10n, item),
-                accent: _accentColor(Theme.of(context), item),
-                openLabel: l10n.quoteFinanceOpen,
-                amountText: _amountText(item),
-                submittedLabel: l10n.quoteFinanceColSubmittedAt,
-                onOpen: () => _open(item),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
-          if (result.totalPages > 1)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: l10n.quoteFinancePrevPage,
-                  onPressed: _loading || result.page <= 1
-                      ? null
-                      : () => _load(result.page - 1),
-                  icon: const Icon(Icons.chevron_left_rounded),
-                ),
-                Text('${result.page} / ${result.totalPages}'),
-                IconButton(
-                  tooltip: l10n.quoteFinanceNextPage,
-                  onPressed: _loading || result.page >= result.totalPages
-                      ? null
-                      : () => _load(result.page + 1),
-                  icon: const Icon(Icons.chevron_right_rounded),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
   List<MasterColumnDef<SalesQuoteFinanceListItem>> _columns(
     AppLocalizations l10n,
   ) => [
@@ -428,12 +362,16 @@ class _FinanceQuoteReviewListPageState
       label: l10n.quoteFinanceColBillNo,
       width: 160,
       value: (item) => item.billNo,
+      // 卡片形态标题列（报价按单号识别）。
+      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'clientName',
       label: l10n.quoteFinanceColClient,
       width: 200,
       value: (item) => item.clientName ?? l10n.quoteFinanceUnnamed,
+      // 卡片形态：客户进标题下副行。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'sellerName',
@@ -468,14 +406,9 @@ class _FinanceQuoteReviewListPageState
       label: l10n.quoteFinanceColStatus,
       width: 280,
       value: (item) => _statusText(l10n, item),
-      cellBuilder: (context, item) => Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: UtenStatusBadge(
-          label: _statusText(l10n, item),
-          type: _statusType(item),
-          size: UtenStatusBadgeSize.small,
-        ),
-      ),
+      // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+      cellColor: (context, item) =>
+          udenStatusBadgeCellColor(context, _statusType(item)),
     ),
   ];
 
@@ -534,16 +467,6 @@ class _FinanceQuoteReviewListPageState
     return null;
   }
 
-  Color _accentColor(ThemeData theme, SalesQuoteFinanceListItem item) =>
-      switch (_state) {
-        SalesQuoteFinanceState.returned => theme.colorScheme.error,
-        SalesQuoteFinanceState.confirmed => theme.colorScheme.primary,
-        SalesQuoteFinanceState.pending =>
-          item.pricePendingCount > 0 || item.resubmitted
-              ? UtenColors.warning
-              : theme.colorScheme.outlineVariant,
-      };
-
   String _emptyMessage(AppLocalizations l10n) {
     if (_keyword.isNotEmpty) return l10n.quoteFinanceEmptySearch(_keyword);
     return switch (_state) {
@@ -551,136 +474,6 @@ class _FinanceQuoteReviewListPageState
       SalesQuoteFinanceState.confirmed => l10n.quoteFinanceEmptyConfirmed,
       SalesQuoteFinanceState.returned => l10n.quoteFinanceEmptyReturned,
     };
-  }
-
-  String? _emptyDescription(AppLocalizations l10n) => switch (_state) {
-    SalesQuoteFinanceState.pending => l10n.quoteFinanceEmptyPendingHint,
-    SalesQuoteFinanceState.returned => l10n.quoteFinanceEmptyReturnedHint,
-    SalesQuoteFinanceState.confirmed => null,
-  };
-}
-
-class _CompactQuoteRow extends StatelessWidget {
-  const _CompactQuoteRow({
-    super.key,
-    required this.item,
-    required this.statusText,
-    required this.accent,
-    required this.openLabel,
-    required this.amountText,
-    required this.submittedLabel,
-    required this.onOpen,
-  });
-
-  final SalesQuoteFinanceListItem item;
-  final String statusText;
-  final Color accent;
-  final String openLabel;
-  final String amountText;
-  final String submittedLabel;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: '${item.billNo} ${item.clientName ?? ''} $statusText',
-      child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: UtenRadius.mdAll,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onOpen,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: UtenRadius.mdAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ColoredBox(color: accent, child: const SizedBox(width: 3)),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        item.billNo,
-                                        style: theme.textTheme.titleSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                      ),
-                                    ),
-                                    Text(
-                                      amountText,
-                                      style: theme.textTheme.labelLarge
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: UtenSpacing.s4),
-                                Text(
-                                  [
-                                    ?item.clientName,
-                                    ?item.sellerName,
-                                  ].join(' · '),
-                                  style: theme.textTheme.bodyMedium,
-                                ),
-                                if (item.submittedAt != null) ...[
-                                  const SizedBox(height: UtenSpacing.s4),
-                                  Text(
-                                    '$submittedLabel '
-                                    '${utenFmtIsoTime(item.submittedAt)}',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: UtenSpacing.s4),
-                                Text(
-                                  statusText,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: accent,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          UtenButton(
-                            key: Key('quote-finance-open-${item.quoteId}'),
-                            size: UtenButtonSize.small,
-                            type: UtenButtonType.secondary,
-                            icon: Icons.price_check_rounded,
-                            onPressed: onOpen,
-                            child: Text(openLabel),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

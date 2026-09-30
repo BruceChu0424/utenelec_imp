@@ -172,6 +172,8 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
           );
         },
         child: MasterDataTableView<MyProfileChangeListItem>(
+          tableKey:
+              'features.profile.pages.my_profile_changes_page.MyProfileChangesPageState._buildBody.1',
           key: const Key('my-profile-changes-table'),
           columns: _columns(l10n),
           items: page.items,

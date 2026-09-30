@@ -8,7 +8,8 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_input.dart';
-import '../../../components/layout/uten_h_scroll_area.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -625,48 +626,56 @@ class _FinanceAssetPostingPanelState
 
   Widget _previewLines(List<AssetPostingLine> lines) {
     if (lines.isEmpty) return const UtenEmpty(message: '暂无可计提项目');
-    if (context.breakpoint.isCompact) {
-      return Column(
-        children: [
-          for (final line in lines)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('${line.code} ${line.name}'),
-              subtitle: line.message == null ? null : Text(line.message!),
-              trailing: Text(
-                formatFinanceDecimal(line.amount),
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                  fontFeatures: [FontFeature.tabularFigures()],
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-        ],
-      );
-    }
-    return UtenHScrollArea(
-      child: DataTable(
-        columns: const [
-          DataColumn(label: Text('编号')),
-          DataColumn(label: Text('名称')),
-          DataColumn(label: Text('计提金额'), numeric: true),
-          DataColumn(label: Text('状态')),
-          DataColumn(label: Text('说明')),
-        ],
-        rows: [
-          for (final line in lines)
-            DataRow(
-              cells: [
-                DataCell(Text(line.code)),
-                DataCell(Text(line.name)),
-                DataCell(Text(formatFinanceDecimal(line.amount))),
-                DataCell(financeAssetStatusBadge(line.status)),
-                DataCell(Text(line.message ?? '—')),
-              ],
-            ),
-        ],
+    return MasterDataTableView<AssetPostingLine>(
+      tableKey: 'finance.asset.postingPreview',
+      embedded: true,
+      compactCards: true,
+      platformBinding: PlatformTableBinding(
+        tableKey: 'finance.asset.postingPreview',
+        scope: 'view_finance',
+        recordIdOf: (_) => null,
+        factValuesOf: (row) => {'amount': row.amount},
       ),
+      columns: [
+        MasterColumnDef(
+          key: 'code',
+          label: '编号',
+          width: 140,
+          value: (row) => row.code,
+        ),
+        MasterColumnDef(
+          key: 'name',
+          label: '名称',
+          width: 180,
+          value: (row) => row.name,
+          cardRole: MasterColumnCardRole.title,
+        ),
+        MasterColumnDef(
+          key: 'amount',
+          label: '计提金额',
+          width: 130,
+          type: 'money',
+          value: (row) => formatFinanceDecimal(row.amount),
+        ),
+        MasterColumnDef(
+          key: 'status',
+          label: '状态',
+          width: 120,
+          value: (row) => financeAssetStatusLabel(row.status),
+          cellBuilder: (_, row) => financeAssetStatusCell(row.status),
+        ),
+        MasterColumnDef(
+          key: 'message',
+          label: '说明',
+          width: 220,
+          value: (row) => row.message,
+        ),
+      ],
+      items: lines,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
     );
   }
 

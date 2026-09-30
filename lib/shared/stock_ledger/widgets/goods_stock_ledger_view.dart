@@ -216,7 +216,11 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
             .map((r) => r.unitName)
             .firstWhere((u) => u != null && u.isNotEmpty, orElse: () => null);
     return MasterDataTableView<StockLedgerRow>(
+      tableKey:
+          'shared.stock_ledger.widgets.goods_stock_ledger_view.GoodsStockLedgerViewState.build.1',
       key: const Key('stock-item-ledger-table'),
+      // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+      primary: true,
       columns: _columns(display),
       items: rows,
       rowKeyOf: (row) => '${row.rowKind}:${row.id}',

@@ -1098,7 +1098,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeConfirmTitle => '정규직 전환하시겠습니까?';
 
   @override
-  String get employeeConfirmBody => '직원 상태가 재직으로 변경됩니다.';
+  String get employeeConfirmBody =>
+      '실제 정규직 전환일을 등록합니다. 수습 직원은 재직 상태로 전환되며, 이미 정규직인 경우 전환일이 보정 등록됩니다.';
 
   @override
   String get employeeConfirmSuccess => '정규직 전환 완료';
@@ -6253,30 +6254,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '견적을 불러오지 못했습니다. 잠시 후 다시 시도하세요.';
 
   @override
-  String get salesIntakeBannerTitle => '고객 파일 인식';
-
-  @override
-  String get salesIntakeBannerMessage =>
-      '고객의 견적서/프로포마 인보이스를 올리면 고객과 품목이 자동으로 채워집니다';
-
-  @override
-  String get salesIntakeBannerButton => '고객 파일 인식';
-
-  @override
-  String get salesIntakeBannerAgain => '다른 파일 인식';
-
-  @override
-  String salesIntakeBannerImported(String file, int count) {
-    return '$file에서 $count행을 가져왔습니다';
-  }
-
-  @override
-  String get salesIntakeToolbarButton => '고객 파일 인식';
-
-  @override
-  String get salesIntakeAiOffHint => 'AI가 꺼져 있어 일반적인 형식의 Excel만 인식할 수 있습니다';
-
-  @override
   String get salesIntakeApprovedOrderHint =>
       '승인된 주문은 수량 변경이나 수정으로 바꾸세요. 파일로 다시 인식할 수 없습니다';
 
@@ -6797,4 +6774,844 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get salesIntakeQuoteLockedDiscountInfo =>
       '이 행의 할인율은 재무가 견적에서 확정했습니다. 바꾸려면 견적을 다시 여세요';
+
+  @override
+  String get quoteTemplateDownload => '견적서 다운로드';
+
+  @override
+  String get quoteTemplateChoose => '고객 견적 양식 선택';
+
+  @override
+  String get quoteTemplateChooseHint =>
+      '하나 이상의 양식을 선택하세요. 여러 양식은 ZIP으로 다운로드되며 기본 양식도 사용할 수 있습니다.';
+
+  @override
+  String quoteTemplateVersionUsage(int version, int count) {
+    return '버전 $version · $count회 사용';
+  }
+
+  @override
+  String get quoteTemplateStandard => '기본 양식 사용';
+
+  @override
+  String get quoteTemplateDownloadAll => '모두 다운로드';
+
+  @override
+  String get quoteTemplateDownloadSelected => '선택 항목 다운로드';
+
+  @override
+  String get businessColumnAdd => '열 추가';
+
+  @override
+  String get businessColumnName => '열 이름';
+
+  @override
+  String get businessColumnSearch => '이름을 입력하여 기존 열 검색';
+
+  @override
+  String get businessColumnReuseHint =>
+      '기존 열을 선택하거나 새 열을 만드세요. 저장한 열은 다시 사용할 수 있으며 새 문서에는 기본으로 추가되지 않습니다.';
+
+  @override
+  String get businessColumnSystem => '시스템 열';
+
+  @override
+  String get businessColumnReference => '정보만 기록';
+
+  @override
+  String get businessColumnLimit => '문서마다 추가 열은 최대 32개입니다.';
+
+  @override
+  String get businessColumnAmountHint =>
+      '추가한 순서대로 각 행 금액을 계산합니다. 머리글 이동은 표시 순서만 바꿉니다. 빈 값은 건너뛰며 0으로 나눌 수 없습니다. 결과는 정확한 유한 소수이며 음수가 아니어야 합니다.';
+
+  @override
+  String get businessColumnType => '내용 유형';
+
+  @override
+  String get businessColumnText => '텍스트';
+
+  @override
+  String get businessColumnNumber => '숫자';
+
+  @override
+  String get businessColumnCalculation => '금액 계산';
+
+  @override
+  String get businessColumnAddAmount => '더하기 (+)';
+
+  @override
+  String get businessColumnSubtractAmount => '빼기 (−)';
+
+  @override
+  String get businessColumnMultiplyAmount => '곱하기 (×)';
+
+  @override
+  String get businessColumnDivideAmount => '나누기 (÷)';
+
+  @override
+  String get businessColumnCreate => '만들어 추가';
+
+  @override
+  String get businessColumnLoadFailed => '열을 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get businessColumnSaveFailed => '열을 저장하지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get businessColumnInvalid => '추가 열의 숫자, 나누는 값, 최종 금액을 확인하세요.';
+
+  @override
+  String get businessColumnNameEn => '영문 이름';
+
+  @override
+  String get costWorkspaceTitle => '원가 작업대';
+
+  @override
+  String get costEstimate => '원가 계산';
+
+  @override
+  String get costActual => '실제 원가 확인';
+
+  @override
+  String get costVersions => '원가 버전';
+
+  @override
+  String get costNew => '원가표 만들기';
+
+  @override
+  String get costName => '원가표 이름';
+
+  @override
+  String get costBatch => '배치 생산량';
+
+  @override
+  String get costCustomer => '적용 고객';
+
+  @override
+  String get costCurrency => '원가 통화';
+
+  @override
+  String get costExchangeRate => '기준 통화 환율';
+
+  @override
+  String get costEffectiveDate => '가격 기준일';
+
+  @override
+  String get costUsageStrategy => '사용량 선택';
+
+  @override
+  String get costActualFirst => '실제 사용량 우선, 없으면 설계량';
+
+  @override
+  String get costDesignOnly => '설계 사용량';
+
+  @override
+  String get costPriceStrategy => '가격 선택';
+
+  @override
+  String get costApprovedPrice => '승인된 원가 가격';
+
+  @override
+  String get costManualPrice => '수동 가격';
+
+  @override
+  String get costNotes => '설명';
+
+  @override
+  String get costMaterial => '재료비';
+
+  @override
+  String get costProcess => '가공비';
+
+  @override
+  String get costManagement => '관리비 배분';
+
+  @override
+  String get costOther => '기타 비용';
+
+  @override
+  String get costKnownTotal => '확인된 원가 합계';
+
+  @override
+  String get costUnitCost => '제품 단위 원가';
+
+  @override
+  String get costStructure => '조립 구조';
+
+  @override
+  String get costFees => '공정 및 비용';
+
+  @override
+  String get costGoodsName => '품목명';
+
+  @override
+  String get costGoodsCode => '품목 코드';
+
+  @override
+  String get costColor => '색상';
+
+  @override
+  String get costUnit => '기본 단위';
+
+  @override
+  String get costAdoptedQty => '적용 사용량';
+
+  @override
+  String get costUsageSource => '사용량 출처';
+
+  @override
+  String get costPricingQty => '배치 가격 수량';
+
+  @override
+  String get costPrice => '적용 단가';
+
+  @override
+  String get costPriceUnitRate => '가격 단위 환산율';
+
+  @override
+  String get costPriceSource => '가격 출처';
+
+  @override
+  String get costLineAmount => '배치 금액';
+
+  @override
+  String get costUnitContribution => '완제품당 원가';
+
+  @override
+  String get costStatus => '상태';
+
+  @override
+  String get costIncluded => '합계 포함';
+
+  @override
+  String get costExplanation => '계산 근거';
+
+  @override
+  String get costOverrideReason => '이번 건 변경 사유';
+
+  @override
+  String get costRestoreRecommended => '권장값 복원';
+
+  @override
+  String get costAddPriceColumn => '비용 단가 열 추가';
+
+  @override
+  String get costFeeName => '비용명';
+
+  @override
+  String get costFeeMethod => '계산 방식';
+
+  @override
+  String get costFeeCategory => '원가 분류';
+
+  @override
+  String get costFeeBase => '계산 기준';
+
+  @override
+  String get costFeeQuantity => '계산 수량';
+
+  @override
+  String get costPerQuantity => '단가 × 재료 수량';
+
+  @override
+  String get costPerUnit => '제품당 고정 단가';
+
+  @override
+  String get costFixedBatch => '배치 고정 금액';
+
+  @override
+  String get costPercent => '기준 비율';
+
+  @override
+  String get costPerCycle => '기계 주기당';
+
+  @override
+  String get costValue => '단가 또는 비율';
+
+  @override
+  String get costNotApplicable => '해당 없음';
+
+  @override
+  String get costPending => '보완 필요';
+
+  @override
+  String get costComplete => '확인 완료';
+
+  @override
+  String get costDraft => '초안';
+
+  @override
+  String get costConfirmed => '확정됨';
+
+  @override
+  String get costReview => '검토 중';
+
+  @override
+  String get costSaveDraft => '초안 저장';
+
+  @override
+  String get costRecalculate => '검증 및 재계산';
+
+  @override
+  String get costConfirm => '원가 버전 확정';
+
+  @override
+  String get costCopy => '새 초안으로 복사';
+
+  @override
+  String get costSaveTemplate => '원가 템플릿 저장';
+
+  @override
+  String get costTemplate => '원가 템플릿';
+
+  @override
+  String get costNoTemplate => '템플릿 자동 매칭';
+
+  @override
+  String get costDownloadExcel => '원가 Excel 다운로드';
+
+  @override
+  String get costDownloadPdf => '원가 PDF 다운로드';
+
+  @override
+  String get costSaved => '원가 초안 저장됨';
+
+  @override
+  String get costConfirmPrompt =>
+      '확정하면 사용량, 가격, 비용이 고정됩니다. 이후 변경은 새 버전이 필요합니다.';
+
+  @override
+  String get costLeavePrompt => '전환하기 전에 현재 초안을 서버에 저장하세요.';
+
+  @override
+  String get costCalculationStale => '입력이 변경되어 금액 재계산이 필요합니다';
+
+  @override
+  String get costConflict => '서버 버전이 변경되었습니다. 로컬 입력은 유지됩니다. 비교 후 복원하세요.';
+
+  @override
+  String get costRecoverLocal => '로컬 초안 복원';
+
+  @override
+  String get costHistory => '과거 스냅샷';
+
+  @override
+  String get costVersion => '버전';
+
+  @override
+  String get costUpdated => '수정 시간';
+
+  @override
+  String get costAction => '작업';
+
+  @override
+  String get costOpen => '열기';
+
+  @override
+  String get costDelete => '삭제';
+
+  @override
+  String get costDeleteFeePrompt => '이 비용을 삭제하면 초안 원가가 바뀝니다. 과거 버전은 유지됩니다.';
+
+  @override
+  String get costEmpty => '원가표가 없습니다. 조립 구조에서 새로 만드세요.';
+
+  @override
+  String get costNoActual => '확인할 실제 원가 근거가 없습니다';
+
+  @override
+  String get costActualKnown => '집계된 투입';
+
+  @override
+  String get costActualOutput => '배분된 생산';
+
+  @override
+  String get costActualWip => '재공 잔액';
+
+  @override
+  String get costActualUnclassified => '분류 대기 금액';
+
+  @override
+  String get costActualIncomplete => '노무비 및 간접비 집계가 불완전합니다';
+
+  @override
+  String get costSourceDocument => '원본 문서';
+
+  @override
+  String get costSourceType => '출처 유형';
+
+  @override
+  String get costLocalAmount => '기준 통화 금액';
+
+  @override
+  String get costActualQty => '실제 수량';
+
+  @override
+  String get costActualFrom => '시작일';
+
+  @override
+  String get costActualTo => '종료일';
+
+  @override
+  String get costSegment => '실행 배치 ID';
+
+  @override
+  String get costLegacy => '기존 마스터 원가 참고';
+
+  @override
+  String get costLossPolicy => '외주 허용 손실';
+
+  @override
+  String get costLossPolicyHint => '외주 계약 기본값이며 원가 계산이나 실제 사용량 학습에는 사용되지 않습니다.';
+
+  @override
+  String get costDecimalInvalid => '유효한 0 이상의 소수를 입력하세요';
+
+  @override
+  String get costRequiredName => '이름을 입력하세요';
+
+  @override
+  String get costNoPermission => '원가 조회 권한이 없습니다';
+
+  @override
+  String get costManual => '이번 건 변경';
+
+  @override
+  String get costYes => '예';
+
+  @override
+  String get costNo => '아니요';
+
+  @override
+  String get costCopySuffix => '복사본';
+
+  @override
+  String get costTotalLabel => '전체 원가';
+
+  @override
+  String get costSource => '출처';
+
+  @override
+  String get costTemplateSaved => '원가 템플릿 저장됨';
+
+  @override
+  String get costFeeApplicability => '단가를 입력하면 적용됩니다. 공란은 미완료이며 해당 없음으로 제거하세요.';
+
+  @override
+  String get costSnapshotReadOnly => '과거 스냅샷은 읽기 전용입니다';
+
+  @override
+  String get costImport => '원가표 가져오기';
+
+  @override
+  String get costImportBlock => '제품 영역';
+
+  @override
+  String get costImportReview =>
+      '각 행의 매핑을 확인하세요. 캐시 가격의 통화를 확인하며 외부 수식은 적용하지 않습니다.';
+
+  @override
+  String get costImportKind => '적용 방식';
+
+  @override
+  String get costImportMaterial => '재료 가격';
+
+  @override
+  String get costImportFee => '제품당 비용';
+
+  @override
+  String get costImportSkip => '이 행 건너뛰기';
+
+  @override
+  String get costImportTarget => '대상 재료';
+
+  @override
+  String get costImportReviewed => '확인됨';
+
+  @override
+  String get costImportApply => '현재 원가표에 적용';
+
+  @override
+  String get costImportNeedsReview =>
+      '모든 행을 확인하세요. 건너뛰기는 사유가 필요하고 재료는 대상을 선택해야 합니다.';
+
+  @override
+  String get costCompare => '버전 비교';
+
+  @override
+  String get costCompareBefore => '비교 기준';
+
+  @override
+  String get costBefore => '변경 전';
+
+  @override
+  String get costAfter => '변경 후';
+
+  @override
+  String get costUnchanged => '변경 없음';
+
+  @override
+  String get costDirectConsumption => '직접 소비';
+
+  @override
+  String get costPeriodicAllocation => '기간 배분';
+
+  @override
+  String get costFeeEvidence => '확인된 가공비';
+
+  @override
+  String get costNormalLoss => '확인된 손실';
+
+  @override
+  String get costTaxMode => '가격 세금 기준';
+
+  @override
+  String get costTaxRecorded => '기록된 가격 사용';
+
+  @override
+  String get costTaxExclude => '세금 포함 확인 후 세금 제외';
+
+  @override
+  String get costTaxUnconfirmed => '세금 기준 미확인';
+
+  @override
+  String get costTaxConfirmedReason => '원본 문서의 세금 기준 확인';
+
+  @override
+  String get costFeeReuse => '기존 비용 열 검색';
+
+  @override
+  String get costDeleteColumn => '비용 열 제거';
+
+  @override
+  String get costRoute => '원가 계산 방식';
+
+  @override
+  String get costRouteAuto => '품목 출처 기준';
+
+  @override
+  String get costRouteMake => '자체 생산 전개';
+
+  @override
+  String get costRouteBuy => '구매 원가';
+
+  @override
+  String get costRouteSubcontract => '외주 가공';
+
+  @override
+  String get costRouteCustomer => '고객 지급 재료';
+
+  @override
+  String get costLossRange => '0–100 및 소수점 2자리 이하로 입력하세요';
+
+  @override
+  String get costScopeInput => '원가 대상 전체 투입';
+
+  @override
+  String get costPeriodOutput => '현재 범위 생산 원가';
+
+  @override
+  String get costExcludedOutput => '범위 밖 배분액';
+
+  @override
+  String get costBudgetBaseline => '확정 계산 기준';
+
+  @override
+  String get costBudgetLocal => '전체 기준 계산 (기준 통화)';
+
+  @override
+  String get costActualRecorded => '집계된 실제 원가 (기준 통화)';
+
+  @override
+  String get costBasisMismatch => '기준 생산량 또는 통화가 실제 범위와 달라 차액을 계산하지 않습니다.';
+
+  @override
+  String get costCoverageMismatch =>
+      '실제 노무비 및 간접비가 불완전하여 전체 원가 차액 없이 병렬 표시합니다.';
+
+  @override
+  String get costVariance => '동일 기준 원가 차액';
+
+  @override
+  String get costDirectCost => '재료 및 가공 소계';
+
+  @override
+  String get inventoryCostTitle => '실제 원가 전기';
+
+  @override
+  String get inventoryCostPolicy => '대사 및 활성화 설정';
+
+  @override
+  String get inventoryCostPolicyHint =>
+      '원천 재고 가치와 기존 원가 전표를 먼저 대사하세요. 활성화 후 새 전표만 추가되며 기존 충돌과 기간 간 차이는 별도 검토해야 합니다.';
+
+  @override
+  String get inventoryCostEnabled => '실제 원가 전기 활성화됨';
+
+  @override
+  String get inventoryCostDisabled => '대사 및 활성화 대기';
+
+  @override
+  String get inventoryCostEnable => '실제 원가 전기 활성화 확인';
+
+  @override
+  String get inventoryCostDisable => '새 실제 원가 전기 중지 확인';
+
+  @override
+  String get inventoryCostEffectiveDate => '적용일';
+
+  @override
+  String get inventoryCostEvidence => '실제 대사 근거';
+
+  @override
+  String get inventoryCostEvidenceRequired => '실제 대사 근거를 8자 이상 입력하세요';
+
+  @override
+  String get inventoryCostFrom => '원천 시작일';
+
+  @override
+  String get inventoryCostTo => '원천 종료일';
+
+  @override
+  String get inventoryCostInvalidRange => '원천 시작일은 종료일보다 늦을 수 없습니다';
+
+  @override
+  String get inventoryCostLoadFailed => '실제 원가 전기를 불러오지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get inventoryCostWriteFailed => '작업에 실패했습니다. 새로 고침 후 검토하고 다시 시도하세요.';
+
+  @override
+  String get inventoryCostStatus => '전기 상태';
+
+  @override
+  String get inventoryCostAmount => '원천 가치 변동(기능통화)';
+
+  @override
+  String get inventoryCostBusinessDate => '원천 업무일';
+
+  @override
+  String get inventoryCostSourcePeriod => '원천 기간';
+
+  @override
+  String get inventoryCostTargetPeriod => '전기 기간';
+
+  @override
+  String get inventoryCostSourceType => '원천 유형';
+
+  @override
+  String get inventoryCostSourceDocument => '원천 문서 ID';
+
+  @override
+  String get inventoryCostSource => '원천 가치 전기 ID';
+
+  @override
+  String get inventoryCostRevision => '가치 개정';
+
+  @override
+  String get inventoryCostVoucher => '총계정원장 전표 ID';
+
+  @override
+  String get inventoryCostAssignPeriod => '전기 기간 지정';
+
+  @override
+  String get inventoryCostReason => '검토 사유';
+
+  @override
+  String get inventoryCostReasonRequired => '검토 사유를 4자 이상 입력하세요';
+
+  @override
+  String get inventoryCostNoOpenPeriod => '조회 범위에 열린 기간이 없습니다. 날짜 범위를 변경하세요.';
+
+  @override
+  String get inventoryCostPost => '원가 전표 추가';
+
+  @override
+  String get inventoryCostPostHint =>
+      '반품 및 후속 차이를 포함한 원천 가치 변동별로 균형 전표를 추가합니다. 재시도로 중복 전기하거나 기존 전표를 다시 쓰지 않습니다.';
+
+  @override
+  String get inventoryCostClosePeriod => '원가 기간 마감';
+
+  @override
+  String get inventoryCostCloseHint =>
+      '마감 후 이 기간에 다시 전기할 수 없습니다. 후속 차이는 별도로 검토한 열린 기간에 전기해야 합니다.';
+
+  @override
+  String get inventoryCostPendingCount => '기간 미처리 건수';
+
+  @override
+  String get inventoryCostOpen => '열림';
+
+  @override
+  String get inventoryCostClosed => '마감됨';
+
+  @override
+  String get inventoryCostPosted => '전기 완료';
+
+  @override
+  String get inventoryCostReady => '전기 가능';
+
+  @override
+  String get inventoryCostBeforeCutover => '전환 이전 이력';
+
+  @override
+  String get inventoryCostSourcePending => '원천 식별 확인 대기';
+
+  @override
+  String get inventoryCostValuePending => '원가 확인 대기';
+
+  @override
+  String get inventoryCostLegacyConflict => '기존 전표 대사 필요';
+
+  @override
+  String get inventoryCostTargetClosed => '대상 기간 마감됨';
+
+  @override
+  String get inventoryCostTargetRequired => '전기 기간 검토 필요';
+
+  @override
+  String get inventoryCostNoAccess => '실제 원가 전기 조회 권한이 없습니다';
+
+  @override
+  String get costConvertCurrency => '원가 통화 변환';
+
+  @override
+  String get costCurrencyConversionHint =>
+      '서버에서 원본 및 대상 환율로 금액을 변환합니다. 수량과 비율은 유지되며 성공한 경우에만 입력이 변경됩니다.';
+
+  @override
+  String get costSourceExchangeRate => '현재 통화의 기준 통화 환율';
+
+  @override
+  String get costTargetExchangeRate => '대상 통화의 기준 통화 환율';
+
+  @override
+  String get costExchangeRateRequired => '0보다 큰 명확한 소수 환율을 입력하세요';
+
+  @override
+  String get costPriceNormalizedHelp =>
+      '단가는 현재 원가표 통화와 재료 기본 단위 기준입니다. 원래 가격, 단위 환산 및 세금 기준은 출처 상세에서 확인할 수 있습니다.';
+
+  @override
+  String get costCurrencyConverted => '대상 통화로 원가를 변환했습니다. 아직 저장되지 않았습니다';
+
+  @override
+  String get costUnitContributionShort => '단위 원가';
+
+  @override
+  String get costLineAmountShort => '배치 원가';
+
+  @override
+  String get costPendingItems => '확인 대기 항목';
+
+  @override
+  String get costViewEvidence => '근거 보기';
+
+  @override
+  String get costViewSource => '출처 열기';
+
+  @override
+  String get costEvidenceField => '근거 항목';
+
+  @override
+  String get costEvidenceValue => '기록 값';
+
+  @override
+  String get costEvidenceScope => '원가 범위';
+
+  @override
+  String get costEvidenceNextStep => '다음 단계';
+
+  @override
+  String get costCopyValue => '기록 값 복사';
+
+  @override
+  String get costSourceUnavailable =>
+      '열 수 있는 출처 페이지가 없습니다. 식별자를 복사하여 담당자에게 확인을 요청하세요.';
+
+  @override
+  String get costGapLabor => '실제 노무비 미집계';
+
+  @override
+  String get costGapOverhead => '제조 간접비 미집계';
+
+  @override
+  String get costGapNoValuation => '확인 가능한 재고 원가 근거 없음';
+
+  @override
+  String get costGapIdentity => '과거 품목 식별 또는 단위 누락';
+
+  @override
+  String get costGapRevision => '투입 수정 근거 누락';
+
+  @override
+  String get costGapNoApprovedRevision => '승인된 원가 버전 없음';
+
+  @override
+  String get costGapApplying => '원가 배분 갱신 중';
+
+  @override
+  String get costGapSourceRefresh => '출처 데이터 갱신 대기';
+
+  @override
+  String get costGapClassification => '투입 원가 분류 대기';
+
+  @override
+  String get costGapOutputBasis => '유효 생산 기준 확인 필요';
+
+  @override
+  String get costGapScope => '원가 집계 범위 불완전';
+
+  @override
+  String get costGapInput => '투입 금액 미확인';
+
+  @override
+  String get costGapOther => '추가 원가 근거 확인 필요';
+
+  @override
+  String get costGapActionCharges => '실제 비용 근거를 보완한 후 다시 확인하세요';
+
+  @override
+  String get costGapActionHistory => '과거 원본 및 단위를 확인하고 현재 마스터 정보로 대체하지 마세요';
+
+  @override
+  String get costGapActionRefresh => '원가 작업 완료 후 갱신하고 계속 대기 중이면 출처 작업을 확인하세요';
+
+  @override
+  String get costGapActionSource => '원본 증빙, 반품 및 생산 기록을 확인한 후 갱신하세요';
+
+  @override
+  String get costAmountBasis => '금액 기준';
+
+  @override
+  String get costBookedBasis => '기장된 기준 통화 금액';
+
+  @override
+  String get costLegacyBasis => '과거 금액 기준 미검증';
+
+  @override
+  String get costQuantityBasis => '수량 기준';
+
+  @override
+  String get costValueRevision => '가치 수정 번호';
+
+  @override
+  String get costAmountLower => '금액 하한 (기준 통화)';
+
+  @override
+  String get costAmountUpper => '금액 상한 (기준 통화)';
+
+  @override
+  String get costSourceIdentifier => '원본 문서 식별자';
+
+  @override
+  String get costSourceLineIdentifier => '원본 명세 식별자';
+
+  @override
+  String get costEvidenceIdentifier => '근거 식별자';
+
+  @override
+  String get costGapCode => '확인 사유 코드';
 }

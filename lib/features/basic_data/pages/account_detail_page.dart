@@ -775,6 +775,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         _flowFilters(),
         Expanded(
           child: MasterDataTableView<AccountStatementRow>(
+            tableKey:
+                'features.basic_data.pages.account_detail_page.AccountDetailPageState._buildFlowBody.1',
             primary: true,
             columns: _flowColumns,
             items: _statement?.rows ?? const [],

@@ -87,7 +87,7 @@ public class UnitController {
         ExportPayload payload = service.export(
                 new UnitQueryFilter(keyword, nullFields, code, name, status, dimension),
                 exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_unit");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_unit", "master_data", String.valueOf(payload.total()), "success"));

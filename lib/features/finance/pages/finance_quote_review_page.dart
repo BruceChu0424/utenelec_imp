@@ -1,3 +1,5 @@
+import '../../../shared/platform_tables/platform_table_binding.dart';
+import '../../../shared/business_columns/business_columns_table.dart';
 // 销售报价财务核价详情(/finance/quote-review/:id，ADR-134)。
 //
 // 「销售不能改价」的落地：报价行单价只来自货品资料标价，财务在这里逐行定成交单价/折扣；
@@ -1014,7 +1016,38 @@ class _FinanceQuoteReviewPageState
       (l) => l.lastFinanceConfirmedDiscount != null,
     );
     final items = review.lines;
+    final tableBinding =
+        PlatformTableCatalogScope.resolve(
+          context,
+          PlatformTableDescriptor<SalesQuoteFinanceLine>(
+            kind: 'master',
+            tableKey: 'sales.quote.items',
+            columnKeys: const [],
+            rows: items,
+          ),
+        )?.copyWith(
+          factValuesOf: (line) {
+            final draft = _drafts[line.itemId];
+            return {
+              'qty': line.qty,
+              'price': draft == null ? line.storedPrice : draft.effectivePrice,
+              'discount': draft == null
+                  ? line.discount
+                  : draft.effectiveDiscount,
+              'amount': draft == null ? line.amount : draft.amountPreview,
+            };
+          },
+          factListenablesOf: (line) {
+            final draft = _drafts[line.itemId];
+            return draft == null
+                ? const <Listenable>[]
+                : [draft.deal, draft.discount];
+          },
+        );
+
     return MasterDataTableView<SalesQuoteFinanceLine>(
+      tableKey: 'sales.quote.items',
+      platformBinding: tableBinding,
       key: const Key('quote-finance-lines'),
       primary: true,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
@@ -1058,6 +1091,12 @@ class _FinanceQuoteReviewPageState
           cellBuilderHandlesSemantics: true,
           cellBuilder: (_, line) =>
               UtenGoodsIdentityCell(name: line.goodsName ?? line.goodsCode),
+        ),
+        MasterColumnDef<SalesQuoteFinanceLine>(
+          key: 'nameEn',
+          label: '英文名称',
+          width: 180,
+          value: (line) => line.goodsNameEn,
         ),
         MasterColumnDef(
           key: 'goodsCode',
@@ -1209,6 +1248,10 @@ class _FinanceQuoteReviewPageState
           width: 160,
           value: (line) => line.remark,
         ),
+        ...businessReadOnlyColumns<SalesQuoteFinanceLine>(
+          items,
+          columnsOf: (line) => line.extraColumns,
+        ),
       ],
       items: items,
       facets: const {},
@@ -1289,6 +1332,7 @@ class _FinanceQuoteReviewPageState
           l10n.quoteFinanceErrorFinancePrice,
         QuoteFinanceLineError.discount => l10n.quoteFinanceErrorDiscount,
         QuoteFinanceLineError.needPrice => l10n.quoteFinanceErrorNeedPrice,
+        QuoteFinanceLineError.extraAmount => l10n.businessColumnInvalid,
         null => null,
       };
 
@@ -1431,6 +1475,7 @@ class _FinanceQuoteReviewPageState
     final dirtyLines = _drafts.values.any((d) => d.dirty);
     return UtenTotalsSummaryBar(
       density: true,
+      rowCount: review.lines.length,
       entries: [
         UtenTotalEntry(
           l10n.quoteFinanceTotalQty,

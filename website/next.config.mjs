@@ -89,6 +89,14 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: 'standalone',
+  webpack(config, { dev }) {
+    // next-intl's formatter loader uses a runtime import that Webpack cannot
+    // snapshot as a filesystem-cache dependency. Rebuild production bundles
+    // rather than reuse a cache whose invalidation graph is incomplete.
+    // Development retains its normal incremental cache and i18n plugin aliases.
+    if (!dev) config.cache = false;
+    return config;
+  },
   // CMS media is intentionally outside immutable releases and is served by
   // Nginx from the durable uploads mount.  The Next image optimizer resolves
   // relative URLs inside Node, where that Nginx-only path does not exist.

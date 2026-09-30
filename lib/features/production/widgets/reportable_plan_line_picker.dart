@@ -259,6 +259,8 @@ class _ReportablePlanLineSheetState
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: MasterDataTableView<ReportablePlanLine>(
+        tableKey:
+            'features.production.widgets.reportable_plan_line_picker.ReportablePlanLineSheetState._body.1',
         embedded: true,
         columns: [
           MasterColumnDef(
@@ -292,10 +294,8 @@ class _ReportablePlanLineSheetState
           ),
           // 2026-09-14 用户口径：产品列同时给名称+编号+颜色。选错报工对象会把
           // 完工量记到别的货上，而同名不同色/不同编号在本系统极普遍；本表没有
-          // 独立的编号/颜色列，三属性全部合进身份格（规格保留在副行末尾）。
-          // 旧写法把规格塞进 '\n'，而表格单元格是单行省略——规格根本看不到。
-          // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列；
-          // 规格没有独立列，仍留在名称格副行。
+          // 独立的编号/颜色列。2026-09-14 用户口径（全站表格统一）：名称 / 编号 /
+          // 颜色各占一列；2026-09-29 用户口径：规格不再显示在名称格副行。
           MasterColumnDef(
             key: 'goods',
             label: '产品名称',
@@ -304,7 +304,6 @@ class _ReportablePlanLineSheetState
             cellBuilderHandlesSemantics: true,
             cellBuilder: (_, item) => UtenGoodsIdentityCell(
               name: item.goodsName,
-              spec: item.goodsSpec,
               emptyPlaceholder: '未命名',
             ),
           ),

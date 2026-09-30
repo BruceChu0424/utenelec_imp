@@ -99,11 +99,17 @@ class MaterialAggregateOrderRequest {
     required this.groups,
     this.deliveryDate,
     this.approveNow = false,
+    this.skipAutoClaim = false,
   });
   final String analysisId, fingerprint, idempotencyKey, warehouseId, billDate;
   final int version;
   final String? deliveryDate;
   final bool approveNow;
+
+  /// ADR-099 修订(2026-09-29)：true = 用户选择「足额下单，不扣可用数量」，
+  /// 服务端跳过汇总提交里的自动认领（自制公共超产/同主仓公共在途）；
+  /// 缺省 false = 原行为（先认领、只为余量新下单）。
+  final bool skipAutoClaim;
   final List<MaterialAggregateOrderGroupInput> groups;
   Map<String, dynamic> toJson({String? previewFingerprint}) => {
     'version': version,
@@ -115,6 +121,7 @@ class MaterialAggregateOrderRequest {
     'approveNow': approveNow,
     'groups': [for (final group in groups) group.toJson()],
     'previewFingerprint': ?previewFingerprint,
+    if (skipAutoClaim) 'skipAutoClaim': true,
   };
 }
 

@@ -28,6 +28,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -846,6 +847,8 @@ class _SubcontractDecompositionPageState
 
   Widget _buildTable(OperationsWorkbenchData data) {
     return MasterDataTableView<OperationsWorkbenchTask>(
+      tableKey:
+          'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.1',
       key: const Key('subcontract-decomposition-table'),
       // primary:true → 表体参与「筛选行折叠 → 表格内滚」联动。
       primary: true,
@@ -944,13 +947,18 @@ class _SubcontractDecompositionPageState
           width: 190,
           value: (t) => _stageLabelOf(t),
           cellBuilderHandlesSemantics: true,
-          cellBuilder: (context, t) => _ProgressStatusCell(
-            label: _stageLabelOf(t),
-            type: _progressType(
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：状态分类色铺整格，
+          // 格内只剩文字与「紧急」前缀（_ProgressStatusCell 保留点击/悬浮行为）。
+          cellColor: (context, t) => udenStatusBadgeCellColor(
+            context,
+            _progressType(
               t.preparationTaskId == null
                   ? t.progressStatus
                   : (t.preparationStatus ?? ''),
             ),
+          ),
+          cellBuilder: (context, t) => _ProgressStatusCell(
+            label: _stageLabelOf(t),
             urgent: _shortDelivery(t),
             tooltip: _progressTooltipOf(t),
             onTap: _linksToShortDeliveries(t)
@@ -1212,20 +1220,29 @@ class _SubcontractDemandCard extends StatelessWidget {
   }
 }
 
-/// 状态药丸（ADR-098）：颜色按状态拉开；回厂短交待判定加「紧急」标签；
-/// 有判定页可去时整个药丸可点（工具提示「点击去判定」）；不可点的行可带一句
-/// 悬浮说明 (ADR-103 路线 B 锁 / 解锁行)。
+/// 状态格（ADR-098）。两种形态：
+/// · 表格列（type = null）：2026-09-27 用户口径「格内胶囊改单元格背景色」——
+///   底色由状态列 cellColor 铺整格，格内只剩文字与红色「紧急」前缀；
+/// · 窄屏卡片（type 非 null）：卡片没有 cellColor 通道（卡片也非表格格），
+///   照旧渲染胶囊。
+/// 回厂短交待判定标紧急；有判定页可去时可点（工具提示「点击去判定」）；
+/// 不可点的行可带一句悬浮说明 (ADR-103 路线 B 锁 / 解锁行)。表格形态的文字色
+/// 由 cellColor 通道黑白自适应注入（DefaultTextStyle），勿写死。
 class _ProgressStatusCell extends StatelessWidget {
   const _ProgressStatusCell({
     required this.label,
-    required this.type,
-    required this.urgent,
+    this.type,
+    this.urgent = false,
     this.tooltip,
     this.onTap,
   });
 
   final String label;
-  final UtenStatusBadgeType type;
+
+  /// 窄屏卡片形态的胶囊配色；null = 表格列形态（底色在列 cellColor）。
+  final UtenStatusBadgeType? type;
+
+  /// 回厂短交待判定（红色前缀「紧急」）。
   final bool urgent;
 
   /// 不可点时的悬浮说明；null = 无提示。可点时固定「点击去判定」。
@@ -1234,31 +1251,67 @@ class _ProgressStatusCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final badge = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (urgent) ...[
-          const UtenStatusBadge(
-            label: '紧急',
-            type: UtenStatusBadgeType.danger,
-            icon: Icons.priority_high_rounded,
+    final theme = Theme.of(context);
+    final Widget content;
+    if (type != null) {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (urgent) ...[
+            const UtenStatusBadge(
+              label: '紧急',
+              type: UtenStatusBadgeType.danger,
+              icon: Icons.priority_high_rounded,
+              size: UtenStatusBadgeSize.small,
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+          ],
+          UtenStatusBadge(
+            label: label,
+            type: type!,
             size: UtenStatusBadgeSize.small,
           ),
-          const SizedBox(width: UtenSpacing.s4),
         ],
-        UtenStatusBadge(
-          label: label,
-          type: type,
-          size: UtenStatusBadgeSize.small,
-        ),
-      ],
-    );
+      );
+    } else {
+      content = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (urgent) ...[
+            Icon(
+              Icons.priority_high_rounded,
+              size: 14,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(width: 2),
+            Text(
+              '紧急',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     if (onTap == null) {
       final hint = tooltip;
-      if (hint == null) return Semantics(label: label, child: badge);
+      if (hint == null) return Semantics(label: label, child: content);
       return Tooltip(
         message: hint,
-        child: Semantics(label: '$label，$hint', child: badge),
+        child: Semantics(label: '$label，$hint', child: content),
       );
     }
     return Tooltip(
@@ -1269,7 +1322,7 @@ class _ProgressStatusCell extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: UtenRadius.pillAll,
-          child: badge,
+          child: content,
         ),
       ),
     );

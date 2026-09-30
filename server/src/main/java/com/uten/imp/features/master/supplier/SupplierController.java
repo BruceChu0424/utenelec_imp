@@ -187,7 +187,7 @@ public class SupplierController {
                 fax, postcode, address, bank, body.sensitive().bankAccount(), taxId,
                 website, shipVia, shipAddress), sort, order,
                 exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_supplier");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_supplier", "master_data", String.valueOf(payload.total()), "success"));

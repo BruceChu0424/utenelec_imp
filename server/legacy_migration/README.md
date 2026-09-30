@@ -32,6 +32,10 @@ bash server/legacy_migration/migrate.sh --bootstrap-all --confirm-destructive
 
 `--shelf-labels` 是唯一不读老库导出的目标：货架库位（库行-层-位，如 A31-3-1）只存在于仓库现场挂牌，老库 `B_Goods.StockPlace` 是无关历史残值。仓库部门按挂牌人工整理 `data/shelf_labels.csv`（格式见 `migrate_shelf_labels.sql` 头部与 `data/shelf_labels.example.csv`），脚本现算 sha256 登记审计后回填 `goods.stock_place`；依赖 `--goods-data` 已迁，幂等可重跑，不进 `--bootstrap-all`。
 
+## Windows 执行前提与已修复缺陷（2026-09-28 首次全链走通）
+
+在 Windows/Git Bash 上执行导出导入前必读 [262-Windows全量重导实录](../../docs/数据迁移/262-Windows全量重导实录与迁移工具修复.md)：导出必须用 PowerShell 7（5.1 按 GBK 误读无 BOM 脚本会吞行）；`verify_candidate.py` 在迁移数超 ~450 后超 Windows 命令行 32K 上限需分批 driver；`docker exec` 的容器 `/tmp` 参数需挡 MSYS 路径转换；checksum tsv 必须 LF；hr-roster 与全量 manifest 的 sidecar 绑定只能两阶段编排。老库主档同码不同身份（B_Color '01'×18、B_Mould 'UF-30'×2、B_Client 'GD0001'×2）由迁移脚本按现行分配器重派（每组 legacy_id 首条保留原码，其余 YS/MJ/KH+%06d），修复见分支 `fix/legacy-export-all-duplicate`。
+
 ## 受审输入与自动对账
 
 可发布的全量导出必须来自停写后恢复的离线备份，并在一个 SQL Server `Serializable` 只读事务中完成全部查询。执行 `export_legacy.ps1 All` 前必须通过私有环境提供：

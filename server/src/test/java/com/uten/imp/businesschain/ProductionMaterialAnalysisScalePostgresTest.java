@@ -211,9 +211,11 @@ class ProductionMaterialAnalysisScalePostgresTest {
         long issueStarted = System.nanoTime();
         commands.issueWorkshopPlans(view.analysisId(), issue);
         double issueMillis = (System.nanoTime() - issueStarted) / 1_000_000.0;
-        emit(Map.of("event", "issue-preview", "plans", 30, "materialRows", preview.flatMaterials().size(),
+        Map<String, Object> previewEvidence = new LinkedHashMap<>(sample.result());
+        previewEvidence.putAll(Map.of("event", "issue-preview", "plans", 30, "materialRows", preview.flatMaterials().size(),
                 "previewMillis", previewMillis, "previewStatements", sample.logicalStatements,
                 "realIssueMillis", issueMillis));
+        emit(previewEvidence);
         assertTrue(sample.affectedRowsByFingerprint.isEmpty(), "预览不得执行任何 INSERT/UPDATE/DELETE");
         assertEquals(0, sample.rollbacks, "预览不回滚");
         // 本地快机 <1.5s; CI 共享 runner 实测 2.1s(2026-09-29)。阈值防的是数量级回归

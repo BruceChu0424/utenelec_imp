@@ -27,18 +27,14 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
-import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/widgets/metric_filter_cards.dart' show metricToneColor;
 import '../../../shared/providers/draft_counts_provider.dart';
@@ -346,13 +342,6 @@ class _OperationsWorkbenchPageState
         entry.key: _columnFilters[entry.value],
   };
 
-  void _toggleSelected(OperationsWorkbenchTask task) {
-    if (task.id.isEmpty) return;
-    setState(() {
-      if (!_selectedIds.add(task.id)) _selectedIds.remove(task.id);
-    });
-  }
-
   /// 桌面表多选集合回写（组件勾选/表头三态都走这里；就地同步进 final 集合）。
   void _setSelectedIds(Set<String> next) {
     setState(() {
@@ -603,7 +592,6 @@ class _OperationsWorkbenchPageState
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final breakpoint = breakpointForWidth(constraints.maxWidth);
         final seg = _seg;
         final statusCounts = data.summary.statusCounts;
         final exceptionCounts = data.summary.exceptionCounts;
@@ -658,12 +646,10 @@ class _OperationsWorkbenchPageState
           ],
         );
 
-        final useTaskTable =
-            breakpoint.isExpanded ||
-            widget.department == OperationsWorkbenchDepartment.warehouse;
+        // 2026-09-29「大小屏共用一张表」：统一走折叠头+表格，窄屏由表格
+        // 内建卡片形态接管（原窄屏自绘任务卡列表退役）。
         final tableSelectable = selectionAction != null;
-
-        if (useTaskTable) {
+        {
           // 「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把分类工具条收完，
           // 筛选行随表格上移后钉在顶部常驻，之后表格内部滚动。
           // 2026-09-06 与全站对齐：已选胶囊+批量动作走表格标准右下悬浮组
@@ -727,114 +713,6 @@ class _OperationsWorkbenchPageState
             ),
           );
         }
-
-        // 窄屏任务卡列表：已选胶囊+全选本页+批量动作以右下悬浮组钉底
-        // （与宽屏表格悬浮组、物料分桶页同款），列表尾部留透明避让。
-        final mobileFloating = (selectionAction != null && _shouldLoad)
-            ? PositionedDirectional(
-                end: UtenSpacing.s16,
-                bottom: UtenSpacing.s16,
-                child: UtenFloatingActionGroup(
-                  key: const Key(
-                    'operations-workbench-floating-primary-action',
-                  ),
-                  children: [
-                    UtenSelectionSummaryPill(
-                      count: _selectedIds.length,
-                      onClear: _selectedIds.isEmpty
-                          ? null
-                          : () => setState(_selectedIds.clear),
-                    ),
-                    if (data.items.isNotEmpty)
-                      UtenButton(
-                        key: const Key('operations-workbench-select-page'),
-                        type: UtenButtonType.ghost,
-                        size: UtenButtonSize.large,
-                        onPressed: _loading
-                            ? null
-                            : () => setState(
-                                () => _selectedIds.addAll(
-                                  data.items
-                                      .where((item) => item.id.isNotEmpty)
-                                      .map((item) => item.id),
-                                ),
-                              ),
-                        child: const Text('全选本页'),
-                      ),
-                    _buildFloatingSelectionAction(selectionAction),
-                  ],
-                ),
-              )
-            : null;
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            ListView(
-              key: const Key('operations-workbench-mobile-list'),
-              // 悬浮主操作不占页面布局；滚动尾部留透明避让（无操作条时也要越过
-              // compact 悬浮胶囊），防止遮住末张任务卡/分页器。
-              padding: EdgeInsets.only(
-                bottom: selectionAction == null
-                    ? UtenCapsuleNavScope.occlusionOf(context)
-                    : UtenFloatingActionGroup.scrollClearance,
-              ),
-              children: [
-                filterRows,
-                const SizedBox(height: UtenSpacing.s12),
-                if (seg == null)
-                  const SizedBox(
-                    height: 320,
-                    child: UtenFilterPlaceholder(
-                      message: '在上方选择阶段后开始办理',
-                      description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
-                    ),
-                  )
-                else if (seg.history && _historyTime.isNone)
-                  const SizedBox(
-                    height: 320,
-                    child: UtenHistoryTimePlaceholder(),
-                  )
-                else ...[
-                  if (data.items.isEmpty)
-                    const SizedBox(
-                      height: 320,
-                      child: UtenEmpty(
-                        icon: Icons.task_alt_rounded,
-                        message: '当前筛选下没有任务',
-                        description: '可调整阶段、异常或关键词筛选后重试。',
-                      ),
-                    )
-                  else
-                    for (final task in data.items) ...[
-                      _TaskCard(
-                        task: task,
-                        selected:
-                            selectionAction != null &&
-                            _selectedIds.contains(task.id),
-                        onSelected: selectionAction == null
-                            ? null
-                            : () => _toggleSelected(task),
-                        onOpen: !(task.actionDocument?.canView ?? false)
-                            ? null
-                            : () => _openAction(task),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                    ],
-                  _MobilePager(
-                    page: data.page,
-                    totalPages: data.totalPages,
-                    loading: _loading,
-                    onPageChanged: (page) {
-                      setState(() => _page = page);
-                      _load(page: page);
-                    },
-                  ),
-                ],
-              ],
-            ),
-            ?mobileFloating,
-          ],
-        );
       },
     );
   }
@@ -918,7 +796,13 @@ class _DesktopTaskTable extends StatelessWidget {
     // primary:true → 表体参与「概览卡折叠 → 表格内滚」联动（拾取外层
     // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController）。
     return MasterDataTableView<OperationsWorkbenchTask>(
+      tableKey:
+          'features.operations_workbench.pages.operations_workbench_page.DesktopTaskTable.build.1',
       primary: true,
+      // 2026-09-29「大小屏共用一张表」：<840（原卡片阈值）由内建卡片形态接管
+      //（仓库此前窄屏横滚表格，现在同样卡片，交互统一）。
+      compactCards: true,
+      cardBelowWidth: UtenBreakpoints.expandedStart,
       selectable: selectable,
       idOf: (item) => item.id,
       selectedIds: selectable ? selectedIds : const <String>{},
@@ -942,6 +826,8 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '单据号',
           width: 160,
           value: (item) => item.actionDocument?.number ?? '—',
+          // 卡片形态：单号进标题下副行。
+          cardRole: MasterColumnCardRole.subtitle,
         ),
         // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
         // 规格再单独一列（原来「规格 / 颜色」挤在一格，两个属性都没法单独筛）。
@@ -952,11 +838,15 @@ class _DesktopTaskTable extends StatelessWidget {
           width: 200,
           value: (item) =>
               item.isDocumentGrouped ? item.goodsSummaryLabel : item.goodsName,
+          // 卡片形态标题列（归组行显示 N 种物料摘要）。
+          cardRole: MasterColumnCardRole.title,
         ),
         MasterColumnDef(
           key: 'goodsCode',
           label: '编号',
           width: 130,
+          // 卡片副行已带编号，明细区不重复出。
+          cardRole: MasterColumnCardRole.subtitle,
           value: (item) => item.isDocumentGrouped ? '—' : item.goodsCode,
         ),
         MasterColumnDef(
@@ -1032,13 +922,24 @@ class _DesktopTaskTable extends StatelessWidget {
           value: (item) =>
               mergedStageColumn ? stageLabelOf(item) : item.statusLabel,
           // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
-          cellColor: !mergedStageColumn
-              ? null
-              : (context, item) => udenStatusBadgeCellColor(
+          // 合并段（采购）按阶段档；仓库段沿用窄屏卡同款 _statusTone 语义上色，
+          // 不再是纯文本。
+          cellColor: mergedStageColumn
+              ? (context, item) => udenStatusBadgeCellColor(
                   context,
                   _OperationsWorkbenchPageState._stageBadgeType(
                     item.progressStatus,
                   ),
+                )
+              : (context, item) => udenStatusBadgeCellColor(
+                  context,
+                  switch (_statusTone(item.taskStatus)) {
+                    'warning' => UtenStatusBadgeType.warning,
+                    'info' => UtenStatusBadgeType.info,
+                    'success' => UtenStatusBadgeType.success,
+                    'danger' => UtenStatusBadgeType.danger,
+                    _ => UtenStatusBadgeType.neutral,
+                  },
                 ),
         ),
         MasterColumnDef(
@@ -1120,249 +1021,6 @@ class _DesktopTaskTable extends StatelessWidget {
       currentPage: data.page,
       totalPages: data.totalPages,
       onPageChange: onPageChanged,
-    );
-  }
-}
-
-class _TaskCard extends StatelessWidget {
-  const _TaskCard({
-    required this.task,
-    required this.selected,
-    required this.onSelected,
-    required this.onOpen,
-  });
-
-  final OperationsWorkbenchTask task;
-  final bool selected;
-  final VoidCallback? onSelected;
-  final VoidCallback? onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: selected
-          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
-          : theme.colorScheme.surface,
-      borderRadius: UtenRadius.lgAll,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        // 有下游批量动作时单击卡片切换勾选；无批量动作（仓库/无 capability）
-        // 时按触屏平台习惯单击打开，卡片底部仍保留显式打开按钮。
-        onTap: onSelected ?? onOpen,
-        child: Container(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          decoration: BoxDecoration(
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(
-              color: selected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.outlineVariant,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (onSelected != null) ...[
-                    Checkbox(
-                      value: selected,
-                      onChanged: (_) => onSelected!(),
-                      semanticLabel: '选择任务 ${task.taskNo}',
-                    ),
-                    const SizedBox(width: UtenSpacing.s4),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '${task.taskNo} · 来源 ${task.sourceNo}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _StatusPill(
-                    label: task.statusLabel,
-                    color: metricToneColor(_statusTone(task.taskStatus), theme),
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  _TaskFact(
-                    icon: Icons.business_outlined,
-                    label: task.counterparty,
-                  ),
-                  _TaskFact(icon: Icons.event_outlined, label: task.dueDate),
-                  _TaskFact(
-                    icon: Icons.numbers_rounded,
-                    label: task.quantityText,
-                  ),
-                  _StatusPill(
-                    label: task.exceptionLabel,
-                    color: task.hasException
-                        ? theme.colorScheme.error
-                        : UtenColors.success,
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s16),
-              if (onOpen != null)
-                UtenButton(
-                  key: Key('operations-task-action-${task.id}'),
-                  onPressed: onOpen,
-                  icon: Icons.open_in_new_rounded,
-                  isExpanded: true,
-                  child: Flexible(
-                    child: Text(
-                      task.actionDocument!.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-              else
-                Row(
-                  children: [
-                    Icon(
-                      task.actionDocumentRestricted
-                          ? Icons.lock_outline_rounded
-                          : Icons.link_off_rounded,
-                      size: UtenSpacing.s20,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        task.actionDocumentRestricted
-                            ? '无权查看关联单据'
-                            : '待生成/待挂接执行单据',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: UtenRadius.pillAll,
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _TaskFact extends StatelessWidget {
-  const _TaskFact({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 18,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-        const SizedBox(width: UtenSpacing.s4),
-        Text(label),
-      ],
-    );
-  }
-}
-
-class _MobilePager extends StatelessWidget {
-  const _MobilePager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPageChanged,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPageChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (totalPages <= 1) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          UtenButton(
-            size: UtenButtonSize.small,
-            type: UtenButtonType.ghost,
-            onPressed: !loading && page > 1
-                ? () => onPageChanged(page - 1)
-                : null,
-            child: const Text('上一页'),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-            child: Text('$page / $totalPages'),
-          ),
-          UtenButton(
-            size: UtenButtonSize.small,
-            type: UtenButtonType.ghost,
-            onPressed: !loading && page < totalPages
-                ? () => onPageChanged(page + 1)
-                : null,
-            child: const Text('下一页'),
-          ),
-        ],
-      ),
     );
   }
 }

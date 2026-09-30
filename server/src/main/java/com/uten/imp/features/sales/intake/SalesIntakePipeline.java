@@ -144,6 +144,11 @@ final class SalesIntakePipeline {
             run.notices.add(IntakeTexts.NOTICE_AI_FAILED);
         }
         Map<String, Object> result = assemble(run, input, kind);
+        if (run.template != null && !ctx.cancelled()) {
+            try { data.stageTemplate(ctx.jobId(), ctx.submittedByUser(), input.fileName(), run.template); }
+            catch (RuntimeException ignored) { run.notices.add("表格样式未保存，识别明细仍可使用");
+                result.put("notices", List.copyOf(new LinkedHashSet<>(run.notices))); }
+        }
         ctx.progress("DONE", 100);
         return result;
     }
@@ -171,6 +176,9 @@ final class SalesIntakePipeline {
         GoodsCandidateRetriever.HistoryPool history = GoodsCandidateRetriever.HistoryPool.EMPTY;
         List<Map<String, Object>> duplicates = List.of();
         int droppedAiLines;
+        final List<Map<String, Object>> extraColumns = new ArrayList<>();
+        final Map<String, Map<String, String>> extraValues = new LinkedHashMap<>();
+        com.uten.imp.features.sales.template.QuoteTemplateWorkbook.Candidate template;
 
         Run(AiJobContext ctx, IntakeParams params, IntakeAi ai) {
             this.ctx = ctx;
@@ -287,6 +295,14 @@ final class SalesIntakePipeline {
         for (ExtractedLine l : lines) {
             run.lines.add(new LineResult(l));
         }
+        Map<String, String> extraHeaders = extractExtraColumns(run, chosen.sheet(), chosen.layout());
+        if (kind == DocumentKind.XLSX || kind == DocumentKind.XLS) {
+            try { run.template = com.uten.imp.features.sales.template.QuoteTemplateWorkbook.capture(input.bytes(),
+                    chosen.sheet().index(), chosen.layout().headerRow0(), chosen.layout().headerRowSpan(),
+                    chosen.layout().columnRolesByLetter(), extraHeaders,
+                    chosen.extraction().lines().stream().map(line -> line.sourceRow() - 1).toList()); }
+            catch (RuntimeException ignored) { run.notices.add("此文件不能复用原表格样式，仍可识别和学习基础资料"); }
+        }
         run.fileCurrency = chosen.layout().fileCurrency() != null ? chosen.layout().fileCurrency()
                 : chosen.extraction().currencyFromCells();
         run.header = IntakeHeaderRules.extract(chosen.sheet(), chosen.layout().headerRow0());
@@ -299,6 +315,52 @@ final class SalesIntakePipeline {
                                 "RULES+AI"));
             }
         }
+    }
+
+    /** Unknown useful columns survive as explicit reference data; arithmetic is never guessed from a file. */
+    private static Map<String, String> extractExtraColumns(Run run, Sheet sheet, IntakeLayout layout) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        Set<String> usedNames = new HashSet<>();
+        for (int col = 0; col <= sheet.maxColumn() && headers.size() < 20; col++) {
+            ColumnRole role = layout.roles().get(col);
+            // Packaging and file-specific descriptors have no authoritative document field.
+            // Preserve them as reference columns even when the header detector recognizes them.
+            if (role != null && role != ColumnRole.IGNORED && role != ColumnRole.PCS_PER_CTN
+                    && role != ColumnRole.CTN && role != ColumnRole.SERIES && role != ColumnRole.COLOR_ALT
+                    && role != ColumnRole.REMARK) continue;
+            Set<String> parts = new LinkedHashSet<>();
+            for (int row = layout.headerRow0(); row < layout.headerRow0() + layout.headerRowSpan(); row++) {
+                String part = sheet.text(row, col).strip().replaceAll("\\s+", " ");
+                if (!part.isBlank()) parts.add(part);
+            }
+            String label = String.join(" ", parts);
+            if (label.isEmpty() || label.contains("@") || label.matches(".*\\d{7,}.*")) continue;
+            if (label.length() > 70) label = label.substring(0, 70).strip();
+            String normalized = com.uten.imp.features.sales.template.QuoteTemplateWorkbook.normalize(label);
+            if (normalized.isEmpty()) continue;
+            if (!usedNames.add(normalized)) label += " (" + DocumentGrid.columnLetter(col) + ")";
+            Map<String, String> values = new LinkedHashMap<>(); boolean numeric = referenceNumericLabel(label);
+            for (LineResult line : run.lines) {
+                Row row = sheet.row(line.line.sourceRow() - 1);
+                DocumentGrid.Cell cell = row == null ? null : row.cell(col);
+                if (cell == null || cell.text().isBlank()) continue;
+                String value = !referenceNumericLabel(label) || cell.number() == null
+                        ? cell.text().strip() : cell.number().toPlainString();
+                if (value.length() > 2000) value = value.substring(0, 2000);
+                values.put(line.line.key(), value);
+                numeric &= cell.number() != null && cell.number().abs().compareTo(BigDecimal.TEN.pow(40)) < 0
+                        && cell.number().stripTrailingZeros().scale() <= 30;
+            }
+            if (values.isEmpty()) continue;
+            // Column position is unique even when the file repeats the same header text.
+            String key = "file_" + DocumentGrid.columnLetter(col);
+            Map<String, Object> definition = new LinkedHashMap<>();
+            definition.put("key", key); definition.put("label", label);
+            definition.put("dataType", numeric ? "NUMBER" : "TEXT"); definition.put("suggestedOperation", "NONE");
+            run.extraColumns.add(definition); headers.put(DocumentGrid.columnLetter(col), label);
+            for (var entry : values.entrySet()) run.extraValues.computeIfAbsent(entry.getKey(), ignored -> new LinkedHashMap<>()).put(key, entry.getValue());
+        }
+        return headers;
     }
 
     private static SheetChoice choice(Sheet sheet, IntakeLayout layout) {
@@ -598,12 +660,47 @@ final class SalesIntakePipeline {
                     IntakeHeaderRules.unmask(maskedDescription, placeholders), null, IntakeAi.text(l, "series"),
                     IntakeAi.text(l, "color"), null, qty, IntakeAi.text(l, "unit"), null, unitPrice, amount, hasColor);
             run.lines.add(new LineResult(IntakeLineExtractor.build(raw)));
+            absorbExtraFields(run, key, l.path("extraFields"), verifyAgainstText ? sourceText : null);
         }
         if (run.droppedAiLines > 0) {
             run.notices.removeIf(n -> n.startsWith("有 ") && n.endsWith("行看不清, 已跳过"));
             run.notices.add("有 " + run.droppedAiLines + " 行看不清, 已跳过");
         }
         return sequence;
+    }
+
+    static boolean referenceNumericLabel(String label) {
+        String normalized=IntakeTextNormalizer.nfkc(label).toLowerCase(Locale.ROOT);
+        if(normalized.matches(".*(?:\\b(?:code|id|no)\\b|编号|型号|序号|货号|箱号).*"))return false;
+        return normalized.matches(".*(?:\\b(?:fee|cost|freight|charge|qty|quantity|count|weight|length|width|height|ctn|cartons)\\b"
+                + "|数量|重量|费用|运费|长度|宽度|高度|每箱|倍数|倍率).*" );
+    }
+
+    /** Optional AI facts stay reference data; text-mode facts must be literally present in the input. */
+    static void absorbExtraFields(Run run,String lineKey,JsonNode fields,String sourceText) {
+        if(!fields.isArray())return;
+        int seen=0;
+        for(JsonNode field:fields) {
+            if(++seen>16)break;
+            String label=IntakeAi.text(field,"label"),value=IntakeAi.text(field,"value");
+            if(label==null||value==null||label.length()>70||value.length()>1000)continue;
+            label=label.replaceAll("\\s+"," ").strip();value=value.strip();
+            String norm=IntakeTextNormalizer.nfkc(label).toLowerCase(Locale.ROOT);
+            if(label.isEmpty()||value.isEmpty()||norm.matches(".*(?:bank|swift|iban|account|beneficiary|password|token|email|phone|银行|账号|账户|密码|电话|身份证|税号).*"))continue;
+            if(sourceText!=null&&(!squash(sourceText).contains(squash(label))||!squash(sourceText).contains(squash(value))))continue;
+            String key="file_"+UUID.nameUUIDFromBytes(squash(label).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            Map<String,Object> definition=run.extraColumns.stream().filter(column->key.equals(column.get("key"))).findFirst().orElse(null);
+            boolean numeric=referenceNumericLabel(label);
+            if(numeric)try {BigDecimal number=new BigDecimal(value);numeric=plausibleNumber(number);}
+            catch(NumberFormatException invalid){numeric=false;}
+            if(definition==null) {
+                if(run.extraColumns.size()>=20)continue;
+                definition=new LinkedHashMap<>();definition.put("key",key);definition.put("label",label);
+                definition.put("dataType",numeric?"NUMBER":"TEXT");definition.put("suggestedOperation","NONE");
+                run.extraColumns.add(definition);
+            }else if(!numeric)definition.put("dataType","TEXT");
+            run.extraValues.computeIfAbsent(lineKey,ignored->new LinkedHashMap<>()).putIfAbsent(key,value);
+        }
     }
 
     /**
@@ -1205,6 +1302,7 @@ final class SalesIntakePipeline {
 
         result.put("client", clientBlock(run));
         result.put("duplicates", run.duplicates);
+        result.put("extraColumns", run.extraColumns);
 
         List<Map<String, Object>> lines = new ArrayList<>();
         Map<String, Set<String>> descriptionModels = new HashMap<>();
@@ -1220,7 +1318,9 @@ final class SalesIntakePipeline {
         BigDecimal customerTotal = BigDecimal.ZERO;
         BigDecimal unpriced = BigDecimal.ZERO;
         for (LineResult l : run.lines) {
-            lines.add(lineBlock(l, descriptionModels));
+            Map<String, Object> line = lineBlock(l, descriptionModels);
+            line.put("extraValues", run.extraValues.getOrDefault(l.line.key(), Map.of()));
+            lines.add(line);
             switch (l.status) {
                 case MATCHED -> matched++;
                 case REVIEW -> review++;
@@ -1487,6 +1587,7 @@ final class SalesIntakePipeline {
         }
         addField(out, "address", "地址", p.address(), h.buyerAddress);
         addField(out, "taxId", "税号", p.taxId(), h.taxId);
+        addField(out, "website", "网址", p.website(), h.website);
         return out;
     }
 

@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_columns_table.dart';
 // 采购单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
 // 计划下达的采购申请始终只读；订货走财务审批；收货/退货才沿用各自的草稿/审核/红冲动作。
@@ -966,6 +967,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
         // primary:true → 表体占满 body 并参与「头部折叠 → 表格内滚」联动。
         Expanded(
           child: MasterDataTableView<PurchaseDocItem>(
+            tableKey: 'purchase.${widget.docType.name}.items',
             primary: true,
             selectable: _canGenerateRequestOrder,
             idOf: (item) => _canSelectRequestItem(item) ? item.id : null,
@@ -1189,6 +1191,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                   type: 'number',
                   value: (it) => it.returnedQty?.toStringAsFixed(2),
                 ),
+              ...businessReadOnlyColumns<PurchaseDocItem>(
+                items,
+                columnsOf: (line) => line.extraColumns,
+                priceMasked: !canViewCommercialAmounts,
+              ),
             ],
             items: items,
             facets: const {},
@@ -1240,6 +1247,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       key: const Key('purchase-detail-totals'),
       density: true,
       compact: true,
+      rowCount: items.length,
       entries: [
         utenQuantityTotalEntry(
           items.map(

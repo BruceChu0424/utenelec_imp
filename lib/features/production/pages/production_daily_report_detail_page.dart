@@ -525,6 +525,7 @@ class _ProductionDailyReportDetailPageState
       children: [
         Expanded(
           child: MasterDataTableView<ProductionDailyReportItem>(
+            tableKey: 'production.daily.items',
             primary: true,
             columns: [
               // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。

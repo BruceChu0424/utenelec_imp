@@ -194,6 +194,8 @@ class _ProductionAnalysisSalesOrderPageState
     final theme = Theme.of(context);
     final lines = order?.lines ?? const <AnalysisLinkedSalesOrderLine>[];
     return MasterDataTableView<AnalysisLinkedSalesOrderLine>(
+      tableKey:
+          'features.production.pages.production_analysis_sales_order_page.ProductionAnalysisSalesOrderPageState._table.1',
       key: const Key('analysis-sales-order-lines'),
       columns: _columns,
       items: lines,
@@ -213,8 +215,8 @@ class _ProductionAnalysisSalesOrderPageState
       summaryBar: UtenTotalsSummaryBar(
         density: true,
         compact: true,
+        rowCount: lines.length,
         entries: [
-          UtenTotalEntry('行数', '${lines.length}'),
           utenQuantityTotalEntry(_amounts(lines, (l) => l.qty), label: '合计订货'),
           utenQuantityTotalEntry(
             _amounts(lines, (l) => l.shippedQty),
@@ -264,8 +266,7 @@ class _ProductionAnalysisSalesOrderPageState
       width: 200,
       value: (l) => l.goodsName ?? l.goodsCode ?? '—',
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, l) =>
-          UtenGoodsIdentityCell(name: l.goodsName, spec: l.spec),
+      cellBuilder: (_, l) => UtenGoodsIdentityCell(name: l.goodsName),
     ),
     MasterColumnDef(
       key: 'goodsCode',

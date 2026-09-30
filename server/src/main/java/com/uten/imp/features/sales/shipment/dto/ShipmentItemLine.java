@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 销售出货保存请求中的明细行。金额由服务端派生(ADR-112), 请求不能带金额字段。 */
 @Getter
 @Setter
-public class ShipmentItemLine implements ServerDerivedAmounts {
+public class ShipmentItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
     /** Stable current-shipment row identity for reviewed edits; null only for a new line. */
     private UUID id;
 

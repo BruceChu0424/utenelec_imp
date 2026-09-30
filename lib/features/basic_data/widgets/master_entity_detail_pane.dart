@@ -702,6 +702,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   Future<UtenPrintTable> _printLoader() async {
     final result = await _c.loadPage(_query(size: 2000, forPrint: true));
     return UtenPrintTable(
+      columnKeys: [for (final c in _c.columns) c.key],
+      rowIds: [for (final row in result.items) _c.idOf(row)],
       headers: [for (final c in _c.columns) c.label],
       rows: [
         for (final row in result.items)
@@ -960,6 +962,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
             // primary:true → 表体参与「卡片折叠 → 表格内滚」联动。
             Expanded(
               child: MasterDataTableView<TItem>(
+                tableKey:
+                    'features.basic_data.widgets.master_entity_detail_pane.MasterEntityDetailPaneState.build.1',
                 primary: true,
                 columns: _c.columns,
                 items: _page?.items ?? <TItem>[],

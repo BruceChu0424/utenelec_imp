@@ -62,6 +62,7 @@ class ExpenseItem {
     required this.amount,
     required this.date,
     this.description,
+    this.platformFields,
   });
 
   final String id;
@@ -77,6 +78,16 @@ class ExpenseItem {
 
   /// 说明
   final String? description;
+  final Map<String, dynamic>? platformFields;
+
+  ExpenseItem withPlatformFields(Map<String, dynamic>? fields) => ExpenseItem(
+    id: id,
+    category: category,
+    amount: amount,
+    date: date,
+    description: description,
+    platformFields: fields,
+  );
 
   factory ExpenseItem.fromJson(Map<String, dynamic> json) => ExpenseItem(
     id: json['id']?.toString() ?? '',
@@ -84,6 +95,9 @@ class ExpenseItem {
     amount: (json['amount'] as num).toDouble(),
     date: DateTime.parse(json['date'] as String),
     description: json['description'] as String?,
+    platformFields: json['platformFields'] is Map
+        ? Map<String, dynamic>.from(json['platformFields'] as Map)
+        : null,
   );
 
   Map<String, dynamic> toCreateJson() => {
@@ -91,6 +105,7 @@ class ExpenseItem {
     'amount': amount,
     'date': _dateOnly(date),
     'description': description,
+    if (platformFields != null) 'platformFields': platformFields,
   };
 }
 

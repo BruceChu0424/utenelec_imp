@@ -347,6 +347,7 @@ class _ProductionDailyReportListPageState
                     Expanded(
                       child: _withFormDraftRows(
                         MasterDataTableView<ProductionDailyReportListItem>(
+                          tableKey: 'production.daily.list',
                           columns: _columns(names),
                           items: _list.page?.items ?? const [],
                           facets: {

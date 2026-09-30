@@ -137,6 +137,7 @@ public class ProductionPlanService {
     }
 
     @Transactional
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_plan_item")
     public PlanDetail create(PlanSaveRequest req) {
         CreatedDraft created = createDraft(req);
         return detail(created.plan().getId());
@@ -182,6 +183,7 @@ public class ProductionPlanService {
     }
 
     @Transactional
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_plan_item", requestArgument=1, documentIdArgument=0)
     public PlanDetail update(UUID id, PlanSaveRequest req) {
         tx.bind();
         ProductionPlan p = requirePlanForUpdate(id, requestedFootprint(req));

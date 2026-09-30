@@ -20,6 +20,7 @@ void main() {
     bool showSelectionSummary = true,
     Set<String> selectedIds = const {},
     Widget? floatingActionButton,
+    Widget? scrollingHeader,
     List<Widget>? leading,
     List<Map<String, String>> items = const [],
   }) => MaterialApp(
@@ -37,6 +38,7 @@ void main() {
               value: (row) => row['status'],
             ),
           ],
+          scrollingHeader: scrollingHeader,
           items: items,
           facets: const {
             'status': [MasterFacetBucket(value: 'x', count: 1, label: '甲')],
@@ -55,6 +57,27 @@ void main() {
         ),
       ),
     ),
+  );
+
+  testWidgets(
+    'empty table keeps the shared scrolling filters and create action',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          embedded: false,
+          scrollingHeader: const Text('共用筛选与新建入口'),
+          leading: const [Text('表格操作')],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('共用筛选与新建入口'), findsOneWidget);
+      expect(find.text('表格操作'), findsOneWidget);
+      expect(find.text('没有数据'), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
   );
 
   testWidgets(

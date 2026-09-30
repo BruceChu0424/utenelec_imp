@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 按车间拆分生成子计划请求：用户自选自制件行（可部分）、各自数量与归属车间。
+ * 按车间拆分生成子计划请求：用户自选自制件行（可部分）、各自数量与生产车间。
  * 服务端按 货品+颜色 净需求 − 已有子计划量 做防超产硬校验，按车间分组各生成一张草稿计划。
  */
 @Getter
@@ -38,7 +38,7 @@ public class GenerateSubplansRequest {
         @NotNull
         @Positive(message = "排产量必须大于 0")
         private BigDecimal qty;
-        /** 归属车间（部门 id）；空则归入未指定车间组。 */
+        /** 生产车间（部门 id）；空则归入未指定车间组。 */
         private UUID departmentId;
         /** 车间名冗余（报表 facet）；空则由服务端按部门解析。 */
         @Size(max = 250)

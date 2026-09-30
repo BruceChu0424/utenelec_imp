@@ -264,19 +264,13 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
   /// 由嵌入页挂进自己的折叠头一起随页滚走。
   Widget _buildGroupBody(String group, {Widget? externalHeader}) =>
       switch (group) {
-        'masterDrafts' => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ?externalHeader,
-            const Expanded(
-              child: FormDraftCategoryList(
-                scope: FormDraftCategoryScope(
-                  module: BadgeModule.sales,
-                  routePrefix: '/basicinfo/',
-                ),
-              ),
-            ),
-          ],
+        // 资料草稿组：大类行透传给草稿列表自己的折叠头一起随上滑收走。
+        'masterDrafts' => FormDraftCategoryList(
+          scope: const FormDraftCategoryScope(
+            module: BadgeModule.sales,
+            routePrefix: '/basicinfo/',
+          ),
+          externalHeader: externalHeader,
         ),
         'progress' => SalesOrderProgressPage(
           embedded: true,

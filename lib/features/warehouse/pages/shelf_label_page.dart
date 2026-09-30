@@ -2,6 +2,8 @@
 // 库存是该仓货色的参考总量，不代表某个库位的盘点数量。
 // 多仓不拼成一张物理货架图；单仓布局由当前行集推导，复用 UtenRackGrid。
 // 表格/定位/打印保持实际仓库身份；打印按仓库+库行分组，导出沿服务端同口径。
+// 2026-09-29 口径：库行分段退役（库行会越积越多放不下，筛选走列头「货架」）；
+// 顶部工具条+货架图随上滑收起、表格置顶后表内滚动（UtenCollapsingHeaderScrollView）。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,9 +15,11 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/data_display/uten_rack_grid.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
@@ -37,9 +41,6 @@ import '../../stock/repositories/stock_query_repository.dart';
 /// 「未分层」在列头筛选/分组里的展示名（后端 rack 为空串）。
 const String _kUnparsedLabel = '未分层'; // TODO(l10n): 补 arb
 
-/// 库行分段里「全部」的哨兵值（分段值必须非空，null 会与「未选」混淆）。
-const String _kAllRacks = '__all__';
-
 class ShelfLabelPage extends ConsumerStatefulWidget {
   const ShelfLabelPage({super.key});
 
@@ -48,13 +49,10 @@ class ShelfLabelPage extends ConsumerStatefulWidget {
 }
 
 class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
-  List<String>? _racks;
   List<ShelfLabelRow>? _rows;
   bool _loading = false;
   String? _error;
 
-  /// 库行分段选中值：null = 未选（= 全部），[_kAllRacks] = 显式「全部」。
-  String? _rackSegment;
   String _keyword = '';
 
   /// 仓库只限定查询范围，所含实际仓库与颜色不合并。
@@ -72,21 +70,19 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   final Map<String, String?> _filters = <String, String?>{};
 
   final _rowRequests = LatestRequestGuard();
-  final _optionRequests = LatestRequestGuard();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(masterNameServiceProvider).ensureLoaded();
-      await _loadOptions();
       await _load();
     });
   }
 
   /// 仓库筛选 = 侧滑面板查询口径（2026-09-11 全站统一，与即时库存同款）：
   /// 「全部」= 参与核算仓库聚合（_warehouseId=null）；选主仓 = 自身 + 全部子仓聚合。
-  /// 换仓后库位定位态清空，库行/布局与主表三个查询一起重取。
+  /// 换仓后库位定位态清空，主表与货架图（由行集推导）一起重取。
   Future<void> _pickWarehouse() async {
     final result = await showUtenWarehousePickerPanel(
       context,
@@ -104,26 +100,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
       _selectedPlace = null;
       _placeFilterActive = false;
     });
-    _loadOptions();
     _load();
-  }
-
-  /// 库行下拉随范围变化重取；货架图直接由精确行集推导。
-  Future<void> _loadOptions() async {
-    final generation = _optionRequests.begin();
-    try {
-      final repo = ref.read(stockQueryRepositoryProvider);
-      final racks = await repo.shelfLabelRacks(
-        warehouseId: _warehouseId,
-        includeDisabled: _includeDisabled,
-      );
-      if (!mounted || !_optionRequests.isCurrent(generation)) return;
-      setState(() {
-        _racks = racks;
-      });
-    } catch (_) {
-      /* 库行选项加载失败不阻塞表格与搜索 */
-    }
   }
 
   Future<void> _load() async {
@@ -136,7 +113,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
       final rows = await ref
           .read(stockQueryRepositoryProvider)
           .shelfLabels(
-            rack: _rackQuery,
             keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
             warehouseId: _warehouseId,
             includeDisabled: _includeDisabled,
@@ -155,11 +131,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
       }
     }
   }
-
-  /// 服务端库行参数（「全部」/未选 = 不传）。
-  String? get _rackQuery => (_rackSegment == null || _rackSegment == _kAllRacks)
-      ? null
-      : _rackSegment;
 
   /// 挂牌标题：默认取所选仓库名 +「物料库」（对标现场「五金仓库物料库」）。
   String get _headerTitle {
@@ -255,7 +226,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
 
   /// 导出/打印查询参数（与 _load 同口径；列头筛选是客户端态，不下传）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-    if (_rackQuery != null) 'rack': _rackQuery,
     if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
     if (_warehouseId != null) 'warehouseId': _warehouseId,
     'includeDisabled': _includeDisabled,
@@ -286,13 +256,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     setState(() {
       _selectedPlace = place;
       _selectedPlaceWarehouseId = row.warehouseId;
-      _placeFilterActive = false;
-    });
-  }
-
-  void _clearPlaceFilter() {
-    setState(() {
-      _selectedPlace = null;
       _placeFilterActive = false;
     });
   }
@@ -373,15 +336,12 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         label: '状态',
         width: 96,
         value: _statusLabel,
-        cellBuilder: (context, r) => Align(
-          alignment: Alignment.centerLeft,
-          child: UtenStatusBadge(
-            label: _statusLabel(r),
-            type: r.disabled
-                ? UtenStatusBadgeType.neutral
-                : UtenStatusBadgeType.success,
-            size: UtenStatusBadgeSize.small,
-          ),
+        // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+        cellColor: (context, r) => udenStatusBadgeCellColor(
+          context,
+          r.disabled
+              ? UtenStatusBadgeType.neutral
+              : UtenStatusBadgeType.success,
         ),
       ),
     ];
@@ -441,10 +401,9 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新', // TODO(l10n): 补 arb
-            // 整页刷新：字典 + 库行/布局 + 清单（与 initState 同口径）。
+            // 整页刷新：字典 + 清单（货架图由行集推导，随清单一起刷新）。
             onPressed: () async {
               await ref.read(masterNameServiceProvider).ensureLoaded();
-              await _loadOptions();
               await _load();
             },
           ),
@@ -454,68 +413,74 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-            child: Column(
-              children: [
-                _toolbar(theme, names, filtered.length, unparsed),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s4,
+            // 上滑先把工具条+货架图收完、表格顶到屏顶，再滚表内（全站联动口径）。
+            child: UtenCollapsingHeaderScrollView(
+              collapsingHeader: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _toolbar(theme, names, filtered.length, unparsed),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s4,
+                    ),
+                    child: Text(
+                      AppLocalizations.of(context).shelfLocationQuantityHint,
+                    ),
                   ),
-                  child: Text(
-                    AppLocalizations.of(context).shelfLocationQuantityHint,
+                  _gridPane(filtered),
+                ],
+              ),
+              body: MasterDataTableView<ShelfLabelRow>(
+                tableKey:
+                    'features.warehouse.pages.shelf_label_page.ShelfLabelPageState.build.1',
+                // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+                primary: true,
+                columns: _columns(),
+                rowKeyOf: (row) => row.rowKey,
+                items: _tableRows,
+                facets: _facets,
+                nullCounts: const {},
+                filters: _filters,
+                onFilterChanged: (key, value) => setState(() {
+                  if (value == null || value.isEmpty) {
+                    _filters.remove(key);
+                  } else {
+                    _filters[key] = value;
+                  }
+                }),
+                isSelected: (r) =>
+                    _selectedPlace != null &&
+                    r.place == _selectedPlace &&
+                    r.warehouseId == _selectedPlaceWarehouseId,
+                onSelectionChanged: _onRowSelected,
+                toolbarActions: [
+                  UtenButton(
+                    size: UtenButtonSize.large,
+                    // 工具条 large 档高度统一 44（与导出按钮一致，2026-09-25 口径）。
+                    height: UtenTableToolbar.controlHeight,
+                    icon: Icons.print_outlined,
+                    onPressed: (filtered.isEmpty || _loading)
+                        ? null
+                        : () => _showPrintPreview(context),
+                    child: const Text('预览打印'), // TODO(l10n): 补 arb
                   ),
-                ),
-                _gridPane(filtered),
-                if (_placeFilterActive && _selectedPlace != null)
-                  _locateBanner(theme),
-                Expanded(
-                  child: MasterDataTableView<ShelfLabelRow>(
-                    columns: _columns(),
-                    rowKeyOf: (row) => row.rowKey,
-                    items: _tableRows,
-                    facets: _facets,
-                    nullCounts: const {},
-                    filters: _filters,
-                    onFilterChanged: (key, value) => setState(() {
-                      if (value == null || value.isEmpty) {
-                        _filters.remove(key);
-                      } else {
-                        _filters[key] = value;
-                      }
-                    }),
-                    isSelected: (r) =>
-                        _selectedPlace != null &&
-                        r.place == _selectedPlace &&
-                        r.warehouseId == _selectedPlaceWarehouseId,
-                    onSelectionChanged: _onRowSelected,
-                    toolbarActions: [
-                      UtenButton(
-                        size: UtenButtonSize.large,
-                        icon: Icons.print_outlined,
-                        onPressed: (filtered.isEmpty || _loading)
-                            ? null
-                            : () => _showPrintPreview(context),
-                        child: const Text('预览打印'), // TODO(l10n): 补 arb
-                      ),
-                      UtenExportButton(
-                        endpoint: '/stock/reports/export',
-                        requiredPermission: Perm.stockReportExport,
-                        report: 'shelf-labels',
-                        queryParams: _exportQuery,
-                        filename: '货架目视化清单',
-                        type: UtenButtonType.primary,
-                        size: UtenButtonSize.large,
-                      ),
-                    ],
-                    isLoading: _loading && _rows == null,
-                    loadingMore: _loading && _rows != null,
-                    error: _error,
-                    onRetry: _load,
-                    emptyMessage:
-                        '暂无已维护库位号的货品\n请先在货品资料中填写「库位号」(如 A31-3-1)', // TODO(l10n): 补 arb
+                  UtenExportButton(
+                    endpoint: '/stock/reports/export',
+                    requiredPermission: Perm.stockReportExport,
+                    report: 'shelf-labels',
+                    queryParams: _exportQuery,
+                    filename: '货架目视化清单',
+                    type: UtenButtonType.primary,
+                    size: UtenButtonSize.large,
                   ),
-                ),
-              ],
+                ],
+                isLoading: _loading && _rows == null,
+                loadingMore: _loading && _rows != null,
+                error: _error,
+                onRetry: _load,
+                emptyMessage:
+                    '暂无已维护库位号的货品\n请先在货品资料中填写「库位号」(如 A31-3-1)', // TODO(l10n): 补 arb
+              ),
             ),
           ),
         ),
@@ -536,22 +501,9 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         bottom: UtenSpacing.s8,
       ),
       child: UtenFilterToolbar<String>(
-        segmentsKey: const Key('shelf-label-rack-segments'),
         searchKey: const Key('shelf-label-search'),
-        segments: [
-          const UtenFilterSegment(value: _kAllRacks, label: '全部'), // TODO(l10n)
-          for (final rack in _racks ?? const <String>[])
-            UtenFilterSegment(value: rack, label: '$rack 库行'),
-        ],
-        selected: _rackSegment == null ? const <String>{} : {_rackSegment!},
-        onSelectionChanged: (value) {
-          setState(() {
-            _rackSegment = value;
-            _selectedPlace = null;
-            _placeFilterActive = false;
-          });
-          _load();
-        },
+        // 2026-09-29 用户口径：左上角库行分段退役（库行越积越多放不下）；
+        // 库行筛选走列头「货架」列。纯「搜索 + 行尾」工具条（与即时库存同款）。
         searchHint: '搜索货品名称 / 编号 / 系列 / 库位号', // TODO(l10n): 补 arb
         onSearchChanged: (value) {
           setState(() => _keyword = value.trim());
@@ -579,7 +531,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
               selected: _includeDisabled,
               onSelected: (v) {
                 setState(() => _includeDisabled = v);
-                _loadOptions();
                 _load();
               },
             ),
@@ -637,27 +588,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
               : null,
           onCellTap: (place) =>
               _onCellTap(place, diagramRows.firstOrNull?.warehouseId),
-        ),
-      ),
-    );
-  }
-
-  /// 点格定位提示条：明确「表格已收敛到这一格」，一键取消。
-  Widget _locateBanner(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.only(
-        left: UtenSpacing.s4,
-        right: UtenSpacing.s4,
-        bottom: UtenSpacing.s8,
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: InputChip(
-          key: const Key('shelf-label-locate-chip'),
-          avatar: const Icon(Icons.my_location_rounded, size: 16),
-          label: Text('已定位库位 $_selectedPlace'), // TODO(l10n): 补 arb
-          onDeleted: _clearPlaceFilter,
-          deleteIconColor: theme.colorScheme.onSurfaceVariant,
         ),
       ),
     );

@@ -535,6 +535,8 @@ class _ColorPageState extends ConsumerState<ColorPage> {
           filters: _filters,
         );
     return UtenPrintTable(
+      columnKeys: [for (final c in _columns) c.key],
+      rowIds: [for (final item in result.items) item.id],
       headers: [for (final c in _columns) c.label],
       rows: [
         for (final item in result.items)
@@ -615,6 +617,8 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<ColorListItem>(
+                    tableKey:
+                        'features.basic_data.pages.color_page.ColorPageState._buildDraftHost.1',
                     columns: _columns,
                     items: _page?.items ?? const [],
                     // 导出/打印（V717 color:export）：打印预览用本页列渲染，

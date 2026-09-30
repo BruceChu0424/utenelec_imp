@@ -69,13 +69,11 @@ class WarehouseFormDraftCategory extends StatelessWidget {
   final String search;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      ?header,
-      Expanded(
-        child: FormDraftCategoryList(scope: scope, search: search),
-      ),
-    ],
+  Widget build(BuildContext context) => FormDraftCategoryList(
+    scope: scope,
+    search: search,
+    // 大类/小类前缀行挂进草稿列表自己的折叠头随上滑收走（2026-09-29
+    // 用户口径「上滑先把表格顶到最上面」——与其他分段视图同一 externalHeader 链）。
+    externalHeader: header,
   );
 }

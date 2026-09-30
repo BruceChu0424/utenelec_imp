@@ -159,6 +159,7 @@ public class SubcontractWasteService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_waste:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_waste_item")
     public WasteDetail create(WasteSaveRequest req) {
         tx.bind();
         SubcontractWaste r = new SubcontractWaste();
@@ -173,6 +174,7 @@ public class SubcontractWasteService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_waste:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_waste_item", requestArgument=1, documentIdArgument=0)
     public WasteDetail update(UUID id, WasteSaveRequest req) {
         tx.bind();
         SubcontractWaste r = requireWasteForUpdate(id);

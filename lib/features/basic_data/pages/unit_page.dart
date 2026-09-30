@@ -408,6 +408,8 @@ class _UnitPageState extends ConsumerState<UnitPage> {
           filters: _filters,
         );
     return UtenPrintTable(
+      columnKeys: [for (final c in _columns) c.key],
+      rowIds: [for (final item in result.items) item.id],
       headers: [for (final c in _columns) c.label],
       rows: [
         for (final item in result.items)
@@ -521,6 +523,8 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<UnitListItem>(
+                    tableKey:
+                        'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',
                     columns: _columns,
                     items: _page?.items ?? const [],
                     // 导出/打印（V717 unit:export）：打印预览用本页列渲染，

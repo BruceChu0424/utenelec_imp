@@ -472,6 +472,21 @@ class WorkflowGatingTests(unittest.TestCase):
     def test_fast_lane_also_exercises_build_directory_independence(self):
         self.assertIn("-Duten.build.directory=target-fast verify", self.job("backend-fast"))
 
+    def test_active_web_artifacts_keep_javascript_checks_and_explicit_target(self):
+        for name in ("quality.yml", "simple-release.yml", "_unsigned-candidate-build.yml"):
+            with self.subTest(workflow=name):
+                source = (runner.ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+                commands = [line.strip() for line in source.splitlines() if "flutter build web " in line]
+                self.assertEqual(1, len(commands))
+                options = commands[0].split()
+                for option in ("--release", "--no-pub", "--no-web-resources-cdn", "--no-wasm-dry-run"):
+                    self.assertIn(option, options)
+                self.assertNotIn("--wasm", options)
+        frontend = self.job("frontend")
+        self.assertIn("flutter analyze --no-pub", frontend)
+        self.assertIn("flutter test --no-pub", frontend)
+        self.assertIn("verify-font-assets.ps1", frontend)
+
     def test_actual_gate_shell_rejects_failed_or_skipped_producers_and_comparison(self):
         gate = self.job("backend-db")
         for variable, job in (("PLAN_RESULT", "backend-plan"), ("PARTITION_RESULT", "backend-shards"),

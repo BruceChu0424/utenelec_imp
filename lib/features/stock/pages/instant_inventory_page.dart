@@ -30,6 +30,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_split_view.dart';
@@ -291,6 +292,19 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     await _loadOwningWarehouseNames(r.items);
     final cols = _columns();
     return UtenPrintTable(
+      columnKeys: [for (final c in cols) c.key],
+      factValues: [
+        for (final row in r.items)
+          {
+            'qty': row.qty?.toString(),
+            'costAmount': row.costAmount?.toString(),
+            'moreQty': row.moreQty?.toString(),
+            'pendingQty': row.pendingQty?.toString(),
+            'pendingStockInQty': row.pendingStockInQty?.toString(),
+            'weight': row.weight?.toString(),
+            'unitWeightKg': row.unitWeightKg?.toString(),
+          },
+      ],
       headers: [for (final c in cols) c.label],
       rows: [
         for (final row in r.items) [for (final c in cols) c.value(row) ?? ''],
@@ -692,147 +706,149 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     // 选定叶子仓时开关置灰（单仓口径开关无意义）。
     final aggregateWarehouse =
         _warehouseId == null || names.warehouseHasChildren(_warehouseId);
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(
-            left: UtenSpacing.s4,
-            right: UtenSpacing.s4,
-            bottom: UtenSpacing.s8,
-          ),
-          child: UtenFilterToolbar<String?>(
-            // 分类树常驻左侧，右栏显示当前范围；Wrap 支持分栏拖窄与手机。
-            trailing: Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Text(
-                  findCategoryName(
-                        _tree ?? const <ProductCategoryNode>[],
-                        _categoryId,
-                      ) ??
-                      '全部分类',
-                  key: const Key('instant-inventory-current-category'),
-                  style: theme.textTheme.titleSmall,
-                ),
-                UtenFilterPickerField(
-                  key: const Key('instant-inventory-warehouse'),
-                  label: '仓库', // TODO(l10n): 补 arb
-                  icon: Icons.warehouse_outlined,
-                  width: 220,
-                  value: _warehouseId == null
-                      ? null
-                      : names.warehouseEntries[_warehouseId],
-                  onTap: _pickWarehouse,
-                ),
-                FilterChip(
-                  label: const Text('含不良品仓'), // TODO(l10n): 补 arb
-                  selected: includeDefective,
+    // 上滑先把分类/仓库筛选行收完、表格顶到窗格顶再滚表内（全站联动口径；
+    // 宽屏在右栏内联动，紧凑态在内容容器内联动）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Padding(
+        padding: const EdgeInsets.only(
+          left: UtenSpacing.s4,
+          right: UtenSpacing.s4,
+          bottom: UtenSpacing.s8,
+        ),
+        child: UtenFilterToolbar<String?>(
+          // 分类树常驻左侧，右栏显示当前范围；Wrap 支持分栏拖窄与手机。
+          trailing: Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                findCategoryName(
+                      _tree ?? const <ProductCategoryNode>[],
+                      _categoryId,
+                    ) ??
+                    '全部分类',
+                key: const Key('instant-inventory-current-category'),
+                style: theme.textTheme.titleSmall,
+              ),
+              UtenFilterPickerField(
+                key: const Key('instant-inventory-warehouse'),
+                label: '仓库', // TODO(l10n): 补 arb
+                icon: Icons.warehouse_outlined,
+                width: 220,
+                value: _warehouseId == null
+                    ? null
+                    : names.warehouseEntries[_warehouseId],
+                onTap: _pickWarehouse,
+              ),
+              FilterChip(
+                label: const Text('含不良品仓'), // TODO(l10n): 补 arb
+                selected: includeDefective,
+                onSelected: !aggregateWarehouse
+                    ? null
+                    : (v) => ref
+                          .read(instantInventoryPrefsProvider.notifier)
+                          .setIncludeDefective(v),
+              ),
+              // V595：线边仓是车间内部直送的料架，不是现实里的仓库——默认不算进即时库存，
+              // 要看车间料架上还有多少直送料时再打开。选定叶子仓时同样置灰。
+              Tooltip(
+                message: '内料仓是车间的料架, 默认不计入即时库存',
+                child: FilterChip(
+                  key: const Key('instant-inventory-line-side'),
+                  // 本页其余文案尚未接 arb, 既有 widget 测试不挂本地化代理:
+                  // 取不到时回落中文原文, 不因缺代理而抛错。
+                  label: Text(
+                    Localizations.of<AppLocalizations>(
+                          context,
+                          AppLocalizations,
+                        )?.wmIncludeWorkshopStore ??
+                        '含内料仓',
+                  ),
+                  selected: _includeLineSide,
                   onSelected: !aggregateWarehouse
                       ? null
-                      : (v) => ref
-                            .read(instantInventoryPrefsProvider.notifier)
-                            .setIncludeDefective(v),
+                      : (v) {
+                          setState(() => _includeLineSide = v);
+                          _load(1);
+                        },
                 ),
-                // V595：线边仓是车间内部直送的料架，不是现实里的仓库——默认不算进即时库存，
-                // 要看车间料架上还有多少直送料时再打开。选定叶子仓时同样置灰。
-                Tooltip(
-                  message: '内料仓是车间的料架, 默认不计入即时库存',
-                  child: FilterChip(
-                    key: const Key('instant-inventory-line-side'),
-                    // 本页其余文案尚未接 arb, 既有 widget 测试不挂本地化代理:
-                    // 取不到时回落中文原文, 不因缺代理而抛错。
-                    label: Text(
-                      Localizations.of<AppLocalizations>(
-                            context,
-                            AppLocalizations,
-                          )?.wmIncludeWorkshopStore ??
-                          '含内料仓',
-                    ),
-                    selected: _includeLineSide,
-                    onSelected: !aggregateWarehouse
-                        ? null
-                        : (v) {
-                            setState(() => _includeLineSide = v);
-                            _load(1);
-                          },
-                  ),
-                ),
-                Text(
-                  '共 $total 项', // TODO(l10n): 补 arb
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: MasterDataTableView<InstantInventoryRow>(
-            columns: _columns(),
-            items: _page?.items ?? const [],
-            toolbarActions: [
-              // 「重量单位: 自动▾」: 用户级显示偏好 (与库存详情/分析页共用), 只改显示。
-              const WeightDisplayUnitButton(),
-              // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
-              // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
-              UtenPrintPreviewButton(
-                title: '即时库存',
-                subtitle: '最多前 2000 行',
-                loader: _printLoader,
-                exportEndpoint: '/stock/reports/export',
-                exportPermission: Perm.stockReportExport,
-                exportReport: 'instant-inventory',
-                exportQuery: _exportQuery,
-                exportFilename: '即时库存',
-                type: UtenButtonType.primary,
-                size: UtenButtonSize.large,
               ),
-              UtenExportButton(
-                endpoint: '/stock/reports/export',
-                requiredPermission: Perm.stockReportExport,
-                report: 'instant-inventory',
-                queryParams: _exportQuery,
-                filename: '即时库存',
-                type: UtenButtonType.primary,
-                size: UtenButtonSize.large,
+              Text(
+                '共 $total 项', // TODO(l10n): 补 arb
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
-            // facet 桶/空值计数由服务端随列表下发（未应用归属筛选的同一口径聚合）。
-            facets: _page?.facets ?? const {},
-            nullCounts: _page?.facetNullCounts ?? const {},
-            filters: _filters,
-            onFilterChanged: _onFilterChanged,
-            sortColumn: _sortKey,
-            sortAscending: _sortAsc,
-            onSortChange: _onSortChange,
-            // 行点击 → 库存详情页（该货品各仓余额 + 出入库流水；push 保活本页筛选）
-            onRowTap: (r) {
-              final gid = r.goodsId;
-              if (gid == null || gid.isEmpty) return;
-              context.push(RouteName.stockItemDetail(gid));
-            },
-            isLoading: _loading && _page == null,
-            loadingMore: _loading && _page != null,
-            error: _error,
-            onRetry: () => _load(_pageNum),
-            emptyMessage: '暂无库存', // TODO(l10n): 补 arb
-            // 合计条：值全部来自服务端（/stock/instant-inventory 的 totals），口径与本页
-            // 当前的分类/仓库/含不良品仓/关键字筛选完全一致，且覆盖整个结果集而不是当前这一页；
-            // 前端一个加法都不做，数量按单位分组显示「12 个 · 3 箱」；重量按显示单位换算，
-            // 含估算加「≈」，有未称项追加「(另有 N 项未称)」。
-            summaryBar: reportTotalsBar(
-              _page?.totals ?? const [],
-              weightDisplay: weightDisplay,
-            ),
-            currentPage: _page?.page ?? 1,
-            totalPages: _page?.totalPages ?? 1,
-            onPageChange: (p) => _load(p),
           ),
         ),
-      ],
+      ),
+      body: MasterDataTableView<InstantInventoryRow>(
+        tableKey:
+            'features.stock.pages.instant_inventory_page.InstantInventoryPageState._buildTablePane.1',
+        // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+        primary: true,
+        columns: _columns(),
+        items: _page?.items ?? const [],
+        toolbarActions: [
+          // 「重量单位: 自动▾」: 用户级显示偏好 (与库存详情/分析页共用), 只改显示。
+          const WeightDisplayUnitButton(),
+          // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
+          // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
+          UtenPrintPreviewButton(
+            title: '即时库存',
+            subtitle: '最多前 2000 行',
+            loader: _printLoader,
+            exportEndpoint: '/stock/reports/export',
+            exportPermission: Perm.stockReportExport,
+            exportReport: 'instant-inventory',
+            exportQuery: _exportQuery,
+            exportFilename: '即时库存',
+            type: UtenButtonType.primary,
+            size: UtenButtonSize.large,
+          ),
+          UtenExportButton(
+            endpoint: '/stock/reports/export',
+            requiredPermission: Perm.stockReportExport,
+            report: 'instant-inventory',
+            queryParams: _exportQuery,
+            filename: '即时库存',
+            type: UtenButtonType.primary,
+            size: UtenButtonSize.large,
+          ),
+        ],
+        // facet 桶/空值计数由服务端随列表下发（未应用归属筛选的同一口径聚合）。
+        facets: _page?.facets ?? const {},
+        nullCounts: _page?.facetNullCounts ?? const {},
+        filters: _filters,
+        onFilterChanged: _onFilterChanged,
+        sortColumn: _sortKey,
+        sortAscending: _sortAsc,
+        onSortChange: _onSortChange,
+        // 行点击 → 库存详情页（该货品各仓余额 + 出入库流水；push 保活本页筛选）
+        onRowTap: (r) {
+          final gid = r.goodsId;
+          if (gid == null || gid.isEmpty) return;
+          context.push(RouteName.stockItemDetail(gid));
+        },
+        isLoading: _loading && _page == null,
+        loadingMore: _loading && _page != null,
+        error: _error,
+        onRetry: () => _load(_pageNum),
+        emptyMessage: '暂无库存', // TODO(l10n): 补 arb
+        // 合计条：值全部来自服务端（/stock/instant-inventory 的 totals），口径与本页
+        // 当前的分类/仓库/含不良品仓/关键字筛选完全一致，且覆盖整个结果集而不是当前这一页；
+        // 前端一个加法都不做，数量按单位分组显示「12 个 · 3 箱」；重量按显示单位换算，
+        // 含估算加「≈」，有未称项追加「(另有 N 项未称)」。
+        summaryBar: reportTotalsBar(
+          _page?.totals ?? const [],
+          weightDisplay: weightDisplay,
+        ),
+        currentPage: _page?.page ?? 1,
+        totalPages: _page?.totalPages ?? 1,
+        onPageChange: (p) => _load(p),
+      ),
     );
   }
 

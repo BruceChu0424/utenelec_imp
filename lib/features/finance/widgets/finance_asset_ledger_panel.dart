@@ -6,8 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -27,6 +26,7 @@ import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_detail.dart';
 import 'finance_asset_form.dart';
 import 'finance_asset_ui.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 
 class FinanceAssetLedgerPanel extends ConsumerStatefulWidget {
   const FinanceAssetLedgerPanel({
@@ -303,8 +303,7 @@ class _FinanceAssetLedgerPanelState
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < UtenBreakpoints.mediumStart) {
-          // 紧凑布局：筛选区与列表在同一个 primary 竖滚件里（见 _compactList），
-          // Tab 吸顶后筛选随内容一起滚走，不再钉占纵向空间。
+          // 大小屏复用同一份列、可见字段、行菜单与分页。
           return _compactList();
         }
         return UtenListTwoPane(
@@ -324,7 +323,7 @@ class _FinanceAssetLedgerPanelState
   }
 
   Widget _compactFilters() {
-    // 作为 _compactList 竖滚件的首项渲染：水平 padding 由外层 ListView 提供。
+    // 紧凑筛选区与共享卡片表配合，横向留白由宿主提供。
     return Padding(
       padding: const EdgeInsets.only(
         top: UtenSpacing.s4,
@@ -529,20 +528,26 @@ class _FinanceAssetLedgerPanelState
     _load();
   }
 
-  Widget _table() {
+  Widget _table({bool compact = false}) {
     final result = _result;
     return _withFormDraftRows(
       MasterDataTableView<FinanceAssetSummary>(
+        tableKey: 'finance.asset.${widget.ledger.name}.ledger',
+        compactCards: true,
+        scrollingHeader: compact ? _compactFilters() : null,
+        errorKey: Key('finance-asset-retry-${widget.ledger.apiValue}'),
         key: ValueKey('finance-asset-table-${widget.ledger.apiValue}'),
         columns: [
           MasterColumnDef(
             key: 'code',
+            cardRole: MasterColumnCardRole.subtitle,
             label: '编号',
             width: 128,
             value: (item) => item.code,
           ),
           MasterColumnDef(
             key: 'name',
+            cardRole: MasterColumnCardRole.title,
             label: '名称',
             width: 180,
             value: (item) => item.name,
@@ -590,6 +595,11 @@ class _FinanceAssetLedgerPanelState
             label: '状态',
             width: 100,
             value: (item) => financeAssetStatusLabel(item.status),
+            // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
+            cellColor: (context, item) => udenStatusBadgeCellColor(
+              context,
+              financeAssetStatusType(item.status),
+            ),
           ),
         ],
         items: result?.items ?? const [],
@@ -601,6 +611,30 @@ class _FinanceAssetLedgerPanelState
         // PrimaryScrollController，参与「横幅收起 → Tab 吸顶 → 表格内滚」。
         primary: true,
         onRowTap: _openDetail,
+        rowMenuBuilder: (item) => [
+          UtenMenuItem(
+            label: '查看详情',
+            icon: Icons.open_in_new_rounded,
+            onTap: () => _openDetail(item),
+          ),
+          if (widget.capabilities.canEdit &&
+              item.status.toUpperCase() == 'DRAFT' &&
+              actionAllowed(item.allowedActions, 'EDIT'))
+            UtenMenuItem(
+              label: '编辑草稿',
+              icon: Icons.edit_outlined,
+              onTap: () => _edit(item),
+            ),
+          if (widget.capabilities.canEdit &&
+              item.version != null &&
+              item.status.toUpperCase() == 'DRAFT' &&
+              actionAllowed(item.allowedActions, 'DELETE'))
+            UtenMenuItem(
+              label: '删除草稿',
+              icon: Icons.delete_outline_rounded,
+              onTap: () => _delete(item),
+            ),
+        ],
         isLoading: _loading,
         error: _error,
         onRetry: _load,
@@ -624,252 +658,5 @@ class _FinanceAssetLedgerPanelState
     );
   }
 
-  Widget _compactList() {
-    if (_query.status == 'DRAFT') {
-      return Column(
-        children: [
-          _compactFilters(),
-          Expanded(child: _table()),
-        ],
-      );
-    }
-    final result = _result;
-    final items = result?.items ?? const <FinanceAssetSummary>[];
-    return Column(
-      children: [
-        if (_loading && result != null) const LinearProgressIndicator(),
-        Expanded(
-          // 无显式 controller 的竖向 ListView 自动拾取工作台页 NestedScrollView 注入的
-          // PrimaryScrollController：Tab 吸顶后筛选区随列表一起内滚；AlwaysScrollable
-          // 保证条目少时也能拖动触发外层「横幅收起 → Tab 吸顶」联动。
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s12,
-              UtenSpacing.s4,
-              UtenSpacing.s12,
-              UtenSpacing.s12,
-            ),
-            children: [
-              _compactFilters(),
-              if (_loading && result == null)
-                // 骨架屏内部也是 ListView，限高 + IgnorePointer 防止嵌套竖滚截获手势。
-                const IgnorePointer(
-                  child: SizedBox(
-                    height: 280,
-                    child: UtenSkeletonList(itemCount: 3),
-                  ),
-                )
-              else if (_error != null && result == null)
-                _compactState(
-                  UtenEmpty.error(
-                    key: Key('finance-asset-retry-${widget.ledger.apiValue}'),
-                    message: _error,
-                    actionLabel: '重试',
-                    onAction: _load,
-                  ),
-                )
-              else if (items.isEmpty)
-                _compactState(
-                  UtenEmpty(
-                    message: '暂无${widget.ledger.label}',
-                    description: widget.policyReady
-                        ? '可创建草稿，提交审批后再启用并生成计提计划。'
-                        : '仍可保存不完整草稿；提交、启用和过账前须补齐政策。',
-                    actionLabel: widget.capabilities.canEdit
-                        ? '新建${widget.ledger.label}'
-                        : null,
-                    onAction: widget.capabilities.canEdit ? _create : null,
-                  ),
-                )
-              else ...[
-                for (final item in items)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                    child: _assetCard(item),
-                  ),
-              ],
-            ],
-          ),
-        ),
-        if (result != null) _compactPager(result),
-      ],
-    );
-  }
-
-  /// 紧凑布局的空态/错误态包装：作为主竖滚件的一项，顶部留白与筛选区隔开。
-  Widget _compactState(Widget child) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s20),
-      child: child,
-    );
-  }
-
-  Widget _assetCard(FinanceAssetSummary item) {
-    final theme = Theme.of(context);
-    final canEditDraft =
-        widget.capabilities.canEdit &&
-        item.status.toUpperCase() == 'DRAFT' &&
-        actionAllowed(item.allowedActions, 'EDIT');
-    final canDeleteDraft =
-        widget.capabilities.canEdit &&
-        item.version != null &&
-        item.status.toUpperCase() == 'DRAFT' &&
-        actionAllowed(item.allowedActions, 'DELETE');
-    return Semantics(
-      button: true,
-      label:
-          '${item.code} ${item.name}，${financeAssetStatusLabel(item.status)}，余额 ${formatFinanceDecimal(item.displayedBalance)}',
-      child: Material(
-        color: theme.colorScheme.surfaceContainerLowest,
-        borderRadius: UtenRadius.xlAll,
-        child: InkWell(
-          borderRadius: UtenRadius.xlAll,
-          onTap: () => _openDetail(item),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 112),
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            decoration: BoxDecoration(
-              borderRadius: UtenRadius.xlAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.code,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          Text(
-                            item.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    financeAssetStatusBadge(item.status),
-                    if (canEditDraft || canDeleteDraft)
-                      PopupMenuButton<String>(
-                        tooltip: '草稿操作',
-                        onSelected: (action) {
-                          if (action == 'edit') _edit(item);
-                          if (action == 'delete') _delete(item);
-                        },
-                        itemBuilder: (_) => [
-                          if (canEditDraft)
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Text('编辑草稿'),
-                            ),
-                          if (canDeleteDraft)
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Text('删除草稿'),
-                            ),
-                        ],
-                      ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        [item.categoryName, item.departmentName]
-                                .whereType<String>()
-                                .where((value) => value.isNotEmpty)
-                                .join(' · ')
-                                .isEmpty
-                            ? '未标注分类/部门'
-                            : [item.categoryName, item.departmentName]
-                                  .whereType<String>()
-                                  .where((value) => value.isNotEmpty)
-                                  .join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          widget.ledger == FinanceAssetLedger.fixedAsset
-                              ? '账面净值'
-                              : '待摊余额',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        Text(
-                          '¥ ${formatFinanceDecimal(item.displayedBalance)}',
-                          textAlign: TextAlign.right,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: const [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _compactPager(PagedResult<FinanceAssetSummary> result) {
-    if (result.totalPages <= 1) return const SizedBox.shrink();
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s8,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              tooltip: '上一页',
-              onPressed: result.page > 1
-                  ? () => _changeQuery(_query.copyWith(page: result.page - 1))
-                  : null,
-              icon: const Icon(Icons.chevron_left_rounded),
-            ),
-            Flexible(child: Text('第 ${result.page} / ${result.totalPages} 页')),
-            IconButton(
-              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              tooltip: '下一页',
-              onPressed: result.page < result.totalPages
-                  ? () => _changeQuery(_query.copyWith(page: result.page + 1))
-                  : null,
-              icon: const Icon(Icons.chevron_right_rounded),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _compactList() => _table(compact: true);
 }

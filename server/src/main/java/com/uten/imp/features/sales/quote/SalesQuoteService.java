@@ -95,6 +95,10 @@ public class SalesQuoteService {
 
     private final SalesQuoteRepository quoteRepo;
     private final SalesQuoteItemRepository itemRepo;
+    private com.uten.imp.common.columns.BusinessColumnService businessColumns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setBusinessColumns(com.uten.imp.common.columns.BusinessColumnService service) { this.businessColumns = service; }
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
     private final EntityManager em;
@@ -457,6 +461,8 @@ public class SalesQuoteService {
             l.setQty(qi.getQty());
             l.setPrice(qi.getPrice());
             l.setDiscount(qi.getDiscount());
+            // The order inherits authoritative quote snapshots internally. Treating these
+            // as client writes would reject a salesperson whose financial values are masked.
             l.setWeight(qi.getWeight());
             l.setClientModel(qi.getClientModel());
             l.setClientGoodsName(qi.getClientGoodsName());
@@ -612,7 +618,10 @@ public class SalesQuoteService {
             it.setPrice(price);
             it.setDiscount(discount);
             // 金额只由服务端派生(ADR-112): 数量 × 单价 × 折扣; 单价空(待财务定价)则金额空。
-            BigDecimal amount = price == null ? null : MoneyPolicy.exactProduct(l.getQty(), price, discount);
+            it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "sales_quote", l.getExtraColumns(),
+                    stored == null ? List.of() : stored.getExtraColumns(), masked));
+            BigDecimal amount = price == null ? null : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    MoneyPolicy.exactProduct(l.getQty(), price, discount), it.getExtraColumns());
             it.setAmountOriginal(amount);
             it.setAmountLocal(baseCurrency ? amount : null);
             it.setWeight(l.getWeight());
@@ -681,6 +690,7 @@ public class SalesQuoteService {
             SalesQuoteItem item, SalesGoodsSnapshot snapshot, OffsetDateTime lockedAt) {
         item.setGoodsCodeSnapshot(snapshot.code());
         item.setGoodsNameSnapshot(snapshot.name());
+        if (lockedAt == null) item.setGoodsNameEnSnapshot(snapshot.nameEn());
         item.setGoodsSnapshotSource(snapshot.source());
         item.setGoodsSnapshotLockedAt(lockedAt);
     }
@@ -778,11 +788,13 @@ public class SalesQuoteService {
 
     private static QuoteItemDto toItemDto(SalesQuoteItem it, boolean masked) {
         QuoteItemDto dto = new QuoteItemDto();
+        dto.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.visible(it.getExtraColumns(), masked));
         dto.setId(it.getId());
         dto.setLineNo(it.getLineNo());
         dto.setGoodsId(it.getGoodsId());
         dto.setGoodsCodeSnapshot(it.getGoodsCodeSnapshot());
         dto.setGoodsNameSnapshot(it.getGoodsNameSnapshot());
+        dto.setGoodsNameEn(it.getGoodsNameEnSnapshot());
         dto.setGoodsSnapshotSource(it.getGoodsSnapshotSource());
         dto.setGoodsSnapshotLockedAt(it.getGoodsSnapshotLockedAt());
         dto.setColorId(it.getColorId());

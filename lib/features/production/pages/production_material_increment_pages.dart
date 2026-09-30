@@ -119,6 +119,8 @@ class _IncrementListState
               ),
               Expanded(
                 child: MasterDataTableView<ProductionMaterialIncrementRequest>(
+                  tableKey:
+                      'features.production.pages.production_material_increment_pages.IncrementListState.build.1',
                   columns: [
                     for (final field in const [
                       ('planNo', '计划号', 150.0),
@@ -650,6 +652,8 @@ class _IncrementDetailState
                       child: !validSnapshots
                           ? const Center(child: Text('审批快照不完整，请刷新核对'))
                           : UtenRevisionTable<Map<String, dynamic>>(
+                              tableKey:
+                                  'features.production.pages.production_material_increment_pages.IncrementDetailState.build.1',
                               rows: [
                                 UtenRevisionRow(
                                   value: before.single,

@@ -21,7 +21,12 @@ List<String> draftStrings(Object? value) =>
 
 Map<String, dynamic>? draftGoods(GoodsOption? goods) => goods == null
     ? null
-    : {'id': goods.id, 'name': goods.name, 'code': goods.code};
+    : {
+        'id': goods.id,
+        'name': goods.name,
+        'nameEn': goods.nameEn,
+        'code': goods.code,
+      };
 
 GoodsOption? restoreDraftGoods(Object? value) {
   final data = draftMap(value);

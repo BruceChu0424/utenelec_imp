@@ -403,6 +403,7 @@ public class SalesShipmentService {
 
     @Transactional
     @PreAuthorize("hasAnyAuthority('sales_shipment:create','sales_other_shipment:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_shipment_item")
     public ShipmentDetail create(ShipmentSaveRequest req) {
         tx.bind();
         String kind=CustomerShipmentPolicy.requestedKind(req.getShipmentKind());
@@ -600,6 +601,7 @@ public class SalesShipmentService {
 
     @Transactional
     @PreAuthorize("hasAnyAuthority('sales_shipment:edit','sales_other_shipment:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_shipment_item", requestArgument=1, documentIdArgument=0)
     public ShipmentDetail update(UUID id, ShipmentSaveRequest req) {
         tx.bind();
         SalesShipment s = requireWritableShipmentForUpdate(id, requestedFootprint(req));

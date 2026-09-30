@@ -47,17 +47,9 @@ public final class MaterialConsumptionMath {
         requirePositive(bomQty, "BOM 用量");
         requirePositive(basisOutputQty, "包装/批次产出数");
         String normalized = normalizeBasis(basis);
-        BigDecimal raw;
-        if (PER_UNIT.equals(normalized)) {
-            raw = parentOutputQty.multiply(bomQty);
-        } else if (PER_PACKAGE.equals(normalized) && allowPartialPackage) {
-            raw = parentOutputQty.multiply(bomQty)
-                    .divide(basisOutputQty, 12, RoundingMode.CEILING);
-        } else {
-            BigDecimal packageCount = parentOutputQty.divide(
-                    basisOutputQty, 0, RoundingMode.CEILING);
-            raw = packageCount.multiply(bomQty);
-        }
+        BigDecimal raw = com.uten.imp.common.finance.BomConsumptionCurve.raw(
+                parentOutputQty, bomQty, normalized, basisOutputQty,
+                allowPartialPackage, 12, RoundingMode.CEILING);
         return raw.setScale(4, RoundingMode.CEILING);
     }
 

@@ -19,7 +19,6 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -157,9 +156,7 @@ public class OpenAiChatClient implements AiProtocolClient {
             }
             Set<String> required = new HashSet<>();
             schema.path("required").forEach(name -> required.add(name.asText()));
-            Iterator<Map.Entry<String, JsonNode>> fields = properties.fields();
-            while (fields.hasNext()) {
-                Map.Entry<String, JsonNode> field = fields.next();
+            for (Map.Entry<String, JsonNode> field : properties.properties()) {
                 if (!required.contains(field.getKey()) || !strictCompatible(field.getValue())) {
                     return false;
                 }

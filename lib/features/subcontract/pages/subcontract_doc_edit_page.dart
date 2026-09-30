@@ -45,6 +45,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -337,6 +338,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
               it.orderItemId ??
               it.applicationItemId;
           final row = SubcontractGridRow(sourceLocked: upstreamItemId != null)
+            ..platformFields.sourceRecordId = it.id
             // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
             ..goods = ref
                 .read(mn.masterNameServiceProvider)
@@ -684,6 +686,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         if (r.planItemId != null) 'planItemId': r.planItemId,
         if (remarkText.isNotEmpty) 'remark': remarkText,
       };
+      line.addAll(platformRowPayload(r));
       itemsBody.add(line);
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
@@ -863,6 +866,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                                 subcontractApplicationGridColumnPrefsProvider,
                               )[widget.docType.name];
                               return UtenEditableGrid<SubcontractGridRow>(
+                                tableKey:
+                                    'subcontract.${widget.docType.name}.items',
                                 controller: _grid,
                                 stickyHeaderPinned: _gridPinned,
                                 initialColumnOrder: columnPrefs?.order,

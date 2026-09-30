@@ -129,7 +129,7 @@ public class AccountController {
                 new AccountQueryFilter(keyword, nullFields, code, name, accountType, currencyId, status),
                 sort, order,
                 exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_account");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_account", "master_data", String.valueOf(payload.total()), "success"));

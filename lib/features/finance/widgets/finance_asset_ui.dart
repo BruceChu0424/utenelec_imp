@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 
 class FinanceAssetCapabilities {
   const FinanceAssetCapabilities({
@@ -83,6 +84,37 @@ Widget financeAssetStatusBadge(String status, {Key? key}) {
     key: key,
     label: financeAssetStatusLabel(status),
     type: financeAssetStatusType(status),
+  );
+}
+
+/// DataTable 状态格：徽章同源底色铺满格内容区（2026-09-27 用户口径「格内
+/// 胶囊改单元格背景色」；DataTable 没有 cellColor 通道，用带 0.5 描边的实色
+/// 块等价实现，描边即用户口径「背景变色但边框要还在」）。无圆角——读作整格
+/// 着色而非胶囊；MasterDataTableView 表内仍走 cellColor 通道。
+Widget financeAssetStatusCell(String status, {Key? key}) {
+  return Builder(
+    key: key,
+    builder: (context) {
+      final theme = Theme.of(context);
+      final (bg, fg) = resolveStatusBadgeColors(
+        financeAssetStatusType(status),
+        theme.brightness == Brightness.dark,
+      );
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border.all(color: theme.colorScheme.outline, width: 0.5),
+        ),
+        child: Text(
+          financeAssetStatusLabel(status),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: fg,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    },
   );
 }
 

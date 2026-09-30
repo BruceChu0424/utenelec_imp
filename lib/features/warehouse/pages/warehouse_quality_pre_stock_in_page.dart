@@ -298,6 +298,8 @@ class _WarehouseQualityPreStockInPageState
         ),
         const SizedBox(height: UtenSpacing.s8),
         UtenEditableGrid<WarehousePreStockRow>(
+          tableKey:
+              'features.warehouse.pages.warehouse_quality_pre_stock_in_page.WarehouseQualityPreStockInPageState._buildBody.1',
           key: const Key('warehouse-quality-pre-stock-grid'),
           controller: _grid,
           stickyHeaderPinned: _gridPinned,

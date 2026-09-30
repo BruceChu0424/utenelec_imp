@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 委外材料退货单保存请求中的明细行。<b>无 Price</b>。 */
 @Getter
 @Setter
-public class MaterialReturnItemLine implements ServerDerivedAmounts {
+public class MaterialReturnItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

@@ -149,6 +149,7 @@ public class PurchaseReturnService {
 
     @Transactional
     @PreAuthorize("hasAuthority('purchase_return:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_return_item")
     public ReturnDetail create(ReturnSaveRequest req) {
         tx.bind();
         lockReturnRequest(null,req).verifyUnchanged();
@@ -164,6 +165,7 @@ public class PurchaseReturnService {
 
     @Transactional
     @PreAuthorize("hasAuthority('purchase_return:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_return_item", requestArgument=1, documentIdArgument=0)
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
         tx.bind();
         var mutationGuard=lockReturnRequest(id,req);

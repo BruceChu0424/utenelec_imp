@@ -77,6 +77,8 @@ class WorkshopDraftSegment extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final table = MasterDataTableView<ProductionDailyReportListItem>(
+      tableKey:
+          'features.production.widgets.workshop_draft_segment.WorkshopDraftSegment.build.1',
       key: const Key('workshop-server-draft-table'),
       columns: _columns,
       items: serverDrafts,

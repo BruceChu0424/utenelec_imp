@@ -195,6 +195,9 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   Future<void> _pushToServer() async {
     _saveTimer = null;
     if (ref.read(sessionProvider).user == null) return; // 未登录不推
+    // The debounce belongs to the identity that produced it. A newly issued
+    // token must never write the previous account's queued preferences.
+    if (ref.read(authenticatedScopeProvider) != _adoptedScope) return;
     final revision = _localRevision;
     final scope = _adoptedScope;
     final value = encode(state);

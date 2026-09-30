@@ -27,7 +27,6 @@
 //(= 剩余未排量 − 活动分析未下达量)。一条订单行被分析全量承接后即从本段消失，
 // 改在「进行中」按分析批次汇总成一行；只承接了一部分的行按残量继续留在本段，
 // 「已分析」列显示已被承接的那部分——量不会凭空消失(服务端 PENDING_NEED_SQL 同源)。
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,13 +36,11 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -51,13 +48,11 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
-import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -691,25 +686,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     });
   }
 
-  void _toggle(SchedulePendingRow r, bool on) {
-    if (on && !_canSelectForAnalysis(r)) return;
-    if (on &&
-        !_selected.containsKey(r.orderItemId) &&
-        _selected.length >= _maxAnalysisItems) {
-      context.appWarning('单次联合分析最多 500 个产品；请先生成当前批次，或清空后重新选择');
-      return;
-    }
-    setState(() {
-      if (on) {
-        _selected[r.orderItemId] = r.needQty ?? 0;
-        _selectedRows[r.orderItemId] = r;
-      } else {
-        _selected.remove(r.orderItemId);
-        _selectedRows.remove(r.orderItemId);
-      }
-    });
-  }
-
   /// 同步桌面表格的受控多选集合。MasterDataTableView 会把跨页已选 id
   /// 一并回传；这里只为当前页新选行补齐数量/行快照，取消项则从两张表同时移除。
   void _replaceSelectedIds(Set<String> nextIds) {
@@ -792,274 +768,62 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   Widget _list(ThemeData theme) {
     final rows = _rows;
     // 空态/错误/加载三态交给 MasterDataTableView 渲染。
+    // 2026-09-29「大小屏共用一张表」：compact 断点表体自动切卡片列表（同一份
+    // _pendingColumns 驱动，见 cardRole 注记），本页自绘窄屏卡片列表已退役。
     return Column(
       children: [
         Expanded(
-          child: context.breakpoint.isCompact
-              ? Column(
-                  children: [Expanded(child: _pendingMobileList(theme, rows))],
-                )
-              : MasterDataTableView<SchedulePendingRow>(
-                  columns: _pendingColumns,
-                  items: rows,
-                  selectable: _canUseAnalysis,
-                  idOf: (row) =>
-                      _canSelectForAnalysis(row) ? row.orderItemId : null,
-                  selectedIds: _selected.keys.toSet(),
-                  onSelectedIdsChanged: _replaceSelectedIds,
-                  facets: _facets?.fields ?? const {},
-                  nullCounts: const {},
-                  filters: _filters,
-                  onFilterChanged: _onFilterChanged,
-                  // 2026-09-15(ADR-088)撤掉「已分析但不可生产」的红底：本段只剩
-                  // 未被承接的残量，齐套红旗属于「进行中」那张分析。只保留交期告警。
-                  rowColor: (r) => r.urgent
-                      ? theme.colorScheme.error.withValues(alpha: 0.06)
-                      : null,
-                  sortColumn: _sortKey,
-                  sortAscending: _sortAsc,
-                  onSortChange: _onSortChange,
-                  // 双击已分析行直达联合分析详情（单击仍只选中，表格统一交互）。
-                  onRowTap: _openRowAnalysis,
-                  canOpenRow: _canOpenRowAnalysis,
-                  canShowRowMenu: _canOpenRowAnalysis,
-                  rowMenuBuilder: (row) => [
-                    UtenMenuItem(
-                      label: '打开物料分析',
-                      onTap: () => _openRowAnalysis(row),
-                    ),
-                  ],
-                  isLoading: _loading,
-                  error: (_error != null && rows.isEmpty) ? _error : null,
-                  onRetry: _load,
-                  emptyMessage: widget.keyword.isEmpty && _filters.isEmpty
-                      ? '暂无待排产的订单行'
-                      : '没有匹配的待排产行',
-                  // 选择摘要胶囊不驻工具条——右下角悬浮组内已放标准胶囊
-                  //（紧邻「新建物料分析」按钮左侧），避免同页两处计数。
-                  showSelectionSummary: false,
-                  bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-                  currentPage: _page?.page ?? _pageNo,
-                  totalPages: _page?.totalPages ?? 1,
-                  onPageChange: (p) {
-                    _pageNo = p;
-                    _load();
-                  },
-                ),
+          child: MasterDataTableView<SchedulePendingRow>(
+            tableKey:
+                'features.production.pages.production_board_page.PendingPanelState._list.1',
+            compactCards: true,
+            columns: _pendingColumns,
+            items: rows,
+            selectable: _canUseAnalysis,
+            idOf: (row) => _canSelectForAnalysis(row) ? row.orderItemId : null,
+            selectedIds: _selected.keys.toSet(),
+            onSelectedIdsChanged: _replaceSelectedIds,
+            facets: _facets?.fields ?? const {},
+            nullCounts: const {},
+            filters: _filters,
+            onFilterChanged: _onFilterChanged,
+            // 2026-09-15(ADR-088)撤掉「已分析但不可生产」的红底：本段只剩
+            // 未被承接的残量，齐套红旗属于「进行中」那张分析。只保留交期告警。
+            rowColor: (r) => r.urgent
+                ? theme.colorScheme.error.withValues(alpha: 0.06)
+                : null,
+            sortColumn: _sortKey,
+            sortAscending: _sortAsc,
+            onSortChange: _onSortChange,
+            // 双击已分析行直达联合分析详情（单击仍只选中，表格统一交互）。
+            onRowTap: _openRowAnalysis,
+            canOpenRow: _canOpenRowAnalysis,
+            canShowRowMenu: _canOpenRowAnalysis,
+            rowMenuBuilder: (row) => [
+              UtenMenuItem(label: '打开物料分析', onTap: () => _openRowAnalysis(row)),
+            ],
+            isLoading: _loading,
+            error: (_error != null && rows.isEmpty) ? _error : null,
+            onRetry: _load,
+            emptyMessage: widget.keyword.isEmpty && _filters.isEmpty
+                ? '暂无待排产的订单行'
+                : '没有匹配的待排产行',
+            // 选择摘要胶囊不驻工具条——右下角悬浮组内已放标准胶囊
+            //（紧邻「新建物料分析」按钮左侧），避免同页两处计数。
+            showSelectionSummary: false,
+            bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+            currentPage: _page?.page ?? _pageNo,
+            totalPages: _page?.totalPages ?? 1,
+            onPageChange: (p) {
+              _pageNo = p;
+              _load();
+            },
+          ),
         ),
       ],
     );
   }
 
-  Widget _pendingMobileList(ThemeData theme, List<SchedulePendingRow> rows) {
-    if (_loading && rows.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null && rows.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, color: theme.colorScheme.error),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: UtenSpacing.s8),
-              UtenButton(
-                type: UtenButtonType.tonal,
-                onPressed: _load,
-                child: const Text('重试'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    if (rows.isEmpty) {
-      // 窄屏空态与桌面表格同款 UtenEmpty（口径一致：无筛选=暂无数据，有筛选=无匹配）。
-      return Center(
-        child: UtenEmpty(
-          icon: Icons.table_rows_outlined,
-          message: widget.keyword.isEmpty && _filters.isEmpty
-              ? '暂无待排产的订单行'
-              : '没有匹配的待排产行',
-        ),
-      );
-    }
-    return ListView.separated(
-      key: const Key('production-pending-mobile-list'),
-      padding: EdgeInsets.only(
-        // 无悬浮主操作时也要越过 compact 悬浮胶囊（有操作条则按其避让）。
-        bottom: _canUseAnalysis
-            ? UtenFloatingActionGroup.scrollClearance
-            : math.max(0, UtenCapsuleNavScope.occlusionOf(context)),
-      ),
-      itemCount: rows.length,
-      separatorBuilder: (_, _) => const SizedBox(height: UtenSpacing.s8),
-      itemBuilder: (_, index) {
-        final row = rows[index];
-        final selected = _selected.containsKey(row.orderItemId);
-        final canSelect = _canSelectForAnalysis(row);
-        // ADR-088：窄屏卡与桌面表同口径——本段只剩未被承接的残量，
-        // 「已分析 N」是指路信息(那部分在进行中跟踪)，不再显示齐套率。
-        final covered = row.analysisCoveredQty ?? 0;
-        final partlyAnalyzed = covered > 0;
-        final awaitingApproval =
-            (row.submittedPlanQty ?? 0) > (row.approvedPlannedQty ?? 0);
-        final statusColor = awaitingApproval
-            ? theme.colorScheme.tertiary
-            : partlyAnalyzed
-            ? theme.colorScheme.primary
-            : theme.colorScheme.onSurfaceVariant;
-        return Card(
-          margin: EdgeInsets.zero,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: UtenRadius.mdAll,
-            side: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-          child: InkWell(
-            onTap: canSelect ? () => _toggle(row, !selected) : null,
-            borderRadius: UtenRadius.mdAll,
-            child: Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_canUseAnalysis) ...[
-                        SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Checkbox(
-                            value: selected,
-                            onChanged: !canSelect
-                                ? null
-                                : (value) => _toggle(row, value ?? false),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                      ],
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              row.goodsName ?? row.goodsCode ?? '未命名产品',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              [
-                                row.orderBillNo,
-                                row.goodsCode,
-                                row.spec,
-                              ].whereType<String>().join(' · '),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Wrap(
-                    spacing: UtenSpacing.s12,
-                    runSpacing: UtenSpacing.s4,
-                    children: [
-                      Text(
-                        '订货 ${_qtyText(row.qty)} ${row.unitName ?? '单位未维护'}',
-                      ),
-                      Text(
-                        '待排 ${_qtyText(row.needQty)} ${row.unitName ?? '单位未维护'}',
-                      ),
-                      if ((row.plannedQty ?? 0) > 0)
-                        Text(
-                          '已排 ${_qtyText(row.plannedQty)} ${row.unitName ?? '单位未维护'}',
-                        ),
-                      Text('交货 ${_shortDate(row.deliverDate)}'),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Row(
-                    children: [
-                      Icon(
-                        partlyAnalyzed
-                            ? Icons.donut_large_rounded
-                            : Icons.help_outline,
-                        size: 18,
-                        color: statusColor,
-                      ),
-                      const SizedBox(width: UtenSpacing.s4),
-                      Expanded(
-                        child: Text(
-                          partlyAnalyzed
-                              ? '已分析 ${_qtyText(row.analysisCoveredQty)} '
-                                    '${row.unitName ?? '单位未维护'} · '
-                                    '这部分在「进行中」跟踪；此处是未承接的残量'
-                              : '待分析 · 勾选后做物料分析，本行即转入「进行中」',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: statusColor,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (row.materialAnalyzedAt != null)
-                    Text(
-                      '最后分析 ${_shortDateTime(row.materialAnalyzedAt)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  if (row.materialAnalysisId != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          key: ValueKey(
-                            'pending-mobile-open-analysis-${row.orderItemId}',
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(48, 48),
-                          ),
-                          onPressed: _canRefreshAnalysis && !_submitting
-                              ? () => _openRowAnalysis(row)
-                              : null,
-                          icon: const Icon(Icons.insights_rounded, size: 18),
-                          label: const Text('打开已承接的分析'),
-                        ),
-                      ),
-                    ),
-                  if (awaitingApproval)
-                    Text(
-                      '已提交 ${_qtyText(row.submittedPlanQty)} · '
-                      '已批准 ${_qtyText(row.approvedPlannedQty)} · 待审批',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.tertiary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  if (selected) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    _selectedQtyField(row),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// 待排产表格列（**无客户列**——生产只看生产相关信息）。
-  /// status 列 key 与后端 /pending?status= 及 /pending/facets 三桶对齐（值即桶 value）。
   List<MasterColumnDef<SchedulePendingRow>> get _pendingColumns => [
     MasterColumnDef(
       key: 'orderBillNo',
@@ -1067,19 +831,21 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       width: 140,
       sortable: true,
       value: (r) => r.orderBillNo,
+      // 卡片形态（compactCards）：单号与编号一起进标题下副行。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
     // 同名不同色/不同编号的成品在本系统极其普遍（同一款插面有「自制·白色」和
     // 「委外·香槟金」两条），只给名称调度员会直接排错货；但拼成一格又不能各自
-    // 排序筛选。规格没有独立列，仍留在名称格副行。
+    // 排序筛选。2026-09-29 用户口径：规格（86X86 等）不再显示在名称格副行。
     MasterColumnDef(
       key: 'goodsName',
       label: '货品名称',
       width: 200,
       value: (r) => r.goodsName ?? r.goodsCode ?? '—',
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, r) =>
-          UtenGoodsIdentityCell(name: r.goodsName, spec: r.spec),
+      cellBuilder: (_, r) => UtenGoodsIdentityCell(name: r.goodsName),
+      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'goodsCode',
@@ -1087,6 +853,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       width: 130,
       value: (r) => UtenGoodsAttributeCell.text(r.goodsCode),
       cellBuilder: (_, r) => UtenGoodsAttributeCell(r.goodsCode),
+      // 卡片副行已带编号，明细区不重复出。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'colorName',
@@ -1155,44 +923,38 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       // 所以先说清这个残量的来历(部分已分析 / 部分已排 / 待审批)，再落到紧急/待分析。
       // 旧口径里「已分析」「已分析·暂不可生产」两档在这里已无意义——全量分析过的行
       // 根本不在本段，齐套情况去「进行中」那张分析里看。
-      value: (r) {
-        if ((r.analysisCoveredQty ?? 0) > 0) {
-          return '部分已分析 ${_qtyText(r.analysisCoveredQty)}/${_qtyText(r.qty)}';
-        }
-        if ((r.submittedPlanQty ?? 0) > (r.approvedPlannedQty ?? 0)) {
-          return '已提交·待审批';
-        }
-        // V545：已排一部分的行仍待排产，状态直接标明已排/订货。
-        if ((r.plannedQty ?? 0) > 0) {
-          return '部分已排 ${_qtyText(r.plannedQty)}/${_qtyText(r.qty)}';
-        }
-        if (r.urgent) return '紧急';
-        return '待分析';
-      },
+      // 2026-09-27 用户口径「表格状态列整格底色」：已排/已分析=绿(在途有进展)、
+      // 待审批=蓝(球在审核方)、紧急=红、待分析=中性灰。
+      value: _statusText,
+      cellColor: (context, r) =>
+          udenStatusBadgeCellColor(context, _statusType(r)),
     ),
   ];
 
-  Widget _selectedQtyField(SchedulePendingRow row) => TextFormField(
-    errorBuilder: utenTextFieldErrorBuilder,
-    key: ValueKey('pending-qty-${row.orderItemId}'),
-    initialValue: _selected[row.orderItemId]?.toString(),
-    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    decoration: UtenInputDecoration(
-      InputDecoration(
-        label: fieldLabel(
-          '本次联合分析数量',
-          Theme.of(context),
-          info:
-              '单位 ${row.unitName ?? '未维护'}；待排上限 ${_qtyText(row.needQty)}；'
-              '最终可生产量由服务端预览确认',
-        ),
-      ),
-    ),
-    onChanged: (value) {
-      final parsed = double.tryParse(value.trim());
-      if (parsed != null) _selected[row.orderItemId] = parsed;
-    },
-  );
+  String _statusText(SchedulePendingRow r) {
+    if ((r.analysisCoveredQty ?? 0) > 0) {
+      return '部分已分析 ${_qtyText(r.analysisCoveredQty)}/${_qtyText(r.qty)}';
+    }
+    if ((r.submittedPlanQty ?? 0) > (r.approvedPlannedQty ?? 0)) {
+      return '已提交·待审批';
+    }
+    // V545：已排一部分的行仍待排产，状态直接标明已排/订货。
+    if ((r.plannedQty ?? 0) > 0) {
+      return '部分已排 ${_qtyText(r.plannedQty)}/${_qtyText(r.qty)}';
+    }
+    if (r.urgent) return '紧急';
+    return '待分析';
+  }
+
+  UtenStatusBadgeType _statusType(SchedulePendingRow r) {
+    if ((r.analysisCoveredQty ?? 0) > 0) return UtenStatusBadgeType.success;
+    if ((r.submittedPlanQty ?? 0) > (r.approvedPlannedQty ?? 0)) {
+      return UtenStatusBadgeType.info;
+    }
+    if ((r.plannedQty ?? 0) > 0) return UtenStatusBadgeType.success;
+    if (r.urgent) return UtenStatusBadgeType.danger;
+    return UtenStatusBadgeType.neutral;
+  }
 
   String _qtyText(double? value) {
     if (value == null) return '—';
@@ -1202,18 +964,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
   }
-
-  String _shortDate(String? value) {
-    if (value == null || value.isEmpty) return '—';
-    return value.length >= 10 ? value.substring(0, 10) : value;
-  }
-
-  String _shortDateTime(String? value) {
-    if (value == null || value.isEmpty) return '—';
-    return value.replaceFirst('T', ' ').split('.').first;
-  }
-
-  // 旧的待排产卡片行（_pendingRow/_num，含勾选框+手填排产量）已由 MasterDataTableView 取代（见 _list）。
 
   /// 右下角操作组：所选行可能属于不同货品单位，只显示行数，不做无单位总和。
   /// 「已选 N 项」用全站标准选择摘要胶囊（UtenSelectionSummaryPill），与

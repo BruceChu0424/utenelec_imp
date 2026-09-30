@@ -23,7 +23,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "sales_order_items")
-public class SalesOrderItem extends BaseEntity {
+public class SalesOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity {
 
     private Integer legacyId;
 
@@ -46,6 +46,9 @@ public class SalesOrderItem extends BaseEntity {
 
     @Column(name = "goods_name_snapshot")
     private String goodsNameSnapshot;
+
+    @Column(name = "goods_name_en_snapshot")
+    private String goodsNameEnSnapshot;
 
     @Column(name = "goods_snapshot_source", nullable = false)
     private String goodsSnapshotSource;

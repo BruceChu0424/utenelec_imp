@@ -1,7 +1,7 @@
 // HR 个人修改审批队列（/hr/profile-changes）
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（表头 autofilter 筛选 +
-// 列对齐 + 分页）。页面顶部 UtenSegmentedFilter 分段（待审核/已生效/已驳回）管状态、
+// 列对齐 + 分页）。页面顶部分段（待审核/已生效/已驳回）管状态、
 // 表头筛选管列，两层并存是全站范式。
 // 2026-09-10 表头筛选接后端 + 批量驳回：
 //   * 「部门」桶来自 GET /hr/profile-changes/facets（按分段状态全量聚合），选中后
@@ -11,6 +11,12 @@
 //   * 待审段多选新增「批量驳回(N)」，复用公共 UtenBatchRejectDialog 一次填原因；
 //   * 两个确认弹窗均带 UtenReviewerResponsibilityNotice（actionLabel「信息变更审核」）；
 //   * 行双击改 goFrom（写 returnTo），详情页返回键按全站契约回本队列。
+// 2026-09-29 三改：
+//   * 分段栏换全站统一胶囊工具条 UtenFilterToolbar：待审段挂红色通知徽章
+//     （计数读徽章汇总入口 hrProfileReview 的待办事实数，与导航徽章同源），
+//     已生效/已驳回为浏览型中性括号（仅当前段显示，取列表全量 total）；
+//   * 变更字段列显示中文字段名（ProfileFieldPolicy.labelOf），不再露机器码；
+//   * 后端放开自审（HR 一人可审自己的申请），通知也不再跳过提交人本人。
 //
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 文档：docs/03-页面/我的页.md（§HR 端：员工修改审批）
@@ -19,13 +25,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -35,6 +44,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../profile/field_policy.dart';
 import '../../profile/models/profile_change_request.dart';
 import '../../profile/providers/profile_change_providers.dart';
 import '../../profile/repositories/profile_change_repository.dart';
@@ -59,8 +69,6 @@ class _HrProfileChangesListPageState
   /// 表头「部门」筛选：部门 id，下推后端 departmentId（非页内裁剪）。
   String? _departmentId;
 
-  final List<UtenSegment<String?>> _segments = [];
-
   /// 待审段多选：批业务 id（batchId，跨页保留）。换分段/换筛选清空。
   Set<String> _selectedIds = {};
 
@@ -81,6 +89,8 @@ class _HrProfileChangesListPageState
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(hrProfileChangeQueueProvider);
+      // 待审段红徽章读徽章汇总，进页补拉一次保证不是上一轮轮询的旧数。
+      refreshBadges(ref);
     });
   }
 
@@ -245,15 +255,12 @@ class _HrProfileChangesListPageState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    _segments
-      ..clear()
-      ..addAll([
-        UtenSegment(value: null, label: l10n.profileChangeFilterPending),
-        UtenSegment(value: 'applied', label: l10n.profileChangeFilterApplied),
-        UtenSegment(value: 'rejected', label: l10n.profileChangeFilterRejected),
-      ]);
-
     final async = ref.watch(hrProfileChangeQueueProvider(_query));
+    // 待审段红徽章：读徽章汇总入口 hrProfileReview 的待办事实数（与导航徽章、
+    // /pending-count 端点同源同一口径），不自己再发请求。
+    final pendingTodo = ref.watch(
+      badgeEntryTodoProvider(BadgeEntry.hrProfileReview),
+    );
 
     Widget body = Column(
       children: [
@@ -263,10 +270,31 @@ class _HrProfileChangesListPageState
             top: UtenSpacing.s12,
             bottom: UtenSpacing.s8,
           ),
-          child: UtenSegmentedFilter<String?>(
-            segments: _segments,
-            selected: _status,
-            onChanged: _onSegmentChanged,
+          child: UtenFilterToolbar<String?>(
+            segmentsKey: const Key('hr-profile-changes-segments'),
+            segments: [
+              // 待审段是「等本页 HR 动手」的队列 → 红色通知徽章（0 不渲染）。
+              UtenFilterSegment<String?>(
+                value: null,
+                label: l10n.profileChangeFilterPending,
+                count: pendingTodo,
+                countForm: UtenSegmentCountForm.actionable,
+              ),
+              // 已生效/已驳回为浏览型 → 中性括号；仅当前段显示（取列表全量
+              // total，与报销审批历史段同款口径），不为此另发计数请求。
+              UtenFilterSegment<String?>(
+                value: 'applied',
+                label: l10n.profileChangeFilterApplied,
+                count: _status == 'applied' ? async.valueOrNull?.total : null,
+              ),
+              UtenFilterSegment<String?>(
+                value: 'rejected',
+                label: l10n.profileChangeFilterRejected,
+                count: _status == 'rejected' ? async.valueOrNull?.total : null,
+              ),
+            ],
+            selected: {_status},
+            onSelectionChanged: _onSegmentChanged,
           ),
         ),
         Expanded(child: _buildBody(l10n, async)),
@@ -300,6 +328,8 @@ class _HrProfileChangesListPageState
           await ref.read(hrProfileChangeQueueProvider(_query).future);
         },
         child: MasterDataTableView<HrProfileChangeListItem>(
+          tableKey:
+              'features.hr_profile.pages.hr_profile_changes_list_page.HrProfileChangesListPageState._buildBody.1',
           key: const Key('hr-profile-changes-table'),
           columns: _columns(l10n),
           items: page.items,
@@ -373,8 +403,11 @@ class _HrProfileChangesListPageState
       key: 'fieldCodes',
       label: '变更字段',
       width: 280,
-      info: '本批修改涉及的员工档案字段（机器码，顿号连接）；双击行可查看逐字段新旧值对比。',
-      value: (m) => m.fieldCodes.join('、'),
+      info: '本批修改涉及的员工档案字段（顿号连接）；双击行可查看逐字段新旧值对比。',
+      // 展示中文字段名（单一来源 ProfileFieldPolicy），机器码不露给用户。
+      value: (m) => m.fieldCodes
+          .map((c) => ProfileFieldPolicy.labelOf(l10n, c))
+          .join('、'),
     ),
     MasterColumnDef(
       key: 'submittedAt',
@@ -388,6 +421,16 @@ class _HrProfileChangesListPageState
       label: '状态',
       width: 100,
       value: (m) => _statusLabel(l10n, m.status),
+      // 2026-09-27 用户口径「表格状态列整格底色」：待生效=灰 / 待审核=蓝 /
+      // 已生效=绿 / 已驳回=红 / 已取消=中性灰。
+      cellColor: (context, m) =>
+          udenStatusBadgeCellColor(context, switch (m.status) {
+            ProfileChangeStatus.pending => UtenStatusBadgeType.neutral,
+            ProfileChangeStatus.applied => UtenStatusBadgeType.info,
+            ProfileChangeStatus.approved => UtenStatusBadgeType.success,
+            ProfileChangeStatus.rejected => UtenStatusBadgeType.danger,
+            ProfileChangeStatus.cancelled => UtenStatusBadgeType.neutral,
+          }),
     ),
   ];
 }

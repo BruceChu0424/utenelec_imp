@@ -102,6 +102,8 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
             onRefresh: () async =>
                 ref.invalidate(visitorBlacklistProvider(_page)),
             child: MasterDataTableView<VisitorBlacklistItem>(
+              tableKey:
+                  'features.security.pages.security_blacklist_page.SecurityBlacklistPageState.build.1',
               key: const Key('security-blacklist-table'),
               columns: _columns(l10n),
               items: page.items,

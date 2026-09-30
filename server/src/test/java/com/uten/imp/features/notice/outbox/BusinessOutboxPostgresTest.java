@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
@@ -351,7 +352,7 @@ class BusinessOutboxPostgresTest {
         assertEquals(1, eventStatus("plan-a"));
         assertEquals(1, eventStatus("plan-b"));
         assertEquals(1, eventStatus("plan-c"));
-        var captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<ChainNoticeService.PlanScheduled>> captor = ArgumentCaptor.captor();
         verify(chainNotice).deliverPlanScheduledGroup(captor.capture());
         assertEquals(3, captor.getValue().size());
         verify(chainNotice, org.mockito.Mockito.never())

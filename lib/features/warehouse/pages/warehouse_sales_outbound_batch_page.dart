@@ -430,6 +430,8 @@ class _WarehouseSalesOutboundBatchPageState
                                 const SizedBox(height: UtenSpacing.s12),
                                 Expanded(
                                   child: MasterDataTableView<WarehouseSalesOutboundTableRow>(
+                                    tableKey:
+                                        'features.warehouse.pages.warehouse_sales_outbound_batch_page.WarehouseSalesOutboundBatchPageState.build.1',
                                     key: const Key(
                                       'warehouse-sales-outbound-batch-table',
                                     ),

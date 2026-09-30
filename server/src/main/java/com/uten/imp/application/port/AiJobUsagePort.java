@@ -16,6 +16,18 @@ public interface AiJobUsagePort {
      */
     Optional<Map<String, Object>> resultFor(UUID jobId, UUID userId);
 
+    /** Pin an owned successful result to one saved document while its confirmed learning is retryable. */
+    default boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId) { return false; }
+    default boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId, java.time.OffsetDateTime retryUntil) {
+        return reserveLearning(jobId,userId,docType,docId);
+    }
+
+    /** Transactional reservation only: validate saved source keys in SQL without returning source contents. */
+    default boolean reserveLearningForSave(UUID jobId, UUID userId, String docType, UUID docId,
+            java.time.OffsetDateTime retryUntil, java.util.Set<String> sourceKeys, boolean headerUsed) {
+        return false;
+    }
+
     /**
      * 标记任务结果已被保存进某张单据({@code docType} 为 {@code quote} 或 {@code order}), 并在同一次写入里
      * 清空结果(result_purged_at)。不是本人的任务静默忽略。没有「采用后仍可读」的保留期: 同一次保存里所有需要

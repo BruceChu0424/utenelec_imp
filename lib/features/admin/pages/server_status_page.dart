@@ -9,6 +9,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/data_display/uten_gauge_ring.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -693,6 +694,8 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
 
   Widget _jobs(List<ServerJob> jobs) => UtenCard(
     child: MasterDataTableView<ServerJob>(
+      tableKey:
+          'features.admin.pages.server_status_page.ServerStatusPageState._jobs.1',
       embedded: true,
       stickyHeaderPinned: _jobsPinned,
       columns: [
@@ -709,8 +712,11 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
           label: '状态',
           width: 120,
           value: (job) => _statusLabel(_effective(job.status)),
-          cellBuilder: (context, job) =>
-              _StatusBadge(status: _effective(job.status), small: true),
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：健康色铺整格。
+          cellColor: (context, job) => udenStatusBadgeCellColor(
+            context,
+            _serverStatusBadgeType(_effective(job.status)),
+          ),
         ),
         MasterColumnDef(
           key: 'lastStartAt',
@@ -1003,9 +1009,8 @@ class _BigNumber extends StatelessWidget {
 }
 
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({super.key, required this.status, this.small = false});
+  const _StatusBadge({super.key, required this.status});
   final ServerHealthStatus status;
-  final bool small;
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -1017,13 +1022,7 @@ class _StatusBadge extends StatelessWidget {
         ServerHealthStatus.unknown => l10n.serverStatusUnknown,
       },
       icon: _statusIcon(status),
-      size: small ? UtenStatusBadgeSize.small : UtenStatusBadgeSize.medium,
-      type: switch (status) {
-        ServerHealthStatus.normal => UtenStatusBadgeType.success,
-        ServerHealthStatus.warning => UtenStatusBadgeType.warning,
-        ServerHealthStatus.critical => UtenStatusBadgeType.danger,
-        ServerHealthStatus.unknown => UtenStatusBadgeType.neutral,
-      },
+      type: _serverStatusBadgeType(status),
     );
   }
 }
@@ -1034,6 +1033,15 @@ IconData _statusIcon(ServerHealthStatus status) => switch (status) {
   ServerHealthStatus.critical => Icons.error_outline_rounded,
   ServerHealthStatus.unknown => Icons.help_outline_rounded,
 };
+
+/// 健康状态 → 徽章类型（徽章与表格状态列整格底色同源）。
+UtenStatusBadgeType _serverStatusBadgeType(ServerHealthStatus status) =>
+    switch (status) {
+      ServerHealthStatus.normal => UtenStatusBadgeType.success,
+      ServerHealthStatus.warning => UtenStatusBadgeType.warning,
+      ServerHealthStatus.critical => UtenStatusBadgeType.danger,
+      ServerHealthStatus.unknown => UtenStatusBadgeType.neutral,
+    };
 
 UtenGaugeStatus _gauge(ServerHealthStatus status) => switch (status) {
   ServerHealthStatus.normal => UtenGaugeStatus.normal,

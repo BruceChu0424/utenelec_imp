@@ -2149,7 +2149,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeConfirmBody.
   ///
   /// In zh, this message translates to:
-  /// **'转正后员工状态将变为「在职」。'**
+  /// **'登记实际转正日期。试用期员工状态将变为「在职」；已是正式员工的补登转正日期。'**
   String get employeeConfirmBody;
 
   /// No description provided for @employeeConfirmSuccess.
@@ -11225,48 +11225,6 @@ abstract class AppLocalizations {
   /// **'报价加载失败, 请稍后重试'**
   String get salesQuoteStatusImportLoadFailed;
 
-  /// No description provided for @salesIntakeBannerTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'识别客户文件'**
-  String get salesIntakeBannerTitle;
-
-  /// No description provided for @salesIntakeBannerMessage.
-  ///
-  /// In zh, this message translates to:
-  /// **'上传客户的报价单/形式发票, 自动填好客户和货品'**
-  String get salesIntakeBannerMessage;
-
-  /// No description provided for @salesIntakeBannerButton.
-  ///
-  /// In zh, this message translates to:
-  /// **'识别客户文件'**
-  String get salesIntakeBannerButton;
-
-  /// No description provided for @salesIntakeBannerAgain.
-  ///
-  /// In zh, this message translates to:
-  /// **'再识别一个文件'**
-  String get salesIntakeBannerAgain;
-
-  /// No description provided for @salesIntakeBannerImported.
-  ///
-  /// In zh, this message translates to:
-  /// **'已从 {file} 导入 {count} 行'**
-  String salesIntakeBannerImported(String file, int count);
-
-  /// No description provided for @salesIntakeToolbarButton.
-  ///
-  /// In zh, this message translates to:
-  /// **'识别客户文件'**
-  String get salesIntakeToolbarButton;
-
-  /// No description provided for @salesIntakeAiOffHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'AI 未开启, 只能识别常见格式的 Excel'**
-  String get salesIntakeAiOffHint;
-
   /// No description provided for @salesIntakeApprovedOrderHint.
   ///
   /// In zh, this message translates to:
@@ -12117,6 +12075,1656 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'该行折扣已由财务在报价中核定, 如需改价请重新打开报价'**
   String get salesIntakeQuoteLockedDiscountInfo;
+
+  /// No description provided for @quoteTemplateDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载报价表格'**
+  String get quoteTemplateDownload;
+
+  /// No description provided for @quoteTemplateChoose.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择客户报价模板'**
+  String get quoteTemplateChoose;
+
+  /// No description provided for @quoteTemplateChooseHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择一个或多个模板。多个模板将打包下载，也可以使用系统默认格式。'**
+  String get quoteTemplateChooseHint;
+
+  /// No description provided for @quoteTemplateVersionUsage.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本 {version} · 已使用 {count} 次'**
+  String quoteTemplateVersionUsage(int version, int count);
+
+  /// No description provided for @quoteTemplateStandard.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用默认格式'**
+  String get quoteTemplateStandard;
+
+  /// No description provided for @quoteTemplateDownloadAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部下载'**
+  String get quoteTemplateDownloadAll;
+
+  /// No description provided for @quoteTemplateDownloadSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载所选'**
+  String get quoteTemplateDownloadSelected;
+
+  /// No description provided for @businessColumnAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加列'**
+  String get businessColumnAdd;
+
+  /// No description provided for @businessColumnName.
+  ///
+  /// In zh, this message translates to:
+  /// **'列名称'**
+  String get businessColumnName;
+
+  /// No description provided for @businessColumnSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入名称，搜索已有表头'**
+  String get businessColumnSearch;
+
+  /// No description provided for @businessColumnReuseHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择已有表头，或创建新列。保存后可复用，新单据默认不添加。'**
+  String get businessColumnReuseHint;
+
+  /// No description provided for @businessColumnSystem.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统表头'**
+  String get businessColumnSystem;
+
+  /// No description provided for @businessColumnReference.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅记录信息'**
+  String get businessColumnReference;
+
+  /// No description provided for @businessColumnLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'每张单据最多添加 32 个扩展列'**
+  String get businessColumnLimit;
+
+  /// No description provided for @businessColumnAmountHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'按照添加顺序，对每行原金额依次计算；拖动表头只调整显示顺序，不改变计算顺序。空值跳过，除数不能为 0，结果必须精确且不为负数。'**
+  String get businessColumnAmountHint;
+
+  /// No description provided for @businessColumnType.
+  ///
+  /// In zh, this message translates to:
+  /// **'内容类型'**
+  String get businessColumnType;
+
+  /// No description provided for @businessColumnText.
+  ///
+  /// In zh, this message translates to:
+  /// **'文字'**
+  String get businessColumnText;
+
+  /// No description provided for @businessColumnNumber.
+  ///
+  /// In zh, this message translates to:
+  /// **'数字'**
+  String get businessColumnNumber;
+
+  /// No description provided for @businessColumnCalculation.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额计算'**
+  String get businessColumnCalculation;
+
+  /// No description provided for @businessColumnAddAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'加 (+)'**
+  String get businessColumnAddAmount;
+
+  /// No description provided for @businessColumnSubtractAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'减 (−)'**
+  String get businessColumnSubtractAmount;
+
+  /// No description provided for @businessColumnMultiplyAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'乘 (×)'**
+  String get businessColumnMultiplyAmount;
+
+  /// No description provided for @businessColumnDivideAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'除 (÷)'**
+  String get businessColumnDivideAmount;
+
+  /// No description provided for @businessColumnCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'创建并添加'**
+  String get businessColumnCreate;
+
+  /// No description provided for @businessColumnLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取表头失败，请重试'**
+  String get businessColumnLoadFailed;
+
+  /// No description provided for @businessColumnSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存表头失败，请重试'**
+  String get businessColumnSaveFailed;
+
+  /// No description provided for @businessColumnInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'附加列数字或计算有误，请检查数字、除数以及最终金额'**
+  String get businessColumnInvalid;
+
+  /// No description provided for @businessColumnNameEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'英文名称'**
+  String get businessColumnNameEn;
+
+  /// No description provided for @costWorkspaceTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本工作台'**
+  String get costWorkspaceTitle;
+
+  /// No description provided for @costEstimate.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本测算'**
+  String get costEstimate;
+
+  /// No description provided for @costActual.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际核对'**
+  String get costActual;
+
+  /// No description provided for @costVersions.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本版本'**
+  String get costVersions;
+
+  /// No description provided for @costNew.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建成本单'**
+  String get costNew;
+
+  /// No description provided for @costName.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本方案名称'**
+  String get costName;
+
+  /// No description provided for @costBatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批产量'**
+  String get costBatch;
+
+  /// No description provided for @costCustomer.
+  ///
+  /// In zh, this message translates to:
+  /// **'适用客户'**
+  String get costCustomer;
+
+  /// No description provided for @costCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本币种'**
+  String get costCurrency;
+
+  /// No description provided for @costExchangeRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'折合本币汇率'**
+  String get costExchangeRate;
+
+  /// No description provided for @costEffectiveDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'取价日期'**
+  String get costEffectiveDate;
+
+  /// No description provided for @costUsageStrategy.
+  ///
+  /// In zh, this message translates to:
+  /// **'用量选择'**
+  String get costUsageStrategy;
+
+  /// No description provided for @costActualFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'真实量优先，无数据用设计量'**
+  String get costActualFirst;
+
+  /// No description provided for @costDesignOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'按设计用量'**
+  String get costDesignOnly;
+
+  /// No description provided for @costPriceStrategy.
+  ///
+  /// In zh, this message translates to:
+  /// **'取价方式'**
+  String get costPriceStrategy;
+
+  /// No description provided for @costApprovedPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'已批准来源价格'**
+  String get costApprovedPrice;
+
+  /// No description provided for @costManualPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'人工方案'**
+  String get costManualPrice;
+
+  /// No description provided for @costNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'说明'**
+  String get costNotes;
+
+  /// No description provided for @costMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料成本'**
+  String get costMaterial;
+
+  /// No description provided for @costProcess.
+  ///
+  /// In zh, this message translates to:
+  /// **'加工成本'**
+  String get costProcess;
+
+  /// No description provided for @costManagement.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理分摊'**
+  String get costManagement;
+
+  /// No description provided for @costOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他费用'**
+  String get costOther;
+
+  /// No description provided for @costKnownTotal.
+  ///
+  /// In zh, this message translates to:
+  /// **'已知成本合计'**
+  String get costKnownTotal;
+
+  /// No description provided for @costUnitCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'本产品单位成本'**
+  String get costUnitCost;
+
+  /// No description provided for @costStructure.
+  ///
+  /// In zh, this message translates to:
+  /// **'组装结构'**
+  String get costStructure;
+
+  /// No description provided for @costFees.
+  ///
+  /// In zh, this message translates to:
+  /// **'工序与费用'**
+  String get costFees;
+
+  /// No description provided for @costGoodsName.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品名称'**
+  String get costGoodsName;
+
+  /// No description provided for @costGoodsCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品编号'**
+  String get costGoodsCode;
+
+  /// No description provided for @costColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'颜色'**
+  String get costColor;
+
+  /// No description provided for @costUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本单位'**
+  String get costUnit;
+
+  /// No description provided for @costAdoptedQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次采用量'**
+  String get costAdoptedQty;
+
+  /// No description provided for @costUsageSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'采用来源'**
+  String get costUsageSource;
+
+  /// No description provided for @costPricingQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批计价数量'**
+  String get costPricingQty;
+
+  /// No description provided for @costPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'采用单价'**
+  String get costPrice;
+
+  /// No description provided for @costPriceUnitRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'计价单位换算率'**
+  String get costPriceUnitRate;
+
+  /// No description provided for @costPriceSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'价格来源'**
+  String get costPriceSource;
+
+  /// No description provided for @costLineAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批金额'**
+  String get costLineAmount;
+
+  /// No description provided for @costUnitContribution.
+  ///
+  /// In zh, this message translates to:
+  /// **'每成品成本贡献'**
+  String get costUnitContribution;
+
+  /// No description provided for @costStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态'**
+  String get costStatus;
+
+  /// No description provided for @costIncluded.
+  ///
+  /// In zh, this message translates to:
+  /// **'参与合计'**
+  String get costIncluded;
+
+  /// No description provided for @costExplanation.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算依据'**
+  String get costExplanation;
+
+  /// No description provided for @costOverrideReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单覆盖原因'**
+  String get costOverrideReason;
+
+  /// No description provided for @costRestoreRecommended.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复推荐值'**
+  String get costRestoreRecommended;
+
+  /// No description provided for @costAddPriceColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加费用价格列'**
+  String get costAddPriceColumn;
+
+  /// No description provided for @costFeeName.
+  ///
+  /// In zh, this message translates to:
+  /// **'费用名称'**
+  String get costFeeName;
+
+  /// No description provided for @costFeeMethod.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算方式'**
+  String get costFeeMethod;
+
+  /// No description provided for @costFeeCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本类别'**
+  String get costFeeCategory;
+
+  /// No description provided for @costFeeBase.
+  ///
+  /// In zh, this message translates to:
+  /// **'计费基数'**
+  String get costFeeBase;
+
+  /// No description provided for @costFeeQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'计价数量'**
+  String get costFeeQuantity;
+
+  /// No description provided for @costPerQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'单价 × 物料计价数量'**
+  String get costPerQuantity;
+
+  /// No description provided for @costPerUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'每成品固定单价'**
+  String get costPerUnit;
+
+  /// No description provided for @costFixedBatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批固定额'**
+  String get costFixedBatch;
+
+  /// No description provided for @costPercent.
+  ///
+  /// In zh, this message translates to:
+  /// **'按基数百分比'**
+  String get costPercent;
+
+  /// No description provided for @costPerCycle.
+  ///
+  /// In zh, this message translates to:
+  /// **'每机器周期'**
+  String get costPerCycle;
+
+  /// No description provided for @costValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'单价或费率'**
+  String get costValue;
+
+  /// No description provided for @costNotApplicable.
+  ///
+  /// In zh, this message translates to:
+  /// **'不适用'**
+  String get costNotApplicable;
+
+  /// No description provided for @costPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'待完善'**
+  String get costPending;
+
+  /// No description provided for @costComplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核清'**
+  String get costComplete;
+
+  /// No description provided for @costDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'草稿'**
+  String get costDraft;
+
+  /// No description provided for @costConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认'**
+  String get costConfirmed;
+
+  /// No description provided for @costReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'待审核'**
+  String get costReview;
+
+  /// No description provided for @costSaveDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存草稿'**
+  String get costSaveDraft;
+
+  /// No description provided for @costRecalculate.
+  ///
+  /// In zh, this message translates to:
+  /// **'校验重算'**
+  String get costRecalculate;
+
+  /// No description provided for @costConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认成本版本'**
+  String get costConfirm;
+
+  /// No description provided for @costCopy.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制为新草稿'**
+  String get costCopy;
+
+  /// No description provided for @costSaveTemplate.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存为成本模板'**
+  String get costSaveTemplate;
+
+  /// No description provided for @costTemplate.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本模板'**
+  String get costTemplate;
+
+  /// No description provided for @costNoTemplate.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动匹配模板'**
+  String get costNoTemplate;
+
+  /// No description provided for @costDownloadExcel.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载成本 Excel'**
+  String get costDownloadExcel;
+
+  /// No description provided for @costDownloadPdf.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载成本 PDF'**
+  String get costDownloadPdf;
+
+  /// No description provided for @costSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本草稿已保存'**
+  String get costSaved;
+
+  /// No description provided for @costConfirmPrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后冻结本次用量、价格及费用。以后修改需复制新版本。'**
+  String get costConfirmPrompt;
+
+  /// No description provided for @costLeavePrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前输入尚未保存到服务器。先保存草稿再切换。'**
+  String get costLeavePrompt;
+
+  /// No description provided for @costCalculationStale.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入已改变，金额等待重算'**
+  String get costCalculationStale;
+
+  /// No description provided for @costConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器版本已变化；本机输入已保留，请比较后恢复。'**
+  String get costConflict;
+
+  /// No description provided for @costRecoverLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复本机草稿'**
+  String get costRecoverLocal;
+
+  /// No description provided for @costHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史快照'**
+  String get costHistory;
+
+  /// No description provided for @costVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本'**
+  String get costVersion;
+
+  /// No description provided for @costUpdated.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新时间'**
+  String get costUpdated;
+
+  /// No description provided for @costAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作'**
+  String get costAction;
+
+  /// No description provided for @costOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开'**
+  String get costOpen;
+
+  /// No description provided for @costDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get costDelete;
+
+  /// No description provided for @costDeleteFeePrompt.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除这项费用会改变本单成本，历史版本保留。'**
+  String get costDeleteFeePrompt;
+
+  /// No description provided for @costEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚无成本单，点击新建带出组装信息。'**
+  String get costEmpty;
+
+  /// No description provided for @costNoActual.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚无可核对的实际成本来源'**
+  String get costNoActual;
+
+  /// No description provided for @costActualKnown.
+  ///
+  /// In zh, this message translates to:
+  /// **'已归集投入'**
+  String get costActualKnown;
+
+  /// No description provided for @costActualOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'已分摊产出'**
+  String get costActualOutput;
+
+  /// No description provided for @costActualWip.
+  ///
+  /// In zh, this message translates to:
+  /// **'在制余额'**
+  String get costActualWip;
+
+  /// No description provided for @costActualUnclassified.
+  ///
+  /// In zh, this message translates to:
+  /// **'待分类金额'**
+  String get costActualUnclassified;
+
+  /// No description provided for @costActualIncomplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未覆盖全部人工及间接费用'**
+  String get costActualIncomplete;
+
+  /// No description provided for @costSourceDocument.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源单据'**
+  String get costSourceDocument;
+
+  /// No description provided for @costSourceType.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源类型'**
+  String get costSourceType;
+
+  /// No description provided for @costLocalAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'本币金额'**
+  String get costLocalAmount;
+
+  /// No description provided for @costActualQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际数量'**
+  String get costActualQty;
+
+  /// No description provided for @costActualFrom.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始日期'**
+  String get costActualFrom;
+
+  /// No description provided for @costActualTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'截止日期'**
+  String get costActualTo;
+
+  /// No description provided for @costSegment.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行批次编号'**
+  String get costSegment;
+
+  /// No description provided for @costLegacy.
+  ///
+  /// In zh, this message translates to:
+  /// **'旧主档成本参考'**
+  String get costLegacy;
+
+  /// No description provided for @costLossPolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外允许损耗'**
+  String get costLossPolicy;
+
+  /// No description provided for @costLossPolicyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅为委外合同默认值，不参与成本测算和真实用量学习。'**
+  String get costLossPolicyHint;
+
+  /// No description provided for @costDecimalInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入有效的非负十进制数'**
+  String get costDecimalInvalid;
+
+  /// No description provided for @costRequiredName.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入名称'**
+  String get costRequiredName;
+
+  /// No description provided for @costNoPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有成本查看权限'**
+  String get costNoPermission;
+
+  /// No description provided for @costManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单覆盖'**
+  String get costManual;
+
+  /// No description provided for @costYes.
+  ///
+  /// In zh, this message translates to:
+  /// **'是'**
+  String get costYes;
+
+  /// No description provided for @costNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'否'**
+  String get costNo;
+
+  /// No description provided for @costCopySuffix.
+  ///
+  /// In zh, this message translates to:
+  /// **'副本'**
+  String get costCopySuffix;
+
+  /// No description provided for @costTotalLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'整单成本'**
+  String get costTotalLabel;
+
+  /// No description provided for @costSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源'**
+  String get costSource;
+
+  /// No description provided for @costTemplateSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本模板已保存'**
+  String get costTemplateSaved;
+
+  /// No description provided for @costFeeApplicability.
+  ///
+  /// In zh, this message translates to:
+  /// **'填入单价即采用；清空为待填，选不适用才移除。'**
+  String get costFeeApplicability;
+
+  /// No description provided for @costSnapshotReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史快照只读'**
+  String get costSnapshotReadOnly;
+
+  /// No description provided for @costImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入成本表'**
+  String get costImport;
+
+  /// No description provided for @costImportBlock.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品区块'**
+  String get costImportBlock;
+
+  /// No description provided for @costImportReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'逐行确认映射；缓存价格按本成本单币种核对，不自动采用外链公式。'**
+  String get costImportReview;
+
+  /// No description provided for @costImportKind.
+  ///
+  /// In zh, this message translates to:
+  /// **'采用方式'**
+  String get costImportKind;
+
+  /// No description provided for @costImportMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'对应物料价格'**
+  String get costImportMaterial;
+
+  /// No description provided for @costImportFee.
+  ///
+  /// In zh, this message translates to:
+  /// **'每产品费用'**
+  String get costImportFee;
+
+  /// No description provided for @costImportSkip.
+  ///
+  /// In zh, this message translates to:
+  /// **'跳过此行'**
+  String get costImportSkip;
+
+  /// No description provided for @costImportTarget.
+  ///
+  /// In zh, this message translates to:
+  /// **'对应物料'**
+  String get costImportTarget;
+
+  /// No description provided for @costImportReviewed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核对'**
+  String get costImportReviewed;
+
+  /// No description provided for @costImportApply.
+  ///
+  /// In zh, this message translates to:
+  /// **'采用到本单'**
+  String get costImportApply;
+
+  /// No description provided for @costImportNeedsReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'每行须确认；跳过须填写原因，物料须选择对应项。'**
+  String get costImportNeedsReview;
+
+  /// No description provided for @costCompare.
+  ///
+  /// In zh, this message translates to:
+  /// **'比较版本'**
+  String get costCompare;
+
+  /// No description provided for @costCompareBefore.
+  ///
+  /// In zh, this message translates to:
+  /// **'比较基线'**
+  String get costCompareBefore;
+
+  /// No description provided for @costBefore.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改前'**
+  String get costBefore;
+
+  /// No description provided for @costAfter.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改后'**
+  String get costAfter;
+
+  /// No description provided for @costUnchanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'未修改'**
+  String get costUnchanged;
+
+  /// No description provided for @costDirectConsumption.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接耗用'**
+  String get costDirectConsumption;
+
+  /// No description provided for @costPeriodicAllocation.
+  ///
+  /// In zh, this message translates to:
+  /// **'周期分摊'**
+  String get costPeriodicAllocation;
+
+  /// No description provided for @costFeeEvidence.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认加工费'**
+  String get costFeeEvidence;
+
+  /// No description provided for @costNormalLoss.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认损耗'**
+  String get costNormalLoss;
+
+  /// No description provided for @costTaxMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'计价税口径'**
+  String get costTaxMode;
+
+  /// No description provided for @costTaxRecorded.
+  ///
+  /// In zh, this message translates to:
+  /// **'按原记录价计成本'**
+  String get costTaxRecorded;
+
+  /// No description provided for @costTaxExclude.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认含税并扣除税额'**
+  String get costTaxExclude;
+
+  /// No description provided for @costTaxUnconfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未确认计价口径'**
+  String get costTaxUnconfirmed;
+
+  /// No description provided for @costTaxConfirmedReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'已核对原始单据的计价税口径'**
+  String get costTaxConfirmedReason;
+
+  /// No description provided for @costFeeReuse.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索已有费用列'**
+  String get costFeeReuse;
+
+  /// No description provided for @costDeleteColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除费用列'**
+  String get costDeleteColumn;
+
+  /// No description provided for @costRoute.
+  ///
+  /// In zh, this message translates to:
+  /// **'计价方式'**
+  String get costRoute;
+
+  /// No description provided for @costRouteAuto.
+  ///
+  /// In zh, this message translates to:
+  /// **'按货品来源'**
+  String get costRouteAuto;
+
+  /// No description provided for @costRouteMake.
+  ///
+  /// In zh, this message translates to:
+  /// **'自制展开'**
+  String get costRouteMake;
+
+  /// No description provided for @costRouteBuy.
+  ///
+  /// In zh, this message translates to:
+  /// **'外购计价'**
+  String get costRouteBuy;
+
+  /// No description provided for @costRouteSubcontract.
+  ///
+  /// In zh, this message translates to:
+  /// **'委外加工'**
+  String get costRouteSubcontract;
+
+  /// No description provided for @costRouteCustomer.
+  ///
+  /// In zh, this message translates to:
+  /// **'客供料'**
+  String get costRouteCustomer;
+
+  /// No description provided for @costLossRange.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入0到100，最多2位小数'**
+  String get costLossRange;
+
+  /// No description provided for @costScopeInput.
+  ///
+  /// In zh, this message translates to:
+  /// **'原成本对象全部投入'**
+  String get costScopeInput;
+
+  /// No description provided for @costPeriodOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次范围产出成本'**
+  String get costPeriodOutput;
+
+  /// No description provided for @costExcludedOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'范围外已分配'**
+  String get costExcludedOutput;
+
+  /// No description provided for @costBudgetBaseline.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认测算基线'**
+  String get costBudgetBaseline;
+
+  /// No description provided for @costBudgetLocal.
+  ///
+  /// In zh, this message translates to:
+  /// **'基线完整测算（本币）'**
+  String get costBudgetLocal;
+
+  /// No description provided for @costActualRecorded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已归集实际（本币）'**
+  String get costActualRecorded;
+
+  /// No description provided for @costBasisMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'基线产量或币种依据与本次实际范围不一致，不计算差额。'**
+  String get costBasisMismatch;
+
+  /// No description provided for @costCoverageMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际人工及间接费尚未完整归集，仅并列展示，不计算全成本差额。'**
+  String get costCoverageMismatch;
+
+  /// No description provided for @costVariance.
+  ///
+  /// In zh, this message translates to:
+  /// **'同口径成本差额'**
+  String get costVariance;
+
+  /// No description provided for @costDirectCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'材料与加工小计'**
+  String get costDirectCost;
+
+  /// No description provided for @inventoryCostTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际成本过账'**
+  String get inventoryCostTitle;
+
+  /// No description provided for @inventoryCostPolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'对账与启用策略'**
+  String get inventoryCostPolicy;
+
+  /// No description provided for @inventoryCostPolicyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'先核对原库存价值与历史成本凭证。启用后仅追加新凭证；历史冲突和跨期差额须单独核定。'**
+  String get inventoryCostPolicyHint;
+
+  /// No description provided for @inventoryCostEnabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际成本过账已启用'**
+  String get inventoryCostEnabled;
+
+  /// No description provided for @inventoryCostDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'待对账启用'**
+  String get inventoryCostDisabled;
+
+  /// No description provided for @inventoryCostEnable.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认启用实际成本过账'**
+  String get inventoryCostEnable;
+
+  /// No description provided for @inventoryCostDisable.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认暂停新增实际成本过账'**
+  String get inventoryCostDisable;
+
+  /// No description provided for @inventoryCostEffectiveDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'启用生效日'**
+  String get inventoryCostEffectiveDate;
+
+  /// No description provided for @inventoryCostEvidence.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际对账依据'**
+  String get inventoryCostEvidence;
+
+  /// No description provided for @inventoryCostEvidenceRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写至少 8 个字符的实际对账依据'**
+  String get inventoryCostEvidenceRequired;
+
+  /// No description provided for @inventoryCostFrom.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源日期起'**
+  String get inventoryCostFrom;
+
+  /// No description provided for @inventoryCostTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源日期止'**
+  String get inventoryCostTo;
+
+  /// No description provided for @inventoryCostInvalidRange.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源开始日期不能晚于结束日期'**
+  String get inventoryCostInvalidRange;
+
+  /// No description provided for @inventoryCostLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际成本过账数据加载失败，请重试'**
+  String get inventoryCostLoadFailed;
+
+  /// No description provided for @inventoryCostWriteFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作失败，请刷新核对后重试'**
+  String get inventoryCostWriteFailed;
+
+  /// No description provided for @inventoryCostStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'过账状态'**
+  String get inventoryCostStatus;
+
+  /// No description provided for @inventoryCostAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'原价值变动（本币）'**
+  String get inventoryCostAmount;
+
+  /// No description provided for @inventoryCostBusinessDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源业务日'**
+  String get inventoryCostBusinessDate;
+
+  /// No description provided for @inventoryCostSourcePeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源期间'**
+  String get inventoryCostSourcePeriod;
+
+  /// No description provided for @inventoryCostTargetPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'入账期间'**
+  String get inventoryCostTargetPeriod;
+
+  /// No description provided for @inventoryCostSourceType.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源类型'**
+  String get inventoryCostSourceType;
+
+  /// No description provided for @inventoryCostSourceDocument.
+  ///
+  /// In zh, this message translates to:
+  /// **'原单据标识'**
+  String get inventoryCostSourceDocument;
+
+  /// No description provided for @inventoryCostSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'原价值过账标识'**
+  String get inventoryCostSource;
+
+  /// No description provided for @inventoryCostRevision.
+  ///
+  /// In zh, this message translates to:
+  /// **'价值修订'**
+  String get inventoryCostRevision;
+
+  /// No description provided for @inventoryCostVoucher.
+  ///
+  /// In zh, this message translates to:
+  /// **'总账凭证标识'**
+  String get inventoryCostVoucher;
+
+  /// No description provided for @inventoryCostAssignPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'指定入账期间'**
+  String get inventoryCostAssignPeriod;
+
+  /// No description provided for @inventoryCostReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'核定原因'**
+  String get inventoryCostReason;
+
+  /// No description provided for @inventoryCostReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写至少 4 个字符的核定原因'**
+  String get inventoryCostReasonRequired;
+
+  /// No description provided for @inventoryCostNoOpenPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'查询范围内没有开放期间，请调整日期范围'**
+  String get inventoryCostNoOpenPeriod;
+
+  /// No description provided for @inventoryCostPost.
+  ///
+  /// In zh, this message translates to:
+  /// **'追加成本凭证'**
+  String get inventoryCostPost;
+
+  /// No description provided for @inventoryCostPostHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'按原价值变动逐笔生成借贷平衡凭证，包含退回及后补差额；重试不重复入账，不改写旧凭证。'**
+  String get inventoryCostPostHint;
+
+  /// No description provided for @inventoryCostClosePeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭成本期间'**
+  String get inventoryCostClosePeriod;
+
+  /// No description provided for @inventoryCostCloseHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭后禁止回写本期间。以后收到的差额需核定新的开放入账期间。'**
+  String get inventoryCostCloseHint;
+
+  /// No description provided for @inventoryCostPendingCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'期间待处理笔数'**
+  String get inventoryCostPendingCount;
+
+  /// No description provided for @inventoryCostOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'开放'**
+  String get inventoryCostOpen;
+
+  /// No description provided for @inventoryCostClosed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已关闭'**
+  String get inventoryCostClosed;
+
+  /// No description provided for @inventoryCostPosted.
+  ///
+  /// In zh, this message translates to:
+  /// **'已入账'**
+  String get inventoryCostPosted;
+
+  /// No description provided for @inventoryCostReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'可入账'**
+  String get inventoryCostReady;
+
+  /// No description provided for @inventoryCostBeforeCutover.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换前历史'**
+  String get inventoryCostBeforeCutover;
+
+  /// No description provided for @inventoryCostSourcePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源身份待核实'**
+  String get inventoryCostSourcePending;
+
+  /// No description provided for @inventoryCostValuePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本待核清'**
+  String get inventoryCostValuePending;
+
+  /// No description provided for @inventoryCostLegacyConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史凭证待对账'**
+  String get inventoryCostLegacyConflict;
+
+  /// No description provided for @inventoryCostTargetClosed.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标期间已关闭'**
+  String get inventoryCostTargetClosed;
+
+  /// No description provided for @inventoryCostTargetRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'待核定入账期间'**
+  String get inventoryCostTargetRequired;
+
+  /// No description provided for @inventoryCostNoAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有查看实际成本过账的权限'**
+  String get inventoryCostNoAccess;
+
+  /// No description provided for @costConvertCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'转换成本币种'**
+  String get costConvertCurrency;
+
+  /// No description provided for @costCurrencyConversionHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务端按来源与目标汇率转换金额，用量和百分比保持不变。成功后才替换本单输入，失败保留原值。'**
+  String get costCurrencyConversionHint;
+
+  /// No description provided for @costSourceExchangeRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前币种折合本币汇率'**
+  String get costSourceExchangeRate;
+
+  /// No description provided for @costTargetExchangeRate.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标币种折合本币汇率'**
+  String get costTargetExchangeRate;
+
+  /// No description provided for @costExchangeRateRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入明确且大于0的十进制汇率'**
+  String get costExchangeRateRequired;
+
+  /// No description provided for @costPriceNormalizedHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'单价按本成本单币种和物料基本单位显示。原始采购单价、计价单位换算及税口径在来源详情查看。'**
+  String get costPriceNormalizedHelp;
+
+  /// No description provided for @costCurrencyConverted.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本金额已按目标币种转换，尚未保存'**
+  String get costCurrencyConverted;
+
+  /// No description provided for @costUnitContributionShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'单件成本'**
+  String get costUnitContributionShort;
+
+  /// No description provided for @costLineAmountShort.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批成本'**
+  String get costLineAmountShort;
+
+  /// No description provided for @costPendingItems.
+  ///
+  /// In zh, this message translates to:
+  /// **'待核项目'**
+  String get costPendingItems;
+
+  /// No description provided for @costViewEvidence.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看依据'**
+  String get costViewEvidence;
+
+  /// No description provided for @costViewSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看来源'**
+  String get costViewSource;
+
+  /// No description provided for @costEvidenceField.
+  ///
+  /// In zh, this message translates to:
+  /// **'依据项目'**
+  String get costEvidenceField;
+
+  /// No description provided for @costEvidenceValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'记录值'**
+  String get costEvidenceValue;
+
+  /// No description provided for @costEvidenceScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本范围'**
+  String get costEvidenceScope;
+
+  /// No description provided for @costEvidenceNextStep.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get costEvidenceNextStep;
+
+  /// No description provided for @costCopyValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制记录值'**
+  String get costCopyValue;
+
+  /// No description provided for @costSourceUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前没有可打开的来源入口，可复制标识交由负责岗位核对。'**
+  String get costSourceUnavailable;
+
+  /// No description provided for @costGapLabor.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际人工尚未归集'**
+  String get costGapLabor;
+
+  /// No description provided for @costGapOverhead.
+  ///
+  /// In zh, this message translates to:
+  /// **'制造间接费用尚未归集'**
+  String get costGapOverhead;
+
+  /// No description provided for @costGapNoValuation.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有可核定的库存成本依据'**
+  String get costGapNoValuation;
+
+  /// No description provided for @costGapIdentity.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史物料身份或单位缺失'**
+  String get costGapIdentity;
+
+  /// No description provided for @costGapRevision.
+  ///
+  /// In zh, this message translates to:
+  /// **'投入来源的修订证据缺失'**
+  String get costGapRevision;
+
+  /// No description provided for @costGapNoApprovedRevision.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚无已批准的成本版本'**
+  String get costGapNoApprovedRevision;
+
+  /// No description provided for @costGapApplying.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本分摊正在更新'**
+  String get costGapApplying;
+
+  /// No description provided for @costGapSourceRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源数据待刷新'**
+  String get costGapSourceRefresh;
+
+  /// No description provided for @costGapClassification.
+  ///
+  /// In zh, this message translates to:
+  /// **'投入成本待分类'**
+  String get costGapClassification;
+
+  /// No description provided for @costGapOutputBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'有效产出基数待核实'**
+  String get costGapOutputBasis;
+
+  /// No description provided for @costGapScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'归集范围尚未完整'**
+  String get costGapScope;
+
+  /// No description provided for @costGapInput.
+  ///
+  /// In zh, this message translates to:
+  /// **'投入金额尚未核定'**
+  String get costGapInput;
+
+  /// No description provided for @costGapOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'还有成本依据需要核对'**
+  String get costGapOther;
+
+  /// No description provided for @costGapActionCharges.
+  ///
+  /// In zh, this message translates to:
+  /// **'补齐实际费用来源，再重新核对'**
+  String get costGapActionCharges;
+
+  /// No description provided for @costGapActionHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对历史原单和单位，缺证据不以当前主档回填'**
+  String get costGapActionHistory;
+
+  /// No description provided for @costGapActionRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待成本任务完成后刷新，仍未完成则核对来源任务'**
+  String get costGapActionRefresh;
+
+  /// No description provided for @costGapActionSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看来源凭证、退料和产出记录，补全后刷新'**
+  String get costGapActionSource;
+
+  /// No description provided for @costAmountBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额依据'**
+  String get costAmountBasis;
+
+  /// No description provided for @costBookedBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'已过账本币金额'**
+  String get costBookedBasis;
+
+  /// No description provided for @costLegacyBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史金额口径未验证'**
+  String get costLegacyBasis;
+
+  /// No description provided for @costQuantityBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'数量依据'**
+  String get costQuantityBasis;
+
+  /// No description provided for @costValueRevision.
+  ///
+  /// In zh, this message translates to:
+  /// **'价值修订号'**
+  String get costValueRevision;
+
+  /// No description provided for @costAmountLower.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额下限（本币）'**
+  String get costAmountLower;
+
+  /// No description provided for @costAmountUpper.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额上限（本币）'**
+  String get costAmountUpper;
+
+  /// No description provided for @costSourceIdentifier.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源单据标识'**
+  String get costSourceIdentifier;
+
+  /// No description provided for @costSourceLineIdentifier.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源明细标识'**
+  String get costSourceLineIdentifier;
+
+  /// No description provided for @costEvidenceIdentifier.
+  ///
+  /// In zh, this message translates to:
+  /// **'依据标识'**
+  String get costEvidenceIdentifier;
+
+  /// No description provided for @costGapCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对原因编码'**
+  String get costGapCode;
 }
 
 class _AppLocalizationsDelegate

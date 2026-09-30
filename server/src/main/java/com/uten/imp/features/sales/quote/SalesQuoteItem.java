@@ -24,7 +24,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "sales_quote_items")
-public class SalesQuoteItem extends BaseEntity {
+public class SalesQuoteItem extends com.uten.imp.common.columns.ExtraColumnEntity {
 
     private Integer legacyId;
 
@@ -47,6 +47,9 @@ public class SalesQuoteItem extends BaseEntity {
 
     @Column(name = "goods_name_snapshot")
     private String goodsNameSnapshot;
+
+    @Column(name = "goods_name_en_snapshot")
+    private String goodsNameEnSnapshot;
 
     @Column(name = "goods_snapshot_source", nullable = false)
     private String goodsSnapshotSource;

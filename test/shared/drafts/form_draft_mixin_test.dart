@@ -13,6 +13,8 @@ import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage_api.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 
 final _testScope = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'user-1'),
@@ -63,8 +65,11 @@ class MemoryDraftStorage implements FormDraftStorage {
   }
 }
 
+class _DraftGridRow extends EditableGridRow {}
+
 class TestEditor extends ConsumerStatefulWidget {
-  const TestEditor({super.key});
+  const TestEditor({super.key, this.withGrid = false});
+  final bool withGrid;
   @override
   ConsumerState<TestEditor> createState() => TestEditorState();
 }
@@ -72,6 +77,7 @@ class TestEditor extends ConsumerStatefulWidget {
 class TestEditorState extends ConsumerState<TestEditor>
     with FormDraftMixin<TestEditor> {
   final text = TextEditingController();
+  final grid = UtenEditableGridController<_DraftGridRow>();
   String choice = 'default';
   bool busy = false;
   @override
@@ -84,27 +90,38 @@ class TestEditorState extends ConsumerState<TestEditor>
     permission: 'test:create',
   );
   @override
-  Iterable<Listenable> get formDraftListenables => [text];
+  Iterable<Listenable> get formDraftListenables => [
+    text,
+    if (widget.withGrid) grid,
+  ];
   @override
   Map<String, dynamic> captureFormDraft() => {
     'text': text.text,
     'choice': choice,
+    if (widget.withGrid) 'rowCount': grid.rows.length,
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     text.text = data['text'] as String;
     choice = data['choice'] as String;
+    if (widget.withGrid) {
+      grid.replaceAll(
+        List.generate(data['rowCount'] as int, (_) => _DraftGridRow()),
+      );
+    }
   }
 
   @override
   void initState() {
     super.initState();
+    if (widget.withGrid) grid.addRow(_DraftGridRow());
     WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
   }
 
   @override
   void dispose() {
     text.dispose();
+    grid.dispose();
     super.dispose();
   }
 
@@ -140,6 +157,7 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
   MemoryDraftStorage storage, {
   String initial = '/new',
   bool settle = true,
+  bool withGrid = false,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -154,7 +172,8 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
     routes: [
       DraftAwareGoRoute(
         path: '/new',
-        builder: (_, state) => TestEditor(key: state.pageKey),
+        builder: (_, state) =>
+            TestEditor(key: state.pageKey, withGrid: withGrid),
       ),
       DraftAwareGoRoute(
         path: '/home',
@@ -177,6 +196,50 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  testWidgets(
+    'metadata-only grid edits survive local draft recovery with their source version',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      var env = await pumpEditor(tester, storage, withGrid: true);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      final fields = editor.grid.rows.single.platformFields;
+      fields.sourceRecordId = 'original-record';
+      fields.version = 7;
+      fields.setValue(
+        const PlatformColumnDefinition(
+          id: 'field',
+          scope: 'test',
+          name: '外部编号',
+        ),
+        '000017',
+      );
+      await editor.saveFormDraftNow();
+      final draft = env.container.read(formDraftsProvider).single;
+      expect(draft.data['_platformGridDrafts'], isNotEmpty);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+      env = await pumpEditor(
+        tester,
+        storage,
+        initial: draft.resumeLocation,
+        withGrid: true,
+      );
+      final restored = tester
+          .state<TestEditorState>(find.byType(TestEditor))
+          .grid
+          .rows
+          .single
+          .platformFields;
+      expect(restored.sourceRecordId, 'original-record');
+      expect(restored.version, 7);
+      expect(restored.cells.single.value, '000017');
+      expect(restored.dirty, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
   testWidgets(
     'identity change during pre-submit checkpoint never dispatches under the new user',
     (tester) async {

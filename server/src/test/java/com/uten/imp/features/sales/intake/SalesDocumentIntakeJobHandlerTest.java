@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.assertj.core.api.InstanceOfAssertFactories;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -198,7 +199,8 @@ class SalesDocumentIntakeJobHandlerTest {
         FakeJobContext ctx = FakeJobContext.of("SUNAS.xlsx", "XLSX", IntakeFixture.toXlsx(doc), "quote");
         Map<String, Object> result = handler.process(ctx);
         assertThat(result.get("schemaVersion")).isEqualTo(2);
-        assertThat((List<Object>) (List<?>) result.get("notices")).contains(IntakeTexts.NOTICE_AI_OFF);
+        assertThat(result.get("notices")).asInstanceOf(InstanceOfAssertFactories.LIST)
+                .contains(IntakeTexts.NOTICE_AI_OFF);
         assertThat(ctx.stages).containsSubsequence("READING:10", "LAYOUT:25", "EXTRACTING:40", "MATCHING_GOODS:60",
                 "MATCHING_CLIENT:75", "PRICING:90", "DONE:100");
         assertThat(ctx.aiRequests).isEmpty();

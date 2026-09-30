@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
-import '../../../../components/layout/uten_h_scroll_area.dart';
+import '../../../basic_data/widgets/master_data_table_view.dart';
+import '../../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
@@ -411,46 +414,95 @@ class _SubcontractLossClaimDetailPanelState
     );
   }
 
-  Widget _linesTable(List<SubcontractLossClaimLine> lines) {
-    return Card(
-      child: UtenHScrollArea(
-        child: DataTable(
-          columns: [
-            // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-            const DataColumn(label: Text('材料名称')),
-            const DataColumn(label: Text('编号')),
-            const DataColumn(label: Text('颜色')),
-            const DataColumn(label: Text('实际损耗'), numeric: true),
-            const DataColumn(label: Text('允许损耗'), numeric: true),
-            const DataColumn(label: Text('超耗'), numeric: true),
-            if (_canViewFinancialAmounts) ...[
-              const DataColumn(label: Text('单位账面价值'), numeric: true),
-              const DataColumn(label: Text('账面损失'), numeric: true),
-            ],
-            const DataColumn(label: Text('估值状态')),
-          ],
-          rows: [
-            for (final line in lines)
-              DataRow(
-                cells: [
-                  DataCell(Text(line.goodsName ?? '—')),
-                  DataCell(Text(line.goodsCode ?? '—')),
-                  DataCell(Text(line.colorName ?? '—')),
-                  DataCell(Text(line.actualLossQty ?? '—')),
-                  DataCell(Text(line.allowedLossQty ?? '—')),
-                  DataCell(Text(line.excessLossQty ?? '—')),
-                  if (_canViewFinancialAmounts) ...[
-                    DataCell(Text(line.unitBookValueLocal ?? '—')),
-                    DataCell(Text(line.lossBookValueLocal ?? '—')),
-                  ],
-                  DataCell(Text(line.valuationStatus ?? '—')),
-                ],
-              ),
-          ],
+  Widget _linesTable(List<SubcontractLossClaimLine> lines) =>
+      MasterDataTableView<SubcontractLossClaimLine>(
+        tableKey: 'finance.subcontractLoss.valuation',
+        embedded: true,
+        compactCards: true,
+        platformBinding: PlatformTableBinding(
+          tableKey: 'finance.subcontractLoss.valuation',
+          scope: 'view_finance',
+          recordIdOf: (_) => null,
+          factValuesOf: (row) => {
+            'actualLossQty': row.actualLossQty,
+            'allowedLossQty': row.allowedLossQty,
+            'excessLossQty': row.excessLossQty,
+            if (_canViewFinancialAmounts)
+              'unitBookValueLocal': row.unitBookValueLocal,
+            if (_canViewFinancialAmounts)
+              'lossBookValueLocal': row.lossBookValueLocal,
+          },
         ),
-      ),
-    );
-  }
+        columns: [
+          MasterColumnDef(
+            key: 'goodsName',
+            label: '材料名称',
+            width: 180,
+            value: (row) => row.goodsName,
+          ),
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '编号',
+            width: 130,
+            value: (row) => row.goodsCode,
+          ),
+          MasterColumnDef(
+            key: 'colorName',
+            label: '颜色',
+            width: 90,
+            value: (row) => row.colorName,
+          ),
+          MasterColumnDef(
+            key: 'actualLossQty',
+            label: '实际损耗',
+            width: 120,
+            type: 'number',
+            value: (row) => row.actualLossQty,
+          ),
+          MasterColumnDef(
+            key: 'allowedLossQty',
+            label: '允许损耗',
+            width: 120,
+            type: 'number',
+            value: (row) => row.allowedLossQty,
+          ),
+          MasterColumnDef(
+            key: 'excessLossQty',
+            label: '超耗',
+            width: 110,
+            type: 'number',
+            value: (row) => row.excessLossQty,
+          ),
+          if (_canViewFinancialAmounts) ...[
+            MasterColumnDef(
+              key: 'unitBookValueLocal',
+              label: '单位账面价值',
+              width: 145,
+              type: 'money',
+              value: (row) => row.unitBookValueLocal,
+            ),
+            MasterColumnDef(
+              key: 'lossBookValueLocal',
+              label: '账面损失',
+              width: 130,
+              type: 'money',
+              value: (row) => row.lossBookValueLocal,
+            ),
+          ],
+          MasterColumnDef(
+            key: 'valuationStatus',
+            label: '估值状态',
+            width: 130,
+            value: (row) => _valuationStatusText(row.valuationStatus),
+            cellBuilder: (_, row) => _ValuationStatusCell(row.valuationStatus),
+          ),
+        ],
+        items: lines,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+      );
 
   Widget _resolutionCard(
     ThemeData theme,
@@ -604,6 +656,56 @@ class _SubcontractLossClaimDetailPanelState
             child: const Text('责任决定'),
           ),
       ],
+    );
+  }
+}
+
+/// 估值状态格：服务端只出 VALUED / MISSING_COST 两档码（此前格内直显英文码）。
+/// 2026-09-27 用户口径「格内胶囊改单元格背景色」：旧原生表无 cellColor 通道，
+/// 用带 0.5 描边的实色块铺满格内容区（边框保留），已估值=绿 / 缺成本待估=琥珀；
+/// 未知码原样显示不铺色。
+String _valuationStatusText(String? status) =>
+    switch (status?.trim().toUpperCase()) {
+      'VALUED' => '已估值',
+      'MISSING_COST' => '缺成本待估',
+      _ => status?.trim().isNotEmpty == true ? status!.trim() : '—',
+    };
+
+class _ValuationStatusCell extends StatelessWidget {
+  const _ValuationStatusCell(this.status);
+
+  final String? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final code = status?.trim().toUpperCase();
+    final type = switch (code) {
+      'VALUED' => UtenStatusBadgeType.success,
+      'MISSING_COST' => UtenStatusBadgeType.warning,
+      _ => null,
+    };
+    if (type == null) {
+      final text = status?.trim();
+      return Text(text == null || text.isEmpty ? '—' : text);
+    }
+    final (bg, fg) = resolveStatusBadgeColors(
+      type,
+      theme.brightness == Brightness.dark,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: theme.colorScheme.outline, width: 0.5),
+      ),
+      child: Text(
+        _valuationStatusText(status),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: fg,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

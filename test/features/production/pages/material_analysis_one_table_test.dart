@@ -505,7 +505,9 @@ void main() {
       find.descendant(of: workshop, matching: find.byType(InkWell)),
       findsNothing,
     );
-    expect(find.text('最新主档归属'), findsWidgets);
+    // 2026-09-29「归属车间」列并入「生产车间」：主档车间名不再单独展示，
+    // 只在无计划时作为生产车间列的默认带出（本例有计划，显示的是实际计划车间）。
+    expect(find.text('最新主档归属'), findsNothing);
     await tester.enterText(_appendQty('m-root'), '200');
     await _settlePreview(tester);
     await _onlyRoot(tester);
@@ -2457,7 +2459,7 @@ void main() {
 
   testWidgets('列定稿为 17 列，可用数量回到需要数量与还缺数量之间', (tester) async {
     await _pump(tester);
-    expect(find.text('表头设置 17/17'), findsOneWidget);
+    expect(find.text('表头设置 16/16'), findsOneWidget);
     for (final label in const [
       '物料办理',
       '物料名称',
@@ -2472,15 +2474,15 @@ void main() {
       '允许超产比例',
       '追加下单',
       '所属仓库',
-      '归属车间',
       '生产车间',
       '负责人',
       '进度 / 待办',
     ]) {
       expect(find.text(label), findsWidgets, reason: '表头缺少「$label」列');
     }
-    // 退役的三列不能再出现（「可用数量」2026-09-25 起按公共口径回归）。
-    for (final retired in const ['在途未到', '公共认领未实收', '在途调拨']) {
+    // 退役的列不能再出现（「可用数量」2026-09-25 起按公共口径回归；
+    // 「归属车间」2026-09-29 起并入「生产车间」）。
+    for (final retired in const ['在途未到', '公共认领未实收', '在途调拨', '归属车间']) {
       expect(find.text(retired), findsNothing, reason: '「$retired」列应已退役');
     }
   });
@@ -4940,6 +4942,117 @@ void main() {
       {'ws-2': '1000', 'ws-1': '2000'},
     );
     expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  // 2026-09-29 用户实机：物料分析准备页按产品视图，子层里带下级的父行（委外/自制）
+  // 勾选框消失。根因：货品主档 min_qty（安全库存）>0 且公共可用为 0 时，安全补库
+  // 缺口>0，非采购路线整行不可下达（`_routeBlockedBySafetyGap`），勾选框随之退役。
+  // 老库重导(2026-09-28)把组装件的 min_qty 带了进来，此前全为 0 从不触发。
+  testWidgets('安全补库缺口>0 的自制/委外父行无勾选框，采购子件不受影响', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        (data['flatMaterials'] as List).addAll([
+          {
+            ..._material(
+              line: 'f-sc',
+              name: '委外父行',
+              confirmed: 'SUBCONTRACT',
+              netShortageQty: 800,
+            ),
+            'mainWarehouseSafetyReplenishmentGapQty': 5000,
+          },
+          _material(
+            line: 'f-sc-c',
+            name: '委外父行的子件',
+            confirmed: 'BUY',
+            netShortageQty: 800,
+            level: 2,
+            parentLine: 'f-sc',
+          ),
+          {
+            ..._material(
+              line: 'f-mk',
+              name: '自制父行',
+              confirmed: 'MAKE',
+              netShortageQty: 800,
+            ),
+            'mainWarehouseSafetyReplenishmentGapQty': 3000,
+          },
+          _material(
+            line: 'f-mk-c',
+            name: '自制父行的子件',
+            confirmed: 'BUY',
+            netShortageQty: 800,
+            level: 2,
+            parentLine: 'f-mk',
+          ),
+        ]);
+        return data;
+      },
+    );
+    for (final line in ['f-sc', 'f-mk']) {
+      expect(
+        find.byKey(ValueKey('material-table-row-$line')),
+        findsOneWidget,
+        reason: '父行 $line 应渲染出来',
+      );
+      expect(
+        find
+            .descendant(
+              of: find.byKey(ValueKey('material-table-row-$line')),
+              matching: find.byType(Checkbox),
+            )
+            .evaluate(),
+        isEmpty,
+        reason: '安全缺口>0 的非采购父行 $line 不该有勾选框',
+      );
+    }
+    // 采购子件与安全缺口无关，照常有框可勾。
+    await _check(tester, _rowCheckbox('f-sc-c'));
+    await _settleRebuild(tester);
+    expect(_nodeSelected(tester, 'f-sc-c'), isTrue);
+  });
+
+  // 同一场景的安全水位归零后（2026-09-29 数据修复口径：老库报警水位不继承为
+  // 安全库存），自制/委外父行勾选框必须恢复——缺车间/负责人只是可豁免拦截。
+  testWidgets('安全补库缺口=0 的自制/委外父行勾选框恢复且勾上生效', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        (data['flatMaterials'] as List).addAll([
+          _material(
+            line: 'f-sc',
+            name: '委外父行',
+            confirmed: 'SUBCONTRACT',
+            netShortageQty: 800,
+          ),
+          _material(
+            line: 'f-mk',
+            name: '自制父行',
+            confirmed: 'MAKE',
+            netShortageQty: 800,
+          ),
+        ]);
+        return data;
+      },
+    );
+    for (final line in ['f-sc', 'f-mk']) {
+      final checkbox = _rowCheckbox(line);
+      expect(checkbox, findsWidgets, reason: '父行 $line 应有勾选框');
+      expect(
+        tester.widget<Checkbox>(checkbox).onChanged,
+        isNotNull,
+        reason: '父行 $line 的勾选框应可点',
+      );
+      await _check(tester, checkbox);
+      await _settleRebuild(tester);
+      expect(_nodeSelected(tester, line), isTrue, reason: '父行 $line 应可选中');
+    }
   });
 }
 

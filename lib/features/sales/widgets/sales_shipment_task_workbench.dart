@@ -720,6 +720,8 @@ class _SalesShipmentTaskWorkbenchState
     final table = AbsorbPointer(
       absorbing: _busyDecision,
       child: MasterDataTableView<SalesDocListItem>(
+        tableKey:
+            'features.sales.widgets.sales_shipment_task_workbench.SalesShipmentTaskWorkbenchState._table.1',
         // primary 联动（折叠头收完 → 表格内滚），独立/嵌入两态同款。
         primary: true,
         key: Key(

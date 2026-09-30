@@ -18,7 +18,8 @@ import java.util.UUID;
  * <p>The UUID relation remains authoritative for business logic. Code and name are copied only so
  * approved history keeps the labels that users saw when the document was frozen.</p>
  */
-public record SalesGoodsSnapshot(String code, String name, String source) {
+public record SalesGoodsSnapshot(String code, String name, String source, String nameEn) {
+    public SalesGoodsSnapshot(String code, String name, String source) { this(code, name, source, null); }
 
     public static final String MASTER_AT_SAVE = "MASTER_AT_SAVE";
     public static final String MASTER_AT_APPROVAL = "MASTER_AT_APPROVAL";
@@ -36,7 +37,7 @@ public record SalesGoodsSnapshot(String code, String name, String source) {
         com.uten.imp.common.concurrency.GoodsQuantityBasisLocks.lockForQuantityUse(em, ids);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                SELECT goods.id, goods.code, goods.name
+                SELECT goods.id, goods.code, goods.name, goods.name_en
                 FROM goods
                 WHERE goods.id IN (:ids)
                 """)
@@ -53,7 +54,7 @@ public record SalesGoodsSnapshot(String code, String name, String source) {
         }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                SELECT item.id, item.goods_code_snapshot, item.goods_name_snapshot
+                SELECT item.id, item.goods_code_snapshot, item.goods_name_snapshot, item.goods_name_en_snapshot
                 FROM sales_order_items item
                 WHERE item.id IN (:ids)
                 """)
@@ -96,7 +97,7 @@ public record SalesGoodsSnapshot(String code, String name, String source) {
         for (Object[] row : rows) {
             result.put(
                     (UUID) row[0],
-                    new SalesGoodsSnapshot(text(row[1]), text(row[2]), source));
+                    new SalesGoodsSnapshot(text(row[1]), text(row[2]), source, row.length > 3 ? text(row[3]) : null));
         }
         return result;
     }

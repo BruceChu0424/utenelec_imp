@@ -18,7 +18,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -201,7 +200,8 @@ class StockLedgerRowMaskingTest {
         });
         when(rs.wasNull()).thenAnswer(inv -> lastNull.get());
         when(rs.getBigDecimal(anyString())).thenAnswer(inv -> values.get(inv.<String>getArgument(0)));
-        when(rs.getObject(anyString(), any(Class.class))).thenAnswer(inv -> values.get(inv.<String>getArgument(0)));
+        when(rs.getObject(anyString(), org.mockito.ArgumentMatchers.<Class<Object>>any()))
+                .thenAnswer(inv -> values.get(inv.<String>getArgument(0)));
         return rs;
     }
 }

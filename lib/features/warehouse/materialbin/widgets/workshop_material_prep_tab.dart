@@ -15,6 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/feedback/uten_empty.dart';
@@ -80,11 +82,8 @@ class WmPrepRow extends EditableGridRow {
   bool get keepsLegacyPrefill =>
       source.prefilledFromLegacy && material.value == originalMaterialKey;
 
-  String get productDisplay => [
-    source.productName ?? source.productCode ?? '',
-    if (source.productSpec != null && source.productSpec!.isNotEmpty)
-      source.productSpec!,
-  ].join(' ');
+  /// 2026-09-29 用户口径：名称只显示名称，规格（86X86 等）不再拼接显示。
+  String get productDisplay => source.productName ?? source.productCode ?? '';
 
   @override
   void dispose() {
@@ -363,6 +362,20 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
       width: 100,
       textOf: (r) => wmPrepStatusLabel(r.source.status),
       filterValueOf: (r) => wmPrepStatusLabel(r.source.status),
+      // 2026-09-27 用户口径「表格状态列整格底色」：已填单重=绿 / 待填=琥珀 /
+      // 待准备=中性灰；不用内料仓的行不铺色。
+      cellColor: (context, r) => switch (r.source.status) {
+        'WEIGHED' => udenStatusBadgeCellColor(
+          context,
+          UtenStatusBadgeType.success,
+        ),
+        'CHOSEN' => udenStatusBadgeCellColor(
+          context,
+          UtenStatusBadgeType.warning,
+        ),
+        'NOT_FROM_STORE' => null,
+        _ => udenStatusBadgeCellColor(context, UtenStatusBadgeType.neutral),
+      },
       cellBuilder: (_, r) => Text(wmPrepStatusLabel(r.source.status)),
     ),
   ];
@@ -578,6 +591,8 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                 )
               else
                 UtenEditableGrid<WmPrepRow>(
+                  tableKey:
+                      'features.warehouse.materialbin.widgets.workshop_material_prep_tab.WmPrepTabState.build.1',
                   key: const Key('wm-prep-grid'),
                   controller: _grid,
                   columns: _columns(l10n, theme),

@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/io/file_saver.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../components/cards/uten_card.dart';
+import '../../components/inputs/uten_drop_target.dart';
 import '../../components/layout/uten_section_header.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -38,6 +39,7 @@ class AttachmentSection extends ConsumerStatefulWidget {
     this.emptyHint,
     this.categories,
     this.onSetAvatar,
+    this.rowActionBuilder,
   });
 
   final String ownerType;
@@ -60,6 +62,10 @@ class AttachmentSection extends ConsumerStatefulWidget {
 
   /// 把图片附件设为头像（仅员工档案用；为 null 时不显示该按钮）。
   final void Function(Attachment)? onSetAvatar;
+
+  /// 行尾附加动作（渲染在预览/删除之前），如已保存草稿附件行的「AI识别」。
+  /// 返回 null = 该行没有附加动作。
+  final Widget? Function(Attachment attachment)? rowActionBuilder;
 
   @override
   ConsumerState<AttachmentSection> createState() => _AttachmentSectionState();
@@ -103,85 +109,90 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         widget.attachments.length >= 4 && usedCategories.length >= 2;
     final filter = showFilter ? _filterCategory : null;
     final visible = _filteredBy(filter);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: UtenSectionHeader(
-                title: widget.title ?? '附件 / 发票',
-                icon: Icons.folder_outlined,
-                trailing: widget.attachments.isEmpty
-                    ? null
-                    : _countBadge(theme, widget.attachments.length),
-              ),
-            ),
-            if (canUpload) ...[
-              const SizedBox(width: UtenSpacing.s8),
-              FilledButton.tonalIcon(
-                onPressed: _busy ? null : _pickAndUpload,
-                icon: _busy
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.upload_file_outlined, size: 18),
-                label: Text(_busy ? '上传中…' : '上传'),
-              ),
-            ],
-          ],
-        ),
-        if (_busy && _progressLabel != null)
-          Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: Row(
-              children: [
-                const SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+    // 整段都是拖放接收区（Web/桌面端）：文件拖到附件区任意位置即可上传。
+    return UtenDropTarget(
+      enabled: canUpload && !_busy,
+      onFiles: _uploadFiles,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: UtenSectionHeader(
+                  title: widget.title ?? '附件 / 发票',
+                  icon: Icons.folder_outlined,
+                  trailing: widget.attachments.isEmpty
+                      ? null
+                      : _countBadge(theme, widget.attachments.length),
                 ),
+              ),
+              if (canUpload) ...[
                 const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  _progressLabel!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                FilledButton.tonalIcon(
+                  onPressed: _busy ? null : _pickAndUpload,
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.upload_file_outlined, size: 18),
+                  label: Text(_busy ? '上传中…' : '上传'),
                 ),
               ],
-            ),
+            ],
           ),
-        if (showFilter) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          _filterRow(theme, usedCategories, filter),
-        ],
-        const SizedBox(height: UtenSpacing.s8),
-        if (widget.attachments.isEmpty)
-          canUpload ? _uploadDropzone(theme) : _readonlyEmpty(theme)
-        else if (visible.isEmpty)
-          _readonlyEmpty(theme, hint: '该分类下暂无文件')
-        else
-          UtenCard(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Column(
-              children: [
-                for (int i = 0; i < visible.length; i++) ...[
-                  _row(
-                    theme,
-                    visible[i],
-                    canDownload: canDownload,
-                    canDelete: canDelete,
-                    canCategorize: canUpload,
+          if (_busy && _progressLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  if (i < visible.length - 1)
-                    const Divider(height: 1, indent: 56),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Text(
+                    _progressLabel!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
                 ],
-              ],
+              ),
             ),
-          ),
-      ],
+          if (showFilter) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            _filterRow(theme, usedCategories, filter),
+          ],
+          const SizedBox(height: UtenSpacing.s8),
+          if (widget.attachments.isEmpty)
+            canUpload ? _uploadDropzone(theme) : _readonlyEmpty(theme)
+          else if (visible.isEmpty)
+            _readonlyEmpty(theme, hint: '该分类下暂无文件')
+          else
+            UtenCard(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Column(
+                children: [
+                  for (int i = 0; i < visible.length; i++) ...[
+                    _row(
+                      theme,
+                      visible[i],
+                      canDownload: canDownload,
+                      canDelete: canDelete,
+                      canCategorize: canUpload,
+                    ),
+                    if (i < visible.length - 1)
+                      const Divider(height: 1, indent: 56),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -281,7 +292,8 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.emptyHint ?? '点击上传文件',
+                      widget.emptyHint ??
+                          (dropUploadSupported ? '点击或拖入文件上传' : '点击上传文件'),
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -351,6 +363,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       a.originalName,
       a.contentType,
     );
+    final rowAction = widget.rowActionBuilder?.call(a);
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -394,6 +407,8 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // 行尾附加动作(如已保存草稿的「AI识别」)，没有时这里不占位(null-aware 元素)。
+          ?rowAction,
           if (canDownload)
             IconButton(
               tooltip: previewable ? '预览' : '下载',
@@ -471,16 +486,41 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
 
   Future<void> _pickAndUpload() async {
     if (_busy || !_canUse(Perm.attachmentUpload, widget.ownerCanUpload)) return;
+    // 选文件期间按钮保持禁用（防重复触发）；取消选择则原样解锁。
     setState(() => _busy = true);
+    FilePickerResult? result;
     try {
-      final result = await FilePicker.platform.pickFiles(
+      result = await FilePicker.platform.pickFiles(
         withData: true,
         allowMultiple: true,
         allowCompression: false,
       );
-      if (!mounted) return;
-      final files = result?.files ?? const <PlatformFile>[];
-      if (files.isEmpty) return;
+    } finally {
+      if (mounted && (result?.files ?? const <PlatformFile>[]).isEmpty) {
+        setState(() => _busy = false);
+      }
+    }
+    if (!mounted) return;
+    final files = result?.files ?? const <PlatformFile>[];
+    if (files.isEmpty) return;
+    // 选文件链已置 _busy（重入保护在 pick 之前完成），转交时跳过守卫。
+    await _uploadFiles(files, alreadyBusy: true);
+  }
+
+  /// 上传一批文件（文件选择框与拖入共用）：逐个校验类型并上传，逐个提示失败原因。
+  /// [alreadyBusy]：调用方已持有 _busy 时为 true（选文件链转交），否则自行置位。
+  Future<void> _uploadFiles(
+    List<PlatformFile> files, {
+    bool alreadyBusy = false,
+  }) async {
+    if (!alreadyBusy &&
+        (_busy ||
+            files.isEmpty ||
+            !_canUse(Perm.attachmentUpload, widget.ownerCanUpload))) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
       var attempted = 0;
       var succeeded = 0;
       String? uploadedFileName;

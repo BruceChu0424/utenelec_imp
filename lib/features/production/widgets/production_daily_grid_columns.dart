@@ -718,6 +718,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'qty',
+      exactValueOf: (r) => r.isSubRow ? null : r.qty.text,
+      exactListenableOf: (r) => r.qty,
       label: '完工申报量',
       width: 118,
       numeric: true,
@@ -744,6 +746,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     // ADR-129 不良数：可选，只在已选报工工单的行上填；空 = 0。
     EditableGridColumn<DailyGridRow>(
       key: 'defectQty',
+      exactValueOf: (r) => r.isSubRow ? null : r.defectQty.text,
+      exactListenableOf: (r) => r.defectQty,
       label: '不良数',
       width: 104,
       numeric: true,
@@ -785,6 +789,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     // 不再单独占一列（产量的需求/公共份额由系统保存时核定）。
     EditableGridColumn<DailyGridRow>(
       key: 'issuedQty',
+      exactValueOf: (r) =>
+          r.isMaterialRow ? r.material?.issuedQty.toString() : null,
       label: '领料量',
       width: 104,
       numeric: true,
@@ -799,6 +805,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'materialUsed',
+      exactValueOf: (r) => r.isMaterialRow ? r.materialUsed.text : null,
+      exactListenableOf: (r) => r.materialUsed,
       label: '本次实际用料',
       width: 140,
       numeric: true,
@@ -956,6 +964,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     ),
     EditableGridColumn<DailyGridRow>(
       key: 'allocationQty',
+      exactValueOf: (r) => r.isAllocationRow ? r.allocationQty.text : null,
+      exactListenableOf: (r) => r.allocationQty,
       label: '去向数量',
       width: 120,
       numeric: true,

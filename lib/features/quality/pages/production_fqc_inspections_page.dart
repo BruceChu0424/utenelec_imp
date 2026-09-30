@@ -312,6 +312,8 @@ class _ProductionFqcInspectionsPageState
             const SizedBox(height: UtenSpacing.s12),
             Expanded(
               child: MasterDataTableView<ProductionFqcInspection>(
+                tableKey:
+                    'features.quality.pages.production_fqc_inspections_page.ProductionFqcInspectionsPageState._buildTable.1',
                 key: const Key('production-fqc-inspection-table'),
                 columns: _columns,
                 items: result.items,

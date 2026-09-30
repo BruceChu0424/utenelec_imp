@@ -67,13 +67,25 @@ public final class AggregateMaterialOrderContracts {
 
     public record SubmitRequest(
             @NotNull Long version,
-            @NotBlank @Pattern(regexp="(?i)[0-9a-f]{64}") String fingerprint,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
             @NotBlank @Size(min=8,max=128) String idempotencyKey,
             @NotNull UUID warehouseId,
             @NotNull LocalDate billDate, LocalDate deliveryDate, boolean approveNow,
             @NotEmpty @Size(max=RequestLimits.DOCUMENT_LINES) List<@Valid GroupInput> groups,
-            @NotBlank @Pattern(regexp="(?i)[0-9a-f]{64}") String previewFingerprint) {
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String previewFingerprint,
+            /**
+             * ADR-099 修订(2026-09-29)：null/false = 原行为——提交时先自动认领自制公共
+             * 超产与同主仓公共在途、只为余下部分新下单；true = 用户明确选择
+             * 「足额下单，不扣可用数量」，跳过全部自动认领。预览本身不认领，指纹校验不受影响。
+             */
+            Boolean skipAutoClaim) {
         public SubmitRequest { groups=groups==null?List.of():List.copyOf(groups); }
+        public boolean skipClaims() { return Boolean.TRUE.equals(skipAutoClaim); }
+        public SubmitRequest(Long version,String fingerprint,String idempotencyKey,UUID warehouseId,
+                LocalDate billDate,LocalDate deliveryDate,boolean approveNow,List<GroupInput> groups,
+                String previewFingerprint) {
+            this(version,fingerprint,idempotencyKey,warehouseId,billDate,deliveryDate,approveNow,groups,previewFingerprint,null);
+        }
         public PreviewRequest previewRequest() {
             return new PreviewRequest(version,fingerprint,idempotencyKey,warehouseId,billDate,deliveryDate,approveNow,groups);
         }

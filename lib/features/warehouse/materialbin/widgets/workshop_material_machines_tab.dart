@@ -487,6 +487,8 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
                 )
               else
                 UtenEditableGrid<WmMachineRow>(
+                  tableKey:
+                      'features.warehouse.materialbin.widgets.workshop_material_machines_tab.WmMachinesTabState.build.1',
                   key: const Key('wm-machines-grid'),
                   controller: _grid,
                   columns: _columns(l10n),

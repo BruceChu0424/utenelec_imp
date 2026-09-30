@@ -12,7 +12,8 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_form_grid.dart';
-import '../../../components/layout/uten_h_scroll_area.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -643,32 +644,69 @@ class _FinanceAssetDetailSurfaceState
             ),
           ),
           const SizedBox(height: UtenSpacing.s8),
-          UtenHScrollArea(
-            child: DataTable(
-              columns: const [
-                DataColumn(label: Text('期间')),
-                DataColumn(label: Text('期初'), numeric: true),
-                DataColumn(label: Text('本期计提'), numeric: true),
-                DataColumn(label: Text('累计'), numeric: true),
-                DataColumn(label: Text('期末'), numeric: true),
-                DataColumn(label: Text('状态')),
-              ],
-              rows: [
-                for (final line in detail.schedule)
-                  DataRow(
-                    cells: [
-                      DataCell(Text(line.period)),
-                      DataCell(Text(formatFinanceDecimal(line.openingBalance))),
-                      DataCell(Text(formatFinanceDecimal(line.amount))),
-                      DataCell(
-                        Text(formatFinanceDecimal(line.accumulatedAmount)),
-                      ),
-                      DataCell(Text(formatFinanceDecimal(line.closingBalance))),
-                      DataCell(financeAssetStatusBadge(line.status)),
-                    ],
-                  ),
-              ],
+          MasterDataTableView<FinanceAssetScheduleLine>(
+            tableKey: 'finance.asset.schedule',
+            embedded: true,
+            compactCards: true,
+            platformBinding: PlatformTableBinding(
+              tableKey: 'finance.asset.schedule',
+              scope: 'view_finance',
+              recordIdOf: (_) => null,
+              factValuesOf: (row) => {
+                'openingBalance': row.openingBalance,
+                'amount': row.amount,
+                'accumulatedAmount': row.accumulatedAmount,
+                'closingBalance': row.closingBalance,
+              },
             ),
+            columns: [
+              MasterColumnDef(
+                key: 'period',
+                label: '期间',
+                width: 110,
+                value: (row) => row.period,
+              ),
+              MasterColumnDef(
+                key: 'openingBalance',
+                label: '期初',
+                width: 120,
+                type: 'money',
+                value: (row) => formatFinanceDecimal(row.openingBalance),
+              ),
+              MasterColumnDef(
+                key: 'amount',
+                label: '本期计提',
+                width: 120,
+                type: 'money',
+                value: (row) => formatFinanceDecimal(row.amount),
+              ),
+              MasterColumnDef(
+                key: 'accumulatedAmount',
+                label: '累计',
+                width: 120,
+                type: 'money',
+                value: (row) => formatFinanceDecimal(row.accumulatedAmount),
+              ),
+              MasterColumnDef(
+                key: 'closingBalance',
+                label: '期末',
+                width: 120,
+                type: 'money',
+                value: (row) => formatFinanceDecimal(row.closingBalance),
+              ),
+              MasterColumnDef(
+                key: 'status',
+                label: '状态',
+                width: 120,
+                value: (row) => financeAssetStatusLabel(row.status),
+                cellBuilder: (_, row) => financeAssetStatusCell(row.status),
+              ),
+            ],
+            items: detail.schedule,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
           ),
         ],
       ],

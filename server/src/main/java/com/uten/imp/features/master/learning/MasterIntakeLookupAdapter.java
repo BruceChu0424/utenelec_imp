@@ -332,6 +332,13 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
     }
 
     @Override
+    public boolean canLearnClientDocument(UUID clientId) {
+        ClientProfile profile = clientProfile(clientId);
+        return profile != null && "使用".equals(profile.status())
+                && clientAccess.canWriteOwner(profile.ownerEmployeeId(), clientAccess.evaluate());
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public Map<UUID, ClientGoodsHistory> clientHistory(UUID clientId, int months) {
         if (clientId == null || !clientReadable(clientId)) return Map.of();

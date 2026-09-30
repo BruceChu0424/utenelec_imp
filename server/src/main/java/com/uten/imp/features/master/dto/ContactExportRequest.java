@@ -9,7 +9,12 @@ import jakarta.validation.constraints.Size;
  */
 public record ContactExportRequest(
         @Size(max = 128, message = "导出密码长度不能超过 128 位") String password,
-        @Valid ContactSensitiveFilter sensitiveFilter) {
+        @Valid ContactSensitiveFilter sensitiveFilter,
+        @Valid com.uten.imp.common.export.TableColumnProjection columnProjection) {
+
+    public ContactExportRequest(String password, ContactSensitiveFilter sensitiveFilter) {
+        this(password, sensitiveFilter, null);
+    }
 
     public ContactSensitiveFilter sensitive() {
         return ContactSensitiveFilter.orNone(sensitiveFilter);

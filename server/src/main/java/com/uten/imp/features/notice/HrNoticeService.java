@@ -85,14 +85,14 @@ public class HrNoticeService implements HrNoticePort {
 
     // ========================= 信息变更（HR 审核） =========================
 
-    /** 员工提交需审核字段的修改 → 通知全体持 profile:review 的 HR（提交人本人除外）。 */
+    /** 员工提交需审核字段的修改 → 通知全体持 profile:review 的 HR（含提交人本人）。 */
     public void notifyProfileChangeSubmitted(UUID batchId, String submitterName,
                                              List<String> fieldLabels, UUID submitterEmployeeId) {
+        // 2026-09-29 不再跳过提交人本人：自审已放开（ProfileChangeReviewService），
+        // 持 profile:review 的 HR 自己提交的修改正等着他本人审批，这张行动卡必须发给他。
+        // 无 review 权限的普通提交人本来就不在收件集里。
         String fields = String.join("、", fieldLabels.stream().limit(5).toList());
         for (UUID target : userIdsWithNoticeAndAnyPermission("profile:review")) {
-            if (submitterEmployeeId != null && belongsToEmployee(target, submitterEmployeeId)) {
-                continue;    // 「不能审批自己提交的申请」，也不打扰提交人本人
-            }
             sameTransaction(() -> noticeService.publishForUser(
                     target, "信息变更待审核",
                     submitterName + " 提交了 " + fieldLabels.size() + " 项个人信息修改（"

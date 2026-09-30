@@ -121,7 +121,7 @@ public class Goods extends SoftDeletableEntity {
     @JoinColumn(name = "owning_workshop_department_id")
     private com.uten.imp.features.org.department.Department owningWorkshop;
 
-    /** V590 归属车间负责人（与车间一起学习的最近一次人工选择）。 */
+    /** V590 生产车间负责人（与车间一起学习的最近一次人工选择；2026-09-29 起展示统一叫「生产车间」）。 */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owning_responsible_employee_id")
     private com.uten.imp.features.org.employee.Employee owningResponsibleEmployee;

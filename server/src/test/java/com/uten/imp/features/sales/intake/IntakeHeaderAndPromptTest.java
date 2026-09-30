@@ -26,6 +26,19 @@ class IntakeHeaderAndPromptTest {
             "(?i)bank|swift|account|beneficiary|@|EXAMPLEXX|\\+962|\\+971|0000000|0000 0000|91440000X");
 
     @Test
+    void customerWebsiteUsesExplicitLabelsAndSkipsSellerLetterhead() {
+        Sheet sheet = new Sheet("S", 0, List.of(
+                new Row(0, List.of(Cell.text(0, "ZHONGSHAN UTEN ELECTRIC CO.,LTD"))),
+                new Row(1, List.of(Cell.text(0, "Website: https://seller.example"))),
+                new Row(3, List.of(Cell.text(0, "Buyer: ACME TRADING"))),
+                new Row(4, List.of(Cell.text(0, "Website: www.buyer.example"))),
+                new Row(5, List.of(Cell.text(0, "Part No"), Cell.text(1, "Qty")))),
+                List.of(), 0, 1, false);
+        IntakeHeader header = IntakeHeaderRules.extract(sheet, 5);
+        assertThat(header.website).isEqualTo("https://www.buyer.example");
+    }
+
+    @Test
     void sunasShapedHeaderRules() {
         Sheet sheet = IntakeLayoutAndExtractionTest.fixtureSheet("SUNAS");
         IntakeHeader h = IntakeHeaderRules.extract(sheet, 7);

@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
-public class OrderItemDto {
+public class OrderItemDto extends com.uten.imp.common.columns.ExtraColumnResponse {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;

@@ -397,6 +397,8 @@ class _VisitorApprovalListPageState
                 ref.invalidate(visitorApprovalFacetsProvider(_tabStatus));
               },
               child: MasterDataTableView<VisitorApplication>(
+                tableKey:
+                    'features.visitor_approval.pages.visitor_approval_list_page.VisitorApprovalListPageState.build.1',
                 key: const Key('visitor-approval-table'),
                 columns: _columns(l10n),
                 items: page.items,

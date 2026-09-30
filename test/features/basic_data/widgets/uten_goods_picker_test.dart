@@ -45,18 +45,18 @@ void main() {
       'section-b',
       'long-cat',
     });
-    expect(find.text('连接器甲(G-001)'), findsOneWidget);
-    expect(find.text('连接器乙(G-002) · 黑色'), findsOneWidget);
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(find.textContaining('G-001'), findsOneWidget);
+    expect(find.text('连接器乙'), findsOneWidget);
+    expect(find.text('G-002 · 黑色'), findsOneWidget);
     // 货品行一行显示（名字(编号) · 颜色），无单位/规格/库位副标题行。
     final goodsRow = tester.widget<ListTile>(
       find
-          .ancestor(
-            of: find.text('连接器乙(G-002) · 黑色'),
-            matching: find.byType(ListTile),
-          )
+          .ancestor(of: find.text('连接器乙'), matching: find.byType(ListTile))
           .first,
     );
-    expect(goodsRow.subtitle, isNull);
+    // 2026-09-29 名称主行化：副行=编号·颜色（单位/规格/库位仍不出现）。
+    expect((goodsRow.subtitle as Text?)?.data, 'G-002 · 黑色');
 
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -190,12 +190,14 @@ void main() {
     await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    expect(find.text('连接器甲(G-001)'), findsOneWidget);
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(find.textContaining('G-001'), findsOneWidget);
 
     goodsRepository.completeDelayedSearch(const [_outOfScopeGoods]);
     await tester.pumpAndSettle();
 
-    expect(find.text('连接器甲(G-001)'), findsOneWidget);
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(find.textContaining('G-001'), findsOneWidget);
     expect(find.text('范围外原料(RAW-001)'), findsNothing);
     expect(find.text('搜索货品失败，请稍后重试'), findsNothing);
   });
@@ -257,15 +259,12 @@ void main() {
     // 懒载：先点根分类（提升后 = 分区甲）加载货品列表，再点货品行勾选。
     await tester.tap(find.text('分区甲(A)'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('连接器甲(G-001)'));
+    await tester.tap(find.text('连接器甲'));
     await tester.pumpAndSettle();
     // 选中行 = 全站统一淡绿背景（utenTableSelectedRowColor）。
     final pickedTile = tester.widget<ListTile>(
       find
-          .ancestor(
-            of: find.text('连接器甲(G-001)'),
-            matching: find.byType(ListTile),
-          )
+          .ancestor(of: find.text('连接器甲'), matching: find.byType(ListTile))
           .first,
     );
     expect(pickedTile.selected, isTrue);
@@ -273,7 +272,7 @@ void main() {
     // 切到分区乙再勾一条。
     await tester.tap(find.text('分区乙(B)'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('连接器乙(G-002) · 黑色'));
+    await tester.tap(find.text('连接器乙'));
     await tester.pumpAndSettle();
 
     expect(find.text('已选 2 项'), findsOneWidget);

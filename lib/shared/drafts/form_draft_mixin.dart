@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../components/layout/uten_editable_grid.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/server_config.dart';
 import '../../core/router/nav_helpers.dart';
@@ -122,6 +123,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         _draftSubmissionPending =
             found.data['_formDraftSubmissionPending'] == true;
         await restoreFormDraft(found.data);
+        _restorePlatformGridDrafts(found.data['_platformGridDrafts']);
         if (!mounted ||
             ref.read(authenticatedScopeProvider) != scope ||
             ref.read(apiBaseUrlProvider) != _draftServer) {
@@ -376,10 +378,44 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
   }
 
-  String _captureDraftJson() => jsonEncode({
-    ...captureFormDraft(),
-    if (_draftSubmissionPending) '_formDraftSubmissionPending': true,
-  });
+  String _captureDraftJson() {
+    final grids = _capturePlatformGridDrafts();
+    return jsonEncode({
+      ...captureFormDraft(),
+      if (grids.isNotEmpty) '_platformGridDrafts': grids,
+      if (_draftSubmissionPending) '_formDraftSubmissionPending': true,
+    });
+  }
+
+  // These positions only bind metadata to the same local draft's row codecs;
+  // server writes still use the independently verified UUID in each row draft.
+  List<UtenEditableGridController> get _platformDraftGrids =>
+      formDraftListenables
+          .whereType<UtenEditableGridController>()
+          .toSet()
+          .toList();
+
+  List<Object> _capturePlatformGridDrafts() => [
+    for (final grid in _platformDraftGrids)
+      [for (final row in grid.rows) row.platformFields.exportDraft()],
+  ];
+
+  void _restorePlatformGridDrafts(Object? snapshot) {
+    if (snapshot is! List) return; // Earlier draft schemas had no extensions.
+    final grids = _platformDraftGrids;
+    if (snapshot.length != grids.length) {
+      throw StateError('草稿扩展字段与当前表格数量不一致，请核对后恢复');
+    }
+    for (var index = 0; index < grids.length; index++) {
+      final rows = snapshot[index];
+      if (rows is! List || rows.length != grids[index].rows.length) {
+        throw StateError('草稿扩展字段与明细行数不一致，请核对后恢复');
+      }
+      for (var row = 0; row < rows.length; row++) {
+        grids[index].rows[row].platformFields.restoreDraft(rows[row]);
+      }
+    }
+  }
 
   /// Fence a new business command before sending any bytes. An interrupted or
   /// unknown result stays recoverable but cannot create twice without proof.

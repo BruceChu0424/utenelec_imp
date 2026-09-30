@@ -185,6 +185,7 @@ public class AccountService {
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size, sort, order), a -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("_platformRecordId", a.getId());
                     row.put("code", a.getCode());
                     row.put("name", a.getName());
                     row.put("accountType", accountTypeLabel(a.getAccountType()));

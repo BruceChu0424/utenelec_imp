@@ -744,6 +744,16 @@ class _WorkshopMaterialCountPageState
       ]);
     }
     return UtenPrintTable(
+      columnKeys: const [
+        'machine',
+        'container',
+        'capacity',
+        'material',
+        'full',
+        'half',
+        'empty',
+        'measuredKg',
+      ],
       headers: const ['机台', '容器', '容量 (公斤)', '在用料', '满', '半', '空', '称得公斤'],
       rows: rows,
     );
@@ -930,6 +940,8 @@ class _WorkshopMaterialCountPageState
             style: theme.textTheme.titleMedium,
           ),
           UtenPrintPreviewButton(
+            applyTableProjection:
+                false, // Fixed paper form with handwriting and tick-box columns.
             key: const Key('wm-count-print'),
             title: '车间内料仓盘点表',
             subtitle: '${wmPeriodLabel(period)}  ${l10n.wmFillGuide}',

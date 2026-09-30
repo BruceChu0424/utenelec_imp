@@ -262,6 +262,8 @@ class _WorkshopMaterialRequestPanelState
                           )
                         else
                           UtenEditableGrid<WmIssueLineRow>(
+                            tableKey:
+                                'features.warehouse.materialbin.widgets.workshop_material_request_dialog.WorkshopMaterialRequestPanelState.build.1',
                             controller: _grid,
                             columns: wmIssueLineColumns(
                               l10n: l10n,

@@ -1,3 +1,4 @@
+import '../platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,8 +6,11 @@ import 'package:go_router/go_router.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_context_menu.dart';
 import '../../core/ui/app_notification.dart';
+import '../../core/l10n/gen/app_localizations.dart';
+import '../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../components/layout/uten_filter_toolbar.dart';
 import '../../components/feedback/uten_segment_badge_label.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../features/basic_data/models/master_facet.dart';
 import 'form_draft_category.dart';
@@ -200,7 +204,70 @@ class _FormDraftCategoryTableState<T>
       return table;
     }
     final selected = {...table.selectedIds, ..._localSelected};
+    final binding =
+        table.platformBinding ??
+        PlatformTableCatalogScope.resolve(
+          context,
+          PlatformTableDescriptor<T>(
+            kind: 'master',
+            tableKey: table.tableKey,
+            columnKeys: table.columns.map((column) => column.key).toList(),
+            rows: table.items,
+          ),
+        );
+
     return MasterDataTableView<FormDraftCategoryRow<T>>(
+      tableKey: table.tableKey,
+      platformBinding: binding == null
+          ? null
+          : PlatformTableBinding<FormDraftCategoryRow<T>>(
+              tableKey: binding.tableKey,
+              scope: binding.scope,
+              recordIdOf: (row) =>
+                  row.isLocal ? null : binding.recordIdOf(row.record as T),
+              canEditValues: binding.canEditValues,
+              canEditRow: (row) =>
+                  !row.isLocal &&
+                  (binding.canEditRow?.call(row.record as T) ?? true),
+              snapshotOf: binding.snapshotOf == null
+                  ? null
+                  : (row) => row.isLocal
+                        ? null
+                        : binding.snapshotOf!(row.record as T),
+              draftOf: binding.draftOf == null
+                  ? null
+                  : (row) =>
+                        row.isLocal ? null : binding.draftOf!(row.record as T),
+              factValuesOf: binding.factValuesOf == null
+                  ? null
+                  : (row) => row.isLocal
+                        ? const {}
+                        : binding.factValuesOf!(row.record as T),
+              factListenablesOf: binding.factListenablesOf == null
+                  ? null
+                  : (row) => row.isLocal
+                        ? const []
+                        : binding.factListenablesOf!(row.record as T),
+              columnAliases: binding.columnAliases,
+              defaultVisibleColumnKeys: binding.defaultVisibleColumnKeys,
+              defaultColumnOrder: binding.defaultColumnOrder,
+              revealPopulatedColumnKeys: binding.revealPopulatedColumnKeys,
+            ),
+      scrollingHeader: table.scrollingHeader,
+      platformCellDecorator: table.platformCellDecorator == null
+          ? null
+          : (context, row, key, value, child) => row.record == null
+                ? child
+                : table.platformCellDecorator!(
+                    context,
+                    row.record as T,
+                    key,
+                    value,
+                    child,
+                  ),
+      errorKey: table.errorKey,
+      compactCards: table.compactCards,
+      cardBelowWidth: table.cardBelowWidth,
       key: table.key,
       columns: [
         for (final column in table.columns)
@@ -212,6 +279,20 @@ class _FormDraftCategoryTableState<T>
             sortable: column.sortable,
             filterFromRows: column.filterFromRows,
             info: column.info,
+            defaultVisible: column.defaultVisible,
+            exportDefinition: column.exportDefinition,
+            cardRole: column.cardRole,
+            cardRendersBuilder: column.cardRendersBuilder,
+            exactValueOf: column.exactValueOf == null
+                ? null
+                : (row) => row.isLocal
+                      ? null
+                      : column.exactValueOf!(row.record as T),
+            exactListenableOf: column.exactListenableOf == null
+                ? null
+                : (row) => row.isLocal
+                      ? null
+                      : column.exactListenableOf!(row.record as T),
             cellBuilderHandlesSemantics: column.cellBuilderHandlesSemantics,
             fillsCellHeight: column.fillsCellHeight,
             value: (row) => row.isLocal
@@ -466,9 +547,19 @@ class FormDraftCategoryList extends ConsumerStatefulWidget {
     super.key,
     required this.scope,
     this.search = '',
+    this.externalHeader,
+    this.linkedScroll = true,
   });
   final FormDraftCategoryScope scope;
   final String search;
+
+  /// 宿主前缀行（任务中心大类行等）：挂进折叠头随上滑一起收走（与
+  /// WarehouseStockDocSegment 等分段视图同一口径：前缀后补 s12 间距）。
+  final Widget? externalHeader;
+
+  /// false = 宿主已自带联动容器（如资产与待摊工作台的面板区），本列表不再
+  /// 自建折叠容器，分组行钉住、表体直接拾取外层注入的 PrimaryScrollController。
+  final bool linkedScroll;
   @override
   ConsumerState<FormDraftCategoryList> createState() =>
       _FormDraftCategoryListState();
@@ -478,7 +569,18 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
   String _group = 'all';
   (String, String) _type(FormDraft draft) {
     for (final entry in FormDraftCatalog.all.entries) {
-      if (entry.value.groups(draft)) return (entry.key, entry.value.title);
+      if (entry.value.groups(draft)) {
+        return (
+          entry.key,
+          entry.key == 'goodsCost'
+              ? Localizations.of<AppLocalizations>(
+                      context,
+                      AppLocalizations,
+                    )?.costWorkspaceTitle ??
+                    entry.value.title
+              : entry.value.title,
+        );
+      }
     }
     return (draft.draftKind ?? draft.permission, draft.title);
   }
@@ -498,6 +600,11 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
       localPredicate: (draft) => group == 'all' || _type(draft).$1 == group,
       includeConfirmedWithoutRecord: true,
       table: MasterDataTableView<Object>(
+        tableKey:
+            'shared.drafts.form_draft_category_table.FormDraftCategoryListState.build.1',
+        // primary:true → 表体拾取联动容器（自建或宿主注入）的控制器，
+        // 上滑先把分组行收完、表格置顶后再滚表内（2026-09-29 全站口径）。
+        primary: true,
         columns: [
           MasterColumnDef(
             key: 'title',
@@ -534,33 +641,58 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
         selectable: true,
       ),
     );
-    if (groups.length <= 1) return table;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UtenFilterToolbar<String>(
-          segments: [
-            UtenFilterSegment(
-              value: 'all',
-              label: '全部',
-              count: drafts.length,
-              countForm: UtenSegmentCountForm.actionable,
+    // 宿主自带联动容器：分组行钉住（宿主折叠头管不到这里），表体接外层控制器。
+    if (!widget.linkedScroll) {
+      if (groups.length <= 1) return table;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _groupToolbar(drafts, groups, group),
+          Expanded(child: table),
+        ],
+      );
+    }
+    // 自建联动：分组行（+宿主前缀行）随上滑收走，body 只剩表格内滚。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: (groups.length <= 1 && widget.externalHeader == null)
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.externalHeader != null) ...[
+                  widget.externalHeader!,
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+                if (groups.length > 1) _groupToolbar(drafts, groups, group),
+              ],
             ),
-            for (final entry in groups.entries)
-              UtenFilterSegment(
-                value: entry.key,
-                label: entry.value.$1,
-                count: entry.value.$2,
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-          ],
-          selected: {group},
-          onSelectionChanged: (value) => setState(() => _group = value),
-        ),
-        Expanded(child: table),
-      ],
+      body: table,
     );
   }
+
+  Widget _groupToolbar(
+    List<FormDraft> drafts,
+    Map<String, (String, int)> groups,
+    String group,
+  ) => UtenFilterToolbar<String>(
+    segments: [
+      UtenFilterSegment(
+        value: 'all',
+        label: '全部',
+        count: drafts.length,
+        countForm: UtenSegmentCountForm.actionable,
+      ),
+      for (final entry in groups.entries)
+        UtenFilterSegment(
+          value: entry.key,
+          label: entry.value.$1,
+          count: entry.value.$2,
+          countForm: UtenSegmentCountForm.actionable,
+        ),
+    ],
+    selected: {group},
+    onSelectionChanged: (value) => setState(() => _group = value),
+  );
 }
 
 /// Hubs without a pre-existing draft segment put drafts in a normal category.

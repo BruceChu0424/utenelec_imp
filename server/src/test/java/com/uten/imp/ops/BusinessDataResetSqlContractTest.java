@@ -165,7 +165,14 @@ class BusinessDataResetSqlContractTest {
             Map.entry("ai_call_logs", 742),
             Map.entry("sales_quote_revision_logs", 742),
             // V743 仓库重量账(ADR-135)：只改重量的库存账行随库存业务数据清空。
-            Map.entry("stock_weight_adjustments", 743));
+            Map.entry("stock_weight_adjustments", 743),
+            Map.entry("sales_quote_template_candidates", 745),
+            Map.entry("sales_quote_template_evidence", 745),
+            Map.entry("sales_document_learning_receipts", 751),
+            Map.entry("sales_intake_layout_learning_evidence", 751),
+            Map.entry("inventory_cost_gl_periods", 754),
+            Map.entry("inventory_cost_gl_period_choices", 754),
+            Map.entry("inventory_cost_gl_links", 754));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -200,7 +207,21 @@ class BusinessDataResetSqlContractTest {
             // V743 单重学习(ADR-135)：称重设置、称重观测与学习结果随主档保留。
             Map.entry("goods_weight_profiles", 743),
             Map.entry("goods_weight_observations", 743),
-            Map.entry("goods_weight_estimates", 743));
+            Map.entry("goods_weight_estimates", 743),
+            Map.entry("business_column_definitions", 744),
+            Map.entry("sales_quote_customer_templates", 745),
+            Map.entry("sales_quote_template_versions", 745),
+            Map.entry("platform_column_definitions", 750),
+            Map.entry("platform_record_fields", 750),
+            Map.entry("platform_column_usage", 750),
+            Map.entry("sales_alias_document_evidence", 752),
+            Map.entry("goods_cost_sheets", 753),
+            Map.entry("goods_cost_snapshots", 753),
+            Map.entry("goods_cost_commands", 753),
+            Map.entry("goods_cost_templates", 753),
+            Map.entry("inventory_cost_gl_policy", 754),
+            Map.entry("goods_cost_imports", 755),
+            Map.entry("goods_cost_import_mappings", 755));
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -504,6 +525,8 @@ class BusinessDataResetSqlContractTest {
                 .contains("(742, 670),")
                 // V743 仓库重量账与单重学习(ADR-135, 原号 V745): V735 并入后定号 V743/671。
                 .contains("(743, 671)")
+                // V757 only installs a candidate-object cleanup trigger; table policy is unchanged.
+                .contains("(757, 685)")
                 // The exact range label follows the independently enumerated classpath head.
                 .contains("V507/469、V508/470及V511至V"
                         + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");

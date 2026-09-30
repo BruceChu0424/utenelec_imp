@@ -321,9 +321,6 @@ abstract class _MaterialAnalysisProductTasksState
   /// 表头筛选用的桶值: 没登记归属的行统一落到「未登记」一桶, 不建空桶。
   static const String owningWarehouseUnsetLabel = '未登记';
 
-  /// 归属车间(V590)筛选的未学习桶标签（与「未登记」同款沉底口径）。
-  static const String owningWorkshopUnsetLabel = '未学习';
-
   String owningWarehouseFilterValue(String? goodsId, String? snapshotName) {
     final name = owningWarehouseNameOf(goodsId, snapshotName)?.trim();
     return name == null || name.isEmpty ? owningWarehouseUnsetLabel : name;
@@ -1093,6 +1090,7 @@ abstract class _MaterialAnalysisProductTasksState
     List<_BucketCandidatePlanInput>? candidateInputs,
     List<_BucketPlanDraft>? planDrafts,
     bool silent = false,
+    bool skipAutoClaim = false,
   }) async {
     final analysis = _analysis;
     final warehouseId = _warehouseId;
@@ -1141,6 +1139,8 @@ abstract class _MaterialAnalysisProductTasksState
         _dateText(_deliveryDate),
         _preparationApproveNow,
         for (final line in lines) line.toJson().toString(),
+        // 不同「是否扣可用数量」的选择是不同下达意图，幂等键必须分开。
+        if (skipAutoClaim) 'skipAutoClaim',
       ].join('|'),
     );
     final approveNow = _preparationApproveNow;
@@ -1159,6 +1159,7 @@ abstract class _MaterialAnalysisProductTasksState
             deliveryDate: _dateText(_deliveryDate),
             approveNow: approveNow,
             lines: lines,
+            skipAutoClaim: skipAutoClaim,
           );
       if (!mounted) return false;
       setState(() {

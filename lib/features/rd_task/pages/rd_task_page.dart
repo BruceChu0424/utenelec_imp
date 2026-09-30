@@ -28,7 +28,11 @@ import '../../../shared/drafts/form_draft_category.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -37,7 +41,6 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -405,119 +408,70 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       return UtenEmpty.error(actionLabel: '重试', onAction: _load);
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final breakpoint = breakpointForWidth(constraints.maxWidth);
-        // 顶部固定区：指标卡 + 筛选行。
-        final top = <Widget>[
-          _Overview(
-            total: data.total,
-            label: '${widget.seg.label}任务',
-            // 指标卡配色跟着分段语义走: 待处理沿用主色, 进行中用琥珀(与黄徽章
-            // 同一族), 已完成绿色。
-            tone: switch (widget.seg) {
-              _RdTaskSeg.done => 'success',
-              _RdTaskSeg.inProgress => 'warning',
-              _RdTaskSeg.pending || _RdTaskSeg.draft => 'primary',
+    // 2026-09-29「大小屏共用一张表」：统一用 MasterDataTableView，窄屏
+    // （<840，原卡片阈值）由表格内建卡片形态接管，同一份列定义驱动。
+    final sel = _selectedRow;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Overview(
+          total: data.total,
+          label: '${widget.seg.label}任务',
+          // 指标卡配色跟着分段语义走: 待处理沿用主色, 进行中用琥珀(与黄徽章
+          // 同一族), 已完成绿色。
+          tone: switch (widget.seg) {
+            _RdTaskSeg.done => 'success',
+            _RdTaskSeg.inProgress => 'warning',
+            _RdTaskSeg.pending || _RdTaskSeg.draft => 'primary',
+          },
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+        _Filters(
+          keyword: _keyword,
+          category: _category,
+          onKeywordChanged: (value) => _applyFilter(keyword: value),
+          onCategoryChanged: (value) => _applyFilter(category: value),
+          onRefresh: _loading
+              ? null
+              : () {
+                  setState(() => _page = 1);
+                  _load();
+                },
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        // 选中可完成任务时，显示「标记完成」上下文条（行点击=开 BOM；完成走这里）。
+        if (sel != null && !widget.seg.isClosed && _resolveEligible(sel))
+          _ResolveBar(
+            task: sel,
+            resolving: _resolving,
+            onResolve: () => _onResolve(sel),
+          ),
+        Expanded(
+          child: _DesktopTaskTable(
+            key: const Key('rd-task-desktop-table'),
+            data: data,
+            items: data.items,
+            loading: _loading,
+            filters: _tableFilters,
+            onFilterChanged: (key, value) => setState(() {
+              if (value == null) {
+                _tableFilters.remove(key); // 选「所有」= 不筛
+              } else {
+                _tableFilters[key] = value;
+              }
+            }),
+            onOpenGoods: _openGoodsBom,
+            onSelectionChanged: (row) =>
+                setState(() => _selectedTaskId = row.id),
+            canResolve: _resolveEligible,
+            onResolve: _onResolve,
+            onPageChanged: (page) {
+              setState(() => _page = page);
+              _load();
             },
           ),
-          const SizedBox(height: UtenSpacing.s16),
-          _Filters(
-            keyword: _keyword,
-            category: _category,
-            onKeywordChanged: (value) => _applyFilter(keyword: value),
-            onCategoryChanged: (value) => _applyFilter(category: value),
-            onRefresh: _loading
-                ? null
-                : () {
-                    setState(() => _page = 1);
-                    _load();
-                  },
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-        ];
-
-        if (breakpoint.isExpanded) {
-          final sel = _selectedRow;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ...top,
-              // 选中可完成任务时，显示「标记完成」上下文条（行点击=开 BOM；完成走这里）。
-              if (sel != null && !widget.seg.isClosed && _resolveEligible(sel))
-                _ResolveBar(
-                  task: sel,
-                  resolving: _resolving,
-                  onResolve: () => _onResolve(sel),
-                ),
-              Expanded(
-                child: _DesktopTaskTable(
-                  key: const Key('rd-task-desktop-table'),
-                  data: data,
-                  items: data.items,
-                  loading: _loading,
-                  filters: _tableFilters,
-                  onFilterChanged: (key, value) => setState(() {
-                    if (value == null) {
-                      _tableFilters.remove(key); // 选「所有」= 不筛
-                    } else {
-                      _tableFilters[key] = value;
-                    }
-                  }),
-                  onOpenGoods: _openGoodsBom,
-                  onSelectionChanged: (row) =>
-                      setState(() => _selectedTaskId = row.id),
-                  onPageChanged: (page) {
-                    setState(() => _page = page);
-                    _load();
-                  },
-                ),
-              ),
-            ],
-          );
-        }
-
-        return ListView(
-          key: const Key('rd-task-mobile-list'),
-          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
-          padding: EdgeInsets.only(
-            bottom: UtenCapsuleNavScope.occlusionOf(context),
-          ),
-          children: [
-            ...top,
-            if (data.items.isEmpty)
-              const SizedBox(
-                height: 320,
-                child: UtenEmpty(
-                  icon: Icons.science_outlined,
-                  message: '当前筛选下没有研发任务',
-                  description: '可调整类别或关键词筛选后重试。',
-                ),
-              )
-            else
-              for (final task in data.items) ...[
-                _TaskCard(
-                  task: task,
-                  onOpenGoods: () => _openGoodsBom(task),
-                  onResolve: _resolveEligible(task)
-                      ? () => _onResolve(task)
-                      : null,
-                  resolving: _resolving,
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-            _MobilePager(
-              page: data.page,
-              totalPages: data.totalPages,
-              loading: _loading,
-              onPageChanged: (page) {
-                setState(() => _page = page);
-                _load();
-              },
-            ),
-          ],
-        );
-      },
+        ),
+      ],
     );
   }
 }
@@ -674,6 +628,8 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.onOpenGoods,
     required this.onSelectionChanged,
     required this.onPageChanged,
+    this.canResolve,
+    this.onResolve,
   });
 
   final RdTaskData data;
@@ -690,6 +646,10 @@ class _DesktopTaskTable extends StatelessWidget {
   /// 行被点选时回调（驱动上方「标记完成」上下文条）。
   final ValueChanged<RdTaskRow> onSelectionChanged;
   final ValueChanged<int> onPageChanged;
+
+  /// 「标记完成」可做判定与执行（行右键/长按菜单；窄屏卡片上完成动作也走这里）。
+  final bool Function(RdTaskRow)? canResolve;
+  final ValueChanged<RdTaskRow>? onResolve;
 
   /// 按表头筛选裁剪当前页行集（空值行在选了任何值时被滤掉，与物料分析表一致）。
   List<RdTaskRow> _applyFilters(List<RdTaskRow> rows) {
@@ -737,12 +697,20 @@ class _DesktopTaskTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return MasterDataTableView<RdTaskRow>(
+      tableKey: 'features.rd_task.pages.rd_task_page.DesktopTaskTable.build.1',
+      // 2026-09-29「大小屏共用一张表」：屏宽 <840（原卡片阈值）自动切卡片
+      // 列表，同一份列定义驱动；本页自绘 _TaskCard 已退役。
+      compactCards: true,
+      cardBelowWidth: UtenBreakpoints.expandedStart,
+      bottomContentPadding: UtenCapsuleNavScope.occlusionOf(context),
       columns: [
         MasterColumnDef(
           key: 'taskNo',
           label: '任务号',
           width: 148,
           value: (item) => item.taskNo,
+          // 卡片形态：任务号与编号一起进标题下副行。
+          cardRole: MasterColumnCardRole.subtitle,
         ),
         MasterColumnDef(
           key: 'category',
@@ -762,6 +730,7 @@ class _DesktopTaskTable extends StatelessWidget {
           value: (item) => item.goodsName ?? item.goodsCode,
           cellBuilderHandlesSemantics: true,
           cellBuilder: (_, item) => UtenGoodsIdentityCell(name: item.goodsName),
+          cardRole: MasterColumnCardRole.title,
         ),
         MasterColumnDef(
           key: 'goodsCode',
@@ -769,6 +738,8 @@ class _DesktopTaskTable extends StatelessWidget {
           width: 130,
           value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
           cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
+          // 卡片副行已带编号，明细区不重复出。
+          cardRole: MasterColumnCardRole.subtitle,
         ),
         MasterColumnDef(
           key: 'colorName',
@@ -794,6 +765,15 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '状态',
           width: 100,
           value: (item) => rdTaskStatusLabel(item.status),
+          // 2026-09-27 用户口径「表格状态列整格底色」：待处理=品牌青(沿用指标卡
+          // 主色口径) / 进行中=琥珀 / 已完成=绿 / 已取消=中性灰。
+          cellColor: (context, item) =>
+              udenStatusBadgeCellColor(context, switch (item.status) {
+                'OPEN' => UtenStatusBadgeType.accent,
+                'IN_PROGRESS' => UtenStatusBadgeType.warning,
+                'DONE' => UtenStatusBadgeType.success,
+                _ => UtenStatusBadgeType.neutral,
+              }),
         ),
         MasterColumnDef(
           key: 'priority',
@@ -826,6 +806,15 @@ class _DesktopTaskTable extends StatelessWidget {
       // 行点击 = 打开关联货品的 BOM 维护弹窗；同时回调选中（驱动上方「标记完成」上下文条）。
       onRowTap: onOpenGoods,
       onSelectionChanged: onSelectionChanged,
+      // 行菜单（右键/长按，窄屏卡片同款）：打开 BOM 之外承载「标记完成」——
+      // 卡片形态没有选中态上下文条，完成动作全走这里。
+      rowMenuBuilder: onResolve == null
+          ? null
+          : (item) => [
+              UtenMenuItem(label: '打开货品 BOM', onTap: () => onOpenGoods(item)),
+              if (canResolve?.call(item) ?? false)
+                UtenMenuItem(label: '标记完成', onTap: () => onResolve!(item)),
+            ],
       rowColor: (item) => item.priority.toUpperCase() == 'URGENT'
           ? theme.colorScheme.error.withValues(alpha: 0.06)
           : null,
@@ -838,124 +827,6 @@ class _DesktopTaskTable extends StatelessWidget {
   }
 }
 
-// ═══════════════════════ 窄屏：卡片 ═══════════════════════
-
-class _TaskCard extends StatelessWidget {
-  const _TaskCard({
-    required this.task,
-    required this.onOpenGoods,
-    required this.onResolve,
-    required this.resolving,
-  });
-
-  final RdTaskRow task;
-
-  /// 卡片点击 = 打开关联货品的 BOM 维护弹窗。
-  final VoidCallback onOpenGoods;
-
-  /// 非空 = 底部"标记完成"按钮可点；null = 不渲染完成按钮。
-  final VoidCallback? onResolve;
-
-  /// 是否有任务正在标记完成中（用于禁用按钮，避免重复提交）。
-  final bool resolving;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final urgent = task.priority.toUpperCase() == 'URGENT';
-    final statusColor = _statusColor(task.status, theme);
-    final goods = _goodsText(task);
-    return Material(
-      color: task.isOpen && urgent
-          ? theme.colorScheme.error.withValues(alpha: 0.04)
-          : theme.colorScheme.surface,
-      borderRadius: UtenRadius.lgAll,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onOpenGoods,
-        child: Container(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          decoration: BoxDecoration(
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(
-              color: urgent
-                  ? theme.colorScheme.error.withValues(alpha: 0.5)
-                  : theme.colorScheme.outlineVariant,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task.title,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '${task.taskNo} · ${rdTaskCategoryLabel(task.category)}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _StatusPill(
-                    label: rdTaskStatusLabel(task.status),
-                    color: statusColor,
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  if (goods != null && goods.isNotEmpty)
-                    _TaskFact(icon: Icons.inventory_2_outlined, label: goods),
-                  _TaskFact(
-                    icon: Icons.person_outline_rounded,
-                    label: task.assigneeName ?? '未指派',
-                  ),
-                  if ((task.dueDate ?? '').isNotEmpty)
-                    _TaskFact(
-                      icon: Icons.event_outlined,
-                      label: task.dueDate!,
-                      color: urgent ? theme.colorScheme.error : null,
-                    ),
-                  if (urgent)
-                    _StatusPill(label: '紧急', color: theme.colorScheme.error),
-                ],
-              ),
-              if (onResolve != null) ...[
-                const SizedBox(height: UtenSpacing.s16),
-                UtenButton(
-                  key: Key('rd-task-resolve-${task.id}'),
-                  onPressed: resolving ? null : onResolve,
-                  icon: Icons.check_circle_outline_rounded,
-                  isExpanded: true,
-                  child: Text(resolving ? '处理中…' : '标记完成'),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 桌面表格上方「标记完成」上下文条：点选某条可完成任务后出现。
-/// 与行点击（打开 BOM 维护）解耦——完成是手动兜底（BOM 保存即自动完成）。
 class _ResolveBar extends StatelessWidget {
   const _ResolveBar({
     required this.task,
@@ -1010,113 +881,7 @@ class _ResolveBar extends StatelessWidget {
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: UtenRadius.pillAll,
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _TaskFact extends StatelessWidget {
-  const _TaskFact({required this.icon, required this.label, this.color});
-
-  final IconData icon;
-  final String label;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? Theme.of(context).colorScheme.onSurfaceVariant;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18, color: c),
-        const SizedBox(width: UtenSpacing.s4),
-        Text(label, style: TextStyle(color: c)),
-      ],
-    );
-  }
-}
-
-class _MobilePager extends StatelessWidget {
-  const _MobilePager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPageChanged,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPageChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (totalPages <= 1) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          UtenButton(
-            size: UtenButtonSize.small,
-            type: UtenButtonType.ghost,
-            onPressed: !loading && page > 1
-                ? () => onPageChanged(page - 1)
-                : null,
-            child: const Text('上一页'),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-            child: Text('$page / $totalPages'),
-          ),
-          UtenButton(
-            size: UtenButtonSize.small,
-            type: UtenButtonType.ghost,
-            onPressed: !loading && page < totalPages
-                ? () => onPageChanged(page + 1)
-                : null,
-            child: const Text('下一页'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ═══════════════════════ 辅助：取值/配色 ═══════════════════════
-
-/// 货品文案（编码 + 名称）；两者皆空返回 null（单元格留空）。
-String? _goodsText(RdTaskRow item) {
-  final parts = <String>[
-    if ((item.goodsCode ?? '').isNotEmpty) item.goodsCode!,
-    if ((item.goodsName ?? '').isNotEmpty) item.goodsName!,
-  ];
-  return parts.isEmpty ? null : parts.join(' ');
-}
 
 String _priorityLabel(String priority) {
   switch (priority.toUpperCase()) {
@@ -1125,21 +890,6 @@ String _priorityLabel(String priority) {
     case 'NORMAL':
     default:
       return '普通';
-  }
-}
-
-Color _statusColor(String status, ThemeData theme) {
-  switch (status) {
-    case 'OPEN':
-      return theme.colorScheme.primary;
-    case 'IN_PROGRESS':
-      return Colors.orange;
-    case 'DONE':
-      return UtenColors.success;
-    case 'CANCELED':
-      return theme.colorScheme.onSurfaceVariant;
-    default:
-      return theme.colorScheme.primary;
   }
 }
 

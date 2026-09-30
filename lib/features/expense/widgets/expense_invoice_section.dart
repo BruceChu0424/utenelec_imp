@@ -14,6 +14,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_drop_target.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -129,6 +130,8 @@ class ExpenseInvoiceSection extends ConsumerWidget {
           )
         else
           MasterDataTableView<ExpenseClaimInvoice>(
+            tableKey:
+                'features.expense.widgets.expense_invoice_section.ExpenseInvoiceSection.build.1',
             key: const Key('expense-invoice-table'),
             columns: [
               ..._columns,
@@ -562,8 +565,18 @@ class _ExpenseInvoiceFormDialogState
       allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp'],
     );
     final file = picked?.files.singleOrNull;
-    final bytes = file?.bytes;
-    if (!mounted || file == null || bytes == null) return;
+    if (!mounted || file == null) return;
+    await _recognizeFile(file);
+  }
+
+  /// OCR 识别一张发票图（文件选择框与拖入共用）。
+  Future<void> _recognizeFile(PlatformFile file) async {
+    if (!mounted || _recognizing || _busy) return;
+    final bytes = file.bytes;
+    if (bytes == null) {
+      if (mounted) context.appError('无法读取「${file.name}」的内容');
+      return;
+    }
     setState(() => _recognizing = true);
     try {
       final recognized = await ref
@@ -726,293 +739,307 @@ class _ExpenseInvoiceFormDialogState
     final theme = Theme.of(context);
     return Stack(
       children: [
-        AlertDialog(
-          title: Text(widget.existing == null ? '登记发票' : '编辑发票'),
-          content: AbsorbPointer(
-            absorbing: _busy,
-            child: SizedBox(
-              width: 640,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (widget.existing == null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                l10n.expenseFlowOcrGuide,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+        // 弹窗整块都是拖放接收区（Web/桌面端）：发票图直接拖进来 OCR，与「识别发票图片」按钮同一条链。
+        UtenDropTarget(
+          enabled: widget.existing == null && !_recognizing && !_busy,
+          hint: '松开鼠标识别发票图',
+          onFiles: (files) => _recognizeFile(files.first),
+          child: AlertDialog(
+            title: Text(widget.existing == null ? '登记发票' : '编辑发票'),
+            content: AbsorbPointer(
+              absorbing: _busy,
+              child: SizedBox(
+                width: 640,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (widget.existing == null)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: UtenSpacing.s12,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  l10n.expenseFlowOcrGuide,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ),
-                            ),
-                            UtenButton(
-                              key: const Key('expense-invoice-recognize'),
-                              type: UtenButtonType.tonal,
-                              size: UtenButtonSize.small,
-                              icon: Icons.document_scanner_outlined,
-                              isLoading: _recognizing,
-                              onPressed: _recognizing ? null : _recognize,
-                              child: const Text('识别发票图片'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    _invoiceFields(
-                      children: [
-                        Expanded(
-                          child: UtenDropdownField(
-                            label: '发票类型',
-                            required: true,
-                            value: _type.apiValue,
-                            allowClear: false,
-                            items: [
-                              for (final type in ExpenseInvoiceType.values)
-                                UtenDropdownItem(
-                                  value: type.apiValue,
-                                  label: type.label,
-                                ),
+                              UtenButton(
+                                key: const Key('expense-invoice-recognize'),
+                                type: UtenButtonType.tonal,
+                                size: UtenButtonSize.small,
+                                icon: Icons.document_scanner_outlined,
+                                isLoading: _recognizing,
+                                onPressed: _recognizing ? null : _recognize,
+                                child: const Text('识别发票图片'),
+                              ),
                             ],
-                            onChanged: (value) {
-                              if (value != null && value.isNotEmpty) {
-                                setState(
-                                  () =>
-                                      _type = ExpenseInvoiceType.fromApi(value),
-                                );
-                              }
-                            },
                           ),
                         ),
-                        const SizedBox(width: UtenSpacing.s12),
-                        Expanded(
-                          child: TextField(
-                            controller: _codeController,
-                            enabled:
-                                !_isDigitalNo ||
-                                _type == ExpenseInvoiceType.other,
-                            onChanged: (_) => _scheduleDuplicateCheck(),
-                            keyboardType: TextInputType.number,
-                            decoration: UtenInputDecoration(
-                              InputDecoration(
-                                labelText: _isDigitalNo
-                                    ? '发票代码（数电票无）'
-                                    : '发票代码 *',
-                              ),
-                              info: '纸质/旧电子票 10 或 12 位；20 位数电票没有发票代码。',
+                      _invoiceFields(
+                        children: [
+                          Expanded(
+                            child: UtenDropdownField(
+                              label: '发票类型',
+                              required: true,
+                              value: _type.apiValue,
+                              allowClear: false,
+                              items: [
+                                for (final type in ExpenseInvoiceType.values)
+                                  UtenDropdownItem(
+                                    value: type.apiValue,
+                                    label: type.label,
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null && value.isNotEmpty) {
+                                  setState(
+                                    () => _type = ExpenseInvoiceType.fromApi(
+                                      value,
+                                    ),
+                                  );
+                                }
+                              },
                             ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: TextField(
+                              controller: _codeController,
+                              enabled:
+                                  !_isDigitalNo ||
+                                  _type == ExpenseInvoiceType.other,
+                              onChanged: (_) => _scheduleDuplicateCheck(),
+                              keyboardType: TextInputType.number,
+                              decoration: UtenInputDecoration(
+                                InputDecoration(
+                                  labelText: _isDigitalNo
+                                      ? '发票代码（数电票无）'
+                                      : '发票代码 *',
+                                ),
+                                info: '纸质/旧电子票 10 或 12 位；20 位数电票没有发票代码。',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      TextField(
+                        key: const Key('expense-invoice-no'),
+                        controller: _noController,
+                        keyboardType: TextInputType.number,
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(labelText: '发票号码 *'),
+                          info: '数电票 20 位；纸质/旧电子票 8 位。全公司唯一，防重复报销。',
+                        ),
+                        onChanged: (_) => _scheduleDuplicateCheck(),
+                      ),
+                      if (_duplicateWarning != null) ...[
+                        const SizedBox(height: UtenSpacing.s8),
+                        Text(
+                          _duplicateWarning!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    TextField(
-                      key: const Key('expense-invoice-no'),
-                      controller: _noController,
-                      keyboardType: TextInputType.number,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(labelText: '发票号码 *'),
-                        info: '数电票 20 位；纸质/旧电子票 8 位。全公司唯一，防重复报销。',
+                      const SizedBox(height: UtenSpacing.s12),
+                      _invoiceFields(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: _pickIssueDate,
+                              borderRadius: BorderRadius.circular(8),
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: '开票日期',
+                                  border: OutlineInputBorder(),
+                                  suffixIcon: Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 18,
+                                  ),
+                                ),
+                                child: Text(
+                                  _issueDate == null
+                                      ? '—'
+                                      : '${_issueDate!.year}-${_issueDate!.month.toString().padLeft(2, '0')}-${_issueDate!.day.toString().padLeft(2, '0')}',
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: TextField(
+                              key: const Key('expense-invoice-buyer-name'),
+                              controller: _buyerController,
+                              onChanged: (_) => _buyerEdited = true,
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(labelText: '购买方名称'),
+                                info: '按原件填写，个人实名交通等凭证按适用规则由财务核实。',
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      onChanged: (_) => _scheduleDuplicateCheck(),
-                    ),
-                    if (_duplicateWarning != null) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      Text(
-                        _duplicateWarning!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.error,
+                      const SizedBox(height: UtenSpacing.s12),
+                      TextField(
+                        key: const Key('expense-invoice-buyer-tax'),
+                        controller: _buyerTaxController,
+                        onChanged: (_) => _buyerTaxEdited = true,
+                        maxLength: 20,
+                        decoration: UtenInputDecoration(
+                          InputDecoration(
+                            labelText: l10n.expenseFlowCompanyTaxNo,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      _invoiceFields(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: TextField(
+                              controller: _sellerController,
+                              onChanged: (_) => _scheduleDuplicateCheck(),
+                              decoration: const InputDecoration(
+                                labelText: '销售方名称',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: TextField(
+                              controller: _sellerTaxController,
+                              decoration: const InputDecoration(
+                                labelText: '销售方税号',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      _invoiceFields(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _exclController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(labelText: '合计金额（不含税）'),
+                                info:
+                                    '不含税金额 + 税额应等于价税合计（±0.01），'
+                                    '不符时系统标记「勾稽不符」供审批人复核。',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: TextField(
+                              controller: _taxController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: '合计税额',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: TextField(
+                              key: const Key('expense-invoice-total'),
+                              controller: _totalController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: '价税合计 *',
+                                prefixText: '¥ ',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      if (_ocrUsed)
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: _ocrConfirmed,
+                          onChanged: _busy
+                              ? null
+                              : (value) => setState(
+                                  () => _ocrConfirmed = value ?? false,
+                                ),
+                          title: Text(l10n.expenseFlowOcrConfirm),
+                        ),
+                      if (widget.attachments.isEmpty)
+                        Text(
+                          l10n.expenseFlowOriginalRequired,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      if (widget.attachments.isNotEmpty)
+                        UtenDropdownField(
+                          label: '关联凭证原件',
+                          required: true,
+                          value: _attachmentId,
+                          items: [
+                            for (final attachment in widget.attachments)
+                              UtenDropdownItem(
+                                value: attachment.id,
+                                label: attachment.originalName,
+                              ),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => _attachmentId = value),
+                        ),
+                      const SizedBox(height: UtenSpacing.s12),
+                      TextField(
+                        controller: _remarkController,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: '备注（选填）',
+                          border: OutlineInputBorder(),
                         ),
                       ),
                     ],
-                    const SizedBox(height: UtenSpacing.s12),
-                    _invoiceFields(
-                      children: [
-                        Expanded(
-                          child: InkWell(
-                            onTap: _pickIssueDate,
-                            borderRadius: BorderRadius.circular(8),
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: '开票日期',
-                                border: OutlineInputBorder(),
-                                suffixIcon: Icon(
-                                  Icons.calendar_today_outlined,
-                                  size: 18,
-                                ),
-                              ),
-                              child: Text(
-                                _issueDate == null
-                                    ? '—'
-                                    : '${_issueDate!.year}-${_issueDate!.month.toString().padLeft(2, '0')}-${_issueDate!.day.toString().padLeft(2, '0')}',
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s12),
-                        Expanded(
-                          child: TextField(
-                            key: const Key('expense-invoice-buyer-name'),
-                            controller: _buyerController,
-                            onChanged: (_) => _buyerEdited = true,
-                            decoration: const UtenInputDecoration(
-                              InputDecoration(labelText: '购买方名称'),
-                              info: '按原件填写，个人实名交通等凭证按适用规则由财务核实。',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    TextField(
-                      key: const Key('expense-invoice-buyer-tax'),
-                      controller: _buyerTaxController,
-                      onChanged: (_) => _buyerTaxEdited = true,
-                      maxLength: 20,
-                      decoration: UtenInputDecoration(
-                        InputDecoration(
-                          labelText: l10n.expenseFlowCompanyTaxNo,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _invoiceFields(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: TextField(
-                            controller: _sellerController,
-                            onChanged: (_) => _scheduleDuplicateCheck(),
-                            decoration: const InputDecoration(
-                              labelText: '销售方名称',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s12),
-                        Expanded(
-                          child: TextField(
-                            controller: _sellerTaxController,
-                            decoration: const InputDecoration(
-                              labelText: '销售方税号',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    _invoiceFields(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _exclController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const UtenInputDecoration(
-                              InputDecoration(labelText: '合计金额（不含税）'),
-                              info:
-                                  '不含税金额 + 税额应等于价税合计（±0.01），'
-                                  '不符时系统标记「勾稽不符」供审批人复核。',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s12),
-                        Expanded(
-                          child: TextField(
-                            controller: _taxController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: '合计税额',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s12),
-                        Expanded(
-                          child: TextField(
-                            key: const Key('expense-invoice-total'),
-                            controller: _totalController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              labelText: '价税合计 *',
-                              prefixText: '¥ ',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    if (_ocrUsed)
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: _ocrConfirmed,
-                        onChanged: _busy
-                            ? null
-                            : (value) => setState(
-                                () => _ocrConfirmed = value ?? false,
-                              ),
-                        title: Text(l10n.expenseFlowOcrConfirm),
-                      ),
-                    if (widget.attachments.isEmpty)
-                      Text(
-                        l10n.expenseFlowOriginalRequired,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.error,
-                        ),
-                      ),
-                    if (widget.attachments.isNotEmpty)
-                      UtenDropdownField(
-                        label: '关联凭证原件',
-                        required: true,
-                        value: _attachmentId,
-                        items: [
-                          for (final attachment in widget.attachments)
-                            UtenDropdownItem(
-                              value: attachment.id,
-                              label: attachment.originalName,
-                            ),
-                        ],
-                        onChanged: (value) =>
-                            setState(() => _attachmentId = value),
-                      ),
-                    const SizedBox(height: UtenSpacing.s12),
-                    TextField(
-                      controller: _remarkController,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: '备注（选填）',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              UtenButton(
+                key: const Key('expense-invoice-save'),
+                onPressed: _busy ? null : _submit,
+                isLoading: _busy,
+                icon: Icons.save_outlined,
+                child: const Text('保存'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: _busy ? null : () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            UtenButton(
-              key: const Key('expense-invoice-save'),
-              onPressed: _busy ? null : _submit,
-              isLoading: _busy,
-              icon: Icons.save_outlined,
-              child: const Text('保存'),
-            ),
-          ],
         ),
         if (_recognizing)
           const Positioned.fill(

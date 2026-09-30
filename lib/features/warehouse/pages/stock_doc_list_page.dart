@@ -573,6 +573,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                       ? const UtenHistoryTimePlaceholder()
                       : _withFormDraftRows(
                           MasterDataTableView<StockDocListItem>(
+                            tableKey: 'warehouse.${widget.docType.name}.list',
                             // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                             primary: true,
                             selectable: _canSelectDrafts,

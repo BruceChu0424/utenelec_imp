@@ -146,7 +146,30 @@ Future<SalesIntakeLaunchResult?> launchSalesIntake(
     return null;
   }
   if (!context.mounted || picked == null || picked.files.isEmpty) return null;
-  final file = picked.files.single;
+  return launchSalesIntakeWithFile(
+    context,
+    ref,
+    file: picked.files.single,
+    docType: docType,
+    clientId: clientId,
+    clientName: clientName,
+    docId: docId,
+    canHandoffToQuote: canHandoffToQuote,
+  );
+}
+
+/// 识别一份已拿到的客户文件（文件选择框与拖入共用）。取消/失败返回 null(失败已提示)。
+Future<SalesIntakeLaunchResult?> launchSalesIntakeWithFile(
+  BuildContext context,
+  WidgetRef ref, {
+  required PlatformFile file,
+  required SalesDocType docType,
+  String? clientId,
+  String? clientName,
+  String? docId,
+  bool canHandoffToQuote = false,
+}) async {
+  final l10n = salesIntakeL10n(context);
   final Uint8List? bytes = file.bytes;
   final extension = _extensionOf(file.name);
   final contentType = extension == null

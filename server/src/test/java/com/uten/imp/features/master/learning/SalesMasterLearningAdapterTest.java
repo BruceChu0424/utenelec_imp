@@ -81,6 +81,16 @@ class SalesMasterLearningAdapterTest {
     }
 
     @Test
+    void emptyCurrentDocumentStillReconcilesItsPriorLearningEvidence() {
+        when(applier.hasDocumentLearning("quote",docId)).thenReturn(true);
+        adapter.learnAfterCommit(new SalesLearningRequest("quote",docId,clientId,actor,null,List.of(),Map.of(),null));
+        TransactionSynchronizationManager.getSynchronizations().getFirst().afterCommit();
+        var capture=org.mockito.ArgumentCaptor.forClass(SalesLearningPlanner.Plan.class);
+        verify(applier).apply(eq("quote"),eq(docId),eq(clientId),eq(actor),capture.capture(),eq(Map.of()));
+        assertThat(capture.getValue().aliases()).isEmpty();assertThat(capture.getValue().retainedSources()).isEmpty();
+    }
+
+    @Test
     void invalidTickedClientFieldFailsInsideTheSaveTransactionBeforeAnythingIsRegistered() {
         Throwable thrown = catchThrowable(() -> adapter.learnAfterCommit(request(Map.of("email", "broken"))));
 
@@ -121,7 +131,41 @@ class SalesMasterLearningAdapterTest {
     }
 
     @Test
-    void learningFailureIsSwallowedAndTheJobIsStillMarkedUsed() {
+    void multipleFilesWithIdenticalRowKeysLearnTogetherWithoutRetractingEarlierFile() {
+        UUID secondJob = UUID.randomUUID();
+        UUID secondGoods = UUID.randomUUID();
+        when(usage.resultFor(jobId, actor)).thenReturn(Optional.of(Map.of("lines", List.of(Map.of(
+                "key", "S1R9", "partNo", "MODEL-A", "status", "MATCHED", "selectedGoodsId", goodsId.toString())))));
+        when(usage.resultFor(secondJob, actor)).thenReturn(Optional.of(Map.of("lines", List.of(Map.of(
+                "key", "S1R9", "partNo", "MODEL-B", "status", "MATCHED", "selectedGoodsId", secondGoods.toString())))));
+        adapter.learnAfterCommit(new SalesLearningRequest("quote", docId, clientId, actor, null,
+                List.of(new LearnedLine(goodsId, "MODEL-A", null, jobId + ":S1R9", false, false),
+                        new LearnedLine(secondGoods, "MODEL-B", null, secondJob + ":S1R9", false, false)),
+                Map.of(), secondJob, List.of(jobId)));
+        TransactionSynchronizationManager.getSynchronizations().getFirst().afterCommit();
+        verify(applier).apply(eq("quote"), eq(docId), eq(clientId), eq(actor),
+                org.mockito.ArgumentMatchers.argThat(plan -> plan.aliases().size() == 4 &&
+                        plan.aliases().stream().map(SalesLearningPlanner.AliasUpsert::goodsId).distinct().count() == 2), eq(Map.of()));
+        verify(usage).markUsed(jobId, actor, "quote", docId);
+        verify(usage).markUsed(secondJob, actor, "quote", docId);
+    }
+
+    @Test
+    void forgedAdditionalSourceKeyDoesNotConsumeUnrelatedOwnedTask() {
+        UUID unrelated = UUID.randomUUID();
+        when(usage.resultFor(jobId, actor)).thenReturn(Optional.empty());
+        when(usage.resultFor(unrelated, actor)).thenReturn(Optional.of(Map.of("lines", List.of(Map.of(
+                "key", "S1R9", "partNo", "MODEL-A", "status", "MATCHED", "selectedGoodsId", goodsId.toString())))));
+        adapter.learnAfterCommit(new SalesLearningRequest("quote", docId, clientId, actor, null,
+                List.of(new LearnedLine(goodsId, "MODEL-A", null, unrelated + ":S1R999", false, false)),
+                Map.of(), jobId, List.of(unrelated)));
+        TransactionSynchronizationManager.getSynchronizations().getFirst().afterCommit();
+        verify(usage, never()).markUsed(unrelated, actor, "quote", docId);
+        verify(applier, never()).apply(anyString(), any(), any(), any(), any(), anyMap());
+    }
+
+    @Test
+    void learningFailureIsSwallowedAndItsTrustedResultRemainsForRetry() {
         when(usage.resultFor(jobId, actor)).thenReturn(Optional.empty());
         doThrow(new IllegalStateException("simulated failure with customer text"))
                 .when(applier).apply(anyString(), any(), any(), any(), any(), anyMap());
@@ -132,7 +176,7 @@ class SalesMasterLearningAdapterTest {
         Throwable thrown = catchThrowable(sync::afterCommit);
 
         assertThat(thrown).isNull();
-        verify(usage).markUsed(jobId, actor, "quote", docId);
+        verify(usage, never()).markUsed(jobId, actor, "quote", docId);
     }
 
     @Test

@@ -428,8 +428,16 @@ public class EmployeeCommandService {
     public void confirm(UUID id, LocalDate confirmedDate) {
         tx.bind();
         Employee e = queryService.requireEmployee(id);
-        if (!"probation".equals(e.getStatus())) {
-            throw new ApiException(ErrorCode.CONFLICT, "仅试用期员工可转正");
+        // 试用期 → 转正；在职但未登记转正日期（老库导入/历史存量）→ 补登。
+        // 在职且已登记的拒重复办理，离职的拒绝——两者都出 CONFLICT 让前端原样提示。
+        boolean probation = "probation".equals(e.getStatus());
+        boolean backfill = "active".equals(e.getStatus()) && e.getConfirmedAt() == null;
+        if (!probation && !backfill) {
+            if ("active".equals(e.getStatus())) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "该员工已登记转正日期 " + e.getConfirmedAt() + "，无需重复办理");
+            }
+            throw new ApiException(ErrorCode.CONFLICT, "员工已离职，无法办理转正");
         }
         LocalDate date = confirmedDate == null ? BusinessTime.today() : confirmedDate;
         if (date.isAfter(BusinessTime.today())) {
@@ -438,7 +446,7 @@ public class EmployeeCommandService {
         if (e.getHireDate() != null && date.isBefore(e.getHireDate())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "转正日期不能早于入职日期");
         }
-        e.setStatus("active");
+        if (probation) e.setStatus("active");
         e.setConfirmedAt(date);
         e.setVersion(e.getVersion() + 1);   // 乐观锁：转正也是档案变更
         empRepo.save(e);
@@ -450,7 +458,7 @@ public class EmployeeCommandService {
         h.setFromDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
         h.setToDepartmentId(e.getDepartment() == null ? null : e.getDepartment().getId());
         h.setEventDate(date);
-        h.setRemark("转正");
+        h.setRemark(probation ? "转正" : "补登转正日期");
         historyRepo.save(h);
     }
 

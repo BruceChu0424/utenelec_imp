@@ -179,7 +179,11 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
     ref.watch(warehouseWeightUnitsPrefsProvider);
     final rows = _balances?.items ?? const <BalanceRow>[];
     return MasterDataTableView<BalanceRow>(
+      tableKey:
+          'shared.stock_ledger.widgets.goods_stock_balance_view.GoodsStockBalanceViewState.build.1',
       key: const Key('stock-item-balance-table'),
+      // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+      primary: true,
       columns: _columns(),
       items: rows,
       facets: const {},

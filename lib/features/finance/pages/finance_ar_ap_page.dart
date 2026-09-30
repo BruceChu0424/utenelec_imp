@@ -485,6 +485,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   ),
                 ),
                 tablePane: MasterDataTableView<ArApLedgerItem>(
+                  tableKey:
+                      'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
                   // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
                   primary: true,
                   columns: _columns(names),

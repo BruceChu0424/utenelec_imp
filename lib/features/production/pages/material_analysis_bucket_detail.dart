@@ -317,9 +317,6 @@ class _MaterialAnalysisBucketPageState
   String? _rowUnitName(_BucketRow row) =>
       (row.product?.unitName ?? _rowMaterial(row)?.unitName)?.trim();
 
-  String? _rowSpec(_BucketRow row) =>
-      (row.product?.spec ?? _rowMaterial(row)?.spec)?.trim();
-
   List<MasterColumnDef<_BucketRow>> _identityColumns() => [
     MasterColumnDef<_BucketRow>(
       key: 'goods',
@@ -332,7 +329,6 @@ class _MaterialAnalysisBucketPageState
       cellBuilder: (context, row) => _goodsNameCell(
         context,
         name: _rowGoodsName(row) ?? row.id,
-        spec: _rowSpec(row),
         product: row.product,
       ),
     ),
@@ -652,7 +648,7 @@ class _MaterialAnalysisBucketPageState
   /// 三个桶共用的只读清单(2026-09-22 用户口径「外面的不填数值，得进到详情页
   /// 才能填；表格只显示对应重要的信息」)：身份四列 + 供应方式 / 需求量 / 缺口 /
   /// 进度；已下达段把缺口换成下达数量并多一列已下达单据。勾选行点底部按钮、
-  /// 或双击一行，都进「父件 + 下层一起下单」页；其余信息(所属仓库、归属车间、
+  /// 或双击一行，都进「父件 + 下层一起下单」页；其余信息(所属仓库、生产车间、
   /// BOM 路径、仓库余量、公共认领未实收)搬进那一页。
   Widget _bucketTable(List<_BucketRow> rows) {
     final theme = Theme.of(context);
@@ -737,6 +733,8 @@ class _MaterialAnalysisBucketPageState
     // 已下达段只在真有可追加的行时才出勾选列与动作组(ADR-099)。
     final selectable = _canAct && (!_appendMode || rows.any(_canSelectTask));
     return MasterDataTableView<_BucketRow>(
+      tableKey:
+          'features.production.pages.material_analysis_bucket_detail.MaterialAnalysisBucketPageState._bucketTable.1',
       columns: columns,
       items: _pageRows(filtered, filteredPage),
       facets: {
@@ -1056,11 +1054,10 @@ class _MaterialAnalysisBucketPageState
   Widget _goodsNameCell(
     BuildContext context, {
     required String name,
-    String? spec,
     ProductionMaterialAnalysisProduct? product,
   }) {
-    // 编号/颜色已各自成列，身份格只补规格(它没有独立列，丢了就看不到)。
-    final cell = UtenGoodsIdentityCell(name: name, spec: spec);
+    // 编号/颜色/单位已各自成列；规格按 2026-09-29 用户口径不再显示。
+    final cell = UtenGoodsIdentityCell(name: name);
     if (!_isTopLevelProduct(product)) return cell;
     final theme = Theme.of(context);
     final color = theme.colorScheme.error;
@@ -1104,6 +1101,7 @@ class _MaterialAnalysisBucketPageState
         width: 100,
         type: 'number',
         value: (row) => host._qty(_rowRequiredQty(row)),
+        exactValueOf: (row) => _rowRequiredQty(row)?.toString(),
         info: '原始来源需求；下单和追加不会改写这个数量。',
       ),
       MasterColumnDef<_BucketRow>(
@@ -1112,6 +1110,7 @@ class _MaterialAnalysisBucketPageState
         width: 110,
         type: 'number',
         value: (row) => host._qty(_rowAvailableQty(row)),
+        exactValueOf: (row) => _rowAvailableQty(row)?.toString(),
         info: host._l10n.materialPreparationAvailableHint,
       ),
       // 缺口始终使用服务端实际缺料事实；下达量和公共备货不改变本批需求。
@@ -1123,6 +1122,7 @@ class _MaterialAnalysisBucketPageState
           width: 90,
           type: 'number',
           value: (row) => host._qty(_rowShortageQty(row)),
+          exactValueOf: (row) => _rowShortageQty(row)?.toString(),
           info: '与主表相同的待安排量；包含可采用供给时，实际提交会先核对并占用供给。',
           cellBuilder: (context, row) {
             final shortage = _rowShortageQty(row);
@@ -1153,6 +1153,7 @@ class _MaterialAnalysisBucketPageState
           width: 110,
           type: 'number',
           value: (row) => host._qty(_rowIssuedQty(row)),
+          exactValueOf: (row) => _rowIssuedQty(row)?.toString(),
           info: '实际下单量，包含超量备货。勾选后可在同一核对页填写追加数量。',
         ),
       if (issued && route != null)

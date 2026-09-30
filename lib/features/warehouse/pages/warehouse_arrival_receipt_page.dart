@@ -1063,6 +1063,8 @@ class _WarehouseArrivalReceiptPageState
             ),
             const SizedBox(height: UtenSpacing.s8),
             UtenEditableGrid<_ArrivalReceiptLine>(
+              tableKey:
+                  'features.warehouse.pages.warehouse_arrival_receipt_page.WarehouseArrivalReceiptPageState._buildForm.1',
               key: const Key('warehouse-arrival-lines-grid'),
               controller: _lineGrid,
               stickyHeaderPinned: _gridPinned,
@@ -1294,6 +1296,7 @@ class _WarehouseArrivalReceiptPageState
         key: 'approvedRemainingQty',
         label: '批准剩余',
         textOf: (line) => inboundQty(line.item.approvedRemainingQty),
+        exactValueOf: (line) => line.item.approvedRemainingQty.toString(),
       ),
       EditableGridColumn(
         key: 'arrivalSource',

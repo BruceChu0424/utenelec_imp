@@ -1128,7 +1128,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeConfirmTitle => 'Confirm regular employment?';
 
   @override
-  String get employeeConfirmBody => 'The employee status will become Active.';
+  String get employeeConfirmBody =>
+      'Register the actual confirmation date. Probationary employees become Active; already-regular employees get the date backfilled.';
 
   @override
   String get employeeConfirmSuccess => 'Employment confirmed';
@@ -6429,37 +6430,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Could not load quotes. Please try again later.';
 
   @override
-  String get salesIntakeBannerTitle => 'Read customer file';
-
-  @override
-  String get salesIntakeBannerMessage =>
-      'Upload the customer\'s quotation or proforma invoice to fill in the customer and goods automatically';
-
-  @override
-  String get salesIntakeBannerButton => 'Read customer file';
-
-  @override
-  String get salesIntakeBannerAgain => 'Read another file';
-
-  @override
-  String salesIntakeBannerImported(String file, int count) {
-    String _temp0 = intl.Intl.pluralLogic(
-      count,
-      locale: localeName,
-      other: '$count lines',
-      one: '1 line',
-    );
-    return 'Imported $_temp0 from $file';
-  }
-
-  @override
-  String get salesIntakeToolbarButton => 'Read customer file';
-
-  @override
-  String get salesIntakeAiOffHint =>
-      'AI is off: only common Excel layouts can be read';
-
-  @override
   String get salesIntakeApprovedOrderHint =>
       'Approved orders are changed with quantity change or edit; they cannot be re-read from a file';
 
@@ -7049,4 +7019,871 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get salesIntakeQuoteLockedDiscountInfo =>
       'Finance set this discount in the quotation. To change it, reopen the quotation';
+
+  @override
+  String get quoteTemplateDownload => 'Download quotation';
+
+  @override
+  String get quoteTemplateChoose => 'Choose customer quotation template';
+
+  @override
+  String get quoteTemplateChooseHint =>
+      'Choose one or more templates. Multiple files are downloaded together in a ZIP. You can also use the standard format.';
+
+  @override
+  String quoteTemplateVersionUsage(int version, int count) {
+    return 'Version $version · Used $count times';
+  }
+
+  @override
+  String get quoteTemplateStandard => 'Use standard format';
+
+  @override
+  String get quoteTemplateDownloadAll => 'Download all';
+
+  @override
+  String get quoteTemplateDownloadSelected => 'Download selected';
+
+  @override
+  String get businessColumnAdd => 'Add column';
+
+  @override
+  String get businessColumnName => 'Column name';
+
+  @override
+  String get businessColumnSearch => 'Enter a name to find existing columns';
+
+  @override
+  String get businessColumnReuseHint =>
+      'Reuse a column or create one. Saved columns are available for reuse; new documents keep their default layout.';
+
+  @override
+  String get businessColumnSystem => 'System column';
+
+  @override
+  String get businessColumnReference => 'Reference only';
+
+  @override
+  String get businessColumnLimit =>
+      'A document can contain up to 32 additional columns.';
+
+  @override
+  String get businessColumnAmountHint =>
+      'Operations apply to each line amount in the order added. Moving headers changes display order only. Blank values are skipped. Division must be exact and nonzero; the final amount cannot be negative.';
+
+  @override
+  String get businessColumnType => 'Content type';
+
+  @override
+  String get businessColumnText => 'Text';
+
+  @override
+  String get businessColumnNumber => 'Number';
+
+  @override
+  String get businessColumnCalculation => 'Amount calculation';
+
+  @override
+  String get businessColumnAddAmount => 'Add (+)';
+
+  @override
+  String get businessColumnSubtractAmount => 'Subtract (−)';
+
+  @override
+  String get businessColumnMultiplyAmount => 'Multiply (×)';
+
+  @override
+  String get businessColumnDivideAmount => 'Divide (÷)';
+
+  @override
+  String get businessColumnCreate => 'Create and add';
+
+  @override
+  String get businessColumnLoadFailed =>
+      'Could not load columns. Please retry.';
+
+  @override
+  String get businessColumnSaveFailed =>
+      'Could not save the column. Please retry.';
+
+  @override
+  String get businessColumnInvalid =>
+      'Check additional column numbers, divisors and the final amount.';
+
+  @override
+  String get businessColumnNameEn => 'English name';
+
+  @override
+  String get costWorkspaceTitle => 'Cost workspace';
+
+  @override
+  String get costEstimate => 'Cost estimate';
+
+  @override
+  String get costActual => 'Actual costs';
+
+  @override
+  String get costVersions => 'Cost versions';
+
+  @override
+  String get costNew => 'New cost sheet';
+
+  @override
+  String get costName => 'Cost sheet name';
+
+  @override
+  String get costBatch => 'Batch output';
+
+  @override
+  String get costCustomer => 'Customer scope';
+
+  @override
+  String get costCurrency => 'Cost currency';
+
+  @override
+  String get costExchangeRate => 'Exchange rate to local';
+
+  @override
+  String get costEffectiveDate => 'Price date';
+
+  @override
+  String get costUsageStrategy => 'Usage selection';
+
+  @override
+  String get costActualFirst => 'Actual usage first; design fallback';
+
+  @override
+  String get costDesignOnly => 'Design usage';
+
+  @override
+  String get costPriceStrategy => 'Price selection';
+
+  @override
+  String get costApprovedPrice => 'Approved source price';
+
+  @override
+  String get costManualPrice => 'Manual prices';
+
+  @override
+  String get costNotes => 'Notes';
+
+  @override
+  String get costMaterial => 'Material cost';
+
+  @override
+  String get costProcess => 'Processing cost';
+
+  @override
+  String get costManagement => 'Management allocation';
+
+  @override
+  String get costOther => 'Other costs';
+
+  @override
+  String get costKnownTotal => 'Known cost total';
+
+  @override
+  String get costUnitCost => 'Unit product cost';
+
+  @override
+  String get costStructure => 'Assembly structure';
+
+  @override
+  String get costFees => 'Processes and costs';
+
+  @override
+  String get costGoodsName => 'Item name';
+
+  @override
+  String get costGoodsCode => 'Item code';
+
+  @override
+  String get costColor => 'Color';
+
+  @override
+  String get costUnit => 'Base unit';
+
+  @override
+  String get costAdoptedQty => 'Adopted usage';
+
+  @override
+  String get costUsageSource => 'Usage source';
+
+  @override
+  String get costPricingQty => 'Batch pricing quantity';
+
+  @override
+  String get costPrice => 'Unit price';
+
+  @override
+  String get costPriceUnitRate => 'Price unit conversion';
+
+  @override
+  String get costPriceSource => 'Price source';
+
+  @override
+  String get costLineAmount => 'Batch amount';
+
+  @override
+  String get costUnitContribution => 'Cost per product';
+
+  @override
+  String get costStatus => 'Status';
+
+  @override
+  String get costIncluded => 'Included in total';
+
+  @override
+  String get costExplanation => 'Calculation details';
+
+  @override
+  String get costOverrideReason => 'Override reason';
+
+  @override
+  String get costRestoreRecommended => 'Restore recommendation';
+
+  @override
+  String get costAddPriceColumn => 'Add cost price column';
+
+  @override
+  String get costFeeName => 'Cost name';
+
+  @override
+  String get costFeeMethod => 'Calculation method';
+
+  @override
+  String get costFeeCategory => 'Cost category';
+
+  @override
+  String get costFeeBase => 'Calculation basis';
+
+  @override
+  String get costFeeQuantity => 'Pricing quantity';
+
+  @override
+  String get costPerQuantity => 'Unit price × material quantity';
+
+  @override
+  String get costPerUnit => 'Amount per product';
+
+  @override
+  String get costFixedBatch => 'Fixed batch amount';
+
+  @override
+  String get costPercent => 'Percentage of basis';
+
+  @override
+  String get costPerCycle => 'Per machine cycle';
+
+  @override
+  String get costValue => 'Price or rate';
+
+  @override
+  String get costNotApplicable => 'Not applicable';
+
+  @override
+  String get costPending => 'Incomplete';
+
+  @override
+  String get costComplete => 'Complete';
+
+  @override
+  String get costDraft => 'Draft';
+
+  @override
+  String get costConfirmed => 'Confirmed';
+
+  @override
+  String get costReview => 'In review';
+
+  @override
+  String get costSaveDraft => 'Save draft';
+
+  @override
+  String get costRecalculate => 'Validate and calculate';
+
+  @override
+  String get costConfirm => 'Confirm cost version';
+
+  @override
+  String get costCopy => 'Copy to new draft';
+
+  @override
+  String get costSaveTemplate => 'Save cost template';
+
+  @override
+  String get costTemplate => 'Cost template';
+
+  @override
+  String get costNoTemplate => 'Match template automatically';
+
+  @override
+  String get costDownloadExcel => 'Download cost Excel';
+
+  @override
+  String get costDownloadPdf => 'Download cost PDF';
+
+  @override
+  String get costSaved => 'Cost draft saved';
+
+  @override
+  String get costConfirmPrompt =>
+      'Confirmation freezes usage, prices and costs. Later changes require a new version.';
+
+  @override
+  String get costLeavePrompt =>
+      'Save the current draft to the server before switching.';
+
+  @override
+  String get costCalculationStale =>
+      'Inputs changed; amounts await recalculation';
+
+  @override
+  String get costConflict =>
+      'The server version changed. Local inputs are preserved; compare before restoring.';
+
+  @override
+  String get costRecoverLocal => 'Recover local draft';
+
+  @override
+  String get costHistory => 'Historical snapshots';
+
+  @override
+  String get costVersion => 'Version';
+
+  @override
+  String get costUpdated => 'Updated';
+
+  @override
+  String get costAction => 'Actions';
+
+  @override
+  String get costOpen => 'Open';
+
+  @override
+  String get costDelete => 'Delete';
+
+  @override
+  String get costDeleteFeePrompt =>
+      'Deleting this cost changes this draft. Historical versions are preserved.';
+
+  @override
+  String get costEmpty =>
+      'No cost sheet yet. Create one from the assembly structure.';
+
+  @override
+  String get costNoActual => 'No actual cost evidence yet';
+
+  @override
+  String get costActualKnown => 'Recorded inputs';
+
+  @override
+  String get costActualOutput => 'Allocated outputs';
+
+  @override
+  String get costActualWip => 'Work in progress';
+
+  @override
+  String get costActualUnclassified => 'Unclassified amount';
+
+  @override
+  String get costActualIncomplete =>
+      'Labor and overhead coverage is incomplete';
+
+  @override
+  String get costSourceDocument => 'Source document';
+
+  @override
+  String get costSourceType => 'Source type';
+
+  @override
+  String get costLocalAmount => 'Local amount';
+
+  @override
+  String get costActualQty => 'Actual quantity';
+
+  @override
+  String get costActualFrom => 'From date';
+
+  @override
+  String get costActualTo => 'To date';
+
+  @override
+  String get costSegment => 'Execution segment ID';
+
+  @override
+  String get costLegacy => 'Legacy master cost reference';
+
+  @override
+  String get costLossPolicy => 'Subcontract loss allowance';
+
+  @override
+  String get costLossPolicyHint =>
+      'A subcontract contract default only; not used for costing or usage learning.';
+
+  @override
+  String get costDecimalInvalid => 'Enter a valid non-negative decimal';
+
+  @override
+  String get costRequiredName => 'Enter a name';
+
+  @override
+  String get costNoPermission => 'Cost access is not permitted';
+
+  @override
+  String get costManual => 'Manual override';
+
+  @override
+  String get costYes => 'Yes';
+
+  @override
+  String get costNo => 'No';
+
+  @override
+  String get costCopySuffix => 'Copy';
+
+  @override
+  String get costTotalLabel => 'Whole-sheet cost';
+
+  @override
+  String get costSource => 'Source';
+
+  @override
+  String get costTemplateSaved => 'Cost template saved';
+
+  @override
+  String get costFeeApplicability =>
+      'Entering a price applies this cost. Blank means incomplete; choose Not applicable to remove it.';
+
+  @override
+  String get costSnapshotReadOnly => 'Historical snapshot is read only';
+
+  @override
+  String get costImport => 'Import cost workbook';
+
+  @override
+  String get costImportBlock => 'Product block';
+
+  @override
+  String get costImportReview =>
+      'Confirm each mapping. Verify cached prices in this sheet currency; external formulas are not adopted.';
+
+  @override
+  String get costImportKind => 'Mapping type';
+
+  @override
+  String get costImportMaterial => 'Material price';
+
+  @override
+  String get costImportFee => 'Cost per product';
+
+  @override
+  String get costImportSkip => 'Skip this row';
+
+  @override
+  String get costImportTarget => 'Target material';
+
+  @override
+  String get costImportReviewed => 'Reviewed';
+
+  @override
+  String get costImportApply => 'Apply to this sheet';
+
+  @override
+  String get costImportNeedsReview =>
+      'Review every row. Skips require a reason and materials require a target.';
+
+  @override
+  String get costCompare => 'Compare versions';
+
+  @override
+  String get costCompareBefore => 'Comparison baseline';
+
+  @override
+  String get costBefore => 'Before';
+
+  @override
+  String get costAfter => 'After';
+
+  @override
+  String get costUnchanged => 'Unchanged';
+
+  @override
+  String get costDirectConsumption => 'Direct consumption';
+
+  @override
+  String get costPeriodicAllocation => 'Periodic allocation';
+
+  @override
+  String get costFeeEvidence => 'Confirmed processing cost';
+
+  @override
+  String get costNormalLoss => 'Confirmed loss';
+
+  @override
+  String get costTaxMode => 'Price tax basis';
+
+  @override
+  String get costTaxRecorded => 'Use recorded price';
+
+  @override
+  String get costTaxExclude => 'Confirmed tax-inclusive; exclude tax';
+
+  @override
+  String get costTaxUnconfirmed => 'Tax basis not confirmed';
+
+  @override
+  String get costTaxConfirmedReason => 'Verified the source document tax basis';
+
+  @override
+  String get costFeeReuse => 'Find an existing cost column';
+
+  @override
+  String get costDeleteColumn => 'Remove cost column';
+
+  @override
+  String get costRoute => 'Costing route';
+
+  @override
+  String get costRouteAuto => 'Item source';
+
+  @override
+  String get costRouteMake => 'Make and roll up';
+
+  @override
+  String get costRouteBuy => 'Purchased cost';
+
+  @override
+  String get costRouteSubcontract => 'Subcontract processing';
+
+  @override
+  String get costRouteCustomer => 'Customer supplied';
+
+  @override
+  String get costLossRange => 'Enter 0–100 with at most 2 decimal places';
+
+  @override
+  String get costScopeInput => 'Whole cost-scope inputs';
+
+  @override
+  String get costPeriodOutput => 'Output cost in this range';
+
+  @override
+  String get costExcludedOutput => 'Allocated outside this range';
+
+  @override
+  String get costBudgetBaseline => 'Confirmed estimate baseline';
+
+  @override
+  String get costBudgetLocal => 'Complete baseline estimate (local)';
+
+  @override
+  String get costActualRecorded => 'Recorded actual cost (local)';
+
+  @override
+  String get costBasisMismatch =>
+      'Baseline output or currency basis differs from the actual range; no variance is calculated.';
+
+  @override
+  String get costCoverageMismatch =>
+      'Actual labor and overhead are incomplete. Values are shown side by side without a full-cost variance.';
+
+  @override
+  String get costVariance => 'Comparable cost variance';
+
+  @override
+  String get costDirectCost => 'Materials and processing subtotal';
+
+  @override
+  String get inventoryCostTitle => 'Actual cost posting';
+
+  @override
+  String get inventoryCostPolicy => 'Reconciliation and activation';
+
+  @override
+  String get inventoryCostPolicyHint =>
+      'Reconcile source inventory values and historical cost vouchers first. Activation appends new vouchers; legacy conflicts and cross-period differences require review.';
+
+  @override
+  String get inventoryCostEnabled => 'Actual cost posting enabled';
+
+  @override
+  String get inventoryCostDisabled => 'Awaiting reconciliation and activation';
+
+  @override
+  String get inventoryCostEnable => 'Enable actual cost posting';
+
+  @override
+  String get inventoryCostDisable => 'Pause new actual cost postings';
+
+  @override
+  String get inventoryCostEffectiveDate => 'Effective date';
+
+  @override
+  String get inventoryCostEvidence => 'Reconciliation evidence';
+
+  @override
+  String get inventoryCostEvidenceRequired =>
+      'Enter at least 8 characters of reconciliation evidence';
+
+  @override
+  String get inventoryCostFrom => 'Source date from';
+
+  @override
+  String get inventoryCostTo => 'Source date to';
+
+  @override
+  String get inventoryCostInvalidRange =>
+      'The source start date must not follow the end date';
+
+  @override
+  String get inventoryCostLoadFailed =>
+      'Could not load actual cost postings. Retry.';
+
+  @override
+  String get inventoryCostWriteFailed =>
+      'The action failed. Refresh and review before retrying.';
+
+  @override
+  String get inventoryCostStatus => 'Posting status';
+
+  @override
+  String get inventoryCostAmount => 'Source value change (local currency)';
+
+  @override
+  String get inventoryCostBusinessDate => 'Source business date';
+
+  @override
+  String get inventoryCostSourcePeriod => 'Source period';
+
+  @override
+  String get inventoryCostTargetPeriod => 'Posting period';
+
+  @override
+  String get inventoryCostSourceType => 'Source type';
+
+  @override
+  String get inventoryCostSourceDocument => 'Source document ID';
+
+  @override
+  String get inventoryCostSource => 'Source value posting ID';
+
+  @override
+  String get inventoryCostRevision => 'Value revision';
+
+  @override
+  String get inventoryCostVoucher => 'GL voucher ID';
+
+  @override
+  String get inventoryCostAssignPeriod => 'Assign period';
+
+  @override
+  String get inventoryCostReason => 'Review reason';
+
+  @override
+  String get inventoryCostReasonRequired =>
+      'Enter a review reason of at least 4 characters';
+
+  @override
+  String get inventoryCostNoOpenPeriod =>
+      'No open period in this range. Adjust the dates.';
+
+  @override
+  String get inventoryCostPost => 'Append cost vouchers';
+
+  @override
+  String get inventoryCostPostHint =>
+      'Append balanced vouchers for source value changes, including returns and late differences. Retries do not duplicate postings or rewrite prior vouchers.';
+
+  @override
+  String get inventoryCostClosePeriod => 'Close cost period';
+
+  @override
+  String get inventoryCostCloseHint =>
+      'Closing prevents further postings to this period. Later differences require an explicitly reviewed open period.';
+
+  @override
+  String get inventoryCostPendingCount => 'Pending postings in period';
+
+  @override
+  String get inventoryCostOpen => 'Open';
+
+  @override
+  String get inventoryCostClosed => 'Closed';
+
+  @override
+  String get inventoryCostPosted => 'Posted';
+
+  @override
+  String get inventoryCostReady => 'Ready to post';
+
+  @override
+  String get inventoryCostBeforeCutover => 'Before cutover';
+
+  @override
+  String get inventoryCostSourcePending => 'Source identity pending';
+
+  @override
+  String get inventoryCostValuePending => 'Cost verification pending';
+
+  @override
+  String get inventoryCostLegacyConflict =>
+      'Legacy voucher needs reconciliation';
+
+  @override
+  String get inventoryCostTargetClosed => 'Target period closed';
+
+  @override
+  String get inventoryCostTargetRequired => 'Posting period must be reviewed';
+
+  @override
+  String get inventoryCostNoAccess => 'You cannot view actual cost postings';
+
+  @override
+  String get costConvertCurrency => 'Convert cost currency';
+
+  @override
+  String get costCurrencyConversionHint =>
+      'Amounts are converted on the server using the source and target rates. Quantities and percentages stay unchanged. Inputs change only after success.';
+
+  @override
+  String get costSourceExchangeRate => 'Source currency to local rate';
+
+  @override
+  String get costTargetExchangeRate => 'Target currency to local rate';
+
+  @override
+  String get costExchangeRateRequired =>
+      'Enter an explicit decimal exchange rate greater than zero';
+
+  @override
+  String get costPriceNormalizedHelp =>
+      'Unit price is shown in this cost sheet currency per material base unit. Original price, unit conversion and tax basis are available in source details.';
+
+  @override
+  String get costCurrencyConverted =>
+      'Costs converted to the target currency; not saved yet';
+
+  @override
+  String get costUnitContributionShort => 'Unit cost';
+
+  @override
+  String get costLineAmountShort => 'Batch cost';
+
+  @override
+  String get costPendingItems => 'Items to reconcile';
+
+  @override
+  String get costViewEvidence => 'View evidence';
+
+  @override
+  String get costViewSource => 'Open source';
+
+  @override
+  String get costEvidenceField => 'Evidence field';
+
+  @override
+  String get costEvidenceValue => 'Recorded value';
+
+  @override
+  String get costEvidenceScope => 'Cost scope';
+
+  @override
+  String get costEvidenceNextStep => 'Next step';
+
+  @override
+  String get costCopyValue => 'Copy recorded value';
+
+  @override
+  String get costSourceUnavailable =>
+      'No source page is available here. Copy the identifier for the responsible team to reconcile.';
+
+  @override
+  String get costGapLabor => 'Actual labor is not recorded';
+
+  @override
+  String get costGapOverhead => 'Manufacturing overhead is not recorded';
+
+  @override
+  String get costGapNoValuation => 'No verifiable inventory valuation evidence';
+
+  @override
+  String get costGapIdentity => 'Historical item identity or unit is missing';
+
+  @override
+  String get costGapRevision => 'Input revision evidence is missing';
+
+  @override
+  String get costGapNoApprovedRevision => 'No approved cost revision';
+
+  @override
+  String get costGapApplying => 'Cost allocation is updating';
+
+  @override
+  String get costGapSourceRefresh => 'Source data needs refresh';
+
+  @override
+  String get costGapClassification => 'Input costs need classification';
+
+  @override
+  String get costGapOutputBasis =>
+      'Effective output basis needs reconciliation';
+
+  @override
+  String get costGapScope => 'Cost scope is incomplete';
+
+  @override
+  String get costGapInput => 'Input amounts are not verified';
+
+  @override
+  String get costGapOther => 'Other cost evidence needs reconciliation';
+
+  @override
+  String get costGapActionCharges =>
+      'Record actual cost evidence and reconcile again';
+
+  @override
+  String get costGapActionHistory =>
+      'Check historical source documents and units; do not substitute current master data';
+
+  @override
+  String get costGapActionRefresh =>
+      'Refresh after the cost task finishes; inspect its source if still pending';
+
+  @override
+  String get costGapActionSource =>
+      'Review source documents, returns and outputs, then refresh';
+
+  @override
+  String get costAmountBasis => 'Amount basis';
+
+  @override
+  String get costBookedBasis => 'Posted local amount';
+
+  @override
+  String get costLegacyBasis => 'Legacy amount basis is unverified';
+
+  @override
+  String get costQuantityBasis => 'Quantity basis';
+
+  @override
+  String get costValueRevision => 'Value revision';
+
+  @override
+  String get costAmountLower => 'Amount lower bound (local)';
+
+  @override
+  String get costAmountUpper => 'Amount upper bound (local)';
+
+  @override
+  String get costSourceIdentifier => 'Source document identifier';
+
+  @override
+  String get costSourceLineIdentifier => 'Source line identifier';
+
+  @override
+  String get costEvidenceIdentifier => 'Evidence identifier';
+
+  @override
+  String get costGapCode => 'Reconciliation reason code';
 }

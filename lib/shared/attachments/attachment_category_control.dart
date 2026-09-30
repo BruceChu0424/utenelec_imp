@@ -45,6 +45,7 @@ class AttachmentCategoryControl extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.enabled = true,
+    this.dense = false,
   });
 
   /// 本页的分类词表；为空时不提供设置入口。
@@ -57,6 +58,10 @@ class AttachmentCategoryControl extends StatelessWidget {
 
   /// false = 正在保存上一次选择，暂不接受新点击。
   final bool enabled;
+
+  /// 紧凑形态(小卡片用)：未设置时不带「＋」图标和边框(纯文字)，整体可随
+  /// 可用宽度收缩省略——卡片宽度有限，不能再按自然宽度撑开。
+  final bool dense;
 
   /// 「清除」在菜单里的取值；showMenu 的 null 表示「点外部取消」，故用哨兵区分。
   static const String _clearChoice = '\u0000clear';
@@ -83,7 +88,9 @@ class AttachmentCategoryControl extends StatelessWidget {
           label: assigned ? current : '分类',
           color: color,
           filled: assigned,
-          icon: assigned ? null : Icons.add_rounded,
+          icon: dense || assigned ? null : Icons.add_rounded,
+          borderless: dense && !assigned,
+          dense: dense,
         ),
       ),
     );
@@ -145,6 +152,8 @@ class _CategoryChip extends StatelessWidget {
     required this.color,
     required this.filled,
     this.icon,
+    this.borderless = false,
+    this.dense = false,
   });
 
   final String label;
@@ -152,17 +161,25 @@ class _CategoryChip extends StatelessWidget {
   final bool filled;
   final IconData? icon;
 
+  /// 无边框(紧凑形态的未设置态)：纯文字，更像一句轻提示而不是控件。
+  final bool borderless;
+
+  /// 紧凑形态：内边距更小，文字可随宽度收缩省略。
+  final bool dense;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // 图标随字号一起缩放，1.5 倍字号下仍与文字同高。
     final iconSize = MediaQuery.textScalerOf(context).scale(12);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      padding: EdgeInsets.symmetric(horizontal: dense ? 3 : 6, vertical: 1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: filled ? 0.1 : 0),
         // 两态都留着这条 1px 边（填充态设为全透明），行高才不会跟着变。
-        border: Border.all(color: color.withValues(alpha: filled ? 0 : 0.5)),
+        border: borderless
+            ? null
+            : Border.all(color: color.withValues(alpha: filled ? 0 : 0.5)),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -172,11 +189,15 @@ class _CategoryChip extends StatelessWidget {
             Icon(icon, size: iconSize, color: color),
             const SizedBox(width: 2),
           ],
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

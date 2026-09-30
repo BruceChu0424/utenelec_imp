@@ -22,6 +22,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -270,31 +271,38 @@ class _AdminSystemSettingsPageState
                       child: ListView(
                         padding: const EdgeInsets.all(UtenSpacing.s16),
                         children: [
-                          // AI 服务(ADR-133)有自己的页面: 服务商/密钥/连接测试。
-                          const AiSettingsEntryCard(),
                           _warningBanner(theme),
-                          for (final g in _groups)
-                            if (_all!.any((e) => e.category == g.$1))
-                              _SettingGroupCard(
-                                group: g,
-                                items: _all!
-                                    .where((e) => e.category == g.$1)
-                                    .toList(),
-                                controllers: _controllers,
-                                isDirty: (k) => _dirty.contains(k),
-                                onChanged: _markDirty,
-                                enabled: !_saving && !_loading,
-                                footer: g.$1 == 'updates'
-                                    ? SystemUpdaterStatusCard(
-                                        status: _updaterStatus,
-                                        loading: _updaterLoading,
-                                        error: _updaterError,
-                                        onRefresh: !_saving && !_loading
-                                            ? _loadUpdaterStatus
-                                            : null,
-                                      )
-                                    : null,
-                              ),
+                          // 分组卡片自适应瀑布流(UtenResponsiveGrid): 按容器宽度
+                          // <500 一列 / 500-800 两列 / 800-1100 三列 / ≥1100 四列
+                          // (maxColumns 封顶)——超宽屏一行多卡, 窄窗自动降列;
+                          // 再多的列会让表单输入框挤成一团。
+                          // AI 服务入口(ADR-133)是网格首格, 顺序与阅读动线一致。
+                          _SettingGroupGrid(
+                            cards: [
+                              for (final g in _groups)
+                                if (_all!.any((e) => e.category == g.$1))
+                                  _SettingGroupCard(
+                                    group: g,
+                                    items: _all!
+                                        .where((e) => e.category == g.$1)
+                                        .toList(),
+                                    controllers: _controllers,
+                                    isDirty: (k) => _dirty.contains(k),
+                                    onChanged: _markDirty,
+                                    enabled: !_saving && !_loading,
+                                    footer: g.$1 == 'updates'
+                                        ? SystemUpdaterStatusCard(
+                                            status: _updaterStatus,
+                                            loading: _updaterLoading,
+                                            error: _updaterError,
+                                            onRefresh: !_saving && !_loading
+                                                ? _loadUpdaterStatus
+                                                : null,
+                                          )
+                                        : null,
+                                  ),
+                            ],
+                          ),
                           const SizedBox(
                             height: UtenFloatingActionGroup.scrollClearance,
                           ),
@@ -357,6 +365,27 @@ class _AdminSystemSettingsPageState
   }
 }
 
+/// 设置页卡片自适应网格：AI 服务入口首格 + 各分组卡片走 UtenResponsiveGrid
+/// 瀑布流（列内垂直堆叠、列高互不影响，轮流分栏保持从左到右的阅读顺序）。
+/// 间距由网格统一管（含单列模式），卡片自身不再带 margin。
+class _SettingGroupGrid extends StatelessWidget {
+  const _SettingGroupGrid({required this.cards});
+
+  final List<Widget> cards;
+
+  @override
+  Widget build(BuildContext context) {
+    return UtenResponsiveGrid(
+      itemCount: cards.length + 1,
+      spacing: UtenSpacing.s12,
+      maxColumns: 4,
+      itemBuilder: (context, i, itemWidth) => i == 0
+          ? const AiSettingsEntryCard(margin: EdgeInsets.zero)
+          : cards[i - 1],
+    );
+  }
+}
+
 /// 一组设置卡片（按 category）。
 class _SettingGroupCard extends StatelessWidget {
   const _SettingGroupCard({
@@ -380,7 +409,6 @@ class _SettingGroupCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
-      margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),

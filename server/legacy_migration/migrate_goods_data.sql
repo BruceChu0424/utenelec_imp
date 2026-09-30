@@ -81,7 +81,14 @@ SELECT
     (SELECT c.id FROM clients c WHERE c.legacy_id = NULLIF(gs.client_legacy_id, 0)),
     (SELECT s.id FROM suppliers s WHERE s.legacy_id = NULLIF(gs.vend_legacy_id, 0)),
     (SELECT s.id FROM suppliers s WHERE s.legacy_id = NULLIF(gs.vend2_legacy_id, 0)),
-    gs.price, gs.a_price, gs.price2, gs.max_qty, gs.min_qty,
+    -- max_qty 在新系统只存不用（死字段），照迁留档。
+    -- min_qty 不迁：新系统里它是「安全库存（常备水位）」的主动机制——公共安全
+    -- 补库只支持采购路线，非采购路线（自制/委外父行）在缺口>0 时整行拦截不可
+    -- 下达，采购路线则每单强制按水位固定补库。老库 B_Goods.min_qty 是库存报警
+    -- 水位（含 0.5 等非水位值），批量继承等于给全厂下单流程悄悄挂上这套闸
+    -- （2026-09-29「物料分析父行勾不上」事故，1313 条已清）。安全水位必须由
+    -- 人在新系统显式配置，不随迁移继承。staging 列与 CSV 原值保留作证据。
+    gs.price, gs.a_price, gs.price2, gs.max_qty, 0,
     gs.init_stock, gs.init_count, gs.init_weight, gs.kqty, gs.kqty2,
     gs.pieces, gs.lost_rate, gs.cap,
     gs.material, gs.thickness, gs.l_style, gs.z_weight, gs.m_weight,

@@ -546,6 +546,8 @@ class _DepartmentOverviewPaneState
 
   Widget _employeeTable(AppLocalizations l10n) {
     return MasterDataTableView<EmployeeSummary>(
+      tableKey:
+          'features.department.widgets.department_overview_pane.DepartmentOverviewPaneState._employeeTable.1',
       key: const Key('department-employee-table'),
       columns: _employeeColumns(l10n),
       items: _visibleEmployees(l10n),

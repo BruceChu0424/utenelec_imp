@@ -298,6 +298,8 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
         .read(referenceMethodRepositoryProvider)
         .settlementAdminList(filters: _filters);
     return UtenPrintTable(
+      columnKeys: [for (final c in _columns) c.key],
+      rowIds: [for (final item in items) item.id],
       headers: [for (final c in _columns) c.label],
       rows: [
         for (final item in items)
@@ -441,6 +443,8 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<SettlementMethodAdminItem>(
+                    tableKey:
+                        'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
                     columns: _columns,
                     items: items,
                     // 导出/打印（V717 settlement_method:export）：打印预览用本页列

@@ -1131,6 +1131,8 @@ class _FinanceSalesShipmentAuditReviewPageState
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
           )
         : MasterDataTableView<SalesDocItem>(
+            tableKey:
+                'features.finance.pages.finance_sales_shipment_audit_review_page.FinanceSalesShipmentAuditReviewPageState._itemsCard.1',
             primary: true,
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             columns: [

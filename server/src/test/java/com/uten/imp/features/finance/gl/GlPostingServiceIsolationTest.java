@@ -18,14 +18,14 @@ class GlPostingServiceIsolationTest {
     void regeneratedSourceTypesNeverIncludeAssetSubledgerVouchers() {
         assertThat(GlPostingService.REGENERATED_SOURCE_TYPES)
                 .containsExactlyInAnyOrder(
-                        "AR_POST", "AP_POST", "PAYMENT", "EXPENSE", "INCOME", "COST_CARRY",
+                        "AR_POST", "AP_POST", "PAYMENT", "EXPENSE", "INCOME",
                         "BANK_TRANSFER", "BALANCE_ADJUSTMENT", "SUPPLIER_CLAIM_LEDGER",
                         "SUPPLIER_CLAIM_OFFSET",
                         "SUPPLIER_CLAIM_RECEIVABLE",
                         "SUPPLIER_CLAIM_CASH",
                         "CUSTOMER_PREPAYMENT_OFFSET",
                         SubcontractWasteLossGlProjection.SOURCE_TYPE)
-                .doesNotContain("RECEIPT", "RECEIPT_REV",
+                .doesNotContain("COST_CARRY", "ACTUAL_COGS", "RECEIPT", "RECEIPT_REV",
                         "FA_CAP", "DA_RECOGNITION", "FA_DEP", "DA_AMT", "FA_DISPOSAL");
     }
 
@@ -60,6 +60,8 @@ class GlPostingServiceIsolationTest {
                 .contains("account_style.category<>'ACCOUNT'")
                 .contains("clearing.id=batch.clearing_style_id")
                 .contains("'AUTO','BALANCE_ADJUSTMENT'");
+        assertThat(allSql).contains("SELECT enabled FROM inventory_cost_gl_policy")
+                .doesNotContain("unresolved.ready", "INSERT INTO inventory_cost_gl_links");
         verify(tx).bind();
     }
 }

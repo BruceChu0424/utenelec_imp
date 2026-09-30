@@ -300,9 +300,11 @@ public class MaterialAnalysisCommandService {
             }
             // ADR-099：外部路线先自动认领公共在途，认领到多少就少下多少新单。
             // ADR-101：我方供料的带 BOM 委外件也走这条路(只有「超量备货」仍然禁止)。
+            // ADR-099 修订(2026-09-29)：skipAutoClaim = 用户明确选择「足额下单，
+            // 不扣可用数量」，自制公共超产与公共在途两类认领一并不做，按提交量足额新下单。
             BigDecimal claimedQty = BigDecimal.ZERO.setScale(4);
             boolean retainedPriority=group.materials().stream().anyMatch(row->row.priorityMakeSupplementQty().signum()>0);
-            if(demandQty.signum()>0&&!retainedPriority) {
+            if(demandQty.signum()>0&&!retainedPriority&&!request.skipClaims()) {
                 BigDecimal targetDemand=demandQty;
                 List<AggregateQuantityAllocator.SourceCapacity> makeTargets=group.materials().stream()
                         .map(row->new AggregateQuantityAllocator.SourceCapacity(row.materialLineId(),0,null,row.planningUncoveredQty())).toList();
@@ -313,7 +315,7 @@ public class MaterialAnalysisCommandService {
                 claimedQty=adopted.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add);
                 demandQty=demandQty.subtract(claimedQty).max(BigDecimal.ZERO);
             }
-            if (demandQty.signum() > 0&&!retainedPriority) {
+            if (demandQty.signum() > 0&&!retainedPriority&&!request.skipClaims()) {
                 BigDecimal externalClaimed = claimSharedFutureForGroup(analysisId, view, group, demandQty,
                         null, true, request.idempotencyKey(), requestHash,
                         claimActionIds, acceptedLateSources);
@@ -1150,7 +1152,8 @@ public class MaterialAnalysisCommandService {
             view = notifySupplyInternal(analysisId, new NotifyRequest(
                     preArrange.version(), preArrange.fingerprint(),
                     request.idempotencyKey() + "-ARRANGE", "SUBCONTRACT",
-                    subcontractLines, null, null), !anchorsChanged, arrangeQty);
+                    subcontractLines, null, null,
+                    request.skipClaims() ? Boolean.TRUE : null), !anchorsChanged, arrangeQty);
             anchorsChanged = false;
         }
         // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
@@ -1228,7 +1231,7 @@ public class MaterialAnalysisCommandService {
                 BigDecimal effectiveQty=line.qty().subtract(newlyAdopted.getOrDefault(line.materialLineId(),BigDecimal.ZERO)).max(BigDecimal.ZERO);
                 BigDecimal demandQty = effectiveQty.min(product.remainingQty());
                 BigDecimal surplusQty = effectiveQty.subtract(demandQty);
-                if(product.rootMaterialLineId()!=null&&demandQty.signum()>0) {
+                if(product.rootMaterialLineId()!=null&&demandQty.signum()>0&&!request.skipClaims()) {
                     MaterialView root=view.flatMaterials().stream().filter(row->row.materialLineId().equals(product.rootMaterialLineId())).findFirst().orElse(null);
                     if(root!=null) {
                         demandQty=demandQty.min(root.planningUncoveredQty().divide(product.unitRate(),4,RoundingMode.DOWN));
@@ -1615,6 +1618,7 @@ public class MaterialAnalysisCommandService {
             if(candidate.budgetKey()!=null)externalBudget.put(candidate.budgetKey(),candidate.availableToClaimQty());
         Set<Object> seen = new HashSet<>();
         List<MaterialAnalysisService.IssuePreviewSeed> seeds = new ArrayList<>();
+        List<PreviewPlanLookup> pendingPlans = new ArrayList<>();
         PlanScheduleDefaults defaults = new PlanScheduleDefaults(request.billDate(), request.deliveryDate());
         for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
             UUID lineId = line.analysisLineId() != null
@@ -1674,17 +1678,90 @@ public class MaterialAnalysisCommandService {
                 }
             }
             if(effectiveQty.signum()==0)continue;
-            GrowablePlan growable = growablePlanFor(
-                    analysisId, lineId, line.departmentId(), request.approveNow(),
-                    ProductionOverproductionAllowance.resolve(em, product.goodsId(), line.allowedOverproductionRate()), false);
-            // ADR-104 并入一张草稿计划并立即审核: 审核把整条关联行(原已提交 + 本次)转成已审核。
-            BigDecimal draftSubmitted = growable != null && growable.status() == 0
-                    ? growable.submittedQty() : BigDecimal.ZERO;
+            pendingPlans.add(new PreviewPlanLookup(seeds.size(), lineId, product.goodsId(),
+                    line.departmentId(), line.allowedOverproductionRate()));
             seeds.add(new MaterialAnalysisService.IssuePreviewSeed(lineId, null, effectiveQty,
-                    demandQty, effectiveQty.subtract(demandQty), growable == null ? null : growable.planId(),
-                    draftSubmitted));
+                    demandQty, effectiveQty.subtract(demandQty), null, BigDecimal.ZERO));
+        }
+        // The read-only transaction has one repeatable snapshot. Resolve this request's
+        // defaults and each line's latest eligible plan in two bounded lookups, rather
+        // than two network round trips for every line. Writers retain their row locks.
+        Map<UUID, GrowablePlan> growablePlans = previewGrowablePlans(analysisId, pendingPlans, request.approveNow());
+        for (PreviewPlanLookup pending : pendingPlans) {
+            GrowablePlan growable = growablePlans.get(pending.lineId());
+            if (growable == null) continue;
+            var seed = seeds.get(pending.seedIndex());
+            // ADR-104: immediately approving a grown draft also approves its previous submitted share.
+            BigDecimal draftSubmitted = growable.status() == 0 ? growable.submittedQty() : BigDecimal.ZERO;
+            seeds.set(pending.seedIndex(), new MaterialAnalysisService.IssuePreviewSeed(seed.lineId(), null,
+                    seed.qty(), seed.demandQty(), seed.surplusQty(), growable.planId(), draftSubmitted));
         }
         return seeds;
+    }
+
+    private record PreviewPlanLookup(int seedIndex, UUID lineId, UUID goodsId,
+                                     UUID departmentId, BigDecimal requestedRate) {}
+
+    /** Same eligibility and latest-row order as growablePlanFor, without its write-side locks. */
+    private Map<UUID, GrowablePlan> previewGrowablePlans(
+            UUID analysisId, List<PreviewPlanLookup> pending, boolean approveNow) {
+        if (pending.isEmpty()) return Map.of();
+        Set<UUID> defaultGoods = pending.stream().filter(line -> line.requestedRate() == null)
+                .map(PreviewPlanLookup::goodsId).collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<UUID, BigDecimal> defaults = ProductionOverproductionAllowance.defaults(em, defaultGoods);
+        List<String> requestedRows = new ArrayList<>();
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        for (int index = 0; index < pending.size(); index++) {
+            PreviewPlanLookup line = pending.get(index);
+            BigDecimal rate = line.requestedRate() == null ? defaults.get(line.goodsId())
+                    : ProductionOverproductionAllowance.normalize(line.requestedRate());
+            if (rate == null) throw validation("货品不存在或已停用，无法读取允许超产比例");
+            requestedRows.add("(CAST(:line" + index + " AS uuid), CAST(:department" + index
+                    + " AS uuid), CAST(:rate" + index + " AS numeric))");
+            parameters.put("line" + index, line.lineId());
+            parameters.put("department" + index, line.departmentId());
+            parameters.put("rate" + index, rate);
+        }
+        String sql = "WITH requested(analysis_line_id, department_id, allowed_rate) AS (VALUES\n"
+                + String.join(",\n", requestedRows) + "\n)\n" + """
+                SELECT requested.analysis_line_id, candidate.*
+                FROM requested
+                JOIN LATERAL (
+                    SELECT plan.id, plan.bill_no, plan.status, link.id, item.id, item.qty,
+                           link.submitted_qty, COALESCE(link.public_surplus_qty, 0), item.sales_order_item_id
+                    FROM production_plans plan
+                    JOIN production_material_analysis_plan_links link
+                      ON link.plan_id = plan.id
+                     AND link.analysis_id = plan.material_analysis_id
+                     AND link.analysis_item_id = plan.material_analysis_item_id
+                     AND link.allocation_status IN ('SUBMITTED', 'APPROVED')
+                    JOIN production_plan_items item
+                      ON item.plan_id = plan.id AND item.is_deleted = FALSE
+                    WHERE plan.material_analysis_id = :analysisId
+                      AND plan.material_analysis_item_id = requested.analysis_line_id
+                      AND fn_material_analysis_plan_growable(plan.id)
+                      AND fn_plan_accepts_overproduction_allowance(plan.id, requested.allowed_rate)
+                      AND (requested.department_id IS NULL OR (
+                          plan.department_id = requested.department_id
+                          AND NOT EXISTS (
+                              SELECT 1 FROM production_execution_segments segment
+                              WHERE segment.plan_id = plan.id AND NOT segment.is_deleted
+                                AND segment.status NOT IN ('CANCELLED', 'REVERSED')
+                                AND segment.workshop_department_id IS DISTINCT FROM requested.department_id)))
+                """ + (approveNow ? "" : " AND plan.status = 0\n") + """
+                    ORDER BY link.created_at DESC, plan.id DESC
+                    LIMIT 1
+                ) candidate ON TRUE
+                """;
+        var query = em.createNativeQuery(sql).setParameter("analysisId", analysisId);
+        parameters.forEach(query::setParameter);
+        Map<UUID, GrowablePlan> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
+            result.put((UUID) row[0], new GrowablePlan((UUID) row[1], Objects.toString(row[2], null),
+                    ((Number) row[3]).shortValue(), (UUID) row[4], (UUID) row[5],
+                    decimalOf(row[6]), decimalOf(row[7]), decimalOf(row[8]), (UUID) row[9]));
+        }
+        return Map.copyOf(result);
     }
 
     private Set<UUID> workshopSourceIds(UUID analysisId, IssueWorkshopPlansRequest request) {
@@ -1856,6 +1933,8 @@ public class MaterialAnalysisCommandService {
             }
             parts.add(itemHash);
         });
+        // 与 notifyHash 同一原则：只在明确跳过认领时附加，历史哈希不变。
+        if (request.skipClaims()) parts.add("SKIP_AUTO_CLAIM|true");
         return PlanningPackageFingerprint.sha256(parts);
     }
 
@@ -3430,6 +3509,9 @@ public class MaterialAnalysisCommandService {
                         + "|SAFETY|" + canonicalOptionalQuantity(
                                 value.safetyReplenishmentQty()))
                 .sorted().forEach(parts::add);
+        // ADR-099 修订(2026-09-29)：只在明确跳过认领时附加——「用可用抵扣」的哈希
+        // 与历史完全一致，同一幂等键的不同意图不会被误判为回放。
+        if (request.skipClaims()) parts.add("SKIP_AUTO_CLAIM|true");
         return PlanningPackageFingerprint.sha256(parts);
     }
 

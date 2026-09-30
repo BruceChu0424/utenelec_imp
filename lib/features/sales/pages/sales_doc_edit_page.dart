@@ -15,11 +15,20 @@
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 保存组装 body 调 create/update，成功后跳详情。
 // 路由用 SalesRoutePath 字面量（route_names.dart 由上层统一加 sales_*）。
+import '../../../shared/attachments/attachment.dart';
+import '../../../shared/attachments/attachment_service.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/attachments/pending_attachment_controller.dart';
 import '../../../shared/attachments/pending_attachment_flow.dart';
+import '../../../shared/attachments/pending_attachment_section.dart'
+    show PendingFileActionSpec;
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/business_columns/business_column.dart';
+import '../../../shared/business_columns/business_columns_row.dart';
+import '../../../shared/business_columns/business_columns_repository.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_values.dart';
@@ -49,10 +58,12 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -71,12 +82,10 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/ai/ai_status_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../intake/sales_intake_apply.dart';
 import '../intake/sales_intake_attachment.dart';
 import '../intake/sales_intake_l10n.dart';
-import '../intake/sales_intake_entry_card.dart';
 import '../intake/sales_intake_launcher.dart';
 import '../intake/sales_intake_models.dart';
 import '../models/sales_doc.dart';
@@ -157,8 +166,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       widget.docType == SalesDocType.order ||
       widget.docType == SalesDocType.quote;
 
-  /// 支持「识别客户文件」的单据：报价、订货。
-  bool get _aiIntakeSupported => _lockedPrice;
+  /// 支持「识别客户文件」的单据：报价/订货走完整定价链(折扣核对面板)；
+  /// 客户零星发货/退货借用同一条识别链只取货品+数量行(价格语义按各自单据口径)。
+  /// 销售出货必须从订货单引入、历史其它出货是只读遗留，都不提供识别。
+  bool get _aiIntakeSupported =>
+      _lockedPrice ||
+      widget.docType == SalesDocType.customerShipment ||
+      widget.docType == SalesDocType.returnDoc;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   final _rate = TextEditingController(text: '1');
@@ -193,6 +207,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   /// 上一次识别追加进备注的那一段：「替换」重新导入时先去掉它，备注不重复。
   String? _intakeRemark;
+
+  // —— 附件卡片上的「AI识别」状态(2026-09-29 入口统一进附件卡片区) ——
+  // 暂存文件按对象本体记(增删/草稿恢复换对象即自然重置)；已保存单据的附件按 id 记。
+  final Set<PendingAttachment> _intakeBusyFiles = {};
+  final Set<PendingAttachment> _intakeDoneFiles = {};
+  final Set<String> _intakeDoneAttachmentIds = {};
+  String? _intakeBusyAttachmentId;
+  bool _intakeBatchRunning = false;
+
+  /// 批量识别的选卡模式：点「批量识别」进入，勾选卡片后「识别 (N)」执行选中的。
+  bool _intakeSelecting = false;
+  final Set<PendingAttachment> _intakeSelected = {};
 
   String? _clientId;
   String? _warehouseId;
@@ -526,6 +552,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     });
     try {
       await ref.read(salesMasterNameServiceProvider).ensureLoaded();
+      // 新建报价预填默认有效期(30 天)：必填但常用默认，黄框提醒核对、可改；
+      // 草稿恢复/编辑既有单随后会覆盖为用户当时的值。
+      if (widget.id == null && _cfg.validUntilRequired && _validUntil == null) {
+        _validUntil = ChinaDateTime.today().add(const Duration(days: 30));
+        _autofilled.add('validUntil');
+      }
       if (widget.id == null && _cfg.hasWarehouse) {
         // D1（王浩然）：新建出库单按「本人类型最近一张单的仓库」预填，减少手选。
         try {
@@ -731,6 +763,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             row.clientModel.text = it.clientModel ?? '';
             row.clientGoodsName.text = it.clientGoodsName ?? '';
           }
+          row.restoreExtraColumns(
+            it.extraColumns.map((c) => c.toSnapshot()).toList(),
+          );
           row.remark.text = it.remark ?? '';
           rows.add(row);
         }
@@ -876,7 +911,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         replacedQuoteLine = true;
       }
       target
-        ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+        ..goods = GoodsOption(
+          id: g.id,
+          code: g.code,
+          name: g.name,
+          nameEn: g.nameEn,
+        )
         // 颜色/单位直接回填货品主档 UUID，单元格只读显示。
         ..colorId = g.colorId
         ..unitId = g.unitId
@@ -889,18 +929,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       // 订单/报价折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整；
       // 看不到价格的账号留空(保存时服务端按文件单价计算)。
       if (_lockedPrice) {
-        // 上一个货品带出的英文名随换货清掉(客户自己的品名保留)。
-        final autoName = target.prefilledNameEn;
-        if (autoName != null && target.clientGoodsName.text == autoName) {
-          target.clientGoodsName.clear();
-        }
-        target.prefilledNameEn = null;
-        // 「文件品名」为空时带出货品英文名称(货品选择器随货品列表一并给出, 可改)。
-        final nameEn = g.nameEn?.trim() ?? '';
-        if (nameEn.isNotEmpty && target.clientGoodsName.text.trim().isEmpty) {
-          target.clientGoodsName.text = nameEn;
-          target.prefilledNameEn = nameEn;
-        }
+        // 英文名称由基础列直接显示。文件品名只保留客户文件或用户明确输入，
+        // 不把主档英文名称写进客户原文，避免未上传文件也展开文件列。
         String? pricingReason;
         if (_priceMasked) {
           target.discount.clear();
@@ -1323,6 +1353,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _deliverDate == null) {
       fail('deliverDate', '请选择交货日期');
     }
+    // 报价必填有效期(2026-09-29)：没有有效期的报价无法约束核价与转单时效。
+    if (_cfg.hasValidUntil && _cfg.validUntilRequired && _validUntil == null) {
+      fail('validUntil', '请选择有效期');
+    }
     // 发运策略必选（与后端同口径）：历史「未指定/客户确认」只读保留，不算未选。
     if (widget.docType == SalesDocType.order &&
         (_shipmentPolicy == null ||
@@ -1445,7 +1479,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           '${r.goods!.id}|${r.colorId ?? ''}|${r.unitId ?? ''}|'
           '${r.unitRateExact ?? r.unitRate ?? 1}|'
           '${financeExactTrimmed(r.discount.text) ?? r.discount.text.trim()}|'
-          '${r.clientPrice ?? ''}',
+          '${r.clientPrice ?? ''}|${r.extraColumnsSignature}|'
+          '${r.extraColumnsPreventMerge ? identityHashCode(r) : ''}',
       identityLabel: (r) {
         final parts = <String>[
           if ((r.goods!.name ?? '').isNotEmpty) r.goods!.name!,
@@ -1540,6 +1575,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
+      if (!r.extraColumnsValid(
+        exactLineAmountText(
+          r.qty.text,
+          r.price.text,
+          discount: _amountUsesDiscount ? r.discount.text : null,
+        ),
+      )) {
+        context.appError(salesIntakeL10n(context).businessColumnInvalid);
+        return;
+      }
       final price = double.tryParse(r.price.text);
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
@@ -1558,6 +1603,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             (r.documentItemId?.isNotEmpty ?? false))
           'id': r.documentItemId,
         'goodsId': r.goods!.id,
+        if (_lockedPrice)
+          'extraColumns': r.extraColumnsPayload(priceMasked: _priceMasked),
         'qty': r.qty.text.trim(),
         // 只送单价原文; 金额由服务端按 数量 × 单价 × 折扣 精确派生(ADR-112), 请求不带金额。
         if (price != null && !_freeCustomerShipment)
@@ -1605,6 +1652,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         case SalesDocType.quote:
           break;
       }
+      body.addAll(platformRowPayload(r));
       itemsBody.add(body);
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
@@ -1892,8 +1940,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// - 看不到价格：折扣提交 null(服务端按文件单价计算，已有行保留原折扣)；
   /// - 报价折扣留空 = 交财务核价，提交 null；
   /// - intakeLineKey / userConfirmed / setNameEn 只在请求里用于学习，不落库；
-  /// - 手工选货品时自动带出的货品英文名称(没改过)照常保存显示，但不是客户的叫法，
-  ///   不回传 userConfirmed(不当客户对照学习)。
+  /// - 兼容旧草稿的英文预填标记：既有值不清空，也不当客户叫法学习；
+  ///   新选货品的英文名称只显示在独立基础列。
   Map<String, dynamic> _clientLineFields(SalesGridRow r) {
     final discount = r.discount.text.trim();
     final clientModel = r.clientModel.text.trim();
@@ -1918,31 +1966,292 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   // ---------------------------------------------------------------- 识别客户文件
+  // 入口统一在附件卡片区(2026-09-29)：上传/拖入文件 → 卡片「AI识别」→ 公共进度弹窗
+  // → 核对面板 → 补丁。多文件可「批量识别」；单个识别从第二份起(明细已有内容)
+  // 弹窗问「替换/追加」。顶部横幅与表头上方按钮均已退役。
 
-  Future<void> _runAiIntake() async {
-    if (_aiIntakeRunning || _saving) return;
-    setState(() => _aiIntakeRunning = true);
+  /// 文件名是否属于可识别类型(与识别链的白名单一致)。
+  bool _isIntakeFileName(String name) {
+    final dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length - 1) return false;
+    return kSalesIntakeContentTypes.containsKey(
+      name.substring(dot + 1).toLowerCase(),
+    );
+  }
+
+  /// 暂存卡片的「AI识别」动作：可识别类型才有按钮；识别中转圈、已完成转成功态
+  /// (仍可点=重新识别, 明细已有内容时照常问替换/追加)。
+  PendingFileActionSpec? _intakeActionFor(PendingAttachment item) {
+    if (!_isIntakeFileName(item.name)) return null;
+    final busy = _intakeBusyFiles.contains(item);
+    final done = _intakeDoneFiles.contains(item);
+    return PendingFileActionSpec(
+      label: 'AI识别',
+      busy: busy,
+      done: done,
+      tooltip: done ? '重新识别这份文件' : '识别客户文件，导入表头与明细',
+      onTap: busy || _saving || _aiIntakeRunning
+          ? null
+          : () => _runIntakeForItem(item, replacePref: null),
+    );
+  }
+
+  /// 标题行「批量识别」入口：待识别的可识别文件 ≥2 份才出现(1 份点卡片即可)。
+  /// 队列随附件控制器实时算(独立监听)，批量进行中转圈不可点。
+  /// 待识别队列：可识别类型且未在识别中的暂存文件(选卡模式的可勾选范围；
+  /// 选卡时「已完成」也可选=重新识别，平时队列只数未完成的)。
+  List<PendingAttachment> get _intakeQueue => [
+    for (final item in _pendingFiles.items)
+      if (_isIntakeFileName(item.name) &&
+          !_intakeBusyFiles.contains(item) &&
+          (!_intakeDoneFiles.contains(item) || _intakeSelecting))
+        item,
+  ];
+
+  /// 标题行批量入口，两种形态：
+  /// 平时 = 「批量识别」(队列 ≥2 份才出现)；选卡模式 = 「取消 / 全选 / 识别 (N)」。
+  Widget? _intakeBatchButton() {
+    if (!_canUseAiIntake) return null;
+    return ListenableBuilder(
+      listenable: _pendingFiles,
+      builder: (context, _) {
+        final queue = _intakeQueue;
+        if (_intakeSelecting) {
+          final selected = queue
+              .where(_intakeSelected.contains)
+              .toList(growable: false);
+          final allSelected = selected.length == queue.length;
+          final busy = _intakeBatchRunning || _saving;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                key: const ValueKey('sales-intake-batch-cancel'),
+                onPressed: busy ? null : _cancelIntakeSelecting,
+                child: const Text('取消'),
+              ),
+              if (queue.length > 1)
+                TextButton(
+                  key: const ValueKey('sales-intake-batch-select-all'),
+                  onPressed: busy
+                      ? null
+                      : () => setState(() {
+                          if (allSelected) {
+                            _intakeSelected.clear();
+                          } else {
+                            _intakeSelected
+                              ..clear()
+                              ..addAll(queue);
+                          }
+                        }),
+                  child: Text(allSelected ? '取消全选' : '全选'),
+                ),
+              FilledButton.icon(
+                key: const ValueKey('sales-intake-batch-confirm'),
+                // 批量进行中不转圈(每份的进度由公共 AI 进度弹窗展示)，只禁用。
+                onPressed: busy || selected.isEmpty
+                    ? null
+                    : () => _confirmBatchIntake(selected),
+                icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                label: Text('识别 (${selected.length})'),
+              ),
+            ],
+          );
+        }
+        if (queue.length < 2) return const SizedBox.shrink();
+        return FilledButton.tonalIcon(
+          key: const ValueKey('sales-intake-batch-button'),
+          onPressed: _saving || _aiIntakeRunning
+              ? null
+              : () => setState(() => _intakeSelecting = true),
+          icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+          label: const Text('批量识别'),
+        );
+      },
+    );
+  }
+
+  void _cancelIntakeSelecting() {
+    setState(() {
+      _intakeSelecting = false;
+      _intakeSelected.clear();
+    });
+  }
+
+  /// 选卡模式里点卡片切换勾选。
+  void _toggleIntakeSelection(PendingAttachment item) {
+    if (!_intakeQueue.contains(item)) return;
+    setState(() {
+      if (!_intakeSelected.remove(item)) _intakeSelected.add(item);
+    });
+  }
+
+  /// 批量识别执行勾选的文件：逐份顺序(每份仍是 公共进度弹窗 + 核对面板)。
+  /// 明细已有内容时先统一问一次「替换(第一份)/之后追加」；某份取消或失败即停，
+  /// 已完成的保留、剩余的仍可再识别。
+  Future<void> _confirmBatchIntake(List<PendingAttachment> queue) async {
+    if (!mounted || queue.isEmpty || _aiIntakeRunning || _saving) return;
+    bool? replacePref;
+    if (_grid.rows.any(_rowHasContent)) {
+      final choice = await _askReplaceOrAppend();
+      if (!mounted || choice == null) return;
+      replacePref = choice;
+    }
+    setState(() => _intakeBatchRunning = true);
+    var done = 0;
     try {
-      final permissions = ref.read(currentPermissionsProvider);
-      final clientId = _clientId;
-      final result = await launchSalesIntake(
+      for (final item in queue) {
+        final ok = await _runIntakeForItem(item, replacePref: replacePref);
+        if (!mounted) return;
+        if (!ok) {
+          if (done > 0) {
+            context.appInfo(
+              '批量识别已停止：完成 $done 份，剩余 ${queue.length - done} 份可单独识别',
+            );
+          }
+          return;
+        }
+        done++;
+        // 替换只对第一份生效；同批后续文件一律追加(每份问一遍会打断节奏)。
+        replacePref = false;
+      }
+      if (mounted && done > 0) context.appSuccess('批量识别完成：共 $done 份');
+    } finally {
+      _intakeBatchRunning = false;
+      _intakeSelecting = false;
+      _intakeSelected.clear();
+      if (mounted) setState(() {});
+    }
+  }
+
+  /// 单张暂存卡片识别(与批量共用一条执行链)。[replacePref] 为 null 时按原有口径：
+  /// 明细已有内容先问「替换/追加」；批量识别先统一问一次再逐份传入。
+  Future<bool> _runIntakeForItem(
+    PendingAttachment item, {
+    required bool? replacePref,
+  }) async {
+    if (!mounted || _aiIntakeRunning || _saving) return false;
+    if (!_pendingFiles.items.contains(item)) return false;
+    final reRecognize = _intakeDoneFiles.contains(item);
+    setState(() {
+      _aiIntakeRunning = true;
+      _intakeBusyFiles.add(item);
+    });
+    try {
+      final result = await launchSalesIntakeWithFile(
         context,
         ref,
+        file: PlatformFile(
+          name: item.name,
+          size: item.sizeBytes,
+          bytes: item.bytes,
+        ),
         docType: widget.docType,
-        clientId: clientId,
-        clientName: clientId == null
-            ? null
-            : ref.read(salesMasterNameServiceProvider).client(clientId),
+        clientId: _clientId,
+        clientName: _resolveIntakeClientName(),
         docId: widget.id,
-        canHandoffToQuote:
-            widget.docType == SalesDocType.order &&
-            permissions.contains(SalesDocConfig.quote.createPerm),
+        canHandoffToQuote: _canHandoffIntakeToQuote(),
       );
-      if (!mounted || result == null) return;
-      await _handleIntakeResult(result);
+      if (!mounted || result == null) return false;
+      // 文件已在暂存列表里，不再走「把原文件存进附件」(避免依赖同名去重)。
+      final applied = await _handleIntakeResult(
+        result,
+        attachOriginal: false,
+        replacePref: replacePref,
+        reRecognizeFile: reRecognize ? item.name : null,
+      );
+      if (!mounted) return false;
+      if (applied) {
+        _intakeDoneFiles.add(item);
+        // 识别过的客户文件自动标「客户确认」(没设过分类时)，与旧入口归档同口径。
+        if (item.category == null) {
+          final index = _pendingFiles.items.indexOf(item);
+          if (index >= 0) {
+            _pendingFiles.setCategoryAt(index, kSalesIntakeAttachmentCategory);
+          }
+        }
+        setState(() {});
+      }
+      return applied;
     } finally {
+      _intakeBusyFiles.remove(item);
       if (mounted) setState(() => _aiIntakeRunning = false);
     }
+  }
+
+  /// 已保存单据(草稿)附件行的「AI识别」：先把附件字节取回来，再走同一条识别链。
+  Widget? _intakeRowAction(Attachment attachment) {
+    if (!_isIntakeFileName(attachment.originalName)) return null;
+    final done = _intakeDoneAttachmentIds.contains(attachment.id);
+    final busy = _intakeBusyAttachmentId == attachment.id;
+    return IconButton(
+      tooltip: done ? '已识别并导入明细，点击可重新识别' : 'AI识别',
+      icon: Icon(
+        done ? Icons.check_circle_rounded : Icons.auto_awesome_outlined,
+        size: 20,
+        color: done ? UtenColors.deepGreen : null,
+      ),
+      onPressed: busy || _saving || _aiIntakeRunning
+          ? null
+          : () => _recognizeSavedAttachment(attachment),
+    );
+  }
+
+  Future<void> _recognizeSavedAttachment(Attachment attachment) async {
+    if (!mounted || _aiIntakeRunning || _saving) return;
+    setState(() {
+      _aiIntakeRunning = true;
+      _intakeBusyAttachmentId = attachment.id;
+    });
+    try {
+      final Uint8List bytes;
+      try {
+        bytes = await ref
+            .read(attachmentServiceProvider)
+            .downloadBytes(attachment);
+      } on Object {
+        if (mounted) {
+          context.appError('读取附件「${attachment.originalName}」失败，请重试');
+        }
+        return;
+      }
+      if (!mounted) return;
+      final result = await launchSalesIntakeWithFile(
+        context,
+        ref,
+        file: PlatformFile(
+          name: attachment.originalName,
+          size: attachment.sizeBytes,
+          bytes: bytes,
+        ),
+        docType: widget.docType,
+        clientId: _clientId,
+        clientName: _resolveIntakeClientName(),
+        docId: widget.id,
+        canHandoffToQuote: _canHandoffIntakeToQuote(),
+      );
+      if (!mounted || result == null) return;
+      final applied = await _handleIntakeResult(result, attachOriginal: false);
+      if (mounted && applied) {
+        setState(() => _intakeDoneAttachmentIds.add(attachment.id));
+      }
+    } finally {
+      _intakeBusyAttachmentId = null;
+      if (mounted) setState(() => _aiIntakeRunning = false);
+    }
+  }
+
+  String? _resolveIntakeClientName() {
+    final clientId = _clientId;
+    return clientId == null
+        ? null
+        : ref.read(salesMasterNameServiceProvider).client(clientId);
+  }
+
+  bool _canHandoffIntakeToQuote() {
+    final permissions = ref.read(currentPermissionsProvider);
+    return widget.docType == SalesDocType.order &&
+        permissions.contains(SalesDocConfig.quote.createPerm);
   }
 
   Future<void> _resumeAiIntake(String jobId) async {
@@ -1976,12 +2285,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
   }
 
-  Future<void> _handleIntakeResult(SalesIntakeLaunchResult result) async {
+  Future<bool> _handleIntakeResult(
+    SalesIntakeLaunchResult result, {
+    bool attachOriginal = true,
+    bool? replacePref,
+    String? reRecognizeFile,
+  }) async {
     final handoff = result.handoffJobId;
     if (handoff != null) {
       // 弹窗刚关，等一帧再跳页(跑批遮罩/弹窗退场不压住新页面)。
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
+      if (!mounted) return false;
       context.push(
         Uri(
           path: SalesRoutePath.docNew(SalesDocType.quote.pathSegment),
@@ -1990,26 +2304,39 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         // 原文件跟着交过去, 报价页导入后存进附件(客户确认)。
         extra: result.file,
       );
-      return;
+      return false;
     }
     final patch = result.patch;
-    if (patch != null) await _applyIntakePatch(patch, file: result.file);
+    if (patch != null) {
+      return _applyIntakePatch(
+        patch,
+        file: attachOriginal ? result.file : null,
+        replacePref: replacePref,
+        reRecognizeFile: reRecognizeFile,
+      );
+    }
+    return false;
   }
 
   bool _rowHasContent(SalesGridRow r) =>
+      r.extraColumnSnapshots.any((c) => c.value?.trim().isNotEmpty ?? false) ||
       r.goods != null ||
       r.qty.text.trim().isNotEmpty ||
       r.remark.text.trim().isNotEmpty ||
       r.clientModel.text.trim().isNotEmpty;
 
   /// 明细已有内容时问一句：替换(true) / 追加(false) / 取消(null)。
-  Future<bool?> _askReplaceOrAppend() {
+  /// [reRecognizeFile] 非空 = 同一份文件重新识别: 点名覆盖的是「它之前识别出的内容」。
+  Future<bool?> _askReplaceOrAppend({String? reRecognizeFile}) {
     final l10n = salesIntakeL10n(context);
+    final message = reRecognizeFile == null
+        ? l10n.salesIntakeReplaceMessage
+        : '「$reRecognizeFile」之前识别的结果已在明细里，要用新结果覆盖现有明细，还是追加在后面？';
     return showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(l10n.salesIntakeReplaceTitle),
-        content: Text(l10n.salesIntakeReplaceMessage),
+        content: Text(message),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           UtenButton(
@@ -2037,16 +2364,86 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   /// 套用识别补丁：客户(联动条款预填)→ 本位币 / 合同号 / 备注(黄框提醒)→ 明细行。
-  Future<void> _applyIntakePatch(
+  /// [replacePref] 由批量识别预决(不再逐份弹窗)；null = 单份识别按原有口径，
+  /// 明细已有内容时弹窗问「替换/追加」。
+  Future<bool> _applyIntakePatch(
     SalesIntakePatch patch, {
     PlatformFile? file,
+    bool? replacePref,
+    String? reRecognizeFile,
   }) async {
     final l10n = salesIntakeL10n(context);
     var replace = true;
-    if (_grid.rows.any(_rowHasContent)) {
-      final choice = await _askReplaceOrAppend();
-      if (!mounted || choice == null) return;
+    if (replacePref != null) {
+      replace = replacePref;
+    } else if (_grid.rows.any(_rowHasContent)) {
+      final choice = await _askReplaceOrAppend(
+        reRecognizeFile: reRecognizeFile,
+      );
+      if (!mounted || choice == null) return false;
       replace = choice;
+    }
+    if (!replace &&
+        patch.clientId != null &&
+        _clientId != null &&
+        patch.clientId != _clientId) {
+      context.appError(salesIntakeExtraText(context, 'client'));
+      return false;
+    }
+    final previousIntake = replace ? null : _aiIntake;
+    final existingFilePrices =
+        !replace &&
+        _grid.rows.any((row) => row.clientPrice?.trim().isNotEmpty ?? false);
+    final incomingFilePrices = patch.rows.any(
+      (row) => row.clientPrice?.trim().isNotEmpty ?? false,
+    );
+    if (!replace &&
+        _lockedPrice &&
+        existingFilePrices &&
+        incomingFilePrices &&
+        (_clientFileCurrency ?? '').toUpperCase() !=
+            (patch.clientFileCurrency ?? '').toUpperCase()) {
+      context.appError(salesIntakeExtraText(context, 'currency'));
+      return false;
+    }
+    final nextIntake = patch.toSession(
+      previous: previousIntake,
+      preservePreviousPricing: existingFilePrices && !incomingFilePrices,
+      previousFileCurrency: _clientFileCurrency,
+    );
+    if (nextIntake.additionalJobIds.length > 19) {
+      context.appError(salesIntakeExtraText(context, 'files'));
+      return false;
+    }
+    // Resolve reusable definitions before replacing any user-entered lines.
+    final intakeColumns = <String, BusinessColumn>{};
+    if (_lockedPrice && patch.extraColumns.isNotEmpty) {
+      try {
+        final repository = ref.read(businessColumnsRepositoryProvider);
+        final scope = widget.docType == SalesDocType.quote
+            ? 'sales_quote'
+            : 'sales_order';
+        for (final column in patch.extraColumns) {
+          intakeColumns[column.key] = await repository.create(
+            scope: scope,
+            name: column.label,
+            type: column.dataType,
+            operation: 'NONE',
+          );
+          if (!mounted) return false;
+        }
+        final ids = {
+          ...intakeColumns.values.map((c) => c.id),
+          if (!replace) ...businessColumnsOf(_grid.rows).map((c) => c.id),
+        };
+        if (ids.length > 32) {
+          context.appError(salesIntakeExtraText(context, 'limit'));
+          return false;
+        }
+      } catch (_) {
+        if (mounted) context.appError(salesIntakeExtraText(context, 'failed'));
+        return false;
+      }
     }
     final clientId = patch.clientId;
     if (clientId != null) {
@@ -2055,13 +2452,23 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
     if (clientId != null && clientId != _clientId) {
       await _onClientChanged(clientId);
-      if (!mounted) return;
+      if (!mounted) return false;
     }
     final names = ref.read(salesMasterNameServiceProvider);
     final rows = [
       for (final p in patch.rows)
         SalesGridRow.fromIntake(p, amountUsesDiscount: _amountUsesDiscount),
     ];
+    for (var index = 0; index < rows.length; index++) {
+      final row = rows[index];
+      final lineKey = row.intakeLineKey;
+      if (lineKey != null) row.intakeLineKey = '${patch.jobId}:$lineKey';
+      for (final entry in intakeColumns.entries) {
+        row.addExtraColumn(entry.value);
+        row.extraColumnController(entry.value).text =
+            patch.rows[index].extraValues[entry.key] ?? '';
+      }
+    }
     setState(() {
       // 单据币种 = 本位币(标价所用币种)，晚于客户条款预填，避免被客户默认外币覆盖。
       final currencyId = patch.currencyId;
@@ -2088,17 +2495,24 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           _markAutofilled('remark', merged);
         }
       }
-      _clientFileCurrency = patch.clientFileCurrency ?? _clientFileCurrency;
-      _aiIntake = patch.toSession();
+      // 报价/订货专属的识别会话与文件币种(其它单据没有折扣/标价语义，不参与)。
+      if (_lockedPrice) {
+        if (replace || !existingFilePrices) {
+          _clientFileCurrency = patch.clientFileCurrency;
+        }
+        _aiIntake = nextIntake;
+      }
     });
     if (replace) {
       _grid.replaceAll(rows);
     } else {
-      // 追加：清掉占位空行；旧行的识别行键属于上一次识别，保存时不再回传。
+      // Keep each file's source namespace so saving learns every adopted file.
       _grid.removeWhere((r) => !_rowHasContent(r) && r.price.text.isEmpty);
       for (final r in _grid.rows) {
-        r.intakeLineKey = null;
-        r.setNameEn = false;
+        final key = r.intakeLineKey;
+        if (key != null && !key.contains(':') && previousIntake != null) {
+          r.intakeLineKey = '${previousIntake.jobId}:$key';
+        }
       }
       _grid.addRows(rows);
     }
@@ -2108,12 +2522,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _recalcQtyTotal();
     if (mounted) setState(() {});
     await _attachOriginalFile(file);
-    if (!mounted) return;
+    if (!mounted) return true;
     context.appSuccess(
       patch.reviewRowCount > 0
           ? l10n.salesIntakeApplied(patch.rows.length, patch.reviewRowCount)
           : l10n.salesIntakeAppliedAllMatched(patch.rows.length),
     );
+    return true;
   }
 
   /// 识别带来的备注并进现有备注：「替换」时先去掉上一次识别追加的那一段；
@@ -2392,23 +2807,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
-                              // 识别客户文件入口(报价/订货新建与草稿)；已审核订单只给一句说明。
-                              if (_canUseAiIntake) ...[
-                                SalesIntakeEntryCard(
-                                  aiOff:
-                                      ref
-                                          .watch(aiStatusProvider)
-                                          .valueOrNull
-                                          ?.usable ==
-                                      false,
-                                  lastFileName: _aiIntake?.fileName,
-                                  importedRows: _aiIntake?.importedRows ?? 0,
-                                  onStart: _saving || _aiIntakeRunning
-                                      ? null
-                                      : _runAiIntake,
-                                ),
-                                const SizedBox(height: UtenSpacing.s12),
-                              ] else if (_editingApprovedOrder) ...[
+                              // 「识别客户文件」入口统一在下方附件卡片区(卡片上的
+                              // AI识别 按钮)；已审核订单没有识别入口，只留一句说明。
+                              if (_editingApprovedOrder) ...[
                                 Text(
                                   salesIntakeL10n(
                                     context,
@@ -2494,6 +2895,32 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                     ref,
                                                   ),
                                             ),
+                                            // 报价专属：有效期紧跟客户置顶且必填——
+                                            // 报价页顶部由此与订货页(币种/结账方式/交货
+                                            // 日期一串必填)明显区分开(2026-09-29)。
+                                            // 新建时预填 30 天(黄框可改)。
+                                            if (_cfg.hasValidUntil)
+                                              UtenDateField(
+                                                label: '有效期',
+                                                required:
+                                                    _cfg.validUntilRequired,
+                                                value: _validUntil,
+                                                autofilled: _autofilled
+                                                    .contains('validUntil'),
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'validUntil',
+                                                    )
+                                                    ? '请选择有效期'
+                                                    : null,
+                                                onChanged: (d) {
+                                                  setState(
+                                                    () => _validUntil = d,
+                                                  );
+                                                  _clearError('validUntil');
+                                                  _markConfirmed('validUntil');
+                                                },
+                                              ),
                                             if (_isCustomerShipment) ...[
                                               UtenDropdownField(
                                                 key: const ValueKey(
@@ -2764,14 +3191,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                 ),
                                               ),
                                             // 日期字段（按 config 显隐，统一 UtenDateField）
-                                            if (_cfg.hasValidUntil)
-                                              UtenDateField(
-                                                label: '有效期',
-                                                value: _validUntil,
-                                                onChanged: (d) => setState(
-                                                  () => _validUntil = d,
-                                                ),
-                                              ),
                                             if (_cfg.hasDeliverDate)
                                               UtenDateField(
                                                 label: '交货日期',
@@ -2964,6 +3383,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                               // 订货单附件（2026-09-09 编辑态就地上传；2026-09-10 新建态保存前暂存）：
                               // 已有单据直接挂 SALES_ORDER；新建单先在本地暂存，保存拿到 UUID 后
                               // 逐个确认上传（ADR-074 附件只挂已保存的业务 UUID）。
+                              // 2026-09-29 起「识别客户文件」入口统一进附件区：
+                              // 新建=暂存卡片上的 AI识别 按钮(+批量识别)；已保存草稿=附件行按钮。
                               if (_hasDraftAttachmentArea &&
                                   widget.id != null) ...[
                                 BusinessAttachmentSection(
@@ -2975,6 +3396,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                       .kReviewReadOnlyAttachmentNote,
                                   title: '附件（合同/客户确认/图片）',
                                   categories: const ['合同', '客户确认', '图片', '其他'],
+                                  rowActionBuilder: _canUseAiIntake
+                                      ? _intakeRowAction
+                                      : null,
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ] else if (_hasDraftAttachmentArea) ...[
@@ -2988,9 +3412,27 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                     'sales-${widget.docType.name}-draft-attachments',
                                   ),
                                   controller: _pendingFiles,
-                                  canManage: _canManageAttachments,
+                                  // 识别入口在卡片上：没有附件上传权限的销售
+                                  // 也能加文件识别(保存时附件逐项失败并如实提示)。
+                                  canManage:
+                                      _canManageAttachments || _canUseAiIntake,
+                                  draftManageWithoutUploadPerm: _canUseAiIntake,
                                   title: '附件（合同/客户确认/图片）',
                                   categories: const ['合同', '客户确认', '图片', '其他'],
+                                  draftEmptyHint: _canUseAiIntake
+                                      ? '拖入或点击添加客户文件，加入后可在文件卡上 AI 识别'
+                                      : null,
+                                  draftActionFor: _canUseAiIntake
+                                      ? _intakeActionFor
+                                      : null,
+                                  draftHeaderExtra: _intakeBatchButton(),
+                                  draftSelectionMode:
+                                      _canUseAiIntake && _intakeSelecting,
+                                  draftSelectedItems: _intakeSelected,
+                                  draftOnToggleSelection:
+                                      _toggleIntakeSelection,
+                                  draftSelectableFor: (item) =>
+                                      _intakeQueue.contains(item),
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
@@ -3003,10 +3445,54 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                   return SavedDocumentFields(
                                     locked: _hasCreatedDocuments,
                                     child: UtenEditableGrid<SalesGridRow>(
+                                      tableKey:
+                                          'sales.${widget.docType.name}.items',
+                                      onAddColumn: !_lockedPrice
+                                          ? null
+                                          : (hidden) => addBusinessGridColumn(
+                                              context,
+                                              scope:
+                                                  widget.docType ==
+                                                      SalesDocType.quote
+                                                  ? 'sales_quote'
+                                                  : 'sales_order',
+                                              hiddenColumns: hidden,
+                                              rows: _grid.rows,
+                                              createRow: () {
+                                                final row = SalesGridRow(
+                                                  amountUsesDiscount:
+                                                      _amountUsesDiscount,
+                                                );
+                                                _grid.addRow(row);
+                                                return row;
+                                              },
+                                              priceMasked: _priceMasked,
+                                              onChanged: () => setState(() {}),
+                                            ),
+                                      forceVisibleColumnKeys: {
+                                        ...filledBusinessColumnKeys(_grid.rows),
+                                        if (_grid.rows.any(
+                                          (r) => r.clientModel.text
+                                              .trim()
+                                              .isNotEmpty,
+                                        ))
+                                          'clientModel',
+                                        if (_grid.rows.any(
+                                          (r) => r.clientGoodsName.text
+                                              .trim()
+                                              .isNotEmpty,
+                                        ))
+                                          'clientGoodsName',
+                                        if (_grid.rows.any(
+                                          (r) => r.clientPrice != null,
+                                        ))
+                                          'clientPrice',
+                                      },
                                       controller: _grid,
                                       stickyHeaderPinned: _gridPinned,
                                       columns: salesGridColumns(
                                         context: context,
+                                        rows: _grid.rows,
                                         freeCustomerShipment:
                                             _freeCustomerShipment,
                                         onPickGoods: _pickGoods,
@@ -3019,9 +3505,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                         clientFileCurrency: _clientFileCurrency,
                                         priceMasked: _priceMasked,
                                       ),
-                                      createBlankRow: () => SalesGridRow(
-                                        amountUsesDiscount: _amountUsesDiscount,
-                                      ),
+                                      createBlankRow: () =>
+                                          inheritBusinessColumns(
+                                            SalesGridRow(
+                                              amountUsesDiscount:
+                                                  _amountUsesDiscount,
+                                            ),
+                                            _grid.rows,
+                                          ),
                                       cloneRow: (r) => r.clone(
                                         requireOrderPriceRefresh: _lockedPrice,
                                       ),
@@ -3033,20 +3524,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                 ? null
                                                 : _importFromUpstream,
                                           ),
-                                        if (_canUseAiIntake)
-                                          UtenImportButton(
-                                            key: const ValueKey(
-                                              'sales-intake-toolbar-button',
-                                            ),
-                                            label: salesIntakeL10n(
-                                              context,
-                                            ).salesIntakeToolbarButton,
-                                            icon: Icons.auto_awesome_rounded,
-                                            onPressed:
-                                                _saving || _aiIntakeRunning
-                                                ? null
-                                                : _runAiIntake,
-                                          ),
+                                        // 「识别客户文件」已于 2026-09-29 统一进
+                                        // 附件卡片区，表头上方按钮退役。
                                       ],
                                       initialColumnOrder: columnPrefs?.order,
                                       initialHiddenColumnKeys:
@@ -3066,56 +3545,63 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                 pinned,
                                               ),
                                       // 网格底部合计条（全站统一 UtenTotalsSummaryBar 口径）：
+                                      // 总行数（增删行即时刷新，外层挂网格控制器）；
                                       // 数量严格按单位 UUID 分组，绝不跨单位相加；
                                       // 金额在同币种单据内汇总，币种取表头。
-                                      footer: ValueListenableBuilder<double>(
-                                        valueListenable: _totalQtyNotifier,
-                                        builder: (_, _, _) => ValueListenableBuilder<double>(
-                                          valueListenable:
-                                              _grid.totalListenable,
-                                          builder: (_, amount, _) => UtenTotalsSummaryBar(
-                                            key: const Key('sales-edit-totals'),
-                                            density: true,
-                                            entries: [
-                                              utenQuantityTotalEntry(
-                                                _grid.rows
-                                                    .where(
-                                                      (row) =>
-                                                          row.goods != null,
-                                                    )
-                                                    .map(
-                                                      (row) => MeasuredAmount(
-                                                        value:
-                                                            double.tryParse(
-                                                              row.qty.text
-                                                                  .trim(),
-                                                            ) ??
-                                                            0,
-                                                        unitId: row.unitId,
-                                                        unitName:
-                                                            names
-                                                                .unitEntries[row
-                                                                .unitId],
-                                                      ),
-                                                    ),
-                                                label: '数量',
+                                      footer: ListenableBuilder(
+                                        listenable: _grid,
+                                        builder: (_, _) => ValueListenableBuilder<double>(
+                                          valueListenable: _totalQtyNotifier,
+                                          builder: (_, _, _) => ValueListenableBuilder<double>(
+                                            valueListenable:
+                                                _grid.totalListenable,
+                                            builder: (_, amount, _) => UtenTotalsSummaryBar(
+                                              key: const Key(
+                                                'sales-edit-totals',
                                               ),
-                                              UtenTotalEntry(
-                                                _totalAmountLabel(names),
-                                                _freeCustomerShipment
-                                                    ? '不收费（货款 0）'
-                                                    : financeExactMoneyDisplay(
-                                                        exactAmountSumText(
-                                                          _grid.rows.map(
-                                                            (row) => row
-                                                                .amountExactNotifier
-                                                                .value,
-                                                          ),
+                                              density: true,
+                                              rowCount: _grid.rows.length,
+                                              entries: [
+                                                utenQuantityTotalEntry(
+                                                  _grid.rows
+                                                      .where(
+                                                        (row) =>
+                                                            row.goods != null,
+                                                      )
+                                                      .map(
+                                                        (row) => MeasuredAmount(
+                                                          value:
+                                                              double.tryParse(
+                                                                row.qty.text
+                                                                    .trim(),
+                                                              ) ??
+                                                              0,
+                                                          unitId: row.unitId,
+                                                          unitName:
+                                                              names
+                                                                  .unitEntries[row
+                                                                  .unitId],
                                                         ),
                                                       ),
-                                                danger: true,
-                                              ),
-                                            ],
+                                                  label: '数量',
+                                                ),
+                                                UtenTotalEntry(
+                                                  _totalAmountLabel(names),
+                                                  _freeCustomerShipment
+                                                      ? '不收费（货款 0）'
+                                                      : financeExactMoneyDisplay(
+                                                          exactAmountSumText(
+                                                            _grid.rows.map(
+                                                              (row) => row
+                                                                  .amountExactNotifier
+                                                                  .value,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                  danger: true,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),

@@ -839,11 +839,15 @@ class WmPendingProductChoice {
   /// 能不能勾"还要按工单领别的料" (= 产品没有任何 BOM)。
   final bool canAlsoOrderMaterials;
 
-  String get productDisplay => [
-    productName ?? productCode ?? '',
-    if (productColorName != null && productColorName!.isNotEmpty)
-      productColorName!,
-  ].join(' ');
+  /// 2026-09-29 用户口径：名称只显名称（颜色不再拼进名称串，见
+  /// [productSubline]——需要颜色的地方走副行）。
+  String get productDisplay => productName ?? productCode ?? '';
+
+  /// 副行属性（颜色）；为空返回 null。
+  String? get productSubline =>
+      (productColorName == null || productColorName!.isEmpty)
+      ? null
+      : productColorName;
 
   /// 服务端形状 = WorkshopMaterialChoicePort.PendingChoice: prefill 只带
   /// {goodsId, colorId}, 显示名从 options 里补; 单个重量取 bomWeights 第一条。

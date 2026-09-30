@@ -24,6 +24,8 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../core/responsive/breakpoint.dart';
 
 class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
   const ProcurementIqcRejectionListPage({
@@ -275,30 +277,11 @@ class _ProcurementIqcRejectionListPageState
           body: _buildTable(result),
         );
       }
-      return ListView(
-        key: const Key('iqc-rejection-compact-list'),
-        // compact 悬浮胶囊避让：滚到底分页条要能越过胶囊（嵌入态由宿主管）
-        padding: EdgeInsets.only(
-          bottom: widget.embedded
-              ? 0
-              : UtenCapsuleNavScope.occlusionOf(context),
-        ),
-        children: [
-          header,
-          if (result.items.isEmpty)
-            SizedBox(height: 320, child: _emptyState())
-          else
-            for (final item in result.items) ...[
-              _IqcRejectionTaskCard(item: item, onTap: () => _open(item)),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
-          _IqcRejectionPager(
-            page: result.page,
-            totalPages: result.totalPages,
-            loading: _loading,
-            onPageChanged: _load,
-          ),
-        ],
+      // 2026-09-29「大小屏共用一张表」：窄屏不再自绘卡片列表，与宽屏同走
+      // 折叠头 + 表格；<840（原卡片阈值）由表格内建卡片形态接管。
+      return UtenCollapsingHeaderScrollView(
+        collapsingHeader: header,
+        body: _buildTable(result),
       );
     }
 
@@ -476,9 +459,16 @@ class _ProcurementIqcRejectionListPageState
 
   Widget _buildTable(PagedResult<ProcurementIqcRejectionCase> result) {
     return MasterDataTableView<ProcurementIqcRejectionCase>(
+      tableKey:
+          'features.procurement_iqc_rejection.pages.procurement_iqc_rejection_list_page.ProcurementIqcRejectionListPageState._buildTable.1',
       key: const Key('iqc-rejection-task-table'),
       // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
       primary: true,
+      compactCards: true,
+      cardBelowWidth: UtenBreakpoints.expandedStart,
+      bottomContentPadding: widget.embedded
+          ? 0
+          : UtenCapsuleNavScope.occlusionOf(context),
       columns: _columns,
       items: result.items,
       // 来源/状态是固定枚举（服务端 receiptType/status 参数均已在），前端
@@ -545,6 +535,8 @@ class _ProcurementIqcRejectionListPageState
       label: '收货 / 回厂单',
       width: 170,
       value: (item) => item.receiptBillNo,
+      // 卡片形态：单号进标题下副行。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'orderBillNo',
@@ -564,12 +556,16 @@ class _ProcurementIqcRejectionListPageState
       label: '不合格货品名称',
       width: 200,
       value: (item) => item.goodsName ?? '—',
+      // 卡片形态标题列。
+      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
       width: 130,
       value: (item) => item.goodsCode ?? '—',
+      // 卡片副行已带编号，明细区不重复出。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'colorName',
@@ -596,6 +592,11 @@ class _ProcurementIqcRejectionListPageState
       label: '状态',
       width: 180,
       value: (item) => item.status.label,
+      // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
+      cellColor: (context, item) => udenStatusBadgeCellColor(
+        context,
+        procurementIqcRejectionBadgeType(item.status),
+      ),
     ),
     MasterColumnDef(
       key: 'holdReason',
@@ -608,14 +609,6 @@ class _ProcurementIqcRejectionListPageState
     ),
   ];
 
-  Widget _emptyState() => UtenEmpty(
-    icon: Icons.verified_outlined,
-    message: _emptyMessage,
-    description: _keyword.isNotEmpty
-        ? '请调整单号、供应商或货品关键词后重试。'
-        : '任务由 IQC 不合格冻结事件生成；通知不是任务事实。',
-  );
-
   String get _emptyMessage {
     if (_keyword.isNotEmpty) return '没有匹配的 IQC 不合格任务';
     if (_status == 'PENDING_RETURN') return '当前没有待登记实物退回的任务';
@@ -623,128 +616,6 @@ class _ProcurementIqcRejectionListPageState
     if (_status == 'FINANCE_EXCEPTION') return '当前没有财务投影异常';
     if (_status == 'TERMINAL') return '当前没有已结案或已反向的任务';
     return '当前没有 IQC 不合格退回与贷项任务';
-  }
-}
-
-class _IqcRejectionTaskCard extends StatelessWidget {
-  const _IqcRejectionTaskCard({required this.item, required this.onTap});
-
-  final ProcurementIqcRejectionCase item;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      button: true,
-      label:
-          '${item.receiptType?.label ?? ''} ${item.receiptBillNo ?? ''}，${item.goodsLabel}，不合格 ${item.failedQty ?? '—'} ${item.unitName ?? ''}，${item.status.label}',
-      child: Card(
-        margin: EdgeInsets.zero,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 112),
-            child: Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          item.goodsLabel.isEmpty ? '未命名货品' : item.goodsLabel,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      ProcurementIqcRejectionStatusBadge(status: item.status),
-                    ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Wrap(
-                    spacing: UtenSpacing.s12,
-                    runSpacing: UtenSpacing.s4,
-                    children: [
-                      Text(
-                        '${item.receiptType?.label ?? '未知'} · ${item.receiptBillNo ?? '—'}',
-                      ),
-                      Text('订货 ${item.orderBillNo ?? '—'}'),
-                      Text('供应商 ${item.supplierName ?? '—'}'),
-                      Text(
-                        '不合格 ${item.failedQty ?? '—'} ${item.unitName ?? ''}'
-                            .trim(),
-                      ),
-                      Text(
-                        '本币金额 ${item.localAmountLabel(item.failedAmountLocal)}',
-                      ),
-                    ],
-                  ),
-                  if ((item.financeExceptionMessage ?? item.holdReason)
-                      case final reason?) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      reason,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color:
-                            item.status ==
-                                ProcurementIqcRejectionStatus.financeException
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _IqcRejectionPager extends StatelessWidget {
-  const _IqcRejectionPager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPageChanged,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPageChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (totalPages <= 1) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          tooltip: '上一页',
-          onPressed: loading || page <= 1
-              ? null
-              : () => onPageChanged(page - 1),
-          icon: const Icon(Icons.chevron_left_rounded),
-        ),
-        Text('$page / $totalPages'),
-        IconButton(
-          tooltip: '下一页',
-          onPressed: loading || page >= totalPages
-              ? null
-              : () => onPageChanged(page + 1),
-          icon: const Icon(Icons.chevron_right_rounded),
-        ),
-      ],
-    );
   }
 }
 

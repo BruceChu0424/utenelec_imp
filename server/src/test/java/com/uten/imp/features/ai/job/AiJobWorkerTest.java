@@ -253,7 +253,7 @@ class AiJobWorkerTest {
     @Test
     void aHandlerThatSawTheCancelAndReturnedNothingEndsCancelledNotSucceeded() {
         when(repository.progress(eq(jobId), eq(ATTEMPT), any(), any(), anyInt()))
-                .thenReturn(Optional.of(false), Optional.of(true));
+                .thenReturn(Optional.of(false)).thenReturn(Optional.of(true));
         when(repository.finishCancelled(jobId, ATTEMPT)).thenReturn(1);
         behaviour = ctx -> {
             ctx.progress("READING", 10);
@@ -491,7 +491,7 @@ class AiJobWorkerTest {
 
     @Test
     void wakeDrainsClaimedJobsOnTheDedicatedExecutor() throws Exception {
-        when(repository.claimNext(LEASE)).thenReturn(Optional.of(claimed("TEST_KIND")), Optional.empty());
+        when(repository.claimNext(LEASE)).thenReturn(Optional.of(claimed("TEST_KIND"))).thenReturn(Optional.empty());
         behaviour = ctx -> Map.of("done", true);
 
         worker.wake();

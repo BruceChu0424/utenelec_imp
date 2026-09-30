@@ -49,6 +49,9 @@ public class SalesMasterLearningAdapter implements SalesMasterLearningPort {
     private final SecurityContextCurrentUser currentUser;
     private final TransactionTemplate readOnlyNew;
     private final TransactionTemplate writeNew;
+    private com.uten.imp.application.port.SalesLearningReceiptPort receipts;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setLearningReceipts(com.uten.imp.application.port.SalesLearningReceiptPort receipts) { this.receipts = receipts; }
 
     public SalesMasterLearningAdapter(SalesMasterLearningApplier applier,
                                       ObjectProvider<AiJobUsagePort> jobUsage,
@@ -72,7 +75,8 @@ public class SalesMasterLearningAdapter implements SalesMasterLearningPort {
         Map<String, String> clientFields = request.clientId() == null
                 ? Map.of()
                 : ClientDocumentFields.normalizeAndValidate(request.clientFields());
-        if (request.lines().isEmpty() && clientFields.isEmpty() && request.intakeJobId() == null) {
+        if (request.lines().isEmpty() && clientFields.isEmpty() && request.intakeJobId() == null
+                && !hasDocumentLearning(docType, request.docId())) {
             return;
         }
         UUID principalId = currentUser.get().map(AuthUser::getId).orElse(null);
@@ -82,7 +86,11 @@ public class SalesMasterLearningAdapter implements SalesMasterLearningPort {
             return;
         }
         UUID actor = request.actorUserId() != null ? request.actorUserId() : principalId;
-        Runnable learning = () -> runAfterCommit(docType, actor, request, clientFields);
+        SalesLearningRequest command = new SalesLearningRequest(request.docType(),request.docId(),request.clientId(),
+                request.actorUserId(),request.actorEmployeeId(),request.lines(),clientFields,request.intakeJobId(),
+                request.additionalIntakeJobIds(),request.learningReceiptId());
+        if (receipts != null && command.learningReceiptId() != null) receipts.register(command);
+        Runnable learning = () -> runAfterCommit(docType, actor, command, clientFields);
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new AfterCommit(learning));
         } else {
@@ -91,37 +99,69 @@ public class SalesMasterLearningAdapter implements SalesMasterLearningPort {
         }
     }
 
-    /** 提交后执行; 自身吞掉一切异常(已提交的保存不能因学习失败而报错)。 */
+    /** Confirmed learning failures remain visible and retryable; results are consumed only after every step completes. */
     void runAfterCommit(String docType, UUID actor, SalesLearningRequest request, Map<String, String> clientFields) {
-        UUID jobId = request.intakeJobId();
         AiJobUsagePort usage = jobUsage.getIfAvailable();
-        try {
-            Map<String, Object> result = jobId == null || usage == null || actor == null
-                    ? null
-                    : readOnlyNew.execute(status -> usage.resultFor(jobId, actor).orElse(null));
-            IntakeJobLines jobLines = IntakeJobLines.parse(result);
+        java.util.Set<UUID> consumedJobs = new java.util.LinkedHashSet<>();
+        UUID receiptId = receipts == null ? null : request.learningReceiptId();
+        if (receiptId == null && request.intakeJobId() != null) consumedJobs.add(request.intakeJobId());
+        java.util.function.Supplier<com.uten.imp.application.port.SalesLearningReceiptPort.StepResult> learn = () -> {
+            Map<UUID, Map<String, Object>> results = new java.util.LinkedHashMap<>();
+            if (usage != null && actor != null) {
+                for (UUID jobId : request.intakeJobIds()) {
+                    Map<String, Object> result = receiptId == null
+                            ? readOnlyNew.execute(status -> usage.resultFor(jobId, actor).orElse(null))
+                            : receipts.evidence(receiptId, jobId).orElse(null);
+                    if (result == null) continue;
+                    IntakeJobLines parsed = IntakeJobLines.parse(result);
+                    String prefix = jobId + ":";
+                    boolean contributed = jobId.equals(request.intakeJobId()) || request.lines().stream().anyMatch(line ->
+                            line.intakeLineKey() != null && line.intakeLineKey().startsWith(prefix)
+                                    && parsed.line(line.intakeLineKey().substring(prefix.length())) != null);
+                    if (contributed) {
+                        results.put(jobId, result); consumedJobs.add(jobId);
+                        if (receiptId != null) receipts.rememberEvidence(receiptId, jobId, result);
+                    }
+                }
+            }
+            IntakeJobLines jobLines = IntakeJobLines.combine(request.intakeJobId(), results);
             SalesLearningPlanner.Plan plan = SalesLearningPlanner.plan(request, jobLines);
-            if (!plan.isEmpty() || !clientFields.isEmpty()) {
-                SalesMasterLearningApplier.Outcome outcome = applier.apply(
-                        docType, request.docId(), request.clientId(), actor, plan, clientFields);
-                log.debug("sales learning applied docType={} docId={} aliases={} retracted={} globalRefreshed={} nameEn={} clientFields={}",
-                        docType, request.docId(), outcome.aliasesWritten(), outcome.aliasesRetracted(),
-                        outcome.globalAliasesRefreshed(), outcome.nameEnUpdated(), outcome.clientFieldsApplied().size());
+            if (!plan.isEmpty() || !clientFields.isEmpty() || hasDocumentLearning(docType, request.docId())) {
+                SalesMasterLearningApplier.Outcome outcome = receiptId == null
+                        ? applier.apply(docType, request.docId(), request.clientId(), actor, plan, clientFields)
+                        : applier.applyConfirmed(docType, request.docId(), request.clientId(), actor, plan, clientFields, receiptId);
+                return new com.uten.imp.application.port.SalesLearningReceiptPort.StepResult(false, Map.of(
+                        "aliases", outcome.aliasesWritten(), "retractedAliases", outcome.aliasesRetracted(),
+                        "englishNames", outcome.nameEnUpdated(), "clientFields", outcome.clientFieldsApplied().size()));
             }
-        } catch (RuntimeException failure) {
-            // 只记类型, 不记消息: 数据库报错的 DETAIL 可能带上客户文件里的原文。
-            log.warn("sales learning failed docType={} docId={} cause={}",
-                    docType, request.docId(), failure.getClass().getName());
+            return com.uten.imp.application.port.SalesLearningReceiptPort.StepResult.done();
+        };
+        if (receiptId != null) {
+            receipts.run(receiptId, "MASTER", null, learn);
+            if (!receipts.canConsume(receiptId)) return;
+            consumedJobs.addAll(receipts.consumableJobs(receiptId));
+            receipts.run(receiptId, "CONSUME", null, () -> {
+                if (usage != null && actor != null) for (UUID jobId : consumedJobs)
+                    writeNew.executeWithoutResult(status -> usage.markUsed(jobId, actor, docType, request.docId()));
+                return com.uten.imp.application.port.SalesLearningReceiptPort.StepResult.done();
+            });
+            return;
         }
-        if (jobId != null && usage != null && actor != null) {
-            try {
-                writeNew.executeWithoutResult(status -> usage.markUsed(jobId, actor, docType, request.docId()));
-            } catch (RuntimeException failure) {
-                log.warn("marking intake job used failed docType={} docId={} jobId={} cause={}",
-                        docType, request.docId(), jobId, failure.getClass().getName());
-            }
+        try { learn.get(); }
+        catch (RuntimeException failure) {
+            log.warn("sales learning failed docType={} docId={} cause={}", docType, request.docId(), failure.getClass().getName());
+            return; // Never discard the only trusted source after a failed learning transaction.
+        }
+        for (UUID jobId : consumedJobs) {
+            if (usage == null || actor == null) continue;
+            try { writeNew.executeWithoutResult(status -> usage.markUsed(jobId, actor, docType, request.docId())); }
+            catch (RuntimeException failure) { log.warn("marking intake job used failed docType={} docId={} jobId={} cause={}",
+                    docType, request.docId(), jobId, failure.getClass().getName()); }
         }
     }
+
+    @Override
+    public boolean hasDocumentLearning(String docType, UUID docId) { return applier.hasDocumentLearning(normalizeDocType(docType), docId); }
 
     static String normalizeDocType(String docType) {
         String value = docType == null ? "" : docType.trim().toLowerCase(Locale.ROOT);

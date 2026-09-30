@@ -310,7 +310,7 @@ public class ProductionExecutionPlanningService {
                                 JOIN goods product
                                   ON product.id = i.goods_id
                                  AND product.is_deleted = FALSE
-                                -- V590：货品归属车间搬进货品表（偏好表已废弃删除）。
+                                -- V590：货品生产车间(owning_workshop_department_id)搬进货品表（偏好表已废弃删除）。
                                  LEFT JOIN departments preferred_workshop
                                    ON preferred_workshop.id =
                                       product.owning_workshop_department_id

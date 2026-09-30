@@ -96,7 +96,7 @@ jobs:
           flutter test --no-pub
           node --test web/update_check.test.cjs
           pwsh -NoLogo -NoProfile -File .github/scripts/verify-font-assets.ps1
-          flutter build web --release --no-pub --no-web-resources-cdn \
+          flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run \
             --dart-define="APP_VERSION=$INPUT_VERSION" \
             --dart-define=API_BASE_URL=/api
 

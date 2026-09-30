@@ -3,8 +3,71 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 
 void main() {
+  testWidgets('冻结扩展字段沿用审核单格变化样式和基础隐藏列', (tester) async {
+    const definition = PlatformColumnDefinition(
+      id: 'note',
+      scope: 'expense_claim_item',
+      name: '附加说明',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UtenRevisionTable<String>(
+            tableKey: 'expense.claim.items',
+            platformBinding: PlatformTableBinding<String>(
+              tableKey: 'expense.claim.items',
+              scope: 'expense_claim_item',
+              recordIdOf: (_) => 'record',
+              snapshotOf: (value) => PlatformRowValues(
+                recordId: 'record',
+                version: 1,
+                cells: [
+                  PlatformColumnCell(
+                    columnId: 'note',
+                    definition: definition,
+                    value: value,
+                  ),
+                ],
+              ),
+            ),
+            columns: [
+              MasterColumnDef(
+                key: 'name',
+                label: '名称',
+                width: 100,
+                value: (_) => '费用',
+              ),
+              MasterColumnDef(
+                key: 'hidden',
+                label: '默认隐藏',
+                width: 100,
+                defaultVisible: false,
+                value: (_) => '隐藏值',
+              ),
+            ],
+            rows: const [
+              UtenRevisionRow(value: '原说明', kind: UtenRevisionKind.removed),
+              UtenRevisionRow(
+                value: '',
+                kind: UtenRevisionKind.added,
+                changedKeys: {'platform:note'},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('隐藏值'), findsNothing);
+    expect(find.text('原说明'), findsOneWidget);
+    final cleared = tester.widget<Text>(find.text('未填写'));
+    expect(cleared.style!.color, UtenColors.errorText);
+    expect(cleared.style!.fontWeight, FontWeight.w800);
+  });
   testWidgets('清空字段在新行里显示可见的红粗空值提示', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

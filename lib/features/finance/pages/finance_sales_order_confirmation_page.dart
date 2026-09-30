@@ -279,11 +279,6 @@ class _FinanceSalesOrderConfirmationPageState
     _activeItem = null;
   }
 
-  void _clearSelection() {
-    if (_selectedIds.isEmpty) return;
-    setState(_clearSelectionState);
-  }
-
   Future<void> _refreshCurrent() async {
     setState(_clearSelectionState);
     await _load(_result?.page ?? 1);
@@ -326,22 +321,6 @@ class _FinanceSalesOrderConfirmationPageState
         if (item != null) _selectedItems[id] = item;
       }
     });
-  }
-
-  void _toggleSelected(SalesOrderFinancePendingItem item) {
-    final next = Set<String>.of(_selectedIds);
-    if (!next.add(item.orderId)) next.remove(item.orderId);
-    _setSelectedIds(next);
-  }
-
-  void _selectCurrentPage() {
-    final next = Set<String>.of(_selectedIds)
-      ..addAll(
-        (_result?.items ?? const <SalesOrderFinancePendingItem>[])
-            .where((item) => item.canConfirm)
-            .map((item) => item.orderId),
-      );
-    _setSelectedIds(next);
   }
 
   /// 打开财务审核详情页；确认/驳回后返回 true → 刷新当前视图。
@@ -706,9 +685,13 @@ class _FinanceSalesOrderConfirmationPageState
         );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final workbench = breakpointForWidth(constraints.maxWidth).isExpanded
-            ? _desktopWorkbench(context, result, canConfirm: canConfirm)
-            : _compactWorkbench(context, result, canConfirm: canConfirm);
+        // 2026-09-29「大小屏共用一张表」：统一走表格；<840（原卡片阈值）由
+        // 表格内建卡片形态接管（勾选=多选、点卡=打开，选择摘要走右下悬浮组）。
+        final workbench = _desktopWorkbench(
+          context,
+          result,
+          canConfirm: canConfirm,
+        );
         // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
         if (widget.embedded) return workbench;
         return UtenContentContainer.wide(
@@ -747,9 +730,20 @@ class _FinanceSalesOrderConfirmationPageState
         ],
       ),
       body: MasterDataTableView<SalesOrderFinancePendingItem>(
+        tableKey: 'sales.order.items',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('sales-order-finance-desktop-table'),
+        compactCards: true,
+        cardBelowWidth: UtenBreakpoints.expandedStart,
+        bottomContentPadding: !_showRejected && canConfirm
+            ? UtenFloatingActionGroup.scrollClearance
+            : widget.embedded
+            ? UtenSpacing.s24
+            : math.max(
+                UtenSpacing.s24,
+                UtenCapsuleNavScope.occlusionOf(context),
+              ),
         selectable: !_showRejected && canConfirm,
         idOf: (item) => item.orderId,
         selectedIds: _selectedIds,
@@ -820,73 +814,6 @@ class _FinanceSalesOrderConfirmationPageState
     );
   }
 
-  Widget _compactWorkbench(
-    BuildContext context,
-    SalesOrderFinancePendingPage result, {
-    required bool canConfirm,
-  }) {
-    final selectable = !_showRejected && canConfirm;
-    return RefreshIndicator(
-      onRefresh: () async => _refreshCurrent(),
-      child: ListView(
-        key: const Key('sales-order-finance-mobile-list'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(
-          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊（嵌入态由宿主管）
-          bottom: selectable
-              ? UtenFloatingActionGroup.scrollClearance
-              : widget.embedded
-              ? UtenSpacing.s24
-              : math.max(
-                  UtenSpacing.s24,
-                  UtenCapsuleNavScope.occlusionOf(context),
-                ),
-        ),
-        children: [
-          _filters(Theme.of(context)),
-          if (_error != null) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _InlineError(message: _error!, onRetry: () => _load(result.page)),
-          ],
-          if (selectable) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _mobileSelectionBar(result),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          if (result.items.isEmpty)
-            SizedBox(
-              height: 320,
-              child: UtenEmpty(
-                icon: _showRejected
-                    ? Icons.undo_rounded
-                    : Icons.task_alt_rounded,
-                message: _emptyMessage,
-                description: _emptyDescription,
-              ),
-            )
-          else
-            for (final item in result.items) ...[
-              _CompactTaskRow(
-                key: Key('sales-order-finance-task-${item.orderId}'),
-                item: item,
-                selected: selectable && _selectedIds.contains(item.orderId),
-                onSelected: selectable ? () => _toggleSelected(item) : null,
-                onOpen: () => _open(item),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
-          if (result.totalPages > 1)
-            _Pager(
-              page: result.page,
-              totalPages: result.totalPages,
-              loading: _loading,
-              onPage: _load,
-            ),
-        ],
-      ),
-    );
-  }
-
   List<MasterColumnDef<SalesOrderFinancePendingItem>> _columns() => [
     MasterColumnDef(
       key: 'billNo',
@@ -894,12 +821,16 @@ class _FinanceSalesOrderConfirmationPageState
       width: 172,
       sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (item) => item.billNo,
+      // 卡片形态标题列。
+      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'clientName',
       label: '客户',
       width: 180,
       value: (item) => item.clientName ?? '—',
+      // 卡片形态：客户进标题下副行。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'sellerName',
@@ -926,6 +857,8 @@ class _FinanceSalesOrderConfirmationPageState
           '不换算、不相加，放在格内提示里；红字表示全部币种应收(折本币)已超信用额度。',
       value: _clientBalanceText,
       cellBuilder: (_, item) => _ClientBalanceCell(item: item),
+      // 卡片形态直接复用格渲染器：两行余额说明（另有 X 币种）不丢。
+      cardRendersBuilder: true,
     ),
     MasterColumnDef(
       key: 'deliverDate',
@@ -1033,34 +966,6 @@ class _FinanceSalesOrderConfirmationPageState
 
   /// 紧凑端选择条：已选计数只由 [UtenSelectionSummaryPill] 呈现（与桌面表格
   /// 悬浮批量组同一口径，✕ 即清空），旁边只保留「全选本页」。
-  Widget _mobileSelectionBar(SalesOrderFinancePendingPage result) {
-    final selectedCount = _selectedIds.length;
-    return Semantics(
-      container: true,
-      liveRegion: true,
-      label: '已选择 $selectedCount 笔订单',
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          UtenSelectionSummaryPill(
-            key: const Key('sales-order-finance-mobile-selected-count'),
-            count: selectedCount,
-            onClear: _batchBusy || selectedCount == 0 ? null : _clearSelection,
-          ),
-          UtenButton(
-            size: UtenButtonSize.small,
-            type: UtenButtonType.secondary,
-            onPressed: _batchBusy || result.items.isEmpty
-                ? null
-                : _selectCurrentPage,
-            child: const Text('全选本页'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Color? _rowColor(ThemeData theme, SalesOrderFinancePendingItem item) {
     if (item.financeRejected) {
@@ -1080,174 +985,6 @@ class _FinanceSalesOrderConfirmationPageState
   String get _emptyMessage {
     if (_keyword.isNotEmpty) return '没有匹配“$_keyword”的订单';
     return _showRejected ? '没有被财务驳回的销售订单' : '目前没有待财务确认的销售订单';
-  }
-
-  String get _emptyDescription => _showRejected
-      ? '被驳回的订单会出现在这里；销售修订并重新审核后会回到待确认。'
-      : '销售订单审核后会进入这里；确认后计划部才可见并排产。';
-}
-
-class _CompactTaskRow extends StatelessWidget {
-  const _CompactTaskRow({
-    super.key,
-    required this.item,
-    required this.selected,
-    required this.onSelected,
-    required this.onOpen,
-  });
-
-  final SalesOrderFinancePendingItem item;
-  final bool selected;
-  final VoidCallback? onSelected;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final urgency = _urgencyFor(item);
-    final balanceNote = _clientBalanceNote(item);
-    final accent = item.financeRejected || urgency == _DeliverUrgency.overdue
-        ? theme.colorScheme.error
-        : urgency == _DeliverUrgency.soon
-        ? theme.colorScheme.tertiary
-        : theme.colorScheme.outlineVariant;
-    return Semantics(
-      container: true,
-      selected: selected,
-      label:
-          '${item.billNo}，客户 ${item.clientName ?? '未标注'}，${_orderAmount(item)}',
-      child: Material(
-        color: selected
-            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.40)
-            : theme.colorScheme.surface,
-        borderRadius: UtenRadius.mdAll,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onSelected ?? onOpen,
-          child: DecoratedBox(
-            // 圆角边框要求四边同色（Flutter paint 断言），左缘强调色改为卡内
-            // 3px 色条实现，视觉不变。
-            decoration: BoxDecoration(
-              borderRadius: UtenRadius.mdAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            // IntrinsicHeight：无界高度的列表里让色条与内容等高、贯穿整卡。
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ColoredBox(color: accent, child: const SizedBox(width: 3)),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (onSelected != null) ...[
-                            Checkbox(
-                              value: selected,
-                              semanticLabel: '选择订单 ${item.billNo}',
-                              onChanged: (_) => onSelected!(),
-                            ),
-                            const SizedBox(width: UtenSpacing.s4),
-                          ],
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        item.billNo,
-                                        style: theme.textTheme.titleSmall
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                      ),
-                                    ),
-                                    Text(
-                                      _orderAmount(item),
-                                      style: theme.textTheme.labelLarge
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: UtenSpacing.s4),
-                                Text(
-                                  '${item.clientName ?? '未标注客户'} · ${item.sellerName ?? '未标注业务员'}',
-                                  style: theme.textTheme.bodyMedium,
-                                ),
-                                const SizedBox(height: UtenSpacing.s4),
-                                Text(
-                                  '交货 ${item.deliverDate ?? '未定'} · '
-                                  '${_urgencyLabel(urgency)} · '
-                                  '${item.itemCount} 行明细 · '
-                                  '客户应收 ${_clientBalanceText(item)}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color:
-                                        item.clientBalance?.overCredit == true
-                                        ? theme.colorScheme.error
-                                        : theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                ),
-                                if (balanceNote != null) ...[
-                                  const SizedBox(height: UtenSpacing.s4),
-                                  Text(
-                                    balanceNote,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                                if (item.changeCount > 0 &&
-                                    !item.financeRejected) ...[
-                                  const SizedBox(height: UtenSpacing.s4),
-                                  Text(
-                                    '修改后待复审 · 查看明细中的红绿对照',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: UtenColors.warningText,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                                if (item.financeRejected) ...[
-                                  const SizedBox(height: UtenSpacing.s4),
-                                  Text(
-                                    '驳回原因：${item.financeRejectedReason ?? '未注明原因'}',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.error,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          UtenButton(
-                            key: Key(
-                              'sales-order-finance-review-${item.orderId}',
-                            ),
-                            size: UtenButtonSize.small,
-                            type: UtenButtonType.secondary,
-                            icon: Icons.open_in_new_rounded,
-                            onPressed: onOpen,
-                            child: const Text('详情'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -1313,7 +1050,9 @@ class _ClientBalanceCell extends StatelessWidget {
     final note = _clientBalanceNote(item);
     final text = Text(
       _clientBalanceText(item),
-      maxLines: 1,
+      // 2 行：卡片形态（cardRendersBuilder）复用本格时标题能完整换行显示
+      //（表格列宽 170 下长文案同样受益）；补充说明仍走 ⓘ 悬停。
+      maxLines: 2,
       overflow: TextOverflow.ellipsis,
       style: item.clientBalance?.overCredit == true
           ? TextStyle(
@@ -1380,42 +1119,6 @@ class _InlineError extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _Pager extends StatelessWidget {
-  const _Pager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPage,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPage;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          tooltip: '上一页',
-          onPressed: loading || page <= 1 ? null : () => onPage(page - 1),
-          icon: const Icon(Icons.chevron_left_rounded),
-        ),
-        Text('$page / $totalPages'),
-        IconButton(
-          tooltip: '下一页',
-          onPressed: loading || page >= totalPages
-              ? null
-              : () => onPage(page + 1),
-          icon: const Icon(Icons.chevron_right_rounded),
-        ),
-      ],
     );
   }
 }

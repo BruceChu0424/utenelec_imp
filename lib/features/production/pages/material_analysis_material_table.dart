@@ -898,6 +898,8 @@ abstract class _MaterialAnalysisMaterialTableState
     return KeyedSubtree(
       key: const Key('material-analysis-material-table-region'),
       child: MasterDataTableView<_MaterialTableRow>(
+        tableKey:
+            'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.1',
         key: const Key('material-analysis-material-table'),
         columns: _materialTableColumns(theme),
         // 视图与结果入口位于表头，批量下单位于悬浮操作区。
@@ -1130,19 +1132,6 @@ abstract class _MaterialAnalysisMaterialTableState
     return owningWarehouseFilterValue(goodsId, owning.owningWarehouseName);
   }
 
-  /// 归属车间列(V590)桶键 = 车间名；还没学过车间(未排产过)的行落「未学习」桶。
-  String? _materialTableOwningWorkshopFacetKey(_MaterialTableRow row) {
-    if (row.contextOnly) return null;
-    final owning = _materialTableOwningWarehouseRef(row);
-    final goodsId = owning.goodsId;
-    if (goodsId == null || goodsId.isEmpty) return null;
-    final name = _materialTableOwningWorkshopText(row)?.trim();
-    if (name == null || name.isEmpty || name == '—') {
-      return _MaterialAnalysisProductTasksState.owningWorkshopUnsetLabel;
-    }
-    return name;
-  }
-
   /// 进度列桶键与标签（与 [_materialTableStatusText]/[_materialTableStatusCell]
   /// 同一分支顺序，只是把文案换成有限枚举键）。
   ({String key, String label})? _materialTableStatusFacet(
@@ -1210,11 +1199,6 @@ abstract class _MaterialAnalysisMaterialTableState
         _materialTableOwningWarehouseFacetKey(row) != owningWarehouseFilter) {
       return false;
     }
-    final owningWorkshopFilter = _materialTableFilterValue('owningWorkshop');
-    if (owningWorkshopFilter != null &&
-        _materialTableOwningWorkshopFacetKey(row) != owningWorkshopFilter) {
-      return false;
-    }
     for (final entry in _materialTableGenericFacetExtractors.entries) {
       final selected = _materialTableFilterValue(entry.key);
       if (selected != null && entry.value(row) != selected) return false;
@@ -1225,8 +1209,8 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 通用表头筛选取值器(ADR-102「能加筛选的列全部加上」)。
   ///
   /// 在这里加一条，建桶、匹配与失效清理三处自动跟上——老写法是三处各写一遍，
-  /// 加列必漏其中一处。路线 / 进度 / 所属仓库 / 归属车间四列因为各有特例
-  /// (路线要放行改过下拉的脏行、进度要带中文标签、两个仓库列有「未登记」沉底
+  /// 加列必漏其中一处。路线 / 进度 / 所属仓库三列因为各有特例
+  /// (路线要放行改过下拉的脏行、进度要带中文标签、仓库列有「未登记」沉底
   /// 规则)仍单独处理，不进这张表。
   ///
   /// 没有筛选的列有六个：树形的「物料名称」——它已经有关键词搜索框，再挂一个
@@ -1267,7 +1251,6 @@ abstract class _MaterialAnalysisMaterialTableState
     final routeCounts = <String, int>{};
     final statusCounts = <String, ({int count, String label})>{};
     final owningWarehouseCounts = <String, int>{};
-    final owningWorkshopCounts = <String, int>{};
     for (final row in rows) {
       final routeKey = _materialTableRouteFacetKey(row);
       if (routeKey != null) {
@@ -1277,11 +1260,6 @@ abstract class _MaterialAnalysisMaterialTableState
       if (owningWarehouseKey != null) {
         owningWarehouseCounts[owningWarehouseKey] =
             (owningWarehouseCounts[owningWarehouseKey] ?? 0) + 1;
-      }
-      final owningWorkshopKey = _materialTableOwningWorkshopFacetKey(row);
-      if (owningWorkshopKey != null) {
-        owningWorkshopCounts[owningWorkshopKey] =
-            (owningWorkshopCounts[owningWorkshopKey] ?? 0) + 1;
       }
       final status = _materialTableStatusFacet(row);
       if (status != null) {
@@ -1316,14 +1294,6 @@ abstract class _MaterialAnalysisMaterialTableState
         if (b == unsetLabel) return -1;
         return a.compareTo(b);
       });
-    const workshopUnset =
-        _MaterialAnalysisProductTasksState.owningWorkshopUnsetLabel;
-    final owningWorkshopKeys = owningWorkshopCounts.keys.toList()
-      ..sort((a, b) {
-        if (a == workshopUnset) return b == workshopUnset ? 0 : 1;
-        if (b == workshopUnset) return -1;
-        return a.compareTo(b);
-      });
     return {
       'route': [
         for (final key in routeKeys)
@@ -1345,11 +1315,6 @@ abstract class _MaterialAnalysisMaterialTableState
       'owningWarehouse': [
         for (final key in owningWarehouseKeys)
           MasterFacetBucket(value: key, count: owningWarehouseCounts[key]!),
-      ],
-      // 归属车间(V590)同款：桶键=车间名, 「未学习」沉底。
-      'owningWorkshop': [
-        for (final key in owningWorkshopKeys)
-          MasterFacetBucket(value: key, count: owningWorkshopCounts[key]!),
       ],
       ..._materialTableGenericFacets(rows),
     };
@@ -1409,7 +1374,8 @@ abstract class _MaterialAnalysisMaterialTableState
   ///
   /// 列顺序按用户口径：先「这一行我能干什么」(物料办理)，再是身份四列、
   /// 供应方式，然后四个数量(需要 / 还缺 / 下单 / 追加)，再是落点与指派
-  /// (所属仓库 / 归属车间 / 生产车间 / 负责人)，最后进度。
+  /// (所属仓库 / 生产车间 / 负责人)，最后进度。原「归属车间」列 2026-09-29
+  /// 起并入「生产车间」(同一事实源，默认带出)。
   ///
   /// 退役的四列及去向：
   /// - 「可用数量」「在途未到」「公共认领未实收」——三者都是「还缺多少」的
@@ -1492,6 +1458,7 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 100,
       type: 'number',
       value: (row) => _qty(_materialTableRequiredQty(row)),
+      exactValueOf: (row) => _materialTableRequiredQty(row)?.toString(),
       // 不给 info：ADR-102 §12.8（2026-09-22 用户口径）——本列与「物料办理/
       // 编号/还缺数量/下单数量」同属「表头只显示那几个字」的五列。2026-09-23
       // 并行会话 WIP 曾带回一条 info，因非交互列不渲染而沉睡；列头 ⓘ 机制
@@ -1525,6 +1492,9 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 100,
       type: 'number',
       value: (row) => _materialTablePublicAvailableQty(row) ?? '—',
+      exactValueOf: (row) =>
+          _materialTablePublicAvailableValue(row)?.toString(),
+      exactListenableOf: (_) => _tableEstimateTick,
       cellBuilder: (_, row) => ValueListenableBuilder<int>(
         valueListenable: _tableEstimateTick,
         builder: (_, _, _) {
@@ -1562,6 +1532,8 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 112,
       type: 'number',
       value: (row) => _qty(_materialTableNetShortageQty(row)),
+      exactValueOf: (row) => _materialTableNetShortageQty(row)?.toString(),
+      exactListenableOf: (_) => _tableEstimateTick,
       cellBuilderHandlesSemantics: true,
       // 数字随估算 tick 当场变；底色(cellColor)由表格在整页重建时算，停手 200ms
       // 后跟上——每敲一下都整页重建是 260-450ms 一帧，见 _tableEstimateTick。
@@ -1578,6 +1550,8 @@ abstract class _MaterialAnalysisMaterialTableState
       width: 132,
       type: 'number',
       value: _materialTableOrderQtyText,
+      exactValueOf: (row) => _materialTableOrderRaw(row, append: false),
+      exactListenableOf: (_) => _tableEstimateTick,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableOrderQtyCell(theme, row),
     ),
@@ -1641,6 +1615,8 @@ abstract class _MaterialAnalysisMaterialTableState
           '已经做成订货单的另立新单。要改小只能撤回重下。'
           '追加成功后它会并进左边的「下单数量」，这一格回到 0。',
       value: _materialTableAppendQtyText,
+      exactValueOf: (row) => _materialTableOrderRaw(row, append: true),
+      exactListenableOf: (_) => _tableEstimateTick,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableAppendQtyCell(theme, row),
     ),
@@ -1658,16 +1634,9 @@ abstract class _MaterialAnalysisMaterialTableState
           '同一事实源）；点单元格可直接改主档。',
       cellBuilder: (_, row) => _materialTableOwningWarehouseCell(theme, row),
     ),
-    // 归属生产车间(V590): 最近一次排产确认/车间改派自动学习回写, 只读展示。
-    MasterColumnDef(
-      key: 'owningWorkshop',
-      label: '归属车间',
-      width: 120,
-      value: _materialTableOwningWorkshopText,
-      info:
-          '这个货品平时归哪个生产车间生产。最近一次排产确认或车间改派会自动记住，'
-          '下次下达车间默认带出到右边的「生产车间」。',
-    ),
+    // 2026-09-29 用户口径：货品主档的学习车间(原「归属车间」列)与本列是同一个东西，
+    // 列只留本列——默认值就是主档学习值(_materialTableProductionWorkshopCell 的
+    // autofill 链)，排产确认/车间改派继续自动学习回写主档。
     // ADR-102：下达车间之前就地指派本次的车间与负责人，不必再进分桶页。
     MasterColumnDef(
       key: 'productionWorkshop',
@@ -1676,7 +1645,7 @@ abstract class _MaterialAnalysisMaterialTableState
       value: _materialTableProductionWorkshopText,
       cellBuilderHandlesSemantics: true,
       info:
-          '本次下达车间要交给哪个车间做(不是货品平时的归属车间)。'
+          '本次下达车间要交给哪个车间做。'
           '默认按这个货品上次的排产记住的车间带出，黄框提醒核对，点格子可改。'
           '只对走自制的行有意义，采购 / 委外行显示横杠。',
       cellBuilder: (_, row) => _materialTableProductionWorkshopCell(
@@ -2034,15 +2003,6 @@ abstract class _MaterialAnalysisMaterialTableState
     return name == null || name.isEmpty ? '—' : name;
   }
 
-  /// 归属生产车间列文本(V590): 货品主档 owning_workshop_department_id,
-  /// 最近一次排产确认/车间改派自动学习回写; 未学习过显示「—」。
-  String? _materialTableOwningWorkshopText(_MaterialTableRow row) {
-    final workshop =
-        row.product?.owningWorkshopName ??
-        (row.aggregate?.representative ?? row.material)?.owningWorkshopName;
-    return workshop == null || workshop.trim().isEmpty ? '—' : workshop.trim();
-  }
-
   /// 所属仓库格: 有货品身份的行点开仓库面板直接改主档; 只读上下文行与取不到
   /// 货品的行(孤儿节点、缺 goodsId 的聚合行)退化为纯文本, 不做成点不动的假按钮。
   /// V590 起改完之外的每一次入库也会自动把它回写成最新入库仓。
@@ -2155,11 +2115,15 @@ abstract class _MaterialAnalysisMaterialTableState
       : row.material?.exactPeggedQty;
 
   String? _materialTablePublicAvailableQty(_MaterialTableRow row) {
-    if (row.contextOnly) return '—';
+    return _qty(_materialTablePublicAvailableValue(row));
+  }
+
+  double? _materialTablePublicAvailableValue(_MaterialTableRow row) {
+    if (row.contextOnly) return null;
     final budget = _tableBudgetOf(row);
-    if (budget != null) return _qty(budget.availableQty);
+    if (budget != null) return budget.availableQty;
     final material = row.material ?? row.aggregate?.representative;
-    if (material == null) return '—';
+    if (material == null) return null;
     final current = _tablePreviewed(material);
     // The main-warehouse budget is authoritative; per-leaf or pre-allocation
     // figures cannot be relabelled as this group's unassigned public stock.
@@ -2167,11 +2131,9 @@ abstract class _MaterialAnalysisMaterialTableState
     // 公共在途可认领(按期+晚到)。下达时服务端会从「下单数量」里自动认领公共
     // 在途，「还缺数量」(净)也已把这份扣掉；聚合行取代表行——同一货品多条
     // BOM 路径看的是同一个公共池，求和会重复计量。
-    return _qty(
-      current.preparationAvailableQty ??
-          (current.mainWarehousePublicAvailableQty +
-              current.sharedFutureClaimableQty),
-    );
+    return current.preparationAvailableQty ??
+        (current.mainWarehousePublicAvailableQty +
+            current.sharedFutureClaimableQty);
   }
 
   /// 「可用数量」的两段分解(悬浮说明用)：公共现货 / 公共在途可认领。
@@ -4216,6 +4178,35 @@ abstract class _MaterialAnalysisMaterialTableState
 
   // ------------------------- 下单数量 / 追加下单 -------------------------
 
+  /// Calculations use authoritative quantities or current input, never rounded
+  /// display text. Context-only rows deliberately have no numeric facts.
+  String? _materialTableOrderRaw(
+    _MaterialTableRow row, {
+    required bool append,
+  }) {
+    if (row.contextOnly) return null;
+    if (row.aggregate case final aggregate?) {
+      return _aggregateTable.quantityRaw(aggregate, append: append);
+    }
+    final group = _tableEditableGroup(row);
+    if (group == null) return null;
+    final issued = _tableGroupIssued(group);
+    if (append && !issued) return null;
+    if (!append && issued) {
+      return _tableGroupDisplayedIssuedQty(group).toString();
+    }
+    if (!append &&
+        _tableAggregateDelegatedShare(group) != null &&
+        group.representative.aggregatePreparation == null) {
+      return null;
+    }
+    return (append
+                ? _tableAppendQtyControllers
+                : _tableOrderQtyControllers)[group.key]
+            ?.text ??
+        _tableDefaultSubmitQty(group).toString();
+  }
+
   String? _materialTableOrderQtyText(_MaterialTableRow row) {
     if (row.aggregate case final aggregate?) {
       return _aggregateTable.orderText(aggregate);
@@ -4595,6 +4586,80 @@ abstract class _MaterialAnalysisMaterialTableState
     return double.tryParse(controller.text.trim()) ?? double.nan;
   }
 
+  /// 这一行的下单/追加会不会被服务端「自动认领公共供给」冲减下单量：
+  /// 有可认领的同主仓公共在途（「可用数量」的在途段）、且还有归本需求的余量
+  /// （纯公共备货追加不吃认领），并且走会认领的通道——采购/直接外发委外走
+  /// notify；车间通道里顶层自制产品行（issue-plans 顶层认领）与「先自制再外发」
+  /// 的委外候选（ARRANGE 腿认领）会认领，普通自制子件不认领。
+  bool _tableClaimChoiceMatters(_MaterialGroup group, double? typedQty) {
+    if (group.representative.sharedFutureClaimableQty <= 0.0001) return false;
+    if (_tableGroupResidual(group) <= 0.0001) return false;
+    if (typedQty != null && typedQty <= 0.0001) return false;
+    if (!_tableIssueTarget(group).viaWorkshop) return true;
+    return _tableRootMakePlanLineId(group) != null ||
+        _tableSubcontractNeedsPreparation(group);
+  }
+
+  /// 2026-09-29 用户口径：所选行有可认领的公共在途时，提交前问一次「本次是否
+  /// 用可用数量抵扣」。愿意用 = 原行为（服务端先自动认领公共在途与自制公共超产，
+  /// 只为余量新下单，可用数量相应减少）；本次下单/追加就是为了多备料的选
+  /// 「足额下单」——不扣可用数量，按填写数量直接下给车间/采购/委外。
+  ///
+  /// 返回 null = 用户取消本次提交；true = 用可用数量抵扣（原样）；false = 足额下单。
+  @override
+  Future<bool?> _askClaimableSupplyUsage(
+    Iterable<_MaterialGroup> groups,
+    Map<_MaterialGroup, double>? pending,
+  ) async {
+    final relevant = [
+      for (final group in groups)
+        if (_tableClaimChoiceMatters(group, pending?[group])) group,
+    ];
+    if (relevant.isEmpty) return true;
+    final claimable = relevant
+        .map((group) => group.representative.sharedFutureClaimableQty)
+        .reduce((sum, value) => sum + value);
+    var useAvailable = true;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '本次下单是否使用可用数量抵扣？',
+      content: StatefulBuilder(
+        builder: (dialogContext, setDialogState) => RadioGroup<bool>(
+          groupValue: useAvailable,
+          onChanged: (value) =>
+              setDialogState(() => useAvailable = value ?? true),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '所选 ${relevant.length} 行有可认领的同主仓公共在途'
+                '（「可用数量」的在途段，合计 ${_qty(claimable)}）。'
+                '默认先用它抵扣，只为余量新下单。',
+              ),
+              const SizedBox(height: 12),
+              const RadioListTile<bool>(
+                value: true,
+                title: Text('使用可用数量抵扣（原样）'),
+                subtitle: Text('自动认领公共在途与自制公共超产，只为余量新下单；可用数量相应减少'),
+              ),
+              const RadioListTile<bool>(
+                value: false,
+                title: Text('足额下单，不扣可用数量'),
+                subtitle: Text('本次下单/追加就是为了多备料：按填写数量直接下给车间/采购/委外，可用数量保持不动'),
+              ),
+              const SizedBox(height: 4),
+              const Text('本选择只影响这一次提交，可在每次下单时按需选择。'),
+            ],
+          ),
+        ),
+      ),
+      confirmLabel: '继续',
+    );
+    if (confirmed != true) return null;
+    return useAvailable;
+  }
+
   /// 收集当前产品/来源选择下可办理的原始物料身份。产品选择覆盖完整 BOM，
   /// 折叠和分页不撤销其后代选择；不再属于当前来源投影的旧选择另行提示。
   /// 提交器先办理顶层产品，再按父子依赖分轮办理组件；每轮互不依赖的组件
@@ -4665,7 +4730,7 @@ abstract class _MaterialAnalysisMaterialTableState
     // _hasUnsubmittedMaterialTableInput 永真、45 秒轮询也不再跑。
     final skipped = <String>{};
     // 只缺「生产车间/负责人」的行先摘出来：这是当场能修好的拦截——新建档货品没有
-    // 学习记忆、主档也没写归属车间，首次下达必缺；原来只把它写进确认框的跳过清单，
+    // 学习记忆、主档也没写生产车间，首次下达必缺；原来只把它写进确认框的跳过清单，
     // 用户实机(2026-09-25)「全选全部下单，两个顶层没下成」里就是它。提交前就地
     // 弹补派面板，补上就照常进本批，不补才落回跳过清单。
     final needAssignment = <_MaterialGroup>[];
@@ -4742,6 +4807,12 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return false;
     }
+    // 2026-09-29 用户口径：有可认领公共在途时提交前问一次「是否扣可用数量」——
+    // 足额下单 = 后面所有段（车间 / 委外 / 采购 / 同料合并汇总）都不再自动认领。
+    final claimUsage = await _askClaimableSupplyUsage(pending.keys, pending);
+    if (claimUsage == null) return false;
+    final skipAutoClaim = !claimUsage;
+    if (!mounted) return false;
     // 根产品保持来源计划；全部组件按同一依赖图先父后子，同料自动合单。
     final split = _splitMergeableSupplyGroups(
       pending.keys.toList(growable: false),
@@ -4810,7 +4881,11 @@ abstract class _MaterialAnalysisMaterialTableState
             .toList(growable: false);
         if (workshop.isNotEmpty) {
           _lastIssuedPlans = const [];
-          final ok = await _issueMaterialTableWorkshopBatch(workshop, pending);
+          final ok = await _issueMaterialTableWorkshopBatch(
+            workshop,
+            pending,
+            skipAutoClaim: skipAutoClaim,
+          );
           // ADR-104：追加并入了还没开工的原计划(同一单号)时如实说出来，免得用户去
           // 生产计划列表找一张不存在的新单。
           final merged = _lastIssuedPlans
@@ -4841,6 +4916,7 @@ abstract class _MaterialAnalysisMaterialTableState
             MaterialSupplyRoute.subcontract,
             subcontract,
             pending,
+            skipAutoClaim: skipAutoClaim,
           );
           steps.add((
             label: '下达委外(第 $level 层，${subcontract.length} 行)',
@@ -4867,6 +4943,7 @@ abstract class _MaterialAnalysisMaterialTableState
             MaterialSupplyRoute.buy,
             buy,
             pending,
+            skipAutoClaim: skipAutoClaim,
           );
           steps.add((
             label: '下达采购(${buy.length} 行)',
@@ -4890,6 +4967,7 @@ abstract class _MaterialAnalysisMaterialTableState
       final aggregateOk = await _aggregateTable.submit(
         split.merged,
         confirmed: true,
+        skipAutoClaim: skipAutoClaim,
       );
       steps.add((
         label:
@@ -4949,8 +5027,9 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 当成候选按 materialLineId 提交的话服务端解析不出候选、整批失败。
   Future<bool> _issueMaterialTableWorkshopBatch(
     List<_MaterialGroup> batch,
-    Map<_MaterialGroup, double> pending,
-  ) {
+    Map<_MaterialGroup, double> pending, {
+    bool skipAutoClaim = false,
+  }) {
     final inputs = <_BucketCandidatePlanInput>[];
     final drafts = <_BucketPlanDraft>[];
     for (final group in batch) {
@@ -4996,6 +5075,7 @@ abstract class _MaterialAnalysisMaterialTableState
       candidateInputs: inputs,
       planDrafts: drafts,
       silent: true,
+      skipAutoClaim: skipAutoClaim,
     );
   }
 
@@ -5057,8 +5137,9 @@ abstract class _MaterialAnalysisMaterialTableState
   Future<bool> _notifyMaterialTableBatch(
     MaterialSupplyRoute route,
     List<_MaterialGroup> batch,
-    Map<_MaterialGroup, double> pending,
-  ) async {
+    Map<_MaterialGroup, double> pending, {
+    bool skipAutoClaim = false,
+  }) async {
     final view = await _notifyRoute(
       route,
       onlyGroupKeys: batch.map((group) => group.key).toSet(),
@@ -5068,6 +5149,7 @@ abstract class _MaterialAnalysisMaterialTableState
       },
       silent: true,
       allowExtra: _canOverSupply,
+      skipAutoClaim: skipAutoClaim,
     );
     return view != null;
   }

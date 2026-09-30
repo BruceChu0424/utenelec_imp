@@ -12,7 +12,8 @@ import java.util.UUID;
 
 @Getter
 @Setter
-public class OrderItemLine implements ServerDerivedAmounts {
+public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnRequest implements ServerDerivedAmounts {
+    private UUID id;
     private Integer lineNo;
     @NotNull private UUID goodsId;
     /**

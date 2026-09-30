@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../components/layout/uten_filter_toolbar.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../measurement/widgets/weight_text.dart';
@@ -105,51 +106,55 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
       goods?.name ?? names.goods(widget.goodsId),
       if (goods?.code?.isNotEmpty == true) goods!.code!,
     ].join(' ');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GoodsStockKpiStrip(
-          goodsId: widget.goodsId,
-          unitName: unit,
-          reloadTick: _reloadTick + _kpiTick,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenFilterToolbar<GoodsStockLedgerSegment>(
-          segmentsKey: const Key('stock-item-detail-segments'),
-          segments: [
-            for (final s in GoodsStockLedgerSegment.values)
-              UtenFilterSegment(value: s, label: s.label),
+    // 上滑先把分段行+KPI 条收完、表格顶到屏顶再滚表内（全站联动口径）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UtenFilterToolbar<GoodsStockLedgerSegment>(
+            segmentsKey: const Key('stock-item-detail-segments'),
+            segments: [
+              for (final s in GoodsStockLedgerSegment.values)
+                UtenFilterSegment(value: s, label: s.label),
+            ],
+            selected: {_segment},
+            onSelectionChanged: selectSegment,
+            trailing: const WeightDisplayUnitButton(),
+          ),
+          // KPI 概览条只在「库存余额」分段出现 (2026-09-29 用户口径), 挪到分段行下面。
+          if (_segment == GoodsStockLedgerSegment.balance) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            GoodsStockKpiStrip(
+              goodsId: widget.goodsId,
+              unitName: unit,
+              reloadTick: _reloadTick + _kpiTick,
+            ),
           ],
-          selected: {_segment},
-          onSelectionChanged: selectSegment,
-          trailing: const WeightDisplayUnitButton(),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
+      ),
+      body: switch (_segment) {
+        GoodsStockLedgerSegment.balance => GoodsStockBalanceView(
+          goodsId: widget.goodsId,
+          reloadTick: _reloadTick,
+          onViewLedger: (warehouseId, colorId) =>
+              showLedger(warehouseId: warehouseId, colorId: colorId),
+          onChanged: _changed,
         ),
-        const SizedBox(height: UtenSpacing.s8),
-        Expanded(
-          child: switch (_segment) {
-            GoodsStockLedgerSegment.balance => GoodsStockBalanceView(
-              goodsId: widget.goodsId,
-              reloadTick: _reloadTick,
-              onViewLedger: (warehouseId, colorId) =>
-                  showLedger(warehouseId: warehouseId, colorId: colorId),
-              onChanged: _changed,
-            ),
-            GoodsStockLedgerSegment.ledger => GoodsStockLedgerView(
-              goodsId: widget.goodsId,
-              scope: _ledgerScope,
-              unitName: unit,
-              reloadTick: _reloadTick,
-            ),
-            GoodsStockLedgerSegment.weight => GoodsWeightLearningView(
-              goodsId: widget.goodsId,
-              goodsTitle: goodsTitle,
-              unitName: unit,
-              reloadTick: _reloadTick,
-              onChanged: _changed,
-            ),
-          },
+        GoodsStockLedgerSegment.ledger => GoodsStockLedgerView(
+          goodsId: widget.goodsId,
+          scope: _ledgerScope,
+          unitName: unit,
+          reloadTick: _reloadTick,
         ),
-      ],
+        GoodsStockLedgerSegment.weight => GoodsWeightLearningView(
+          goodsId: widget.goodsId,
+          goodsTitle: goodsTitle,
+          unitName: unit,
+          reloadTick: _reloadTick,
+          onChanged: _changed,
+        ),
+      },
     );
   }
 }

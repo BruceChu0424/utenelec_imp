@@ -237,6 +237,8 @@ class _WarehouseDocumentHistoryViewState
         ],
       ),
       body: MasterDataTableView<WarehouseDocumentHistorySummary>(
+        tableKey:
+            'features.warehouse.widgets.warehouse_document_history_view.WarehouseDocumentHistoryViewState.build.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: Key('warehouse-history-table-${widget.type.segment}'),

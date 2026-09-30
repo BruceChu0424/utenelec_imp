@@ -1281,6 +1281,7 @@ class ProductionPlanRepository {
     List<String> actionGroupKeys = const [],
     List<String> materialLineIds = const [],
     List<MaterialSupplyQuantityInput> quantities = const [],
+    bool skipAutoClaim = false,
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/notify',
@@ -1294,6 +1295,9 @@ class ProductionPlanRepository {
         if (materialLineIds.isNotEmpty) 'materialLineIds': materialLineIds,
         if (quantities.isNotEmpty)
           'quantities': [for (final item in quantities) item.toJson()],
+        // ADR-099 修订(2026-09-29)：true = 用户选择「足额下单，不扣可用数量」，
+        // 服务端跳过自动认领公共在途/自制公共超产；缺省 = 原行为（先认领再下余量）。
+        if (skipAutoClaim) 'skipAutoClaim': true,
       },
     ); // ENDPOINT
     return ProductionMaterialAnalysisView.fromJson(json);
@@ -1310,6 +1314,7 @@ class ProductionPlanRepository {
     required List<MaterialAnalysisIssueLine> lines,
     String? deliveryDate,
     bool approveNow = false,
+    bool skipAutoClaim = false,
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/issue-plans',
@@ -1323,6 +1328,9 @@ class ProductionPlanRepository {
         'deliveryDate': ?deliveryDate,
         'approveNow': approveNow,
         'lines': [for (final line in lines) line.toJson()],
+        // ADR-099 修订(2026-09-29)：同 notify——true = 顶层行也不再认领公共供给，
+        // 按提交数量足额排产。
+        if (skipAutoClaim) 'skipAutoClaim': true,
       },
     ); // ENDPOINT
     return ProductionMaterialGenerateResult.fromJson(json);

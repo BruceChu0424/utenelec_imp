@@ -498,6 +498,43 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         assertEquals(2,db.queryForObject("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=?",Integer.class,receiver));
     }
 
+    @Test void skipAutoClaimOrdersTheFullTypedQuantityAndLeavesPublicInTransitClaimable() {
+        // 同一场景，但用户在提交前选了「足额下单，不扣可用数量」(ADR-099 修订二)：
+        // 不认领公共在途，按填写数量 1000 足额新下采购申请，可用在途原封不动。
+        Tree a=seed("skip-claim-source");var w=a.world();
+        UUID main=UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,code,name,status) VALUES(?,?,?,'使用')",main,"PQ-SKIP-"+main,"计划量足额下单主仓");
+        db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,w.warehouseId());
+        AnalysisView sourceView=analyses.detail(a.analysis());
+        commands.notifySupply(a.analysis(),notify(sourceView,a,"skip-source-100","100"));
+        UUID sourceItem=db.queryForObject("SELECT allocation.external_item_id FROM preplan_supply_actions action JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id WHERE action.analysis_id=? AND action.route='BUY'",UUID.class,a.analysis());
+        approveOrder(w,sourceItem,w.goodsD(),"1000",BusinessTime.today().plusDays(5));
+        fixture.loginAs(w.superAdminUserId());
+        UUID receiverRoot=UUID.randomUUID();
+        fixture.insertGoods(receiverRoot,"PQ-SKIP-RECV-"+receiverRoot,"足额下单受益成品","自制",w.unitId(),w.unitLegacy());
+        fixture.insertBom(receiverRoot,w.goodsD(),"1");
+        AnalysisView b=analyses.preview(new PreviewRequest(null,null,null,main,"skip-claim-receiver-"+receiverRoot,
+                List.of(new PreviewItem("OTHER",null,receiverRoot,null,w.unitId(),"skip-claim-receiver-source-"+receiverRoot,"足额下单受益",BusinessTime.today().plusDays(10),new BigDecimal("1000")))));
+        b=analyses.saveRoutes(b.analysisId(),new RouteRequest(b.version(),b.fingerprint(),"skip-claim-routes-"+b.analysisId(),
+                b.flatMaterials().stream().filter(MaterialView::actionable).map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.goodsId().equals(receiverRoot)?"MAKE":"BUY",null)).toList()));
+        UUID buyLine=line(b,w.goodsD());
+        qty("900",material(b,buyLine).sharedFutureClaimableQty());
+        final UUID receiver=b.analysisId();
+        AnalysisView full=commands.notifySupply(receiver,new NotifyRequest(b.version(),b.fingerprint(),"skip-claim-notify-"+receiver,"BUY",
+                List.of(buyLine),List.of(),List.of(new SupplyQuantityInput(null,buyLine,new BigDecimal("1000"),BigDecimal.ZERO)),
+                Boolean.TRUE));
+        // 一个认领动作都没有；新申请足额 1000；公共在途仍可认领 900。
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SHARED_FUTURE_CLAIM'",Integer.class,receiver));
+        qty("1000",db.queryForObject("SELECT SUM(requested_qty) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",BigDecimal.class,receiver));
+        qty("0",material(full,buyLine).sharedFutureClaimedQty());
+        qty("900",db.queryForObject("SELECT available_to_claim_qty FROM v_preplan_public_surplus_source_state WHERE source_action_id=(SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND route='BUY')",BigDecimal.class,a.analysis()));
+        // 幂等重放：同一意图(带 skipAutoClaim)不重复下单。
+        commands.notifySupply(receiver,new NotifyRequest(b.version(),b.fingerprint(),"skip-claim-notify-"+receiver,"BUY",
+                List.of(buyLine),List.of(),List.of(new SupplyQuantityInput(null,buyLine,new BigDecimal("1000"),BigDecimal.ZERO)),
+                Boolean.TRUE));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",Integer.class,receiver));
+    }
+
     @Test void fullyPlannedMakeAnchorCanStillIssueAPureSurplusBatchThatDrivesItsChildren() {
         Tree t=seed("surplus-anchor");
         AnalysisView before=analyses.detail(t.analysis());

@@ -13,6 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class FlywayMigrationImmutabilityTest {
 
     @Test
+    void quoteTemplateStorageRetainsItsAppliedChecksumAndMovesCleanupForward() {
+        assertAppliedChecksum("V747__sales_quote_template_private_storage.sql", 910583300);
+    }
+
+    @Test
     void actualOutputMigrationsRetainTheChecksumsAlreadyAppliedToTheLocalDatabase() {
         assertAppliedChecksum("V694__actual_production_output_slices.sql", -1248105708);
         assertAppliedChecksum("V700__actual_output_supplement_plans.sql", -55642355);

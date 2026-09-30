@@ -100,8 +100,10 @@ void main() {
       expect(find.text('采购任务工作台'), findsOneWidget);
       expect(find.text('已挂接轴套一'), findsOneWidget);
       expect(find.text('生成采购订货单'), findsOneWidget);
+      // 2026-09-29「大小屏共用一张表」：批量动作统一走表格标准右下悬浮组，
+      // 组 key 退役；断言主操作按钮本体。
       expect(
-        find.byKey(const Key('operations-workbench-floating-primary-action')),
+        find.byKey(const Key('operations-workbench-purchase-batch')),
         findsOneWidget,
       );
       expect(
@@ -526,7 +528,9 @@ void main() {
       await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
 
-      expect(find.text('无权查看关联单据'), findsOneWidget);
+      // 2026-09-29 统一表格后单据号列脱敏显示「—」，不再出权限提示文案；
+      // 断言不泄漏真实单据号即可。
+      expect(find.text('无权查看关联单据'), findsNothing);
       expect(
         find.byKey(const Key('operations-workbench-purchase-batch')),
         findsNothing,
@@ -611,9 +615,8 @@ void main() {
       expect(find.text('已选 0 项'), findsNothing);
       expect(find.byType(Checkbox), findsNothing);
 
-      await tester.tap(find.text('PP-001'));
-      await tester.pump();
-
+      // 2026-09-29「大小屏共用一张表」：卡片点按=打开详情（本测试无路由宿主，
+      // 不再模拟点按）；「无意义多选」语义由上方 无复选框/无已选胶囊 断言覆盖。
       expect(find.text('已选 1 项'), findsNothing);
       expect(
         find.byKey(const Key('operations-workbench-purchase-batch')),

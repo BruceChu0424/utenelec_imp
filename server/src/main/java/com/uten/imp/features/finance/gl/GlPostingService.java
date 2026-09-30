@@ -31,7 +31,7 @@ import java.util.UUID;
  * <p>过账规则（借贷平衡，负数业务=同向红字）：
  * 销售立帐 借113/贷031；采购+委外立帐（含退货与损耗扣款红字）借123/贷203；收款 借账户/贷113；付款 借203/贷账户；
  * 费用 借费用科目(行)/贷账户(单头合计=行合计)；其它收入 借账户/贷收入科目(行)；
- * 销售成本结转 借041/贷123（出货行 Σqty×goods.c_total，单号+“-CB”）。</p>
+ * 销售成本由原库存价值 COGS 变动追加，保留退回及后补差额；旧 COST_CARRY 不再重建。</p>
  *
  * <p>幂等：generate(period) 只重建明确属于旧投影作业的 AUTO 凭证；资产子账、工资和
  * V1 收款凭证不属于该可删除集合。V1 收款在审核事务内生成不可变凭证，红冲追加
@@ -45,7 +45,7 @@ public class GlPostingService {
     /** Source types exclusively owned and rebuilt by this legacy regeneration job. */
     static final List<String> REGENERATED_SOURCE_TYPES = List.of(
             "AR_POST", "AP_POST", "PAYMENT",
-            "EXPENSE", "INCOME", "COST_CARRY", "BANK_TRANSFER",
+            "EXPENSE", "INCOME", "BANK_TRANSFER",
             "BALANCE_ADJUSTMENT",
             "SUPPLIER_CLAIM_LEDGER", "SUPPLIER_CLAIM_OFFSET",
             "SUPPLIER_CLAIM_RECEIVABLE", "SUPPLIER_CLAIM_CASH",
@@ -64,6 +64,7 @@ public class GlPostingService {
     }
 
     private int generatePeriod(String period) {
+        ActualInventoryCostGlProjection.lock(em);
         PaymentStyleHierarchyLock.lock(em);
         lockAutoProjectionPeriod(period);
         assertNoConfirmedExpenseVouchers(period);
@@ -106,7 +107,7 @@ public class GlPostingService {
         assertManagedProjectionBalanced(period);
 
         return ((Number) em.createNativeQuery(
-                "SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes) AND "
+                "SELECT COUNT(*) FROM gl_vouchers WHERE source='AUTO' AND period=:p AND (source_type IN (:sourceTypes) OR source_type='ACTUAL_COGS') AND "
                         + FinancialDocumentGlScope.managedVoucherPredicate("gl_vouchers"))
                 .setParameter("p", period)
                 .setParameter("sourceTypes", REGENERATED_SOURCE_TYPES)
@@ -431,6 +432,7 @@ public class GlPostingService {
                     UNION SELECT bill_date FROM finance_bank_transfers WHERE legacy_id IS NULL AND COALESCE(is_deleted,false)=false
                     UNION SELECT effective_date FROM account_balance_adjustment_batches
                     UNION SELECT effective_date FROM customer_open_item_offset_batches WHERE status='APPLIED'
+                    UNION SELECT to_date(target_period||'-01','YYYY-MM-DD') FROM v_inventory_cost_gl_status
                 ) t ORDER BY 1
                 """).getResultList();
         for (String p : periods) generatePeriod(p);
@@ -466,16 +468,8 @@ public class GlPostingService {
                                   AND ledger.status=1 AND COALESCE(ledger.is_deleted,false)=false
                                   AND to_char(ledger.bill_date,'YYYY-MM')=:p
                                 UNION ALL
-                                SELECT 1 FROM sales_shipments shipment
-                                WHERE shipment.status=1 AND COALESCE(shipment.is_deleted,false)=false
-                                  AND to_char(shipment.bill_date,'YYYY-MM')=:p
-                                  AND EXISTS (
-                                      SELECT 1 FROM sales_shipment_items item
-                                      JOIN goods goods ON goods.id=item.goods_id
-                                      WHERE item.shipment_id=shipment.id
-                                        AND COALESCE(item.is_deleted,false)=false
-                                        AND COALESCE(item.qty,0)<>0
-                                        AND COALESCE(goods.c_total,0)<>0))
+                                SELECT 1 FROM v_inventory_cost_gl_status cost
+                                WHERE cost.target_period=:p AND cost.posting_status='READY')
                             UNION SELECT 'AP_CONTROL' WHERE EXISTS (
                                 SELECT 1 FROM ar_ap_ledger ledger
                                 WHERE ledger.source_doc_type IN (
@@ -490,16 +484,8 @@ public class GlPostingService {
                                   AND COALESCE(payment.is_deleted,false)=false
                                   AND to_char(payment.bill_date,'YYYY-MM')=:p)
                             UNION SELECT 'SALES_COST' WHERE EXISTS (
-                                SELECT 1 FROM sales_shipments shipment
-                                WHERE shipment.status=1 AND COALESCE(shipment.is_deleted,false)=false
-                                  AND to_char(shipment.bill_date,'YYYY-MM')=:p
-                                  AND EXISTS (
-                                      SELECT 1 FROM sales_shipment_items item
-                                      JOIN goods goods ON goods.id=item.goods_id
-                                      WHERE item.shipment_id=shipment.id
-                                        AND COALESCE(item.is_deleted,false)=false
-                                        AND COALESCE(item.qty,0)<>0
-                                        AND COALESCE(goods.c_total,0)<>0))
+                                SELECT 1 FROM v_inventory_cost_gl_status cost
+                                WHERE cost.target_period=:p AND cost.posting_status='READY')
                             UNION SELECT 'CUSTOMER_ADVANCE' WHERE EXISTS (
                                 SELECT 1 FROM customer_open_item_offset_batches batch
                                 WHERE batch.status='APPLIED'
@@ -1395,51 +1381,9 @@ public class GlPostingService {
         run(debit, period);
     }
 
-    /** 销售成本结转：借 041 销售成本 / 贷 123 库存商品（出货行 Σqty×c_total；退货单不结转——成本口径同 C4）。 */
+    /** Actual cost is appended per immutable value posting; retries never rebuild old vouchers. */
     private void postCostCarry(String period) {
-        String vouchers = """
-                INSERT INTO gl_vouchers
-                    (voucher_no, period, voucher_date, source, source_type, source_doc_id, remark)
-                SELECT d.bill_no || '-CB', to_char(d.bill_date,'YYYY-MM'), d.bill_date,
-                       'AUTO', 'COST_CARRY', d.id, '销售成本结转'
-                FROM sales_shipments d
-                WHERE d.status=1 AND d.is_deleted=false AND to_char(d.bill_date,'YYYY-MM') = :p
-                  AND EXISTS (SELECT 1 FROM sales_shipment_items i JOIN goods g ON g.id=i.goods_id
-                              WHERE i.shipment_id=d.id AND i.is_deleted=false AND COALESCE(g.c_total,0)<>0 AND COALESCE(i.qty,0)<>0)
-                """;
-        String entries = """
-                INSERT INTO gl_entries (voucher_id, line_no, style_id, direction, amount, entry_date, period,
-                                        source_doc_type, source_doc_id, source_bill_no, summary)
-                SELECT v.id, 1, s041.id, 1, x.cost, d.bill_date, v.period,
-                       'COST_CARRY', d.id, d.bill_no, '销售成本结转'
-                FROM sales_shipments d
-                JOIN gl_vouchers v
-                  ON v.source_doc_id = d.id AND v.source_type = 'COST_CARRY'
-                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
-                CROSS JOIN (
-                  SELECT system_posting_style_id('SALES_COST') AS id
-                ) s041
-                JOIN LATERAL (SELECT SUM(i.qty * g.c_total) AS cost FROM sales_shipment_items i
-                              JOIN goods g ON g.id = i.goods_id
-                              WHERE i.shipment_id = d.id AND i.is_deleted=false AND COALESCE(g.c_total,0)<>0) x ON TRUE
-                WHERE d.status=1 AND d.is_deleted=false AND to_char(d.bill_date,'YYYY-MM') = :p AND x.cost <> 0
-                UNION ALL
-                SELECT v.id, 2, s123.id, -1, x.cost, d.bill_date, v.period,
-                       'COST_CARRY', d.id, d.bill_no, '销售成本结转'
-                FROM sales_shipments d
-                JOIN gl_vouchers v
-                  ON v.source_doc_id = d.id AND v.source_type = 'COST_CARRY'
-                 AND v.source = 'AUTO' AND v.status = 1 AND COALESCE(v.is_deleted,false)=false
-                CROSS JOIN (
-                  SELECT system_posting_style_id('INVENTORY_ASSET') AS id
-                ) s123
-                JOIN LATERAL (SELECT SUM(i.qty * g.c_total) AS cost FROM sales_shipment_items i
-                              JOIN goods g ON g.id = i.goods_id
-                              WHERE i.shipment_id = d.id AND i.is_deleted=false AND COALESCE(g.c_total,0)<>0) x ON TRUE
-                WHERE d.status=1 AND d.is_deleted=false AND to_char(d.bill_date,'YYYY-MM') = :p AND x.cost <> 0
-                """;
-        run(vouchers, period);
-        run(entries, period);
+        if(ActualInventoryCostGlProjection.enabled(em))ActualInventoryCostGlProjection.postReady(em,period);
     }
 
     /**

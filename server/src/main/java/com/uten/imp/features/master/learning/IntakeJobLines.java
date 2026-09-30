@@ -67,6 +67,19 @@ final class IntakeJobLines {
         return out.isEmpty() ? EMPTY : new IntakeJobLines(Collections.unmodifiableMap(out));
     }
 
+    /** Namespace per-file row keys before planning once for the whole document. */
+    static IntakeJobLines combine(UUID primary, Map<UUID, Map<String, Object>> results) {
+        Map<String, JobLine> combined = new HashMap<>();
+        results.forEach((jobId, result) -> {
+            IntakeJobLines parsed = parse(result);
+            parsed.byKey.forEach((key, line) -> {
+                combined.put(jobId + ":" + key, line);
+                if (jobId.equals(primary)) combined.put(key, line); // Legacy single-file clients.
+            });
+        });
+        return new IntakeJobLines(Collections.unmodifiableMap(combined));
+    }
+
     private static String text(Object value) {
         if (value == null) return null;
         if (value instanceof String s) return s;

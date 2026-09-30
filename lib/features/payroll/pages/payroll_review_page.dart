@@ -487,6 +487,8 @@ class _BatchDetail extends StatelessWidget {
       body: batch.slips.isEmpty
           ? const UtenEmpty(message: '服务器未返回该批次的员工明细')
           : MasterDataTableView<PayrollSlip>(
+              tableKey:
+                  'features.payroll.pages.payroll_review_page.BatchDetail.build.1',
               key: const Key('payroll-review-slip-table'),
               primary: true,
               columns: _slipColumns,

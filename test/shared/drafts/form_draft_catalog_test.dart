@@ -29,6 +29,28 @@ FormDraft _saved(
 );
 
 void main() {
+  test(
+    'cost drafts stay in basic goods detail and retain cost-tab resume identity',
+    () {
+      final spec = FormDraftCatalog.goodsCost.spec(
+        route: '/basicinfo/goods/goods-1?tab=cost',
+      );
+      final draft = _saved(spec);
+      expect(FormDraftCatalog.goodsCost.groups(draft), isTrue);
+      final resume = Uri.parse(draft.resumeLocation);
+      expect(resume.path, '/basicinfo/goods/goods-1');
+      expect(resume.queryParameters['tab'], 'cost');
+      expect(resume.queryParameters['draftId'], draft.id);
+      expect(
+        spec.canRestore(draft, currentRoute: draft.resumeLocation),
+        isTrue,
+      );
+      expect(
+        spec.canRestore(draft, currentRoute: '/basicinfo/goods/other?tab=cost'),
+        isFalse,
+      );
+    },
+  );
   test('every declared descriptor belongs to the single catalog index', () {
     final source = File(
       'lib/shared/drafts/form_draft_catalog.dart',

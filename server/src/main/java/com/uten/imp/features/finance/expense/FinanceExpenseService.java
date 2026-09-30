@@ -130,6 +130,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_expense:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_expense_item")
     public FinanceExpenseDetail create(FinanceExpenseSaveRequest req) {
         tx.bind();
         if (req.getItems() != null && !req.getItems().isEmpty()) {
@@ -148,6 +149,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_expense:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_expense_item", requestArgument=1, documentIdArgument=0)
     public FinanceExpenseDetail update(UUID id, FinanceExpenseSaveRequest req) {
         tx.bind();
         if (req.getItems() != null && !req.getItems().isEmpty()) {

@@ -746,6 +746,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       key: const Key('finance-detail-totals'),
       density: true,
       compact: true,
+      rowCount: items.length,
       entries: [
         UtenTotalEntry(
           utenAmountTotalLabel(
@@ -988,6 +989,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
         // 合计条收进 summaryBar 槽位（表体下方，全站统一挂点）。
         Expanded(
           child: MasterDataTableView<FinanceDocItem>(
+            tableKey: 'finance.${widget.docType.name}.items',
             primary: true,
             columns: columns,
             items: items,

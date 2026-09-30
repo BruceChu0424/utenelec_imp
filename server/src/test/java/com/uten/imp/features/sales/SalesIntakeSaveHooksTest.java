@@ -78,7 +78,24 @@ class SalesIntakeSaveHooksTest {
         ArgumentCaptor<Object> event = ArgumentCaptor.forClass(Object.class);
         verify(events).publishEvent(event.capture());
         assertThat(event.getValue()).isEqualTo(
-                new SalesIntakeUsedEvent(jobId, userId, "quote", docId, clientId));
+                new SalesIntakeUsedEvent(jobId, userId, "quote", docId, clientId, List.of("S1R9"), request.getValue().learningReceiptId()));
+    }
+
+    @Test
+    void batchOnlyAnnouncesAdditionalJobsThatContributedSavedRows() {
+        UUID first = UUID.randomUUID(), last = UUID.randomUUID(), unused = UUID.randomUUID();
+        UUID doc = UUID.randomUUID(), client = UUID.randomUUID();
+        SalesAiIntakeRequest intake = new SalesAiIntakeRequest();
+        intake.setJobId(last);
+        intake.setAdditionalJobIds(List.of(first, first, unused));
+        hooks(learning).afterSave("quote", doc, client,
+                List.of(new LearnedLine(UUID.randomUUID(), "A", null, first + ":S1R9", true, false)), intake);
+        var capture = ArgumentCaptor.forClass(SalesMasterLearningPort.SalesLearningRequest.class);
+        verify(learning).learnAfterCommit(capture.capture());
+        assertThat(capture.getValue().intakeJobIds()).containsExactly(last, first);
+        verify(events).publishEvent(new SalesIntakeUsedEvent(first, userId, "quote", doc, client, List.of("S1R9"), capture.getValue().learningReceiptId()));
+        verify(events, never()).publishEvent(org.mockito.ArgumentMatchers.argThat((Object value) ->
+                value instanceof SalesIntakeUsedEvent event && event.jobId().equals(unused)));
     }
 
     @Test
@@ -95,7 +112,20 @@ class SalesIntakeSaveHooksTest {
         hooks(learning).afterSave(SalesIntakeSaveHooks.DOC_ORDER, UUID.randomUUID(), UUID.randomUUID(),
                 List.of(new LearnedLine(UUID.randomUUID(), null, null, null, false, false)),
                 new SalesAiIntakeRequest());
-        verifyNoInteractions(learning, events);
+        verify(learning, never()).learnAfterCommit(any());
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void clearingAllLearnedLabelsStillEnqueuesOneDocumentRetraction() {
+        UUID doc=UUID.randomUUID();
+        when(learning.hasDocumentLearning("order",doc)).thenReturn(true);
+        hooks(learning).afterSave("order",doc,UUID.randomUUID(),List.of(),null);
+        var capture=ArgumentCaptor.forClass(SalesMasterLearningPort.SalesLearningRequest.class);
+        verify(learning).learnAfterCommit(capture.capture());
+        assertThat(capture.getValue().lines()).isEmpty();
+        assertThat(capture.getValue().learningReceiptId()).isNotNull();
+        verifyNoInteractions(events);
     }
 
     @Test

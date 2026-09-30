@@ -11,6 +11,9 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/print/pdf_printer.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/print/uten_print_preview.dart';
+import '../../../shared/platform_tables/table_column_projection.dart';
+import '../../../shared/platform_tables/platform_table_repository.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../providers/expense_settings_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -18,12 +21,153 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/rmb_amount.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
+import 'expense_submission_revision.dart';
+import '../../../components/data_display/uten_revision_table.dart';
+
+/// One projected item dataset drives both the live preview and downloadable PDF.
+/// Payment evidence, signed fields and flow history retain the claim's original print semantics.
+Future<UtenPrintTable> expensePrintItemsTable(
+  ExpenseClaim claim, {
+  TableColumnProjection? projection,
+  PlatformTableRepository? repository,
+}) {
+  final frozen = expenseSubmittedPrintRows(claim);
+  final historical = expenseShowsSubmittedRevision(claim);
+  final sourceRows =
+      frozen ??
+      [
+        for (final item in claim.items)
+          {
+            'id': item.id,
+            'category': item.category.apiValue,
+            'date': _fmtDate(item.date),
+            'description': item.description,
+            'amount': item.amount.toString(),
+          },
+      ];
+  // A missing legacy snapshot means no historical custom value. It must not
+  // silently substitute today's row data or newly-created formula definitions.
+  final historicalColumns = historical
+      ? [
+          for (final column
+              in projection?.columns ?? const <TableProjectedColumn>[])
+            if (column.key.startsWith('platform:')) column,
+        ]
+      : const <TableProjectedColumn>[];
+  String historicalValue(Map<String, dynamic> row, String key) {
+    final cells = expenseSubmissionPlatformSnapshot(row).cells;
+    final cell = cells
+        .where((cell) => key == 'platform:${cell.columnId}')
+        .firstOrNull;
+    if (cell == null) return '';
+    if (cell.masked) return '***';
+    if (cell.error != null) {
+      throw const FormatException('该次提交的扩展字段计算失败，不能生成缺失数据的报销打印件');
+    }
+    return cell.value ?? '';
+  }
+
+  final includeRevision =
+      projection?.columns.any((column) => column.key == '_revision') == true;
+  final revision = ExpenseSubmissionRevision.fromClaim(claim);
+  final statuses = <String, String>{
+    for (final row
+        in revision?.items ?? const <UtenRevisionRow<Map<String, dynamic>>>[])
+      if (row.kind != UtenRevisionKind.removed && row.value['id'] != null)
+        row.value['id'].toString(): row.statusLabel,
+  };
+  return projectUtenPrintTable(
+    UtenPrintTable(
+      headers: [
+        '序号',
+        '日期',
+        '费用科目',
+        '说明',
+        '金额（元）',
+        if (includeRevision) '变更',
+        for (final column in historicalColumns) column.label,
+      ],
+      columnKeys: [
+        'lineNo',
+        'date',
+        'category',
+        'description',
+        'amount',
+        if (includeRevision) '_revision',
+        for (final column in historicalColumns) column.key,
+      ],
+      columnWidths: [
+        40,
+        86,
+        100,
+        260,
+        100,
+        if (includeRevision) 100,
+        for (final column in historicalColumns) column.width,
+      ],
+      rowIds: [for (final row in sourceRows) row['id']?.toString()],
+      factValues: [
+        for (final row in sourceRows) {'amount': row['amount']?.toString()},
+      ],
+      rows: [
+        for (var index = 0; index < sourceRows.length; index++)
+          [
+            '${index + 1}',
+            sourceRows[index]['date']?.toString() ?? '',
+            ExpenseCategory.fromApi(sourceRows[index]['category']).label,
+            sourceRows[index]['description']?.toString() ?? '',
+            sourceRows[index]['amount']?.toString() ?? '',
+            if (includeRevision) statuses[sourceRows[index]['id']] ?? '本次记录',
+            for (final column in historicalColumns)
+              historicalValue(sourceRows[index], column.key),
+          ],
+      ],
+    ),
+    projection,
+    repository: repository,
+  );
+}
 
 /// 弹出报销单打印预览（A4 纸面 + 打印按钮）。
 Future<void> showExpenseClaimPrintPreview(
   BuildContext context,
   ExpenseClaim claim,
 ) async {
+  final projection = TableColumnProjectionScope.resolve(
+    context,
+    'expense.claim.items',
+  );
+  if (TableColumnProjectionScope.hasCurrentTables(context) &&
+      projection == null) {
+    context.appError('未找到当前报销明细表头，请刷新后重试');
+    return;
+  }
+  UtenPrintTable itemsTable;
+  try {
+    itemsTable = await expensePrintItemsTable(
+      claim,
+      projection: projection,
+      repository:
+          !expenseShowsSubmittedRevision(claim) &&
+              projection?.columns.any(
+                    (column) => column.key.startsWith('platform:'),
+                  ) ==
+                  true
+          ? ProviderScope.containerOf(
+              context,
+              listen: false,
+            ).read(platformTableRepositoryProvider)
+          : null,
+    );
+  } catch (error) {
+    if (context.mounted) {
+      context.appError(
+        error is FormatException ? error.message : '报销明细或扩展字段暂时无法读取',
+      );
+    }
+    return;
+  }
+  if (!context.mounted) return;
   String companyName = '';
   try {
     companyName = (await ProviderScope.containerOf(
@@ -35,8 +179,11 @@ Future<void> showExpenseClaimPrintPreview(
   if (!context.mounted) return;
   return showDialog<void>(
     context: context,
-    builder: (_) =>
-        _ExpenseClaimPrintDialog(claim: claim, companyName: companyName),
+    builder: (_) => _ExpenseClaimPrintDialog(
+      claim: claim,
+      companyName: companyName,
+      itemsTable: itemsTable,
+    ),
   );
 }
 
@@ -44,7 +191,9 @@ class _ExpenseClaimPrintDialog extends StatefulWidget {
   const _ExpenseClaimPrintDialog({
     required this.claim,
     required this.companyName,
+    required this.itemsTable,
   });
+  final UtenPrintTable itemsTable;
   final ExpenseClaim claim;
   final String companyName;
   @override
@@ -64,6 +213,7 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
         claim,
         companyName: widget.companyName,
         disclaimer: AppLocalizations.of(context).expenseFlowPrintDisclaimer,
+        itemsTable: widget.itemsTable,
       );
       await printPdfBytes(bytes, '费用报销单-${claim.claimNo}.pdf');
     } catch (_) {
@@ -154,14 +304,23 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
         border: Border.all(color: theme.colorScheme.outlineVariant),
         boxShadow: const [BoxShadow(blurRadius: 12, color: Colors.black26)],
       ),
-      child: _PaperSheet(claim: claim, companyName: widget.companyName),
+      child: _PaperSheet(
+        claim: claim,
+        companyName: widget.companyName,
+        itemsTable: widget.itemsTable,
+      ),
     );
   }
 }
 
 /// 纸面内容（Flutter 版）：与 PDF 同构，供预览与测试直接复用。
 class _PaperSheet extends StatelessWidget {
-  const _PaperSheet({required this.claim, required this.companyName});
+  const _PaperSheet({
+    required this.claim,
+    required this.companyName,
+    required this.itemsTable,
+  });
+  final UtenPrintTable itemsTable;
   final String companyName;
 
   final ExpenseClaim claim;
@@ -334,36 +493,28 @@ class _PaperSheet extends StatelessWidget {
   Widget _itemsTable() {
     return Table(
       border: TableBorder.all(color: Colors.black54, width: 0.6),
-      columnWidths: const {
-        0: FixedColumnWidth(40),
-        1: FixedColumnWidth(86),
-        2: FixedColumnWidth(100),
-        3: FlexColumnWidth(),
-        4: FixedColumnWidth(100),
+      columnWidths: {
+        for (var index = 0; index < itemsTable.headers.length; index++)
+          index: FlexColumnWidth(itemsTable.columnWidths?[index] ?? 1),
       },
       children: [
         TableRow(
           decoration: const BoxDecoration(color: Color(0xFFEFEFEF)),
-          children: [
-            _head('序号'),
-            _head('日期'),
-            _head('费用科目'),
-            _head('说明'),
-            _head('金额（元）'),
-          ],
+          children: [for (final header in itemsTable.headers) _head(header)],
         ),
-        for (var i = 0; i < claim.items.length; i++)
+        for (final row in itemsTable.rows)
           TableRow(
             children: [
-              _cell('${i + 1}', center: true),
-              _cell(_fmtDate(claim.items[i].date), center: true),
-              _cell(claim.items[i].category.label),
-              _cell(claim.items[i].description ?? ''),
-              _cell(
-                claim.items[i].amount.toStringAsFixed(2),
-                center: true,
-                tabular: true,
-              ),
+              for (var index = 0; index < row.length; index++)
+                _cell(
+                  row[index],
+                  center: {
+                    'lineNo',
+                    'date',
+                    'amount',
+                  }.contains(itemsTable.columnKeys?[index]),
+                  tabular: itemsTable.columnKeys?[index] == 'amount',
+                ),
             ],
           ),
       ],
@@ -455,10 +606,16 @@ Future<Uint8List> buildExpenseClaimPdf(
   ExpenseClaim claim, {
   String companyName = '',
   String disclaimer = '内部报销审批展示单；不替代原始凭证、税务查验或法定电子档案。',
+  UtenPrintTable? itemsTable,
 }) async {
   final data = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
   final font = pw.Font.ttf(data);
-  final builder = _ExpenseClaimPdf(claim, companyName, disclaimer);
+  final builder = _ExpenseClaimPdf(
+    claim,
+    companyName,
+    disclaimer,
+    itemsTable ?? await expensePrintItemsTable(claim),
+  );
   final doc = pw.Document();
   doc.addPage(
     pw.MultiPage(
@@ -489,7 +646,13 @@ Future<Uint8List> buildExpenseClaimPdf(
 }
 
 class _ExpenseClaimPdf {
-  const _ExpenseClaimPdf(this.claim, this.companyName, this.disclaimer);
+  const _ExpenseClaimPdf(
+    this.claim,
+    this.companyName,
+    this.disclaimer,
+    this.itemsTable,
+  );
+  final UtenPrintTable itemsTable;
   final ExpenseClaim claim;
   final String companyName;
   final String disclaimer;
@@ -613,6 +776,10 @@ class _ExpenseClaimPdf {
   pw.Widget _pdfItemsTable(pw.Font font, List<ExpenseItem> rows) {
     return pw.Table(
       border: pw.TableBorder.all(width: 0.5),
+      columnWidths: {
+        for (var index = 0; index < itemsTable.headers.length; index++)
+          index: pw.FlexColumnWidth(itemsTable.columnWidths?[index] ?? 1),
+      },
       children: [
         pw.TableRow(
           repeat: true,
@@ -620,31 +787,26 @@ class _ExpenseClaimPdf {
             color: PdfColor.fromInt(0xFFEFEFEF),
           ),
           children: [
-            _pdfCell(font, '序号', center: true, bold: true),
-            _pdfCell(font, '日期', center: true, bold: true),
-            _pdfCell(font, '费用科目', center: true, bold: true),
-            _pdfCell(font, '说明', center: true, bold: true),
-            _pdfCell(font, '金额（元）', center: true, bold: true),
+            for (final header in itemsTable.headers)
+              _pdfCell(font, header, center: true, bold: true),
           ],
         ),
-        for (var i = 0; i < rows.length; i++)
+        for (final row in itemsTable.rows)
           pw.TableRow(
             children: [
-              _pdfCell(font, '${i + 1}', center: true),
-              _pdfCell(font, _fmtDate(rows[i].date), center: true),
-              _pdfCell(font, rows[i].category.label),
-              _pdfCell(font, rows[i].description ?? ''),
-              _pdfCell(font, rows[i].amount.toStringAsFixed(2), center: true),
+              for (var index = 0; index < row.length; index++)
+                _pdfCell(
+                  font,
+                  row[index],
+                  center: {
+                    'lineNo',
+                    'date',
+                    'amount',
+                  }.contains(itemsTable.columnKeys?[index]),
+                ),
             ],
           ),
       ],
-      columnWidths: const {
-        0: pw.FixedColumnWidth(36),
-        1: pw.FixedColumnWidth(76),
-        2: pw.FixedColumnWidth(90),
-        3: pw.FlexColumnWidth(),
-        4: pw.FixedColumnWidth(90),
-      },
     );
   }
 

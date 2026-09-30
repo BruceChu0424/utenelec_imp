@@ -402,6 +402,27 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('stock_document_items', 'CLEAR'),
 ('stock_documents', 'CLEAR'),
 ('stock_movements', 'CLEAR'),
+('business_column_definitions', 'PRESERVE'),
+('sales_quote_template_candidates', 'CLEAR'),
+('sales_quote_template_evidence', 'CLEAR'),
+('sales_quote_customer_templates', 'PRESERVE'),
+('sales_quote_template_versions', 'PRESERVE'),
+('platform_column_definitions', 'PRESERVE'),
+('platform_record_fields', 'PRESERVE'),
+('platform_column_usage', 'PRESERVE'),
+('sales_document_learning_receipts', 'CLEAR'),
+('sales_intake_layout_learning_evidence', 'CLEAR'),
+('sales_alias_document_evidence', 'PRESERVE'),
+('goods_cost_sheets', 'PRESERVE'),
+('goods_cost_snapshots', 'PRESERVE'),
+('goods_cost_commands', 'PRESERVE'),
+('goods_cost_templates', 'PRESERVE'),
+('inventory_cost_gl_policy', 'PRESERVE'),
+('inventory_cost_gl_periods', 'CLEAR'),
+('inventory_cost_gl_period_choices', 'CLEAR'),
+('inventory_cost_gl_links', 'CLEAR'),
+('goods_cost_imports', 'PRESERVE'),
+('goods_cost_import_mappings', 'PRESERVE'),
 ('production_daily_report_material_usages', 'CLEAR'),
 ('production_workshop_direct_transfer_items', 'CLEAR'),
 ('production_workshop_direct_transfer_reversals', 'CLEAR'),
@@ -1322,10 +1343,25 @@ BEGIN
         -- V742 公共 AI 平台与销售客户文件识别 (ADR-133/ADR-134): 新增 3 张 PRESERVE 与 3 张 CLEAR 表; 本迁移 669→670。
         (742, 670),
         -- V743 仓库重量账与单重学习(ADR-135, 原号 V745): 退役 V442 七张表, 新增重量调整账(CLEAR)与称重/单重学习表(PRESERVE); 本迁移 670→671。
-        (743, 671)
+        (743, 671),
+        (744, 672),
+        (745, 673),
+        (746, 674),
+        (747, 675),
+        (748, 676),
+        (749, 677),
+        (750, 678),
+        (751, 679),
+        (752, 680),
+        (753, 681),
+        (754, 682),
+        (755, 683),
+        (756, 684),
+        -- V757 adds candidate-object cleanup on TRUNCATE; no table policy changes.
+        (757, 685)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V743完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V737、V745 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V757完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V737 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1554,7 +1590,28 @@ BEGIN
             ('stock_weight_adjustments', 743),
             ('goods_weight_profiles', 743),
             ('goods_weight_observations', 743),
-            ('goods_weight_estimates', 743)
+            ('goods_weight_estimates', 743),
+            ('business_column_definitions', 744),
+            ('sales_quote_template_candidates', 745),
+            ('sales_quote_template_evidence', 745),
+            ('sales_quote_customer_templates', 745),
+            ('sales_quote_template_versions', 745),
+            ('platform_column_definitions', 750),
+            ('platform_record_fields', 750),
+            ('platform_column_usage', 750),
+            ('sales_document_learning_receipts', 751),
+            ('sales_intake_layout_learning_evidence', 751),
+            ('sales_alias_document_evidence', 752),
+            ('goods_cost_sheets', 753),
+            ('goods_cost_snapshots', 753),
+            ('goods_cost_commands', 753),
+            ('goods_cost_templates', 753),
+            ('inventory_cost_gl_policy', 754),
+            ('inventory_cost_gl_periods', 754),
+            ('inventory_cost_gl_period_choices', 754),
+            ('inventory_cost_gl_links', 754),
+            ('goods_cost_imports', 755),
+            ('goods_cost_import_mappings', 755)
     )
     SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name) FILTER (
                WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)
@@ -1594,7 +1651,14 @@ BEGIN
        OR (applied_max_version = 742 AND preserve_count <> 104)
        -- V743 退役 V442 三张旧库计量证据表(-3)，新增单重学习三表(+3)：PRESERVE
        -- 维持 V742 的 107（102 是写注释时按 V739 基数误算）。
-       OR (applied_max_version >= 743 AND preserve_count <> 107)
+       OR (applied_max_version = 743 AND preserve_count <> 107)
+       OR (applied_max_version = 744 AND preserve_count <> 108)
+       OR (applied_max_version BETWEEN 745 AND 749 AND preserve_count <> 110)
+       OR (applied_max_version BETWEEN 750 AND 751 AND preserve_count <> 113)
+       OR (applied_max_version = 752 AND preserve_count <> 114)
+       OR (applied_max_version = 753 AND preserve_count <> 118)
+       OR (applied_max_version = 754 AND preserve_count <> 119)
+       OR (applied_max_version >= 755 AND preserve_count <> 121)
        OR NOT (
            (v446_business_table_count = 0
                 AND v447_business_table_count = 0
@@ -1926,6 +1990,18 @@ WHERE COALESCE(init_stock, 0) <> 0
 UPDATE payment_styles
 SET init_balance = 0
 WHERE COALESCE(init_balance, 0) <> 0;
+
+-- Match V750: entity locks and master clearing precede field-storage locks.
+DO $$
+DECLARE removed_field_rows BIGINT;
+BEGIN
+    IF to_regclass('public.platform_record_fields') IS NOT NULL THEN
+        LOCK TABLE public.platform_record_fields IN ACCESS EXCLUSIVE MODE;
+        DELETE FROM public.platform_record_fields WHERE NOT retain_on_reset;
+        GET DIAGNOSTICS removed_field_rows = ROW_COUNT;
+        RAISE NOTICE '已清理 % 行商业表格扩展信息，主档扩展信息保留', removed_field_rows;
+    END IF;
+END $$;
 
 -- The audited preserved-master UPDATEs may append audit_log rows. Capture PRESERVE
 -- counts only after that intentional write, then require them to remain stable.

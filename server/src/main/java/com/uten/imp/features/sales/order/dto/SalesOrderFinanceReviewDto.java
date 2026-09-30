@@ -130,6 +130,8 @@ public record SalesOrderFinanceReviewDto(
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal quotePrice,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal quoteDiscount,
             /** 本行单价与折扣是否与报价核定一致(非报价转入的订单为 null; 报价外新增的行为 false)。 */
-            Boolean matchesQuote) {
+            Boolean matchesQuote,
+            List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns,
+            String goodsNameEn) {
     }
 }

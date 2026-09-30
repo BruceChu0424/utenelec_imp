@@ -1,7 +1,10 @@
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_execution_workbench.dart';
 import '../repositories/production_execution_workbench_repository.dart';
@@ -85,120 +88,152 @@ class _WorkshopTaskMaterialTableState
           );
         }
         final small = theme.textTheme.bodySmall;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            key: const Key('workshop-task-material-table'),
-            columnSpacing: UtenSpacing.s12,
-            horizontalMargin: UtenSpacing.s8,
-            headingRowHeight: 32,
-            dataRowMinHeight: 32,
-            dataRowMaxHeight: 48,
-            headingTextStyle: small?.copyWith(fontWeight: FontWeight.w700),
-            dataTextStyle: small,
-            columns: const [
-              DataColumn(label: Text('物料')),
-              DataColumn(label: Text('来源')),
-              DataColumn(label: Text('需求'), numeric: true),
-              DataColumn(label: Text('仓库已到'), numeric: true),
-              DataColumn(label: Text('直送已交接'), numeric: true),
-              DataColumn(label: Text('已领到车间'), numeric: true),
-              DataColumn(label: Text('缺口'), numeric: true),
-              DataColumn(label: Text('状态')),
-              DataColumn(label: Text('子件工单')),
-            ],
-            rows: [
-              for (final row in rows)
-                DataRow(
-                  key: ValueKey('workshop-task-material-${row.demandId}'),
-                  cells: [
-                    DataCell(
-                      Text(
-                        [
-                          row.goodsName,
-                          row.goodsCode,
-                          if ((row.colorName ?? '').isNotEmpty) row.colorName!,
-                        ].join(' · '),
-                      ),
-                    ),
-                    DataCell(Text(row.sourceLabel)),
-                    DataCell(Text(_qty(row.requiredQty, row.unitName))),
-                    DataCell(
-                      Tooltip(
-                        message:
-                            '仓库里当前可给本任务用的实物（专属来源 + 允许动用的公共库存），'
-                            '齐套生产到齐前不预留，靠它看到货；已预留 ${_qty(row.reservedQty, row.unitName)}',
-                        child: Text(
-                          _qty(row.warehouseAvailableQty, row.unitName),
-                        ),
-                      ),
-                    ),
-                    DataCell(
-                      Tooltip(
-                        message: row.supplyRoute == 'MAKE'
-                            ? '自制子件工单已直送到本车间的数量(子件也可能入库后经领料到达，那部分计入「已领到车间」)；其中尚未分配给本任务 ${_qty(row.directAvailableQty, row.unitName)}'
-                            : '采购/委外物料一律经仓库领料，不走车间直送',
-                        child: Text(
-                          row.supplyRoute == 'MAKE'
-                              ? _qty(row.directReceivedQty, row.unitName)
-                              : '—',
-                        ),
-                      ),
-                    ),
-                    DataCell(
-                      Tooltip(
-                        message:
-                            '净实领（实领减退回、损耗与待退冻结）；'
-                            '待仓库发 ${_qty(row.requestedUnissuedQty, row.unitName)}，'
-                            '可提交领料 ${_qty(row.requestableQty, row.unitName)}'
-                            '${row.lineSidePendingQty > 0 ? '，直送料待开工投入 ${_qty(row.lineSidePendingQty, row.unitName)}' : ''}',
-                        child: Text(_qty(row.issuedQty, row.unitName)),
-                      ),
-                    ),
-                    DataCell(
-                      Text(
-                        row.shortageQty > 0
-                            ? _qty(row.shortageQty, row.unitName)
-                            : '—',
-                        style: row.shortageQty > 0
-                            ? small?.copyWith(
-                                color: theme.colorScheme.error,
-                                fontWeight: FontWeight.w700,
-                              )
-                            : null,
-                      ),
-                    ),
-                    DataCell(
-                      // ADR-117：缺料里计划还没下单的，品红「等计划下单」并说清还差多少(与状态列同色)；
-                      // 计划已下过单的照旧琥珀「等采购到货 / 等子件完成」。
-                      Tooltip(
-                        message: row.waitingForPlanning
-                            ? (row.planningRouteConfirmed
-                                  ? '计划还差 ${_qty(row.planningGapQty, row.unitName)} 没下单，'
-                                        '可以在任务详情里点「催计划」提醒计划员'
-                                  : '计划还没定这种料怎么供(采购 / 委外 / 自制)，'
-                                        '还差 ${_qty(row.planningGapQty, row.unitName)}')
-                            : row.stateLabel,
-                        child: UtenStatusBadge(
-                          key: ValueKey(
-                            'workshop-task-material-state-${row.demandId}',
-                          ),
-                          label: row.stateLabel,
-                          type: row.waitingForPlanning
-                              ? UtenStatusBadgeType.fuchsia
-                              : _badgeType(row.state),
-                          icon: row.waitingForPlanning
-                              ? Icons.campaign_rounded
-                              : null,
-                          size: UtenStatusBadgeSize.small,
-                        ),
-                      ),
-                    ),
-                    DataCell(Text(row.producingSegmentsLabel ?? '—')),
-                  ],
-                ),
-            ],
+        return MasterDataTableView<ProductionWorkshopTaskMaterial>(
+          key: const Key('workshop-task-material-table'),
+          tableKey: 'production.workshopTask.materials',
+          embedded: true,
+          compactCards: true,
+          rowKeyOf: (row) => row.demandId,
+          platformBinding: PlatformTableBinding(
+            tableKey: 'production.workshopTask.materials',
+            scope: 'view_production',
+            recordIdOf: (_) => null,
+            factValuesOf: (row) => {
+              'requiredQty': row.requiredQty.toString(),
+              'warehouseAvailableQty': row.warehouseAvailableQty.toString(),
+              'directReceivedQty': row.supplyRoute == 'MAKE'
+                  ? row.directReceivedQty.toString()
+                  : null,
+              'issuedQty': row.issuedQty.toString(),
+              'shortageQty': row.shortageQty.toString(),
+            },
           ),
+          columns: [
+            MasterColumnDef(
+              key: 'goodsName',
+              label: '物料',
+              width: 180,
+              value: (row) => row.goodsName,
+            ),
+            MasterColumnDef(
+              key: 'goodsCode',
+              label: '编号',
+              width: 130,
+              value: (row) => row.goodsCode,
+            ),
+            MasterColumnDef(
+              key: 'colorName',
+              label: '颜色',
+              width: 90,
+              value: (row) => row.colorName,
+            ),
+            MasterColumnDef(
+              key: 'source',
+              label: '来源',
+              width: 110,
+              value: (row) => row.sourceLabel,
+            ),
+            MasterColumnDef(
+              key: 'requiredQty',
+              label: '需求',
+              width: 130,
+              type: 'number',
+              value: (row) => _qty(row.requiredQty, row.unitName),
+            ),
+            MasterColumnDef(
+              key: 'warehouseAvailableQty',
+              label: '仓库已到',
+              width: 140,
+              type: 'number',
+              value: (row) => _qty(row.warehouseAvailableQty, row.unitName),
+              cellBuilder: (_, row) => Tooltip(
+                message:
+                    '仓库里当前可给本任务用的实物（专属来源 + 允许动用的公共库存），齐套生产到齐前不预留；已预留 ${_qty(row.reservedQty, row.unitName)}',
+                child: Text(_qty(row.warehouseAvailableQty, row.unitName)),
+              ),
+            ),
+            MasterColumnDef(
+              key: 'directReceivedQty',
+              label: '直送已交接',
+              width: 140,
+              type: 'number',
+              value: (row) => row.supplyRoute == 'MAKE'
+                  ? _qty(row.directReceivedQty, row.unitName)
+                  : null,
+              cellBuilder: (_, row) => Tooltip(
+                message: row.supplyRoute == 'MAKE'
+                    ? '自制子件工单已直送到本车间的数量；其中尚未分配给本任务 ${_qty(row.directAvailableQty, row.unitName)}'
+                    : '采购/委外物料一律经仓库领料，不走车间直送',
+                child: Text(
+                  row.supplyRoute == 'MAKE'
+                      ? _qty(row.directReceivedQty, row.unitName)
+                      : '—',
+                ),
+              ),
+            ),
+            MasterColumnDef(
+              key: 'issuedQty',
+              label: '已领到车间',
+              width: 140,
+              type: 'number',
+              value: (row) => _qty(row.issuedQty, row.unitName),
+              cellBuilder: (_, row) => Tooltip(
+                message:
+                    '净实领（实领减退回、损耗与待退冻结）；待仓库发 ${_qty(row.requestedUnissuedQty, row.unitName)}，可提交领料 ${_qty(row.requestableQty, row.unitName)}${row.lineSidePendingQty > 0 ? '，直送料待开工投入 ${_qty(row.lineSidePendingQty, row.unitName)}' : ''}',
+                child: Text(_qty(row.issuedQty, row.unitName)),
+              ),
+            ),
+            MasterColumnDef(
+              key: 'shortageQty',
+              label: '缺口',
+              width: 130,
+              type: 'number',
+              value: (row) => row.shortageQty > 0
+                  ? _qty(row.shortageQty, row.unitName)
+                  : null,
+              cellBuilder: (_, row) => Text(
+                row.shortageQty > 0 ? _qty(row.shortageQty, row.unitName) : '—',
+                style: row.shortageQty > 0
+                    ? small?.copyWith(
+                        color: theme.colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      )
+                    : null,
+              ),
+            ),
+            MasterColumnDef(
+              key: 'state',
+              label: '状态',
+              width: 150,
+              value: (row) => row.stateLabel,
+              cellBuilder: (_, row) => Tooltip(
+                message: row.waitingForPlanning
+                    ? (row.planningRouteConfirmed
+                          ? '计划还差 ${_qty(row.planningGapQty, row.unitName)} 没下单，可以在任务详情里点「催计划」提醒计划员'
+                          : '计划还没定这种料怎么供（采购 / 委外 / 自制），还差 ${_qty(row.planningGapQty, row.unitName)}')
+                    : row.stateLabel,
+                child: WorkshopMaterialStateCell(
+                  key: ValueKey('workshop-task-material-state-${row.demandId}'),
+                  label: row.stateLabel,
+                  icon: row.waitingForPlanning ? Icons.campaign_rounded : null,
+                  type: row.waitingForPlanning
+                      ? UtenStatusBadgeType.fuchsia
+                      : _badgeType(row.state),
+                ),
+              ),
+            ),
+            MasterColumnDef(
+              key: 'producingSegments',
+              label: '子件工单',
+              width: 180,
+              value: (row) => row.producingSegmentsLabel,
+            ),
+          ],
+          items: rows,
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
         );
       },
     );
@@ -216,5 +251,54 @@ class _WorkshopTaskMaterialTableState
     final text = value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
     final suffix = unit ?? widget.unitFallback ?? '';
     return suffix.isEmpty ? text : '$text $suffix';
+  }
+}
+
+/// 状态格：徽章同源底色铺满格内容区（2026-09-27 用户口径「格内胶囊改单元格
+/// 背景色」；旧原生表没有 cellColor 通道，用带 0.5 描边的实色块等价实现，
+/// 描边即用户口径「背景变色但边框要还在」）。文字用徽章深档色保证对比度，
+/// 无圆角——读作整格着色而非胶囊。
+class WorkshopMaterialStateCell extends StatelessWidget {
+  const WorkshopMaterialStateCell({
+    super.key,
+    required this.label,
+    required this.type,
+    this.icon,
+  });
+
+  final String label;
+  final UtenStatusBadgeType type;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (bg, fg) = resolveStatusBadgeColors(
+      type,
+      theme.brightness == Brightness.dark,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: theme.colorScheme.outline, width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 14, color: fg),
+            const SizedBox(width: 2),
+          ],
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: fg,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

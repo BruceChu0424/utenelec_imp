@@ -127,6 +127,10 @@ abstract final class Perm {
 
   /// 查看货品成本（默认仅财务部，未授权时详情隐藏「成本预算」Tab）。
   static const goodsCostView = 'goods:cost:view';
+  static const goodsCostEdit = 'goods:cost:edit';
+  static const goodsCostConfirm = 'goods:cost:confirm';
+  static const goodsCostExport = 'goods:cost:export';
+  static const goodsCostTemplate = 'goods:cost:template';
 
   /// 查看货品折扣（默认仅销售部+财务部，未授权时详情/列表隐藏折扣字段）。
   static const goodsDiscountView = 'goods:discount:view';
@@ -262,6 +266,7 @@ abstract final class Perm {
 
   // ===== 销售管理（综合营销部）=====
   static const salesQuoteView = 'sales_quote:view';
+  static const salesQuoteExport = 'sales_quote:export';
   static const salesQuoteEdit = 'sales_quote:edit';
   static const salesOrderView = 'sales_order:view';
   static const salesOrderEdit = 'sales_order:edit';

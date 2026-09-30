@@ -24,7 +24,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "purchase_order_items")
-public class PurchaseOrderItem extends BaseEntity {
+public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity {
 
     private Integer legacyId;
 

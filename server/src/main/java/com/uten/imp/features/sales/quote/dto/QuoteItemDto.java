@@ -17,7 +17,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class QuoteItemDto {
+public class QuoteItemDto extends com.uten.imp.features.sales.SalesDocumentLineResponse {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;

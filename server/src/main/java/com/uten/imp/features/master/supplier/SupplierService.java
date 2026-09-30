@@ -194,6 +194,7 @@ public class SupplierService {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("name", "供应商简称", ExportColumn.TEXT),
                 new ExportColumn("description", "全称", ExportColumn.TEXT),
+                new ExportColumn("priceStyle", "主结账方式", ExportColumn.TEXT),
                 new ExportColumn("tday", "信用天数", ExportColumn.NUMBER),
                 new ExportColumn("lossRate", "损耗率(%)", ExportColumn.NUMBER),
                 new ExportColumn("place", "所属地区", ExportColumn.TEXT),
@@ -216,6 +217,7 @@ public class SupplierService {
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("_platformRecordId", m.getId());
                     row.put("name", m.getName());
                     row.put("description", m.getDescription());
                     row.put("tday", m.getTday());

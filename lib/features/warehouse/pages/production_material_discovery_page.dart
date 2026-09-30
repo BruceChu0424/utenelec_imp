@@ -606,6 +606,8 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
                   child: UtenCollapsingHeaderScrollView(
                     collapsingHeader: _header(l10n, detail),
                     body: MasterDataTableView<DiscoveryMaterialRow>(
+                      tableKey:
+                          'features.warehouse.pages.production_material_discovery_page.DiscoveryPageState.build.1',
                       key: const Key('discovery-material-table'),
                       primary: true,
                       enableTextSelection: false,

@@ -220,6 +220,8 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
         ],
       ),
       body: MasterDataTableView<WmRequisition>(
+        tableKey:
+            'features.warehouse.materialbin.widgets.workshop_material_task_center.WmRequisitionSegmentState.build.1',
         key: Key(
           'wm-requisitions-${widget.kind ?? 'all'}-${widget.status ?? 'all'}',
         ),
@@ -456,6 +458,8 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
         ],
       ),
       body: MasterDataTableView<_BinStatusRow>(
+        tableKey:
+            'features.warehouse.materialbin.widgets.workshop_material_task_center.WmBinStatusSegmentState.build.1',
         key: const Key('wm-bin-status-table'),
         primary: true,
         columns: [

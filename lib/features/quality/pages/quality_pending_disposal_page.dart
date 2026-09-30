@@ -27,6 +27,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -303,6 +304,24 @@ class _QualityPendingDisposalPageState
       ? fqcStatusLabel(row.inspection!)
       : '待检';
 
+  /// 状态列整格底色的分类色源（2026-09-27 口径），分支与 [_statusLabel] 对齐。
+  UtenStatusBadgeType _statusBadgeType(_DisposalRow row) {
+    if (row.isSheet) {
+      return row.sheet!.activeCount < row.sheet!.itemCount
+          ? UtenStatusBadgeType.info
+          : UtenStatusBadgeType.warning;
+    }
+    if (row.isFqc) {
+      return switch (row.inspection!.status) {
+        'PENDING' => UtenStatusBadgeType.warning,
+        'PARTIAL' => UtenStatusBadgeType.info,
+        'RESOLVED' => UtenStatusBadgeType.success,
+        _ => UtenStatusBadgeType.neutral,
+      };
+    }
+    return UtenStatusBadgeType.warning;
+  }
+
   /// 「状态」表头筛选的桶（按类型/关键字收敛后的行集计数，与眼前所见一致）。
   List<MasterFacetBucket> get _statusFacets {
     final counts = <String, int>{};
@@ -520,6 +539,8 @@ class _QualityPendingDisposalPageState
               const SizedBox(height: UtenSpacing.s12),
               Expanded(
                 child: MasterDataTableView<_DisposalRow>(
+                  tableKey:
+                      'features.quality.pages.quality_pending_disposal_page.QualityPendingDisposalPageState._buildList.1',
                   key: const Key('iqc-receipt-table'),
                   primary: true,
                   columns: _columns,
@@ -888,6 +909,10 @@ class _QualityPendingDisposalPageState
       label: '状态',
       width: 100,
       value: _statusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：待检=琥珀 / 部分已决定=蓝 /
+      // 已全部决定=绿 / 已取消=中性灰。
+      cellColor: (context, row) =>
+          udenStatusBadgeCellColor(context, _statusBadgeType(row)),
     ),
     // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的单，品质部要到储放区域
     // 检验（2026-09-18 用户口径：直接给「仓库 / 库位号」两列，不用逐单点进明细找位置）。
@@ -1554,6 +1579,8 @@ class _ProcurementInspectionDetailPageState
             // 下方明细表与它同一套列对齐/框选口径（原图标 + 文字的逐行罗列已下线）。
             // 弹层/详情页内嵌表统一 embedded：按内容收缩、无翻页条、不出全屏按钮。
             MasterDataTableView<_ReceiptHeaderRow>(
+              tableKey:
+                  'features.quality.pages.quality_pending_disposal_page.ProcurementInspectionDetailPageState._buildSummaryCard.1',
               key: const Key('iqc-receipt-header-table'),
               embedded: true,
               showColumnChooser: false,
@@ -1634,6 +1661,8 @@ class _ProcurementInspectionDetailPageState
     return AbsorbPointer(
       absorbing: _busyDecision,
       child: MasterDataTableView<ProcurementInspectionItem>(
+        tableKey:
+            'features.quality.pages.quality_pending_disposal_page.ProcurementInspectionDetailPageState._buildItemTable.1',
         key: ValueKey('iqc-item-table-${widget.receiptId}'),
         // 折叠头联动：表体拾取 PrimaryScrollController，页面先滚、表格置顶后内滚。
         primary: true,

@@ -22,6 +22,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
@@ -801,7 +802,11 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     final rows = _health?.rows;
     final canOpenLedger = _canOpenStockItem;
     return MasterDataTableView<InsightHealthRow>(
+      tableKey:
+          'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._healthTable.1',
       key: const Key('insight-health-table'),
+      // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+      primary: true,
       columns: insightHealthColumns(
         display: display,
         // 服务端只对持 goods:cost:view 的人下发金额 (costMasked = false)。
@@ -862,7 +867,10 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     final checkPath = RoutePath.stockDocNew(StockDocType.check.code);
     final canCreateCheck = _canOpen(checkPath);
     return MasterDataTableView<InsightCycleCountRow>(
+      tableKey:
+          'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._cycleTable.1',
       key: const Key('insight-cycle-table'),
+      primary: true,
       columns: insightCycleCountColumns(display: display),
       items: rows?.items ?? const [],
       selectable: true,
@@ -910,7 +918,10 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
   Widget _alertsTable(WeightDisplay display) {
     final rows = _alerts?.rows;
     return MasterDataTableView<InsightWeightAlertRow>(
+      tableKey:
+          'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._alertsTable.1',
       key: const Key('insight-alerts-table'),
+      primary: true,
       columns: insightWeightAlertColumns(billCell: _billCell),
       items: rows?.items ?? const [],
       rowKeyOf: (r) => r.id,
@@ -945,7 +956,10 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
   Widget _counterpartTable(WeightDisplay display) {
     final alerts = _alerts;
     return MasterDataTableView<InsightCounterpartSummary>(
+      tableKey:
+          'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._counterpartTable.1',
       key: const Key('insight-counterpart-table'),
+      primary: true,
       columns: insightCounterpartColumns(display: display),
       items: [...?alerts?.supplierSummary, ...?alerts?.workshopSummary],
       rowKeyOf: (s) => s.rowKey,
@@ -968,7 +982,11 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
         _learningUpdates[r.goodsId] ?? r,
     ];
     return MasterDataTableView<InsightLearningRow>(
+      tableKey:
+          'features.warehouse.pages.warehouse_insight_page.WarehouseInsightPageState._learningTable.1',
       key: const Key('insight-learning-table'),
+      // 2026-09-29 用户口径：学习表正由并行任务改（表格动态变化），本批只动
+      // 页面布局（KPI/工具条进折叠头）；表内联动滚动留待该任务收口后再接。
       columns: insightLearningColumns(
         sampleUnit: sampleUnit,
         draftOf: _draftOf,
@@ -1046,29 +1064,32 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       body: SafeArea(
         child: UtenContentContainer.wide(
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _kpis(),
-              const SizedBox(height: UtenSpacing.s12),
-              UtenFilterToolbar<WarehouseInsightSegment>(
-                segmentsKey: const Key('insight-segments'),
-                segments: [
-                  for (final s in WarehouseInsightSegment.values)
-                    UtenFilterSegment(value: s, label: s.label),
-                ],
-                selected: {_segment},
-                onSelectionChanged: _select,
-                searchKey: const Key('insight-search'),
-                searchController: searchable ? _search : null,
-                searchHint: searchable ? '搜索货品名称/编号' : null,
-                onSearchChanged: _onKeyword,
-                onSearchSubmitted: _onKeyword,
-                trailing: _trailing(),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Expanded(child: _body(units)),
-            ],
+          // 上滑先把 KPI 条+分段工具条收完、表格顶到屏顶再滚表内（全站联动口径）。
+          child: UtenCollapsingHeaderScrollView(
+            collapsingHeader: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _kpis(),
+                const SizedBox(height: UtenSpacing.s12),
+                UtenFilterToolbar<WarehouseInsightSegment>(
+                  segmentsKey: const Key('insight-segments'),
+                  segments: [
+                    for (final s in WarehouseInsightSegment.values)
+                      UtenFilterSegment(value: s, label: s.label),
+                  ],
+                  selected: {_segment},
+                  onSelectionChanged: _select,
+                  searchKey: const Key('insight-search'),
+                  searchController: searchable ? _search : null,
+                  searchHint: searchable ? '搜索货品名称/编号' : null,
+                  onSearchChanged: _onKeyword,
+                  onSearchSubmitted: _onKeyword,
+                  trailing: _trailing(),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+              ],
+            ),
+            body: _body(units),
           ),
         ),
       ),

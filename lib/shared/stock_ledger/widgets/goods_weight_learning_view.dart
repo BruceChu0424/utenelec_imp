@@ -31,6 +31,7 @@ import '../../measurement/weight_prefs.dart';
 import '../../measurement/weight_unit.dart';
 import '../../measurement/widgets/weight_sample_dialog.dart';
 import '../../measurement/widgets/weight_text.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../models/paged_result.dart';
 import '../stock_ledger_models.dart';
 
@@ -503,7 +504,11 @@ class _GoodsWeightLearningViewState
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final rows = _records?.items ?? const <WeightObservation>[];
     return MasterDataTableView<WeightObservation>(
+      tableKey:
+          'shared.stock_ledger.widgets.goods_weight_learning_view.GoodsWeightLearningViewState._recordsTable.1',
       key: const Key('goods-weight-records-table'),
+      // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+      primary: true,
       columns: _recordColumns(theme, display),
       items: rows,
       rowKeyOf: (o) => o.id,
@@ -679,7 +684,11 @@ class _GoodsWeightLearningViewState
   Widget _suppliersTable() {
     final rows = _detail?.supplierRows ?? const <GoodsWeightEstimateRow>[];
     return MasterDataTableView<GoodsWeightEstimateRow>(
+      tableKey:
+          'shared.stock_ledger.widgets.goods_weight_learning_view.GoodsWeightLearningViewState._suppliersTable.1',
       key: const Key('goods-weight-suppliers-table'),
+      // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+      primary: true,
       columns: [
         MasterColumnDef(
           key: 'supplier',
@@ -718,8 +727,10 @@ class _GoodsWeightLearningViewState
           label: '可靠度',
           width: 90,
           value: (r) => r.tier?.label ?? '',
-          cellBuilder: (_, r) =>
-              r.tier == null ? const Text('') : WeightTierBadge(tier: r.tier!),
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：档位色铺整格。
+          cellColor: (context, r) => r.tier == null
+              ? null
+              : udenStatusBadgeCellColor(context, weightTierBadgeType(r.tier!)),
         ),
       ],
       items: rows,

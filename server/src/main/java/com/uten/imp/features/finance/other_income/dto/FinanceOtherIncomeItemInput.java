@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 其它收入单保存请求中的明细行。 */
 @Getter
 @Setter
-public class FinanceOtherIncomeItemInput implements ServerDerivedAmounts {
+public class FinanceOtherIncomeItemInput extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

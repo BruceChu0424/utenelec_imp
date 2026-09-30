@@ -100,6 +100,7 @@ public class WarehouseService {
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size), w -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("_platformRecordId", w.getId());
                     row.put("code", w.getCode());
                     row.put("name", w.getName());
                     row.put("parentName", w.getParentName() == null ? "—" : w.getParentName());

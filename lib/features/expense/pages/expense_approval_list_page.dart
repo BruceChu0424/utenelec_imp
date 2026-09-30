@@ -13,6 +13,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -159,6 +161,8 @@ class _ExpenseApprovalListPageState
             onAction: () => ref.invalidate(expenseApprovalListProvider),
           ),
           data: (page) => MasterDataTableView<ExpenseClaim>(
+            tableKey:
+                'features.expense.pages.expense_approval_list_page.ExpenseApprovalListPageState.build.1',
             key: const Key('expense-approval-table'),
             primary: true,
             columns: _columns,
@@ -293,6 +297,16 @@ class _ExpenseApprovalListPageState
       label: '状态',
       width: 100,
       value: (claim) => claim.status.label,
+      // 2026-09-27 用户口径「表格状态列整格底色」（口径同报销列表）。
+      cellColor: (context, claim) =>
+          udenStatusBadgeCellColor(context, switch (claim.status) {
+            ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+            ExpenseClaimStatus.submitted ||
+            ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
+            ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+            ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+            ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+          }),
     ),
     MasterColumnDef(
       key: 'submittedAt',

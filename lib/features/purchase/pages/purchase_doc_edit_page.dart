@@ -38,6 +38,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -342,6 +343,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
           final upstreamItemId =
               it.receiptItemId ?? it.orderItemId ?? it.requestItemId;
           final row = PurchaseGridRow(sourceLocked: upstreamItemId != null)
+            ..platformFields.sourceRecordId = it.id
             // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
             ..goods = ref
                 .read(masterNameServiceProvider)
@@ -638,6 +640,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       if (!rowOk) continue;
       final remarkText = r.remark.text.trim();
       itemsBody.add({
+        ...platformRowPayload(r),
         'goodsId': r.goods!.id,
         'qty': qty,
         // 金额由服务端按 数量 × 单价 × 汇率 精确派生(ADR-112), 请求不带金额。
@@ -1030,6 +1033,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                 purchaseDocGridColumnPrefsProvider,
                               )[widget.docType.name];
                               return UtenEditableGrid<PurchaseGridRow>(
+                                tableKey:
+                                    'purchase.${widget.docType.name}.items',
                                 controller: _grid,
                                 stickyHeaderPinned: _gridPinned,
                                 initialColumnOrder: columnPrefs?.order,

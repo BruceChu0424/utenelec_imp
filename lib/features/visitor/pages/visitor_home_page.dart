@@ -26,6 +26,7 @@ import '../models/visitor_application.dart';
 import '../providers/visitor_providers.dart';
 import '../providers/visitor_session_provider.dart';
 import '../widgets/visitor_status_ui.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 
 // 「申请中」段与审批端待办同口径（pending + hostReviewing，经后端多状态下推）；
 // 「已签到」独立分段，签到后的单子不再从「已批准」段消失。
@@ -140,6 +141,8 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                   onRefresh: () async =>
                       ref.invalidate(visitorApplicationsProvider(_query)),
                   child: MasterDataTableView<VisitorApplication>(
+                    tableKey:
+                        'features.visitor.pages.visitor_home_page.VisitorHomePageState.build.1',
                     bottomContentPadding:
                         UtenFloatingActionGroup.scrollClearance,
                     key: const Key('visitor-home-table'),
@@ -202,5 +205,8 @@ List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
     label: l10n.visitorColStatus,
     width: 90,
     value: (app) => visitorStatusLabel(app.status, l10n),
+    // 2026-09-27 用户口径「表格状态列整格底色」：与详情页徽章同源分类色。
+    cellColor: (context, app) =>
+        udenStatusBadgeCellColor(context, visitorBadgeType(app.status)),
   ),
 ];

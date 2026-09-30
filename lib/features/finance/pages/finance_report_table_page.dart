@@ -24,6 +24,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -43,6 +44,7 @@ import '../../report/shared/report_sort.dart';
 import '../../report/shared/report_total.dart';
 import '../config/finance_report_config.dart';
 import '../widgets/gl_report_line_bindings_dialog.dart';
+import '../widgets/inventory_cost_posting_dialog.dart';
 
 class FinanceReportTablePage extends ConsumerStatefulWidget {
   const FinanceReportTablePage({required this.cardId, super.key});
@@ -186,6 +188,12 @@ class _FinanceReportTablePageState
     );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
+      columnKeys: [for (final c in data.columns) c.key],
+      rowIds: [for (final r in data.rows) r['id']?.toString()],
+      factValues: [
+        for (final r in data.rows)
+          {for (final entry in r.entries) entry.key: entry.value?.toString()},
+      ],
       headers: [for (final c in data.columns) c.label],
       rows: [
         for (final r in data.rows)
@@ -363,6 +371,15 @@ class _FinanceReportTablePageState
     if (changed && mounted) _load();
   }
 
+  Future<void> _openInventoryCostPosting() async {
+    final changed = await showInventoryCostPostingDialog(
+      context,
+      from: _from,
+      to: _to,
+    );
+    if (changed && mounted) _load();
+  }
+
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
@@ -528,15 +545,29 @@ class _FinanceReportTablePageState
             sortable:
                 !_isCustomerPrepaymentEvents && isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
+            exactValueOf: (row) => row['${c.key}Exact']?.toString(),
           ),
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      tableKey:
+          'features.finance.pages.finance_report_table_page.FinanceReportTablePageState._buildTable.1',
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
       primary: true,
       columns: columns,
       items: data.rows,
       toolbarActions: [
+        if (widget.cardId == 'gl' &&
+            ref
+                .watch(currentPermissionsProvider)
+                .contains(Perm.financeReportView) &&
+            ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView))
+          UtenButton(
+            key: const ValueKey('inventory-cost-open'),
+            type: UtenButtonType.secondary,
+            onPressed: _openInventoryCostPosting,
+            child: Text(AppLocalizations.of(context).inventoryCostTitle),
+          ),
         UtenPrintPreviewButton(
           title: '钱流${_variant.label}',
           subtitle: '日期 ${_fmt(_from)} ~ ${_fmt(_to)}(最多前 2000 行)',

@@ -18,6 +18,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -228,6 +230,8 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                             .isNotEmpty
                     ? _withFormDraftRows(
                         MasterDataTableView<ExpenseClaim>(
+                          tableKey:
+                              'features.expense.pages.expense_list_page.ExpenseListPageState.build.1',
                           key: const Key('expense-list-table'),
                           columns: _columns,
                           items: const [],
@@ -241,6 +245,8 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                     : const UtenSkeletonList(itemCount: 6),
                 error: (e, _) => _withFormDraftRows(
                   MasterDataTableView<ExpenseClaim>(
+                    tableKey:
+                        'features.expense.pages.expense_list_page.ExpenseListPageState.build.2',
                     key: const Key('expense-list-table'),
                     columns: _columns,
                     items: const [],
@@ -255,6 +261,8 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                 ),
                 data: (page) => _withFormDraftRows(
                   MasterDataTableView<ExpenseClaim>(
+                    tableKey:
+                        'features.expense.pages.expense_list_page.ExpenseListPageState.build.3',
                     key: const Key('expense-list-table'),
                     // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                     primary: true,
@@ -410,6 +418,17 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
     label: '状态',
     width: 90,
     value: (claim) => claim.status.label,
+    // 2026-09-27 用户口径「表格状态列整格底色」：草稿=灰 / 在审=蓝 /
+    // 待打款=青 / 驳回=红 / 已打款=绿。
+    cellColor: (context, claim) =>
+        udenStatusBadgeCellColor(context, switch (claim.status) {
+          ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+          ExpenseClaimStatus.submitted ||
+          ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
+          ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+          ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+          ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+        }),
   ),
   MasterColumnDef(
     key: 'submittedAt',

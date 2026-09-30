@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_columns_table.dart';
 // 委外单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
 // 计划下达的委外申请始终只读；订货走财务审批；其余单据才沿用各自的草稿/审核/红冲动作。
@@ -859,6 +860,7 @@ class _SubcontractDocDetailPageState
       children: [
         Expanded(
           child: MasterDataTableView<SubcontractDocItem>(
+            tableKey: 'subcontract.${widget.docType.name}.items',
             primary: true,
             columns: [
               MasterColumnDef(
@@ -866,13 +868,13 @@ class _SubcontractDocDetailPageState
                 label: '货品名称',
                 // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
                 // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
-                // 一格又不能各自排序筛选。单位没有独立列，仍留在名称格副行。
+                // 一格又不能各自排序筛选。2026-09-29 单位独立成列（数量之后，
+                // 对齐采购详情页 2026-09-19 口径），名称格不再带单位副行。
                 width: 200,
                 value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
                 cellBuilderHandlesSemantics: true,
                 cellBuilder: (context, it) => UtenGoodsIdentityCell(
                   name: _dictText(names.goods(it.goodsId)),
-                  unit: _dictText(names.unit(it.unitId)),
                 ),
               ),
               MasterColumnDef(
@@ -933,6 +935,17 @@ class _SubcontractDocDetailPageState
                 value: (it) => _historicalReceipt
                     ? historicalReceiptAmount(it.qtyText)
                     : it.qty?.toStringAsFixed(2),
+              ),
+              // 单位独立成列（2026-09-29）：紧跟数量之后，对齐采购详情页口径。
+              MasterColumnDef(
+                key: 'unit',
+                label: '单位',
+                width: 84,
+                value: (it) => UtenGoodsAttributeCell.text(
+                  _dictText(names.unit(it.unitId)),
+                ),
+                cellBuilder: (context, it) =>
+                    UtenGoodsAttributeCell(_dictText(names.unit(it.unitId))),
               ),
               if (_cfg.itemHasPrice && canViewCommercialAmounts) ...[
                 MasterColumnDef(
@@ -1060,6 +1073,11 @@ class _SubcontractDocDetailPageState
                     if (it.cause?.isNotEmpty == true) it.cause,
                   ].join(' · '),
                 ),
+              ...businessReadOnlyColumns<SubcontractDocItem>(
+                items,
+                columnsOf: (line) => line.extraColumns,
+                priceMasked: !canViewCommercialAmounts,
+              ),
             ],
             items: items,
             facets: const {},
@@ -1093,6 +1111,7 @@ class _SubcontractDocDetailPageState
                           key: const Key('subcontract-detail-totals'),
                           density: true,
                           compact: true,
+                          rowCount: items.length,
                           entries: [
                             utenQuantityTotalEntry(
                               items.map(

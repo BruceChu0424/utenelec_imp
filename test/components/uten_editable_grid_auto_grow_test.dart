@@ -29,7 +29,10 @@ const _maxColWidth = 480.0;
 /// 最近一次单元构建拿到的最大宽（= 当前列宽 - 格内边距），LayoutBuilder 捕获。
 double? cellMaxWidth;
 
-UtenEditableGrid<_NoteRow> _grid(UtenEditableGridController<_NoteRow> c) {
+UtenEditableGrid<_NoteRow> _grid(
+  UtenEditableGridController<_NoteRow> c, {
+  bool withExtraColumn = false,
+}) {
   return UtenEditableGrid<_NoteRow>(
     controller: c,
     columns: [
@@ -49,6 +52,13 @@ UtenEditableGrid<_NoteRow> _grid(UtenEditableGridController<_NoteRow> c) {
           },
         ),
       ),
+      if (withExtraColumn)
+        EditableGridColumn<_NoteRow>(
+          key: 'extra:fee',
+          label: '包装费',
+          width: 120,
+          cellBuilder: (_, _) => const Text('5'),
+        ),
     ],
     createBlankRow: () => _NoteRow(),
   );
@@ -124,6 +134,11 @@ void main() {
     final locked = cellMaxWidth!;
     expect(locked, lessThan(initial)); // 缩小生效
     expect(locked, greaterThan(48 - _cellPadX)); // 下限 48 防拖没
+
+    // 添加业务列仍保留用户手调列宽，新列不能把旧列宽全部重置。
+    await tester.pumpWidget(_wrap(_grid(c, withExtraColumn: true)));
+    await tester.pump();
+    expect(cellMaxWidth, locked);
 
     // 锁定后即使输入超长内容也不再自动加宽。
     await tester.enterText(find.byType(TextField), _long * 8);

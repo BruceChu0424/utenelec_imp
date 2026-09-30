@@ -16,6 +16,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -194,44 +195,49 @@ class _ProductionFinishedBatchStockInPageState
         horizontal: UtenSpacing.s16,
         vertical: UtenSpacing.s12,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            '默认全选。本次不入库的单据取消勾选即可移出本批（不会提交、仍留在待点收）；'
-            '勾中的按每张单全部待点收数量原子入库，短收、拒收请逐单进入确认。',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Expanded(
-            child: MasterDataTableView<ProductionFinishedInboundTask>(
-              key: const Key('production-finished-batch-stock-in-table'),
-              columns: _columns,
-              items: rows,
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-              selectable: true,
-              batchActionsBuilder:
-                  ref
-                      .watch(currentPermissionsProvider)
-                      .contains(Perm.stockDocApprove)
-                  ? (_, _) => _batchActions()
-                  : null,
-              idOf: (task) => task.documentId,
-              selectedIds: _selectedDocumentIds,
-              onSelectedIdsChanged: (next) => setState(() {
-                _selectedDocumentIds
-                  ..clear()
-                  ..addAll(next);
-              }),
-              emptyMessage: '没有可点收任务',
-              showFullscreenToggle: false,
-              bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+      // 上滑先把提示文案收完、表格顶到屏顶再滚表内（全站联动口径）。
+      child: UtenCollapsingHeaderScrollView(
+        collapsingHeader: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '默认全选。本次不入库的单据取消勾选即可移出本批（不会提交、仍留在待点收）；'
+              '勾中的按每张单全部待点收数量原子入库，短收、拒收请逐单进入确认。',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-          ),
-        ],
+            const SizedBox(height: UtenSpacing.s8),
+          ],
+        ),
+        body: MasterDataTableView<ProductionFinishedInboundTask>(
+          tableKey:
+              'features.warehouse.pages.production_finished_batch_stock_in_page.ProductionFinishedBatchStockInPageState._buildTable.1',
+          key: const Key('production-finished-batch-stock-in-table'),
+          // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+          primary: true,
+          columns: _columns,
+          items: rows,
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          selectable: true,
+          batchActionsBuilder:
+              ref
+                  .watch(currentPermissionsProvider)
+                  .contains(Perm.stockDocApprove)
+              ? (_, _) => _batchActions()
+              : null,
+          idOf: (task) => task.documentId,
+          selectedIds: _selectedDocumentIds,
+          onSelectedIdsChanged: (next) => setState(() {
+            _selectedDocumentIds
+              ..clear()
+              ..addAll(next);
+          }),
+          emptyMessage: '没有可点收任务',
+          showFullscreenToggle: false,
+          bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+        ),
       ),
     );
   }

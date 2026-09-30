@@ -87,22 +87,46 @@ Future<void> _drain(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// 主表「下单(N)」→ 确认框「下达」。
+/// 2026-09-29 ADR-099 修订：所选行有可认领公共在途时，提交前会先弹
+/// 「本次下单是否使用可用数量抵扣？」。这里默认选「使用可用数量抵扣(原样)」
+/// 点继续；要断言足额下单的用例用 [_chooseFullOrderNoClaim]。
+Future<void> _dismissClaimUsageAskIfPresent(WidgetTester tester) async {
+  if (find.text('本次下单是否使用可用数量抵扣？').evaluate().isNotEmpty) {
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
+    );
+    await tester.pumpAndSettle();
+  }
+}
+
+/// 在「是否使用可用数量抵扣」弹窗里选「足额下单，不扣可用数量」并继续。
+Future<void> _chooseFullOrderNoClaim(WidgetTester tester) async {
+  await tester.tap(find.text('足额下单，不扣可用数量'));
+  await tester.pump();
+  await tester.tap(
+    find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// 主表「下单(N)」→ (可用数量抵扣询问) → 确认框「下达」。
 Future<void> _submitMainTable(WidgetTester tester) async {
   requests.clear();
   await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
   await tester.pumpAndSettle();
+  await _dismissClaimUsageAskIfPresent(tester);
   await tester.tap(
     find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
   );
   await _drain(tester);
 }
 
-/// 补料页「一键下单」→ 确认框「下达」。
+/// 补料页「一键下单」→ (可用数量抵扣询问) → 确认框「下达」。
 Future<void> _submitShortagePage(WidgetTester tester) async {
   requests.clear();
   await tester.tap(find.byKey(const Key('child-shortage-submit')));
   await tester.pumpAndSettle();
+  await _dismissClaimUsageAskIfPresent(tester);
   await tester.tap(
     find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
   );
@@ -179,6 +203,53 @@ void main() {
       expect(_pageLine('m-c1'), findsNothing);
     });
   }
+
+  testWidgets('有可认领公共在途时默认「用可用抵扣」：请求不带 skipAutoClaim', (tester) async {
+    await _pump(
+      tester,
+      issuedRoot: true,
+      mutate: (data) {
+        final copper = _line(data, 'm-c1');
+        copper['netShortageQty'] = 0;
+        copper['additionalSupplyRecommendedQty'] = 500;
+        copper['sharedFutureClaimableQty'] = 500;
+        copper['planningUncoveredQty'] = 500;
+        return data;
+      },
+    );
+    await tester.tap(find.byKey(const Key('child-shortage-banner-go')));
+    await tester.pumpAndSettle();
+    await _submitShortagePage(tester);
+    expect(_writes(), isNotEmpty);
+    expect(_writes().single.body?.containsKey('skipAutoClaim'), isFalse);
+  });
+
+  testWidgets('选择「足额下单，不扣可用数量」：请求带 skipAutoClaim=true', (tester) async {
+    await _pump(
+      tester,
+      issuedRoot: true,
+      mutate: (data) {
+        final copper = _line(data, 'm-c1');
+        copper['netShortageQty'] = 0;
+        copper['additionalSupplyRecommendedQty'] = 500;
+        copper['sharedFutureClaimableQty'] = 500;
+        copper['planningUncoveredQty'] = 500;
+        return data;
+      },
+    );
+    await tester.tap(find.byKey(const Key('child-shortage-banner-go')));
+    await tester.pumpAndSettle();
+    requests.clear();
+    await tester.tap(find.byKey(const Key('child-shortage-submit')));
+    await tester.pumpAndSettle();
+    await _chooseFullOrderNoClaim(tester);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    );
+    await _drain(tester);
+    expect(_writes(), isNotEmpty);
+    expect(_writes().last.body?['skipAutoClaim'], isTrue);
+  });
 
   testWidgets('权威待办理量为零时不把已落实内部供给列成需要再次下单', (tester) async {
     await _pump(

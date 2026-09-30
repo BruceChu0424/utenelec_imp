@@ -99,9 +99,11 @@ class AuditTriggerCoverageMigrationContractTest {
             new FullGroup("master", "data_change", false,
                     "基础资料主档: 人工维护, 被所有单据引用",
                     Set.of(
-                        "accounts", "client_categories", "client_ship_addresses", "clients",
+                        "accounts", "business_column_definitions", "platform_column_definitions", "platform_record_fields",
+                        "sales_alias_document_evidence", "client_categories", "client_ship_addresses", "clients",
                         "colors", "currencies", "finance_payment_methods", "goods",
-                        "goods_bom_items",
+                        "goods_bom_items", "goods_cost_sheets", "goods_cost_snapshots", "goods_cost_templates",
+                        "goods_cost_imports", "goods_cost_import_mappings",
                         "goods_weight_profiles",
                         "goods_import_batches", "goods_import_creations",
                         "master_code_change_batches", "material_categories", "mould_categories",
@@ -214,7 +216,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "finance_expenses", "finance_other_income_items", "finance_other_incomes",
                         "finance_payment_lines", "finance_payments", "finance_receipt_lines",
                         "finance_receipt_source_allocations", "finance_receipts",
-                        "finance_reconciliations", "fixed_assets", "gl_entries", "gl_vouchers")));
+                        "finance_reconciliations", "fixed_assets", "gl_entries", "gl_vouchers",
+                        "inventory_cost_gl_policy", "inventory_cost_gl_periods", "inventory_cost_gl_period_choices")));
 
     /** COLUMN_SCOPED: 只审计人为决定的列; 派生列的变化不留行审计。 */
     static final List<ScopedTable> COLUMN_SCOPED = List.of(
@@ -278,7 +281,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "stock_value_production_cost_dirty", "stock_value_production_cost_tasks",
                         "stock_value_tasks", "subcontract_outbound_preparation_commands",
                         "task_claims", "warehouse_arrival_registration_commands",
-                        "workshop_material_commands",
+                        "workshop_material_commands", "goods_cost_commands",
                         // V742 AI 识别任务队列: 上传与结果只给提交人本人, 终态即清空文件。
                         "ai_jobs")),
             new NoneGroup("reservation",
@@ -293,7 +296,15 @@ class AuditTriggerCoverageMigrationContractTest {
                     Set.of(
                         "user_preferences", "warehouse_goods_place_preferences",
                         // V742 客户货品对照与客户文件版式: 保存单据后自动学习; 用户删除对照另写显式审计事件。
-                        "client_goods_aliases", "sales_intake_layouts")),
+                        "client_goods_aliases", "sales_intake_layouts", "platform_column_usage",
+                        "sales_document_learning_receipts", "sales_intake_layout_learning_evidence",
+                        // V745: sanitized reusable workbooks stay out of audit JSON; adoption/export
+                        // have explicit actor/document events and immutable template versions.
+                        "sales_quote_template_candidates", "sales_quote_customer_templates",
+                        "sales_quote_template_versions", "sales_quote_template_evidence")),
+            new NoneGroup("cost_posting_evidence",
+                    "不可变实际成本过账关联保留操作者、价值事件与凭证身份；价值账和请求级业务事件承载审计，不复制整行",
+                    Set.of("inventory_cost_gl_links")),
             new NoneGroup("derived",
                     "派生投影与计算结果: 可由单据和流水重算, 每次重算整行复制只是噪声",
                     Set.of(

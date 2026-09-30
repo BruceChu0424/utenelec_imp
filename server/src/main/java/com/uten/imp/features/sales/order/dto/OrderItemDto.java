@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 销售订货明细返回 DTO。 */
 @Getter
 @AllArgsConstructor
-public class OrderItemDto {
+public class OrderItemDto extends com.uten.imp.features.sales.SalesDocumentLineResponse {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;

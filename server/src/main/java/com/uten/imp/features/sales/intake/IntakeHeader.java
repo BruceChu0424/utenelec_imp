@@ -16,6 +16,7 @@ final class IntakeHeader {
     final List<String> emails = new ArrayList<>();
     final List<String> phones = new ArrayList<>();
     String taxId;
+    String website;
     String docNo;
     String docDate;
     String incoterm;
@@ -70,6 +71,7 @@ final class IntakeHeader {
         out.put("emails", List.copyOf(emails));
         out.put("phones", List.copyOf(phones));
         out.put("taxId", taxId);
+        out.put("website", website);
         out.put("docNo", docNo);
         out.put("docDate", docDate);
         out.put("incoterm", incoterm);

@@ -442,6 +442,8 @@ class _ProductionFinishedInboundTasksViewState
         ],
       ),
       body: MasterDataTableView<ProductionFinishedInboundTask>(
+        tableKey:
+            'features.warehouse.widgets.production_finished_inbound_tasks_view.ProductionFinishedInboundTasksViewState._buildTable.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('production-finished-inbound-task-table'),

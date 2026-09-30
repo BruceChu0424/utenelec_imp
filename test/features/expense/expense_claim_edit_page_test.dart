@@ -143,7 +143,10 @@ void main() {
       final repo = _FakeExpenseRepository()
         ..detail = _rejectedClaim(amount: 9999999999.99);
       await _pump(tester, repo);
-      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.drag(
+        find.byKey(const Key('expense-edit-scroll')),
+        const Offset(0, -600),
+      );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
@@ -161,11 +164,17 @@ void main() {
     expect(find.textContaining('李财务'), findsOneWidget);
     // 预填标题与明细。
     expect(find.text('客户拜访差旅'), findsOneWidget);
-    await tester.drag(find.byType(ListView), const Offset(0, -400));
+    await tester.drag(
+      find.byKey(const Key('expense-edit-scroll')),
+      const Offset(0, -400),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('差旅费'), findsOneWidget);
     // 合计大写（银发〔1997〕393 号口径）。
-    await tester.drag(find.byType(ListView), const Offset(0, -350));
+    await tester.drag(
+      find.byKey(const Key('expense-edit-scroll')),
+      const Offset(0, -350),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('人民币叁佰元整'), findsOneWidget);
   });

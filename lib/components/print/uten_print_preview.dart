@@ -7,6 +7,11 @@
 // - 下载 Excel：可选，复用 UtenExportButton（加密 xlsx 走后端导出，与页内导出口径一致）；
 // - 数据：loader 返回"显示就绪"的表头 + 行（报表页用 formatReportCell 格式化，与页面表格同口径）。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../shared/platform_tables/table_column_projection.dart';
+import '../../shared/platform_tables/platform_table_models.dart';
+import '../../shared/platform_tables/platform_table_repository.dart';
+import '../../shared/business_columns/business_column.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:pdf/pdf.dart';
@@ -21,10 +26,187 @@ import '../buttons/uten_export_button.dart';
 
 /// 打印表格数据：表头 + 行（均为显示就绪字符串）。
 class UtenPrintTable {
-  const UtenPrintTable({required this.headers, required this.rows});
+  const UtenPrintTable({
+    required this.headers,
+    required this.rows,
+    this.columnKeys,
+    this.rowIds,
+    this.factValues,
+    this.columnWidths,
+  });
 
   final List<String> headers;
   final List<List<String>> rows;
+
+  /// Stable schema IDs; labels are never used as field identity.
+  final List<String>? columnKeys;
+  final List<String?>? rowIds;
+
+  /// Unformatted, authorized facts for report calculations; one map per row.
+  final List<Map<String, String?>>? factValues;
+  final List<double>? columnWidths;
+}
+
+/// Shared by paper preview and PDF; stale/missing field bindings fail visibly.
+Future<UtenPrintTable> projectUtenPrintTable(
+  UtenPrintTable source,
+  TableColumnProjection? projection, {
+  PlatformTableRepository? repository,
+}) async {
+  if (projection == null) return source;
+  final keys = source.columnKeys;
+  if (keys == null ||
+      keys.length != source.headers.length ||
+      keys.toSet().length != keys.length) {
+    throw const FormatException('打印数据尚未绑定唯一字段编号，不能套用当前表头');
+  }
+  if (source.rows.any((row) => row.length != keys.length)) {
+    throw const FormatException('打印数据列数与字段编号不一致，请刷新后重试');
+  }
+  if (projection.columns.isEmpty ||
+      projection.columns.map((c) => c.key).toSet().length !=
+          projection.columns.length) {
+    throw const FormatException('当前打印表头为空或有重复字段');
+  }
+  final indexes = {for (var i = 0; i < keys.length; i++) keys[i]: i};
+  int? indexOf(TableProjectedColumn column) =>
+      indexes[column.sourceKey ??
+          projection.sourceKeys[column.key] ??
+          column.key] ??
+      indexes[column.key];
+  final dynamicColumns = projection.columns
+      .where((column) => indexOf(column) == null)
+      .toList();
+  final records = <String, PlatformRowValues>{};
+  PlatformTableCapabilities? capabilities;
+  if (dynamicColumns.isNotEmpty) {
+    if (repository == null ||
+        projection.scope == null ||
+        dynamicColumns.any((c) => !c.key.startsWith('platform:'))) {
+      throw const FormatException('当前表头包含尚未加载的字段，不能省略后继续打印');
+    }
+    final scopes = await repository.scopes();
+    final matches = scopes.where((s) => s.scope == projection.scope);
+    if (matches.isEmpty) throw const FormatException('当前账号不能读取这些扩展字段');
+    capabilities = matches.first;
+    if (capabilities.supportsValues) {
+      if (source.rowIds == null ||
+          source.rowIds!.length != source.rows.length ||
+          source.rowIds!.any((id) => id == null || id.isEmpty)) {
+        throw const FormatException('打印扩展字段需要每行的真实记录编号');
+      }
+      final ids = source.rowIds!.whereType<String>().toSet().toList();
+      for (var start = 0; start < ids.length; start += 200) {
+        final end = (start + 200).clamp(0, ids.length);
+        for (final row in await repository.rows(
+          projection.scope!,
+          ids.sublist(start, end),
+          columnIds: dynamicColumns
+              .map((c) => c.key.substring('platform:'.length))
+              .toList(),
+        )) {
+          records[row.recordId] = row;
+        }
+      }
+      if (ids.any((id) => !records.containsKey(id))) {
+        throw const FormatException('部分打印记录已失效或不在查看范围内');
+      }
+    }
+  }
+  final definitions = <String, PlatformColumnDefinition>{};
+  if (dynamicColumns.isNotEmpty && capabilities?.supportsValues == false) {
+    final authorized = await repository!.search(
+      projection.scope!,
+      '',
+      ids: dynamicColumns
+          .map((column) => column.key.substring('platform:'.length))
+          .toList(),
+    );
+    for (final definition in authorized) {
+      definitions[definition.key] = definition;
+    }
+    if (dynamicColumns.any((column) => !definitions.containsKey(column.key))) {
+      throw const FormatException('打印字段缺少当前服务器授权定义，请刷新表格');
+    }
+  }
+  if (source.factValues != null &&
+      source.factValues!.length != source.rows.length) {
+    throw const FormatException('打印计算依据与明细行数不一致');
+  }
+  String? calculate(int row, String key, Set<String> visiting) {
+    if (visiting.contains(key)) throw const FormatException('计算展示列存在循环引用');
+    final definition = definitions[key];
+    if (definition?.formula == null || definition?.calculated != true) {
+      throw const FormatException('打印字段缺少服务器定义，请刷新表格');
+    }
+    if (definition!.priceProtected && capabilities?.priceVisible != true) {
+      throw const FormatException('当前账号不能打印所选计算列的价格信息');
+    }
+    final allowed = {
+      for (final fact in capabilities?.facts ?? const <PlatformTableFact>[])
+        fact.key: fact,
+    };
+    return definition.formula!.calculate((operand) {
+      if (operand.constant != null) {
+        return businessExactDecimal(operand.constant);
+      }
+      if (operand.fact != null) {
+        final fact = allowed[operand.fact];
+        if (fact == null ||
+            fact.priceProtected && capabilities?.priceVisible != true) {
+          throw const FormatException('当前账号不能打印计算列引用的业务字段');
+        }
+        final value = platformExactFact(
+          source.factValues?[row][operand.fact] ??
+              source.factValues?[row][projection.sourceKeys[operand.fact]],
+        );
+        if (value == null) {
+          throw FormatException('打印缺少“${fact.name}”的原始数字，不能用格式化文字代替');
+        }
+        return value;
+      }
+      final referenceKey = 'platform:${operand.columnId}';
+      if (!definitions.containsKey(referenceKey)) {
+        throw const FormatException('打印计算列缺少依赖定义，请刷新表格');
+      }
+      return calculate(row, referenceKey, {...visiting, key});
+    });
+  }
+
+  return UtenPrintTable(
+    headers: projection.columns.map((c) => c.label).toList(growable: false),
+    columnKeys: projection.columns.map((c) => c.key).toList(growable: false),
+    columnWidths: projection.columns
+        .map((c) => c.width.isFinite ? c.width.clamp(1.0, 2000.0) : 100.0)
+        .toList(growable: false),
+    rowIds: source.rowIds,
+    factValues: source.factValues,
+    rows: [
+      for (var row = 0; row < source.rows.length; row++)
+        [
+          for (final column in projection.columns)
+            if (indexOf(column) != null)
+              source.rows[row][indexOf(column)!]
+            else if (capabilities?.supportsValues == false)
+              calculate(row, column.key, {}) ?? '—'
+            else
+              _printRecordValue(records[source.rowIds![row]], column.key),
+        ],
+    ],
+  );
+}
+
+String _printRecordValue(PlatformRowValues? row, String key) {
+  final cells = row?.cells.where((cell) => key == 'platform:${cell.columnId}');
+  if (cells == null || cells.isEmpty) {
+    throw const FormatException('扩展字段未完整返回，不能省略后继续打印');
+  }
+  final cell = cells.first;
+  if (cell.masked) return '***';
+  if (cell.error != null) {
+    throw const FormatException('扩展字段尚未计算成功，请刷新后重试打印');
+  }
+  return cell.value ?? '';
 }
 
 /// 弹出通用 A4 打印预览。
@@ -39,7 +221,30 @@ Future<void> showUtenPrintPreview({
   Map<String, dynamic>? exportBody,
   String? exportFilename,
   String? exportPermission,
+  String? tableKey,
+  bool applyTableProjection = true,
 }) {
+  final projection = applyTableProjection
+      ? TableColumnProjectionScope.resolve(context, tableKey)
+      : null;
+  if (applyTableProjection &&
+      TableColumnProjectionScope.hasCurrentTables(context) &&
+      projection == null) {
+    context.appError('当前页面有多张表格，请明确选择要预览的表头');
+    return Future<void>.value();
+  }
+  PlatformTableRepository? repository;
+  if (projection?.columns.any((column) => column.key.startsWith('platform:')) ==
+      true) {
+    try {
+      repository = ProviderScope.containerOf(
+        context,
+        listen: false,
+      ).read(platformTableRepositoryProvider);
+    } on StateError {
+      /* Standalone projections fail visibly if required dynamic data has no repository. */
+    }
+  }
   return showDialog<void>(
     context: context,
     builder: (_) => _UtenPrintPreviewDialog(
@@ -52,6 +257,8 @@ Future<void> showUtenPrintPreview({
       exportBody: exportBody,
       exportFilename: exportFilename,
       exportPermission: exportPermission,
+      projection: projection,
+      repository: repository,
     ),
   );
 }
@@ -69,6 +276,8 @@ class UtenPrintPreviewButton extends StatelessWidget {
     this.exportBody,
     this.exportFilename,
     this.exportPermission,
+    this.tableKey,
+    this.applyTableProjection = true,
     this.label = '预览打印',
     this.type = UtenButtonType.tonal,
     this.size = UtenButtonSize.small,
@@ -85,6 +294,8 @@ class UtenPrintPreviewButton extends StatelessWidget {
   final Map<String, dynamic>? exportBody;
   final String? exportFilename;
   final String? exportPermission;
+  final String? tableKey;
+  final bool applyTableProjection;
 
   /// 按钮文字（默认"预览打印"）。
   final String label;
@@ -116,6 +327,8 @@ class UtenPrintPreviewButton extends StatelessWidget {
         exportBody: exportBody,
         exportFilename: exportFilename,
         exportPermission: exportPermission,
+        tableKey: tableKey,
+        applyTableProjection: applyTableProjection,
       ),
       child: Text(label),
     );
@@ -133,6 +346,8 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
     this.exportBody,
     this.exportFilename,
     this.exportPermission,
+    this.projection,
+    this.repository,
   });
 
   final String title;
@@ -146,6 +361,8 @@ class _UtenPrintPreviewDialog extends StatefulWidget {
   final Map<String, dynamic>? exportBody;
   final String? exportFilename;
   final String? exportPermission;
+  final TableColumnProjection? projection;
+  final PlatformTableRepository? repository;
 
   @override
   State<_UtenPrintPreviewDialog> createState() =>
@@ -164,12 +381,19 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
 
   Future<void> _load() async {
     try {
-      final t = await widget.loader();
+      final loaded = await widget.loader();
+      final t = await projectUtenPrintTable(
+        loaded,
+        widget.projection,
+        repository: widget.repository,
+      );
       if (!mounted) return;
       setState(() => _table = t);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      setState(() => _error = '加载数据失败'); // TODO(l10n): 补 arb
+      setState(
+        () => _error = error is FormatException ? error.message : '加载数据失败，请重试',
+      ); // TODO(l10n): 补 arb
     }
   }
 
@@ -209,6 +433,10 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
             ],
             pw.SizedBox(height: 10),
             pw.Table(
+              columnWidths: {
+                for (var i = 0; i < t.headers.length; i++)
+                  i: pw.FlexColumnWidth(t.columnWidths?[i] ?? 1),
+              },
               border: pw.TableBorder.all(width: 0.5),
               children: [
                 pw.TableRow(
@@ -304,7 +532,11 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
                         endpoint: widget.exportEndpoint!,
                         report: widget.exportReport ?? '',
                         queryParams: widget.exportQuery ?? const {},
-                        bodyParams: widget.exportBody ?? const {},
+                        bodyParams: {
+                          ...?widget.exportBody,
+                          if (widget.projection != null)
+                            'columnProjection': widget.projection!.toJson(),
+                        },
                         filename: widget.exportFilename ?? widget.title,
                         requiredPermission: widget.exportPermission,
                         label: '下载Excel', // TODO(l10n): 补 arb
@@ -413,7 +645,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
           Table(
             columnWidths: {
               for (var i = 0; i < t.headers.length; i++)
-                i: const FlexColumnWidth(),
+                i: FlexColumnWidth(t.columnWidths?[i] ?? 1),
             },
             border: TableBorder.all(color: Colors.black54, width: 0.6),
             children: [

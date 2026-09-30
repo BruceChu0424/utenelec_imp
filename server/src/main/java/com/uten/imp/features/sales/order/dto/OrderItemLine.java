@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 销售订货保存请求中的明细行。 */
 @Getter
 @Setter
-public class OrderItemLine implements ServerDerivedAmounts {
+public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnRequest implements ServerDerivedAmounts {
 
     /** 被驳回订单修订时用于稳定匹配既有行；新行留空。 */
     private UUID id;

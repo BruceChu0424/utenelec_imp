@@ -42,6 +42,15 @@ public final class ZipSafety {
 
     /** 检查通过返回全部条目名; 不通过抛 422(用户能看懂的中文)。 */
     public static List<String> inspectSpreadsheet(byte[] zip) {
+        return inspectSpreadsheet(zip, false);
+    }
+
+    /** Only evidence readers may retain external-link metadata; they must never evaluate formulas or open links. */
+    public static List<String> inspectSpreadsheetEvidence(byte[] zip) {
+        return inspectSpreadsheet(zip, true);
+    }
+
+    private static List<String> inspectSpreadsheet(byte[] zip, boolean evidenceOnly) {
         if (zip.length > MAX_COMPRESSED_BYTES) {
             throw BoundedBodyReader.tooLarge(MAX_COMPRESSED_BYTES);
         }
@@ -63,7 +72,7 @@ public final class ZipSafety {
                 if (entry.getMethod() != ZipEntry.STORED && entry.getMethod() != ZipEntry.DEFLATED) {
                     throw rejected("这个 Excel 文件的压缩方式不支持, 请另存为普通的 .xlsx 后再试");
                 }
-                rejectActiveContent(name);
+                rejectActiveContent(name, evidenceOnly);
                 boolean isMedia = isMedia(name);
                 boolean isSheet = isSheetXml(name);
                 long entryBytes = 0;
@@ -112,11 +121,11 @@ public final class ZipSafety {
         return lower.startsWith("xl/worksheets/") && lower.endsWith(".xml") && !lower.contains("/_rels/");
     }
 
-    private static void rejectActiveContent(String name) {
+    private static void rejectActiveContent(String name, boolean evidenceOnly) {
         String lower = name.toLowerCase(Locale.ROOT);
         String file = lower.substring(lower.lastIndexOf('/') + 1);
         if (file.startsWith("vbaproject") || file.startsWith("vbadata")
-                || lower.startsWith("xl/externallinks/")
+                || (!evidenceOnly && lower.startsWith("xl/externallinks/"))
                 || lower.startsWith("xl/activex/")
                 || lower.startsWith("xl/embeddings/")
                 || lower.contains("oleobject")

@@ -236,6 +236,14 @@
 
     <build>
         <directory>${uten.build.directory}</directory>
+        <resources>
+            <resource><directory>src/main/resources</directory></resource>
+            <resource>
+                <directory>../assets/fonts</directory>
+                <targetPath>fonts</targetPath>
+                <includes><include>NotoSansSCFull.ttf</include><include>OFL.txt</include></includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

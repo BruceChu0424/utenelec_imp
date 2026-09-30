@@ -180,6 +180,8 @@ public class SalesQuoteRevisionLog {
             putDecimal(line, "amount", item.getAmountOriginal());
             putDecimal(line, "clientPrice", item.getClientPrice());
             putText(line, "clientModel", item.getClientModel());
+            line.set("extraColumns", objectMapper.valueToTree(item.getExtraColumns()));
+            line.put("goodsNameEn", item.getGoodsNameEnSnapshot());
         }
         try {
             return objectMapper.writeValueAsString(root);

@@ -12,6 +12,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/formatters/china_number_format.dart';
@@ -322,15 +324,26 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
       );
     },
   ),
+  // 2026-09-29 用户口径：名称列只放名称，编号/颜色各占一列。
   MasterColumnDef(
     key: 'name',
     label: '货品',
     width: 200,
-    value: (r) => [
-      r.name ?? '—',
-      if (r.code != null) r.code!,
-      if (r.colorName != null) r.colorName!,
-    ].join(' '),
+    value: (r) => r.name ?? '—',
+  ),
+  MasterColumnDef(
+    key: 'goodsCode',
+    label: '编号',
+    width: 110,
+    value: (r) => UtenGoodsAttributeCell.text(r.code),
+    cellBuilder: (context, r) => UtenGoodsAttributeCell(r.code),
+  ),
+  MasterColumnDef(
+    key: 'colorName',
+    label: '颜色',
+    width: 84,
+    value: (r) => UtenGoodsAttributeCell.text(r.colorName),
+    cellBuilder: (context, r) => UtenGoodsAttributeCell(r.colorName),
   ),
   MasterColumnDef(
     key: 'counterpart',
@@ -388,12 +401,10 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
     label: '依据可靠度',
     width: 100,
     value: (r) => r.tierUsed?.label ?? '—',
-    cellBuilder: (_, r) => r.tierUsed == null
-        ? const Text('—')
-        : Align(
-            alignment: Alignment.centerLeft,
-            child: WeightTierBadge(tier: r.tierUsed!),
-          ),
+    // 2026-09-27 用户口径「格内胶囊改单元格背景色」：档位色铺整格。
+    cellColor: (context, r) => r.tierUsed == null
+        ? null
+        : udenStatusBadgeCellColor(context, weightTierBadgeType(r.tierUsed!)),
   ),
 ];
 
@@ -512,9 +523,10 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     label: '可靠度',
     width: 90,
     value: (r) => r.tier?.label ?? WeightTier.red.label,
-    cellBuilder: (_, r) => Align(
-      alignment: Alignment.centerLeft,
-      child: WeightTierBadge(tier: r.tier ?? WeightTier.red),
+    // 2026-09-27 用户口径「格内胶囊改单元格背景色」：档位色铺整格。
+    cellColor: (context, r) => udenStatusBadgeCellColor(
+      context,
+      weightTierBadgeType(r.tier ?? WeightTier.red),
     ),
   ),
   MasterColumnDef(

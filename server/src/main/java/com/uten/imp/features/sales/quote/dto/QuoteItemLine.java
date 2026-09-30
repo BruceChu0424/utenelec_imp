@@ -19,7 +19,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-public class QuoteItemLine implements ServerDerivedAmounts {
+public class QuoteItemLine extends com.uten.imp.common.columns.ExtraColumnRequest implements ServerDerivedAmounts {
 
     /** 既有明细行 id(编辑草稿时回传, 用于保留冻结单价与修订对照); 新行留空。 */
     private UUID id;

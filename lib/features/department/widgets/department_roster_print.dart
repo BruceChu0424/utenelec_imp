@@ -20,11 +20,24 @@ Future<void> showDepartmentRosterPrint({
   final l10n = AppLocalizations.of(context);
   return showUtenPrintPreview(
     context: context,
+    applyTableProjection:
+        false, // Dedicated roster, independent of the department tree table.
     title: '${node.name} · 员工花名册',
     subtitle: '含下级部门 · 负责人/领导优先排序 · 工龄按打印当天动态计算',
     loader: () async {
       final employees = await _loadAllEmployees(ref, node.id);
       return UtenPrintTable(
+        columnKeys: const [
+          'code',
+          'fullName',
+          'gender',
+          'departmentName',
+          'positionName',
+          'positionLevel',
+          'hireDate',
+          'workYears',
+        ],
+        rowIds: [for (final e in employees) e.id],
         headers: const ['工号', '姓名', '性别', '部门', '岗位', '职级', '入职日期', '工龄'],
         rows: [
           for (final e in employees)

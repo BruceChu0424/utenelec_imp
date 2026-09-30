@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -459,6 +460,8 @@ class _SubcontractShortDeliveryPageState
     final openSeg =
         pendingSeg || _seg == SubcontractShortDeliverySegment.tolerant;
     return MasterDataTableView<SubcontractShortDeliveryCase>(
+      tableKey:
+          'features.subcontract.pages.subcontract_short_delivery_page.SubcontractShortDeliveryPageState._buildTable.1',
       key: const Key('subcontract-short-delivery-table'),
       // primary:true → 表体参与「分段行折叠 → 表格内滚」联动。
       primary: true,
@@ -545,14 +548,9 @@ class _SubcontractShortDeliveryPageState
           label: '程度',
           width: 130,
           value: (c) => c.severityLabel,
-          cellBuilder: (context, c) => Align(
-            alignment: Alignment.centerLeft,
-            child: UtenStatusBadge(
-              label: c.severityLabel,
-              type: _severityType(c),
-              size: UtenStatusBadgeSize.small,
-            ),
-          ),
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+          cellColor: (context, c) =>
+              udenStatusBadgeCellColor(context, _severityType(c)),
         ),
         MasterColumnDef(
           key: 'receiptBillNo',
@@ -622,14 +620,9 @@ class _SubcontractShortDeliveryPageState
           width: 160,
           value: (c) =>
               c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
-          cellBuilder: (context, c) => Align(
-            alignment: Alignment.centerLeft,
-            child: UtenStatusBadge(
-              label: c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
-              type: _statusType(c),
-              size: UtenStatusBadgeSize.small,
-            ),
-          ),
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+          cellColor: (context, c) =>
+              udenStatusBadgeCellColor(context, _statusType(c)),
         ),
         MasterColumnDef(
           key: 'ownerName',

@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 一般费用单保存请求中的明细行。 */
 @Getter
 @Setter
-public class FinanceExpenseItemInput implements ServerDerivedAmounts {
+public class FinanceExpenseItemInput extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

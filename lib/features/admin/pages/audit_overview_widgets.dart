@@ -1074,6 +1074,8 @@ class _AuditEventTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MasterDataTableView<AuditLogEntry>(
+    tableKey:
+        'features.admin.pages.audit_overview_widgets.AuditEventTable.build.1',
     key: const Key('audit-event-table'),
     embedded: true,
     stickyHeaderPinned: stickyHeaderPinned,
@@ -1127,6 +1129,19 @@ class _AuditEventTable extends StatelessWidget {
         width: 120,
         value: (row) =>
             _auditOutcomeLabel(row.result, row.resultLabel, row.statusCode),
+        // 2026-09-27 用户口径「表格状态列整格底色」：失败=红 / 成功=绿 /
+        // 未知结果=中性灰。
+        cellColor: (context, row) => udenStatusBadgeCellColor(
+          context,
+          _isAuditFailure(row.result, row.statusCode)
+              ? UtenStatusBadgeType.danger
+              : (row.statusCode != null &&
+                        row.statusCode! >= 200 &&
+                        row.statusCode! < 400) ||
+                    _isAuditSuccess(row.result, row.statusCode)
+              ? UtenStatusBadgeType.success
+              : UtenStatusBadgeType.neutral,
+        ),
       ),
       MasterColumnDef(
         key: 'risk',
@@ -1185,83 +1200,89 @@ class _AuditSessionTable extends StatelessWidget {
   final ValueNotifier<bool>? stickyHeaderPinned;
 
   @override
-  Widget build(BuildContext context) =>
-      MasterDataTableView<AuditSessionSummary>(
-        key: const Key('audit-session-table'),
-        embedded: true,
-        stickyHeaderPinned: stickyHeaderPinned,
-        columns: [
-          const MasterColumnDef(
-            key: 'actor',
-            label: '操作人',
-            width: 170,
-            value: auditSessionActor,
-          ),
-          MasterColumnDef(
-            key: 'login',
-            label: '登录时间 (北京时间)',
-            width: 200,
-            value: (row) => auditBeijingTime(row.loginAt, fallback: '开始时间未知'),
-          ),
-          const MasterColumnDef(
-            key: 'status',
-            label: '会话状态',
-            width: 130,
-            value: auditSessionStatusLabel,
-          ),
-          MasterColumnDef(
-            key: 'device',
-            label: '设备',
-            width: 210,
-            value: (row) => row.deviceLabel ?? '未提供设备信息',
-          ),
-          MasterColumnDef(
-            key: 'operations',
-            label: '人工操作',
-            width: 110,
-            type: 'number',
-            value: (row) => '${row.operationCount}',
-          ),
-          MasterColumnDef(
-            key: 'failures',
-            label: '失败操作',
-            width: 110,
-            type: 'number',
-            value: (row) => '${row.failureCount}',
-          ),
-          MasterColumnDef(
-            key: 'postLogout',
-            label: '退出后操作',
-            width: 130,
-            type: 'number',
-            value: (row) => '${row.postLogoutCount}',
-          ),
-          MasterColumnDef(
-            key: 'logout',
-            label: '退出 / 最后活动',
-            width: 210,
-            value: (row) => auditBeijingTime(
-              row.logoutAt ?? row.lastActivityAt ?? row.firstActivityAt,
-              fallback: '暂无活动时间',
-            ),
-          ),
-          MasterColumnDef(
-            key: 'credential',
-            label: '凭证状态',
-            width: 170,
-            value: (row) => row.refreshCredentialStatusLabel ?? '—',
-          ),
-        ],
-        items: sessions,
-        facets: const {},
-        nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
-        onRowTap: onOpen,
-        rowKeyOf: (row) => row.sessionId,
-        rowWidgetKeyOf: (row) => ValueKey('audit-session-${row.sessionId}'),
-        emptyMessage: '当前范围内没有登录会话',
-      );
+  Widget build(
+    BuildContext context,
+  ) => MasterDataTableView<AuditSessionSummary>(
+    tableKey:
+        'features.admin.pages.audit_overview_widgets.AuditSessionTable.build.1',
+    key: const Key('audit-session-table'),
+    embedded: true,
+    stickyHeaderPinned: stickyHeaderPinned,
+    columns: [
+      const MasterColumnDef(
+        key: 'actor',
+        label: '操作人',
+        width: 170,
+        value: auditSessionActor,
+      ),
+      MasterColumnDef(
+        key: 'login',
+        label: '登录时间 (北京时间)',
+        width: 200,
+        value: (row) => auditBeijingTime(row.loginAt, fallback: '开始时间未知'),
+      ),
+      const MasterColumnDef(
+        key: 'status',
+        label: '会话状态',
+        width: 130,
+        value: auditSessionStatusLabel,
+      ),
+      MasterColumnDef(
+        key: 'device',
+        label: '设备',
+        width: 210,
+        value: (row) => row.deviceLabel ?? '未提供设备信息',
+      ),
+      MasterColumnDef(
+        key: 'operations',
+        label: '人工操作',
+        width: 110,
+        type: 'number',
+        value: (row) => '${row.operationCount}',
+        exactValueOf: (row) => row.operationCount.toString(),
+      ),
+      MasterColumnDef(
+        key: 'failures',
+        label: '失败操作',
+        width: 110,
+        type: 'number',
+        value: (row) => '${row.failureCount}',
+        exactValueOf: (row) => row.failureCount.toString(),
+      ),
+      MasterColumnDef(
+        key: 'postLogout',
+        label: '退出后操作',
+        width: 130,
+        type: 'number',
+        value: (row) => '${row.postLogoutCount}',
+        exactValueOf: (row) => row.postLogoutCount.toString(),
+      ),
+      MasterColumnDef(
+        key: 'logout',
+        label: '退出 / 最后活动',
+        width: 210,
+        value: (row) => auditBeijingTime(
+          row.logoutAt ?? row.lastActivityAt ?? row.firstActivityAt,
+          fallback: '暂无活动时间',
+        ),
+      ),
+      MasterColumnDef(
+        key: 'credential',
+        label: '凭证状态',
+        width: 170,
+        value: (row) => row.refreshCredentialStatusLabel ?? '—',
+      ),
+    ],
+    items: sessions,
+    facets: const {},
+    nullCounts: const {},
+    filters: const {},
+    onFilterChanged: (_, _) {},
+    onRowTap: onOpen,
+    rowKeyOf: (row) => row.sessionId,
+    rowWidgetKeyOf: (row) => ValueKey('audit-session-${row.sessionId}'),
+    emptyMessage: '当前范围内没有登录会话',
+  );
 }
 
 String _shortId(String value) => value.length <= 13

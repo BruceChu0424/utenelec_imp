@@ -445,10 +445,10 @@ class _MaterialTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 2026-09-29 用户口径：名称只显名称、型号/规格（86X86 类）不再显示；
+    // 副行保留 编号 · 分类。
     final details = <String>[
       if (item.code.isNotEmpty) item.code,
-      if (item.model.isNotEmpty) item.model,
-      if (item.spec.isNotEmpty) item.spec,
       if (item.categoryName.isNotEmpty) item.categoryName,
     ];
     final hasKnownEvidence =

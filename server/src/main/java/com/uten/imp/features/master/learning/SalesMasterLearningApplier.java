@@ -80,11 +80,30 @@ public class SalesMasterLearningApplier {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Outcome apply(String docType, UUID docId, UUID clientId, UUID actorUserId,
                          SalesLearningPlanner.Plan plan, Map<String, String> clientFields) {
+        return applyBody(docType, docId, clientId, actorUserId, plan, clientFields);
+    }
+
+    @Transactional(readOnly=true)
+    public boolean hasDocumentLearning(String docType, UUID docId) { return aliasLedger.hasActiveEvidence(docType, docId); }
+
+    private com.uten.imp.application.port.SalesLearningReceiptPort receipts;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setLearningReceipts(com.uten.imp.application.port.SalesLearningReceiptPort receipts) { this.receipts = receipts; }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Outcome applyConfirmed(String docType, UUID docId, UUID clientId, UUID actorUserId,
+            SalesLearningPlanner.Plan plan, Map<String,String> clientFields, UUID receiptId) {
+        receipts.requireCurrentSource(receiptId);
+        return applyBody(docType,docId,clientId,actorUserId,plan,clientFields);
+    }
+
+    private Outcome applyBody(String docType, UUID docId, UUID clientId, UUID actorUserId,
+            SalesLearningPlanner.Plan plan, Map<String,String> clientFields) {
         tx.bind();
         List<SalesLearningPlanner.AliasUpsert> aliases = new ArrayList<>();
         Set<UUID> liveGoods = liveGoods(plan.aliases().stream()
                 .map(SalesLearningPlanner.AliasUpsert::goodsId).toList());
-        boolean clientWritable = clientId != null && clientWritable(clientId);
+        boolean clientWritable = clientId != null && clientWritable(clientId, !clientFields.isEmpty());
         for (SalesLearningPlanner.AliasUpsert alias : plan.aliases()) {
             if (!liveGoods.contains(alias.goodsId())) continue;
             // 客户对照要求对客户有写范围; 全局对照只从识别结果原文学习, 不挂在任何客户上。
@@ -92,7 +111,7 @@ public class SalesMasterLearningApplier {
             aliases.add(alias);
         }
 
-        ClientGoodsAliasLedger.Retraction retraction = aliasLedger.retractChangedMappings(docType, docId, aliases);
+        ClientGoodsAliasLedger.Retraction retraction = aliasLedger.retractChangedMappings(docType, docId, aliases, plan.retainedSources());
         // 用户明确改正过的叫法: 系统以前自动学到的错误对照作废, 下次识别直接用改正后的货品。
         Set<ClientGoodsAliasLedger.EvidenceKey> superseded = aliasLedger.supersedeAutoLearned(aliases);
         int written = aliasLedger.upsert(docType, docId, actorUserId, aliases);
@@ -140,12 +159,12 @@ public class SalesMasterLearningApplier {
 
     /** 客户对照要求对客户有写范围(负责人是自己或交接给自己的; 只读共享不算)。 */
     @SuppressWarnings("unchecked")
-    private boolean clientWritable(UUID clientId) {
+    private boolean clientWritable(UUID clientId, boolean willWriteFields) {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT owner_employee_id, is_deleted
                         FROM clients
                         WHERE id = :id
-                        """)
+                        """ + (willWriteFields ? " FOR UPDATE" : " FOR SHARE"))
                 .setParameter("id", clientId)
                 .getResultList();
         if (rows.size() != 1 || Boolean.TRUE.equals(rows.getFirst()[1])) return false;

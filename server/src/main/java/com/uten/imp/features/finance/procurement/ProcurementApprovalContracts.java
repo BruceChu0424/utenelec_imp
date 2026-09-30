@@ -201,7 +201,8 @@ public final class ProcurementApprovalContracts {
             String sourceApplicationNos,
             String sourceAllocations,
             UUID currencyId,
-            boolean displaySnapshotComplete) {
+            boolean displaySnapshotComplete,
+            List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {
     }
 
     /** 审批历史：按提交轮次展示 提交/通过/驳回 事件、操作人与原因。 */

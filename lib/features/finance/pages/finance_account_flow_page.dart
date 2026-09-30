@@ -202,6 +202,12 @@ class _FinanceAccountFlowPageState
     );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
+      columnKeys: [for (final c in data.columns) c.key],
+      rowIds: [for (final r in data.rows) r['id']?.toString()],
+      factValues: [
+        for (final r in data.rows)
+          {for (final entry in r.entries) entry.key: entry.value?.toString()},
+      ],
       headers: [for (final c in data.columns) c.label],
       rows: [
         for (final r in data.rows)
@@ -452,6 +458,8 @@ class _FinanceAccountFlowPageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      tableKey:
+          'features.finance.pages.finance_account_flow_page.FinanceAccountFlowPageState._buildTable.1',
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
       primary: true,
       columns: columns,

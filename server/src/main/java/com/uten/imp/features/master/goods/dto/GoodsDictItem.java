@@ -33,4 +33,6 @@ public class GoodsDictItem {
      * 批量取名后拼入；部门已软删或未解析时为 null。
      */
     private String owningWorkshopName;
+    /** English display name used by foreign-trade sales documents. */
+    private String nameEn;
 }

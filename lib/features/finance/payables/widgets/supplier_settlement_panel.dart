@@ -6,7 +6,7 @@ import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
-import '../../../../components/layout/uten_h_scroll_area.dart';
+import '../../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -16,6 +16,8 @@ import '../../../../shared/auth/permissions.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../models/supplier_settlement.dart';
 import '../repositories/supplier_settlement_repository.dart';
+import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import 'supplier_settlement_actions.dart';
 
 class SupplierSettlementPanel extends ConsumerStatefulWidget {
@@ -223,6 +225,18 @@ class _SupplierSettlementPanelState
       label: '状态',
       width: 130,
       value: (item) => item.statusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：供应商确认=蓝 / 公司确认=青 /
+      // 双方确认=绿 / 争议中=红 / 冻结关闭反转=中性灰。
+      cellColor: (context, item) => udenStatusBadgeCellColor(
+        context,
+        switch (item.status?.toUpperCase()) {
+          'SUPPLIER_CONFIRMED' => UtenStatusBadgeType.info,
+          'INTERNAL_CONFIRMED' => UtenStatusBadgeType.accent,
+          'BOTH_CONFIRMED' => UtenStatusBadgeType.success,
+          'DISPUTED' => UtenStatusBadgeType.danger,
+          _ => UtenStatusBadgeType.neutral,
+        },
+      ),
     ),
   ];
 
@@ -286,6 +300,8 @@ class _SupplierSettlementPanelState
             const SizedBox(height: UtenSpacing.s8),
             Expanded(
               child: MasterDataTableView<SupplierSettlementSummary>(
+                tableKey:
+                    'features.finance.payables.widgets.supplier_settlement_panel.SupplierSettlementPanelState.build.1',
                 primary: true,
                 columns: _columns,
                 items: _result?.items ?? const [],
@@ -539,36 +555,83 @@ class _SupplierSettlementDetailPanelState
               fontWeight: FontWeight.w700,
             ),
           ),
-          Card(
-            child: UtenHScrollArea(
-              child: DataTable(
-                columns: const [
-                  DataColumn(label: Text('来源单')),
-                  DataColumn(label: Text('类型')),
-                  DataColumn(label: Text('期初'), numeric: true),
-                  DataColumn(label: Text('本期立账/红冲'), numeric: true),
-                  DataColumn(label: Text('账面付款'), numeric: true),
-                  DataColumn(label: Text('抵销'), numeric: true),
-                  DataColumn(label: Text('期末'), numeric: true),
-                  DataColumn(label: Text('到期日')),
-                ],
-                rows: [
-                  for (final line in detail.lines)
-                    DataRow(
-                      cells: [
-                        DataCell(Text(line.sourceDocNo ?? '—')),
-                        DataCell(Text(line.openItemKind ?? '—')),
-                        DataCell(Text(line.openingBalanceOriginal ?? '—')),
-                        DataCell(Text(line.periodPostedOriginal ?? '—')),
-                        DataCell(Text(line.periodPaidOriginal ?? '—')),
-                        DataCell(Text(line.periodOffsetOriginal ?? '—')),
-                        DataCell(Text(line.closingBalanceOriginal ?? '—')),
-                        DataCell(Text(line.dueDate ?? '—')),
-                      ],
-                    ),
-                ],
-              ),
+          MasterDataTableView<SupplierSettlementLine>(
+            tableKey: 'finance.supplierSettlement.snapshot',
+            embedded: true,
+            compactCards: true,
+            platformBinding: PlatformTableBinding(
+              tableKey: 'finance.supplierSettlement.snapshot',
+              scope: 'view_finance',
+              recordIdOf: (_) => null,
+              factValuesOf: (row) => {
+                'openingBalanceOriginal': row.openingBalanceOriginal,
+                'periodPostedOriginal': row.periodPostedOriginal,
+                'periodPaidOriginal': row.periodPaidOriginal,
+                'periodOffsetOriginal': row.periodOffsetOriginal,
+                'closingBalanceOriginal': row.closingBalanceOriginal,
+              },
             ),
+            columns: [
+              MasterColumnDef(
+                key: 'sourceDocNo',
+                label: '来源单',
+                width: 170,
+                value: (row) => row.sourceDocNo,
+              ),
+              MasterColumnDef(
+                key: 'openItemKind',
+                label: '类型',
+                width: 120,
+                value: (row) => row.openItemKind,
+              ),
+              MasterColumnDef(
+                key: 'openingBalanceOriginal',
+                label: '期初',
+                width: 120,
+                type: 'money',
+                value: (row) => row.openingBalanceOriginal,
+              ),
+              MasterColumnDef(
+                key: 'periodPostedOriginal',
+                label: '本期立账/红冲',
+                width: 150,
+                type: 'money',
+                value: (row) => row.periodPostedOriginal,
+              ),
+              MasterColumnDef(
+                key: 'periodPaidOriginal',
+                label: '账面付款',
+                width: 130,
+                type: 'money',
+                value: (row) => row.periodPaidOriginal,
+              ),
+              MasterColumnDef(
+                key: 'periodOffsetOriginal',
+                label: '抵销',
+                width: 120,
+                type: 'money',
+                value: (row) => row.periodOffsetOriginal,
+              ),
+              MasterColumnDef(
+                key: 'closingBalanceOriginal',
+                label: '期末',
+                width: 120,
+                type: 'money',
+                value: (row) => row.closingBalanceOriginal,
+              ),
+              MasterColumnDef(
+                key: 'dueDate',
+                label: '到期日',
+                width: 120,
+                type: 'date',
+                value: (row) => row.dueDate,
+              ),
+            ],
+            items: detail.lines,
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
           ),
           const SizedBox(height: UtenSpacing.s12),
           Text(

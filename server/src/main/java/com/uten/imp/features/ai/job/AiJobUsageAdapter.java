@@ -48,6 +48,29 @@ public class AiJobUsageAdapter implements AiJobUsagePort {
 
     @Override
     @Transactional
+    public boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId) {
+        return reserveLearning(jobId,userId,docType,docId,java.time.OffsetDateTime.now().plusDays(30));
+    }
+
+    @Override
+    @Transactional
+    public boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId, java.time.OffsetDateTime retryUntil) {
+        return jobId != null && userId != null && docId != null && docType != null && DOC_TYPE.matcher(docType).matches()
+                && retryUntil != null && retryUntil.isAfter(java.time.OffsetDateTime.now())
+                && !retryUntil.isAfter(java.time.OffsetDateTime.now().plusDays(30).plusMinutes(1))
+                && repository.reserveLearning(jobId,userId,docType,docId,retryUntil) > 0;
+    }
+
+    @Override
+    @Transactional
+    public boolean reserveLearningForSave(UUID job,UUID user,String type,UUID doc,java.time.OffsetDateTime until,
+            java.util.Set<String> keys,boolean headerUsed) {
+        return job!=null&&user!=null&&doc!=null&&type!=null&&DOC_TYPE.matcher(type).matches()&&until!=null&&keys!=null
+                &&repository.reserveLearningForSave(job,user,type,doc,until,keys,headerUsed)>0;
+    }
+
+    @Override
+    @Transactional
     public void markUsed(UUID jobId, UUID userId, String docType, UUID docId) {
         if (jobId == null || userId == null || docId == null || docType == null || !DOC_TYPE.matcher(docType).matches()) {
             return;

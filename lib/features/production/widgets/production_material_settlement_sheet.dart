@@ -774,6 +774,8 @@ class _MaterialSettlementSheetState
                             ),
                           const SizedBox(height: UtenSpacing.s4),
                           UtenEditableGrid<_SettlementGridRow>(
+                            tableKey:
+                                'features.production.widgets.production_material_settlement_sheet.MaterialSettlementSheetState.build.1',
                             controller: _grid,
                             columns: _columns(),
                             createBlankRow: () =>
@@ -955,29 +957,14 @@ class _MaterialSettlementSheetState
   List<EditableGridColumn<_SettlementGridRow>> _columns() => [
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。登记
     // 实耗时认错同名不同色的料会把消耗记到别的物料上，颜色不能只在台账里看。
-    // 单位另有独立列；子计划号不是货品属性，跟在名称下面单独一行。
+    // 单位另有独立列；2026-09-29 用户口径：子计划号不再挤在名称格副行，独立成列。
     EditableGridColumn(
       key: 'material',
       label: '物料名称',
       width: 200,
-      cellBuilder: (context, row) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          UtenGoodsIdentityCell(
-            name: row.source.goodsName,
-            emptyPlaceholder: '未命名物料',
-          ),
-          if (row.source.executionSegmentCode?.isNotEmpty == true)
-            Text(
-              '子计划 ${row.source.executionSegmentCode}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-        ],
+      cellBuilder: (context, row) => UtenGoodsIdentityCell(
+        name: row.source.goodsName,
+        emptyPlaceholder: '未命名物料',
       ),
     ),
     EditableGridColumn(
@@ -1001,6 +988,17 @@ class _MaterialSettlementSheetState
       label: '单位',
       width: 76,
       cellBuilder: (_, row) => Text(row.source.unitName ?? '待核实'),
+    ),
+    EditableGridColumn(
+      key: 'segment',
+      label: '子计划',
+      width: 110,
+      filterValueOf: (row) => row.source.executionSegmentCode,
+      cellBuilder: (context, row) => Text(
+        (row.source.executionSegmentCode ?? '').isEmpty
+            ? '—'
+            : row.source.executionSegmentCode!,
+      ),
     ),
     _numberColumn(
       'uncleared',
@@ -1038,6 +1036,7 @@ class _MaterialSettlementSheetState
     label: label,
     width: 92,
     numeric: true,
+    exactValueOf: (row) => value(row).toString(),
     cellBuilder: (_, row) =>
         Text(_number(value(row)), textAlign: TextAlign.right),
   );
@@ -1054,6 +1053,8 @@ class _MaterialSettlementSheetState
     label: label,
     width: 138,
     numeric: true,
+    exactValueOf: (row) => controller(row).text,
+    exactListenableOf: controller,
     headerInfo: hint,
     chromeWidth: key == 'consume' ? UtenEditableGridCellSpec.hintIconWidth : 0,
     cellBuilder: (_, row) => TextField(

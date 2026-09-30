@@ -206,7 +206,7 @@ public class ClientController {
                 fax, postcode, address, bank, body.sensitive().bankAccount(), taxId, credit, creditFloor, website,
                 excludeLegacyFinanceStub, false), sort, order,
                 exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_client");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_client", "master_data", String.valueOf(payload.total()), "success"));

@@ -90,7 +90,7 @@ public class ReferenceMethodController {
         ExportPayload payload = service.exportSettlementAdmin(
                 new SettlementMethodAdminQueryFilter(status, systemRole, termsBase, dueRule, nullFields),
                 exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_settlement_method");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_settlement_method", "master_data", String.valueOf(payload.total()), "success"));

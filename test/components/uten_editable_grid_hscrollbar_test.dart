@@ -101,7 +101,7 @@ void main() {
     // 不能拿竖向 ListView 的 box 量：它自带 bottom padding，会与滚动条同步位移。
     final rowAncestors = find
         .ancestor(
-          of: find.byType(IconButton).last,
+          of: find.byTooltip('删除该行').last,
           matching: find.byType(DecoratedBox),
         )
         .evaluate();

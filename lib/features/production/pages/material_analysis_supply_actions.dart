@@ -791,6 +791,15 @@ abstract class _MaterialAnalysisSupplyActionsState
     return targets;
   }
 
+  /// 2026-09-29 用户口径：所选行有可认领的同主仓公共在途时，问一次「本次是否
+  /// 用可用数量抵扣」——true = 原行为(先自动认领、只为余量新下单)；false =
+  /// 足额下单不扣可用数量；null = 取消。实现落在物料表状态层(拿得到全部行与
+  /// 通道判据)，这里只声明给单独入口(行菜单/分桶页直接提交)使用。
+  Future<bool?> _askClaimableSupplyUsage(
+    Iterable<_MaterialGroup> groups,
+    Map<_MaterialGroup, double>? pending,
+  );
+
   /// [silent] = 调用方已经做过一次总结确认、并会自己汇报结果（下层办齐编排，
   /// ADR-081）：跳过本函数的数量确认弹窗与成功提示，避免一次一键下单连弹三层
   /// 确认、连报三条成功。失败提示与 409 恢复照旧。
@@ -800,6 +809,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     Map<String, String>? qtyByActionGroupKey,
     bool silent = false,
     bool allowExtra = false,
+    bool skipAutoClaim = false,
   }) async {
     final analysis = _analysis;
     if (analysis == null || !_canNotify || _notifyingRoute != null) {
@@ -849,6 +859,15 @@ abstract class _MaterialAnalysisSupplyActionsState
       );
     }
     if (quantities == null || !mounted) return null;
+    // 单独入口（行菜单 / 分桶页直接提交）在这里问一次「是否扣可用数量」；编排
+    // 入口一律 silent=true，由 _submitMaterialTableRowsInScope 统一问过再把标志
+    // 传进来，不会连问两层。
+    if (!silent) {
+      final claimUsage = await _askClaimableSupplyUsage(groups, null);
+      if (claimUsage == null) return null;
+      skipAutoClaim = !claimUsage;
+    }
+    if (!mounted) return null;
     final quantityByIdentity = {
       for (final input in quantities)
         input.actionGroupKey != null
@@ -913,6 +932,8 @@ abstract class _MaterialAnalysisSupplyActionsState
             for (final input in batchQuantities)
               '${input.actionGroupKey ?? input.materialLineId}:'
                   '${input.qty}:${input.safetyReplenishmentQty}',
+            // 不同「是否扣可用数量」的选择是不同下单意图，幂等键必须分开。
+            if (skipAutoClaim) 'skipAutoClaim',
           ].join('|'),
         );
         current = await ref
@@ -924,6 +945,7 @@ abstract class _MaterialAnalysisSupplyActionsState
               actionGroupKeys: actionGroupKeys,
               materialLineIds: materialLineIds,
               quantities: batchQuantities,
+              skipAutoClaim: skipAutoClaim,
             );
         completed += batch.length;
         if (!mounted) return null;

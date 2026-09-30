@@ -30,8 +30,84 @@ import java.util.Objects;
 @Service
 public class XlsxExportService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<ExportTableProjectionService> projections;
+
+    public byte[] build(List<ExportColumn> columns, List<Map<String,Object>> rows,
+                        TableColumnProjection projection, String allowedScope) {
+        if(projection==null)return build(columns,rows);
+        ExportPayload projected=projections.getObject().project(columns,rows,projection,allowedScope);
+        return build(projected.columns(),projected.rows());
+    }
+
     /** SXSSF 滚动窗口（同时在内存的行数；超出写临时文件）。 */
     private static final int ROW_ACCESS_WINDOW = 200;
+
+    /** Multi-sheet snapshot export; this never rereads mutable platform values. */
+    public byte[] buildDocument(ExportDocument document) {
+        try (SXSSFWorkbook wb = new SXSSFWorkbook(ROW_ACCESS_WINDOW);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            CellStyle header = wb.createCellStyle();
+            Font font = wb.createFont();
+            font.setBold(true);
+            header.setFont(font);
+            header.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            header.setDataFormat(wb.createDataFormat().getFormat("@"));
+            CellStyle number = wb.createCellStyle();
+            number.setDataFormat(wb.createDataFormat().getFormat("#,##0.00"));
+            number.setAlignment(HorizontalAlignment.RIGHT);
+            CellStyle exact = wb.createCellStyle();
+            exact.setDataFormat(wb.createDataFormat().getFormat("General"));
+            exact.setAlignment(HorizontalAlignment.RIGHT);
+            CellStyle text = wb.createCellStyle();
+            text.setDataFormat(wb.createDataFormat().getFormat("@"));
+            var info = wb.createSheet("说明");
+            int infoRow = 0;
+            for (String value : java.util.stream.Stream.concat(java.util.stream.Stream.of(document.title()),
+                    document.metadata().stream()).toList()) {
+                Cell cell = info.createRow(infoRow++).createCell(0);
+                cell.setCellValue(value);
+                cell.setCellStyle(text);
+            }
+            info.setColumnWidth(0, 100 * 256);
+            int sheetIndex = 1;
+            for (ExportDocument.Section section : document.sections()) {
+                String name = org.apache.poi.ss.util.WorkbookUtil.createSafeSheetName(section.name());
+                if (wb.getSheet(name) != null) name = "表" + sheetIndex;
+                Sheet sheet = wb.createSheet(name);
+                Row labels = sheet.createRow(0);
+                for (int c = 0; c < section.columns().size(); c++) {
+                    ExportColumn column = section.columns().get(c);
+                    Cell label = labels.createCell(c);
+                    label.setCellValue(column.label());
+                    label.setCellStyle(header);
+                    int width = column.width() == null ? Math.max(12, Math.min(42, column.label().length() * 2 + 4))
+                            : Math.max(8, Math.min(100, (int) Math.round(column.width() / 7)));
+                    sheet.setColumnWidth(c, width * 256);
+                }
+                int rowIndex = 1;
+                for (Map<String, Object> values : section.rows()) {
+                    Row row = sheet.createRow(rowIndex++);
+                    for (int c = 0; c < section.columns().size(); c++) {
+                        ExportColumn column = section.columns().get(c);
+                        writeCell(row.createCell(c), column.type(), values.get(column.key()), number, exact, text);
+                    }
+                }
+                sheet.createFreezePane(0, 1);
+                sheet.setRepeatingRows(new org.apache.poi.ss.util.CellRangeAddress(0, 0, -1, -1));
+                sheet.getPrintSetup().setLandscape(true);
+                sheet.setFitToPage(true);
+                sheet.getPrintSetup().setFitWidth((short) 1);
+                sheet.getPrintSetup().setFitHeight((short) 0);
+                sheetIndex++;
+            }
+            wb.write(out);
+            return out.toByteArray();
+        } catch (IOException error) {
+            throw new IllegalStateException("生成 Excel 失败", error);
+        }
+    }
 
     public byte[] build(List<ExportColumn> columns, List<Map<String, Object>> rows) {
         try (SXSSFWorkbook wb = new SXSSFWorkbook(ROW_ACCESS_WINDOW);
@@ -44,6 +120,7 @@ public class XlsxExportService {
             headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
             headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
             headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            headerStyle.setDataFormat(wb.createDataFormat().getFormat("@"));
             CellStyle numStyle = wb.createCellStyle();
             numStyle.setDataFormat(wb.createDataFormat().getFormat("#,##0.00"));
             // 用量：常规格式，整数不带小数点、小数不补零也不截断(与 BOM 导入按值读取互为往返)
@@ -64,7 +141,8 @@ public class XlsxExportService {
                 c.setCellValue(columns.get(i).label());
                 c.setCellStyle(headerStyle);
                 // 列宽：按表头长度估，限 [10,50] 字符宽
-                int w = Math.min(50, Math.max(10, columns.get(i).label().length() + 4));
+                int w = columns.get(i).width()==null ? Math.min(50, Math.max(10, columns.get(i).label().length() + 4))
+                        : Math.min(100, Math.max(6, (int)Math.round(columns.get(i).width()/7)));
                 sheet.setColumnWidth(i, w * 256);
             }
             // 数据
@@ -92,8 +170,12 @@ public class XlsxExportService {
             case ExportColumn.MONEY, ExportColumn.NUMBER, ExportColumn.QTY -> {
                 BigDecimal d = toBigDecimal(v);
                 if (d != null) {
-                    cell.setCellValue(d.doubleValue());
-                    cell.setCellStyle(ExportColumn.QTY.equals(type) ? qtyStyle : numStyle);
+                    if(d.stripTrailingZeros().precision()>15) {
+                        cell.setCellValue(d.toPlainString()); cell.setCellStyle(textStyle);
+                    } else {
+                        cell.setCellValue(d.doubleValue());
+                        cell.setCellStyle(ExportColumn.MONEY.equals(type) ? numStyle : qtyStyle);
+                    }
                 } else {
                     // 非数值回退：按文本写，防公式注入
                     cell.setCellValue(Objects.toString(v));
@@ -108,7 +190,7 @@ public class XlsxExportService {
 
     private static BigDecimal toBigDecimal(Object v) {
         if (v instanceof BigDecimal b) return b;
-        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+        if (v instanceof Number n) return new BigDecimal(n.toString());
         if (v instanceof String s && !s.isBlank()) {
             try { return new BigDecimal(s.trim()); } catch (NumberFormatException ignored) {}
         }

@@ -604,6 +604,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         ? '当前条件'
         : _historyRangeLabel(_loadedQuery!);
     return MasterDataTableView<Map<String, dynamic>>(
+      tableKey:
+          'features.production.pages.where_used_report_page.WhereUsedReportPageState._buildTable.1',
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
       primary: true,
       columns: columns,

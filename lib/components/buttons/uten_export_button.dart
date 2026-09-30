@@ -11,7 +11,22 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/ui/app_notification.dart';
 import '../../shared/auth/permissions.dart';
+import '../../shared/platform_tables/table_column_projection.dart';
 import 'uten_button.dart';
+
+/// A business export may select a template or a group of files before the
+/// shared password dialog. Cancellation never starts an export request.
+class UtenExportSelection {
+  const UtenExportSelection({
+    this.bodyParams = const {},
+    this.filename,
+    this.extension = 'xlsx',
+  });
+
+  final Map<String, dynamic> bodyParams;
+  final String? filename;
+  final String extension;
+}
 
 /// 统一 Excel 导出入口，可选择普通下载或密码加密下载。
 ///
@@ -35,6 +50,8 @@ class UtenExportButton extends ConsumerStatefulWidget {
     this.size = UtenButtonSize.small,
     this.height,
     this.icon = Icons.download_rounded,
+    this.prepareExport,
+    this.tableKey,
   });
 
   final String endpoint;
@@ -64,35 +81,74 @@ class UtenExportButton extends ConsumerStatefulWidget {
   /// 按钮图标；表格工具条统一「无 icon」口径时传 null。
   final IconData? icon;
 
+  final Future<UtenExportSelection?> Function()? prepareExport;
+  final String? tableKey;
+
   @override
   ConsumerState<UtenExportButton> createState() => _UtenExportButtonState();
 }
 
 class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   bool _loading = false;
+  bool _preparing = false;
 
   Future<void> _onTap() async {
-    if (!widget.enabled || _loading) return; // 防连点 / 等待查询高水位边界
-    final pwd = await showDialog<String>(
-      context: context,
-      builder: (_) => const _ExportPasswordDialog(),
-    );
-    // null 表示取消；空字符串表示不加密。
-    if (pwd == null || !mounted) return;
-    await _doExport(pwd);
+    if (!widget.enabled || _loading || _preparing) return;
+    setState(() => _preparing = true);
+    try {
+      final selection = widget.prepareExport == null
+          ? const UtenExportSelection()
+          : await widget.prepareExport!();
+      if (selection == null || !mounted) return;
+      final pwd = await showDialog<String>(
+        context: context,
+        builder: (_) => const _ExportPasswordDialog(),
+      );
+      if (pwd == null || !mounted) return;
+      await _doExport(pwd, selection);
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError(AppLocalizations.of(context).exportFailed);
+    } finally {
+      if (mounted) setState(() => _preparing = false);
+    }
   }
 
-  Future<void> _doExport(String password) async {
+  Future<void> _doExport(String password, UtenExportSelection selection) async {
     setState(() => _loading = true);
     try {
+      final projection = TableColumnProjectionScope.resolve(
+        context,
+        widget.tableKey,
+      );
+      final host = TableColumnProjectionScope.read(context);
+      if (host != null &&
+          projection == null &&
+          (widget.tableKey != null ||
+              TableColumnProjectionScope.hasCurrentTables(context))) {
+        context.appError('无法确定要导出的表头，请返回对应表格后重试');
+        return;
+      }
       final Uint8List bytes = await ref
           .read(apiClientProvider)
           .downloadBytes(
             widget.endpoint,
-            body: {...widget.bodyParams, 'password': password},
+            body: {
+              ...widget.bodyParams,
+              ...selection.bodyParams,
+              if (projection != null) 'columnProjection': projection.toJson(),
+              'password': password,
+            },
             query: {'report': widget.report, ...widget.queryParams},
           );
-      final name = '${widget.filename ?? 'export_${widget.report}'}.xlsx';
+      final extension = switch (selection.extension) {
+        'zip' => 'zip',
+        'pdf' => 'pdf',
+        _ => 'xlsx',
+      };
+      final name =
+          '${selection.filename ?? widget.filename ?? 'export_${widget.report}'}.$extension';
       final saved = await saveBytes(bytes, name);
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
@@ -130,7 +186,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
               : null),
       icon: widget.icon,
       isLoading: _loading,
-      onPressed: widget.enabled ? _onTap : null,
+      onPressed: widget.enabled && !_preparing ? _onTap : null,
       child: Text(widget.label),
     );
   }

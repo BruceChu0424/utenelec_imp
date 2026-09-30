@@ -334,6 +334,7 @@ public class UnitService {
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size), u -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("_platformRecordId", u.getId());
                     row.put("code", u.getCode());
                     row.put("name", u.getName());
                     row.put("status", u.getStatus());

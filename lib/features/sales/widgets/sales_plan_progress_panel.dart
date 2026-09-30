@@ -386,145 +386,150 @@ class _ProgressList extends ConsumerWidget {
     );
   }
 
-  Widget _table(BuildContext context, ThemeData theme, bool canViewPlan) =>
-      MasterDataTableView<OrderPlanProgressLine>(
-        key: const Key('sales-product-progress-table'),
-        embedded: true,
-        columns: [
-          MasterColumnDef(
-            key: 'product',
-            // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-            label: '产品名称',
-            width: 190,
-            value: (line) => line.goodsName ?? line.goodsCode ?? '—',
+  Widget _table(
+    BuildContext context,
+    ThemeData theme,
+    bool canViewPlan,
+  ) => MasterDataTableView<OrderPlanProgressLine>(
+    tableKey:
+        'features.sales.widgets.sales_plan_progress_panel.ProgressList._table.1',
+    key: const Key('sales-product-progress-table'),
+    embedded: true,
+    columns: [
+      MasterColumnDef(
+        key: 'product',
+        // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+        label: '产品名称',
+        width: 190,
+        value: (line) => line.goodsName ?? line.goodsCode ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'goodsCode',
+        label: '编号',
+        width: 130,
+        value: (line) => UtenGoodsAttributeCell.text(line.goodsCode),
+        cellBuilder: (_, line) => UtenGoodsAttributeCell(line.goodsCode),
+      ),
+      MasterColumnDef(
+        key: 'colorName',
+        label: '颜色',
+        width: 96,
+        value: (line) => UtenGoodsAttributeCell.text(line.colorName),
+        cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
+      ),
+      MasterColumnDef(
+        key: 'spec',
+        label: '规格',
+        width: 120,
+        value: (line) => UtenGoodsAttributeCell.text(line.spec),
+        cellBuilder: (_, line) => UtenGoodsAttributeCell(line.spec),
+      ),
+      MasterColumnDef(
+        key: 'unit',
+        label: '单位',
+        width: 65,
+        value: (line) => line.unitName,
+      ),
+      MasterColumnDef(
+        key: 'qty',
+        label: '订货',
+        width: 90,
+        type: 'number',
+        value: (line) => _fmt(line.qty),
+      ),
+      MasterColumnDef(
+        key: 'planned',
+        label: '已排',
+        width: 90,
+        type: 'number',
+        value: (line) => _fmt(line.plannedQty),
+      ),
+      MasterColumnDef(
+        key: 'produced',
+        label: '已生产入库',
+        width: 120,
+        type: 'number',
+        info: '只统计已实际合格入库的产品，待品质判定和待仓库点收不算入库。',
+        value: (line) => _fmt(line.producedQty),
+      ),
+      MasterColumnDef(
+        key: 'shipped',
+        label: '已发',
+        width: 90,
+        type: 'number',
+        value: (line) => _fmt(line.shippedQty),
+      ),
+      MasterColumnDef(
+        key: 'available',
+        label: '本次可发',
+        width: 110,
+        type: 'number',
+        info: '可用于新建出货单的合格实物量，已扣除正在办理的出货；实际发货数量在出货单中填写。',
+        value: (line) => _fmt(line.shippableQty),
+        cellBuilder: (context, line) => Text(
+          _fmt(line.shippableQty),
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.error,
           ),
-          MasterColumnDef(
-            key: 'goodsCode',
-            label: '编号',
-            width: 130,
-            value: (line) => UtenGoodsAttributeCell.text(line.goodsCode),
-            cellBuilder: (_, line) => UtenGoodsAttributeCell(line.goodsCode),
-          ),
-          MasterColumnDef(
-            key: 'colorName',
-            label: '颜色',
-            width: 96,
-            value: (line) => UtenGoodsAttributeCell.text(line.colorName),
-            cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
-          ),
-          MasterColumnDef(
-            key: 'spec',
-            label: '规格',
-            width: 120,
-            value: (line) => UtenGoodsAttributeCell.text(line.spec),
-            cellBuilder: (_, line) => UtenGoodsAttributeCell(line.spec),
-          ),
-          MasterColumnDef(
-            key: 'unit',
-            label: '单位',
-            width: 65,
-            value: (line) => line.unitName,
-          ),
-          MasterColumnDef(
-            key: 'qty',
-            label: '订货',
-            width: 90,
-            type: 'number',
-            value: (line) => _fmt(line.qty),
-          ),
-          MasterColumnDef(
-            key: 'planned',
-            label: '已排',
-            width: 90,
-            type: 'number',
-            value: (line) => _fmt(line.plannedQty),
-          ),
-          MasterColumnDef(
-            key: 'produced',
-            label: '已生产入库',
-            width: 120,
-            type: 'number',
-            info: '只统计已实际合格入库的产品，待品质判定和待仓库点收不算入库。',
-            value: (line) => _fmt(line.producedQty),
-          ),
-          MasterColumnDef(
-            key: 'shipped',
-            label: '已发',
-            width: 90,
-            type: 'number',
-            value: (line) => _fmt(line.shippedQty),
-          ),
-          MasterColumnDef(
-            key: 'available',
-            label: '本次可发',
-            width: 110,
-            type: 'number',
-            info: '可用于新建出货单的合格实物量，已扣除正在办理的出货；实际发货数量在出货单中填写。',
-            value: (line) => _fmt(line.shippableQty),
-            cellBuilder: (context, line) => Text(
-              _fmt(line.shippableQty),
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: theme.colorScheme.error,
-              ),
+        ),
+      ),
+      MasterColumnDef(
+        key: 'pending',
+        label: '办理中',
+        width: 100,
+        type: 'number',
+        value: (line) => _fmt(line.pendingShipmentQty),
+      ),
+      MasterColumnDef(
+        key: 'progress',
+        label: '生产入库进度',
+        width: 160,
+        value: (line) => '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
+        cellBuilder: (context, line) => Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('${_fmt(line.producedQty)} / ${_fmt(line.qty)}'),
+            const SizedBox(height: 4),
+            LinearProgressIndicator(
+              value: (line.qty ?? 0) > 0
+                  ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
+                  : 0,
+              // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
+              minHeight: 8,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
             ),
-          ),
-          MasterColumnDef(
-            key: 'pending',
-            label: '办理中',
-            width: 100,
-            type: 'number',
-            value: (line) => _fmt(line.pendingShipmentQty),
-          ),
-          MasterColumnDef(
-            key: 'progress',
-            label: '生产入库进度',
-            width: 160,
-            value: (line) => '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
-            cellBuilder: (context, line) => Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('${_fmt(line.producedQty)} / ${_fmt(line.qty)}'),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: (line.qty ?? 0) > 0
-                      ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
-                      : 0,
-                  // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
-                  minHeight: 8,
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                ),
-              ],
-            ),
-          ),
-          MasterColumnDef(
-            key: 'detail',
-            label: '进度来源',
-            width: 110,
-            value: (_) => '查看进度',
-            cellBuilder: (context, line) => TextButton(
-              onPressed: busy
-                  ? null
-                  : () => _showLineProgress(context, theme, line, canViewPlan),
-              child: const Text('查看进度'),
-            ),
-          ),
-        ],
-        items: lines,
-        facets: const {},
-        nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
-        selectable: canShip,
-        selectedIds: selected,
-        idOf: (line) => (line.shippableQty ?? 0) > 0 ? line.orderItemId : null,
-        rowKeyOf: (line) => line.orderItemId,
-        // 单击行只切换勾选（embedded+selectable 语义），进度弹窗只由
-        // 「查看进度」列按钮触发——2026-09-12 反馈「单击选中别弹窗」。
-        onSelectedIdsChanged: busy ? null : onSelected,
-        showSelectionSummary: false,
-      );
+          ],
+        ),
+      ),
+      MasterColumnDef(
+        key: 'detail',
+        label: '进度来源',
+        width: 110,
+        value: (_) => '查看进度',
+        cellBuilder: (context, line) => TextButton(
+          onPressed: busy
+              ? null
+              : () => _showLineProgress(context, theme, line, canViewPlan),
+          child: const Text('查看进度'),
+        ),
+      ),
+    ],
+    items: lines,
+    facets: const {},
+    nullCounts: const {},
+    filters: const {},
+    onFilterChanged: (_, _) {},
+    selectable: canShip,
+    selectedIds: selected,
+    idOf: (line) => (line.shippableQty ?? 0) > 0 ? line.orderItemId : null,
+    rowKeyOf: (line) => line.orderItemId,
+    // 单击行只切换勾选（embedded+selectable 语义），进度弹窗只由
+    // 「查看进度」列按钮触发——2026-09-12 反馈「单击选中别弹窗」。
+    onSelectedIdsChanged: busy ? null : onSelected,
+    showSelectionSummary: false,
+  );
 
   Future<void> _showLineProgress(
     BuildContext context,

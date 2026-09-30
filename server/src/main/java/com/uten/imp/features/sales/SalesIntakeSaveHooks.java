@@ -45,21 +45,29 @@ public class SalesIntakeSaveHooks {
     public void afterSave(String docType, UUID docId, UUID clientId,
                           List<LearnedLine> lines, SalesAiIntakeRequest aiIntake) {
         UUID jobId = aiIntake == null ? null : aiIntake.getJobId();
+        List<UUID> additional = aiIntake == null || aiIntake.getAdditionalJobIds() == null ? List.of()
+                : aiIntake.getAdditionalJobIds().stream().filter(java.util.Objects::nonNull)
+                    .filter(id -> !id.equals(jobId)).distinct().toList();
         List<LearnedLine> learnable = lines == null ? List.of() : lines.stream()
                 .filter(line -> line != null && line.goodsId() != null)
                 .filter(line -> hasText(line.clientModel()) || hasText(line.clientGoodsName())
                         || hasText(line.intakeLineKey()))
                 .toList();
-        if (jobId == null && learnable.isEmpty()) {
+        SalesMasterLearningPort port = learning.getIfAvailable();
+        if (jobId == null && learnable.isEmpty() && (port == null || !port.hasDocumentLearning(docType, docId))) {
             return;
         }
         UUID userId = currentUser.requireId();
         UUID employeeId = currentUser.employeeId().orElse(null);
+        if (additional.size() > 19) throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多采用 20 份识别文件");
+        // An extra task must contribute at least one saved line; do not learn unrelated uploads.
+        additional = additional.stream().filter(id -> learnable.stream().anyMatch(line ->
+                line.intakeLineKey() != null && line.intakeLineKey().startsWith(id + ":"))).toList();
         Map<String, String> clientFields = clientFields(aiIntake);
-        SalesMasterLearningPort port = learning.getIfAvailable();
+        UUID receiptId = UUID.randomUUID();
         if (port != null) {
             port.learnAfterCommit(new SalesLearningRequest(
-                    docType, docId, clientId, userId, employeeId, learnable, clientFields, jobId));
+                    docType, docId, clientId, userId, employeeId, learnable, clientFields, jobId, additional, receiptId));
         } else if (!clientFields.isEmpty()) {
             // 勾选的客户资料必须在保存事务内校验并写入(学习出口负责); 出口不在时不能静默丢掉用户勾选的内容。
             throw new ApiException(ErrorCode.CONFLICT, "暂时不能从客户文件补全客户资料, 请取消勾选客户资料后再保存");
@@ -68,8 +76,20 @@ public class SalesIntakeSaveHooks {
             log.warn("sales master learning port unavailable; {} {} saved without learning", docType, docId);
         }
         if (jobId != null) {
-            events.publishEvent(new SalesIntakeUsedEvent(jobId, userId, docType, docId, clientId));
+            events.publishEvent(new SalesIntakeUsedEvent(jobId, userId, docType, docId, clientId,
+                    sourceKeys(jobId, learnable, true), receiptId));
         }
+        for (UUID additionalId : additional) {
+            events.publishEvent(new SalesIntakeUsedEvent(additionalId, userId, docType, docId, clientId,
+                    sourceKeys(additionalId, learnable, false), receiptId));
+        }
+    }
+
+    private static List<String> sourceKeys(UUID job, List<LearnedLine> lines, boolean primary) {
+        String prefix = job + ":";
+        return lines.stream().map(LearnedLine::intakeLineKey).filter(java.util.Objects::nonNull)
+                .filter(key -> key.startsWith(prefix) || (primary && !key.contains(":")))
+                .map(key -> key.startsWith(prefix) ? key.substring(prefix.length()) : key).distinct().toList();
     }
 
     private static Map<String, String> clientFields(SalesAiIntakeRequest aiIntake) {

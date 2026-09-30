@@ -833,7 +833,8 @@ public class ProcurementFinanceApprovalService {
                             ELSE NULL END AS source_application_nos,
                        CAST(item.value -> 'sources' AS text) AS source_allocations,
                        CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id,
-                       c.display_complete
+                       c.display_complete,
+                       CAST(item.value -> 'extraColumns' AS text) AS extra_columns
                 FROM selected_case c
                 CROSS JOIN LATERAL jsonb_array_elements(c.submission_snapshot -> 'items') item
                 LEFT JOIN goods g ON g.id = CAST(item.value ->> 'goodsId' AS uuid)
@@ -871,8 +872,19 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("source_application_nos"),
                         rs.getString("source_allocations"),
                         rs.getObject("currency_id", UUID.class),
-                        rs.getBoolean("display_complete")),
+                        rs.getBoolean("display_complete"),
+                        parseExtraColumns(rs.getString("extra_columns"))),
                 caseId);
+    }
+
+    private List<com.uten.imp.common.columns.ExtraColumnSnapshot> parseExtraColumns(String json) {
+        if (json == null) return List.of();
+        try {
+            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<
+                    List<com.uten.imp.common.columns.ExtraColumnSnapshot>>() { });
+        } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            throw new IllegalStateException("Invalid approval business-column snapshot", invalid);
+        }
     }
 
     /** Missing keys in a legacy snapshot remain unknown, distinct from recorded JSON null. */

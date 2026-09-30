@@ -64,7 +64,9 @@ class SalesIntakeDecisions {
     this.clientName,
     this.enrichmentEnabled = false,
     Map<String, bool>? enrichmentFields,
-  }) : enrichmentFields = enrichmentFields ?? {};
+    Set<String>? includedExtraColumns,
+  }) : enrichmentFields = enrichmentFields ?? {},
+       includedExtraColumns = includedExtraColumns ?? {};
 
   /// 按识别结果给出默认选择:
   /// - 自动对上的行导入; 需要核对的行有预选货品才导入(导入后明细表黄色提醒);
@@ -121,6 +123,9 @@ class SalesIntakeDecisions {
         for (final field in client.enrichment)
           field.field: field.defaultChecked,
       },
+      includedExtraColumns: result.extraColumns
+          .map((column) => column.key)
+          .toSet(),
     );
   }
 
@@ -131,6 +136,7 @@ class SalesIntakeDecisions {
   bool enrichmentEnabled;
   final Map<String, bool> enrichmentFields;
   final Map<String, SalesIntakeLineDecision> lines;
+  final Set<String> includedExtraColumns;
 
   SalesIntakeLineDecision decisionFor(SalesIntakeLine line) =>
       lines.putIfAbsent(line.key, SalesIntakeLineDecision.new);
@@ -502,6 +508,7 @@ class SalesIntakePatchRow {
     required this.goodsId,
     this.goodsCode,
     this.goodsName,
+    this.goodsNameEn,
     this.colorId,
     this.unitId,
     required this.qty,
@@ -515,11 +522,13 @@ class SalesIntakePatchRow {
     this.setNameEn = false,
     this.reviewReason,
     this.remark,
+    this.extraValues = const {},
   });
 
   final String goodsId;
   final String? goodsCode;
   final String? goodsName;
+  final String? goodsNameEn;
   final String? colorId;
   final String? unitId;
   final String qty;
@@ -543,6 +552,7 @@ class SalesIntakePatchRow {
 
   /// 行备注(组合件拆开后, 第一行记下整套的文件单价供参考)。
   final String? remark;
+  final Map<String, String> extraValues;
 }
 
 class SalesIntakePatch {
@@ -563,6 +573,7 @@ class SalesIntakePatch {
     this.reviewRowCount = 0,
     this.skippedUnmatched = 0,
     this.blockedUnpriced = 0,
+    this.extraColumns = const [],
   });
 
   final String jobId;
@@ -591,17 +602,37 @@ class SalesIntakePatch {
   final int reviewRowCount;
   final int skippedUnmatched;
   final int blockedUnpriced;
+  final List<SalesIntakeExtraColumn> extraColumns;
 
-  SalesIntakeSession toSession() => SalesIntakeSession(
+  SalesIntakeSession toSession({
+    SalesIntakeSession? previous,
+    bool preservePreviousPricing = false,
+    String? previousFileCurrency,
+  }) => SalesIntakeSession(
     jobId: jobId,
     clientId: clientId,
-    clientFields: clientFields,
-    clientFileCurrency: clientFileCurrency,
-    financeRate: financeRate,
-    rateMissing: rateMissing,
+    clientFields: {
+      if (previous?.clientId == clientId) ...?previous?.clientFields,
+      ...clientFields,
+    },
+    clientFileCurrency: preservePreviousPricing
+        ? previous?.clientFileCurrency ?? previousFileCurrency
+        : clientFileCurrency,
+    financeRate: preservePreviousPricing ? previous?.financeRate : financeRate,
+    // Saved drafts retain file prices but not the transient recognition rate.
+    // Appending a file without prices cannot supply a rate for those old prices.
+    rateMissing: preservePreviousPricing
+        ? previous?.rateMissing ?? (previousFileCurrency != null)
+        : rateMissing,
     fileName: fileName,
     priceMasked: priceMasked,
     importedRows: rows.length,
+    additionalJobIds: {
+      if (previous != null && previous.clientId == clientId) ...[
+        previous.jobId,
+        ...previous.additionalJobIds,
+      ],
+    }.where((id) => id != jobId).toList(growable: false),
   );
 }
 
@@ -677,6 +708,7 @@ SalesIntakePatch buildSalesIntakePatch({
     required bool setNameEn,
     required List<String?> reasons,
     String? remark,
+    Map<String, String> extraValues = const {},
   }) {
     final shown = reasons.whereType<String>().toList();
     final reason = shown.isEmpty ? null : shown.join(' / ');
@@ -686,6 +718,7 @@ SalesIntakePatch buildSalesIntakePatch({
         goodsId: goods.goodsId,
         goodsCode: goods.code,
         goodsName: goods.name ?? goods.model,
+        goodsNameEn: goods.nameEn,
         colorId: goods.colorId,
         unitId: goods.unitId,
         qty: qty,
@@ -699,6 +732,7 @@ SalesIntakePatch buildSalesIntakePatch({
         setNameEn: setNameEn,
         reviewReason: reason,
         remark: remark,
+        extraValues: extraValues,
       ),
     );
   }
@@ -717,6 +751,7 @@ SalesIntakePatch buildSalesIntakePatch({
               line.partNo ?? line.fileLabel,
               fileCurrency == null ? bundlePrice : '$bundlePrice $fileCurrency',
             );
+      var firstImportedPart = true;
       for (final part in decision.parts) {
         final goods = part.goods;
         final label = _partRemarkLabel(part.partNo, qty, l10n);
@@ -740,13 +775,24 @@ SalesIntakePatch buildSalesIntakePatch({
           clientModel: part.partNo,
           clientGoodsName: null,
           clientPrice: null,
-          intakeLineKey: null,
+          // Keep file provenance for template learning. Part text is different
+          // from the bundle source, so it never becomes a global alias/name.
+          intakeLineKey: line.key,
           userConfirmed: part.userConfirmed,
           setNameEn: false,
           reasons: [l10n.salesIntakeMarkerBundlePart],
           remark: bundleRemark,
+          // A whole-line reference belongs to the first imported component only.
+          extraValues: firstImportedPart
+              ? {
+                  for (final entry in line.extraValues.entries)
+                    if (decisions.includedExtraColumns.contains(entry.key))
+                      entry.key: entry.value,
+                }
+              : const {},
         );
         bundleRemark = null;
+        firstImportedPart = false;
       }
       continue;
     }
@@ -792,6 +838,11 @@ SalesIntakePatch buildSalesIntakePatch({
             priceMasked: masked,
           ),
       reasons: [_reviewReasonFor(line, decision, l10n), pricingReason(goods)],
+      extraValues: {
+        for (final entry in line.extraValues.entries)
+          if (decisions.includedExtraColumns.contains(entry.key))
+            entry.key: entry.value,
+      },
     );
   }
 
@@ -834,5 +885,11 @@ SalesIntakePatch buildSalesIntakePatch({
     reviewRowCount: reviewRows,
     skippedUnmatched: unmatched.length,
     blockedUnpriced: unpriced.length,
+    extraColumns: [
+      for (final column in result.extraColumns)
+        if (decisions.includedExtraColumns.contains(column.key) &&
+            rows.any((row) => row.extraValues.containsKey(column.key)))
+          column,
+    ],
   );
 }

@@ -372,6 +372,8 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
               ),
               const SizedBox(height: UtenSpacing.s8),
               MasterDataTableView<ScheduleBomComponent>(
+                tableKey:
+                    'features.production.widgets.plan_order_import_sheet.ImportSheetState._lineCard.1',
                 embedded: true,
                 columns: [
                   // 2026-09-14 全站列序统一：名称 → 编号 → 颜色 → …

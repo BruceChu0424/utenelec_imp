@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 // 财务订货审批任务模型。
 //
 // V328/ADR-027 起：共享队列使用 view，批准/驳回按 approve/reject 独立授权，
@@ -386,6 +387,7 @@ class FinanceProcurementApprovalReview {
 class FinanceProcurementReviewLine {
   const FinanceProcurementReviewLine({
     required this.lineNo,
+    this.extraColumns = const [],
     this.orderItemId,
     this.goodsId,
     this.colorId,
@@ -413,6 +415,7 @@ class FinanceProcurementReviewLine {
     this.displaySnapshotComplete = false,
   });
 
+  final List<BusinessColumn> extraColumns;
   final int lineNo;
   final String? orderItemId;
   final String? goodsId;
@@ -444,6 +447,7 @@ class FinanceProcurementReviewLine {
 
   factory FinanceProcurementReviewLine.fromJson(Map<String, dynamic> json) {
     return FinanceProcurementReviewLine(
+      extraColumns: BusinessColumn.read(json['extraColumns']),
       lineNo: _firstInt([json['lineNo']]) ?? 0,
       orderItemId: _string(json['orderItemId']),
       goodsId: _string(json['goodsId']),

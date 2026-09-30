@@ -11,6 +11,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
+import 'package:uten_imp/features/production/widgets/workshop_task_material_table.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
@@ -268,20 +269,20 @@ void main() {
     // 逐种物料：计划没下单的品红「等计划下单」；计划没定供应方式的另说；
     // 缺但计划已经下过单的(外壳)照旧「等采购到货」一类。
     await tester.pumpAndSettle();
-    final copper = tester.widget<UtenStatusBadge>(
+    final copper = tester.widget<WorkshopMaterialStateCell>(
       find.byKey(const ValueKey('workshop-task-material-state-d-copper')),
     );
     expect(copper.label, '等计划下单');
     expect(copper.type, UtenStatusBadgeType.fuchsia);
     expect(
       tester
-          .widget<UtenStatusBadge>(
+          .widget<WorkshopMaterialStateCell>(
             find.byKey(const ValueKey('workshop-task-material-state-d-spring')),
           )
           .label,
       '等计划定供应方式',
     );
-    final shell = tester.widget<UtenStatusBadge>(
+    final shell = tester.widget<WorkshopMaterialStateCell>(
       find.byKey(const ValueKey('workshop-task-material-state-d-shell')),
     );
     expect(shell.label, isNot(contains('计划')));

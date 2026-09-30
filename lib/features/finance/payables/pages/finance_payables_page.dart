@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
@@ -512,6 +514,19 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       label: '状态',
       width: 100,
       value: (item) => item.statusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：未付=琥珀 / 部分付款=蓝 /
+      // 已结清=绿 / 已逾期=红 / 预付款=品牌青 / 其余贷项冻结类=中性灰。
+      cellColor: (context, item) => udenStatusBadgeCellColor(
+        context,
+        switch (item.status?.toUpperCase()) {
+          'OPEN' => UtenStatusBadgeType.warning,
+          'PARTIAL' => UtenStatusBadgeType.info,
+          'SETTLED' => UtenStatusBadgeType.success,
+          'OVERDUE' => UtenStatusBadgeType.danger,
+          'PREPAYMENT' => UtenStatusBadgeType.accent,
+          _ => UtenStatusBadgeType.neutral,
+        },
+      ),
     ),
     MasterColumnDef(
       key: 'overdueDays',
@@ -945,6 +960,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         ),
         Expanded(
           child: MasterDataTableView<FinancePayableItem>(
+            tableKey:
+                'features.finance.payables.pages.finance_payables_page.FinancePayablesPageState._buildPayablesTablePane.1',
             primary: true,
             columns: _columns,
             items: pageItems,

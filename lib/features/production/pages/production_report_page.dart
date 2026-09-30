@@ -237,6 +237,12 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
+      columnKeys: [for (final c in data.columns) c.key],
+      rowIds: [for (final r in data.rows) r['id']?.toString()],
+      factValues: [
+        for (final r in data.rows)
+          {for (final entry in r.entries) entry.key: entry.value?.toString()},
+      ],
       headers: [for (final c in data.columns) c.label],
       rows: [
         for (final r in data.rows)
@@ -473,6 +479,8 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         .toList();
     return _withFormDraftRows(
       MasterDataTableView<Map<String, dynamic>>(
+        tableKey:
+            'features.production.pages.production_report_page.ProductionReportPageState._buildTable.1',
         // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
         primary: true,
         columns: columns,

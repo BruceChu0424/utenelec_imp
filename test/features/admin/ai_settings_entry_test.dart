@@ -65,35 +65,20 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets(
-    'workbench system group links to AI services for administrators',
-    (tester) async {
-      final router = _router(
-        const SingleChildScrollView(child: WorkbenchModuleArea()),
-      );
-      addTearDown(router.dispose);
-      await _pump(tester, router);
-
-      expect(find.text('AI 服务'), findsOneWidget);
-      await tester.tap(find.text('AI 服务'));
-      await tester.pumpAndSettle();
-      expect(
-        router.routerDelegate.currentConfiguration.uri.path,
-        RouteName.adminAiSettings,
-      );
-      expect(find.text('ai-settings-page'), findsOneWidget);
-    },
-  );
-
-  testWidgets('the workbench item stays hidden without system administration', (
+  // 2026-09-28: AI 服务入口从工作台「系统管理」组退役, 只在系统设置页内——
+  // 锁死工作台不再出现该卡, 防止后续又被加回去。
+  testWidgets('workbench system group no longer shows the AI services entry', (
     tester,
   ) async {
     final router = _router(
       const SingleChildScrollView(child: WorkbenchModuleArea()),
     );
     addTearDown(router.dispose);
-    await _pump(tester, router, permissions: {Perm.serverStatusView});
+    await _pump(tester, router);
+
     expect(find.text('AI 服务'), findsNothing);
+    // 系统管理组本身仍在渲染(系统设置卡还在), 排除「整组没渲染」的假绿。
+    expect(find.text('系统设置'), findsOneWidget);
   });
 
   testWidgets('system settings entry card opens the AI services page', (

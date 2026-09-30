@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: { default: '优腾官网管理后台', template: '%s · 优腾管理后台' },
+  icons: { icon: '/images/logo/logo_ip.png' },
   robots: { index: false, follow: false },
 };
 

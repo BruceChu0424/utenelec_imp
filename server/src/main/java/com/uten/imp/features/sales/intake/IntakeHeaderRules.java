@@ -65,6 +65,8 @@ final class IntakeHeaderRules {
     private static final Pattern DOC_NO_HASH = Pattern.compile("(?i)(?:invoice|quotation|pi|order|contract)\\s*#\\s*([A-Z0-9][A-Z0-9/\\-]{1,30})");
     private static final Pattern DOC_NO_CN = Pattern.compile("(合同号|订单号|单号|发票号|报价单号)\\s*[:：]?\\s*([A-Za-z0-9][A-Za-z0-9/\\-]{1,30})");
     private static final Pattern EMAIL = Pattern.compile("[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}");
+    private static final Pattern WEBSITE = Pattern.compile(
+            "(?i)(?:website|web\\s*site|网址|网站)\\s*[:：]\\s*((?:https?://|www\\.)[^\\s<>]+)");
     /**
      * 电话标签: 英文词前后不紧挨字母(「Total」「Photo」不算), 单字母「T」必须带「.」或「:」; 中文标签不限位置。
      * 「Phone No.:」这类带编号字样的也吃掉, 让号码紧跟在标签后面。
@@ -189,6 +191,11 @@ final class IntakeHeaderRules {
                 boolean isSeller = seller.contains(key(row.index0(), cell.col0()));
                 String firstLine = firstLine(text);
                 if (!isSeller) {
+                    Matcher website = WEBSITE.matcher(text);
+                    if (h.website == null && website.find()) {
+                        String value = website.group(1).replaceAll("[.,;，；]+$", "");
+                        if (value.length() <= 200) h.website = value.startsWith("www.") ? "https://" + value : value;
+                    }
                     if (h.buyerName == null) {
                         Matcher inline = BUYER_INLINE.matcher(firstLine);
                         if (inline.find()) {

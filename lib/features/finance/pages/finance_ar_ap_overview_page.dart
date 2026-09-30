@@ -517,6 +517,12 @@ class _FinanceArApOverviewPageState
     );
     final data = parseReportResponse(json, 1);
     return UtenPrintTable(
+      columnKeys: [for (final c in data.columns) c.key],
+      rowIds: [for (final r in data.rows) r['id']?.toString()],
+      factValues: [
+        for (final r in data.rows)
+          {for (final entry in r.entries) entry.key: entry.value?.toString()},
+      ],
       headers: [for (final c in data.columns) c.label],
       rows: [
         for (final r in data.rows)
@@ -819,6 +825,8 @@ class _FinanceArApOverviewPageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      tableKey:
+          'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1',
       columns: columns,
       items: data.rows,
       toolbarActions: [

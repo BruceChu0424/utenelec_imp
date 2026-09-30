@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 // 委外单据模型（8 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
 //
 // 8 单据差异由 doc_type 决定可选字段是否非空（订货有 purchaser+currency；进仓有 sender+
@@ -112,6 +113,7 @@ class SubcontractDocListItem {
 
 class SubcontractDocItem {
   const SubcontractDocItem({
+    this.extraColumns = const [],
     required this.id,
     this.lineNo,
     this.goodsId,
@@ -162,6 +164,7 @@ class SubcontractDocItem {
     this.allowedLossPct,
   });
 
+  final List<BusinessColumn> extraColumns;
   final String? id;
   final int? lineNo;
   final String? goodsId;
@@ -238,6 +241,7 @@ class SubcontractDocItem {
 
   factory SubcontractDocItem.fromJson(Map<String, dynamic> json) =>
       SubcontractDocItem(
+        extraColumns: BusinessColumn.read(json['extraColumns']),
         allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
         id: json['id'] as String?,
         lineNo: (json['lineNo'] as num?)?.toInt(),

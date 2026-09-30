@@ -87,6 +87,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     private final SubcontractOrderRepository orderRepo;
     private final SubcontractOrderItemRepository itemRepo;
+    private com.uten.imp.common.columns.BusinessColumnService businessColumns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setBusinessColumns(com.uten.imp.common.columns.BusinessColumnService service) { this.businessColumns = service; }
     private final SubcontractOrderCostItemRepository costItemRepo;
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final TxSessionVars tx;
@@ -547,6 +551,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         requireRowsMatchHeaderSupplier(req);
         requireRowsMatchHeaderCommercial(req);
         var oldItems=itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        var previousColumns = previousColumns(req.getItems(), oldItems);
         Map<OrderItemLine,SubcontractOrderItem> retained=new java.util.IdentityHashMap<>();
         var remaining=new ArrayList<>(oldItems);
         int requestedLine=0;
@@ -566,7 +571,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         applyHeader(req, r);
         for(var removed:remaining){removed.setDeleted(true);itemRepo.save(removed);}
         itemRepo.flush();
-        List<OrderItemDto> items = saveItems(r, req.getItems(),retained);
+        List<OrderItemDto> items = saveItems(r, req.getItems(),retained, previousColumns);
         applyTotals(r, items);
         prepareDraft(r);
         // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
@@ -806,7 +811,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             unitRates.put(item.getId(), unitRate);
             goodsByItem.put(item.getId(), item.getGoodsId());
             item.setQty(newQty);
-            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(newQty, item.getPrice(), null, rate);
+            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    item.getPrice() == null ? null : MoneyPolicy.exactProduct(newQty, item.getPrice()), item.getExtraColumns());
+            MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
+                    original == null || rate == null ? null : MoneyPolicy.local(original, rate));
             item.setAmountOriginal(amounts.original());
             item.setAmountLocal(amounts.local());
             itemRepo.save(item);
@@ -1238,7 +1246,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         ErrorCode.VALIDATION_FAILED,
                         "委外订货数量、单价和金额必须完整且不能为负");
             }
-            BigDecimal expectedOriginal = MoneyPolicy.exactProduct(item.getQty(), item.getPrice());
+            BigDecimal expectedOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    MoneyPolicy.exactProduct(item.getQty(), item.getPrice()), item.getExtraColumns());
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
@@ -1457,7 +1466,35 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines) {
-        return saveItems(r,lines,Map.of());
+        return saveItems(r,lines,Map.of(), Map.of());
+    }
+
+    /** Preserve terms independently of preparation-row replacement when quantities or sources change. */
+    static Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns(
+            List<OrderItemLine> requested, List<SubcontractOrderItem> stored) {
+        Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> snapshots = new java.util.IdentityHashMap<>();
+        List<SubcontractOrderItem> remaining = new ArrayList<>(stored);
+        for (OrderItemLine line : requested) {
+            List<SubcontractOrderItem> candidates = remaining.stream().filter(old -> line.getId() != null
+                    ? line.getId().equals(old.getId())
+                    : Objects.equals(line.getGoodsId(), old.getGoodsId())
+                      && Objects.equals(line.getColorId(), old.getColorId())
+                      && Objects.equals(line.getUnitId(), old.getUnitId())
+                      && Objects.equals(line.getApplicationItemId(), old.getApplicationItemId())).toList();
+            if (line.getId() != null && candidates.isEmpty())
+                throw new ApiException(ErrorCode.CONFLICT, "委外明细不存在、重复或不属于本订单");
+            SubcontractOrderItem match = candidates.stream()
+                    .filter(old -> line.getLineNo() != null && line.getLineNo().equals(old.getLineNo()))
+                    .findFirst().orElse(candidates.isEmpty() ? null : candidates.getFirst());
+            if (line.getId() == null && match != null && candidates.size() > 1
+                    && candidates.stream().map(SubcontractOrderItem::getExtraColumns).distinct().count() > 1)
+                throw new ApiException(ErrorCode.CONFLICT, "相同货品存在不同扩展条款，请刷新页面后按明细编号保存");
+            if (match != null) {
+                snapshots.put(line, match.getExtraColumns());
+                remaining.remove(match);
+            }
+        }
+        return snapshots;
     }
 
     private void prepareDraft(SubcontractOrder order){
@@ -1476,7 +1513,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
     }
 
-    private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines,Map<OrderItemLine,SubcontractOrderItem> retained) {
+    private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines,Map<OrderItemLine,SubcontractOrderItem> retained,
+            Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额）；application_item_id 落首来源（主锚点）。
@@ -1531,7 +1569,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             it.setQty(l.getQty());
             BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外加工单价");
             it.setPrice(price);
-            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), price, null, headerRate);
+            it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "subcontract_order",
+                    l.getExtraColumns(), previousColumns.getOrDefault(l, it.getExtraColumns()), subcontractPriceMasked()));
+            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    price == null ? null : MoneyPolicy.exactProduct(l.getQty(), price), it.getExtraColumns());
+            MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
+                    original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
             it.setApplicationItemId(primarySource);
@@ -1806,7 +1849,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private OrderItemDto toItemDto(
             SubcontractOrderItem it,
             List<OrderItemDto.SourceApplicationDoc> sourceApplications) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        OrderItemDto dto = new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
@@ -1814,6 +1857,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getMaterialReturnedQty(), it.getApplicationItemId(), it.getDeliverDate(),
                 it.getWeight(), it.getSourceDocNo(), it.getRemark(),
                 sourceApplications, it.getAllowedLossPct(), BigDecimal.ZERO);
+        dto.setExtraColumns(it.getExtraColumns());
+        return dto;
     }
 
     private OrderCostItemDto toCostItemDto(SubcontractOrderCostItem c) {
@@ -1883,13 +1928,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     private static OrderItemDto maskItemPrices(OrderItemDto it) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        OrderItemDto dto = new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
                 it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
                 it.getIssuedQty(), it.getMaterialReturnedQty(), it.getApplicationItemId(),
                 it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
                 it.getSourceApplications(), it.getAllowedLossPct(), it.getSettledLossQty());
+        dto.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.visible(it.getExtraColumns(), true));
+        return dto;
     }
 
     /** 全部明细（含 V463 合并行全部来源）同属一张委外申请时返回该申请 (id, billNo)；否则 null。 */

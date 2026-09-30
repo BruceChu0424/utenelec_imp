@@ -65,10 +65,11 @@ void main() {
     final totals = tester.widget<UtenTotalsSummaryBar>(
       find.byType(UtenTotalsSummaryBar),
     );
+    // 总行数走 rowCount 统一出口（不占 entries 位），空表不显示。
+    expect(totals.rowCount, 2);
     final byLabel = {
       for (final entry in totals.entries) entry.label: entry.value,
     };
-    expect(byLabel['行数'], '2');
     // 分组顺序按 unitId 排序(unit-box 在 unit-piece 前)，不是按行序。
     expect(byLabel['合计订货'], '4 箱 · 10 个');
     expect(byLabel['合计已发'], '4 箱 · 2 个');

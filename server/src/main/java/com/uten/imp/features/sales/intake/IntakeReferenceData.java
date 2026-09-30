@@ -13,6 +13,10 @@ import java.util.UUID;
  */
 interface IntakeReferenceData {
 
+    /** Optional reusable workbook staging. Test/in-memory stores need not persist files. */
+    default void stageTemplate(UUID jobId, UUID actor, String name,
+                               com.uten.imp.features.sales.template.QuoteTemplateWorkbook.Candidate template) { }
+
     /** 启用中的币种(很小的表, 一次读完)。 */
     List<CurrencyRow> currencies();
 
@@ -34,6 +38,13 @@ interface IntakeReferenceData {
      */
     void upsertLayout(String fingerprint, UUID clientId, String headerTexts, Map<String, String> columnRoles,
                       int headerRowOffset);
+
+    /** One source job confirms one saved document's header at most once, even after a crash/retry. */
+    default void learnLayoutOnce(SalesIntakeUsedEvent event, String fingerprint, String headerTexts,
+            Map<String,String> roles, int offset, boolean touchOnly) {
+        if (touchOnly) touchLayout(fingerprint, event.clientId());
+        else upsertLayout(fingerprint, event.clientId(), headerTexts, roles, offset);
+    }
 
     /** 保存时用的就是学习到的版式: 只刷新最近使用时间, 不加确认次数(自己确认自己不算新证据)。 */
     void touchLayout(String fingerprint, UUID clientId);

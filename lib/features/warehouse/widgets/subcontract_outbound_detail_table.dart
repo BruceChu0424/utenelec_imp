@@ -288,6 +288,8 @@ class _SubcontractOutboundDetailTableState
       numeric: true,
     );
     final grid = UtenEditableGrid<SubcontractOutboundTableRow>(
+      tableKey:
+          'features.warehouse.widgets.subcontract_outbound_detail_table.SubcontractOutboundDetailTableState.build.1',
       key: const Key('subcontract-outbound-detail-table'),
       controller: _grid,
       stickyHeaderPinned: widget.stickyHeaderPinned,

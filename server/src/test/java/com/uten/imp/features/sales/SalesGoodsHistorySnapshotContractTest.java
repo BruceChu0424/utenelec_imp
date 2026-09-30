@@ -123,12 +123,13 @@ class SalesGoodsHistorySnapshotContractTest {
         String support = source("features/sales/SalesGoodsSnapshot.java");
 
         assertThat(support)
-                .contains("select item.id, item.goods_code_snapshot, item.goods_name_snapshot"
+                .contains("select item.id, item.goods_code_snapshot, item.goods_name_snapshot, item.goods_name_en_snapshot"
                         + " from sales_order_items item")
                 .contains("select item.id, item.goods_code_snapshot, item.goods_name_snapshot"
                         + " from sales_shipment_items item")
                 .doesNotContain("coalesce(item.goods_code_snapshot, goods.code)")
-                .doesNotContain("coalesce(item.goods_name_snapshot, goods.name)");
+                .doesNotContain("coalesce(item.goods_name_snapshot, goods.name)")
+                .doesNotContain("coalesce(item.goods_name_en_snapshot, goods.name_en)");
     }
 
     @Test

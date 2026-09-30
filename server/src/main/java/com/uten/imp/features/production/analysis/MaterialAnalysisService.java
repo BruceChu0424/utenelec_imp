@@ -4444,7 +4444,11 @@ public class MaterialAnalysisService {
         Map<UUID,BigDecimal> aggregateCommitments=new HashMap<>();
         for(AggregateMember member:aggregateMembers)aggregateCommitments.merge(member.materialId(),member.qty(),BigDecimal::add);
         AggregateAliasCoverage aliasCoverage=aggregateSources?aggregateAliasCoverage(analysisId):AggregateAliasCoverage.EMPTY;
-        Map<UUID, FutureCoverage> activeFuture = activeFutureCoverage(analysisId,aliasCoverage.incoming());
+        Map<UUID, BigDecimal> previewRootAdoptions = previewRootAdoptions(sources, overlay);
+        Map<UUID, FutureCoverage> activeFuture = new LinkedHashMap<>(activeFutureCoverage(analysisId,aliasCoverage.incoming()));
+        previewRootAdoptions.forEach((id, qty) -> activeFuture.merge(id, new FutureCoverage(qty, qty),
+                (stored, projected) -> new FutureCoverage(stored.totalQty().add(projected.totalQty()),
+                        stored.externalQty().add(projected.externalQty()))));
         Map<UUID, SourceLine> sourcesById = sources.stream().collect(
                 Collectors.toMap(SourceLine::analysisItemId, source -> source));
         Map<MaterialNodeIdentity, MaterialRow> materialRowsByNode =
@@ -4702,6 +4706,7 @@ public class MaterialAnalysisService {
                 .filter(Objects::nonNull).collect(Collectors.toCollection(HashSet::new));
         materials.stream().map(MaterialView::goodsId).filter(Objects::nonNull).forEach(rateGoodsIds::add);
         Map<UUID,BigDecimal> adoptedByMaterial=preparationAdoptedQuantities(analysisId);
+        previewRootAdoptions.forEach((id, qty) -> adoptedByMaterial.merge(id, qty, BigDecimal::add));
         Map<UUID,String> claimedMakeStages=PreplanMakePublicSupplyService.claimedStages(em,analysisId);
         materials=materials.stream().map(row->row.planningUncoveredQty().signum()==0&&row.flowStage()!=null
                 &&row.flowStage().endsWith("PENDING_ISSUE")&&claimedMakeStages.containsKey(row.materialLineId())
@@ -5491,13 +5496,31 @@ public class MaterialAnalysisService {
                 UUID id = materialIds.get(ref);
                 if (id != null) allocatedByMaterial.put(id, node.allocated());
             });
+            Map<UUID, BigDecimal> rootFutureCoverage = new LinkedHashMap<>(
+                    activeFutureCoverageByMaterial(analysisId,hasAggregateSources(tree.sources())));
+            previewRootAdoptions(tree.sources(), overlay)
+                    .forEach((id, qty) -> rootFutureCoverage.merge(id, qty, BigDecimal::add));
             for (MaterialAnalysisRootSupplyService.RootQuantityRow row : rootSupply.projectRootNodes(analysisId,
-                    activeFutureCoverageByMaterial(analysisId,hasAggregateSources(tree.sources())), allocatedByMaterial, overlay.openPlanQtyBySource(), overlay)) {
+                    rootFutureCoverage, allocatedByMaterial, overlay.openPlanQtyBySource(), overlay)) {
                 roots.put(row.id(), new MaterialAnalysisIssuePreviewOverlay.RootSnapshot(row.required(), row.stock(),
                         row.reserved(), row.safety(), row.allocated(), row.shortage(), row.inbound()));
             }
         }
         overlay.replaceSnapshots(nodes, ready, roots);
+    }
+
+    /** Pending root adoption is a projected external promise, never physical stock or a stored claim. */
+    private static Map<UUID, BigDecimal> previewRootAdoptions(
+            List<SourceLine> sources, MaterialAnalysisIssuePreviewOverlay overlay) {
+        if (overlay.isNone() || overlay.rootPublicAdoption().isEmpty()) return Map.of();
+        Map<UUID, BigDecimal> result = new LinkedHashMap<>();
+        for (SourceLine source : sources) {
+            BigDecimal adopted = overlay.rootPublicAdoption().getOrDefault(source.analysisItemId(), BigDecimal.ZERO);
+            if (source.rootMaterialLineId() != null && adopted.signum() > 0) {
+                result.merge(source.rootMaterialLineId(), adopted, BigDecimal::add);
+            }
+        }
+        return result;
     }
 
     /**

@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -472,6 +473,8 @@ class _WarehouseArrivalExceptionsViewState
         ],
       ),
       body: MasterDataTableView<ProcurementArrivalException>(
+        tableKey:
+            'features.warehouse.widgets.warehouse_arrival_exceptions_view.WarehouseArrivalExceptionsViewState._buildList.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('warehouse-arrival-exception-task-table'),
@@ -771,6 +774,16 @@ class _WarehouseArrivalExceptionsViewState
       label: '当前状态',
       width: 260,
       value: (task) => task.statusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：等审批=琥珀 / 等仓库重审=蓝 /
+      // 待退供应商=紫 / 已完成=绿 / 已取消=中性灰。
+      cellColor: (context, task) =>
+          udenStatusBadgeCellColor(context, switch (task.status) {
+            'PENDING_FINANCE' => UtenStatusBadgeType.warning,
+            'RECEIPT_ADJUSTED' => UtenStatusBadgeType.info,
+            'RETURN_REQUIRED' => UtenStatusBadgeType.violet,
+            'RECEIPT_POSTED' || 'CLOSED' => UtenStatusBadgeType.success,
+            _ => UtenStatusBadgeType.neutral,
+          }),
     ),
     const MasterColumnDef(
       key: 'nextAction',

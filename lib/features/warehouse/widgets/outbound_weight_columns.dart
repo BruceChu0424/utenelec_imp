@@ -9,6 +9,8 @@
 // - [OutboundWeightSummaryBar]: 表尾「明细 N 行 · 实称 X (未称 N 行) · 称重偏差 N 行」。
 import 'package:flutter/material.dart';
 
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_predictor.dart';
@@ -116,6 +118,38 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
       final entry = entryOf(row);
       return entry == null ? '' : (text(entry) ?? '');
     },
+    // 2026-09-27 用户口径「格内胶囊改单元格背景色」：偏差档位色铺整格
+    // （ALERT 红 / WARN 琥珀 / 无偏差不铺色；textOf 常显文本时无偏差铺中性灰）。
+    // 底色依赖行内重量/数量输入，经 cellColorListenableOf 让整格实时重算。
+    cellColor: (context, row) {
+      final entry = entryOf(row);
+      if (entry == null) return null;
+      final check = entry.check(params, mode: mode);
+      final resolved = entry.paramsIn(params);
+      // 单重没学准 (或非学习/人工单重) 不核对, 不铺色 (防假阳性)。
+      if (check == null || resolved == null || !resolved.alertsEnabled) {
+        return null;
+      }
+      return switch (check.level) {
+        WeightAlertLevel.alert => udenStatusBadgeCellColor(
+          context,
+          UtenStatusBadgeType.danger,
+        ),
+        WeightAlertLevel.warn => udenStatusBadgeCellColor(
+          context,
+          UtenStatusBadgeType.warning,
+        ),
+        WeightAlertLevel.none =>
+          textOf == null
+              ? null
+              : udenStatusBadgeCellColor(context, UtenStatusBadgeType.neutral),
+      };
+    },
+    cellColorListenableOf: (row) {
+      final entry = entryOf(row);
+      if (entry == null) return null;
+      return Listenable.merge([entry.weight, ?params, ?entry.qtyListenable]);
+    },
     cellBuilder: (context, row) {
       final entry = entryOf(row);
       if (entry == null) return const SizedBox.shrink();
@@ -128,27 +162,21 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
         builder: (context, _) {
           final check = entry.check(params, mode: mode);
           final resolved = entry.paramsIn(params);
-          // 单重没学准 (或非学习/人工单重) 不核对, 不出标签 (防假阳性)。
+          // 单重没学准 (或非学习/人工单重) 不核对, 不出文本 (防假阳性)。
           if (check == null || resolved == null || !resolved.alertsEnabled) {
             return const SizedBox.shrink();
           }
           final unitName = unitNameOf?.call(entry);
-          return Align(
-            alignment: Alignment.centerLeft,
-            child: WeightDeviationChip(
-              key: ValueKey('weight-check-${identityHashCode(entry)}'),
-              check: check,
+          final body = text(entry) ?? '';
+          if (body.isEmpty) return const SizedBox.shrink();
+          return Tooltip(
+            message: weightCheckTooltip(
+              check,
+              resolved,
               mode: mode,
               unitName: unitName,
-              text: textOf?.call(check, entry),
-              showWhenNone: textOf != null,
-              tooltip: weightCheckTooltip(
-                check,
-                resolved,
-                mode: mode,
-                unitName: unitName,
-              ),
             ),
+            child: Text(body),
           );
         },
       );
@@ -220,10 +248,8 @@ class OutboundWeightSummaryBar extends StatelessWidget {
       final summary = outboundWeightTotals(entries, params: params, mode: mode);
       return UtenTotalsSummaryBar(
         key: const Key('outbound-weight-summary'),
-        entries: [
-          UtenTotalEntry('明细', '${entries.length} 行'),
-          ...weightTotalEntries(summary),
-        ],
+        rowCount: entries.length,
+        entries: [...weightTotalEntries(summary)],
       );
     },
   );

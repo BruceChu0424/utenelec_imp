@@ -106,7 +106,7 @@ public class StockReportController {
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(report, allParams, sort, order);
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_warehouse");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

@@ -179,6 +179,14 @@ String weightCheckTooltip(
   return buffer.toString();
 }
 
+/// 可靠度档位 → 徽章类型（可靠=绿 / 可参考=琥珀 / 未学准=红）。
+/// 表格列铺整格底色时经 udenStatusBadgeCellColor 取同源色（2026-09-27 口径）。
+UtenStatusBadgeType weightTierBadgeType(WeightTier tier) => switch (tier) {
+  WeightTier.green => UtenStatusBadgeType.success,
+  WeightTier.yellow => UtenStatusBadgeType.warning,
+  WeightTier.red => UtenStatusBadgeType.danger,
+};
+
 /// 可靠度徽章: 可靠(绿) / 可参考(琥珀) / 未学准(红)。
 class WeightTierBadge extends StatelessWidget {
   const WeightTierBadge({
@@ -194,11 +202,7 @@ class WeightTierBadge extends StatelessWidget {
   Widget build(BuildContext context) => UtenStatusBadge(
     label: tier.label,
     size: size,
-    type: switch (tier) {
-      WeightTier.green => UtenStatusBadgeType.success,
-      WeightTier.yellow => UtenStatusBadgeType.warning,
-      WeightTier.red => UtenStatusBadgeType.danger,
-    },
+    type: weightTierBadgeType(tier),
   );
 }
 
@@ -301,7 +305,9 @@ class WeightDeviationChip extends StatelessWidget {
 }
 
 /// 表格工具条上的单位下拉按钮 (「称重单位: 千克▾」「重量单位: 自动▾」共用外观)。
-class WeightUnitMenuButton<V> extends StatelessWidget {
+/// 弹层是我们自己的下拉样式 (对齐 UtenDropdownField: surfaceContainerHigh +
+/// elevation 8 + 圆角 8 + 选中 primaryContainer + 勾), 且与按钮同宽。
+class WeightUnitMenuButton<V> extends StatefulWidget {
   const WeightUnitMenuButton({
     super.key,
     required this.prefix,
@@ -318,41 +324,154 @@ class WeightUnitMenuButton<V> extends StatelessWidget {
   final ValueChanged<V> onSelected;
 
   @override
+  State<WeightUnitMenuButton<V>> createState() =>
+      _WeightUnitMenuButtonState<V>();
+}
+
+class _WeightUnitMenuButtonState<V> extends State<WeightUnitMenuButton<V>> {
+  final LayerLink _link = LayerLink();
+  OverlayEntry? _overlay;
+
+  /// 本次浮层向上还是向下展开 (下方空间不够时向上)。
+  bool _openAbove = false;
+
+  /// 浮层宽度 = 按钮实测宽 (打开时测得)。
+  double _width = 160;
+
+  void _open() {
+    if (_overlay != null) return;
+    final box = context.findRenderObject() as RenderBox?;
+    // 位置按浮层(画布)坐标量: 根部整体缩放(UtenDisplayZoomBox)时与画布尺寸相差 zoom 倍。
+    final overlayObject = Overlay.of(
+      context,
+      rootOverlay: true,
+    ).context.findRenderObject();
+    final overlayBox = overlayObject is RenderBox && overlayObject.hasSize
+        ? overlayObject
+        : null;
+    _openAbove = false;
+    if (box != null && box.hasSize) {
+      final screenH =
+          overlayBox?.size.height ?? MediaQuery.sizeOf(context).height;
+      final top = box.localToGlobal(Offset.zero, ancestor: overlayBox).dy;
+      _openAbove = top > screenH - (top + box.size.height);
+      _width = box.size.width;
+    }
+    _overlay = OverlayEntry(builder: _buildOverlay);
+    Overlay.of(context, rootOverlay: true).insert(_overlay!);
+  }
+
+  void _close() {
+    _overlay?.remove();
+    _overlay = null;
+  }
+
+  void _select(V option) {
+    _close();
+    widget.onSelected(option);
+  }
+
+  @override
+  void dispose() {
+    _close();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return MenuAnchor(
-      menuChildren: [
-        for (final option in options)
-          MenuItemButton(
-            key: ValueKey('weight-unit-option-${labelOf(option)}'),
-            leadingIcon: SizedBox(
-              width: 20,
-              child: option == value
-                  ? Icon(
-                      Icons.check,
-                      size: 18,
-                      color: theme.colorScheme.primary,
-                    )
-                  : null,
-            ),
-            onPressed: () => onSelected(option),
-            child: Text(labelOf(option)),
-          ),
-      ],
-      builder: (context, controller, _) => UtenButton(
+    return CompositedTransformTarget(
+      link: _link,
+      child: UtenButton(
         type: UtenButtonType.secondary,
         height: UtenTableToolbar.controlHeight,
-        onPressed: () =>
-            controller.isOpen ? controller.close() : controller.open(),
+        onPressed: () => _overlay == null ? _open() : _close(),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('$prefix: ${labelOf(value)}'),
+            Text('${widget.prefix}: ${widget.labelOf(widget.value)}'),
             const SizedBox(width: UtenSpacing.s4),
             const Icon(Icons.arrow_drop_down, size: 20),
           ],
         ),
       ),
+    );
+  }
+
+  /// 弹层: 锚定按钮下方 (下方空间不够时向上), 与按钮同宽; 点外部关闭。
+  Widget _buildOverlay(BuildContext ctx) {
+    final theme = Theme.of(ctx);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _close,
+          ),
+        ),
+        CompositedTransformFollower(
+          link: _link,
+          targetAnchor: _openAbove ? Alignment.topLeft : Alignment.bottomLeft,
+          followerAnchor: _openAbove ? Alignment.bottomLeft : Alignment.topLeft,
+          offset: Offset(0, _openAbove ? -2 : 2),
+          child: TapRegion(
+            onTapOutside: (_) => _close(),
+            child: Material(
+              color: theme.colorScheme.surfaceContainerHigh,
+              elevation: 8,
+              borderRadius: BorderRadius.circular(8),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                width: _width,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final option in widget.options)
+                      InkWell(
+                        key: ValueKey(
+                          'weight-unit-option-${widget.labelOf(option)}',
+                        ),
+                        onTap: () => _select(option),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s12,
+                            vertical: UtenSpacing.s8,
+                          ),
+                          color: option == widget.value
+                              ? theme.colorScheme.primaryContainer
+                              : null,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 18,
+                                child: option == widget.value
+                                    ? Icon(
+                                        Icons.check_rounded,
+                                        size: 18,
+                                        color: theme.colorScheme.primary,
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: UtenSpacing.s4),
+                              Expanded(
+                                child: Text(
+                                  widget.labelOf(option),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

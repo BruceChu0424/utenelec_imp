@@ -3,6 +3,7 @@
 // 令牌存 SecureStorage；启动时凭 refresh 恢复；401 明确失效时由事件总线通知登出。
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
@@ -47,6 +48,15 @@ class SessionState {
       impersonationModeExpiresAt != null &&
       DateTime.now().isBefore(impersonationModeExpiresAt!);
   AppUser? get u => user;
+}
+
+/// 改密请求已被服务端接受（密码已生效），但其后的本机会话收尾失败
+/// （响应解析 / 安全存储落盘抛出意外异常）。
+///
+/// 此时密码确实已改，本机令牌与服务端已分叉、不可信，应引导用户用新密码
+/// 重新登录，而不是显示与「没改成」混淆的模糊错误。
+class PasswordChangeCommittedError implements Exception {
+  const PasswordChangeCommittedError();
 }
 
 class SessionNotifier extends Notifier<SessionState> {
@@ -346,34 +356,51 @@ class SessionNotifier extends Notifier<SessionState> {
     if (operationEpoch != _sessionMutationEpoch) return;
     _rememberVisibleRecord(reservation.reserved);
 
-    final result = await _auth.changePassword(oldPassword, newPassword);
-    await _serializeSessionCommit(() async {
-      if (operationEpoch != _sessionMutationEpoch) {
-        await _revokeRemote(refresh: result.refreshToken);
-        return;
-      }
-      final committed = await _commitAuthResult(
-        operationEpoch,
-        reservation.intent,
-        result,
-      );
-      if (committed == null) {
-        await _revokeRemote(refresh: result.refreshToken);
-        return;
-      }
-      if (operationEpoch != _sessionMutationEpoch) {
-        await _storage.clearTokensIfUnchanged(committed);
-        await _revokeRemote(refresh: result.refreshToken);
-        return;
-      }
+    // 服务端一旦接受改密，密码即已生效，其后只差本机会话收尾。
+    // 收尾抛出意外异常（解析 / 安全存储落盘）时不能与「未改成」混为一谈：
+    // 记录真实原因、尽力吊销新签发的刷新令牌，改抛 [PasswordChangeCommittedError]
+    // 引导用户用新密码重新登录。
+    AuthResult? accepted;
+    try {
+      final result = await _auth.changePassword(oldPassword, newPassword);
+      accepted = result;
+      await _serializeSessionCommit(() async {
+        if (operationEpoch != _sessionMutationEpoch) {
+          await _revokeRemote(refresh: result.refreshToken);
+          return;
+        }
+        final committed = await _commitAuthResult(
+          operationEpoch,
+          reservation.intent,
+          result,
+        );
+        if (committed == null) {
+          await _revokeRemote(refresh: result.refreshToken);
+          return;
+        }
+        if (operationEpoch != _sessionMutationEpoch) {
+          await _storage.clearTokensIfUnchanged(committed);
+          await _revokeRemote(refresh: result.refreshToken);
+          return;
+        }
 
-      ++_sessionMutationEpoch;
-      _rememberVisibleRecord(committed);
-      state = SessionState(
-        status: AuthStatus.authenticated,
-        user: _toAppUser(result.user),
+        ++_sessionMutationEpoch;
+        _rememberVisibleRecord(committed);
+        state = SessionState(
+          status: AuthStatus.authenticated,
+          user: _toAppUser(result.user),
+        );
+      });
+    } on ApiException {
+      rethrow;
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[auth] change-password accepted by server but local commit failed: '
+        '$error\n$stackTrace',
       );
-    });
+      await _revokeRemote(refresh: accepted?.refreshToken);
+      throw const PasswordChangeCommittedError();
+    }
   }
 
   Future<void> logout() {

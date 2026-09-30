@@ -790,6 +790,8 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
             ),
             const SizedBox(height: UtenSpacing.s8),
             UtenEditableGrid<_FinishedBatchLine>(
+              tableKey:
+                  'features.warehouse.pages.production_finished_arrival_batch_registration_page.ProductionFinishedArrivalBatchRegistrationPageState._buildForm.1',
               key: const Key('production-finished-arrival-batch-grid'),
               controller: _grid,
               stickyHeaderPinned: _gridPinned,
@@ -1017,6 +1019,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         key: 'reportedQty',
         label: '报工数量',
         textOf: (row) => inboundQty(row.item.reportedQty),
+        exactValueOf: (row) => row.item.reportedQty.toString(),
       ),
       // 本次实收：先入库后质检 = 登记即承诺合格按此数量自动入库，须与报工数量一致；
       // 已登记行显示当时的实收(没记录显示「—」)。
@@ -1025,6 +1028,7 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
           controllerOf: (row) =>
               _route.isStockInFirst && !row.locked ? row.stockInQty : null,
           enabled: editable,
+          readOnlyExactValueOf: (row) => row.item.countedQty?.toString(),
           readOnlyTextOf: (row) => row.item.countedQty == null
               ? '—'
               : inboundQty(row.item.countedQty!),

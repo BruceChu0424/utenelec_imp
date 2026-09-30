@@ -38,6 +38,8 @@ import java.util.UUID;
 @RequestMapping("/api/admin/audit-logs")
 @RequiredArgsConstructor
 public class AuditController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private AuditSessionTableExportService sessionTableExport;
 
     private final AuditQueryService auditQuery;
     private final AuditRuntimeSettings runtimeSettings;
@@ -166,12 +168,15 @@ public class AuditController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "true") boolean activityOnly,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = auditQuery.export(validated(new AuditSearchCriteria(
+        ExportPayload payload = body.columnProjection()!=null &&
+                AuditSessionTableExportService.TABLE_KEY.equals(body.columnProjection().tableKey())
+                ? sessionTableExport.export(parseOptionalActorId(actorId),dateFrom,dateTo,snapshotId,runtimeSettings.exportMaxRows())
+                : auditQuery.export(validated(new AuditSearchCriteria(
                 action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
                 keyword, targetType, targetId, eventSource, requestId, operationKind,
                 dateFrom, dateTo, snapshotId, parseOptionalActorId(actorId), activityOnly)),
                 runtimeSettings.exportMaxRows());
-        byte[] workbook = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] workbook = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_admin");
         byte[] downloadBytes = workbookDownload.protect(workbook, body.password());
         logAuditAccess(
                 "export_audit_log",

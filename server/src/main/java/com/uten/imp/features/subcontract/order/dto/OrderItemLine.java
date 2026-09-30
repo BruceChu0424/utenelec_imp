@@ -13,8 +13,10 @@ import java.util.UUID;
 /** 委外订货单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class OrderItemLine implements ServerDerivedAmounts {
+public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnRequest implements ServerDerivedAmounts {
 
+    /** Existing line identity; older clients may omit it. */
+    private UUID id;
     private Integer lineNo;
 
     @NotNull

@@ -46,8 +46,9 @@ Future<void> _pump(
   _LearningRepo repo, {
   VoidCallback? onRelearned,
 }) async {
-  // 与抽屉同宽(showGoodsBomLearning 的 drawerWidth)：整张表不用横向滚动。
-  tester.view.physicalSize = const Size(1700, 900);
+  // 比抽屉(showGoodsBomLearning 的 drawerWidth 1700)再宽些：2026-09-29 学习状态
+  // 独立成列(150)后整表更宽，画布须容得下全部列，整张表不用横向滚动。
+  tester.view.physicalSize = const Size(1900, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(() {
     tester.view.resetPhysicalSize();

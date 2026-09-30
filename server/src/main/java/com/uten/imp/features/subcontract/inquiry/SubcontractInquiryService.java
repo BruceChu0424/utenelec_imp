@@ -130,6 +130,7 @@ public class SubcontractInquiryService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_inquiry:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_inquiry_item")
     public InquiryDetail create(InquirySaveRequest req) {
         tx.bind();
         SubcontractInquiry r = new SubcontractInquiry();
@@ -144,6 +145,7 @@ public class SubcontractInquiryService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_inquiry:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_inquiry_item", requestArgument=1, documentIdArgument=0)
     public InquiryDetail update(UUID id, InquirySaveRequest req) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);

@@ -98,6 +98,8 @@ public record QuoteFinanceReviewDto(
             String clientGoodsName,
             String remark,
             /** 确认前必须处理的问题(空 = 没有): 「还没有单价」/「标价为 0, 请定价或勾选赠品」。 */
-            String blockingReason) {
+            String blockingReason,
+            List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns,
+            String goodsNameEn) {
     }
 }

@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 // 报价核价页的一行编辑状态(ADR-134)：成交单价与折扣两个输入框联动。
 //
 // 定价来源由成交单价自动决定, 与服务端 applyDealPrice 同一规则(SPEC §6.2):
@@ -26,6 +27,9 @@ enum QuoteFinanceLineError {
 
   /// 财务定价行还没填成交单价。
   needPrice,
+
+  /// Existing extra terms produce an invalid amount after repricing.
+  extraAmount,
 }
 
 class QuoteFinanceLineDraft {
@@ -54,7 +58,21 @@ class QuoteFinanceLineDraft {
 
   /// 将提交的定价来源。
   String source;
-  QuoteFinanceLineError? error;
+  QuoteFinanceLineError? _error;
+  QuoteFinanceLineError? get error {
+    if (_error != null) return _error;
+    if (line.extraColumns.isEmpty) return null;
+    final base = quoteLineAmountPreview(
+      qty: line.qty,
+      price: effectivePrice,
+      discount: effectiveDiscount,
+    );
+    return base != null && businessColumnAmount(base, line.extraColumns) == null
+        ? QuoteFinanceLineError.extraAmount
+        : null;
+  }
+
+  set error(QuoteFinanceLineError? value) => _error = value;
 
   /// 已选「按最新标价刷新」(保存前本行单价/折扣不可再改)。
   bool refreshing = false;
@@ -106,10 +124,13 @@ class QuoteFinanceLineDraft {
 
   /// 金额预览(数量 × 单价 × 折扣，精确)；没改的行直接用服务端金额。
   String? get amountPreview => dirty
-      ? quoteLineAmountPreview(
-          qty: line.qty,
-          price: effectivePrice,
-          discount: effectiveDiscount,
+      ? businessColumnAmount(
+          quoteLineAmountPreview(
+            qty: line.qty,
+            price: effectivePrice,
+            discount: effectiveDiscount,
+          ),
+          line.extraColumns,
         )
       : line.amount;
 

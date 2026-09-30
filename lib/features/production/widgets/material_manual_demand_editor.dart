@@ -538,6 +538,8 @@ materialManualDemandGridColumns({
     ),
     EditableGridColumn<MaterialManualDemandLine>(
       key: 'qty',
+      exactValueOf: (r) => r.qty.text,
+      exactListenableOf: (r) => r.qty,
       label: '数量',
       width: 120,
       numeric: true,
@@ -627,7 +629,8 @@ materialManualDemandGridColumns({
   ];
 }
 
-/// 手工需求单表尾合计：货品行数 + 数量(按单位分组，绝不跨单位相加)。
+/// 手工需求单表尾合计：数量(按单位分组，绝不跨单位相加)。
+/// 行数由 EditableGridTotalsBar 的 rowCount 统一出口（「总行数: N 行」）。
 List<UtenTotalEntry> materialManualDemandTotals(
   List<MaterialManualDemandLine> rows,
   String? Function(GoodsListItem goods) unitNameOf,
@@ -637,7 +640,6 @@ List<UtenTotalEntry> materialManualDemandTotals(
       if (row.goods != null) row,
   ];
   return [
-    UtenTotalEntry('货品', '${goodsRows.length} 个'),
     utenQuantityTotalEntry([
       for (final row in goodsRows)
         MeasuredAmount(
@@ -716,6 +718,8 @@ class MaterialManualDemandCard extends ConsumerWidget {
             child: ExcludeFocus(
               excluding: !enabled,
               child: UtenEditableGrid<MaterialManualDemandLine>(
+                tableKey:
+                    'features.production.widgets.material_manual_demand_editor.MaterialManualDemandCard.build.1',
                 key: ValueKey('manual-demand-grid-$index'),
                 controller: draft.grid,
                 columns: materialManualDemandGridColumns(

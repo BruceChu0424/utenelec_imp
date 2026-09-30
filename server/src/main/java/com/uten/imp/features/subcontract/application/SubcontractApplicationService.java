@@ -200,6 +200,7 @@ public class SubcontractApplicationService {
     }
 
     @Transactional
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_application_item")
     public ApplicationDetail create(ApplicationSaveRequest req) {
         tx.bind();
         SubcontractApplication r = new SubcontractApplication();
@@ -213,6 +214,7 @@ public class SubcontractApplicationService {
     }
 
     @Transactional
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_application_item", requestArgument=1, documentIdArgument=0)
     public ApplicationDetail update(UUID id, ApplicationSaveRequest req) {
         tx.bind();
         SubcontractApplication r = requireApplicationForUpdate(id);

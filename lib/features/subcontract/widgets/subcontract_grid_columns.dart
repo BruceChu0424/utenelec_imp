@@ -9,6 +9,7 @@
 //  - 损耗 4 列（标准用量/结存数/损耗率/损耗原因）仅 itemHasWasteFields（损耗单）。
 // 颜色/单位/上游明细 id 为透传（引入或回填时预填，保存时随行写回，UI 不单独编辑）。
 import 'package:flutter/material.dart';
+import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
@@ -32,9 +33,14 @@ import '../../../shared/formatters/exact_decimal.dart';
 /// 2026-09 起：币种/汇率/税率/结算方式与备注为行级（订货单），见
 /// [CommercialTermsRowMixin]/[RemarkRowMixin]。
 class SubcontractGridRow extends EditableGridRow
-    with AmountRowMixin, CommercialTermsRowMixin, RemarkRowMixin {
+    with
+        AmountRowMixin,
+        CommercialTermsRowMixin,
+        RemarkRowMixin,
+        BusinessColumnsRow {
   SubcontractGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
+    extraColumnsChanged.addListener(_recalc);
     price.addListener(_recalc);
     // 查重标红（保存前查重被拦回时标记）：改动货品/数量/单价/委外商即消除，
     // 下次保存重新判定。
@@ -97,6 +103,7 @@ class SubcontractGridRow extends EditableGridRow
 
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// applicationItemId/orderItemId/receiptItemId/materialIssueItemId）。
+  String? documentItemId;
   String? upstreamItemId;
 
   /// 全部来源申请明细 id（V463 同货品合并行，含 [upstreamItemId] 首来源）；
@@ -149,11 +156,10 @@ class SubcontractGridRow extends EditableGridRow
   );
 
   void _recalc() {
-    recalcAmount(
-      () =>
-          (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+    amountExactNotifier.value = applyExtraColumnAmount(
+      exactLineAmountText(qty.text, price.text),
     );
-    amountExactNotifier.value = exactLineAmountText(qty.text, price.text);
+    recalcAmount(() => double.tryParse(amountExactNotifier.value ?? '') ?? 0);
   }
 
   Map<String, TextEditingController> get _draftTextControllers => {
@@ -172,6 +178,7 @@ class SubcontractGridRow extends EditableGridRow
 
   Iterable<Listenable> get draftListenables => [
     ..._draftTextControllers.values,
+    ...extraColumnListenables,
     goodsNotifier,
     stockPlaceNotifier,
     supplierIdNotifier,
@@ -184,6 +191,8 @@ class SubcontractGridRow extends EditableGridRow
 
   Map<String, dynamic> exportDraft() => {
     'text': draftTextValues(_draftTextControllers),
+    'extraColumns': exportExtraColumns(),
+    'documentItemId': documentItemId,
     'goods': draftGoods(goods),
     'stockPlace': stockPlaceNotifier.value,
     'unitRate': unitRate,
@@ -209,6 +218,7 @@ class SubcontractGridRow extends EditableGridRow
 
   factory SubcontractGridRow.fromDraft(Map<String, dynamic> data) {
     final row = SubcontractGridRow(sourceLocked: data['sourceLocked'] == true)
+      ..documentItemId = data['documentItemId'] as String?
       ..goods = restoreDraftGoods(data['goods'])
       ..stockPlaceNotifier.value = data['stockPlace'] as String?
       ..unitRate = (data['unitRate'] as num?)?.toDouble()
@@ -219,6 +229,7 @@ class SubcontractGridRow extends EditableGridRow
       ..sourceDocNo = data['sourceDocNo'] as String?
       ..supplierId = data['supplierId'] as String?;
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
+    row.restoreExtraColumns(data['extraColumns']);
     row.maxQty = (data['maxQty'] as num?)?.toDouble();
     row.upstreamItemIds = draftStrings(data['upstreamItemIds']);
     row.sourceDocs = draftMaps(
@@ -249,6 +260,7 @@ class SubcontractGridRow extends EditableGridRow
       ..unitId = unitId
       ..unitRate = unitRate
       ..supplierId = supplierId;
+    copyExtraColumnsTo(c);
     c.qty.text = qty.text;
     c.price.text = price.text;
     c.weight.text = weight.text;
@@ -304,6 +316,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   Future<void> Function(SubcontractGridRow row) onPickGoods,
   SubcontractDocConfig cfg, {
   required BuildContext context,
+  List<SubcontractGridRow> rows = const [],
   Map<String, String> unitEntries = const {},
   Map<String, String> supplierEntries = const {},
   bool supplierRequired = false,
@@ -647,5 +660,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       ),
     // 每行末尾备注列：随行提交 remark。
     if (showRemark) procurementRemarkColumn<SubcontractGridRow>(),
+    ...businessEditableColumns<SubcontractGridRow>(
+      businessColumnsOf(rows),
+      rowOf: (row) => row,
+      amountHint: l10n.businessColumnAmountHint,
+    ),
   ];
 }

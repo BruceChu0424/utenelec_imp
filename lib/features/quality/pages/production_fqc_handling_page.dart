@@ -620,6 +620,8 @@ class _ProductionFqcSheetHandlingPageState
                   : AbsorbPointer(
                       absorbing: !_canDecide,
                       child: MasterDataTableView<FqcReportRow>(
+                        tableKey:
+                            'features.quality.pages.production_fqc_handling_page.ProductionFqcSheetHandlingPageState._buildBody.1',
                         key: const Key('fqc-sheet-report-table'),
                         columns: _rowColumns(theme),
                         items: activeRows,
@@ -721,6 +723,8 @@ class _ProductionFqcSheetHandlingPageState
             ),
             const SizedBox(height: UtenSpacing.s12),
             MasterDataTableView<_SheetHeaderRow>(
+              tableKey:
+                  'features.quality.pages.production_fqc_handling_page.ProductionFqcSheetHandlingPageState._buildSummaryCard.1',
               key: const Key('fqc-sheet-header-table'),
               embedded: true,
               showColumnChooser: false,
@@ -1321,6 +1325,8 @@ class _ProductionFqcInspectionPageState
             ),
             const SizedBox(height: UtenSpacing.s12),
             MasterDataTableView<_FactRow>(
+              tableKey:
+                  'features.quality.pages.production_fqc_handling_page.ProductionFqcInspectionPageState._buildFactsCard.1',
               key: const Key('fqc-inspection-facts-table'),
               embedded: true,
               stickyHeaderPinned: _factsPinned,
@@ -1462,6 +1468,8 @@ class _ProductionFqcInspectionPageState
             ),
             const SizedBox(height: UtenSpacing.s12),
             MasterDataTableView<FqcReportRow>(
+              tableKey:
+                  'features.quality.pages.production_fqc_handling_page.ProductionFqcInspectionPageState._buildDecisionForm.1',
               key: const Key('fqc-inspection-decision-table'),
               embedded: true,
               stickyHeaderPinned: _decisionPinned,

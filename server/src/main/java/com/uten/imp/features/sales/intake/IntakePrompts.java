@@ -100,6 +100,10 @@ final class IntakePrompts {
             country (English country name of the buyer), currency (ISO code such as USD or CNY when written, else null).
             Line fields: lineNo, partNo (customer's item/model number), description (verbatim, keep every language exactly as written),
             series, color, qty (number), unit, unitPrice (number), amount (number).
+            Also include extraFields: up to 16 useful additional per-line facts (packaging, certification,
+            dimensions, material or explicit extra charges), each {label: verbatim header, value: verbatim value}.
+            Use [] when none are present. Do not repeat the standard fields, infer arithmetic, invent labels,
+            or copy bank/account/contact/credential data into extraFields. Preserve leading zeroes in references.
             Include only goods lines. Skip totals, deposits, balances, bank details, remarks and the seller's own details.
             Placeholders such as ⟨EMAIL_1⟩ and ⟨PHONE_1⟩ stand for hidden contact details; ⟨SELLER_1⟩ stands for our own brand name.
             Copy placeholders unchanged.
@@ -135,10 +139,14 @@ final class IntakePrompts {
             boolean number = f.equals("qty") || f.equals("unitPrice") || f.equals("amount");
             line.put(f, Map.of("type", number ? List.of("number", "null") : List.of("string", "null")));
         }
+        line.put("extraFields", Map.of("type","array","maxItems",16,"items",objectSchema(
+                Map.of("label",Map.of("type","string"),"value",Map.of("type","string")), List.of("label","value"))));
+        List<String> requiredLineFields = new ArrayList<>(LINE_FIELDS);
+        requiredLineFields.add("extraFields");
         return objectSchema(Map.of(
                 "header", objectSchema(header, HEADER_FIELDS),
                 "currency", Map.of("type", List.of("string", "null")),
-                "lines", Map.of("type", "array", "items", objectSchema(line, LINE_FIELDS))),
+                "lines", Map.of("type", "array", "items", objectSchema(line, requiredLineFields))),
                 List.of("header", "currency", "lines"));
     }
 

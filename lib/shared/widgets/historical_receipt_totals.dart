@@ -27,6 +27,7 @@ class HistoricalReceiptTotals extends StatelessWidget {
     return UtenTotalsSummaryBar(
       density: true,
       compact: true,
+      rowCount: lines.length,
       entries: [
         for (final group in groups.entries)
           UtenTotalEntry(

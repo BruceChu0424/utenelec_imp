@@ -10,7 +10,10 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/ai/ai_progress_dialog.dart';
 
 class AiSettingsEntryCard extends StatelessWidget {
-  const AiSettingsEntryCard({super.key});
+  const AiSettingsEntryCard({super.key, this.margin});
+
+  /// 作网格瓦片时传 EdgeInsets.zero（间距由网格管），默认整宽独占一行留底部间距。
+  final EdgeInsetsGeometry? margin;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +27,7 @@ class AiSettingsEntryCard extends StatelessWidget {
       excludeSemantics: true,
       child: Card(
         key: const ValueKey('system-settings-ai-entry'),
-        margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
+        margin: margin ?? const EdgeInsets.only(bottom: UtenSpacing.s12),
         elevation: 0,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(

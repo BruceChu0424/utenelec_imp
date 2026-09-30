@@ -689,6 +689,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         );
     final columns = _columns;
     return UtenPrintTable(
+      columnKeys: [for (final column in columns) column.key],
+      rowIds: [for (final account in result.items) account.id],
       headers: [for (final column in columns) column.label],
       rows: [
         for (final account in result.items)
@@ -771,6 +773,8 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                   _actionRow(),
                   Expanded(
                     child: MasterDataTableView<AccountListItem>(
+                      tableKey:
+                          'features.basic_data.pages.account_workspace_page.AccountPageState._buildDraftHost.1',
                       primary: true,
                       showFullscreenToggle:
                           MediaQuery.sizeOf(context).width >= 600,

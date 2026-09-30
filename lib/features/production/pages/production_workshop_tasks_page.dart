@@ -2669,6 +2669,8 @@ class _ProductionWorkshopTasksPageState
                       : MasterDataTableView<
                           ProductionExecutionWorkbenchSegment
                         >(
+                          tableKey:
+                              'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.1',
                           columns: _columnsFor(_status!),
                           items: _displayItems,
                           // 车间筛选在表头（生产车间列下拉，与状态值筛选同范式）；

@@ -89,6 +89,8 @@ class ArrivalQtyRevisionTable extends StatelessWidget {
       ),
       const SizedBox(height: 8),
       UtenRevisionTable<ArrivalQtyRevisionLine>(
+        tableKey:
+            'features.warehouse.widgets.arrival_qty_revision_table.ArrivalQtyRevisionTable.build.1',
         key: const Key('arrival-qty-revision-table'),
         embedded: true,
         rows: arrivalQtyRevisionRows(task, proposedQty: proposedQty),

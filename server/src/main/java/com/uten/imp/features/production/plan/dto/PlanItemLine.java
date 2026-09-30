@@ -17,7 +17,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-public class PlanItemLine {
+public class PlanItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput {
     private Integer lineNo;
 
     /**

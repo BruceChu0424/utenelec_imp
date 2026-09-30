@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -304,6 +306,8 @@ class _ProductionMaterialAnalysisHistoryPageState
     final items = page?.items ?? const <MaterialAnalysisListItem>[];
     if (compact) return _cards(theme, items);
     return MasterDataTableView<MaterialAnalysisListItem>(
+      tableKey:
+          'features.production.pages.production_material_analysis_history_page.ProductionMaterialAnalysisHistoryPageState._content.1',
       key: const Key('analysis-history-table'),
       columns: _columns,
       items: items,
@@ -334,6 +338,10 @@ class _ProductionMaterialAnalysisHistoryPageState
       label: '状态',
       width: 120,
       value: (item) => _statusLabel(item.status),
+      // 2026-09-27 用户口径「表格状态列整格底色」：进行中=青 / 部分下达=蓝 /
+      // 全部下达=绿 / 取消=中性灰。
+      cellColor: (context, item) =>
+          udenStatusBadgeCellColor(context, _statusType(item.status)),
     ),
     const MasterColumnDef(
       key: 'source',
@@ -585,6 +593,13 @@ class _ProductionMaterialAnalysisHistoryPageState
   );
 
   static String _statusLabel(String status) => _statuses[status] ?? '状态待确认';
+
+  static UtenStatusBadgeType _statusType(String status) => switch (status) {
+    'ACTIVE' => UtenStatusBadgeType.accent,
+    'PARTIALLY_PLANNED' => UtenStatusBadgeType.info,
+    'COMPLETED' => UtenStatusBadgeType.success,
+    _ => UtenStatusBadgeType.neutral,
+  };
 
   static IconData _statusIcon(String status) => switch (status) {
     'ACTIVE' => Icons.play_circle_outline_rounded,

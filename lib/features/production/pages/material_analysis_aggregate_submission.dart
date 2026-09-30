@@ -44,15 +44,28 @@ final class _MaterialAggregateSubmission {
   Future<bool> submit(
     List<_MaterialGroup> selected, {
     bool confirmed = false,
+    bool? skipAutoClaim,
   }) => owner._withPreparationSubmissionScope(
-    () => _submit(selected, confirmed: confirmed),
+    () => _submit(selected, confirmed: confirmed, skipAutoClaim: skipAutoClaim),
   );
 
   Future<bool> _submit(
     List<_MaterialGroup> selected, {
     required bool confirmed,
+    bool? skipAutoClaim,
   }) async {
     if (running || table.saving || selected.isEmpty) return false;
+    // 2026-09-29 用户口径：编排入口(main 表全选下单)已问过并把标志传进来(非 null)；
+    // 汇总视图直接下单在这里问一次「是否扣可用数量」，整轮所有段共用同一选择。
+    final bool skipClaims;
+    if (skipAutoClaim != null) {
+      skipClaims = skipAutoClaim;
+    } else {
+      final claimUsage = await owner._askClaimableSupplyUsage(selected, null);
+      if (claimUsage == null) return false;
+      skipClaims = !claimUsage;
+    }
+    if (!owner.mounted) return false;
     final keys = selected
         .map((group) => owner._aggregateKeyOf(group.representative))
         .toSet();
@@ -124,7 +137,11 @@ final class _MaterialAggregateSubmission {
         final sources = [
           for (final key in active) ...table.draftGroups(table.drafts[key]!),
         ];
-        final success = await table.submitStage(sources, confirmed: confirmed);
+        final success = await table.submitStage(
+          sources,
+          confirmed: confirmed,
+          skipAutoClaim: skipClaims,
+        );
         if (!owner.mounted) return false;
         if (!success) {
           if (completed.isNotEmpty) {

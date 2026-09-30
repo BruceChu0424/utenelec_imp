@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 销售退货保存请求中的明细行。 */
 @Getter
 @Setter
-public class ReturnItemLine implements ServerDerivedAmounts {
+public class ReturnItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

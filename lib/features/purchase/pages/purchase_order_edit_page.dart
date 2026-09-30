@@ -14,6 +14,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_values.dart';
@@ -462,6 +463,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         row.qty.text = financeExactTrimmed(it.qty?.toString()) ?? '';
         row.weight.text = financeExactTrimmed(it.weight?.toString()) ?? '';
         row.price.text = financeExactTrimmed(it.price?.toString()) ?? '';
+        row.documentItemId = it.id;
+        row.restoreExtraColumns(
+          it.extraColumns.map((c) => c.toSnapshot()).toList(),
+        );
         row.remark.text = it.remark ?? '';
         // 既有单一套条款：明细不落条款，编辑回显按单头条款回填各行。
         row
@@ -985,7 +990,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       rowNoOf: (r) => rowNoOf[r] ?? 0,
       groupKey: (r) =>
           '${_comboKey(r)}|${r.goods?.id ?? ''}|${r.colorId ?? ''}|'
-          '${r.unitId ?? ''}|${r.unitRate ?? 1}',
+          '${r.unitId ?? ''}|${r.unitRate ?? 1}|${r.extraColumnsSignature}|'
+          '${r.extraColumnsPreventMerge ? identityHashCode(r) : ''}',
       identityLabel: (r) {
         final parts = <String>[
           if ((r.goods?.name ?? '').isNotEmpty) r.goods!.name!,
@@ -1208,9 +1214,16 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       final rate = double.tryParse(rateTextOf(r))!;
       final tax = double.tryParse(taxTextOf(r))!;
+      if (!r.extraColumnsValid(exactLineAmountText(r.qty.text, r.price.text))) {
+        if (!mounted) return;
+        context.appError('附加列数字或计算有误，请检查数字、除数以及最终金额');
+        return;
+      }
       final remarkText = r.remark.text.trim();
       itemsBody.add({
         'goodsId': r.goods!.id,
+        'extraColumns': r.extraColumnsPayload(),
+        if (r.documentItemId != null) 'id': r.documentItemId,
         'qty': qty,
         'price': price,
         if (r.upstreamItemId != null) 'requestItemId': r.upstreamItemId,
@@ -1320,7 +1333,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           context,
           ref,
           _pendingFiles,
-          ownerType: 'PURCHASE_ORDER',
+          ownerType: 'purchase_order',
           ownerIds: [for (final createdDoc in created) createdDoc.id],
         );
         if (!mounted || !ok) return;
@@ -1546,7 +1559,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                           // 拆单生成后逐张确认上传，再提交财务（ADR-074）。
                           if (!_isCreate)
                             BusinessAttachmentSection(
-                              ownerType: 'PURCHASE_ORDER',
+                              ownerType: 'purchase_order',
                               ownerId: widget.id!,
                               canView: ref
                                   .watch(currentPermissionsProvider)
@@ -1616,6 +1629,27 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                               return SavedDocumentFields(
                                 locked: _hasCreatedDocuments,
                                 child: UtenEditableGrid<PurchaseGridRow>(
+                                  tableKey: 'purchase.order.items',
+                                  onAddColumn: (hidden) =>
+                                      addBusinessGridColumn(
+                                        context,
+                                        scope: 'purchase_order',
+                                        hiddenColumns: hidden,
+                                        rows: _grid.rows,
+                                        createRow: () {
+                                          final row = PurchaseGridRow()
+                                            ..currencyId = _defaultCurrencyId
+                                            ..exchangeRate.text = '1'
+                                            ..taxRate.text = '0';
+                                          _grid.addRow(row);
+                                          return row;
+                                        },
+
+                                        onChanged: () => setState(() {}),
+                                      ),
+                                  forceVisibleColumnKeys: {
+                                    ...filledBusinessColumnKeys(_grid.rows),
+                                  },
                                   controller: _grid,
                                   stickyHeaderPinned: _gridPinned,
                                   initialColumnOrder: columnPrefs?.order,
@@ -1652,6 +1686,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                   columns: purchaseGridColumns(
                                     _pickGoods,
                                     context: context,
+                                    rows: _grid.rows,
                                     unitEntries: names.unitEntries,
                                     supplierEntries: _supplierDropdownEntries(),
                                     supplierRequired: true,

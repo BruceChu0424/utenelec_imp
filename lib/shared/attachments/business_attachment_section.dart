@@ -37,21 +37,40 @@ class BusinessAttachmentSection extends ConsumerWidget {
     this.title = '相关文件',
     this.categories,
     this.readOnlyNote,
-  }) : draftController = null;
+    this.rowActionBuilder,
+  }) : draftController = null,
+       draftActionFor = null,
+       draftHeaderExtra = null,
+       draftEmptyHint = null,
+       draftManageWithoutUploadPerm = false,
+       draftSelectionMode = false,
+       draftSelectedItems = const <PendingAttachment>{},
+       draftOnToggleSelection = null,
+       draftSelectableFor = null;
 
   /// 新建单据（尚无 UUID）的保存前暂存模式：只选文件/移除，保存成功后由页面调用
   /// [PendingAttachmentController.flush] 逐个确认到真实单据（ADR-074 不按名称关联）。
   /// [canManage] 由页面表达新建权限；组件再叠加 attachment:upload。
+  /// [draftActionFor]/[draftHeaderExtra]/[draftEmptyHint] 透传给暂存卡片区（如销售的 AI 识别）。
   const BusinessAttachmentSection.draft({
     super.key,
     required PendingAttachmentController controller,
     required this.canManage,
     this.title = '相关文件',
     this.categories,
+    this.draftActionFor,
+    this.draftHeaderExtra,
+    this.draftEmptyHint,
+    this.draftManageWithoutUploadPerm = false,
+    this.draftSelectionMode = false,
+    this.draftSelectedItems = const <PendingAttachment>{},
+    this.draftOnToggleSelection,
+    this.draftSelectableFor,
   }) : draftController = controller,
        ownerType = '',
        ownerId = '',
        canView = true,
+       rowActionBuilder = null,
        // 新建暂存区没有「只读」形态：无权管理时整区不渲染。
        readOnlyNote = null;
 
@@ -62,6 +81,33 @@ class BusinessAttachmentSection extends ConsumerWidget {
   final String title;
   final List<String>? categories;
   final PendingAttachmentController? draftController;
+
+  /// 见 [PendingAttachmentSection.actionFor]。
+  final PendingFileActionSpec? Function(PendingAttachment item)? draftActionFor;
+
+  /// 见 [PendingAttachmentSection.headerExtra]。
+  final Widget? draftHeaderExtra;
+
+  /// 见 [PendingAttachmentSection.emptyHint]。
+  final String? draftEmptyHint;
+
+  /// 见 [PendingAttachmentSection.manageWithoutUploadPerm]。
+  final bool draftManageWithoutUploadPerm;
+
+  /// 见 [PendingAttachmentSection.selectionMode]（批量操作前的勾选模式）。
+  final bool draftSelectionMode;
+
+  /// 见 [PendingAttachmentSection.selectedItems]。
+  final Set<PendingAttachment> draftSelectedItems;
+
+  /// 见 [PendingAttachmentSection.onToggleSelection]。
+  final ValueChanged<PendingAttachment>? draftOnToggleSelection;
+
+  /// 见 [PendingAttachmentSection.selectableFor]。
+  final bool Function(PendingAttachment item)? draftSelectableFor;
+
+  /// 见 [AttachmentSection.rowActionBuilder]（已保存单据的附件行附加动作）。
+  final Widget? Function(Attachment attachment)? rowActionBuilder;
 
   /// [canManage]=false 时在区块下方给一句「为什么改不了 / 去哪儿改」。
   /// 详情（审核）页统一用 [kReviewReadOnlyAttachmentNote]。
@@ -87,7 +133,8 @@ class BusinessAttachmentSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (draftController case final controller?) {
-      if (!canManage ||
+      if (!canManage) return const SizedBox.shrink();
+      if (!draftManageWithoutUploadPerm &&
           !ref
               .watch(currentPermissionsProvider)
               .contains(Perm.attachmentUpload)) {
@@ -101,6 +148,14 @@ class BusinessAttachmentSection extends ConsumerWidget {
             canManage: canManage,
             title: title,
             categories: categories,
+            emptyHint: draftEmptyHint,
+            actionFor: draftActionFor,
+            headerExtra: draftHeaderExtra,
+            manageWithoutUploadPerm: draftManageWithoutUploadPerm,
+            selectionMode: draftSelectionMode,
+            selectedItems: draftSelectedItems,
+            onToggleSelection: draftOnToggleSelection,
+            selectableFor: draftSelectableFor,
           ),
         ),
       );
@@ -153,6 +208,7 @@ class BusinessAttachmentSection extends ConsumerWidget {
                 emptyHint: canManage ? _emptyHint : '这张单据还没有相关文件。',
                 categories: categories,
                 onChanged: () => ref.invalidate(provider),
+                rowActionBuilder: rowActionBuilder,
               ),
               // 只读说明只在「确实有文件可看」时给：空单据下这句话只是噪音。
               if (!canManage && readOnlyNote != null && files.isNotEmpty)

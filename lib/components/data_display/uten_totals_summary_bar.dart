@@ -15,6 +15,7 @@ class UtenTotalsSummaryBar extends StatelessWidget {
     this.density = false,
     this.showDivider = false,
     this.compact = false,
+    this.rowCount,
   });
 
   /// 合计项（按展示顺序）。
@@ -35,14 +36,25 @@ class UtenTotalsSummaryBar extends StatelessWidget {
   /// 这 8px 会把表体挤到溢出。详情/编辑页的独立合计条保持默认（false）。
   final bool compact;
 
+  /// 总行数（明细行数）：非空且 > 0 时在合计条最前显示「总行数: N 行」。
+  ///
+  /// 2026-09-29 用户口径：带合计条的明细表在最前补行数，方便先看规模再看合计。
+  /// 0 行（空表）不显示——与「空值项整体隐藏」同语义。行数不折算、不分组，
+  /// 数的是调用方表格里的行（编辑网格含未选货品的空行）。
+  final int? rowCount;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // 空串与「—」（调用方金额格式化的空值占位）都视为无值整体隐藏，
     // 避免出现「折合本币: —」这种空项。
-    final visible = entries
-        .where((e) => e.value.trim().isNotEmpty && e.value.trim() != '—')
-        .toList();
+    final visible = <UtenTotalEntry>[
+      if (rowCount != null && rowCount! > 0)
+        UtenTotalEntry('总行数', '$rowCount 行'),
+      ...entries.where(
+        (e) => e.value.trim().isNotEmpty && e.value.trim() != '—',
+      ),
+    ];
     if (visible.isEmpty) return const SizedBox.shrink();
     final labelStyle = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,

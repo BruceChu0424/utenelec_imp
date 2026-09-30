@@ -27,6 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     title: { default: t('company'), template: `%s | ${t('company')}` },
     description: t('tagline'),
     applicationName: t('company'),
+    icons: { icon: '/images/logo/logo_ip.png' },
     openGraph: { title: t('company'), description: t('tagline'), type: 'website', locale, siteName: t('company') },
     robots: { index: true, follow: true },
   };

@@ -135,6 +135,7 @@ public class FinanceBankTransferService {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_bank_transfer:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_bank_transfer_item")
     public FinanceBankTransferDetail create(FinanceBankTransferSaveRequest req) {
         tx.bind();
         assertBillNoFree(req.getBillNo(), null);
@@ -150,6 +151,7 @@ public class FinanceBankTransferService {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_bank_transfer_item", requestArgument=1, documentIdArgument=0)
     public FinanceBankTransferDetail update(UUID id, FinanceBankTransferSaveRequest req) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);

@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 // 销售订货单财务确认任务模型（V294 闸门，V300 补驳回与审核详情）。
 //
 // 后端 SalesOrderFinanceConfirmService 返回的待确认列表行：已审核但未财务确认的
@@ -420,12 +421,14 @@ class SalesOrderRevisionDiff {
 class SalesOrderRevisionLine {
   const SalesOrderRevisionLine({
     required this.itemId,
+    this.extraColumns = const [],
     this.lineNo,
     this.goodsCode,
     this.goodsName,
     required this.values,
   });
 
+  final List<BusinessColumn> extraColumns;
   final String itemId;
   final int? lineNo;
   final String? goodsCode;
@@ -436,6 +439,7 @@ class SalesOrderRevisionLine {
 
   factory SalesOrderRevisionLine.fromJson(Map<String, dynamic> json) =>
       SalesOrderRevisionLine(
+        extraColumns: BusinessColumn.read(json['extraColumns']),
         itemId: _string(json['itemId']) ?? '',
         lineNo: _int(json['lineNo']),
         goodsCode: _string(json['goodsCode']),
@@ -515,6 +519,8 @@ class SalesOrderFinanceQtyChange {
 /// 审核明细行（货品快照优先；颜色/单位已按主档解析名称）。
 class SalesOrderFinanceReviewLine {
   const SalesOrderFinanceReviewLine({
+    this.extraColumns = const [],
+    this.goodsNameEn,
     required this.itemId,
     this.lineNo,
     this.goodsCode,
@@ -536,6 +542,8 @@ class SalesOrderFinanceReviewLine {
     this.clientGoodsName,
   });
 
+  final List<BusinessColumn> extraColumns;
+  final String? goodsNameEn;
   final String itemId;
   final int? lineNo;
   final String? goodsCode;
@@ -566,6 +574,8 @@ class SalesOrderFinanceReviewLine {
 
   factory SalesOrderFinanceReviewLine.fromJson(Map<String, dynamic> json) {
     return SalesOrderFinanceReviewLine(
+      extraColumns: BusinessColumn.read(json['extraColumns']),
+      goodsNameEn: json['goodsNameEn']?.toString(),
       itemId: _string(json['itemId']) ?? '',
       lineNo: _int(json['lineNo']),
       goodsCode: _string(json['goodsCode']),

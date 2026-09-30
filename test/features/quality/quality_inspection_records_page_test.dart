@@ -78,13 +78,17 @@ void main() {
       );
 
       expect(find.text('检测记录'), findsOneWidget);
+      // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管，
+      // mobile-list 键退役；同一张表（含卡片形态）挂 quality-inspection-record-table。
       expect(
-        find.byKey(const Key('quality-inspection-record-mobile-list')),
+        find.byKey(const Key('quality-inspection-record-table')),
         findsOneWidget,
       );
       expect(find.text('全部记录'), findsOneWidget);
-      expect(find.text('PR20260831001'), findsOneWidget);
-      expect(find.text('当前有效'), findsOneWidget);
+      // 卡片形态副行是「单号 · 编号」拼接串，用包含匹配。
+      expect(find.textContaining('PR20260831001'), findsOneWidget);
+      // 卡片明细是「标签 值」富文本，用包含匹配。
+      expect(find.textContaining('当前有效'), findsOneWidget);
       expect(api.listQueries.last['page'], 1);
       expect(api.listPaths.last, '/procurement/inspection/records');
 
@@ -105,9 +109,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.listPaths.last, '/production/quality-inspections/records');
       expect(api.listQueries.last.containsKey('decision'), isFalse);
-      expect(find.text('RB20260831001'), findsOneWidget);
+      expect(find.textContaining('RB20260831001'), findsOneWidget);
 
-      await tester.tap(find.text('RB20260831001'));
+      // 卡片形态点卡片任意处（副行文本）打开详情。
+      await tester.tap(find.textContaining('RB20260831001'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('quality-inspection-record-fqc-event-1')),
@@ -150,7 +155,8 @@ void main() {
       await tester.tap(find.text('刷新'));
       await tester.pumpAndSettle();
       expect(find.textContaining('当前仍显示上次成功结果'), findsOneWidget);
-      expect(find.text('PR20260831001'), findsOneWidget);
+      // 卡片形态副行是「单号 · 编号」拼接串，用包含匹配。
+      expect(find.textContaining('PR20260831001'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -317,10 +323,10 @@ void main() {
     );
 
     expect(
-      find.byKey(const Key('quality-inspection-record-mobile-list')),
+      find.byKey(const Key('quality-inspection-record-table')),
       findsOneWidget,
     );
-    expect(find.text('PR20260831001'), findsOneWidget);
+    expect(find.textContaining('PR20260831001'), findsOneWidget);
     expect(find.textContaining('本页只读'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 // 采购单据模型（4 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
 //
 // 4 单据差异由 doc_type 决定可选字段是否非空（申请无供应商/币种；收货有 sender/receiver；
@@ -161,6 +162,7 @@ class PurchaseDocListItem {
 
 class PurchaseDocItem {
   const PurchaseDocItem({
+    this.extraColumns = const [],
     required this.id,
     this.lineNo,
     this.goodsId,
@@ -196,6 +198,7 @@ class PurchaseDocItem {
     this.sourceRequests = const [],
   });
 
+  final List<BusinessColumn> extraColumns;
   final String? id;
   final int? lineNo;
   final String? goodsId;
@@ -239,6 +242,7 @@ class PurchaseDocItem {
 
   factory PurchaseDocItem.fromJson(Map<String, dynamic> json) =>
       PurchaseDocItem(
+        extraColumns: BusinessColumn.read(json['extraColumns']),
         id: json['id'] as String?,
         lineNo: (json['lineNo'] as num?)?.toInt(),
         goodsId: json['goodsId'] as String?,

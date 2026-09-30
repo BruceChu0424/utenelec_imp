@@ -1,3 +1,9 @@
+import '../../shared/platform_tables/platform_table_binding.dart';
+import '../../shared/platform_tables/platform_table_controller.dart';
+import '../../shared/platform_tables/platform_table_picker.dart';
+import '../../shared/platform_tables/platform_table_widgets.dart';
+import '../../shared/platform_tables/table_column_projection.dart';
+import '../../shared/platform_tables/platform_row_draft.dart';
 // UtenEditableGrid - 编辑页明细可编辑 Excel 表（采购/销售/委外/仓库/钱流 共用）
 //
 // 设计目标（plans/witty-imagining-reef.md Workstream B1）：
@@ -46,6 +52,8 @@ import 'uten_table_column_kit.dart';
 /// 行模型基类。行持有自己的 TextEditingController / ValueNotifier（跨重建存活）。
 /// 删行/清空/替换时由 [UtenEditableGridController] 调 [dispose] 释放，避免泄漏。
 abstract class EditableGridRow {
+  final platformFields = PlatformRowDraft();
+
   /// 该行对表尾合计的贡献（默认 0；金额行用 [AmountRowMixin] 覆盖为金额）。
   double get amountValue => 0;
 
@@ -63,6 +71,7 @@ abstract class EditableGridRow {
 
   /// 释放行持有的控制器/通知器。子类覆盖时先释己方资源再 super.dispose()。
   void dispose() {
+    platformFields.dispose();
     flaggedNotifier.dispose();
   }
 }
@@ -104,6 +113,10 @@ class EditableGridColumn<T extends EditableGridRow> {
     required this.width,
     required this.cellBuilder,
     this.numeric = false,
+    this.defaultVisible = true,
+    this.exportDefinition,
+    this.exactValueOf,
+    this.exactListenableOf,
     this.required = false,
     this.headerInfo,
     this.textOf,
@@ -112,6 +125,8 @@ class EditableGridColumn<T extends EditableGridRow> {
     this.frozenTextOf,
     this.chromeWidth = 0,
     this.fillsCellHeight = false,
+    this.cellColor,
+    this.cellColorListenableOf,
   });
 
   final String key;
@@ -119,6 +134,22 @@ class EditableGridColumn<T extends EditableGridRow> {
   final double width;
   final Widget Function(BuildContext context, T row) cellBuilder;
   final bool numeric;
+  final bool defaultVisible;
+  final Map<String, dynamic>? exportDefinition;
+
+  /// Unformatted decimal source for display calculations; never inferred from a money/quantity label.
+  final String? Function(T row)? exactValueOf;
+  final Listenable? Function(T row)? exactListenableOf;
+
+  /// 单元格语义底色（2026-09-27 用户口径「格内胶囊改单元格背景色」）：铺整格
+  /// 背景并补上/下边框保持网格线可读（口径同 MasterDataTableView 的 cellColor，
+  /// 文字黑白自适应）；null = 跟随行底色。选中行让位给统一高亮。
+  /// 状态/偏差类列把格内胶囊换成「纯文字 cellBuilder + 本字段铺色」。
+  final Color? Function(BuildContext context, T row)? cellColor;
+
+  /// [cellColor] 依赖的行内可监听源（如称重核对列的重量/数量控制器）：非空时
+  /// 整格随源重算底色，否则只有 cellBuilder 自重建、底色不刷新。
+  final Listenable? Function(T row)? cellColorListenableOf;
 
   /// 本列的单元格自己吃满整行高度（不被外层 `Align` 竖向收缩、行按内容取齐）。
   /// 只给要画跨行图形的列用——层级树列（[UtenTreeTableCell]）若被居中收缩，
@@ -314,9 +345,28 @@ class _RequiredCellFrameState extends State<RequiredCellFrame> {
 class UtenEditableGridController<T extends EditableGridRow>
     extends ChangeNotifier {
   UtenEditableGridController({List<T>? initial})
-    : _rows = List.of(initial ?? const []);
+    : _rows = List.of(initial ?? const []) {
+    _bindPlatformDrafts();
+  }
 
   final List<T> _rows;
+  final Map<PlatformRowDraft, VoidCallback> _platformDraftListeners = {};
+  void _bindPlatformDrafts() {
+    final current = _rows.map((row) => row.platformFields).toSet();
+    for (final draft
+        in _platformDraftListeners.keys
+            .where((draft) => !current.contains(draft))
+            .toList()) {
+      draft.removeListener(_platformDraftListeners.remove(draft)!);
+    }
+    for (final draft in current) {
+      if (_platformDraftListeners.containsKey(draft)) continue;
+      void changed() => notifyListeners();
+      _platformDraftListeners[draft] = changed;
+      draft.addListener(changed);
+    }
+  }
+
   final _GridSignal _rowsSignal = _GridSignal();
   final _GridSignal _selectionSignal = _GridSignal();
   int _rowsRevision = 0;
@@ -331,6 +381,7 @@ class UtenEditableGridController<T extends EditableGridRow>
   int get rowsRevision => _rowsRevision;
 
   void _rowsChanged() {
+    _bindPlatformDrafts();
     _rowsRevision++;
     _rowsSignal.fire();
     notifyListeners();
@@ -483,6 +534,12 @@ class UtenEditableGridController<T extends EditableGridRow>
     _selectionChanged();
   }
 
+  T _cloneWithPlatform(T row, T Function(T) clone) {
+    final copy = clone(row);
+    copy.platformFields.copyFrom(row.platformFields);
+    return copy;
+  }
+
   /// 复制选中行到缓冲（克隆快照；旧缓冲先 dispose）。
   void copySelected(T Function(T) clone) {
     if (_selected.isEmpty) return;
@@ -491,7 +548,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     }
     _copyBuffer
       ..clear()
-      ..addAll(_selected.map(clone));
+      ..addAll(_selected.map((row) => _cloneWithPlatform(row, clone)));
     notifyListeners();
   }
 
@@ -501,7 +558,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     final pasted = <T>[];
     for (var i = 0; i < count; i++) {
       for (final src in _copyBuffer) {
-        pasted.add(clone(src));
+        pasted.add(_cloneWithPlatform(src, clone));
       }
     }
     addRows(pasted);
@@ -524,6 +581,10 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   @override
   void dispose() {
+    for (final entry in _platformDraftListeners.entries) {
+      entry.key.removeListener(entry.value);
+    }
+    _platformDraftListeners.clear();
     for (final r in _rows) {
       r.dispose();
     }
@@ -672,13 +733,29 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.showRemoveRowsAction = true,
     this.showInlineRemoveAction = false,
     this.stickyHeaderPinned,
+    this.onAddColumn,
+    this.forceVisibleColumnKeys = const {},
+    this.addColumnLabel = '添加列',
+    this.tableKey,
+    this.platformBinding,
   }) : assert(
          !showAddRow || createBlankRow != null,
          'showAddRow=true 必须提供 createBlankRow（「添加行」按钮需要构造空行）',
        );
 
+  final String? tableKey;
+  final PlatformTableBinding<T>? platformBinding;
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
+
+  /// Business pages provide a searchable catalog; the grid owns the same
+  /// trailing header cell as row actions so the button stays visible on scroll.
+  final Future<String?> Function(List<EditableGridColumn<T>> hiddenColumns)?
+  onAddColumn;
+
+  /// Populated document facts stay visible even when an account hid the column.
+  final Set<String> forceVisibleColumnKeys;
+  final String addColumnLabel;
 
   /// 构造一个空行（"添加行"/"添加多行"用）。showAddRow=false 的只选/只读场景可省。
   final T Function()? createBlankRow;
@@ -847,7 +924,11 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
       showInlineRemoveAction && !showAddRow && onRemoveRows != null;
 
   /// 行末操作列（删除/移出）是否占位。
-  bool get _showRowActionColumn => showRowDelete || _inlineRemoveColumn;
+  bool get _showRowActionColumn =>
+      showRowDelete ||
+      _inlineRemoveColumn ||
+      onAddColumn != null ||
+      showColumnSettings;
 
   @override
   State<UtenEditableGrid<T>> createState() => _UtenEditableGridState<T>();
@@ -856,6 +937,286 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 class _UtenEditableGridState<T extends EditableGridRow>
     extends State<UtenEditableGrid<T>>
     with UtenColumnHeaderDragHost<UtenEditableGrid<T>> {
+  final _platform = PlatformTableController<T>();
+  List<EditableGridColumn<T>>? _platformColumnCache;
+  List<EditableGridColumn<T>>? _platformBaseCache;
+  TableColumnProjectionController? _projection;
+  bool _platformRefreshScheduled = false;
+  bool _projectionScheduled = false;
+  List<EditableGridColumn<T>> get _columns {
+    if (_platformColumnCache != null &&
+        identical(_platformBaseCache, widget.columns)) {
+      return _platformColumnCache!;
+    }
+    _platformBaseCache = widget.columns;
+    return _platformColumnCache = [
+      ...widget.columns,
+      for (final column in _platform.definitions)
+        EditableGridColumn<T>(
+          key: column.key,
+          label: column.name,
+          width: column.numeric ? 140 : 180,
+          numeric: column.numeric,
+          exportDefinition: _platform.projectionDefinition(column),
+          headerInfo: column.calculated ? '仅用于展示，不改变单据金额或库存数量' : '随本单据保存的补充信息',
+          textOf: (row) => _platform.value(row, column) ?? '',
+          listenableOf: (row) => row.platformFields,
+          cellBuilder: (_, row) => PlatformColumnValue(
+            controller: _platform,
+            row: row,
+            column: column,
+          ),
+        ),
+    ];
+  }
+
+  void _configurePlatform() {
+    _projection = TableColumnProjectionScope.read(context);
+    _platform.configure(
+      context,
+      descriptor: PlatformTableDescriptor<T>(
+        kind: 'editable',
+        revision: widget.controller.rowsRevision,
+        tableKey: widget.tableKey,
+        columnKeys: widget.columns.map((c) => c.key).toList(),
+        rows: widget.controller.rows,
+      ),
+      explicitBinding: widget.platformBinding,
+      stagedDraftOf: (row) => row.platformFields,
+      exactFactKeys: widget.columns
+          .where((column) => column.exactValueOf != null)
+          .map((column) => column.key)
+          .toSet(),
+      factListenablesOf: (row) => [
+        for (final column in widget.columns)
+          if (column.exactValueOf != null && column.exactListenableOf != null)
+            ?column.exactListenableOf!(row),
+      ],
+      factsOf: (row) => {
+        for (final column in widget.columns)
+          if (column.exactValueOf != null)
+            column.key: column.exactValueOf!(row),
+      },
+    );
+    _platformColumnCache = null;
+    _applyPlatformLayout();
+  }
+
+  void _applyPlatformLayout() {
+    final saved = _platform.localLayout(
+      _columns.map((c) => c.key).toList(),
+      defaultHidden: _columns
+          .where((c) => !c.defaultVisible)
+          .map((c) => c.key)
+          .toSet(),
+    );
+    final columns = _columns;
+    final keys = columns.map((c) => c.key).toSet();
+    if (_platform.layout.order.isNotEmpty ||
+        _platform.binding?.defaultColumnOrder != null ||
+        _platform.binding?.defaultVisibleColumnKeys != null) {
+      _columnOrder = [
+        ...saved.order.where(keys.contains),
+        ...columns.map((c) => c.key).where((key) => !saved.order.contains(key)),
+      ];
+      _hiddenColumnKeys
+        ..clear()
+        ..addAll(saved.hidden.where(keys.contains))
+        ..addAll(
+          columns
+              .where((c) => !c.defaultVisible && !saved.order.contains(c.key))
+              .map((c) => c.key),
+        );
+      _pinnedColumnKeys
+        ..clear()
+        ..addAll(
+          saved.pinned.where(
+            (key) => keys.contains(key) && !_hiddenColumnKeys.contains(key),
+          ),
+        );
+    } else {
+      _columnOrder = [
+        ..._columnOrder.where(keys.contains),
+        ...columns
+            .map((c) => c.key)
+            .where((key) => !_columnOrder.contains(key)),
+      ];
+    }
+    for (final column in columns) {
+      if (_platform.binding?.revealPopulatedColumnKeys.contains(
+                _platform.canonicalKey(column.key),
+              ) ==
+              true &&
+          widget.controller.rows.any((row) {
+            final value =
+                (column.textOf?.call(row) ?? column.frozenTextOf?.call(row))
+                    ?.trim();
+            return value != null && value.isNotEmpty && value != '—';
+          })) {
+        _hiddenColumnKeys.remove(column.key);
+      }
+    }
+    _hiddenColumnKeys.removeAll(widget.forceVisibleColumnKeys);
+    _hiddenColumnKeys.removeAll(
+      columns.where((c) => c.required).map((c) => c.key),
+    );
+    if (_hiddenColumnKeys.length >= columns.length) _hiddenColumnKeys.clear();
+    _columnOrder = utenNormalizePinnedPrefix(
+      order: _columnOrder,
+      hiddenKeys: _hiddenColumnKeys,
+      pinnedKeys: _pinnedColumnKeys,
+    );
+    if (_widths.length != columns.length) {
+      _widths = [
+        for (var i = 0; i < columns.length; i++)
+          i < _widths.length ? _widths[i] : columns[i].width,
+      ];
+    }
+    for (var i = 0; i < columns.length; i++) {
+      final width = saved.widths[columns[i].key];
+      if (width != null) {
+        _widths[i] = width;
+        _manualResized.add(columns[i].key);
+      }
+    }
+  }
+
+  void _platformChanged() {
+    if (_platformRefreshScheduled || !mounted) return;
+    _platformRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _platformRefreshScheduled = false;
+      if (!mounted) return;
+      setState(() {
+        _platformColumnCache = null;
+        _applyPlatformLayout();
+        _autoGrowDirty = true;
+        _rewireAutoGrowListeners(force: true);
+      });
+      _publishProjection();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  void _persistPlatformLayout() {
+    _platform.saveLayout(
+      knownKeys: _columns.map((c) => c.key).toList(),
+      order: List.of(_columnOrder),
+      hidden: Set.of(_hiddenColumnKeys),
+      pinned: Set.of(_pinnedColumnKeys),
+      widths: {
+        for (var i = 0; i < _columns.length && i < _widths.length; i++)
+          if (_manualResized.contains(_columns[i].key))
+            _columns[i].key: _widths[i],
+      },
+    );
+    _publishProjection();
+  }
+
+  Future<String?> _pickPlatformColumn() => showPlatformColumnPicker(
+    context,
+    controller: _platform,
+    hiddenColumns: [
+      for (final column in _columns)
+        if (_hiddenColumnKeys.contains(column.key))
+          PlatformSystemColumn(
+            key: column.key,
+            label: column.label,
+            numeric: column.numeric,
+          ),
+    ],
+    allColumns: [
+      for (final column in _columns)
+        PlatformSystemColumn(
+          key: column.key,
+          label: column.label,
+          numeric: column.numeric,
+        ),
+    ],
+  );
+  Future<void> _addColumn() async {
+    String? key;
+    if (widget.onAddColumn != null) {
+      final mode = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('添加列'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.calculate_outlined),
+                title: const Text('单据附加项'),
+                subtitle: const Text('费用可计入金额，文字信息仅作记录'),
+                onTap: () => Navigator.pop(dialogContext, 'business'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.view_column_outlined),
+                title: const Text('辅助计算与说明'),
+                subtitle: const Text('不改变业务金额或库存数量'),
+                onTap: () => Navigator.pop(dialogContext, 'platform'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || mode == null) return;
+      key = mode == 'business'
+          ? await widget.onAddColumn!(
+              _columns.where((c) => _hiddenColumnKeys.contains(c.key)).toList(),
+            )
+          : await _pickPlatformColumn();
+    } else {
+      key = await _pickPlatformColumn();
+    }
+    if (!mounted || key == null) return;
+    setState(() {
+      _platformColumnCache = null;
+      _applyPlatformLayout();
+      _hiddenColumnKeys.remove(key);
+      _autoGrowDirty = true;
+    });
+    _notifyColumnSettingsChanged();
+  }
+
+  void _publishProjection() {
+    if (_projectionScheduled || _projection == null) return;
+    _projectionScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _projectionScheduled = false;
+      if (!mounted) return;
+      _projection?.publish(
+        this,
+        TableColumnProjection(
+          tableKey: _platform.tableKey,
+          scope: _platform.binding?.scope,
+          sourceKeys: {
+            for (final column in _columns)
+              _platform.canonicalKey(column.key): column.key,
+          },
+          columns: [
+            for (final i in _visibleColumnIndices)
+              TableProjectedColumn(
+                key: _platform.canonicalKey(_columns[i].key),
+                sourceKey: _columns[i].key,
+                label: _columns[i].label,
+                width: i < _widths.length ? _widths[i] : _columns[i].width,
+                type: _columns[i].numeric ? 'number' : 'text',
+                definition: _columns[i].exportDefinition,
+              ),
+          ],
+        ),
+        contextOwner: ModalRoute.of(context),
+      );
+    });
+  }
+
   // 表头/表体 双向横滚同步（两 ScrollController + _syncing 防回环）；表体横滚条
   // （含钉底条）整体走共用 UtenHScrollArea，其内部自行与注入的 _bodyH 同步。
   late final ScrollController _headerH;
@@ -983,20 +1344,20 @@ class _UtenEditableGridState<T extends EditableGridRow>
       i < _widths.length ? _widths[i] : _minColWidth;
 
   @override
-  String columnDragLabel(int i) =>
-      i < widget.columns.length ? widget.columns[i].label : '';
+  String columnDragLabel(int i) => i < _columns.length ? _columns[i].label : '';
 
   /// 该列当前可否拖出隐藏：仅开启表头设置时可用；至少保留一列可见；
   /// 必填列锁定（必填项不允许从界面上消失，表头设置同款口径）。
   @override
   bool columnCanDragHide(int i) =>
       widget.showColumnSettings &&
-      i < widget.columns.length &&
+      i < _columns.length &&
       _visibleColumnCount > 1 &&
-      !widget.columns[i].required;
+      !_columns[i].required &&
+      !widget.forceVisibleColumnKeys.contains(_columns[i].key);
 
   @override
-  void onColumnDragHide(int i) => _toggleColumn(widget.columns[i].key);
+  void onColumnDragHide(int i) => _toggleColumn(_columns[i].key);
 
   /// 编辑明细表的表头手势跟随表头设置开关：未开启列设置的页面保持固定布局。
   @override
@@ -1022,8 +1383,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final target = slot.clamp(0, seq.length);
     if (target == fromPos) return;
     seq.insert(target, fromOriginalIndex);
-    final newVisibleKeys = <String>{for (final i in seq) widget.columns[i].key};
-    final queue = <String>[for (final i in seq) widget.columns[i].key];
+    final newVisibleKeys = <String>{for (final i in seq) _columns[i].key};
+    final queue = <String>[for (final i in seq) _columns[i].key];
     setState(() {
       _columnOrder = utenNormalizePinnedPrefix(
         order: [
@@ -1098,14 +1459,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void initState() {
     super.initState();
+    _platform.addListener(_platformChanged);
     _headerH = ScrollController();
     _bodyH = ScrollController();
     _headerH.addListener(() => _sync(_headerH));
     _bodyH.addListener(() => _sync(_bodyH));
-    _widths = widget.columns
+    _widths = _columns
         .map((c) => c.width.clamp(_minColWidth, double.infinity))
         .toList();
-    _columnOrder = widget.columns.map((column) => column.key).toList();
+    _columnOrder = _columns.map((column) => column.key).toList();
     _applyInitialColumnSettings();
     // 挂各行自动加宽监听（初始行已带内容时首帧即量宽撑列）。
     _rewireAutoGrowListeners();
@@ -1118,25 +1480,52 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didUpdateWidget(covariant UtenEditableGrid<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final previousColumns = _platformColumnCache ?? oldWidget.columns;
     // 置顶信号 notifier 换实例（宿主页重建换新 notifier）→ 吸顶核心重绑。
     if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
       _sticky.pinnedSink = widget.stickyHeaderPinned;
     }
-    // 列集合变了（数量或 key 序列不同，如切换 docType）→ 按新 columns.width 重置列宽，
-    // 清手动锁定（新列集合下标/语义已变），重挂监听并重算自动加宽。
+    // 新增业务列保留既有列宽、顺序与筛选，添加费用不会抹掉用户刚调好的表格。
+    // 删除/替换列集合仍重新应用该业务模式的持久化设置。
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
-      _widths = widget.columns
-          .map((c) => c.width.clamp(_minColWidth, double.infinity))
+      final oldKeys = previousColumns.map((c) => c.key).toSet();
+      final newKeys = _columns.map((c) => c.key).toSet();
+      final addedOnly =
+          newKeys.length > oldKeys.length &&
+          oldKeys.every(newKeys.contains) &&
+          identical(oldWidget.controller, widget.controller);
+      final oldWidths = <String, double>{
+        for (var i = 0; i < previousColumns.length; i++)
+          previousColumns[i].key: _widths[i],
+      };
+      _widths = _columns
+          .map(
+            (c) => addedOnly
+                ? oldWidths[c.key] ??
+                      c.width.clamp(_minColWidth, double.infinity)
+                : c.width.clamp(_minColWidth, double.infinity),
+          )
           .toList();
-      _manualResized.clear();
-      _columnOrder = widget.columns.map((column) => column.key).toList();
-      _hiddenColumnKeys.clear();
-      _pinnedColumnKeys.clear();
-      _pinOriginIndex.clear();
-      _applyInitialColumnSettings();
-      // 列集合换了（切 docType/换段）→ 旧列 key 上的表头筛选一并作废，避免
-      // 「看不见的筛选」把新列集合下的行全滤掉。
-      _columnFilters.clear();
+      if (addedOnly) {
+        _columnOrder = [
+          ..._columnOrder,
+          for (final column in _columns)
+            if (!oldKeys.contains(column.key)) column.key,
+        ];
+        _hiddenColumnKeys.addAll(
+          _columns
+              .where((c) => !oldKeys.contains(c.key) && !c.defaultVisible)
+              .map((c) => c.key),
+        );
+      } else {
+        _manualResized.clear();
+        _columnOrder = _columns.map((column) => column.key).toList();
+        _hiddenColumnKeys.clear();
+        _pinnedColumnKeys.clear();
+        _pinOriginIndex.clear();
+        _applyInitialColumnSettings();
+        _columnFilters.clear();
+      }
       columnHeaderDragReset(); // 拖拽态/跟手浮层可能指向失效下标，重置。
       _colLinks.clear(); // 旧下标的 LayerLink 作废，按新列集合下标重建。
       _autoGrowDirty = true;
@@ -1145,13 +1534,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
       // 列集合未变但宿主注入的持久化值变了（如登录后服务端偏好迟到）：
       // 用户本次会话已手动改过列设置则尊重本地，否则按新值重放。
       if (!_userTouchedColumns) {
-        _columnOrder = widget.columns.map((column) => column.key).toList();
+        _columnOrder = _columns.map((column) => column.key).toList();
         _hiddenColumnKeys.clear();
         _pinnedColumnKeys.clear();
         _pinOriginIndex.clear();
         _applyInitialColumnSettings();
       }
     }
+    _hiddenColumnKeys.removeAll(widget.forceVisibleColumnKeys);
+    _configurePlatform();
     // 行控制器换实例 → 重挂监听（增删行驱动 sticky 位置重算 + 自动加宽绑到新行集）。
     if (!identical(oldWidget.controller, widget.controller)) {
       oldWidget.controller.rowsListenable.removeListener(_onControllerChanged);
@@ -1165,6 +1556,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _configurePlatform();
     // 页面上下滑（最近的祖先 Scrollable）时：先同帧快路径（锚点+pixels 纯算术，
     // 表头零滞后），再 post-frame 全量量位刷新锚点（布局变化对账）。
     final pos = Scrollable.maybeOf(context)?.position;
@@ -1230,8 +1622,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final order = widget.initialColumnOrder;
     final hidden = widget.initialHiddenColumnKeys;
     final pinned = widget.initialPinnedColumnKeys;
-    if (order == null && hidden == null && pinned == null) return;
-    final known = widget.columns.map((column) => column.key).toList();
+    final known = _columns.map((column) => column.key).toList();
     final knownSet = known.toSet();
     final seen = <String>{};
     final merged = <String>[
@@ -1241,9 +1632,19 @@ class _UtenEditableGridState<T extends EditableGridRow>
         if (!seen.contains(key)) key,
     ];
     final hiddenKeys = <String>{
-      for (final key in hidden ?? const <String>[])
+      for (final key
+          in hidden ??
+              _columns
+                  .where((c) => !c.defaultVisible)
+                  .map((c) => c.key)
+                  .toSet())
         if (knownSet.contains(key)) key,
+      if (order != null)
+        for (final column in _columns)
+          if (!column.defaultVisible && !order.contains(column.key)) column.key,
     };
+    hiddenKeys.removeAll(widget.forceVisibleColumnKeys);
+    hiddenKeys.removeAll(_columns.where((c) => c.required).map((c) => c.key));
     if (hiddenKeys.containsAll(merged)) hiddenKeys.clear();
     final pinnedKeys = <String>{
       for (final key in pinned ?? const <String>[])
@@ -1263,6 +1664,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   void _notifyColumnSettingsChanged() {
+    _persistPlatformLayout();
     _userTouchedColumns = true;
     widget.onColumnSettingsChanged?.call(
       List.unmodifiable(_columnOrder),
@@ -1273,7 +1675,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   List<int> get _visibleColumnIndices {
     final indicesByKey = <String, int>{
-      for (var i = 0; i < widget.columns.length; i++) widget.columns[i].key: i,
+      for (var i = 0; i < _columns.length; i++) _columns[i].key: i,
     };
     final result = <int>[];
     for (final key in _columnOrder) {
@@ -1283,10 +1685,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
     return result;
   }
 
-  int get _visibleColumnCount =>
-      widget.columns.length - _hiddenColumnKeys.length;
+  int get _visibleColumnCount => _columns.length - _hiddenColumnKeys.length;
 
   void _toggleColumn(String key) {
+    if (widget.forceVisibleColumnKeys.contains(key)) return;
     var changed = false;
     setState(() {
       if (_hiddenColumnKeys.contains(key)) {
@@ -1307,13 +1709,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void _toggleAllColumns(bool showAll) {
     setState(() {
       _hiddenColumnKeys.clear();
-      if (!showAll && widget.columns.length > 1) {
-        final keep = <String>{widget.columns.first.key};
-        for (final column in widget.columns) {
-          if (column.required) keep.add(column.key);
+      if (!showAll && _columns.length > 1) {
+        final keep = <String>{_columns.first.key};
+        for (final column in _columns) {
+          if (column.required ||
+              widget.forceVisibleColumnKeys.contains(column.key)) {
+            keep.add(column.key);
+          }
         }
         _hiddenColumnKeys.addAll(
-          widget.columns.where((c) => !keep.contains(c.key)).map((c) => c.key),
+          _columns.where((c) => !keep.contains(c.key)).map((c) => c.key),
         );
       }
       _pinnedColumnKeys.removeWhere(_hiddenColumnKeys.contains);
@@ -1339,12 +1744,22 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 恢复默认：清隐藏 + 清固定 + 回默认列序。
   void _resetColumnSettings() {
+    _platform.resetLayout();
+    _platformColumnCache = null;
     setState(() {
-      _columnOrder = widget.columns.map((column) => column.key).toList();
-      _hiddenColumnKeys.clear();
+      _columnOrder = _columns.map((column) => column.key).toList();
+      _hiddenColumnKeys
+        ..clear()
+        ..addAll(
+          _columns
+              .where((column) => !column.defaultVisible)
+              .map((column) => column.key),
+        );
+      _hiddenColumnKeys.removeAll(widget.forceVisibleColumnKeys);
       _pinnedColumnKeys.clear();
       _pinOriginIndex.clear();
     });
+    _applyPlatformLayout();
     _notifyColumnSettingsChanged();
   }
 
@@ -1354,7 +1769,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   List<int> get _pinnedVisibleColumnIndices {
     final result = <int>[];
     for (final i in _visibleColumnIndices) {
-      if (!_pinnedColumnKeys.contains(widget.columns[i].key)) break;
+      if (!_pinnedColumnKeys.contains(_columns[i].key)) break;
       result.add(i);
     }
     return result;
@@ -1367,7 +1782,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 固定/取消固定一列：固定 = 记录当前下标后搬到固定块末尾；取消固定 =
   /// 放回固定前的位置（2026-09-25 用户口径）。跨会话重放的固定没有记录，
-  /// 回退按默认列序（widget.columns 原序）的相对位次插回。
+  /// 回退按默认列序（_columns 原序）的相对位次插回。
   void _toggleColumnPin(String key) {
     setState(() {
       final origin = _pinOriginIndex[key];
@@ -1383,7 +1798,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         pinnedKeys: _pinnedColumnKeys,
         key: key,
         originIndex: origin,
-        defaultOrder: widget.columns.map((column) => column.key).toList(),
+        defaultOrder: _columns.map((column) => column.key).toList(),
       );
       _columnOrder = r.order;
       _pinnedColumnKeys
@@ -1413,7 +1828,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 冻结副本只能渲染只读文本）。
   List<UtenContextMenuEntry> _headerMenuEntries(int i) {
     if (!widget.showColumnSettings) return const [];
-    final column = widget.columns[i];
+    final column = _columns[i];
     final key = column.key;
     final hasSnapshotSource =
         column.textOf != null ||
@@ -1478,6 +1893,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// （表头全选 checkbox、_totalWidth 列宽需随之刷新）+ 重算 sticky。
   void _onControllerChanged() {
     if (!mounted) return;
+    _configurePlatform();
     // 行集变化（增删/替换/粘贴）→ 拆线重挂自动加宽监听 + 标记整体重算列宽 +
     // 撤掉已失效的表头筛选值(本监听只挂在 rowsListenable 上，勾选不会进来)。
     if (_rewireAutoGrowListeners()) {
@@ -1515,8 +1931,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void _resizeColumn(int index, double dx) {
     final next = _widths[index] + dx;
     if (next < _minColWidth) return;
-    _manualResized.add(widget.columns[index].key);
+    _manualResized.add(_columns[index].key);
     setState(() => _widths[index] = next);
+    _persistPlatformLayout();
   }
 
   /// 拆/挂各行的自动加宽监听：列同时提供 [EditableGridColumn.textOf] 与
@@ -1531,9 +1948,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
     _wiredRows = List.of(rows);
     final unsubs = <VoidCallback>[];
-    for (var i = 0; i < widget.columns.length; i++) {
-      final textOf = widget.columns[i].textOf;
-      final listenableOf = widget.columns[i].listenableOf;
+    for (var i = 0; i < _columns.length; i++) {
+      final textOf = _columns[i].textOf;
+      final listenableOf = _columns[i].listenableOf;
       if (textOf == null || listenableOf == null) continue;
       for (final row in rows) {
         final listenable = listenableOf(row);
@@ -1559,8 +1976,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 一次只量一格（TextPainter 单行布局，微秒级），不触碰其他行。
   void _onAutoGrowCellChanged(int index, T row) {
     if (!mounted) return;
-    if (index >= widget.columns.length || index >= _widths.length) return;
-    final col = widget.columns[index];
+    if (index >= _columns.length || index >= _widths.length) return;
+    final col = _columns[index];
     if (_manualResized.contains(col.key)) return;
     final scaler = _lastScaler;
     final textOf = col.textOf;
@@ -1599,8 +2016,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ? rows.length
         : _autoGrowSampleSize;
     final headerStyle = UtenTableHeader.textStyle(Theme.of(context));
-    for (var i = 0; i < widget.columns.length && i < _widths.length; i++) {
-      final col = widget.columns[i];
+    for (var i = 0; i < _columns.length && i < _widths.length; i++) {
+      final col = _columns[i];
       if (_manualResized.contains(col.key)) continue;
       var w = scaleChanged
           ? col.width.clamp(_minColWidth, double.infinity)
@@ -1667,6 +2084,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   @override
   void dispose() {
+    _projection?.remove(this);
+    _platform.dispose();
     _pagePos?.removeListener(_onPagePosChanged);
     widget.controller.rowsListenable.removeListener(_onControllerChanged);
     for (final u in _autoGrowUnsubs) {
@@ -1691,11 +2110,21 @@ class _UtenEditableGridState<T extends EditableGridRow>
           color: theme.colorScheme.surfaceContainerHigh,
           border: Border(left: BorderSide(color: theme.colorScheme.outline)),
         ),
-        child: const SizedBox.expand(),
+        child: _addColumnHeader(),
       ),
       row: row,
     );
   }
+
+  Widget _addColumnHeader() =>
+      !widget.showColumnSettings && widget.onAddColumn == null
+      ? const SizedBox(width: 48, height: 48)
+      : IconButton(
+          key: const Key('editable-grid-add-column'),
+          tooltip: widget.addColumnLabel,
+          onPressed: _addColumn,
+          icon: const Icon(Icons.add_rounded),
+        );
 
   /// 表头全选 checkbox 的格子内容（批量模式表头首列；读写由 controller 或外部
   /// 受控回调驱动）。外层由 [UtenFrozenLeadingColumn] 钉在视口左缘。
@@ -1761,11 +2190,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
         .map((entry) => '${entry.key}\u0000${entry.value}')
         .join('\u0001');
     if (_visibleRowsFilterKey == filterKey &&
-        identical(_visibleRowsColumns, widget.columns)) {
+        identical(_visibleRowsColumns, _columns)) {
       return _visibleRowsCache;
     }
     _visibleRowsFilterKey = filterKey;
-    _visibleRowsColumns = widget.columns;
+    _visibleRowsColumns = _columns;
     _visibleRowsCache = _filterRows(all);
     return _visibleRowsCache;
   }
@@ -1784,7 +2213,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (!_hasColumnFilters) return;
     final rows = widget.controller.rows;
     final columnsByKey = <String, EditableGridColumn<T>>{
-      for (final column in widget.columns) column.key: column,
+      for (final column in _columns) column.key: column,
     };
     _columnFilters.removeWhere((key, value) {
       if (value == null) return true;
@@ -1819,9 +2248,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 应用全部列筛选后的行集（无筛选 = 原样返回）。
   List<T> _filterRows(List<T> rows) {
-    if (!_hasColumnFilters || widget.columns.isEmpty) return rows;
+    if (!_hasColumnFilters || _columns.isEmpty) return rows;
     final active = <(EditableGridColumn<T>, String)>[
-      for (final column in widget.columns)
+      for (final column in _columns)
         if (column.filterValueOf != null && _columnFilters[column.key] != null)
           (column, _columnFilters[column.key]!),
     ];
@@ -1897,7 +2326,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => TableColumnProjectionTarget(
+    tableKey: _platform.tableKey,
+    owner: this,
+    child: _buildProjectedGrid(context),
+  );
+  Widget _buildProjectedGrid(BuildContext context) {
+    _publishProjection();
     _ensureAutoFit(context); // 随内容自动加宽：首帧/行集/字号档变化时量宽（手动锁定列除外）。
     final theme = Theme.of(context);
     final visibleColumnIndices = _visibleColumnIndices;
@@ -2105,7 +2540,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         builder: (context, flagged, _) => _DataRow<T>(
           index: i,
           row: row,
-          columns: widget.columns,
+          columns: _columns,
           columnIndices: visibleColumnIndices,
           widths: _widths,
           showSelect: widget._showSelect,
@@ -2319,11 +2754,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
                 if (widget.showColumnSettings)
                   UtenColumnChooserButton(
                     entries: [
-                      for (final column in widget.columns)
+                      for (final column in _columns)
                         UtenColumnChooserEntry(
                           key: column.key,
                           label: column.label,
-                          required: column.required,
+                          required:
+                              column.required ||
+                              widget.forceVisibleColumnKeys.contains(
+                                column.key,
+                              ),
                         ),
                     ],
                     hiddenKeys: _hiddenColumnKeys,
@@ -2544,6 +2983,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
                                   ),
                                 ),
                               ),
+                              child: _addColumnHeader(),
                             ),
                           ),
                       ],
@@ -2644,7 +3084,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   Widget _headerLabel(ThemeData theme, int index) {
-    final column = widget.columns[index];
+    final column = _columns[index];
     // 固定列标签前缀：图钉（18px、与标签行垂直居中，2026-09-25 用户口径）。
     final Widget? pinLeading = _pinnedColumnKeys.contains(column.key)
         ? Icon(
@@ -3009,37 +3449,71 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
               children: [
                 if (showSelect)
                   SizedBox(width: selectColWidth, child: selectionCell),
-                for (final i in columnIndices)
-                  SizedBox(
-                    width: widths[i],
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(border: Border(right: divider)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: UtenSpacing.s8,
-                          vertical: UtenEditableGrid.cellVerticalPadding,
-                        ),
-                        child: _maybeAlign(
-                          column: columns[i],
-                          child: DefaultTextStyle.merge(
-                            style: TextStyle(
-                              color: theme.colorScheme.onSurface,
-                              fontFeatures: columns[i].numeric
-                                  ? const [FontFeature.tabularFigures()]
-                                  : null,
-                            ),
-                            child: columns[i].cellBuilder(context, row),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                for (final i in columnIndices) _dataCell(context, theme, i),
                 if (showDelete) deleteCell,
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// 单个数据格：列宽 + 语义底色（cellColor，2026-09-27 用户口径）+ 右竖线 +
+  /// 内边距 + 内容。铺色格补上/下边框（口径同 MasterDataTableView：底色不能
+  /// 淹没行的横向分隔线），文字黑白自适应；选中行让位给统一高亮、无语义底色。
+  /// [EditableGridColumn.cellColorListenableOf] 非空时整格（底色+文字+内容）
+  /// 随行内源重算——只有 cellBuilder 自重建的话底色不会跟着刷新。
+  Widget _dataCell(BuildContext context, ThemeData theme, int i) {
+    final column = columns[i];
+    Widget build() {
+      final cellColor = isSelected
+          ? null
+          : column.cellColor?.call(context, row);
+      final Color? onCellColor = cellColor == null
+          ? null
+          : ThemeData.estimateBrightnessForColor(cellColor) == Brightness.dark
+          ? Colors.white
+          : Colors.black87;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: cellColor,
+          border: cellColor == null
+              ? Border(right: divider)
+              : Border(top: divider, bottom: divider, right: divider),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s8,
+            vertical: UtenEditableGrid.cellVerticalPadding,
+          ),
+          child: _maybeAlign(
+            column: column,
+            child: DefaultTextStyle.merge(
+              style: TextStyle(
+                color: onCellColor ?? theme.colorScheme.onSurface,
+                fontFeatures: column.numeric
+                    ? const [FontFeature.tabularFigures()]
+                    : null,
+              ),
+              child: column.cellBuilder(context, row),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final listenable = isSelected
+        ? null
+        : column.cellColorListenableOf?.call(row);
+    return SizedBox(
+      width: widths[i],
+      child: listenable == null
+          ? build()
+          : ListenableBuilder(
+              listenable: listenable,
+              builder: (context, _) => build(),
+            ),
     );
   }
 

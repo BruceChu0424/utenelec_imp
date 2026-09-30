@@ -54,6 +54,8 @@ public class SalesOrderRevisionService {
                             '单位', jsonb_build_object('id', i.unit_id, 'label', unit.name),
                             '换算率', i.unit_rate, '数量', i.qty, '单价', i.price,
                             '折扣', i.discount, '原币金额', i.amount_original,
+                            '扩展列', i.extra_columns,
+                            '英文名称', i.goods_name_en_snapshot,
                             '客户编号', i.client_no, '客户型号', i.client_model,
                             '交货日期', i.deliver_date, '重量', i.weight,
                             '加工费', i.machining_price, '周长', i.circumference,
@@ -208,11 +210,22 @@ public class SalesOrderRevisionService {
             lines.add(new RevisionLine(entry.getKey(), line.path("行号").canConvertToInt()
                     ? line.path("行号").intValue() : null,
                     nullableText(line.path("货品").path("code")),
-                    nullableText(line.path("货品").path("name")), Map.copyOf(values)));
+                    nullableText(line.path("货品").path("name")), Map.copyOf(values),
+                    snapshotColumns(line.path("扩展列"))));
         });
         lines.sort(Comparator.comparing(RevisionLine::lineNo, Comparator.nullsLast(Integer::compareTo))
                 .thenComparing(RevisionLine::itemId));
         return List.copyOf(lines);
+    }
+
+    private static List<com.uten.imp.common.columns.ExtraColumnSnapshot> snapshotColumns(JsonNode columns) {
+        if (columns.isMissingNode() || columns.isNull()) return List.of();
+        if (!columns.isArray()) throw new IllegalStateException("Invalid revision business-column snapshot");
+        List<com.uten.imp.common.columns.ExtraColumnSnapshot> result = new ArrayList<>();
+        for (JsonNode column : columns) result.add(new com.uten.imp.common.columns.ExtraColumnSnapshot(
+                UUID.fromString(column.path("columnId").asText()), nullableText(column.path("name")),
+                nullableText(column.path("type")), nullableText(column.path("operation")), nullableText(column.path("value"))));
+        return List.copyOf(result);
     }
 
     private static String nullableText(JsonNode value) {
@@ -278,7 +291,7 @@ public class SalesOrderRevisionService {
             String changedByName, OffsetDateTime changedAt) {}
 
     public record RevisionLine(String itemId, Integer lineNo, String goodsCode, String goodsName,
-            Map<String, String> values) {}
+            Map<String, String> values, List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {}
 
     public record RevisionDiff(List<RevisionLine> beforeItems, List<RevisionLine> afterItems,
             List<String> changedItemIds, List<FieldChange> headerChanges, boolean baselineComplete) {}

@@ -311,6 +311,8 @@ class ShipmentFinanceChangeTable extends StatelessWidget {
             entry.key,
     };
     return UtenRevisionTable<Map<String, dynamic>>(
+      tableKey:
+          'features.sales.widgets.shipment_finance_change_summary.ShipmentFinanceChangeTable.build.1',
       embedded: embedded,
       primary: primary,
       bottomContentPadding: bottomContentPadding,

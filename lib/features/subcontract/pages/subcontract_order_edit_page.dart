@@ -16,6 +16,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_values.dart';
@@ -267,10 +268,11 @@ class _SubcontractOrderEditPageState
 
   /// 空白行带条款默认 (币种人民币/汇率 1/税率 0)：主档默认值只在字段为空时回填，
   /// 先给默认会挡住主档值——顺序是「主档预填 → 默认兜底」，空白行直接给默认。
-  SubcontractGridRow _blankRow() => SubcontractGridRow()
-    ..currencyId = _defaultCurrencyId
-    ..exchangeRate.text = '1'
-    ..taxRate.text = '0';
+  SubcontractGridRow _blankRow() =>
+      inheritBusinessColumns(SubcontractGridRow(), _grid.rows)
+        ..currencyId = _defaultCurrencyId
+        ..exchangeRate.text = '1'
+        ..taxRate.text = '0';
 
   DateTime? _parseDate(String? s) =>
       (s == null || s.isEmpty) ? null : DateTime.tryParse(s);
@@ -465,6 +467,10 @@ class _SubcontractOrderEditPageState
               ..unitId = it.unitId
               ..unitRate = it.unitRate
               ..sourceDocNo = it.sourceDocNo;
+        row.documentItemId = it.id;
+        row.restoreExtraColumns(
+          it.extraColumns.map((c) => c.toSnapshot()).toList(),
+        );
         row.remark.text = it.remark ?? '';
         // ADR-098：已保存的允许损耗原样回显（冻结在本行，不再按主档预填）。
         row.allowedLossPct.text = it.allowedLossPct == null
@@ -936,7 +942,8 @@ class _SubcontractOrderEditPageState
       rowNoOf: (r) => rowNoOf[r] ?? 0,
       groupKey: (r) =>
           '${_comboKey(r)}|${r.goods?.id ?? ''}|${r.colorId ?? ''}|'
-          '${r.unitId ?? ''}|${r.unitRate ?? 1}',
+          '${r.unitId ?? ''}|${r.unitRate ?? 1}|${r.extraColumnsSignature}|'
+          '${r.extraColumnsPreventMerge ? identityHashCode(r) : ''}',
       identityLabel: (r) {
         final parts = <String>[
           if ((r.goods?.name ?? '').isNotEmpty) r.goods!.name!,
@@ -1159,6 +1166,10 @@ class _SubcontractOrderEditPageState
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       final rate = double.tryParse(r.exchangeRate.text.trim())!;
       final tax = double.tryParse(r.taxRate.text.trim())!;
+      if (!r.extraColumnsValid(exactLineAmountText(r.qty.text, r.price.text))) {
+        context.appError('附加列数字或计算有误，请检查数字、除数以及最终金额');
+        return;
+      }
       final remarkText = r.remark.text.trim();
       // ADR-098 允许损耗%：空 = 未设；填了必须是 0 到 100 的数。
       final allowedLossText = r.allowedLossPct.text.trim();
@@ -1179,6 +1190,8 @@ class _SubcontractOrderEditPageState
         if (allowedLoss != null)
           'allowedLossPct': double.parse(allowedLoss.toStringAsFixed(2)),
         'goodsId': r.goods!.id,
+        'extraColumns': r.extraColumnsPayload(),
+        if (r.documentItemId != null) 'id': r.documentItemId,
         'qty': qty,
         'price': price,
         if (r.upstreamItemId != null) 'applicationItemId': r.upstreamItemId,
@@ -1286,7 +1299,7 @@ class _SubcontractOrderEditPageState
           context,
           ref,
           _pendingFiles,
-          ownerType: 'SUBCONTRACT_ORDER',
+          ownerType: 'subcontract_order',
           ownerIds: [for (final createdDoc in created) createdDoc.id],
         );
         if (!mounted || !ok) return;
@@ -1525,7 +1538,7 @@ class _SubcontractOrderEditPageState
                           // 拆单生成后逐张确认上传，再提交财务（ADR-074）。
                           if (!_isCreate)
                             BusinessAttachmentSection(
-                              ownerType: 'SUBCONTRACT_ORDER',
+                              ownerType: 'subcontract_order',
                               ownerId: widget.id!,
                               canView: ref
                                   .watch(currentPermissionsProvider)
@@ -1593,6 +1606,24 @@ class _SubcontractOrderEditPageState
                               return SavedDocumentFields(
                                 locked: _hasCreatedDocuments,
                                 child: UtenEditableGrid<SubcontractGridRow>(
+                                  tableKey: 'subcontract.order.items',
+                                  onAddColumn: (hidden) =>
+                                      addBusinessGridColumn(
+                                        context,
+                                        scope: 'subcontract_order',
+                                        hiddenColumns: hidden,
+                                        rows: _grid.rows,
+                                        createRow: () {
+                                          final row = _blankRow();
+                                          _grid.addRow(row);
+                                          return row;
+                                        },
+
+                                        onChanged: () => setState(() {}),
+                                      ),
+                                  forceVisibleColumnKeys: {
+                                    ...filledBusinessColumnKeys(_grid.rows),
+                                  },
                                   controller: _grid,
                                   stickyHeaderPinned: _gridPinned,
                                   initialColumnOrder: columnPrefs?.order,
@@ -1630,6 +1661,7 @@ class _SubcontractOrderEditPageState
                                     _pickGoods,
                                     _cfg,
                                     context: context,
+                                    rows: _grid.rows,
                                     unitEntries: names.unitEntries,
                                     supplierEntries: _supplierDropdownEntries(),
                                     supplierRequired: true,

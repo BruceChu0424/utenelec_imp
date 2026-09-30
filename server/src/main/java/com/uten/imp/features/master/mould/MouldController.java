@@ -95,7 +95,7 @@ public class MouldController {
         ExportPayload payload = service.export(new MouldQueryFilter(categoryId, keyword,
                 nullFields, code, name, place, mstatus, remark, status),
                 exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_mould");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_mould", "master_data", String.valueOf(payload.total()), "success"));

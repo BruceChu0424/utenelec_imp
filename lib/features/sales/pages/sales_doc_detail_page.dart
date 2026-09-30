@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_columns_table.dart';
 // 销售单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
 // 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。操作按 edit 权限。
@@ -68,6 +69,8 @@ import '../models/sales_doc.dart';
 import '../models/sales_return_quality.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
+import '../templates/sales_quote_template_download_button.dart';
+import '../intake/sales_learning_status.dart';
 import '../widgets/sales_return_quality_card.dart';
 import '../widgets/sales_quote_status_chip.dart';
 import '../widgets/sales_status_badge.dart';
@@ -432,6 +435,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   Future<void> _load() async {
+    if (widget.docType == SalesDocType.quote ||
+        widget.docType == SalesDocType.order) {
+      ref.invalidate(
+        salesLearningReceiptsProvider((
+          kind: widget.docType.pathSegment,
+          documentId: widget.id,
+        )),
+      );
+    }
     setState(() {
       _loading = true;
       _error = null;
@@ -1026,6 +1038,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                               _quoteStatusStrip(theme),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
+                            if (_isQuote ||
+                                widget.docType == SalesDocType.order)
+                              SalesLearningStatusPanel(
+                                kind: widget.docType.pathSegment,
+                                documentId: widget.id,
+                              ),
                             // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
                             // SelectionArea（准则 §3.4），无需再单独包。
                             _headerCard(theme, names),
@@ -1723,6 +1741,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       children: [
         Expanded(
           child: MasterDataTableView<SalesDocItem>(
+            tableKey: 'sales.${widget.docType.name}.items',
             primary: true,
             columns: [
               // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
@@ -1733,6 +1752,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 label: '货品名称',
                 width: 200,
                 value: (it) => salesGoodsNameLabel(it, names.goods(it.goodsId)),
+              ),
+              MasterColumnDef<SalesDocItem>(
+                key: 'nameEn',
+                label: '英文名称',
+                width: 180,
+                value: (line) => line.goodsNameEn,
               ),
               MasterColumnDef(
                 key: 'goodsCode',
@@ -1821,6 +1846,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               if (isOrder) ...[
                 MasterColumnDef(
                   key: 'machiningPrice',
+                  defaultVisible: items.any(
+                    (it) => it.machiningPrice != null && it.machiningPrice != 0,
+                  ),
                   label: '机加价',
                   width: 90,
                   type: 'money',
@@ -1829,6 +1857,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 ),
                 MasterColumnDef(
                   key: 'circumference',
+                  defaultVisible: items.any(
+                    (it) => it.circumference != null && it.circumference != 0,
+                  ),
                   label: '围数',
                   width: 80,
                   type: 'number',
@@ -1836,6 +1867,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 ),
                 MasterColumnDef(
                   key: 'inboundQty',
+                  defaultVisible: items.any(
+                    (it) => it.inboundQty != null && it.inboundQty != 0,
+                  ),
                   label: '进仓数量',
                   width: 100,
                   type: 'number',
@@ -1883,6 +1917,39 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                 value: (it) =>
                     (it.remark?.isNotEmpty ?? false) ? it.remark : null,
               ),
+              if (pricedLikeOrder) ...[
+                MasterColumnDef<SalesDocItem>(
+                  key: 'clientModel',
+                  label: '文件型号',
+                  defaultVisible: items.any(
+                    (it) => it.clientModel?.isNotEmpty ?? false,
+                  ),
+                  width: 130,
+                  value: (it) => it.clientModel,
+                ),
+                MasterColumnDef<SalesDocItem>(
+                  key: 'clientGoodsName',
+                  label: '文件品名',
+                  defaultVisible: items.any(
+                    (it) => it.clientGoodsName?.isNotEmpty ?? false,
+                  ),
+                  width: 180,
+                  value: (it) => it.clientGoodsName,
+                ),
+                if (items.any((it) => it.clientPrice != null))
+                  MasterColumnDef<SalesDocItem>(
+                    key: 'clientPrice',
+                    label: '文件单价',
+                    width: 120,
+                    type: 'money',
+                    value: (it) => masked ? '***' : it.clientPrice?.toString(),
+                  ),
+              ],
+              ...businessReadOnlyColumns<SalesDocItem>(
+                items,
+                columnsOf: (line) => line.extraColumns,
+                priceMasked: masked,
+              ),
             ],
             items: items,
             facets: const {},
@@ -1900,6 +1967,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                     key: const Key('sales-detail-totals'),
                     density: true,
                     compact: true,
+                    rowCount: items.length,
                     entries: [
                       utenQuantityTotalEntry(
                         items.map(
@@ -1959,6 +2027,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     final l10n = AppLocalizations.of(context);
     final wf = _detail!.quoteWorkflow;
     final children = <Widget>[
+      if (canDownloadSalesQuoteTemplate(
+        ref.watch(currentPermissionsProvider),
+        priceMasked: _detail!.priceMasked,
+      ))
+        SalesQuoteTemplateDownloadButton(
+          quoteId: widget.id,
+          billNo: _detail!.billNo ?? '',
+          priceMasked: _detail!.priceMasked,
+        ),
       if (_quoteAllows(SalesQuoteAction.delete))
         UtenButton(
           key: const ValueKey('sales-quote-delete'),

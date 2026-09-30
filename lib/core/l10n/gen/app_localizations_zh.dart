@@ -1087,7 +1087,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeConfirmTitle => '确认转正？';
 
   @override
-  String get employeeConfirmBody => '转正后员工状态将变为「在职」。';
+  String get employeeConfirmBody => '登记实际转正日期。试用期员工状态将变为「在职」；已是正式员工的补登转正日期。';
 
   @override
   String get employeeConfirmSuccess => '转正完成';
@@ -6121,29 +6121,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusImportLoadFailed => '报价加载失败, 请稍后重试';
 
   @override
-  String get salesIntakeBannerTitle => '识别客户文件';
-
-  @override
-  String get salesIntakeBannerMessage => '上传客户的报价单/形式发票, 自动填好客户和货品';
-
-  @override
-  String get salesIntakeBannerButton => '识别客户文件';
-
-  @override
-  String get salesIntakeBannerAgain => '再识别一个文件';
-
-  @override
-  String salesIntakeBannerImported(String file, int count) {
-    return '已从 $file 导入 $count 行';
-  }
-
-  @override
-  String get salesIntakeToolbarButton => '识别客户文件';
-
-  @override
-  String get salesIntakeAiOffHint => 'AI 未开启, 只能识别常见格式的 Excel';
-
-  @override
   String get salesIntakeApprovedOrderHint => '已审核的订单请用改量或修改, 不能整单重新识别';
 
   @override
@@ -6650,4 +6627,836 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get salesIntakeQuoteLockedDiscountInfo =>
       '该行折扣已由财务在报价中核定, 如需改价请重新打开报价';
+
+  @override
+  String get quoteTemplateDownload => '下载报价表格';
+
+  @override
+  String get quoteTemplateChoose => '选择客户报价模板';
+
+  @override
+  String get quoteTemplateChooseHint => '选择一个或多个模板。多个模板将打包下载，也可以使用系统默认格式。';
+
+  @override
+  String quoteTemplateVersionUsage(int version, int count) {
+    return '版本 $version · 已使用 $count 次';
+  }
+
+  @override
+  String get quoteTemplateStandard => '使用默认格式';
+
+  @override
+  String get quoteTemplateDownloadAll => '全部下载';
+
+  @override
+  String get quoteTemplateDownloadSelected => '下载所选';
+
+  @override
+  String get businessColumnAdd => '添加列';
+
+  @override
+  String get businessColumnName => '列名称';
+
+  @override
+  String get businessColumnSearch => '输入名称，搜索已有表头';
+
+  @override
+  String get businessColumnReuseHint => '选择已有表头，或创建新列。保存后可复用，新单据默认不添加。';
+
+  @override
+  String get businessColumnSystem => '系统表头';
+
+  @override
+  String get businessColumnReference => '仅记录信息';
+
+  @override
+  String get businessColumnLimit => '每张单据最多添加 32 个扩展列';
+
+  @override
+  String get businessColumnAmountHint =>
+      '按照添加顺序，对每行原金额依次计算；拖动表头只调整显示顺序，不改变计算顺序。空值跳过，除数不能为 0，结果必须精确且不为负数。';
+
+  @override
+  String get businessColumnType => '内容类型';
+
+  @override
+  String get businessColumnText => '文字';
+
+  @override
+  String get businessColumnNumber => '数字';
+
+  @override
+  String get businessColumnCalculation => '金额计算';
+
+  @override
+  String get businessColumnAddAmount => '加 (+)';
+
+  @override
+  String get businessColumnSubtractAmount => '减 (−)';
+
+  @override
+  String get businessColumnMultiplyAmount => '乘 (×)';
+
+  @override
+  String get businessColumnDivideAmount => '除 (÷)';
+
+  @override
+  String get businessColumnCreate => '创建并添加';
+
+  @override
+  String get businessColumnLoadFailed => '读取表头失败，请重试';
+
+  @override
+  String get businessColumnSaveFailed => '保存表头失败，请重试';
+
+  @override
+  String get businessColumnInvalid => '附加列数字或计算有误，请检查数字、除数以及最终金额';
+
+  @override
+  String get businessColumnNameEn => '英文名称';
+
+  @override
+  String get costWorkspaceTitle => '成本工作台';
+
+  @override
+  String get costEstimate => '成本测算';
+
+  @override
+  String get costActual => '实际核对';
+
+  @override
+  String get costVersions => '成本版本';
+
+  @override
+  String get costNew => '新建成本单';
+
+  @override
+  String get costName => '成本方案名称';
+
+  @override
+  String get costBatch => '本批产量';
+
+  @override
+  String get costCustomer => '适用客户';
+
+  @override
+  String get costCurrency => '成本币种';
+
+  @override
+  String get costExchangeRate => '折合本币汇率';
+
+  @override
+  String get costEffectiveDate => '取价日期';
+
+  @override
+  String get costUsageStrategy => '用量选择';
+
+  @override
+  String get costActualFirst => '真实量优先，无数据用设计量';
+
+  @override
+  String get costDesignOnly => '按设计用量';
+
+  @override
+  String get costPriceStrategy => '取价方式';
+
+  @override
+  String get costApprovedPrice => '已批准来源价格';
+
+  @override
+  String get costManualPrice => '人工方案';
+
+  @override
+  String get costNotes => '说明';
+
+  @override
+  String get costMaterial => '材料成本';
+
+  @override
+  String get costProcess => '加工成本';
+
+  @override
+  String get costManagement => '管理分摊';
+
+  @override
+  String get costOther => '其他费用';
+
+  @override
+  String get costKnownTotal => '已知成本合计';
+
+  @override
+  String get costUnitCost => '本产品单位成本';
+
+  @override
+  String get costStructure => '组装结构';
+
+  @override
+  String get costFees => '工序与费用';
+
+  @override
+  String get costGoodsName => '货品名称';
+
+  @override
+  String get costGoodsCode => '货品编号';
+
+  @override
+  String get costColor => '颜色';
+
+  @override
+  String get costUnit => '基本单位';
+
+  @override
+  String get costAdoptedQty => '本次采用量';
+
+  @override
+  String get costUsageSource => '采用来源';
+
+  @override
+  String get costPricingQty => '本批计价数量';
+
+  @override
+  String get costPrice => '采用单价';
+
+  @override
+  String get costPriceUnitRate => '计价单位换算率';
+
+  @override
+  String get costPriceSource => '价格来源';
+
+  @override
+  String get costLineAmount => '本批金额';
+
+  @override
+  String get costUnitContribution => '每成品成本贡献';
+
+  @override
+  String get costStatus => '状态';
+
+  @override
+  String get costIncluded => '参与合计';
+
+  @override
+  String get costExplanation => '计算依据';
+
+  @override
+  String get costOverrideReason => '本单覆盖原因';
+
+  @override
+  String get costRestoreRecommended => '恢复推荐值';
+
+  @override
+  String get costAddPriceColumn => '添加费用价格列';
+
+  @override
+  String get costFeeName => '费用名称';
+
+  @override
+  String get costFeeMethod => '计算方式';
+
+  @override
+  String get costFeeCategory => '成本类别';
+
+  @override
+  String get costFeeBase => '计费基数';
+
+  @override
+  String get costFeeQuantity => '计价数量';
+
+  @override
+  String get costPerQuantity => '单价 × 物料计价数量';
+
+  @override
+  String get costPerUnit => '每成品固定单价';
+
+  @override
+  String get costFixedBatch => '本批固定额';
+
+  @override
+  String get costPercent => '按基数百分比';
+
+  @override
+  String get costPerCycle => '每机器周期';
+
+  @override
+  String get costValue => '单价或费率';
+
+  @override
+  String get costNotApplicable => '不适用';
+
+  @override
+  String get costPending => '待完善';
+
+  @override
+  String get costComplete => '已核清';
+
+  @override
+  String get costDraft => '草稿';
+
+  @override
+  String get costConfirmed => '已确认';
+
+  @override
+  String get costReview => '待审核';
+
+  @override
+  String get costSaveDraft => '保存草稿';
+
+  @override
+  String get costRecalculate => '校验重算';
+
+  @override
+  String get costConfirm => '确认成本版本';
+
+  @override
+  String get costCopy => '复制为新草稿';
+
+  @override
+  String get costSaveTemplate => '保存为成本模板';
+
+  @override
+  String get costTemplate => '成本模板';
+
+  @override
+  String get costNoTemplate => '自动匹配模板';
+
+  @override
+  String get costDownloadExcel => '下载成本 Excel';
+
+  @override
+  String get costDownloadPdf => '下载成本 PDF';
+
+  @override
+  String get costSaved => '成本草稿已保存';
+
+  @override
+  String get costConfirmPrompt => '确认后冻结本次用量、价格及费用。以后修改需复制新版本。';
+
+  @override
+  String get costLeavePrompt => '当前输入尚未保存到服务器。先保存草稿再切换。';
+
+  @override
+  String get costCalculationStale => '输入已改变，金额等待重算';
+
+  @override
+  String get costConflict => '服务器版本已变化；本机输入已保留，请比较后恢复。';
+
+  @override
+  String get costRecoverLocal => '恢复本机草稿';
+
+  @override
+  String get costHistory => '历史快照';
+
+  @override
+  String get costVersion => '版本';
+
+  @override
+  String get costUpdated => '更新时间';
+
+  @override
+  String get costAction => '操作';
+
+  @override
+  String get costOpen => '打开';
+
+  @override
+  String get costDelete => '删除';
+
+  @override
+  String get costDeleteFeePrompt => '删除这项费用会改变本单成本，历史版本保留。';
+
+  @override
+  String get costEmpty => '尚无成本单，点击新建带出组装信息。';
+
+  @override
+  String get costNoActual => '尚无可核对的实际成本来源';
+
+  @override
+  String get costActualKnown => '已归集投入';
+
+  @override
+  String get costActualOutput => '已分摊产出';
+
+  @override
+  String get costActualWip => '在制余额';
+
+  @override
+  String get costActualUnclassified => '待分类金额';
+
+  @override
+  String get costActualIncomplete => '尚未覆盖全部人工及间接费用';
+
+  @override
+  String get costSourceDocument => '来源单据';
+
+  @override
+  String get costSourceType => '来源类型';
+
+  @override
+  String get costLocalAmount => '本币金额';
+
+  @override
+  String get costActualQty => '实际数量';
+
+  @override
+  String get costActualFrom => '开始日期';
+
+  @override
+  String get costActualTo => '截止日期';
+
+  @override
+  String get costSegment => '执行批次编号';
+
+  @override
+  String get costLegacy => '旧主档成本参考';
+
+  @override
+  String get costLossPolicy => '委外允许损耗';
+
+  @override
+  String get costLossPolicyHint => '仅为委外合同默认值，不参与成本测算和真实用量学习。';
+
+  @override
+  String get costDecimalInvalid => '请输入有效的非负十进制数';
+
+  @override
+  String get costRequiredName => '请输入名称';
+
+  @override
+  String get costNoPermission => '没有成本查看权限';
+
+  @override
+  String get costManual => '本单覆盖';
+
+  @override
+  String get costYes => '是';
+
+  @override
+  String get costNo => '否';
+
+  @override
+  String get costCopySuffix => '副本';
+
+  @override
+  String get costTotalLabel => '整单成本';
+
+  @override
+  String get costSource => '来源';
+
+  @override
+  String get costTemplateSaved => '成本模板已保存';
+
+  @override
+  String get costFeeApplicability => '填入单价即采用；清空为待填，选不适用才移除。';
+
+  @override
+  String get costSnapshotReadOnly => '历史快照只读';
+
+  @override
+  String get costImport => '导入成本表';
+
+  @override
+  String get costImportBlock => '产品区块';
+
+  @override
+  String get costImportReview => '逐行确认映射；缓存价格按本成本单币种核对，不自动采用外链公式。';
+
+  @override
+  String get costImportKind => '采用方式';
+
+  @override
+  String get costImportMaterial => '对应物料价格';
+
+  @override
+  String get costImportFee => '每产品费用';
+
+  @override
+  String get costImportSkip => '跳过此行';
+
+  @override
+  String get costImportTarget => '对应物料';
+
+  @override
+  String get costImportReviewed => '已核对';
+
+  @override
+  String get costImportApply => '采用到本单';
+
+  @override
+  String get costImportNeedsReview => '每行须确认；跳过须填写原因，物料须选择对应项。';
+
+  @override
+  String get costCompare => '比较版本';
+
+  @override
+  String get costCompareBefore => '比较基线';
+
+  @override
+  String get costBefore => '修改前';
+
+  @override
+  String get costAfter => '修改后';
+
+  @override
+  String get costUnchanged => '未修改';
+
+  @override
+  String get costDirectConsumption => '直接耗用';
+
+  @override
+  String get costPeriodicAllocation => '周期分摊';
+
+  @override
+  String get costFeeEvidence => '已确认加工费';
+
+  @override
+  String get costNormalLoss => '已确认损耗';
+
+  @override
+  String get costTaxMode => '计价税口径';
+
+  @override
+  String get costTaxRecorded => '按原记录价计成本';
+
+  @override
+  String get costTaxExclude => '确认含税并扣除税额';
+
+  @override
+  String get costTaxUnconfirmed => '尚未确认计价口径';
+
+  @override
+  String get costTaxConfirmedReason => '已核对原始单据的计价税口径';
+
+  @override
+  String get costFeeReuse => '搜索已有费用列';
+
+  @override
+  String get costDeleteColumn => '移除费用列';
+
+  @override
+  String get costRoute => '计价方式';
+
+  @override
+  String get costRouteAuto => '按货品来源';
+
+  @override
+  String get costRouteMake => '自制展开';
+
+  @override
+  String get costRouteBuy => '外购计价';
+
+  @override
+  String get costRouteSubcontract => '委外加工';
+
+  @override
+  String get costRouteCustomer => '客供料';
+
+  @override
+  String get costLossRange => '请输入0到100，最多2位小数';
+
+  @override
+  String get costScopeInput => '原成本对象全部投入';
+
+  @override
+  String get costPeriodOutput => '本次范围产出成本';
+
+  @override
+  String get costExcludedOutput => '范围外已分配';
+
+  @override
+  String get costBudgetBaseline => '已确认测算基线';
+
+  @override
+  String get costBudgetLocal => '基线完整测算（本币）';
+
+  @override
+  String get costActualRecorded => '已归集实际（本币）';
+
+  @override
+  String get costBasisMismatch => '基线产量或币种依据与本次实际范围不一致，不计算差额。';
+
+  @override
+  String get costCoverageMismatch => '实际人工及间接费尚未完整归集，仅并列展示，不计算全成本差额。';
+
+  @override
+  String get costVariance => '同口径成本差额';
+
+  @override
+  String get costDirectCost => '材料与加工小计';
+
+  @override
+  String get inventoryCostTitle => '实际成本过账';
+
+  @override
+  String get inventoryCostPolicy => '对账与启用策略';
+
+  @override
+  String get inventoryCostPolicyHint =>
+      '先核对原库存价值与历史成本凭证。启用后仅追加新凭证；历史冲突和跨期差额须单独核定。';
+
+  @override
+  String get inventoryCostEnabled => '实际成本过账已启用';
+
+  @override
+  String get inventoryCostDisabled => '待对账启用';
+
+  @override
+  String get inventoryCostEnable => '确认启用实际成本过账';
+
+  @override
+  String get inventoryCostDisable => '确认暂停新增实际成本过账';
+
+  @override
+  String get inventoryCostEffectiveDate => '启用生效日';
+
+  @override
+  String get inventoryCostEvidence => '实际对账依据';
+
+  @override
+  String get inventoryCostEvidenceRequired => '请填写至少 8 个字符的实际对账依据';
+
+  @override
+  String get inventoryCostFrom => '来源日期起';
+
+  @override
+  String get inventoryCostTo => '来源日期止';
+
+  @override
+  String get inventoryCostInvalidRange => '来源开始日期不能晚于结束日期';
+
+  @override
+  String get inventoryCostLoadFailed => '实际成本过账数据加载失败，请重试';
+
+  @override
+  String get inventoryCostWriteFailed => '操作失败，请刷新核对后重试';
+
+  @override
+  String get inventoryCostStatus => '过账状态';
+
+  @override
+  String get inventoryCostAmount => '原价值变动（本币）';
+
+  @override
+  String get inventoryCostBusinessDate => '来源业务日';
+
+  @override
+  String get inventoryCostSourcePeriod => '来源期间';
+
+  @override
+  String get inventoryCostTargetPeriod => '入账期间';
+
+  @override
+  String get inventoryCostSourceType => '来源类型';
+
+  @override
+  String get inventoryCostSourceDocument => '原单据标识';
+
+  @override
+  String get inventoryCostSource => '原价值过账标识';
+
+  @override
+  String get inventoryCostRevision => '价值修订';
+
+  @override
+  String get inventoryCostVoucher => '总账凭证标识';
+
+  @override
+  String get inventoryCostAssignPeriod => '指定入账期间';
+
+  @override
+  String get inventoryCostReason => '核定原因';
+
+  @override
+  String get inventoryCostReasonRequired => '请填写至少 4 个字符的核定原因';
+
+  @override
+  String get inventoryCostNoOpenPeriod => '查询范围内没有开放期间，请调整日期范围';
+
+  @override
+  String get inventoryCostPost => '追加成本凭证';
+
+  @override
+  String get inventoryCostPostHint =>
+      '按原价值变动逐笔生成借贷平衡凭证，包含退回及后补差额；重试不重复入账，不改写旧凭证。';
+
+  @override
+  String get inventoryCostClosePeriod => '关闭成本期间';
+
+  @override
+  String get inventoryCostCloseHint => '关闭后禁止回写本期间。以后收到的差额需核定新的开放入账期间。';
+
+  @override
+  String get inventoryCostPendingCount => '期间待处理笔数';
+
+  @override
+  String get inventoryCostOpen => '开放';
+
+  @override
+  String get inventoryCostClosed => '已关闭';
+
+  @override
+  String get inventoryCostPosted => '已入账';
+
+  @override
+  String get inventoryCostReady => '可入账';
+
+  @override
+  String get inventoryCostBeforeCutover => '切换前历史';
+
+  @override
+  String get inventoryCostSourcePending => '来源身份待核实';
+
+  @override
+  String get inventoryCostValuePending => '成本待核清';
+
+  @override
+  String get inventoryCostLegacyConflict => '历史凭证待对账';
+
+  @override
+  String get inventoryCostTargetClosed => '目标期间已关闭';
+
+  @override
+  String get inventoryCostTargetRequired => '待核定入账期间';
+
+  @override
+  String get inventoryCostNoAccess => '没有查看实际成本过账的权限';
+
+  @override
+  String get costConvertCurrency => '转换成本币种';
+
+  @override
+  String get costCurrencyConversionHint =>
+      '服务端按来源与目标汇率转换金额，用量和百分比保持不变。成功后才替换本单输入，失败保留原值。';
+
+  @override
+  String get costSourceExchangeRate => '当前币种折合本币汇率';
+
+  @override
+  String get costTargetExchangeRate => '目标币种折合本币汇率';
+
+  @override
+  String get costExchangeRateRequired => '请输入明确且大于0的十进制汇率';
+
+  @override
+  String get costPriceNormalizedHelp =>
+      '单价按本成本单币种和物料基本单位显示。原始采购单价、计价单位换算及税口径在来源详情查看。';
+
+  @override
+  String get costCurrencyConverted => '成本金额已按目标币种转换，尚未保存';
+
+  @override
+  String get costUnitContributionShort => '单件成本';
+
+  @override
+  String get costLineAmountShort => '本批成本';
+
+  @override
+  String get costPendingItems => '待核项目';
+
+  @override
+  String get costViewEvidence => '查看依据';
+
+  @override
+  String get costViewSource => '查看来源';
+
+  @override
+  String get costEvidenceField => '依据项目';
+
+  @override
+  String get costEvidenceValue => '记录值';
+
+  @override
+  String get costEvidenceScope => '成本范围';
+
+  @override
+  String get costEvidenceNextStep => '下一步';
+
+  @override
+  String get costCopyValue => '复制记录值';
+
+  @override
+  String get costSourceUnavailable => '当前没有可打开的来源入口，可复制标识交由负责岗位核对。';
+
+  @override
+  String get costGapLabor => '实际人工尚未归集';
+
+  @override
+  String get costGapOverhead => '制造间接费用尚未归集';
+
+  @override
+  String get costGapNoValuation => '没有可核定的库存成本依据';
+
+  @override
+  String get costGapIdentity => '历史物料身份或单位缺失';
+
+  @override
+  String get costGapRevision => '投入来源的修订证据缺失';
+
+  @override
+  String get costGapNoApprovedRevision => '尚无已批准的成本版本';
+
+  @override
+  String get costGapApplying => '成本分摊正在更新';
+
+  @override
+  String get costGapSourceRefresh => '来源数据待刷新';
+
+  @override
+  String get costGapClassification => '投入成本待分类';
+
+  @override
+  String get costGapOutputBasis => '有效产出基数待核实';
+
+  @override
+  String get costGapScope => '归集范围尚未完整';
+
+  @override
+  String get costGapInput => '投入金额尚未核定';
+
+  @override
+  String get costGapOther => '还有成本依据需要核对';
+
+  @override
+  String get costGapActionCharges => '补齐实际费用来源，再重新核对';
+
+  @override
+  String get costGapActionHistory => '核对历史原单和单位，缺证据不以当前主档回填';
+
+  @override
+  String get costGapActionRefresh => '等待成本任务完成后刷新，仍未完成则核对来源任务';
+
+  @override
+  String get costGapActionSource => '查看来源凭证、退料和产出记录，补全后刷新';
+
+  @override
+  String get costAmountBasis => '金额依据';
+
+  @override
+  String get costBookedBasis => '已过账本币金额';
+
+  @override
+  String get costLegacyBasis => '历史金额口径未验证';
+
+  @override
+  String get costQuantityBasis => '数量依据';
+
+  @override
+  String get costValueRevision => '价值修订号';
+
+  @override
+  String get costAmountLower => '金额下限（本币）';
+
+  @override
+  String get costAmountUpper => '金额上限（本币）';
+
+  @override
+  String get costSourceIdentifier => '来源单据标识';
+
+  @override
+  String get costSourceLineIdentifier => '来源明细标识';
+
+  @override
+  String get costEvidenceIdentifier => '依据标识';
+
+  @override
+  String get costGapCode => '核对原因编码';
 }

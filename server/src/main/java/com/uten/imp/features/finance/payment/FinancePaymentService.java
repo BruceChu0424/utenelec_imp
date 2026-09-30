@@ -147,6 +147,7 @@ public class FinancePaymentService {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_payment:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_payment_item")
     public FinancePaymentDetail create(FinancePaymentSaveRequest req) {
         tx.bind();
         UUID makerId = currentUser.requireEmployeeId();
@@ -183,6 +184,7 @@ public class FinancePaymentService {
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_payment:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_payment_item", requestArgument=1, documentIdArgument=0)
     public FinancePaymentDetail update(UUID id, FinancePaymentSaveRequest req) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);

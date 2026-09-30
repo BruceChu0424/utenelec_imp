@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-public class MaterialIssueItemLine implements ServerDerivedAmounts {
+public class MaterialIssueItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

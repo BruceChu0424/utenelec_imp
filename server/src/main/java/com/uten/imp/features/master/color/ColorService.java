@@ -119,6 +119,7 @@ public class ColorService {
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size), c -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("_platformRecordId", c.getId());
                     row.put("code", c.getCode());
                     row.put("name", c.getName());
                     row.put("status", c.getStatus());

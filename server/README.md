@@ -82,6 +82,7 @@ SSL factory/hostname verifier。明确的本机回环继续允许开发、内部
 - API 基址 `http://localhost:8080/api`
 - Swagger UI `http://localhost:8080/swagger-ui.html`（仅显式 `dev` profile 默认开放；base/prod 默认关闭）
 - 健康检查 `http://localhost:8080/actuator/health`（仅暴露 health，启用存活/就绪探针）
+- 启动验收还需 `/actuator/health/readiness` 返回 `UP`，且日志没有应用启动失败或异常栈。`BUILD SUCCESS` 只证明对应构建目标成功；不是服务已经启动。
 - 空库首次引导超管账号必须由受控环境配置 `uten.bootstrap.admin-login` 提供，源码和公开文档不保存真实账号；一次性密码由 `.env` 的 `BOOTSTRAP_ADMIN_PASSWORD` 提供（首登强制改）。
   账号一旦存在，启动器严格跳过，不会把人工撤销的超级管理员权限重新授回。
 
@@ -102,6 +103,8 @@ mvn spring-boot:run
 ```
 
 多个测试任务也应使用各自独立的 `target-任务名`，不要让它们同时清理同一输出目录。
+
+当前测试启动参数已显式挂载 Mockito Java agent，避免测试执行时临时自挂载代理的 JDK 告警；测试日志也按构建目录隔离。不要为了让输出变绿而全局关闭 WARN/ERROR。首次空库迁移、首个超管创建与正常重启应分别验证；安全引导提醒不能当成普通运行故障，也不能删掉。
 `server/target-*/` 已在 Git 忽略规则内。已经启动的旧构建不会受新参数影响，须等待其结束后再恢复服务。
 遇到缺类且没有其它构建占用默认目录时，可先执行 `mvn -DskipTests clean compile`，成功后再启动。
 
@@ -115,6 +118,10 @@ mvn spring-boot:run
 2. 缺列/缺表：确认本轮源码需要的迁移已进入正式资源且Flyway成功完成；不关闭结构校验。
 3. `NoClassDefFoundError` 或依赖不匹配：停止旧进程，使用当前pom完整编译后启动。临时目录或旧依赖生成的classpath/argfile不能长期用作启动入口。
 4. 历史数据或迁移校验失败：保留错误及目标库备份，按对应迁移文档修正前提，再原样重跑；不修改已应用文件或执行repair掩盖差异。
+
+Flyway 的专用迁移连接初始化 `client_min_messages=WARNING`：历史 `IF EXISTS / IF NOT EXISTS` 的 PostgreSQL NOTICE 不再经 JDBC 被误报为 WARN；真正的 SQL WARNING 和异常仍保留，普通应用连接的消息级别不受影响。此设置不修改已应用迁移，也不关闭结构校验。首次空库创建引导超管仍提示首登改密；同库正常重启应单独检查，不能通过删掉安全提醒或降低全局日志等级获得“无告警”。
+
+后端验收按顺序确认：当前源码完整编译（包括默认 `spring-boot:run` 的测试编译阶段）、Flyway 校验/迁移完成、`Started UtenImpApplication`、readiness `UP`，再观察后台任务是否出现异常。使用隔离数据库演练时，须记录迁移头、文件数量和源码/构建资源摘要一致性；没有对目标库执行过就不宣称目标库已升级。
 
 ### 已入库但车间仍等待物料
 

@@ -128,6 +128,15 @@ public class SubcontractMaterialIssueService {
         }
     }
 
+    /** Mirrors the domain's owner-pool and warehouse execution gates for annotation-only edits. */
+    @Transactional(readOnly = true)
+    public boolean platformFieldsWritable(UUID id) {
+        SubcontractMaterialIssue issue = requireIssue(id);
+        if (issue.getStatus() == null || issue.getStatus() != STATUS_DRAFT) return false;
+        try { requireIssueWritable(issue, "subcontract_material_issue:edit"); return true; }
+        catch (ApiException denied) { return false; }
+    }
+
     private Set<UUID> planItemIds(UUID issueId) {
         Set<UUID> ids = new HashSet<>();
         for (SubcontractMaterialIssueItem item : itemRepo.findByIssueIdOrderByLineNoAsc(issueId)) {
@@ -196,6 +205,7 @@ public class SubcontractMaterialIssueService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_material_issue:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_material_issue_item", requestArgument=1, documentIdArgument=0)
     public MaterialIssueDetail update(UUID id, MaterialIssueSaveRequest req) {
         tx.bind();
         var mutationGuard=lockIssueRequest(id,req);

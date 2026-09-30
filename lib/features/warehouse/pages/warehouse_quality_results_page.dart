@@ -466,6 +466,8 @@ class _WarehouseQualityResultsPageState
                       description: '来源与状态都默认不选中，选择后才加载对应任务',
                     ))
             : MasterDataTableView<WarehouseQualityResultTask>(
+                tableKey:
+                    'features.warehouse.pages.warehouse_quality_results_page.WarehouseQualityResultsPageState.build.1',
                 // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
                 primary: true,
                 key: const Key('warehouse-quality-result-table'),

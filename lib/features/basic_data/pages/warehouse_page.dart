@@ -479,6 +479,8 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
           filters: _filters,
         );
     return UtenPrintTable(
+      columnKeys: [for (final c in _columns) c.key],
+      rowIds: [for (final item in result.items) item.id],
       headers: [for (final c in _columns) c.label],
       rows: [
         for (final item in result.items)
@@ -605,6 +607,8 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<WarehouseListItem>(
+                    tableKey:
+                        'features.basic_data.pages.warehouse_page.WarehousePageState._buildDraftHost.1',
                     columns: _columns,
                     items: _page?.items ?? const [],
                     // 导出/打印（V717 warehouse:export）：打印预览用本页列渲染，

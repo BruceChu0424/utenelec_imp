@@ -649,8 +649,9 @@ void main() {
     ]);
     await _pumpPage(tester, repository, size: const Size(375, 812));
 
-    expect(find.textContaining('客户应收 预收有余 美金 200.00'), findsOneWidget);
-    expect(find.text('另有 人民币 30000.00'), findsOneWidget);
+    // 2026-09-29「大小屏共用一张表」：卡片复用表格客户应收格（cardRendersBuilder），
+    // 标题两行完整显示；「另有 X 币种」从卡片明行改为 ⓘ 悬停说明（与桌面同源）。
+    expect(find.textContaining('美金 200.00'), findsOneWidget);
     expect(find.textContaining('美金 144000.00'), findsWidgets);
   });
 
@@ -698,19 +699,17 @@ void main() {
     ]);
     await _pumpPage(tester, repository, size: const Size(375, 812));
 
+    // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管（统一挂表格
+    // key）；勾选走卡片复选框、点卡打开详情。
     expect(
       find.byKey(const Key('sales-order-finance-mobile-list')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('sales-order-finance-desktop-table')),
       findsNothing,
     );
     expect(
-      find.byKey(const Key('sales-order-finance-review-order-1')),
+      find.byKey(const Key('sales-order-finance-desktop-table')),
       findsOneWidget,
     );
-    expect(find.text('已选 0 项'), findsOneWidget);
+    expect(find.text('XD20260829000003'), findsOneWidget);
   });
 
   testWidgets('搜索走服务端关键词，只有查看权限时表格保持只读', (tester) async {

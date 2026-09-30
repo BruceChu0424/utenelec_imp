@@ -246,6 +246,12 @@ class _WarehouseReportTablePageState
     final data = parseReportResponse(json, 1);
     final display = ref.read(warehouseWeightUnitsPrefsProvider).display;
     return UtenPrintTable(
+      columnKeys: [for (final c in data.columns) c.key],
+      rowIds: [for (final r in data.rows) r['id']?.toString()],
+      factValues: [
+        for (final r in data.rows)
+          {for (final entry in r.entries) entry.key: entry.value?.toString()},
+      ],
       headers: [for (final c in data.columns) c.label],
       rows: [
         for (final r in data.rows)
@@ -470,6 +476,8 @@ class _WarehouseReportTablePageState
         )
         .toList();
     return MasterDataTableView<Map<String, dynamic>>(
+      tableKey:
+          'features.warehouse.pages.warehouse_report_table_page.WarehouseReportTablePageState._buildTable.1',
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
       primary: true,
       columns: columns,

@@ -277,6 +277,7 @@ public class ProductionDailyReportService {
 
     @Transactional
     @PreAuthorize("hasAuthority('production_daily_report:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_daily_report_item", mapping=com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave.Mapping.DOMAIN_LINEAGE)
     public DailyReportDetail create(DailyReportSaveRequest req) {
         tx.bind();
         if (req == null || req.getItems() == null) {
@@ -321,6 +322,7 @@ public class ProductionDailyReportService {
 
     @Transactional
     @PreAuthorize("hasAuthority('production_daily_report:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_daily_report_item", requestArgument=1, documentIdArgument=0, mapping=com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave.Mapping.DOMAIN_LINEAGE)
     public DailyReportDetail update(UUID id, DailyReportSaveRequest req) {
         tx.bind();
         if (req != null) DailyReportOutputAllocationService.rejectStaleRouteShape(req.getItems());
@@ -2197,6 +2199,7 @@ public class ProductionDailyReportService {
             it.setDirectTransferDemandId(l.getDirectTransferDemandId());
             it.setOutputRouteReason(l.getOutputRouteReason());
             itemRepo.save(it);
+            com.uten.imp.common.platformcolumns.PlatformColumnSaveLineage.registerSaved(l, it.getId());
             out.add(toItemDto(it));
             auto++;
         }

@@ -427,16 +427,9 @@ Future<void> showHrConfirmDialog(
       '-${selected.day.toString().padLeft(2, '0')}';
   final repo = ref.read(employeeRepositoryProvider);
   try {
-    try {
-      await repo.confirm(item.employeeId, confirmedDate: date);
-    } on ApiException catch (e) {
-      if (e.code == 'CONFLICT') {
-        // 非试用期（已是正式员工但未登记转正日期）→ 补登
-        await repo.update(item.employeeId, {'confirmedAt': date});
-      } else {
-        rethrow;
-      }
-    }
+    // 后端 confirm 覆盖试用期转正与在职未登记补登；409 文案后端直出，
+    // 不回退 PUT 档案（会被「修改转正日期请使用转正功能」闸门拦死）。
+    await repo.confirm(item.employeeId, confirmedDate: date);
     if (!context.mounted) return;
     context.appSuccess('已登记 ${item.name} 的转正日期 $date');
   } on ApiException catch (e) {

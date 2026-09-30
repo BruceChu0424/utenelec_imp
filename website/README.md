@@ -122,6 +122,10 @@ Local pages:
 
 Catalog normalization and the 50-series repair integration tests create private disposable SQLite databases from the checked-in Prisma migrations and seed synthetic catalog/source-audit records. They do not read or copy `prisma/dev.db`. Build validation uses another fresh empty migrated database and does not write the production uploads path.
 
+Production builds intentionally disable Webpack's filesystem cache: the pinned `next-intl` formatter loader contains a runtime import whose dependencies Webpack cannot reliably snapshot. Development keeps incremental caching, and production still performs compilation, lint and type checks. `tests/production-build-cache.test.ts` verifies both modes and the i18n alias.
+
+The 2026-09-29 lockfile security update changes only the transitive `brace-expansion` patches to `1.1.21` and `5.0.12`. These cover the upstream parsing and recursion advisories [GHSA-q2hr-2g5m-vwhr](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-q2hr-2g5m-vwhr), [GHSA-qhr7-859c-m2p7](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-qhr7-859c-m2p7) and [GHSA-6j4f-fj2g-mc7p](https://github.com/juliangruber/brace-expansion/security/advisories/GHSA-6j4f-fj2g-mc7p); application dependencies and major versions remain unchanged.
+
 ## Docs map
 
 - [`docs/cloud-server-deployment.md`](docs/cloud-server-deployment.md)

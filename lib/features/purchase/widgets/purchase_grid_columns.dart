@@ -7,6 +7,7 @@
 // 供既有单回填/保存透传），单位列紧跟数量之后。
 // purchaseGridColumns：货品/数量/单价/金额 四列。
 import 'package:flutter/material.dart';
+import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
@@ -26,9 +27,14 @@ import '../../../shared/formatters/exact_decimal.dart';
 /// 2026-09 起：币种/汇率/税率/结账方式与备注为行级（订货单），见
 /// [CommercialTermsRowMixin]/[RemarkRowMixin]。
 class PurchaseGridRow extends EditableGridRow
-    with AmountRowMixin, CommercialTermsRowMixin, RemarkRowMixin {
+    with
+        AmountRowMixin,
+        CommercialTermsRowMixin,
+        RemarkRowMixin,
+        BusinessColumnsRow {
   PurchaseGridRow({this.sourceLocked = false}) {
     qty.addListener(_recalc);
+    extraColumnsChanged.addListener(_recalc);
     price.addListener(_recalc);
     // 查重标红（保存前查重被拦回时标记）：改动货品/数量/单价/供应商即消除，
     // 下次保存重新判定。
@@ -63,6 +69,7 @@ class PurchaseGridRow extends EditableGridRow
 
   /// 上游明细 id（引入时回填，保存时按 cfg.linkTo* 映射为
   /// requestItemId/orderItemId/receiptItemId）。
+  String? documentItemId;
   String? upstreamItemId;
 
   /// 全部来源申请明细 id（V463 同货品合并行，含 [upstreamItemId] 首来源，
@@ -135,11 +142,10 @@ class PurchaseGridRow extends EditableGridRow
   );
 
   void _recalc() {
-    recalcAmount(
-      () =>
-          (double.tryParse(qty.text) ?? 0) * (double.tryParse(price.text) ?? 0),
+    amountExactNotifier.value = applyExtraColumnAmount(
+      exactLineAmountText(qty.text, price.text),
     );
-    amountExactNotifier.value = exactLineAmountText(qty.text, price.text);
+    recalcAmount(() => double.tryParse(amountExactNotifier.value ?? '') ?? 0);
   }
 
   Map<String, TextEditingController> get _draftTextControllers => {
@@ -151,6 +157,7 @@ class PurchaseGridRow extends EditableGridRow
 
   Iterable<Listenable> get draftListenables => [
     ..._draftTextControllers.values,
+    ...extraColumnListenables,
     goodsNotifier,
     stockPlaceNotifier,
     supplierIdNotifier,
@@ -163,6 +170,8 @@ class PurchaseGridRow extends EditableGridRow
 
   Map<String, dynamic> exportDraft() => {
     'text': draftTextValues(_draftTextControllers),
+    'extraColumns': exportExtraColumns(),
+    'documentItemId': documentItemId,
     'goods': draftGoods(goods),
     'stockPlace': stockPlaceNotifier.value,
     'unitRate': unitRate,
@@ -189,6 +198,7 @@ class PurchaseGridRow extends EditableGridRow
 
   factory PurchaseGridRow.fromDraft(Map<String, dynamic> data) {
     final row = PurchaseGridRow(sourceLocked: data['sourceLocked'] == true)
+      ..documentItemId = data['documentItemId'] as String?
       ..goods = restoreDraftGoods(data['goods'])
       ..stockPlaceNotifier.value = data['stockPlace'] as String?
       ..unitRate = (data['unitRate'] as num?)?.toDouble()
@@ -200,6 +210,7 @@ class PurchaseGridRow extends EditableGridRow
       ..unitId = data['unitId'] as String?
       ..supplierId = data['supplierId'] as String?;
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
+    row.restoreExtraColumns(data['extraColumns']);
     row.maxQty = (data['maxQty'] as num?)?.toDouble();
     row.upstreamItemIds = draftStrings(data['upstreamItemIds']);
     row.sourceDocs = draftMaps(
@@ -228,6 +239,7 @@ class PurchaseGridRow extends EditableGridRow
       ..unitId = unitId
       ..unitRate = unitRate
       ..supplierId = supplierId;
+    copyExtraColumnsTo(c);
     c.qty.text = qty.text;
     c.weight.text = weight.text;
     c.price.text = price.text;
@@ -274,6 +286,7 @@ class PurchaseGridRow extends EditableGridRow
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
   required BuildContext context,
+  List<PurchaseGridRow> rows = const [],
   bool showStockPlace = false,
   bool showSource = false,
   Map<String, String> unitEntries = const {},
@@ -566,5 +579,10 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       ),
     // 每行末尾备注列：随行提交 remark。
     if (showRemark) procurementRemarkColumn<PurchaseGridRow>(),
+    ...businessEditableColumns<PurchaseGridRow>(
+      businessColumnsOf(rows),
+      rowOf: (row) => row,
+      amountHint: l10n.businessColumnAmountHint,
+    ),
   ];
 }

@@ -8,6 +8,7 @@
 // 编辑 REJECTED 保存后仍在 REJECTED，重提在详情页（清驳回痕迹并重新通知审批人）。
 
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
@@ -34,6 +35,11 @@ import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
 import '../providers/expense_providers.dart';
 import 'expense_item_dialog.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
+import '../../../shared/platform_tables/platform_row_draft.dart';
+import '../widgets/expense_item_columns.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 
 class ExpenseClaimEditPage extends ConsumerStatefulWidget {
   const ExpenseClaimEditPage({super.key, this.claimId});
@@ -51,6 +57,13 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   final _titleController = TextEditingController();
   final _remarkController = TextEditingController();
   final List<ExpenseItem> _items = [];
+  final _platformDrafts = <String, PlatformRowDraft>{};
+  final _persistedItemIds = <String>{};
+  PlatformRowDraft _fields(ExpenseItem item) => _platformDrafts.putIfAbsent(
+    item.id,
+    () => PlatformRowDraft()
+      ..sourceRecordId = _persistedItemIds.contains(item.id) ? item.id : null,
+  );
   bool _busy = false;
   bool _initialized = false;
   int? _editVersion;
@@ -71,13 +84,19 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   Iterable<Listenable> get formDraftListenables => [
     _titleController,
     _remarkController,
+    ..._platformDrafts.values,
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
     'title': _titleController.text,
     'remark': _remarkController.text,
     'items': [
-      for (final item in _items) {...item.toCreateJson(), 'id': item.id},
+      for (final item in _items)
+        {
+          ...item.toCreateJson(),
+          'id': item.id,
+          'platformFieldDraft': _fields(item).exportDraft(),
+        },
     ],
     'pendingItem': _pendingItemDraft,
   };
@@ -85,9 +104,27 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     _titleController.text = draftText(data, 'title');
     _remarkController.text = draftText(data, 'remark');
-    _items
-      ..clear()
-      ..addAll(draftMaps(data['items']).map(ExpenseItem.fromJson));
+    _items.clear();
+    final localIds = <String>{};
+    for (final raw in draftMaps(data['items'])) {
+      final originalId = raw['id']?.toString().trim() ?? '';
+      final reusedIdentity =
+          originalId.isEmpty || localIds.contains(originalId);
+      final id = reusedIdentity ? const Uuid().v4() : originalId;
+      localIds.add(id);
+      final item = ExpenseItem.fromJson({...raw, 'id': id});
+      _items.add(item);
+      final fields = _fields(item)..restoreDraft(raw['platformFieldDraft']);
+      if (reusedIdentity) {
+        // Older local drafts omitted item IDs. A local identity is never proof
+        // that this row already exists on the server.
+        fields.sourceRecordId = null;
+        fields.version = 0;
+        fields.loaded = false;
+        fields.canWrite = false;
+        fields.dirty = fields.cells.isNotEmpty;
+      }
+    }
     _pendingItemDraft = data['pendingItem'] == null
         ? null
         : draftMap(data['pendingItem']);
@@ -102,6 +139,9 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
 
   @override
   void dispose() {
+    for (final draft in _platformDrafts.values) {
+      draft.dispose();
+    }
     _titleController.dispose();
     _remarkController.dispose();
     super.dispose();
@@ -121,6 +161,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     _items
       ..clear()
       ..addAll(claim.items);
+    _persistedItemIds.addAll(claim.items.map((item) => item.id));
   }
 
   Future<void> _addItem({ExpenseItem? existing}) async {
@@ -192,7 +233,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
           widget.claimId!,
           expectedVersion: _editVersion!,
           title: title,
-          items: List.from(_items),
+          items: [
+            for (final item in _items)
+              item.withPlatformFields(_fields(item).savePayload()),
+          ],
           remark: remark.isEmpty ? null : remark,
         );
         if (mounted) {
@@ -208,7 +252,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         () => createExpense(
           ref,
           title: title,
-          items: List.from(_items),
+          items: [
+            for (final item in _items)
+              item.withPlatformFields(_fields(item).savePayload()),
+          ],
           remark: remark.isEmpty ? null : remark,
         ),
       );
@@ -247,6 +294,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
 
     final body = UtenContentContainer.narrow(
       child: ListView(
+        key: const Key('expense-edit-scroll'),
         padding: const EdgeInsets.fromLTRB(
           0,
           UtenSpacing.s16,
@@ -452,110 +500,33 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
           ],
         ),
         const SizedBox(height: UtenSpacing.s8),
-        if (_items.isEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s24),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: UtenRadius.lgAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.add_circle_outline_rounded,
-                  size: 32,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  l10n.expenseFlowEmptyItems,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          ..._items.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-              child: _itemCard(theme, item),
-            ),
+        MasterDataTableView<ExpenseItem>(
+          tableKey: 'expense.claim.items',
+          platformBinding: PlatformTableBinding<ExpenseItem>(
+            tableKey: 'expense.claim.items',
+            scope: 'expense_claim_item',
+            recordIdOf: (item) => _fields(item).sourceRecordId,
+            canEditValues: true,
+            draftOf: _fields,
           ),
-      ],
-    );
-  }
-
-  /// 明细行卡：类别徽标 + 日期/说明 + 金额；点击改、右侧删除。
-  Widget _itemCard(ThemeData theme, ExpenseItem item) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: UtenRadius.lgAll,
-        onTap: () => _addItem(existing: item),
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: item.category.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  item.category.icon,
-                  color: item.category.color,
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.category.label,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      '${_fmtDate(item.date)}'
-                      '${item.description != null ? '  ·  ${item.description}' : ''}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '¥ ${item.amount.toStringAsFixed(2)}',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              IconButton(
-                tooltip: l10n.expenseFlowDeleteItem,
-                icon: const Icon(Icons.close_rounded, size: 18),
-                splashRadius: 16,
-                onPressed: () => setState(() => _items.remove(item)),
-              ),
-            ],
-          ),
+          columns: expenseItemColumns,
+          items: _items,
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          onRowTap: (item) => _addItem(existing: item),
+          embedded: true,
+          rowMenuBuilder: (item) => [
+            UtenMenuItem(
+              label: l10n.expenseFlowDeleteItem,
+              icon: Icons.delete_outline,
+              destructive: true,
+              onTap: () => setState(() => _items.remove(item)),
+            ),
+          ],
         ),
-      ),
+      ],
     );
   }
 

@@ -1,6 +1,5 @@
 // AI 程序业务界面截图: 识别核对面板 / 编辑页导入后 / 报价核价队列与详情 / 报价详情状态 /
 // 客户货品对照 / 货品英文名称。由 ai_program_visual_review_test.dart 调用。
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +22,7 @@ import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/attachments/pending_attachment_section.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
 import 'package:uten_imp/shared/ai/ai_status_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -287,10 +287,21 @@ void businessScreenTests() {
     testWidgets('quote edit page after intake', (tester) async {
       await _pumpEditAfterIntake(tester, docType: SalesDocType.quote);
       await capture(tester, 'edit-quote-before-intake-1440-light');
-      FilePicker.platform = FakeFilePicker(
-        fakeFile('ALPHA(2026-1-19+2026-2-24)260422.xlsx'),
+      // 入口已统一进附件卡片: 先把文件加进暂存区, 再点卡片上的 AI识别。
+      final intakeController = tester
+          .widget<PendingAttachmentSection>(
+            find.byType(PendingAttachmentSection),
+          )
+          .controller;
+      intakeController.add(fakeFile('ALPHA(2026-1-19+2026-2-24)260422.xlsx'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(
+          const ValueKey(
+            'pending-attachment-action-ALPHA(2026-1-19+2026-2-24)260422.xlsx',
+          ),
+        ),
       );
-      await tester.tap(find.byKey(const ValueKey('sales-intake-entry-button')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
       await tester.pumpAndSettle();

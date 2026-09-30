@@ -142,6 +142,8 @@ class _RateListState
               ),
               Expanded(
                 child: MasterDataTableView<ProductionOverproductionRateRequest>(
+                  tableKey:
+                      'features.production.pages.production_overproduction_rate_pages.RateListState.build.1',
                   columns: [
                     MasterColumnDef(
                       key: 'plan',

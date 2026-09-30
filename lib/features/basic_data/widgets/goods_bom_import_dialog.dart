@@ -14,6 +14,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_drop_target.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -71,6 +72,19 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
         if (mounted) setState(() => _detecting = false);
         return;
       }
+      await _detectFile(f);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _detecting = false);
+      context.appError('Excel 文件选择异常，请重试'); // TODO(l10n): 补 arb
+    }
+  }
+
+  /// 检测一个工作簿（文件选择框与拖入共用）。
+  Future<void> _detectFile(PlatformFile f) async {
+    if (!mounted) return;
+    setState(() => _detecting = true);
+    try {
       final bytes = await readGoodsImportFile(f);
       final report = await ref
           .read(goodsBomImportRepositoryProvider)
@@ -122,26 +136,32 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
-      title: const Text('导入组件'), // TODO(l10n): 补 arb
-      content: SizedBox(
-        width: 520,
-        child: SingleChildScrollView(child: _body(theme)),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: (_committing || _detecting)
-              ? null
-              : () => Navigator.pop(context),
-          child: const Text('关闭'), // TODO(l10n): 补 arb
+    // 弹窗整块都是拖放接收区（Web/桌面端）：xlsx 直接拖进来检测。
+    return UtenDropTarget(
+      enabled: !_detecting && !_committing,
+      hint: '松开鼠标检测 Excel',
+      onFiles: (files) => _detectFile(files.first),
+      child: AlertDialog(
+        title: const Text('导入组件'), // TODO(l10n): 补 arb
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(child: _body(theme)),
         ),
-        if (_result == null && _report != null && !_report!.hasErrors)
-          FilledButton(
-            onPressed: _committing ? null : _commit,
-            child: Text(_committing ? '正在导入…' : '导入'), // TODO(l10n): 补 arb
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: (_committing || _detecting)
+                ? null
+                : () => Navigator.pop(context),
+            child: const Text('关闭'), // TODO(l10n): 补 arb
           ),
-      ],
+          if (_result == null && _report != null && !_report!.hasErrors)
+            FilledButton(
+              onPressed: _committing ? null : _commit,
+              child: Text(_committing ? '正在导入…' : '导入'), // TODO(l10n): 补 arb
+            ),
+        ],
+      ),
     );
   }
 

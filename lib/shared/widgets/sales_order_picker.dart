@@ -294,6 +294,8 @@ class _SalesOrderPickerSheetState
             ),
             Expanded(
               child: MasterDataTableView<SalesDocListItem>(
+                tableKey:
+                    'shared.widgets.sales_order_picker.SalesOrderPickerSheetState.build.1',
                 columns: _columns(),
                 items: _page?.items ?? const [],
                 facets: const {},

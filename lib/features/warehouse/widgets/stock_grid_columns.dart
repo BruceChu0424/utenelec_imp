@@ -297,6 +297,8 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
     if (isCheck) ...[
       EditableGridColumn<StockGridRow>(
         key: 'bookQty',
+        exactValueOf: (r) => r.bookQty.text,
+        exactListenableOf: (r) => r.bookQty,
         label: '账面',
         width: 96,
         numeric: true,
@@ -315,6 +317,8 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       ),
       EditableGridColumn<StockGridRow>(
         key: 'checkQty',
+        exactValueOf: (r) => r.checkQty.text,
+        exactListenableOf: (r) => r.checkQty,
         label: '实盘',
         width: 110,
         numeric: true,
@@ -382,6 +386,8 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
     ] else ...[
       EditableGridColumn<StockGridRow>(
         key: 'qty',
+        exactValueOf: (r) => r.qty.text,
+        exactListenableOf: (r) => r.qty,
         label: '数量',
         width: 110,
         numeric: true,

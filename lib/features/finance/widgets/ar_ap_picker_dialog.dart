@@ -614,6 +614,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         Expanded(
           child: SingleChildScrollView(
             child: UtenEditableGrid<_LedgerRow>(
+              tableKey:
+                  'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
               controller: _grid,
               columns: _columns(),
               showAddRow: false,

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/router/route_names.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/notice.dart';
 import '../repositories/notice_repository.dart';
 import 'notice_unread_index_provider.dart';
@@ -159,20 +160,30 @@ Future<int> markNoticesReadByRoute(
   ProviderContainer container,
   List<String> routes,
 ) async {
-  if (routes.isEmpty) return 0;
+  final scope = container.read(authenticatedScopeProvider);
+  if (scope == null) return 0;
+  final employeeRoutes = routes
+      .where(
+        (route) =>
+            route != '/' &&
+            sanitizeReturnTo(route, scope: ReturnToScope.employee) != null,
+      )
+      .toList(growable: false);
+  if (employeeRoutes.isEmpty) return 0;
   final index = container.read(noticeUnreadIndexProvider);
-  if (index != null && !routes.any(index.hasRoute)) return 0;
+  if (index != null && !employeeRoutes.any(index.hasRoute)) return 0;
   int read;
   try {
     read = await container
         .read(noticeRepositoryProvider)
-        .markReadByRoute(routes);
+        .markReadByRoute(employeeRoutes);
   } catch (_) {
     return 0;
   }
+  if (container.read(authenticatedScopeProvider) != scope) return read;
   container
       .read(noticeUnreadIndexProvider.notifier)
-      .forget((item) => routes.contains(item.actionRoute));
+      .forget((item) => employeeRoutes.contains(item.actionRoute));
   if (read > 0) {
     container.invalidate(noticeListProvider);
     refreshBadgesIn(container);
@@ -188,7 +199,8 @@ Future<int> markNoticesReadBySource(
   ProviderContainer container,
   List<String> events,
 ) async {
-  if (events.isEmpty) return 0;
+  final scope = container.read(authenticatedScopeProvider);
+  if (scope == null || events.isEmpty) return 0;
   final index = container.read(noticeUnreadIndexProvider);
   if (index != null && !index.hasSourceEvent(events)) return 0;
   int read;
@@ -199,6 +211,7 @@ Future<int> markNoticesReadBySource(
   } catch (_) {
     return 0;
   }
+  if (container.read(authenticatedScopeProvider) != scope) return read;
   container
       .read(noticeUnreadIndexProvider.notifier)
       .forget((item) => events.contains(item.sourceEvent));

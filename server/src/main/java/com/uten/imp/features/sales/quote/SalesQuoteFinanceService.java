@@ -54,6 +54,10 @@ public class SalesQuoteFinanceService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final EntityManager em;
+    private com.uten.imp.common.columns.BusinessColumnService businessColumns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setBusinessColumns(com.uten.imp.common.columns.BusinessColumnService service) { this.businessColumns = service; }
     private final SalesQuoteRepository quoteRepo;
     private final SalesQuoteItemRepository itemRepo;
     private final SalesQuoteService quotes;
@@ -210,7 +214,8 @@ public class SalesQuoteFinanceService {
                                i.qty, i.price, i.price_source, COALESCE(fp.full_name, ''), i.finance_price_at,
                                CASE WHEN g.status = '使用' AND NOT COALESCE(g.is_deleted, FALSE) THEN g.price END,
                                i.client_price, i.discount, i.amount_original,
-                               i.client_model, i.client_goods_name, i.remark, i.unit_id
+                               i.client_model, i.client_goods_name, i.remark, i.unit_id, CAST(i.extra_columns AS text),
+                               i.goods_name_en_snapshot
                         FROM sales_quote_items i
                         LEFT JOIN goods g ON g.id = i.goods_id
                         LEFT JOIN colors col ON col.id = i.color_id
@@ -274,7 +279,8 @@ public class SalesQuoteFinanceService {
                     lastFinance,
                     differs(proposed, lastFinance),
                     (String) r[16], (String) r[17], (String) r[18],
-                    blockingReason));
+                    blockingReason, r.length > 20 ? businessColumns.parse(r[20]) : List.of(),
+                    r.length > 21 ? (String) r[21] : null));
         }
         String convertedOrderNo = quotes.convertedOrders(List.of(id)).values().stream()
                 .map(SalesQuoteService.ConvertedOrder::billNo).findFirst().orElse(null);
@@ -386,7 +392,8 @@ public class SalesQuoteFinanceService {
                 applyDealPrice(item, edit.dealPrice(), master.get(item.getGoodsId()), label, actor, now);
             }
             BigDecimal amount = item.getPrice() == null ? null
-                    : MoneyPolicy.exactProduct(item.getQty(), item.getPrice(), item.getDiscount());
+                    : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                            MoneyPolicy.exactProduct(item.getQty(), item.getPrice(), item.getDiscount()), item.getExtraColumns());
             item.setAmountOriginal(amount);
             item.setAmountLocal(baseCurrency ? amount : null);
             itemRepo.save(item);

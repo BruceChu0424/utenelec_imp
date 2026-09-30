@@ -16,16 +16,18 @@ import 'session_provider.dart';
 
 /// 货品搜索/选择用的轻量项。
 class GoodsOption {
-  const GoodsOption({required this.id, this.code, this.name});
+  const GoodsOption({required this.id, this.code, this.name, this.nameEn});
 
   final String id;
   final String? code;
   final String? name;
+  final String? nameEn;
 
   factory GoodsOption.fromJson(Map<String, dynamic> json) => GoodsOption(
     id: json['id'] as String,
     code: json['code'] as String?,
     name: json['name'] as String?,
+    nameEn: json['nameEn'] as String?,
   );
 }
 
@@ -33,6 +35,7 @@ class GoodsOption {
 class GoodsDictEntry {
   const GoodsDictEntry({
     required this.name,
+    this.nameEn,
     this.code,
     this.series,
     this.stockPlace,
@@ -41,6 +44,7 @@ class GoodsDictEntry {
   });
 
   final String name;
+  final String? nameEn;
   final String? code;
   final String? series;
   final String? stockPlace;
@@ -51,6 +55,7 @@ class GoodsDictEntry {
 
   factory GoodsDictEntry.fromJson(Map<String, dynamic> json) => GoodsDictEntry(
     name: (json['name'] ?? '') as String,
+    nameEn: json['nameEn'] as String?,
     code: json['code'] as String?,
     series: json['series'] as String?,
     stockPlace: json['stockPlace'] as String?,
@@ -354,6 +359,7 @@ class MasterDictionaryService {
       id: clean,
       name: goods(clean),
       code: goodsInfo(clean)?.code,
+      nameEn: goodsInfo(clean)?.nameEn,
     );
   }
 

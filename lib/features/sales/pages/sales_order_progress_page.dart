@@ -37,6 +37,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -653,6 +654,8 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     }
     return _withDraftCategory(
       MasterDataTableView<SalesOrderProgressRow>(
+        tableKey:
+            'features.sales.pages.sales_order_progress_page.SalesOrderProgressPageState._body.1',
         selectable: _canDeleteDrafts,
         idOf: (row) => !draftDeleteBusy && !_loading && _isDraftRow(row)
             ? row.orderId
@@ -785,19 +788,12 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         width: 190,
         sortable: true,
         value: (r) => _stageText(r),
-        // 2026-09-21(ADR-100 / 用户口径「不同状态不同颜色，色差要大」)：
-        // 阶段从整格语义底色改成 UtenStatusBadge 药丸。底色版六个在途阶段只分到
-        // 三种颜色（可发货/已发货/已结案同绿、驳回/待排产同红），一眼分不出单子
-        // 卡在哪一环；药丸版每档一个色相，且不再整格刷色，行选中高亮也不受影响。
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (context, r) => Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: UtenStatusBadge(
-            label: _stageText(r),
-            type: _stageBadgeType(r),
-            size: UtenStatusBadgeSize.small,
-          ),
-        ),
+        // 2026-09-27 用户口径「表格格内胶囊改单元格背景色」：每档独立色相的
+        // 映射不变（2026-09-21 ADR-100「不同状态不同颜色，色差要大」），只是
+        // 从格内 UtenStatusBadge 胶囊换成整格铺底色；边框由 MasterDataTableView
+        // 的 cellColor 通道自动保留（用户口径「背景变色但边框要还在」）。
+        cellColor: (context, r) =>
+            udenStatusBadgeCellColor(context, _stageBadgeType(r)),
       ),
       MasterColumnDef(
         key: 'orderQty',

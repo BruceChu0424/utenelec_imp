@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 银行存取款单保存请求中的明细行。 */
 @Getter
 @Setter
-public class FinanceBankTransferLineInput implements ServerDerivedAmounts {
+public class FinanceBankTransferLineInput extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
     private UUID inAccountId;

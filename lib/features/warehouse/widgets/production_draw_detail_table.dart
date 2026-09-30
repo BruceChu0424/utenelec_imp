@@ -262,6 +262,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
           document.items.any((item) => item.weight != null),
     );
     return MasterDataTableView<ProductionDrawDetailRow>(
+      tableKey:
+          'features.warehouse.widgets.production_draw_detail_table.ProductionDrawDetailTable.build.1',
       key: const Key('production-draw-detail-table'),
       primary: primary,
       enableTextSelection: !_capturesWeight && issueQtyControllers == null,

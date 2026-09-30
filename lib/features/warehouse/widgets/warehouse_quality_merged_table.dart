@@ -144,6 +144,8 @@ class WarehouseQualityMergedTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return UtenEditableGrid<WarehouseQualityMergedRow>(
+      tableKey:
+          'features.warehouse.widgets.warehouse_quality_merged_table.WarehouseQualityMergedTable.build.1',
       key: const Key('warehouse-quality-merged-table'),
       controller: controller,
       stickyHeaderPinned: stickyHeaderPinned,

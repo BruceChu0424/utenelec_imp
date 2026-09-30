@@ -34,6 +34,7 @@ import '../providers/expense_settings_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_item.dart';
+import '../widgets/expense_item_columns.dart';
 import '../providers/expense_providers.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
@@ -444,6 +445,8 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
           )
         else
           MasterDataTableView<ExpenseItem>(
+            tableKey:
+                'features.expense.pages.expense_detail_page.ExpenseDetailPageState._itemsSection.1',
             key: const Key('expense-detail-items'),
             columns: _itemColumns,
             items: claim.items,
@@ -670,34 +673,7 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-final List<MasterColumnDef<ExpenseItem>> _itemColumns = [
-  MasterColumnDef(
-    key: 'category',
-    label: '费用科目',
-    width: 130,
-    value: (item) => item.category.label,
-  ),
-  MasterColumnDef(
-    key: 'date',
-    label: '日期',
-    width: 110,
-    type: 'date',
-    value: (item) => _fmtDate(item.date),
-  ),
-  MasterColumnDef(
-    key: 'description',
-    label: '说明',
-    width: 260,
-    value: (item) => item.description,
-  ),
-  MasterColumnDef(
-    key: 'amount',
-    label: '金额',
-    width: 120,
-    type: 'money',
-    value: (item) => item.amount.toStringAsFixed(2),
-  ),
-];
+final _itemColumns = expenseItemColumns;
 
 UtenStatusBadgeType _statusBadgeType(ExpenseClaimStatus s) => switch (s) {
   ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,

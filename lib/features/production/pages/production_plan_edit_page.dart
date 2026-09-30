@@ -31,6 +31,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -221,6 +222,7 @@ class _ProductionPlanEditPageState
                 .goodsOptionOf(it.goodsId);
           row.qty.text = it.qty?.toString() ?? '';
           row.sourceItemId = it.id;
+          row.platformFields.sourceRecordId = it.id;
           final rate = it.allowedOverproductionRate;
           if (rate == null) {
             row.overproductionPercent.clear();
@@ -545,6 +547,7 @@ class _ProductionPlanEditPageState
     for (final r in rows) {
       if (r.goods == null) continue;
       itemsBody.add({
+        ...platformRowPayload(r),
         if (r.productNo.text.trim().isNotEmpty)
           'productNo': r.productNo.text.trim(),
         'goodsId': r.goods!.id,
@@ -960,6 +963,7 @@ class _ProductionPlanEditPageState
                           // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
                           const SizedBox(height: UtenSpacing.s12),
                           UtenEditableGrid<ProductionGridRow>(
+                            tableKey: 'production.plan.items',
                             controller: _grid,
                             stickyHeaderPinned: _gridPinned,
                             columns: productionGridColumns(

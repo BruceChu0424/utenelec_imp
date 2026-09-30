@@ -183,6 +183,8 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
               Padding(
                 padding: const EdgeInsets.all(UtenSpacing.s16),
                 child: MasterDataTableView<_MaterialTableRow>(
+                  tableKey:
+                      'features.production.pages.material_analysis_order_page.PreparationOrderPageState.build.1',
                   key: const Key('material-preparation-order-table'),
                   columns: _host._materialTableColumns(
                     theme,

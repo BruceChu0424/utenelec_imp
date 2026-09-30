@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 销售收款单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class FinanceReceiptLineInput implements ServerDerivedAmounts {
+public class FinanceReceiptLineInput extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

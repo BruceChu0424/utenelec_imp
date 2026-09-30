@@ -4,8 +4,8 @@
 
 | 项目 | 当前值 |
 |---|---|
-| 当前版本 | 服务器 **v2.0.1**(库 V688, 2026-09-24 部署); 本地源码目录已含 V689-V707, 下一版 v2.0.2 |
-| 数据库迁移头 | **V707** / 636 个迁移文件(V648-V669 跳号); 新迁移从 V708 起, 新 ADR 从 ADR-119 起 |
+| 源码与运行版本 | 源码、隔离验证与已部署版本分别记录；本地检查不代表服务器已升级。见[本次验证记录](docs/99-项目治理/2026-09-29-全平台表格与AI学习本地验证.md)及[发布记录](docs/99-项目治理/当前版本验证.md) |
+| 数据库迁移头 | 当前整合源码 **V757 / 685** 个迁移文件；下一号先核对[迁移目录](server/src/main/resources/db/migration)和在途修改，避免撞号；说明见[迁移索引](docs/数据迁移/README.md)，[完整整合验收](docs/99-项目治理/2026-09-29-全量整合测试提速与发布验收.md) |
 | 前端 | Flutter 3.44.2 / Dart 3.12.2(Web、Windows、macOS、Linux、Android、iOS) |
 | 后端 | Java 21、Spring Boot 3.5.16、PostgreSQL 16、Flyway |
 | 发布方式 | GitHub Actions 签名构建 → 阿里云 OSS → 服务器更新器拉取激活([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)) |
@@ -76,6 +76,7 @@
 | 会话与再认证 | [ADR-110](docs/99-决策记录-ADR/ADR-110-服务端会话与敏感操作再认证.md): 服务端会话(登出/改密/停用即失效), 高危操作 5 分钟一次性再认证 |
 | 金额 | [ADR-112](docs/99-决策记录-ADR/ADR-112-金额口径统一与资金过账单一入口.md): 金额只由服务端精确派生; 分批按"累计份额、末批取余"保证合计等于原单 |
 | 前端性能 | [ADR-108](docs/99-决策记录-ADR/ADR-108-前端性能徽章汇总会话快照与刷新时机.md): 全站徽章一次汇总、会话快照、返回即刷新按需 |
+| 表格与学习 | [ADR-137](docs/99-决策记录-ADR/ADR-137-全平台可扩展表格与统一投影.md)：公共动态列、精确计算、权限与历史快照、预览/下载同表头；[ADR-136](docs/99-决策记录-ADR/ADR-136-业务扩展列与客户报价模板学习.md)：商业费用及客户报价模板 |
 
 ## 仓库结构
 
@@ -114,7 +115,11 @@ mvn spring-boot:run               # 启动时 Flyway 自动迁移到最新
 
 API 位于 `http://localhost:8080/api`, dev 下 Swagger 位于 `/swagger-ui.html`。首次引导超管、端口约定与排错见[后端说明](server/README.md)。
 
+等日志出现应用启动完成后，再确认 `http://localhost:8080/actuator/health/readiness` 返回 `UP`。仅看到编译成功或端口监听不等于应用就绪。并行测试使用独立 `-Duten.build.directory=target-任务名`，避免覆盖正在运行的类目录。
+
 ### 2. 启动前端
+
+另开一个终端，工作目录为仓库根目录（含 `pubspec.yaml`），不要沿用上一步的 `server/` 目录。
 
 ```bash
 flutter pub get
@@ -122,6 +127,16 @@ flutter run -d chrome --web-port=53764 --dart-define=API_BASE_URL=http://localho
 ```
 
 Debug 默认 API 即 `http://localhost:8080/api`; 桌面端把 `-d chrome` 换成 `-d windows` / `-d macos`。
+
+不自动打开浏览器时可使用 `flutter run -d web-server --web-hostname=127.0.0.1 --web-port=53764 --dart-define=API_BASE_URL=http://localhost:8080/api`，随后访问输出地址，确认实际页面渲染和接口请求成功。如果使用其它端口，确认后端 CORS 允许前端实际来源；已有服务占用端口时选择空闲端口，不终止不属于本次验证的进程。
+
+现役 Web 发行物采用 JavaScript / CanvasKit，构建命令为：
+
+```bash
+flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run --dart-define=API_BASE_URL=/api
+```
+
+`--no-wasm-dry-run`关闭未采用的 WebAssembly 目标预检查；JavaScript 编译、静态分析、测试和字体完整性校验继续执行。这不表示 WebAssembly 兼容性已通过，安全存储依赖也不因此升级大版本。
 
 ## 质量门禁与测试
 
@@ -143,7 +158,7 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 ## 数据库迁移规则
 
 - 表结构只来自 [`server/src/main/resources/db/migration`](server/src/main/resources/db/migration); 已应用的迁移**永不修改字节**, 修正一律向前追加。
-- 新迁移号必须大于当前迁移头(main 在 V692, 服务器在 V688; 更小的号会被 Flyway 判为乱序拒绝启动)。开号前先查目录与在途分支, 避免撞号。
+- 新迁移号必须大于当前源码迁移头。开号前先查目录与在途修改，目标服务器版本另查其 `flyway_schema_history`；不能用历史部署记录或本地文件数推断。
 - 新增表必须同时登记: 审计三清单、业务数据重置脚本的表分类、主档引用目录(若引用主档); 迁移头变化要同步五处契约(见[编排方法与验收](docs/99-项目治理/全平台整改交接/04-编排方法与验收.md))。
 - 每个迁移有对应说明, 索引见[数据迁移](docs/数据迁移/README.md)。
 - 生产迁移只经发布更新器执行(先自动全量备份)。**不要在服务器上直接运行 migrator 做演练**: 它固定连接正式库; 演练在开发机的库副本上进行。

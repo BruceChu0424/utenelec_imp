@@ -248,7 +248,7 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/verify-font-assets.ps1
       - name: Build production web bundle
-        run: flutter build web --release --no-pub --no-web-resources-cdn --dart-define=API_BASE_URL=/api
+        run: flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run --dart-define=API_BASE_URL=/api
 
   website:
     name: Website / Node 22

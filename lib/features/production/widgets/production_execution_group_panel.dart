@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -149,6 +150,8 @@ class _ProductionExecutionGroupPanelState
         UtenSpacing.s8,
       ),
       child: MasterDataTableView<ProductionExecutionWorkbenchGroup>(
+        tableKey:
+            'features.production.widgets.production_execution_group_panel.ProductionExecutionGroupPanelState.build.1',
         columns: _columns,
         items: _items,
         // 2026-09-25 单号列统一：关联订单值来自服务端 facets（与列表同一过滤上下文）。
@@ -214,7 +217,10 @@ class _ProductionExecutionGroupPanelState
       label: '状态',
       width: 170,
       value: (row) => row.statusLabel,
-      cellBuilder: (_, row) => _GroupStatusBadge(row: row),
+      // 2026-09-27 用户口径「格内胶囊改单元格背景色」：状态分类色铺整格底，
+      // 替代原格内 _GroupStatusBadge 胶囊。
+      cellColor: (context, row) =>
+          udenStatusBadgeCellColor(context, _groupStatusType(row.status)),
     ),
     MasterColumnDef(
       key: 'root',
@@ -243,10 +249,16 @@ class _ProductionExecutionGroupPanelState
       label: '产品名称',
       width: 200,
       info: '本组前几个产品的名称汇总；与右侧编号/颜色列各自独立聚合，不逐项对应。',
-      value: (row) => _productNameLine(row) ?? '—',
+      // 2026-09-29 用户口径：名称行只放名称；聚合截断时的「共 N 项」从名称
+      // 文本里拆出来，改挂身份格后缀标签（不占副行、不混进名称文字）。
+      value: (row) => _blankToNull(row.productNamePreview) ?? '—',
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) =>
-          UtenGoodsIdentityCell(name: _productNameLine(row)),
+      cellBuilder: (_, row) => UtenGoodsIdentityCell(
+        name: _blankToNull(row.productNamePreview),
+        trailing: row.productHasMore
+            ? _GroupCountTag(count: row.productCount)
+            : null,
+      ),
     ),
     MasterColumnDef(
       key: 'productCode',
@@ -312,30 +324,32 @@ String? _blankToNull(String? value) {
   return text == null || text.isEmpty ? null : text;
 }
 
-/// 产品身份主行：名称预览 +「共 N 项」（预览截断时提示还有更多产品）。
-/// 名称全空时返回 null——身份格会把编号顶到主行，不显示占位词。
-String? _productNameLine(ProductionExecutionWorkbenchGroup row) {
-  final text = _blankToNull(row.productNamePreview);
-  if (text == null) return null;
-  return row.productHasMore ? '$text · 共 ${row.productCount} 项' : text;
-}
+/// 分组状态 → 徽章类型（状态列 cellColor 的色源，与旧胶囊同分支）。
+UtenStatusBadgeType _groupStatusType(String status) => switch (status) {
+  'PREPARED' => UtenStatusBadgeType.success,
+  'IN_PROGRESS' => UtenStatusBadgeType.info,
+  'KIT_SHORT' ||
+  'PREPARING' ||
+  'PARTIALLY_SCHEDULED' => UtenStatusBadgeType.warning,
+  'ASSIGNMENT_REQUIRED' => UtenStatusBadgeType.danger,
+  _ => UtenStatusBadgeType.neutral,
+};
 
-class _GroupStatusBadge extends StatelessWidget {
-  const _GroupStatusBadge({required this.row});
+/// 名称右侧的「共 N 项」后缀标签：聚合预览截断时提示还有更多产品。
+/// 样式与身份格副行同款次要色，但不占副行——名称行内只有名称本身。
+class _GroupCountTag extends StatelessWidget {
+  const _GroupCountTag({required this.count});
 
-  final ProductionExecutionWorkbenchGroup row;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
-    final type = switch (row.status) {
-      'PREPARED' => UtenStatusBadgeType.success,
-      'IN_PROGRESS' => UtenStatusBadgeType.info,
-      'KIT_SHORT' ||
-      'PREPARING' ||
-      'PARTIALLY_SCHEDULED' => UtenStatusBadgeType.warning,
-      'ASSIGNMENT_REQUIRED' => UtenStatusBadgeType.danger,
-      _ => UtenStatusBadgeType.neutral,
-    };
-    return UtenStatusBadge(label: row.statusLabel, type: type);
+    final theme = Theme.of(context);
+    return Text(
+      '共 $count 项',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 }

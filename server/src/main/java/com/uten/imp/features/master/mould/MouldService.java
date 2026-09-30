@@ -151,6 +151,7 @@ public class MouldService {
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("_platformRecordId", m.getId());
                     row.put("code", m.getCode());
                     row.put("name", m.getName());
                     row.put("place", m.getPlace());

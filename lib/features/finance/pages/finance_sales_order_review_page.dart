@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_columns_table.dart';
 // 销售订货单财务审核详情页（V300 专用审核视图，与销售端订单详情分离）。
 //
 // 设计目标（对齐大公司审批中心：SAP/Oracle 审批详情 = 单据信息 + 风险快照 + 双决策）：
@@ -912,6 +913,7 @@ class _FinanceSalesOrderReviewPageState
     // 老订单(无来源报价、无客户文件信息)不取本地化实例，列与文案保持原样。
     final l10n = hasQuote || hasFile ? AppLocalizations.of(context) : null;
     return MasterDataTableView<SalesOrderFinanceReviewLine>(
+      tableKey: 'sales.order.items',
       primary: true,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
       columns: [
@@ -922,6 +924,12 @@ class _FinanceSalesOrderReviewPageState
           label: '货品名称',
           width: 200,
           value: (it) => it.goodsName ?? it.goodsCode ?? '—',
+        ),
+        MasterColumnDef<SalesOrderFinanceReviewLine>(
+          key: 'nameEn',
+          label: '英文名称',
+          width: 180,
+          value: (line) => line.goodsNameEn,
         ),
         MasterColumnDef(
           key: 'goodsCode',
@@ -1033,6 +1041,10 @@ class _FinanceSalesOrderReviewPageState
           width: 160,
           value: (it) => (it.remark?.isNotEmpty ?? false) ? it.remark : null,
         ),
+        ...businessReadOnlyColumns<SalesOrderFinanceReviewLine>(
+          r.items,
+          columnsOf: (line) => line.extraColumns,
+        ),
       ],
       items: r.items,
       facets: const {},
@@ -1051,6 +1063,7 @@ class _FinanceSalesOrderReviewPageState
       ? null
       : UtenTotalsSummaryBar(
           density: true,
+          rowCount: r.items.length,
           entries: [
             UtenTotalEntry(
               '合计数量',

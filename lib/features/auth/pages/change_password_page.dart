@@ -65,13 +65,10 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
           .read(sessionProvider.notifier)
           .changePassword(oldPassword: _old.text, newPassword: _new.text);
       if (!mounted) return;
-      // 状态已变 authenticated；强制模式恢复经校验的目标并重新经过权限守卫。
+      // 状态已变 authenticated；改密成功统一回工作台
+      // （强制模式优先恢复经校验的目标路由，重新经过权限守卫）。
       context.appSuccess('密码已修改');
-      if (widget.forced) {
-        context.go(widget.returnTo ?? RouteName.dashboard);
-      } else {
-        context.pop();
-      }
+      context.go(widget.returnTo ?? RouteName.dashboard);
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.code == 'REAUTH_LOCKED') {
@@ -81,7 +78,21 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
         return;
       }
       setState(() => _error = e.message);
-    } catch (_) {
+    } on PasswordChangeCommittedError {
+      // 密码已在服务端生效，只是本机会话收尾失败：不再显示模糊的「出错了」，
+      // 明确告知已修改并回登录页用新密码重登。
+      if (!mounted) return;
+      context.appError('密码已修改，请使用新密码重新登录');
+      try {
+        await ref.read(sessionProvider.notifier).logout();
+      } catch (_) {
+        // 登出清理失败不阻断：会话状态已同步置为未认证，路由守卫会接管回登录页。
+      }
+      return;
+    } catch (error, stackTrace) {
+      // 兜底分支此前把真实异常整个吞掉，导致「密码已改成功却报错」无从定位；
+      // 必须先落日志再显示兜底文案。
+      debugPrint('[change-password] 提交意外失败：$error\n$stackTrace');
       if (mounted) setState(() => _error = l10n.commonError);
     } finally {
       if (mounted) setState(() => _loading = false);

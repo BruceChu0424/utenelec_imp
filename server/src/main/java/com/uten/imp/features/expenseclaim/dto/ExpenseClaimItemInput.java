@@ -14,6 +14,10 @@ public record ExpenseClaimItemInput(
         @NotNull @DecimalMin(value = "0.00", inclusive = false)
         @Digits(integer = 16, fraction = 2) BigDecimal amount,
         @NotNull LocalDate date,
-        @Size(max = 1000) String description
+        @Size(max = 1000) String description,
+        @jakarta.validation.Valid com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields platformFields
 ) {
+    public ExpenseClaimItemInput(String category, BigDecimal amount, LocalDate date, String description) {
+        this(category, amount, date, description, null);
+    }
 }

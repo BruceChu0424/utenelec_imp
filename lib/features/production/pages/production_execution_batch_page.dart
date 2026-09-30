@@ -798,6 +798,8 @@ class _ProductionExecutionBatchPageState
           const SizedBox(height: UtenSpacing.s8),
           Expanded(
             child: MasterDataTableView<ProductionDrawRequestSummary>(
+              tableKey:
+                  'features.production.pages.production_execution_batch_page.ProductionExecutionBatchPageState._materials.1',
               key: const Key('execution-batch-material-table'),
               primary: true,
               columns: [

@@ -134,8 +134,8 @@ class GoodsBomLearningQueryServiceTest {
         Query empty=query(List.of());
         when(em.createNativeQuery(anyString())).thenReturn(empty);
         when(access.visibleGoodsOwner()).thenReturn(ignored->true);
-        when(currentUser.get()).thenReturn(Optional.of(user(Set.of("goods:view","goods:bom:edit"))),
-                Optional.of(user(Set.of("goods:view"))));
+        when(currentUser.get()).thenReturn(Optional.of(user(Set.of("goods:view","goods:bom:edit"))))
+                .thenReturn(Optional.of(user(Set.of("goods:view"))));
 
         assertTrue(service.summary(UUID.randomUUID()).canRelearn());
         assertFalse(service.summary(UUID.randomUUID()).canRelearn());

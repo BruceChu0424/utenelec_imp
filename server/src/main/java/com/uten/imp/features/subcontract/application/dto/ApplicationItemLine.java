@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 委外申请单保存请求中的明细行（create/update 嵌套）。 */
 @Getter
 @Setter
-public class ApplicationItemLine implements ServerDerivedAmounts {
+public class ApplicationItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
 

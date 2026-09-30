@@ -287,6 +287,7 @@ class _Repository extends ProductionPlanRepository {
     List<String> actionGroupKeys = const [],
     List<String> materialLineIds = const [],
     List<MaterialSupplyQuantityInput> quantities = const [],
+    bool skipAutoClaim = false,
   }) async {
     notifications.add({
       'analysisId': analysis.analysisId,
@@ -295,6 +296,7 @@ class _Repository extends ProductionPlanRepository {
       'target': target.wireName,
       'materialLineIds': materialLineIds,
       'quantities': quantities.map((line) => line.toJson()).toList(),
+      if (skipAutoClaim) 'skipAutoClaim': true,
     });
     if (error != null) throw error!;
     return analysis;
@@ -330,10 +332,12 @@ class _Repository extends ProductionPlanRepository {
     required List<MaterialAnalysisIssueLine> lines,
     String? deliveryDate,
     bool approveNow = false,
+    bool skipAutoClaim = false,
   }) async {
     plans.add({
       'analysisId': analysis.analysisId,
       'lines': lines.map((line) => line.toJson()).toList(),
+      if (skipAutoClaim) 'skipAutoClaim': true,
     });
     return ProductionMaterialGenerateResult.fromJson({
       'analysis': json['sourceAnalysis'],

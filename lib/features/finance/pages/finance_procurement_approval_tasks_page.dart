@@ -662,6 +662,8 @@ class _FinanceProcurementApprovalTasksPageState
         ],
       ),
       body: MasterDataTableView<FinanceProcurementApprovalTask>(
+        tableKey:
+            'features.finance.pages.finance_procurement_approval_tasks_page.FinanceProcurementApprovalTasksPageState._buildList.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('finance-approval-task-table'),

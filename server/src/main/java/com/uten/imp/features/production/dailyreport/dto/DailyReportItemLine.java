@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 生产日报明细保存行。 */
 @Getter
 @Setter
-public class DailyReportItemLine {
+public class DailyReportItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput {
     /** Server-authored output ownership; never accepted from a client. */
     @com.fasterxml.jackson.annotation.JsonIgnore private UUID outputBatchId;
     @com.fasterxml.jackson.annotation.JsonIgnore private BigDecimal outputBatchQty;

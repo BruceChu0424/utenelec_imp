@@ -244,6 +244,8 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
           Widget body = RefreshIndicator(
             onRefresh: () async => ref.invalidate(myAsHostProvider(_query)),
             child: MasterDataTableView<VisitorApplication>(
+              tableKey:
+                  'features.visitor_approval.pages.my_visitors_page.MyVisitorsPageState.build.1',
               key: const Key('my-visitors-table'),
               columns: _columns(l10n),
               items: page.items,

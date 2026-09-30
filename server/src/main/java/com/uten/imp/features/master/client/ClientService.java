@@ -276,6 +276,7 @@ public class ClientService {
         List<Map<String, Object>> rows = ReportQueryKit.collectPages(
                 maxRows, (p, size) -> list(f, p, size, sort, order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("_platformRecordId", m.getId());
                     row.put("code", m.getCode());
                     row.put("name", m.getName());
                     row.put("fullName", m.getFullName());

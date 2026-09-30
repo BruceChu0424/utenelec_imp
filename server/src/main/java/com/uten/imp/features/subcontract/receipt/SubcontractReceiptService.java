@@ -90,6 +90,7 @@ public class SubcontractReceiptService {
     private final StockService stockService;
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final SubcontractReceiptAmountAuthority receiptAmountAuthority;
+    private final com.uten.imp.common.finance.ProcurementReceiptAmountPreview receiptAmountPreview;
     private final ProcurementIqcReplacementAllocationService iqcReplacementAllocation;
     private final ArApLedgerService arApService;
     private final SupplierPaymentTermService paymentTerms;
@@ -175,6 +176,7 @@ public class SubcontractReceiptService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_receipt:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_receipt_item")
     public ReceiptDetail create(ReceiptSaveRequest req) {
         tx.bind();
         lockReceiptRequest(null,req).verifyUnchanged();
@@ -199,6 +201,7 @@ public class SubcontractReceiptService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_receipt_item", requestArgument=1, documentIdArgument=0)
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
         tx.bind();
         var mutationGuard=lockReceiptRequest(id,req);
@@ -978,6 +981,7 @@ public class SubcontractReceiptService {
 
     private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines) {
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
+        var amountDraft = receiptAmountPreview.draft("SUBCONTRACT", r.getId());
         Map<UUID, ReceiptSourceRef> orderRefs = orderRefsByItemIds(
                 lines.stream().map(ReceiptItemLine::getOrderItemId).toList());
         Map<UUID, SubcontractGoodsSnapshot> upstream =
@@ -1011,7 +1015,8 @@ public class SubcontractReceiptService {
             it.setReplacementIntent(l.getReplacementIntent());
             it.setPrice(l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外收货单价"));
             // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
-            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, r.getExchangeRate());
+            MoneyPolicy.LineAmounts amounts = amountDraft.line(l.getOrderItemId(),
+                    l.getQty(), it.getPrice(), r.getExchangeRate());
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
             it.setCheckQty(l.getCheckQty());

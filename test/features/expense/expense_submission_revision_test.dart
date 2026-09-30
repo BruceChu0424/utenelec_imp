@@ -101,6 +101,93 @@ Future<void> _pump(
 }
 
 void main() {
+  Map<String, dynamic> platform(
+    String record,
+    String value, {
+    bool masked = false,
+    int version = 1,
+  }) => {
+    'recordId': record,
+    'version': version,
+    'canWrite': true,
+    'cells': [
+      {
+        'columnId': 'fee',
+        'value': value,
+        'masked': masked,
+        'definition': {
+          'id': 'fee',
+          'scope': 'expense_claim_item',
+          'name': '附注费用',
+          'type': 'NUMBER',
+          'usageCount': version,
+        },
+      },
+    ],
+  };
+  test(
+    'frozen platform comparison ignores recreated row IDs and numeric formatting',
+    () {
+      final before = {
+        ..._item('old', '10'),
+        'platformFields': platform('old', '1.00'),
+      };
+      final current = {
+        ..._item('new', '10.00'),
+        'platformFields': platform('new', '1.0', version: 6),
+      };
+      expect(
+        expenseItemRevisionRows([before], [current]).single.kind,
+        UtenRevisionKind.unchanged,
+      );
+      final changed = {...current, 'platformFields': platform('new', '2.00')};
+      expect(expenseItemRevisionRows([before], [changed]).last.changedKeys, {
+        'platform:fee',
+      });
+      final masked = {
+        ...current,
+        'platformFields': platform('new', '1.00', masked: true),
+      };
+      expect(expenseItemRevisionRows([before], [masked]).last.changedKeys, {
+        'platform:fee',
+      });
+      expect(expenseSubmissionPlatformSnapshot(current).canWrite, isFalse);
+      expect(
+        expenseSubmissionPlatformSnapshot(_item('old', '10')).cells,
+        isEmpty,
+      );
+    },
+  );
+  test('schema two submitted snapshots preserve their own custom values', () {
+    final now =
+        jsonDecode(
+              _snapshot([
+                {
+                  ..._item('frozen', '10'),
+                  'platformFields': platform('frozen', '3.25'),
+                },
+              ]),
+            )
+            as Map<String, dynamic>;
+    now['schemaVersion'] = 2;
+    final claim = _claim(
+      before: _snapshot([_item('legacy', '10')]),
+      current: jsonEncode(now),
+    );
+    expect(ExpenseSubmissionRevision.fromClaim(claim), isNotNull);
+    final rows = expenseSubmittedPrintRows(claim)!;
+    expect(rows.single['id'], 'frozen');
+    expect(
+      expenseSubmissionPlatformSnapshot(rows.single).cells.single.value,
+      '3.25',
+    );
+    expect(
+      expenseSubmittedPrintRows(
+        claim.copyWith(status: ExpenseClaimStatus.draft),
+      ),
+      isNull,
+    );
+  });
   test(
     'malformed prior items are not presented as a trustworthy comparison',
     () {

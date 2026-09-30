@@ -1430,10 +1430,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           '任何入库都会自动把它更新为最新入库仓。',
       value: (g) => g.owningWarehouseName,
     ),
-    // 归属生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读展示。
+    // 生产车间 (V590 owning_workshop_department_id)：最近一次排产确认/车间改派
+    // 自动学习回写，只读展示。2026-09-29 起统一叫「生产车间」(原「归属车间」)。
     MasterColumnDef(
       key: 'owningWorkshop',
-      label: '归属车间',
+      label: '生产车间',
       width: 120,
       info:
           '这个货品归哪个生产车间生产。最近一次排产确认或车间改派会自动记住，'

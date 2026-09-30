@@ -104,7 +104,7 @@ public class GoodsBomController {
     public ResponseEntity<byte[]> export(@PathVariable UUID id,
                                          @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.exportPayload(id);
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows());
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_master");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_goods_bom", "master_data", String.valueOf(payload.total()), "success"));

@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 // 销售报价财务核价模型(ADR-134 / SPEC §6.2)。
 //
 // 报价由销售提交(status 2)后进入财务核价队列; 财务认领后逐行定「成交单价 / 折扣」,
@@ -138,6 +139,8 @@ class SalesQuoteFinanceListItem {
 /// 核价明细行(服务端 QuoteFinanceReviewDto.Line)。
 class SalesQuoteFinanceLine {
   const SalesQuoteFinanceLine({
+    this.extraColumns = const [],
+    this.goodsNameEn,
     required this.itemId,
     this.lineNo,
     this.goodsId,
@@ -168,6 +171,8 @@ class SalesQuoteFinanceLine {
     this.blockingReason,
   });
 
+  final List<BusinessColumn> extraColumns;
+  final String? goodsNameEn;
   final String itemId;
   final int? lineNo;
   final String? goodsId;
@@ -250,6 +255,8 @@ class SalesQuoteFinanceLine {
   factory SalesQuoteFinanceLine.fromJson(
     Map<String, dynamic> json,
   ) => SalesQuoteFinanceLine(
+    extraColumns: BusinessColumn.read(json['extraColumns']),
+    goodsNameEn: json['goodsNameEn']?.toString(),
     itemId: _text(json['itemId']) ?? '',
     lineNo: _int(json['lineNo']),
     goodsId: _text(json['goodsId']),

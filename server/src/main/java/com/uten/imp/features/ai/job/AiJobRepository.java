@@ -194,6 +194,30 @@ class AiJobRepository {
                 .stream().findFirst();
     }
 
+    int reserveLearning(UUID id, UUID user, String docType, UUID docId, java.time.OffsetDateTime retryUntil) {
+        return jdbc.update("""
+                UPDATE ai_jobs SET used_doc_type=:type,used_doc_id=:doc,
+                    learning_retry_until=GREATEST(COALESCE(learning_retry_until,'-infinity'::timestamptz),:until),updated_at=now()
+                WHERE id=:id AND submitted_by_user=:actor AND kind='SALES_DOCUMENT_INTAKE' AND status='SUCCEEDED' AND result IS NOT NULL
+                    AND used_at IS NULL AND (used_doc_id IS NULL OR (used_doc_type=:type AND used_doc_id=:doc))
+                """, new MapSqlParameterSource().addValue("id",id).addValue("actor",user)
+                .addValue("type",docType).addValue("doc",docId).addValue("until",java.sql.Timestamp.from(retryUntil.toInstant())));
+    }
+
+    int reserveLearningForSave(UUID id,UUID user,String type,UUID doc,java.time.OffsetDateTime until,
+            java.util.Set<String> keys,boolean headerUsed) {
+        return jdbc.update("""
+                UPDATE ai_jobs SET used_doc_type=:type,used_doc_id=:doc,
+                    learning_retry_until=GREATEST(COALESCE(learning_retry_until,'-infinity'::timestamptz),:until),updated_at=now()
+                WHERE id=:id AND submitted_by_user=:actor AND kind='SALES_DOCUMENT_INTAKE' AND status='SUCCEEDED' AND result IS NOT NULL
+                    AND used_at IS NULL AND (used_doc_id IS NULL OR (used_doc_type=:type AND used_doc_id=:doc))
+                    AND (:header OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(result->'lines')='array'
+                        THEN result->'lines' ELSE '[]'::jsonb END) AS source(line) WHERE source.line->>'key' IN(:keys)))
+                """,new MapSqlParameterSource().addValue("id",id).addValue("actor",user).addValue("type",type).addValue("doc",doc)
+                .addValue("until",java.sql.Timestamp.from(until.toInstant())).addValue("header",headerUsed)
+                .addValue("keys",keys.isEmpty()?java.util.List.of("__no_saved_source_line__"):keys));
+    }
+
     /**
      * 记下采用去向并在同一语句里清空结果。第一张单据生效: 已被另一张单据采用的任务影响 0 行(去向不被改写,
      * 同一结果不能喂给第二张单据的学习); 同一张单据重复标记是无害的重放。
@@ -202,8 +226,9 @@ class AiJobRepository {
         return jdbc.update("""
                 UPDATE ai_jobs
                 SET used_at = COALESCE(used_at, now()), used_doc_type = :docType, used_doc_id = :docId,
-                    result = NULL, result_purged_at = COALESCE(result_purged_at, now()), updated_at = now()
+                    result = NULL, result_purged_at = COALESCE(result_purged_at, now()), learning_retry_until=NULL, updated_at = now()
                 WHERE id = :id AND submitted_by_user = :user AND status = 'SUCCEEDED'
+                  AND (used_doc_id IS NULL OR (used_doc_type=:docType AND used_doc_id=:docId))
                   AND (used_at IS NULL OR (used_doc_type = :docType AND used_doc_id = :docId))
                 """, new MapSqlParameterSource()
                 .addValue("id", id)
@@ -403,7 +428,7 @@ class AiJobRepository {
         return jdbc.update("""
                 UPDATE ai_jobs
                 SET result = NULL, result_purged_at = now(), updated_at = now()
-                WHERE result IS NOT NULL
+                WHERE result IS NOT NULL AND (learning_retry_until IS NULL OR learning_retry_until < now())
                   AND (used_at IS NOT NULL OR finished_at < now() - make_interval(hours => :hours))
                 """, new MapSqlParameterSource("hours", retentionHours));
     }
@@ -414,6 +439,7 @@ class AiJobRepository {
                 DELETE FROM ai_jobs
                 WHERE id IN (SELECT id FROM ai_jobs
                              WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+                               AND (learning_retry_until IS NULL OR learning_retry_until < now())
                                AND created_at < now() - make_interval(days => :days)
                              LIMIT 1000)
                 """, new MapSqlParameterSource("days", days));

@@ -38,7 +38,7 @@ class _FakeEmployeeRepository extends Fake implements EmployeeRepository {
   @override
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body) async {
     updated.add(id);
-    throw UnimplementedError('本用例不走 409 回退分支');
+    throw UnimplementedError('转正只走 confirm，不回退 PUT 档案');
   }
 }
 
@@ -192,7 +192,7 @@ void main() {
     // 逾期行天数取负值（服务端 days 是逾期天数）
     final daysColumn = table.columns.firstWhere((c) => c.key == 'days');
     expect(daysColumn.value(_table(tester).items.first), '-3');
-    expect(table.selectable, isFalse, reason: '无 employee:confirm/edit 不开批量');
+    expect(table.selectable, isFalse, reason: '无 employee:confirm 不开批量');
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -238,6 +238,39 @@ void main() {
       {'a', 'b'},
       reason: '被他人认领的 c 不发请求',
     );
+    expect(employees.updated, isEmpty);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('batch confirm needs only employee:confirm (no PUT fallback)', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(_summary(confirmToday: [_item('a')]));
+    final employees = _FakeEmployeeRepository();
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.confirm,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        employees: employees,
+        permissions: {Perm.employeeView, Perm.employeeConfirm},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_table(tester).selectable, isTrue, reason: '批量转正不再要求 employee:edit');
+    _table(tester).onSelectedIdsChanged!({'a'});
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('hr-task-batch-confirm')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+
+    expect(employees.confirmed, hasLength(1));
     expect(employees.updated, isEmpty);
 
     await tester.pumpWidget(const SizedBox());

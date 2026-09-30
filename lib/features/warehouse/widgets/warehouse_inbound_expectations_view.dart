@@ -696,6 +696,8 @@ class _WarehouseInboundExpectationsViewState
         ],
       ),
       body: MasterDataTableView<InboundExpectation>(
+        tableKey:
+            'features.warehouse.widgets.warehouse_inbound_expectations_view.WarehouseInboundExpectationsViewState._buildList.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('inbound-expectation-task-table'),

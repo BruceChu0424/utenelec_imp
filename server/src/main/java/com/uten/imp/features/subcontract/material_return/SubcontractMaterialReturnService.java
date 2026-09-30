@@ -144,6 +144,7 @@ public class SubcontractMaterialReturnService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_material_return:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_material_return_item")
     public MaterialReturnDetail create(MaterialReturnSaveRequest req) {
         tx.bind();
         lockReturnRequest(null,req).verifyUnchanged();
@@ -160,6 +161,7 @@ public class SubcontractMaterialReturnService {
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_material_return:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_material_return_item", requestArgument=1, documentIdArgument=0)
     public MaterialReturnDetail update(UUID id, MaterialReturnSaveRequest req) {
         tx.bind();
         var mutationGuard=lockReturnRequest(id,req);

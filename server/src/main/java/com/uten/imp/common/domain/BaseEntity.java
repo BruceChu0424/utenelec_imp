@@ -45,8 +45,13 @@ public abstract class BaseEntity extends AuditableEntity implements Persistable<
     }
 
     @PostLoad
-    @PostPersist
     void markPersisted() {
         this.newEntity = false;
+    }
+
+    @PostPersist
+    void markNewlyPersisted() {
+        markPersisted();
+        com.uten.imp.common.platformcolumns.PlatformColumnSaveLineage.recordPersisted(id);
     }
 }

@@ -422,6 +422,8 @@ class _MaterialReturnRequestState
                           ),
                         ),
                         UtenEditableGrid<_ReturnRow>(
+                          tableKey:
+                              'features.production.widgets.production_material_return_request_sheet.MaterialReturnRequestState.build.1',
                           controller: _grid,
                           columns: _columns(),
                           createBlankRow: () =>
@@ -507,27 +509,21 @@ class _MaterialReturnRequestState
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。退错
     // 同名不同色的料会把库存加到别的货上，三属性必须同屏且能各自筛。后端对
-    // 缺失颜色回落成 '—'，占位词不进单元（_omitPlaceholder 转 null）；原领料
-    // 单号不是货品属性，跟在名称下面单独一行。
+    // 缺失颜色回落成 '—'，占位词不进单元（_omitPlaceholder 转 null）；
+    // 2026-09-29 用户口径：原领料单来源不再挤在名称格副行，独立成列。
     EditableGridColumn(
       key: 'material',
-      label: '物料名称 / 来源',
+      label: '物料名称',
       width: 200,
-      cellBuilder: (context, row) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      cellBuilder: (context, row) =>
           UtenGoodsIdentityCell(name: _omitPlaceholder(row.source.goodsName)),
-          Text(
-            row.source.sourceLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
+    ),
+    EditableGridColumn(
+      key: 'source',
+      label: '领料来源',
+      width: 150,
+      filterValueOf: (row) => row.source.sourceLabel,
+      cellBuilder: (context, row) => Text(row.source.sourceLabel),
     ),
     EditableGridColumn(
       key: 'goodsCode',
@@ -553,6 +549,7 @@ class _MaterialReturnRequestState
     ),
     EditableGridColumn(
       key: 'available',
+      exactValueOf: (row) => row.source.availableQty.toString(),
       label: '可退数量',
       width: 100,
       numeric: true,
@@ -573,6 +570,7 @@ class _MaterialReturnRequestState
     ),
     EditableGridColumn(
       key: 'pending',
+      exactValueOf: (row) => row.source.pendingReturnQty.toString(),
       label: '待仓库收料',
       width: 110,
       numeric: true,
@@ -580,6 +578,8 @@ class _MaterialReturnRequestState
     ),
     EditableGridColumn(
       key: 'qty',
+      exactValueOf: (row) => row.qty.text,
+      exactListenableOf: (row) => row.qty,
       label: '本次退料',
       width: 138,
       numeric: true,

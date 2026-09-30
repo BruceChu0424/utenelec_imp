@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -68,6 +69,9 @@ class MoneyConservationEndToEndTest {
     @Autowired com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInService iqcStockIn;
     @Autowired jakarta.persistence.EntityManager em;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired com.uten.imp.common.platformcolumns.PlatformColumnService platformColumns;
+    @Autowired com.uten.imp.features.stock.StockDocService stockDocuments;
+    @Autowired com.uten.imp.features.production.dailyreport.ProductionDailyReportService productionReports;
     FullChainEndToEndTest fixture;
 
     @BeforeEach
@@ -80,6 +84,83 @@ class MoneyConservationEndToEndTest {
     void logout() {
         SecurityContextHolder.clearContext();
         ProductionJdbcMeasurement.end();
+    }
+
+    @Test
+    void receiptExtensionsAreAtomicAcrossRealLineReplacementAndFreezeAtApproval() {
+        FullChainEndToEndTest.World w=fixture.seedWorld("platform-receipt");
+        fixture.loginAs(w.superAdminUserId());
+        UUID orderItem=approvedPurchaseOrderItem(w,"3","10","1");
+        var definition=platformColumns.create("purchase_receipt_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition(
+                "采购额外要求","TEXT",false,null));
+        var request=receiptRequest(w,orderItem,"1","10","1");
+        request.getItems().getFirst().setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(
+                null,0,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(definition.id(),"原始资料"))));
+        var first=purchaseReceipts.create(request);
+        UUID previous=first.getItems().getFirst().getId();
+        var initial=platformColumns.read("purchase_receipt_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.BatchRead(List.of(previous),null)).getFirst();
+        assertThat(initial.cells().getFirst().value()).isEqualTo("原始资料");
+        var update=receiptRequest(w,orderItem,"2","10","1");
+        update.getItems().getFirst().setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(
+                previous,initial.version(),List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(definition.id(),"修改资料"))));
+        var saved=purchaseReceipts.update(first.getId(),update);
+        UUID current=saved.getItems().getFirst().getId();
+        assertThat(current).isNotEqualTo(previous);
+        assertThat(platformColumns.read("purchase_receipt_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.BatchRead(List.of(current),null))
+                .getFirst().cells().getFirst().value()).isEqualTo("修改资料");
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->purchaseReceipts.update(first.getId(),update))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        assertThat(purchaseReceipts.detail(first.getId()).getItems().getFirst().getQty()).isEqualByComparingTo("2");
+        purchaseReceipts.approve(first.getId());
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->platformColumns.write("purchase_receipt_item",current,
+                new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(1,List.of())))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        assertThat(purchaseReceipts.detail(first.getId()).getTotalOriginal()).isEqualByComparingTo("20");
+    }
+
+    @Test
+    void stockCountExtensionsFollowTheDeclaredCountWhileBookQuantityIsRecomputed() {
+        var world=fixture.seedWorld("platform-count");fixture.loginAs(world.superAdminUserId());
+        invoke("receiveOpeningInputsForA",world,"3");
+        var column=platformColumns.create("stock_doc_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("盘点附注","TEXT",false,null));
+        var request=new com.uten.imp.features.stock.dto.StockDocSaveRequest();request.setDocType("CHECK");request.setBillDate(BusinessTime.today());request.setWarehouseId(world.warehouseId());
+        var line=new com.uten.imp.features.stock.dto.StockDocItemLine();line.setGoodsId(world.goodsB());line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal("999"));line.setCountQty(new BigDecimal("4"));line.setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(
+                null,0,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"现场逐件确认"))));
+        request.setItems(List.of(line));var saved=stockDocuments.create(request);
+        assertThat(saved.getItems().getFirst().getQty()).isEqualByComparingTo("6");
+        assertThat(saved.getItems().getFirst().getCountQty()).isEqualByComparingTo("4");
+        assertThat(platformColumns.read("stock_doc_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.BatchRead(
+                List.of(saved.getItems().getFirst().getId()),null)).getFirst().cells().getFirst().value()).isEqualTo("现场逐件确认");
+    }
+
+    @Test
+    void createOnlyDailyReportMetadataUsesRealDomainLineageAndIdempotentReplay() {
+        var world=fixture.seedWorld("platform-report");fixture.loginAs(world.superAdminUserId());
+        invoke("receiveOpeningInputsForA",world,"2");UUID plan=invoke("approvedPlan",world,world.goodsA(),"2","2");invoke("issueReadyPlanAndMaterials",world,plan);
+        UUID planItem=invoke("planItemIdFor",plan,world.goodsA()),orderItem=invoke("orderItemIdOfPlan",plan);
+        Object started=invoke("startedSegmentFor",world,plan,planItem,orderItem);
+        UUID segment=ReflectionTestUtils.invokeMethod(started,"segmentId"),allocation=ReflectionTestUtils.invokeMethod(started,"salesAllocationId");
+        Map<String,Object> assignment=jdbc.queryForMap("SELECT workshop_department_id,responsible_employee_id FROM production_execution_segments WHERE id=?",segment);
+        var column=platformColumns.create("production_daily_report_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("本批说明","TEXT",false,null));
+        UUID reporter=fixture.createUserWithPerms(world,"platform-reporter-"+UUID.randomUUID().toString().substring(0,8),"production_execution:view","production_daily_report:view","production_daily_report:create");
+        // Workshop departments grant edit by default; an explicit deny proves the create-only boundary.
+        jdbc.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'revoke' FROM permissions WHERE code='production_daily_report:edit'",reporter);
+        jdbc.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",assignment.get("workshop_department_id"),reporter);
+        var request=new com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest();request.setIdempotencyKey("platform-report-"+UUID.randomUUID());
+        request.setBillDate(java.time.LocalDate.of(2026,1,25));request.setWarehouseId(invoke("reportWarehouse",world));
+        request.setDepartmentId((UUID)assignment.get("workshop_department_id"));request.setWorkerId((UUID)assignment.get("responsible_employee_id"));request.setWorkerIds(List.of((UUID)assignment.get("responsible_employee_id")));
+        var line=new com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine();line.setGoodsId(world.goodsA());line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal("2"));line.setPlanItemId(planItem);line.setSalesOrderItemId(orderItem);line.setExecutionSegmentId(segment);line.setExecutionSegmentSalesAllocationId(allocation);
+        line.setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"本批已核对"))));
+        request.setItems(List.of(line));request.setMaterialLines(invoke("materialUseForFixtureBatch",segment,new BigDecimal("2")));
+        fixture.loginAs(reporter);var created=productionReports.create(request);var replay=productionReports.create(request);
+        assertThat(replay.getId()).isEqualTo(created.getId());
+        var rows=platformColumns.read("production_daily_report_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.BatchRead(
+                created.getItems().stream().map(com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto::getId).toList(),null));
+        assertThat(rows).allSatisfy(row->{assertThat(row.version()).isEqualTo(1);assertThat(row.canWrite()).isFalse();assertThat(row.cells().getFirst().value()).isEqualTo("本批已核对");});
+        line.setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"重放偷改"))));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->productionReports.create(request)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
     }
 
     @Test

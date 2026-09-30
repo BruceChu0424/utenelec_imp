@@ -474,6 +474,10 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                         child: _buildClientStep(context, l10n),
                       ),
                       const SizedBox(height: UtenSpacing.s16),
+                      if (_result.extraColumns.isNotEmpty &&
+                          (widget.docType == SalesDocType.quote ||
+                              widget.docType == SalesDocType.order))
+                        _buildExtraColumns(context),
                       _buildGoodsHeader(context, l10n),
                       const SizedBox(height: UtenSpacing.s8),
                       if (_filter == _LineFilter.review && _reviewLines.isEmpty)
@@ -993,6 +997,46 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
 
   // ------------------------------------------------------------------ 货品
 
+  Widget _buildExtraColumns(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+    child: ExpansionTile(
+      key: const ValueKey('sales-intake-extra-columns'),
+      title: Text(salesIntakeExtraText(context, 'title')),
+      subtitle: Text(
+        _result.extraColumns.map((column) => column.label).join(' · '),
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Text(salesIntakeExtraText(context, 'hint')),
+        ),
+        for (final column in _result.extraColumns)
+          CheckboxListTile(
+            key: ValueKey('sales-intake-extra-${column.key}'),
+            title: Text(column.label),
+            subtitle: Text(
+              _result.lines
+                  .map((line) => line.extraValues[column.key])
+                  .whereType<String>()
+                  .where((value) => value.isNotEmpty)
+                  .take(3)
+                  .join(' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            value: _decisions.includedExtraColumns.contains(column.key),
+            onChanged: (selected) => setState(() {
+              if (selected == true) {
+                _decisions.includedExtraColumns.add(column.key);
+              } else {
+                _decisions.includedExtraColumns.remove(column.key);
+              }
+            }),
+          ),
+      ],
+    ),
+  );
+
   Widget _buildGoodsHeader(BuildContext context, AppLocalizations l10n) {
     final theme = Theme.of(context);
     return Row(
@@ -1175,6 +1219,12 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
             shownHints.add(warning.message!))
           warning.message!,
     ];
+    // 「什么问题、要核对什么」集中成一块红色提示(黄一条灰一条散着放, 重点看不清);
+    // 不能导入的行那条流程指引不是核对问题, 仍单独用黄字。
+    final problems = <String>[
+      if (state != _LineState.blocked && reasonText != null) reasonText,
+      ...extraHints,
+    ];
     return Container(
       key: ValueKey('sales-intake-line-${line.key}'),
       decoration: BoxDecoration(
@@ -1271,32 +1321,29 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
                       ),
                       child: _FileText(line: line),
                     ),
-                    if (reasonText != null)
+                    if (reasonText != null && state == _LineState.blocked)
                       Padding(
                         padding: const EdgeInsetsDirectional.only(
                           start: UtenSpacing.s12,
                           top: UtenSpacing.s6,
                         ),
                         child: _Hint(
-                          icon: state == _LineState.unmatched
-                              ? Icons.search_off_rounded
-                              : Icons.lightbulb_outline_rounded,
+                          icon: Icons.lightbulb_outline_rounded,
                           text: reasonText,
-                          color: state == _LineState.unmatched
-                              ? AiTone.error(theme)
-                              : AiTone.warning(theme),
+                          color: AiTone.warning(theme),
                         ),
                       ),
-                    for (final hint in extraHints)
+                    if (problems.isNotEmpty)
                       Padding(
                         padding: const EdgeInsetsDirectional.only(
                           start: UtenSpacing.s12,
-                          top: UtenSpacing.s4,
+                          top: UtenSpacing.s6,
                         ),
-                        child: _Hint(
-                          icon: Icons.info_outline_rounded,
-                          text: hint,
-                          color: theme.colorScheme.onSurfaceVariant,
+                        child: _ProblemBlock(
+                          icon: state == _LineState.unmatched
+                              ? Icons.search_off_rounded
+                              : Icons.error_outline_rounded,
+                          texts: problems,
                         ),
                       ),
                     const SizedBox(height: UtenSpacing.s8),
@@ -1363,7 +1410,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
             ],
           ),
           // 折扣是按某个币种口径算出来的(如外币文件按人民币标价计算): 把服务端的说明
-          // 放在折扣旁边, 销售一眼看得出这个折扣的前提。
+          // 放在折扣旁边, 销售一眼看得出这个折扣的前提(说明性文字, 灰色小字, 不抢问题的红色)。
           if (!_masked &&
               goods.hasUsableDiscount &&
               goods.pricingNote != null) ...[
@@ -1372,7 +1419,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
               key: ValueKey('sales-intake-pricing-note-${line.key}'),
               icon: Icons.info_outline_rounded,
               text: goods.pricingNote!,
-              color: AiTone.warning(theme),
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ],
         ],
@@ -1937,6 +1984,57 @@ class _Hint extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 行内的问题提示: 「什么没对上、要核对什么」集中一块, 浅红底 + 红字加粗, 一眼看到重点。
+class _ProblemBlock extends StatelessWidget {
+  const _ProblemBlock({required this.icon, required this.texts});
+
+  final IconData icon;
+  final List<String> texts;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = AiTone.error(theme);
+    return Container(
+      decoration: BoxDecoration(
+        color: UtenColors.error.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s8,
+        vertical: UtenSpacing.s6,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: UtenSpacing.s6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (index, text) in texts.indexed)
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: index == 0 ? 0 : UtenSpacing.s2,
+                    ),
+                    child: Text(
+                      text,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

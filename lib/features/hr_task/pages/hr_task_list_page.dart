@@ -138,10 +138,8 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     final canPublish = isSuperAdmin || perms.contains(Perm.noticePublish);
-    // 批量登记转正会走 confirm，失败回退 PUT 员工档案 → 两个权限都要有。
-    final canBatchConfirm =
-        perms.contains(Perm.employeeConfirm) &&
-        perms.contains(Perm.employeeEdit);
+    // 批量登记转正只走 confirm（后端覆盖试用期转正与在职未登记补登，无 PUT 回退）。
+    final canBatchConfirm = perms.contains(Perm.employeeConfirm);
 
     Widget body = async.when(
       loading: () => const UtenSkeletonList(itemCount: 6),
@@ -165,12 +163,22 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             ? todayItems.where((i) => !i.blessed).toList()
             : <HrTaskItem>[];
         final visible = _applyFilters(s, items);
+        // 2026-09-29「大小屏共用一张表」：列表统一走表格，compact 由其内建
+        // 卡片形态接管；窄屏只额外保留庆典一键批量条（轻条件，非重复列表）。
         final isCompact = context.breakpoint.isCompact;
         return RefreshIndicator(
           onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
-          child: isCompact
-              ? _mobileList(s, items, toBless, canPublish)
-              : _desktopTable(
+          child: Column(
+            children: [
+              if (_isCelebration && canPublish)
+                _celebrationAutoToggle(horizontalPadding: UtenSpacing.s12),
+              if (isCompact &&
+                  _isCelebration &&
+                  canPublish &&
+                  toBless.isNotEmpty)
+                _celebrationBatchBar(context, toBless),
+              Expanded(
+                child: _desktopTable(
                   s,
                   items,
                   visible,
@@ -178,6 +186,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                   canPublish: canPublish,
                   canBatchConfirm: canBatchConfirm,
                 ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -218,23 +229,16 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     };
     return Column(
       children: [
-        if (_type == HrTaskType.confirm)
-          _hint(
-            context,
-            '试用期 ${s.probationMonths} 个月口径；'
-            '被认领的事项显示「处理中」，他人不可重复操作。',
-          ),
-        if (_type == HrTaskType.confirm && s.unconfirmedLegacyCount > 0)
-          _hint(
-            context,
-            '另有 ${s.unconfirmedLegacyCount} 名入职满一年的员工未登记转正日期，'
-            '请在员工档案中补录。',
-          ),
-        if (_isCelebration && canPublish)
-          _celebrationAutoToggle(horizontalPadding: UtenSpacing.s16),
         Expanded(
           child: MasterDataTableView<HrTaskItem>(
+            tableKey:
+                'features.hr_task.pages.hr_task_list_page.HrTaskListPageState._desktopTable.1',
             key: const Key('hr-task-table'),
+            compactCards: true,
+            bottomContentPadding: math.max(
+              32,
+              UtenCapsuleNavScope.occlusionOf(context),
+            ),
             columns: _columns(s),
             items: visible,
             facets: _facetsOf(s, all),
@@ -263,12 +267,16 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       label: '工号',
       width: 110,
       value: (item) => item.code,
+      // 卡片形态：工号进姓名副行。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'name',
       label: '姓名',
       width: 120,
       value: (item) => item.name,
+      // 卡片形态标题列。
+      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'deptName',
@@ -590,7 +598,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     };
   }
 
-  /// 批量登记转正：一次选日期，逐人 confirm；409 回退补登 confirmedAt。
+  /// 批量登记转正：一次选日期，逐人 confirm。
+  /// 后端 confirm 覆盖试用期转正与在职未登记者补登；409（已登记/已离职）直接
+  /// 透出后端文案，不再回退 PUT 档案——那条路会被「修改转正日期请使用转正功能」闸门拦死。
   /// 被他人认领的行不发请求（后端 confirm 无认领守卫，前端兜住重复操作），计入失败。
   Future<void> _batchConfirm(Set<String> ids, List<HrTaskItem> all) async {
     if (_batchBusy || ids.isEmpty) return;
@@ -619,16 +629,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     for (final id in targets) {
       final name = byId[id]?.name ?? id;
       try {
-        try {
-          await repo.confirm(id, confirmedDate: date);
-        } on ApiException catch (e) {
-          if (e.code == 'CONFLICT') {
-            // 非试用期（已是正式员工但未登记转正日期）→ 补登
-            await repo.update(id, {'confirmedAt': date});
-          } else {
-            rethrow;
-          }
-        }
+        await repo.confirm(id, confirmedDate: date);
         okCount++;
       } on ApiException catch (e) {
         failures.add('$name：${e.message}');
@@ -753,68 +754,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   }
 
   // ═══════════════════════ 窄屏：卡片列表（移动端手感） ═══════════════════════
-
-  Widget _mobileList(
-    HrTaskSummary s,
-    List<HrTaskItem> items,
-    List<HrTaskItem> toBless,
-    bool canPublish,
-  ) {
-    return ListView(
-      key: const Key('hr-task-mobile-list'),
-      physics: const AlwaysScrollableScrollPhysics(),
-      // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
-      padding: EdgeInsets.only(
-        bottom: math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
-      ),
-      children: [
-        if (_type == HrTaskType.confirm)
-          _hint(
-            context,
-            '试用期 ${s.probationMonths} 个月口径；'
-            '被认领的事项显示「处理中」，他人不可重复操作。',
-          ),
-        if (_isCelebration && canPublish)
-          _celebrationAutoToggle(horizontalPadding: UtenSpacing.s12),
-        if (_isCelebration && canPublish && toBless.isNotEmpty)
-          _celebrationBatchBar(context, toBless),
-        if (items.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: UtenEmpty(message: _type.emptyText),
-          )
-        else
-          UtenCard(
-            margin: const EdgeInsets.fromLTRB(
-              UtenSpacing.s12,
-              UtenSpacing.s8,
-              UtenSpacing.s12,
-              0,
-            ),
-            padding: EdgeInsets.zero,
-            child: Column(
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  if (i > 0)
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                  HrTaskTile(
-                    type: _type,
-                    item: items[i],
-                    isToday: hrTaskIsToday(s, _type, items[i]),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        if (_type == HrTaskType.confirm && s.unconfirmedLegacyCount > 0)
-          _hint(
-            context,
-            '另有 ${s.unconfirmedLegacyCount} 名入职满一年的员工未登记转正日期，'
-            '请在员工档案中补录。',
-          ),
-      ],
-    );
-  }
 
   /// 庆典一键批量送祝福条（窄屏）：对今日未祝福者一键发布默认模板祝福。
   /// 宽屏走表格多选 +「批量送祝福(N)」，不再重复出条。
@@ -963,23 +902,5 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     } finally {
       if (mounted) setState(() => _autoToggling = false);
     }
-  }
-
-  Widget _hint(BuildContext context, String text) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        UtenSpacing.s12,
-        UtenSpacing.s16,
-        UtenSpacing.s4,
-      ),
-      child: Text(
-        text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    );
   }
 }

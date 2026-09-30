@@ -186,7 +186,6 @@ class _FinanceArrivalExceptionTasksPageState
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
           ],
-          _FinanceTaskSummary(total: result.total),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             Text(
@@ -231,63 +230,6 @@ class _FinanceArrivalExceptionTasksPageState
     );
     if (widget.embedded) return listView;
     return UtenContentContainer(child: listView);
-  }
-}
-
-class _FinanceTaskSummary extends StatelessWidget {
-  const _FinanceTaskSummary({required this.total});
-
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      header: true,
-      label: '待我审批 $total 条超量到货',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.errorContainer.withValues(alpha: 0.35),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(
-            color: theme.colorScheme.error.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.error.withValues(alpha: 0.12),
-                borderRadius: UtenRadius.mdAll,
-              ),
-              child: Icon(
-                Icons.rule_folder_outlined,
-                color: theme.colorScheme.error,
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '待我审批 $total 条',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  const Text('审批完成前不入库、不立应付，仓库也不能绕过。'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

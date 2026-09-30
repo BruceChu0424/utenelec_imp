@@ -29,6 +29,7 @@ class UtenDateField extends StatefulWidget {
     required this.value,
     required this.onChanged,
     this.required = false,
+    this.autofilled = false,
     this.firstDate,
     this.lastDate,
     this.enabled = true,
@@ -40,6 +41,9 @@ class UtenDateField extends StatefulWidget {
   final DateTime? value;
   final ValueChanged<DateTime> onChanged;
   final bool required;
+
+  /// 值来自系统预填(如新建报价的默认有效期)：黄框提醒核对，用户改动即由宿主清除。
+  final bool autofilled;
   final DateTime? firstDate;
   final DateTime? lastDate;
   final bool enabled;
@@ -80,21 +84,25 @@ class _UtenDateFieldState extends State<UtenDateField> {
       borderRadius: BorderRadius.circular(UtenSpacing.s8),
       child: InputDecorator(
         decoration: applyRequiredEmpty(
-          UtenInputDecoration(
-            InputDecoration(
-              enabled: widget.enabled,
-              label: fieldLabel(
-                widget.label,
-                theme,
-                required: widget.required,
-                info: widget.info,
-                base: theme.inputDecorationTheme.labelStyle,
+          applyAutofillHint(
+            UtenInputDecoration(
+              InputDecoration(
+                enabled: widget.enabled,
+                label: fieldLabel(
+                  widget.label,
+                  theme,
+                  required: widget.required,
+                  info: widget.info,
+                  base: theme.inputDecorationTheme.labelStyle,
+                ),
+                error: widget.errorMessage == null
+                    ? null
+                    : UtenFieldMessage.error(widget.errorMessage!),
+                suffixIcon: const Icon(Icons.event_outlined, size: 18),
               ),
-              error: widget.errorMessage == null
-                  ? null
-                  : UtenFieldMessage.error(widget.errorMessage!),
-              suffixIcon: const Icon(Icons.event_outlined, size: 18),
             ),
+            theme,
+            autofilled: widget.autofilled,
           ),
           theme,
           requiredEmpty: requiredEmpty,

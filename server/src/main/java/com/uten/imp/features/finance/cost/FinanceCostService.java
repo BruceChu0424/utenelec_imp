@@ -22,10 +22,10 @@ import java.util.UUID;
  * <ul>
  *   <li><b>产品成本汇总</b> {@link #productCost}：货品 13 项成本预算字段（source_e 材料费 + work/make/lacquer/
  *       plating/machining/polish/electric/incidental/manage/lost/rent/casing_e）+ 标准合计 total +
- *       单位成本 c_total；期间实际单位成本=成品入库流水(movement_type=13) amount_local/qty 加权；差异=实际−标准。</li>
+ *       单位成本 c_total 仅作为历史主档预算；实际值来自有效成品入库的生产价值来源，未核清保持待定。</li>
  *   <li><b>销售成本核算汇总</b>（附件 15）{@link #salesCostSummary}：按客户 销售出货金额 E（出货−退货）、
- *       销售成本 F=Σ(数量×货品 c_total)、含工本比率 F/E、管理费 8%=F×8%、销售费用（区域 OEM 1%/外贸 6%/内销 25%）=E×rate、
- *       税费 10%=E×10%、运费(无数据源 NULL)、净利润=E−F−H−I−J、净利润率、汇率 MAX。</li>
+ *       销售成本读取追加式 COGS 价值变动（含退货与后补差额），收入使用已审核 AR 本币原额。
+ *       未归集的费用、税费和净利润为 NULL，不套固定费率。</li>
  *   <li><b>铜柱加工费核算</b>（附件 7）{@link #copperFee}：委外进仓按货品聚合 数量×单价=金额
  *       （keyword 按加工商，如 铜柱车间/黄庆哲）。</li>
  *   <li><b>插套酸洗入库明细</b>（附件 7-1）{@link #copperPickling}：酸洗件委外进仓逐行 时间/货品/重量KG/数量个。</li>
@@ -49,7 +49,7 @@ public class FinanceCostService {
 
     // ======================== 产品成本汇总（标准成本 13 项 + 实际对比） ========================
 
-    /** 产品成本汇总：货品 13 项标准成本预算 + 标准合计/单位成本；期间实际单位成本取成品入库流水(movement_type=13)的 amount_local/qty 加权，差异=实际−标准。 */
+    /** 历史预算与本期有效产出当前价值对照；撤回入库不重复计数，合法零成本不被过滤。 */
     @Transactional(readOnly = true)
     public ReportTableResponse productCost(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
@@ -70,10 +70,13 @@ public class FinanceCostService {
                 ReportColumn.money("lostFee", "损耗费"),
                 ReportColumn.money("rentFee", "租金"),
                 ReportColumn.money("casingFee", "外壳费"),
-                ReportColumn.money("stdTotal", "标准合计"),
-                ReportColumn.money("unitCost", "单位成本"),
-                ReportColumn.money("actualCost", "期间实际单位成本"),
-                ReportColumn.money("diff", "差异(实际−标准)"));
+                ReportColumn.money("stdTotal", "历史主档预算合计"),
+                ReportColumn.money("unitCost", "历史主档单位预算"),
+                ReportColumn.money("actualCost", "有效入库当前单位成本"),
+                ReportColumn.money("diff", "差异(实际−历史预算)"),
+                ReportColumn.number("actualQty", "有效入库数量"),
+                ReportColumn.money("knownActualAmount", "已归集入库成本"),
+                ReportColumn.text("actualState", "成本状态", 150));
         String core = """
                 SELECT g.code AS "goodsCode", g.name AS "goodsName",
                        TRIM(BOTH ' ' FROM COALESCE(g.spec,'') || ' ' || COALESCE(g.model,'')) AS "spec",
@@ -88,6 +91,7 @@ public class FinanceCostService {
                        COALESCE(g.total,0) AS "stdTotal", COALESCE(g.c_total,0) AS "unitCost",
                        a.actual AS "actualCost",
                        (a.actual - g.c_total) AS "diff",
+                       a.qty AS "actualQty",a.known_amount AS "knownActualAmount",a.state AS "actualState",
                        g.name AS party_name, g.code AS party_code
                 FROM goods g
                 LEFT JOIN units u
@@ -95,21 +99,25 @@ public class FinanceCostService {
                       OR (g.unit_id IS NULL
                           AND u.legacy_id = NULLIF(g.unit_legacy_id, 0)))
                 LEFT JOIN (
-                    SELECT goods_id, SUM(amount_local) / NULLIF(SUM(qty),0) AS actual
-                    FROM stock_movements
-                    WHERE movement_type = 13 AND transaction_date BETWEEN :from AND :to
-                      AND COALESCE(amount_local,0) <> 0 AND COALESCE(qty,0) <> 0
+                    SELECT goods_id,SUM(effective_qty) qty,SUM(known_amount_local) known_amount,
+                           CASE WHEN NOT bool_or(pending OR known_amount_local IS NULL) AND SUM(effective_qty)>0
+                                THEN SUM(known_amount_local)/SUM(effective_qty) END actual,
+                           CASE WHEN SUM(effective_qty)=0 THEN 'WITHDRAWN'
+                                WHEN bool_or(pending OR known_amount_local IS NULL) THEN 'PENDING'
+                                ELSE 'VALUATION_FINAL' END state
+                    FROM v_stock_actual_finished_receipts
+                    WHERE business_date BETWEEN :from AND :to
                     GROUP BY goods_id
                 ) a ON a.goods_id = g.id
                 WHERE g.is_deleted = false
-                  AND (COALESCE(g.c_total,0) <> 0 OR COALESCE(g.total,0) <> 0 OR a.actual IS NOT NULL)
+                  AND (COALESCE(g.c_total,0) <> 0 OR COALESCE(g.total,0) <> 0 OR a.goods_id IS NOT NULL)
                 """;
         return runPaged(cols, core, "t.\"goodsCode\"", keyword, from, to, page, size, Map.of());
     }
 
     // ======================== 附件 15 · 销售成本核算汇总（按客户） ========================
 
-    /** 销售成本核算汇总（按客户）：出货金额 E=出货−退货、销售成本 F=Σ(数量×货品单位成本)；销售费用率随区域分档（OEM 1%/外贸 6%/内销 25%），净利润=E−F−管理费8%−销售费用−税费10%−运费。 */
+    /** 本币收入与同期间实际 COGS 变动；保留仅退货、后补差额和未核价客户。 */
     @Transactional(readOnly = true)
     public ReportTableResponse salesCostSummary(String keyword, LocalDate from, LocalDate to, int page, int size) {
         List<ReportColumn> cols = List.of(
@@ -117,74 +125,53 @@ public class FinanceCostService {
                 ReportColumn.text("sellerName", "业务员", 100),
                 ReportColumn.text("region", "区域", 110),
                 ReportColumn.text("director", "总监", 110),
-                ReportColumn.money("saleAmount", "销售出货金额"),
-                ReportColumn.money("saleCost", "销售成本"),
+                ReportColumn.money("saleAmount", "销售净额（本币）"),
+                ReportColumn.money("saleCost", "已知销售成本（本币）"),
                 ReportColumn.number("costRatio", "含工本占销售比率"),
-                ReportColumn.money("manageFee", "管理费8%"),
+                ReportColumn.money("manageFee", "管理费（待归集）"),
                 ReportColumn.money("saleFee", "销售费用"),
-                ReportColumn.money("taxFee", "税费10%"),
+                ReportColumn.money("taxFee", "税费（待归集）"),
                 ReportColumn.money("freight", "运费"),
                 ReportColumn.money("netProfit", "净利润"),
                 ReportColumn.number("profitRate", "净利润率"),
-                ReportColumn.number("exchangeRate", "汇率"));
-        // 销售费用率：区域含 OEM→1%，含 外贸→6%，其余（内销）→25%。净利润= E−F−管理费−销售费用−税费−运费。
+                ReportColumn.text("currencyBasis", "币种口径", 100),
+                ReportColumn.text("costState", "成本状态", 150));
         String core = """
-                WITH ship AS (
-                    SELECT d.client_id,
-                           SUM(i.amount_original) AS amt,
-                           SUM(i.qty * COALESCE(g.c_total,0)) AS cost,
-                           MAX(d.exchange_rate) AS rate
-                    FROM sales_shipment_items i
-                    JOIN sales_shipments d ON d.id = i.shipment_id
-                    LEFT JOIN goods g ON g.id = i.goods_id
-                    WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                      AND i.bill_date BETWEEN :from AND :to
-                    GROUP BY d.client_id
-                ),
-                ret AS (
-                    SELECT d.client_id,
-                           SUM(i.amount_original) AS amt,
-                           SUM(i.qty * COALESCE(g.c_total,0)) AS cost
-                    FROM sales_return_items i
-                    JOIN sales_returns d ON d.id = i.return_id
-                    LEFT JOIN goods g ON g.id = i.goods_id
-                    WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
-                      AND i.bill_date BETWEEN :from AND :to
-                    GROUP BY d.client_id
-                ),
-                agg AS (
-                    SELECT s.client_id,
-                           (s.amt - COALESCE(r.amt,0)) AS e,
-                           (s.cost - COALESCE(r.cost,0)) AS f,
-                           s.rate
-                    FROM ship s LEFT JOIN ret r ON r.client_id = s.client_id
+                WITH revenue AS (
+                    SELECT client_id,sum(amount_original_local) amount FROM ar_ap_ledger
+                    WHERE direction='AR' AND source_doc_type IN('SALES_SHIPMENT','SALES_RETURN')
+                      AND status=1 AND NOT is_deleted AND bill_date BETWEEN :from AND :to GROUP BY client_id
+                ), costs AS (
+                    SELECT client_id,sum(amount_local) amount,bool_or(pending) pending
+                    FROM v_stock_actual_cogs_postings WHERE business_date BETWEEN :from AND :to GROUP BY client_id
+                ), coverage AS (
+                    SELECT client_id,bool_or(pending) pending FROM v_stock_actual_sales_cost_coverage
+                    WHERE business_date BETWEEN :from AND :to GROUP BY client_id
+                ), client_scope AS (
+                    SELECT client_id FROM revenue UNION SELECT client_id FROM costs UNION SELECT client_id FROM coverage
+                ), agg AS (
+                    SELECT scope.client_id,COALESCE(revenue.amount,0) e,
+                           CASE WHEN costs.amount IS NOT NULL THEN costs.amount
+                                WHEN coverage.client_id IS NOT NULL AND NOT coverage.pending THEN 0 END f,
+                           COALESCE(costs.pending,false) OR COALESCE(coverage.pending,false)
+                             OR (costs.amount IS NULL AND coverage.client_id IS NULL) pending
+                    FROM client_scope scope LEFT JOIN revenue ON revenue.client_id IS NOT DISTINCT FROM scope.client_id
+                    LEFT JOIN costs ON costs.client_id IS NOT DISTINCT FROM scope.client_id
+                    LEFT JOIN coverage ON coverage.client_id IS NOT DISTINCT FROM scope.client_id
                 )
-                SELECT c.name AS "clientName",
+                SELECT COALESCE(c.name,'来源客户待核实') AS "clientName",
                        COALESCE(em_sel.full_name,'') AS "sellerName",
                        COALESCE(c.region,'') AS "region",
                        COALESCE(dv.director,'') AS "director",
                        a.e AS "saleAmount", a.f AS "saleCost",
-                       ROUND(a.f / NULLIF(a.e,0), 4) AS "costRatio",
-                       ROUND(a.f * 0.08, 2) AS "manageFee",
-                       ROUND(a.e * CASE WHEN COALESCE(c.region,'') ILIKE '%OEM%' THEN 0.01
-                                        WHEN COALESCE(c.region,'') ILIKE '%外贸%' THEN 0.06
-                                        ELSE 0.25 END, 2) AS "saleFee",
-                       ROUND(a.e * 0.10, 2) AS "taxFee",
-                       NULL AS "freight",
-                       ROUND(a.e - a.f - a.f*0.08
-                             - a.e * CASE WHEN COALESCE(c.region,'') ILIKE '%OEM%' THEN 0.01
-                                          WHEN COALESCE(c.region,'') ILIKE '%外贸%' THEN 0.06
-                                          ELSE 0.25 END
-                             - a.e * 0.10, 2) AS "netProfit",
-                       ROUND((a.e - a.f - a.f*0.08
-                             - a.e * CASE WHEN COALESCE(c.region,'') ILIKE '%OEM%' THEN 0.01
-                                          WHEN COALESCE(c.region,'') ILIKE '%外贸%' THEN 0.06
-                                          ELSE 0.25 END
-                             - a.e * 0.10) / NULLIF(a.e,0), 4) AS "profitRate",
-                       a.rate AS "exchangeRate",
-                       c.name AS party_name, c.code AS party_code
+                       CASE WHEN NOT a.pending THEN ROUND(a.f / NULLIF(a.e,0), 4) END AS "costRatio",
+                       NULL::numeric AS "manageFee",NULL::numeric AS "saleFee",NULL::numeric AS "taxFee",
+                       NULL::numeric AS "freight",NULL::numeric AS "netProfit",NULL::numeric AS "profitRate",
+                       'LOCAL' AS "currencyBasis",
+                       CASE WHEN a.pending THEN 'COST_PENDING' ELSE 'COGS_KNOWN_OTHER_EXPENSES_PENDING' END AS "costState",
+                       COALESCE(c.name,'来源客户待核实') AS party_name, c.code AS party_code
                 FROM agg a
-                JOIN clients c ON c.id = a.client_id
+                LEFT JOIN clients c ON c.id = a.client_id
                 LEFT JOIN client_director_v dv ON dv.client_id = c.id
                 LEFT JOIN employees em_sel
                   ON (em_sel.id = c.owner_employee_id
@@ -453,7 +440,10 @@ public class FinanceCostService {
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < cols.size(); i++) m.put(cols.get(i).key(), norm(r[i]));
+            for (int i = 0; i < cols.size(); i++) {
+                m.put(cols.get(i).key(), norm(r[i]));
+                if (r[i] instanceof BigDecimal decimal) m.put(cols.get(i).key()+"Exact",decimal.toPlainString());
+            }
             items.add(m);
         }
         var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + ") t " + where);

@@ -44,6 +44,10 @@ class SalesIntakeLayoutLearner {
         this.readTransaction.setReadOnly(true);
     }
 
+    private com.uten.imp.application.port.SalesLearningReceiptPort receipts;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setLearningReceipts(com.uten.imp.application.port.SalesLearningReceiptPort receipts) { this.receipts = receipts; }
+
     @EventListener
     public void onIntakeUsed(SalesIntakeUsedEvent event) {
         if (event == null || event.jobId() == null || event.userId() == null) {
@@ -68,6 +72,17 @@ class SalesIntakeLayoutLearner {
 
     /** 读版式并写入; 任何失败只记日志。 */
     void learn(SalesIntakeUsedEvent event) {
+        if (receipts != null && event.learningReceiptId() != null) {
+            receipts.run(event.learningReceiptId(), "LAYOUT", event.jobId(), () -> {
+                LayoutFacts captured = readTransaction.execute(status -> capture(event));
+                if (captured == null || event.clientId() == null)
+                    return com.uten.imp.application.port.SalesLearningReceiptPort.StepResult.skippedResult();
+                store.learnLayoutOnce(event, captured.fingerprint(), captured.headerTexts(), captured.columnRoles(),
+                        captured.headerRowOffset(), captured.learned());
+                return com.uten.imp.application.port.SalesLearningReceiptPort.StepResult.done();
+            });
+            return;
+        }
         LayoutFacts facts;
         try {
             facts = readTransaction.execute(status -> capture(event));
@@ -83,7 +98,15 @@ class SalesIntakeLayoutLearner {
     /** 读取任务结果里的版式; 没有结果(不是本人、已清空、不是表格文件)返回 null。 */
     LayoutFacts capture(SalesIntakeUsedEvent event) {
         Optional<Map<String, Object>> result = usage.resultFor(event.jobId(), event.userId());
-        return result.map(SalesIntakeLayoutLearner::layoutFacts).orElse(null);
+        return result.filter(value -> includesSourceLine(event.sourceLineKeys(), value))
+                .map(SalesIntakeLayoutLearner::layoutFacts).orElse(null);
+    }
+
+    /** Learning needs a saved source row; legacy internal events remain compatible. */
+    private static boolean includesSourceLine(java.util.List<String> keys, Map<String, Object> result) {
+        if (keys == null) return true;
+        if (keys.isEmpty() || !(result.get("lines") instanceof java.util.List<?> lines)) return false;
+        return lines.stream().anyMatch(line -> line instanceof Map<?, ?> values && keys.contains(values.get("key")));
     }
 
     void write(SalesIntakeUsedEvent event, LayoutFacts facts) {

@@ -1,12 +1,11 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../core/responsive/breakpoint.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -21,7 +20,6 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -372,77 +370,43 @@ class _QualityInspectionRecordsPageState
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 840;
-            final overview = _buildOverview(data, constraints.maxWidth);
+        // 2026-09-29「大小屏共用一张表」：统一走 MasterDataTableView，窄屏
+        //（<840，原卡片阈值）由表格内建卡片形态接管（_buildTable 的
+        // compactCards），本页自绘记录卡与移动分页条已退役。
+        child: Builder(
+          builder: (context) {
+            final width = MediaQuery.sizeOf(context).width;
+            final overview = _buildOverview(data, width);
             final filters = _buildFilters(allowedDomains);
             const hint = _InspectionRecordScopeHint();
             final inlineError = _error == null || _data == null
                 ? const SizedBox.shrink()
                 : _InlineRecordError(message: _error!, onRetry: _load);
-            if (compact) {
-              return ListView(
-                key: const Key('quality-inspection-record-mobile-list'),
-                // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
-                padding: EdgeInsets.only(
-                  bottom: math.max(
-                    UtenSpacing.s24,
-                    UtenCapsuleNavScope.occlusionOf(context),
-                  ),
-                ),
-                children: [
-                  overview,
-                  const SizedBox(height: UtenSpacing.s16),
-                  filters,
-                  const SizedBox(height: UtenSpacing.s12),
-                  hint,
-                  if (_error != null && _data != null) ...[
-                    const SizedBox(height: UtenSpacing.s12),
-                    inlineError,
-                  ],
-                  const SizedBox(height: UtenSpacing.s12),
-                  if (data.items.isEmpty)
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 300),
-                      child: UtenEmpty(
-                        icon: Icons.fact_check_outlined,
-                        message: '当前筛选下没有检测记录',
-                        description: _hasActiveFilter
-                            ? '可切换检验类型、结果、日期或关键词后重试。'
-                            : '检验员保存决定后，追加式记录会显示在这里。',
-                      ),
-                    )
-                  else
-                    for (final record in data.items) ...[
-                      _InspectionRecordCard(
-                        record: record,
-                        onTap: () => _openDetail(record),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                    ],
-                  _MobileRecordPager(
-                    page: data.page,
-                    totalPages: data.totalPages,
-                    loading: _loading,
-                    onPageChanged: (page) => _load(page: page),
-                  ),
-                ],
-              );
-            }
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                overview,
-                const SizedBox(height: UtenSpacing.s16),
-                filters,
-                const SizedBox(height: UtenSpacing.s12),
-                hint,
-                if (_error != null && _data != null) ...[
-                  const SizedBox(height: UtenSpacing.s12),
-                  inlineError,
-                ],
-                const SizedBox(height: UtenSpacing.s12),
+                // 顶部概览/筛选/提示区：大字号下可能超过视口，封顶后自滚，
+                // 表格至少保留 160 逻辑像素（空态/行集都能露出来）。
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 640),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        overview,
+                        const SizedBox(height: UtenSpacing.s16),
+                        filters,
+                        const SizedBox(height: UtenSpacing.s12),
+                        hint,
+                        if (_error != null && _data != null) ...[
+                          const SizedBox(height: UtenSpacing.s12),
+                          inlineError,
+                        ],
+                        const SizedBox(height: UtenSpacing.s12),
+                      ],
+                    ),
+                  ),
+                ),
                 Expanded(child: _buildTable(data)),
               ],
             );
@@ -451,14 +415,6 @@ class _QualityInspectionRecordsPageState
       ),
     );
   }
-
-  bool get _hasActiveFilter =>
-      _decision != null ||
-      _sourceType != null ||
-      _effective != null ||
-      _disposition != null ||
-      _keyword.isNotEmpty ||
-      _dateRange != null;
 
   Widget _buildOverview(QualityInspectionRecordPage data, double width) {
     final metrics = data.metrics;
@@ -557,76 +513,82 @@ class _QualityInspectionRecordsPageState
     );
   }
 
-  Widget _buildTable(QualityInspectionRecordPage data) =>
-      MasterDataTableView<QualityInspectionRecord>(
-        key: const Key('quality-inspection-record-table'),
-        columns: _columns,
-        items: data.items,
-        // 表头筛选固定枚举桶（2026-09-16，count=0 表示不强调计数）：
-        // 检验结果四态；检验类型仅 IQC（PURCHASE/SUBCONTRACT，FQC 恒为生产成品）；
-        // 当前效力三档（与 effectLabel 展示口径一致）；不良处置仅 FQC（IQC 恒无处置码）。
-        facets: {
-          'decision': _decisionFacets,
-          if (_domain == QualityInspectionRecordDomain.iqc)
-            'sourceType': _sourceTypeFacets,
-          'effective': _effectiveFacets,
-          if (_domain == QualityInspectionRecordDomain.fqc)
-            'disposition': _dispositionFacets,
-          // 2026-09-25 单号列统一：单号值来自服务端 facets（与列表同一过滤上下文）。
-          'sourceNo': _docNoFacets['sourceNo'] ?? const [],
-          'referenceNo': _docNoFacets['referenceNo'] ?? const [],
-          'sheetNo': _docNoFacets['sheetNo'] ?? const [],
-        },
-        nullCounts: const {},
-        filters: {
-          'decision': _decision,
-          'sourceType': _sourceType,
-          'effective': _effective,
-          'disposition': _disposition,
-          'sourceNo': _sourceNoFilter,
-          'referenceNo': _referenceNoFilter,
-          'sheetNo': _sheetNoFilter,
-        },
-        onFilterChanged: (key, value) async {
-          if (key == 'decision') {
-            await _selectDecision(value);
-          } else if (key == 'sourceNo' ||
-              key == 'referenceNo' ||
-              key == 'sheetNo') {
-            await _selectDocNoFilter(key, value);
-          } else {
-            await _selectColumnFilter(key, value);
-          }
-        },
-        // 2026-09-25 单号列统一：表头排序走服务端白名单
-        //（sourceNo/referenceNo/sheetNo）。
-        sortColumn: _sortColumn,
-        sortAscending: _sortAscending,
-        onSortChange: (column, ascending) {
-          setState(() {
-            _sortColumn = column;
-            _sortAscending = ascending;
-          });
-          _load(page: 1);
-        },
-        idOf: (record) => record.recordId,
-        onRowTap: _openDetail,
-        rowMenuBuilder: (record) => [
-          UtenMenuItem(
-            label: '查看检测记录详情',
-            icon: Icons.visibility_outlined,
-            onTap: () => _openDetail(record),
-          ),
-        ],
-        isLoading: _loading,
-        loadingMore: _loading && _data != null,
-        error: _data == null ? _error : null,
-        onRetry: () => _load(page: data.page),
-        emptyMessage: '当前筛选下没有检测记录',
-        currentPage: data.page,
-        totalPages: data.totalPages,
-        onPageChange: (page) => _load(page: page),
-      );
+  Widget _buildTable(
+    QualityInspectionRecordPage data,
+  ) => MasterDataTableView<QualityInspectionRecord>(
+    tableKey:
+        'features.quality.pages.quality_inspection_records_page.QualityInspectionRecordsPageState._buildTable.1',
+    key: const Key('quality-inspection-record-table'),
+    // 2026-09-29「大小屏共用一张表」：<840（原卡片阈值）切内建卡片形态。
+    compactCards: true,
+    cardBelowWidth: UtenBreakpoints.expandedStart,
+    columns: _columns,
+    items: data.items,
+    // 表头筛选固定枚举桶（2026-09-16，count=0 表示不强调计数）：
+    // 检验结果四态；检验类型仅 IQC（PURCHASE/SUBCONTRACT，FQC 恒为生产成品）；
+    // 当前效力三档（与 effectLabel 展示口径一致）；不良处置仅 FQC（IQC 恒无处置码）。
+    facets: {
+      'decision': _decisionFacets,
+      if (_domain == QualityInspectionRecordDomain.iqc)
+        'sourceType': _sourceTypeFacets,
+      'effective': _effectiveFacets,
+      if (_domain == QualityInspectionRecordDomain.fqc)
+        'disposition': _dispositionFacets,
+      // 2026-09-25 单号列统一：单号值来自服务端 facets（与列表同一过滤上下文）。
+      'sourceNo': _docNoFacets['sourceNo'] ?? const [],
+      'referenceNo': _docNoFacets['referenceNo'] ?? const [],
+      'sheetNo': _docNoFacets['sheetNo'] ?? const [],
+    },
+    nullCounts: const {},
+    filters: {
+      'decision': _decision,
+      'sourceType': _sourceType,
+      'effective': _effective,
+      'disposition': _disposition,
+      'sourceNo': _sourceNoFilter,
+      'referenceNo': _referenceNoFilter,
+      'sheetNo': _sheetNoFilter,
+    },
+    onFilterChanged: (key, value) async {
+      if (key == 'decision') {
+        await _selectDecision(value);
+      } else if (key == 'sourceNo' ||
+          key == 'referenceNo' ||
+          key == 'sheetNo') {
+        await _selectDocNoFilter(key, value);
+      } else {
+        await _selectColumnFilter(key, value);
+      }
+    },
+    // 2026-09-25 单号列统一：表头排序走服务端白名单
+    //（sourceNo/referenceNo/sheetNo）。
+    sortColumn: _sortColumn,
+    sortAscending: _sortAscending,
+    onSortChange: (column, ascending) {
+      setState(() {
+        _sortColumn = column;
+        _sortAscending = ascending;
+      });
+      _load(page: 1);
+    },
+    idOf: (record) => record.recordId,
+    onRowTap: _openDetail,
+    rowMenuBuilder: (record) => [
+      UtenMenuItem(
+        label: '查看检测记录详情',
+        icon: Icons.visibility_outlined,
+        onTap: () => _openDetail(record),
+      ),
+    ],
+    isLoading: _loading,
+    loadingMore: _loading && _data != null,
+    error: _data == null ? _error : null,
+    onRetry: () => _load(page: data.page),
+    emptyMessage: '当前筛选下没有检测记录',
+    currentPage: data.page,
+    totalPages: data.totalPages,
+    onPageChange: (page) => _load(page: page),
+  );
 
   List<MasterColumnDef<QualityInspectionRecord>> get _columns => [
     MasterColumnDef(
@@ -634,6 +596,15 @@ class _QualityInspectionRecordsPageState
       label: '检验结果',
       width: 120,
       value: (record) => record.decisionLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：合格=绿 / 部分合格=琥珀 /
+      // 不合格=红 / 已撤销=中性灰。
+      cellColor: (context, record) =>
+          udenStatusBadgeCellColor(context, switch (record.decision) {
+            'PASS' => UtenStatusBadgeType.success,
+            'PARTIAL' => UtenStatusBadgeType.warning,
+            'FAIL' => UtenStatusBadgeType.danger,
+            _ => UtenStatusBadgeType.neutral,
+          }),
     ),
     MasterColumnDef(
       key: 'effective',
@@ -654,6 +625,7 @@ class _QualityInspectionRecordsPageState
       // 2026-09-25 单号列统一：可排序（服务端白名单）+ 值筛选（facets）。
       sortable: true,
       value: (record) => _text(record.sourceNo),
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'referenceNo',
@@ -682,12 +654,16 @@ class _QualityInspectionRecordsPageState
       label: '货品名称',
       width: 240,
       value: (record) => _text(record.goodsName),
+      // 卡片形态标题列。
+      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
       width: 140,
       value: (record) => _text(record.goodsCode),
+      // 卡片副行已带编号，明细区不重复出。
+      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'colorName',
@@ -759,107 +735,6 @@ class _InspectionRecordScopeHint extends StatelessWidget {
       ],
     ),
   );
-}
-
-class _InspectionRecordCard extends StatelessWidget {
-  const _InspectionRecordCard({required this.record, required this.onTap});
-
-  final QualityInspectionRecord record;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final goods = [
-      record.goodsCode,
-      record.goodsName,
-      record.colorName,
-    ].whereType<String>().where((value) => value.isNotEmpty).join(' · ');
-    return Material(
-      color: theme.colorScheme.surface,
-      borderRadius: UtenRadius.lgAll,
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 152),
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          decoration: BoxDecoration(
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  UtenStatusBadge(
-                    label: record.decisionLabel,
-                    type: _decisionBadgeType(record.decision),
-                    icon: _decisionIcon(record.decision),
-                  ),
-                  UtenStatusBadge(
-                    label: record.effectLabel,
-                    type: record.effective
-                        ? UtenStatusBadgeType.info
-                        : UtenStatusBadgeType.neutral,
-                  ),
-                  Text(
-                    record.sourceTypeLabel,
-                    style: theme.textTheme.labelLarge,
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                _text(record.sourceNo),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              if (goods.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s4),
-                Text(goods, maxLines: 2, overflow: TextOverflow.ellipsis),
-              ],
-              const SizedBox(height: UtenSpacing.s8),
-              Wrap(
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s4,
-                children: [
-                  Text('合格 ${_qty(record.passQty)} ${record.unitName ?? ''}'),
-                  Text('不合格 ${_qty(record.failQty)} ${record.unitName ?? ''}'),
-                  if (record.dispositionLabel != '—')
-                    Text('处置 ${record.dispositionLabel}'),
-                ],
-              ),
-              if (record.reason?.trim().isNotEmpty == true) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  '原因：${record.reason}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                '${record.inspectorName ?? '系统'} · '
-                '${ChinaDateTime.formatInstant(record.decidedAt)}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _QualityInspectionRecordDetailPanel extends ConsumerStatefulWidget {
@@ -1087,6 +962,8 @@ class _QualityInspectionRecordDetailPanelState
     final unit = _text(record.unitName);
     final decidedQty = _qty(record.passQty + record.failQty);
     return MasterDataTableView<_DetailQuantityRow>(
+      tableKey:
+          'features.quality.pages.quality_inspection_records_page.QualityInspectionRecordDetailPanelState._buildQuantityTable.1',
       key: const Key('quality-inspection-record-detail-quantity'),
       embedded: true,
       showColumnChooser: false,
@@ -1215,6 +1092,8 @@ class _DetailFieldTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MasterDataTableView<_DetailField>(
+    tableKey:
+        'features.quality.pages.quality_inspection_records_page.DetailFieldTable.build.1',
     key: tableKey,
     embedded: true,
     showColumnChooser: false,
@@ -1290,53 +1169,6 @@ class _InlineRecordError extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _MobileRecordPager extends StatelessWidget {
-  const _MobileRecordPager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPageChanged,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPageChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (totalPages <= 1) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          UtenButton(
-            size: UtenButtonSize.large,
-            type: UtenButtonType.secondary,
-            onPressed: loading || page <= 1
-                ? null
-                : () => onPageChanged(page - 1),
-            child: const Text('上一页'),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-            child: Text('$page / $totalPages'),
-          ),
-          UtenButton(
-            size: UtenButtonSize.large,
-            type: UtenButtonType.secondary,
-            onPressed: loading || page >= totalPages
-                ? null
-                : () => onPageChanged(page + 1),
-            child: const Text('下一页'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 IconData _metricIcon(String key) => switch (key.toUpperCase()) {

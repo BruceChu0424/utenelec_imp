@@ -673,6 +673,26 @@ class SalesIntakeAiSuggestion {
   final String? reason;
 }
 
+/// 文件中的额外列。只作为参考信息导入，计算方式由用户另行选择。
+class SalesIntakeExtraColumn {
+  const SalesIntakeExtraColumn({
+    required this.key,
+    required this.label,
+    this.dataType = 'TEXT',
+  });
+
+  final String key;
+  final String label;
+  final String dataType;
+
+  factory SalesIntakeExtraColumn.fromJson(Map<String, dynamic> json) =>
+      SalesIntakeExtraColumn(
+        key: _str(json['key']) ?? '',
+        label: _str(json['label']) ?? '',
+        dataType: json['dataType'] == 'NUMBER' ? 'NUMBER' : 'TEXT',
+      );
+}
+
 /// 文件里的一行明细 + 服务端对应结果。
 class SalesIntakeLine {
   const SalesIntakeLine({
@@ -703,6 +723,7 @@ class SalesIntakeLine {
     this.nameEnText,
     this.candidates = const [],
     this.warnings = const [],
+    this.extraValues = const {},
   });
 
   factory SalesIntakeLine.fromJson(Map<String, dynamic> json) {
@@ -751,6 +772,11 @@ class SalesIntakeLine {
         for (final w in _maps(json['warnings']))
           if (_str(w['code']) != null) SalesIntakeWarning.fromJson(w),
       ],
+      extraValues: {
+        for (final entry in _map(json['extraValues']).entries)
+          if (entry.value is String || entry.value is num)
+            entry.key: entry.value.toString(),
+      },
     );
   }
 
@@ -792,6 +818,7 @@ class SalesIntakeLine {
   final String? nameEnText;
   final List<SalesIntakeCandidate> candidates;
   final List<SalesIntakeWarning> warnings;
+  final Map<String, String> extraValues;
 
   /// 服务端预选(规则或 AI 建议)的候选。
   SalesIntakeCandidate? get preselected {
@@ -867,6 +894,7 @@ class SalesIntakeResult {
     this.lines = const [],
     this.summary = const SalesIntakeSummary(),
     this.notices = const [],
+    this.extraColumns = const [],
   });
 
   /// 结果不是对象时抛 [FormatException](页面提示「识别结果无法读取」)。
@@ -876,6 +904,7 @@ class SalesIntakeResult {
     }
     final json = Map<String, dynamic>.from(raw);
     final seenKeys = <String>{};
+    final seenColumnKeys = <String>{};
     return SalesIntakeResult(
       schemaVersion: _int(json['schemaVersion']) ?? kSalesIntakeSchemaVersion,
       docType: _str(json['docType']),
@@ -895,6 +924,12 @@ class SalesIntakeResult {
       ],
       summary: SalesIntakeSummary.fromJson(_map(json['summary'])),
       notices: _strings(json['notices']),
+      extraColumns: [
+        for (final column in _maps(json['extraColumns']))
+          if (_str(column['key']) case final key?
+              when seenColumnKeys.add(key) && _str(column['label']) != null)
+            SalesIntakeExtraColumn.fromJson(column),
+      ],
     );
   }
 
@@ -908,6 +943,7 @@ class SalesIntakeResult {
   final List<SalesIntakeLine> lines;
   final SalesIntakeSummary summary;
   final List<String> notices;
+  final List<SalesIntakeExtraColumn> extraColumns;
 
   bool get priceMasked => summary.priceMasked;
 }
@@ -924,6 +960,7 @@ class SalesIntakeSession {
     this.fileName,
     this.priceMasked = false,
     this.importedRows = 0,
+    this.additionalJobIds = const [],
   });
 
   factory SalesIntakeSession.fromJson(Map<String, dynamic> json) =>
@@ -942,6 +979,7 @@ class SalesIntakeSession {
         fileName: _str(json['fileName']),
         priceMasked: _bool(json['priceMasked']),
         importedRows: _int(json['importedRows']) ?? 0,
+        additionalJobIds: _strings(json['additionalJobIds']),
       );
 
   final String jobId;
@@ -959,6 +997,7 @@ class SalesIntakeSession {
   final String? fileName;
   final bool priceMasked;
   final int importedRows;
+  final List<String> additionalJobIds;
 
   bool get isValid => jobId.isNotEmpty;
 
@@ -972,12 +1011,14 @@ class SalesIntakeSession {
     'fileName': fileName,
     'priceMasked': priceMasked,
     'importedRows': importedRows,
+    if (additionalJobIds.isNotEmpty) 'additionalJobIds': additionalJobIds,
   };
 
   /// 保存请求体里的 `aiIntake`(SPEC §6.1)。[currentClientId] 是保存时表头的客户:
   /// 导入后换了客户, 文件里的客户信息不能补到另一个客户身上, 只提交空字段。
   Map<String, dynamic> toSaveJson({required String? currentClientId}) => {
     'jobId': jobId,
+    if (additionalJobIds.isNotEmpty) 'additionalJobIds': additionalJobIds,
     'clientFields': clientId != null && clientId == currentClientId
         ? clientFields
         : const <String, String>{},

@@ -87,6 +87,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
 
     private final PurchaseOrderRepository orderRepo;
     private final PurchaseOrderItemRepository itemRepo;
+    private com.uten.imp.common.columns.BusinessColumnService businessColumns;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setBusinessColumns(com.uten.imp.common.columns.BusinessColumnService service) { this.businessColumns = service; }
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final ProductionSupplyTransitionPort productionSupply;
     private PreplanPublicSupplyCapturePort publicSupplyCapture =
@@ -485,9 +489,29 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         requireRowsMatchHeaderCommercial(req);
         requireHeaderSettlement(req);
         applyHeader(req, o);
+        List<PurchaseOrderItem> previousItems = new ArrayList<>(itemRepo.findByOrderIdOrderByLineNoAsc(id));
+        Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns = new java.util.IdentityHashMap<>();
+        for (OrderItemLine line : req.getItems()) {
+            List<PurchaseOrderItem> candidates = previousItems.stream().filter(stored -> line.getId() != null
+                    ? line.getId().equals(stored.getId())
+                    : java.util.Objects.equals(line.getGoodsId(), stored.getGoodsId())
+                      && java.util.Objects.equals(line.getColorId(), stored.getColorId())
+                      && java.util.Objects.equals(line.getUnitId(), stored.getUnitId())
+                      && java.util.Objects.equals(line.getRequestItemId(), stored.getRequestItemId()))
+                    .toList();
+            if (line.getId() == null && candidates.size() > 1
+                    && candidates.stream().map(PurchaseOrderItem::getExtraColumns).distinct().count() > 1)
+                throw new ApiException(ErrorCode.CONFLICT, "相同货品存在不同扩展条款，请刷新页面后按明细编号保存");
+            PurchaseOrderItem match = candidates.isEmpty() ? null : candidates.getFirst();
+            if (line.getId() != null && match == null) throw new ApiException(ErrorCode.CONFLICT, "采购明细不存在或不属于本订单");
+            if (match != null) {
+                previousColumns.put(line, match.getExtraColumns());
+                previousItems.remove(match);
+            }
+        }
         itemRepo.deleteByOrderId(id);
         itemRepo.flush();
-        List<OrderItemDto> items = saveItems(o, req.getItems());
+        List<OrderItemDto> items = saveItems(o, req.getItems(), previousColumns);
         applyTotals(o, items);
         // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
         orderRepo.flush();
@@ -808,7 +832,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             BigDecimal newQty = (BigDecimal) change[2];
             item.setQty(newQty);
             BigDecimal amountOriginal = item.getPrice() == null
-                    ? null : money(newQty.multiply(item.getPrice()));
+                    ? null : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                            MoneyPolicy.exactProduct(newQty, item.getPrice()), item.getExtraColumns());
             item.setAmountOriginal(amountOriginal);
             item.setAmountLocal(amountOriginal == null
                     ? null : money(amountOriginal.multiply(rate)));
@@ -952,7 +977,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         ErrorCode.VALIDATION_FAILED,
                         "采购订货数量、单价和金额必须完整且不能为负");
             }
-            BigDecimal expectedOriginal = MoneyPolicy.exactProduct(item.getQty(), item.getPrice());
+            BigDecimal expectedOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    MoneyPolicy.exactProduct(item.getQty(), item.getPrice()), item.getExtraColumns());
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
@@ -1072,6 +1098,11 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private List<OrderItemDto> saveItems(PurchaseOrder o, List<OrderItemLine> lines) {
+        return saveItems(o, lines, Map.of());
+    }
+
+    private List<OrderItemDto> saveItems(PurchaseOrder o, List<OrderItemLine> lines,
+            Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
         for (int index = 0; index < lines.size(); index++) {
             OrderItemLine line = lines.get(index);
@@ -1139,7 +1170,12 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setQty(l.getQty());
             BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购单价");
             it.setPrice(price);
-            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), price, null, headerRate);
+            it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "purchase_order",
+                    l.getExtraColumns(), previousColumns.getOrDefault(l, List.of()), purchasePriceMasked()));
+            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    price == null ? null : MoneyPolicy.exactProduct(l.getQty(), price), it.getExtraColumns());
+            MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
+                    original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
@@ -1400,7 +1436,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private OrderItemDto toItemDto(
             PurchaseOrderItem it,
             List<OrderItemDto.SourceRequestDoc> sourceRequests) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        OrderItemDto dto = new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
@@ -1408,6 +1444,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(),
                 it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
                 sourceRequests);
+        dto.setExtraColumns(it.getExtraColumns());
+        return dto;
     }
 
     private OrderDetail toDetail(PurchaseOrder order, List<OrderItemDto> items) {
@@ -1458,13 +1496,15 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     private static OrderItemDto maskItemPrices(OrderItemDto it) {
-        return new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        OrderItemDto dto = new OrderItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
                 it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
                 it.getGiftQty(), it.getRequestItemId(), it.getDeliverDate(), it.getWeight(),
                 it.getSourceDocNo(), it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
                 it.getSourceRequests());
+        dto.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.visible(it.getExtraColumns(), true));
+        return dto;
     }
 
     /** 全部明细（含 V463 合并行全部来源）同属一张采购申请时返回该申请 (id, billNo)；否则 null。 */

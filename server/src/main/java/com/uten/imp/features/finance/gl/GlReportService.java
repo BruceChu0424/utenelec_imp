@@ -29,7 +29,7 @@ import java.util.UUID;
  *       财务费用=手续费；营业外收入=033 贷净。</li>
  *   <li>附 12 制造费用明细 {@link #manufacturingExpense} / 附 13 管理费用明细 {@link #adminExpense} /
  *       附 14 销售费用明细 {@link #salesExpense}：科目月金额透视（行=项目，列=01..12 月）。</li>
- *   <li>附 16 经营损益表 {@link #operatingPl}：材料费按货品一级类别（DRAW 数量×c_total）+ 工费 + 一般管理费，
+ *   <li>附 16 经营损益表 {@link #operatingPl}：按库存实际 COGS 变动分类列示已知销售成本，另列当期工费和管理费，
  *       占销售比=金额/销售额(031+032 贷净)。</li>
  * </ol>
  *
@@ -536,16 +536,15 @@ public class GlReportService {
         List<Map<String, Object>> rows = new ArrayList<>();
         addOpRow(rows, "应收账款", "", "", base, base, "主营与其他业务收入(031+032)");
 
-        // 材料费：DRAW 月耗用（qty×c_total）按货品一级类别（material_categories 根的直下）
+        // COGS is an immutable value delta, including original-cost returns and later source adjustments.
         var matQ = em.createNativeQuery("""
-                SELECT COALESCE(mc.name,'未分类'), SUM(m.qty * COALESCE(g.c_total,0))
-                FROM stock_movements m
-                JOIN goods g ON g.id = m.goods_id
+                SELECT COALESCE(mc.name,'未分类'), SUM(m.amount_local),bool_or(m.pending)
+                FROM v_stock_actual_cogs_postings m
+                LEFT JOIN goods g ON g.id = m.goods_id
                 LEFT JOIN material_categories leaf ON leaf.id = g.category_id
                 LEFT JOIN material_categories mc ON mc.id = COALESCE(leaf.parent_id, leaf.id)
-                WHERE m.source_doc_type='STOCK_DOC' AND m.movement_type = 5
-                  AND m.transaction_date BETWEEN :from AND :to
-                GROUP BY 1 HAVING SUM(m.qty * COALESCE(g.c_total,0)) <> 0
+                WHERE m.business_date BETWEEN :from AND :to
+                GROUP BY 1
                 ORDER BY 2 DESC
                 """);
         matQ.setParameter("from", from);
@@ -555,9 +554,10 @@ public class GlReportService {
         for (Object[] r : mats) {
             BigDecimal amt = (BigDecimal) r[1];
             matTotal = matTotal.add(amt);
-            addOpRow(rows, "材料费", "主材", (String) r[0], amt, base, "领料数量 × 货品成本");
+            addOpRow(rows, "已知销售成本", "库存价值", (String) r[0], amt, base,
+                    Boolean.TRUE.equals(r[2])?"实际COGS已知部分；仍有待核价来源":"实际COGS变动；含原成本退回及后补差额");
         }
-        addOpRow(rows, "材料费", "材料费合计", "", matTotal, base, "");
+        addOpRow(rows, "已知销售成本", "销售成本合计", "", matTotal, base, "本币价值过账；当期费用另列，不等于完整净利润");
 
         // 一张表的全部可配置行一次取数(科目/工资/折旧各一条语句)。
         List<GlReportLine> opLines = new ArrayList<>(List.of(
@@ -620,8 +620,10 @@ public class GlReportService {
         m.put("sub", sub);
         m.put("item", item);
         m.put("amount", amount);
+        m.put("amountExact",amount==null?null:amount.toPlainString());
         m.put("salesRatio", (amount == null || base == null || base.signum() == 0) ? null
                 : MoneyPolicy.percentOf(amount, base));
+        if(m.get("salesRatio") instanceof BigDecimal ratio)m.put("salesRatioExact",ratio.toPlainString());
         m.put("basis", basis);
         rows.add(m);
     }

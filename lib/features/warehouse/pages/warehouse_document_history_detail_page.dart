@@ -146,6 +146,8 @@ class _WarehouseDocumentHistoryDetailPageState
                   ),
                   // body：明细表占满内滚（primary 拾取联动控制器）。
                   body: MasterDataTableView<WarehouseDocumentPhysicalItem>(
+                    tableKey:
+                        'features.warehouse.pages.warehouse_document_history_detail_page.WarehouseDocumentHistoryDetailPageState.build.1',
                     key: Key(
                       'warehouse-history-detail-table-${widget.type.segment}',
                     ),

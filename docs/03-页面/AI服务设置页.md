@@ -10,8 +10,7 @@
 
 ## 入口
 
-- 工作台 → 系统管理 →「AI 服务」卡片(`workbench_module_area.dart` 的 `system` 组, 与「系统设置」同一授权门槛)。
-- 系统设置页顶部的「AI 服务」入口卡(`AiSettingsEntryCard`, 「配置大模型服务商、密钥和连接测试」), 点击 `push` 进入, 返回回到系统设置。入口卡不依赖系统设置项: 设置项加载中、读取失败或为空时也固定在顶部。
+- 唯一入口: 系统设置页的「AI 服务」入口卡(`AiSettingsEntryCard`, 「配置大模型服务商、密钥和连接测试」), 点击 `push` 进入, 返回回到系统设置。设置项加载成功时它是分组卡片网格的首格; 加载中、读取失败或为空时固定在页面顶部整宽。工作台「系统管理」组的「AI 服务」卡片 2026-09-28 已退役(用户口径: AI 服务属于系统设置, 不在工作台单放一张卡)。
 - 路由守卫: `/admin/*` 统一要求 `authorization:manage`(`permission_by_path.dart`, 不新增权限码); 服务端 Controller 类级别 `hasAuthority('authorization:manage') and principal.superAdmin`。非超管持有 `authorization:manage` 能进页面, 但首屏读取被拒, 页面显示「只有超级管理员可以查看和修改 AI 服务」。
 
 ---
@@ -110,6 +109,6 @@
 - `flutter test test/features/admin/admin_ai_settings_page_test.dart`: 空状态; 卡片只显示掩码(桌面浅色 / 窄屏深色), 短密钥只显示「已配置」; 解不开的密钥标红, 可不填新密钥直接清除; 卡片测试连接四步 ✓/✗ + 耗时 + 建议; 服务端原样结果: `WARN` 显示黄色「!」+ 说明 + 「需留意」徽标而不是「未进行」, 失败时底部是服务端总结且不在步骤下重复; 编辑改地址 → 提示且保存/测试被拦 → 重新填密钥后带 `version` 保存; 空状态只有一个添加按钮; 卡片与编辑面板的尾号掩码走 `AiMaskedKey`; 高级设置箭头收起朝下、展开朝上; 删除带 `version`; 未改配置用已存密钥测试(带当前地址核对)、改了模型不冒充、改了高级设置不冒充(取模型照常); 空模型列表显示服务端原因; 服务端原样预设: 新增预填 DeepSeek、锁定项列出服务端原因、外呼关闭时默认本机部署且国内预设「暂不可用」; 预设目录缺失时本机服务仍显示「不需要」密钥、就绪且显示预设名; 新增: 预设预填 → 点选模型 → 无密钥不测 → 填密钥测试 → 保存; 境外未开放不可选; 境外开放需勾确认; 非超管提示; 外呼关闭提示; 默认服务不能删; 启停只在网络段挂遮罩。
 - `flutter test test/features/admin/ai_masked_key_test.dart`: 掩码圆点紧凑(4 个圆点不到 2 个字宽)、读屏读原文、非圆点掩码原样显示。
 - `flutter test test/features/admin/ai_provider_repository_test.dart`: 各端点路径、请求体(空密钥不发、`version`、删除的 `?version=`、`clearApiKey`、境外确认、已存密钥核对体不带密钥)、服务端原样 `PresetsView` / `TestResult`(含 `WARN` / `SKIPPED` / 失败)/ `ModelsResult` 解析、本机与「自定义 + 本机」免密钥口径、非法 id 拒绝、地址规范化。
-- `flutter test test/features/admin/ai_settings_entry_test.dart`: 工作台卡片与系统设置入口卡的显隐与跳转; 系统设置读取失败或没有设置项时入口卡仍在顶部。
+- `flutter test test/features/admin/ai_settings_entry_test.dart`: 工作台不再出现「AI 服务」卡(退役守卫); 系统设置入口卡的跳转与返回; 系统设置读取失败或没有设置项时入口卡仍在。
 - 截图: `UTEN_UI_FIXTURES=1 flutter test test/features/admin/admin_ai_settings_page_test.dart` 输出到 `.codex-tmp/ai-settings-ui/`。
 - 真机联调(服务端完成后): 超管账号添加 DeepSeek(或本机 Ollama)→ 测试连接四步全绿 → 设为默认 → 销售账号「识别客户文件」走通; 改接口地址不填密钥保存应被拒(422); 审计中心能查到 `ai_provider.*` 事件且无密钥明文。

@@ -48,6 +48,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -502,6 +503,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             _zeroCostGoodsIds.add(it.goodsId!);
           }
           final row = StockGridRow(isCheck: _isCheck)
+            ..platformFields.sourceRecordId = it.id
             ..goods = it.goodsId == null
                 ? null
                 : GoodsOption(
@@ -749,7 +751,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     final items = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
-      final m = <String, dynamic>{'goodsId': r.goods!.id};
+      final m = <String, dynamic>{
+        'goodsId': r.goods!.id,
+        ...platformRowPayload(r),
+      };
       if (r.colorId != null) m['colorId'] = r.colorId;
       if (r.unitId != null) m['unitId'] = r.unitId;
       m['unitRate'] = r.unitRate;
@@ -1096,6 +1101,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                             // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：本页无右侧入口，整行删除。
                             _savedFields(
                               UtenEditableGrid<StockGridRow>(
+                                tableKey:
+                                    'warehouse.${widget.docType.name}.items',
                                 controller: _grid,
                                 stickyHeaderPinned: _gridPinned,
                                 columns: stockGridColumns(
@@ -1141,7 +1148,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     );
   }
 
-  /// 明细表尾：「明细 N 行 · 数量(按单位分组) · 实称 125.3 kg (未称 3 行) · 称重偏差 N 行」；
+  /// 明细表尾：「总行数 N 行 · 数量(按单位分组) · 实称 125.3 kg (未称 3 行) · 称重偏差 N 行」；
   /// 盘点口径为实盘数量与实盘重量。行集变化、逐格输入与单重参数到达都即时刷新。
   Widget _gridTotals(WeightDisplay display) => ListenableBuilder(
     listenable: _grid,
@@ -1157,8 +1164,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         builder: (context, _) => UtenTotalsSummaryBar(
           key: const Key('stock-doc-edit-totals'),
           density: true,
+          rowCount: rows.length,
           entries: [
-            UtenTotalEntry('明细', '${rows.length} 行'),
             utenQuantityTotalEntry(
               rows.map(
                 (row) => MeasuredAmount(

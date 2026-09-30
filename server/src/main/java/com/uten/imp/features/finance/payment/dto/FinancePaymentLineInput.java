@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 采购付款单保存请求中的明细行。 */
 @Getter
 @Setter
-public class FinancePaymentLineInput implements ServerDerivedAmounts {
+public class FinancePaymentLineInput extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
     private UUID appliedLedgerId;

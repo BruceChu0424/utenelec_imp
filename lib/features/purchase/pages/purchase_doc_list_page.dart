@@ -719,6 +719,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                       ? const UtenHistoryTimePlaceholder()
                       : _withDraftCategory(
                           MasterDataTableView<PurchaseDocListItem>(
+                            tableKey: 'purchase.${widget.docType.name}.list',
                             // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                             primary: true,
                             columns: _columns(

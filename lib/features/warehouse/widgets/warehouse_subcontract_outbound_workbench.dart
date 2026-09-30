@@ -253,6 +253,8 @@ class _WarehouseSubcontractOutboundWorkbenchState
         ],
       ),
       body: MasterDataTableView<OutboundTask>(
+        tableKey:
+            'features.warehouse.widgets.warehouse_subcontract_outbound_workbench.WarehouseSubcontractOutboundWorkbenchState.build.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('subcontract-outbound-task-table'),

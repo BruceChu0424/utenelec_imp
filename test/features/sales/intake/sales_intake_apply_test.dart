@@ -32,6 +32,92 @@ SalesIntakePatchRow _row(SalesIntakePatch patch, String key) =>
     patch.rows.singleWhere((r) => r.intakeLineKey == key);
 
 void main() {
+  test(
+    'saved file prices keep unknown exchange rate when appending information without a session',
+    () {
+      const patch = SalesIntakePatch(
+        jobId: 'new-job',
+        rows: [],
+        clientFileCurrency: 'EUR',
+        financeRate: '9.5',
+      );
+      final session = patch.toSession(
+        preservePreviousPricing: true,
+        previousFileCurrency: 'USD',
+      );
+      expect(session.clientFileCurrency, 'USD');
+      expect(session.financeRate, isNull);
+      expect(session.rateMissing, isTrue);
+      expect(session.additionalJobIds, isEmpty);
+      final restored = SalesIntakeSession.fromJson(session.toJson());
+      expect(restored.rateMissing, isTrue);
+      expect(restored.financeRate, isNull);
+    },
+  );
+
+  test(
+    'file extra columns retain selected values without inventing arithmetic',
+    () {
+      final json = intakeResultJson();
+      json['extraColumns'] = [
+        {
+          'key': 'file_E',
+          'label': '运费',
+          'dataType': 'NUMBER',
+          'suggestedOperation': 'ADD',
+        },
+        {'key': 'file_F', 'label': '认证', 'dataType': 'TEXT'},
+      ];
+      ((json['lines'] as List).first as Map<String, dynamic>)['extraValues'] = {
+        'file_E': '12.50',
+        'file_F': 'CE',
+      };
+      final result = SalesIntakeResult.fromJson(json);
+      final patch = _patch(
+        result,
+        docType: SalesDocType.quote,
+        tweak: (d) => d.includedExtraColumns.remove('file_F'),
+      );
+      expect(patch.extraColumns.map((c) => c.label), ['运费']);
+      expect(patch.rows.first.extraValues, {'file_E': '12.50'});
+    },
+  );
+
+  test(
+    'append session retains all adopted jobs and selected client fields in drafts',
+    () {
+      final result = SalesIntakeResult.fromJson(intakeResultJson());
+      final patch = _patch(result, docType: SalesDocType.quote);
+      final session = patch.toSession(
+        previous: SalesIntakeSession(
+          jobId: 'previous-job',
+          clientId: patch.clientId,
+          additionalJobIds: const ['earlier-job'],
+          clientFields: const {'website': 'https://buyer.test'},
+        ),
+      );
+      final restored = SalesIntakeSession.fromJson(session.toJson());
+      expect(
+        restored.toSaveJson(
+          currentClientId: patch.clientId,
+        )['additionalJobIds'],
+        ['previous-job', 'earlier-job'],
+      );
+      expect(restored.clientFields['website'], 'https://buyer.test');
+      expect(
+        patch
+            .toSession(
+              previous: const SalesIntakeSession(
+                jobId: 'other',
+                clientId: 'other-client',
+              ),
+            )
+            .additionalJobIds,
+        isEmpty,
+      );
+    },
+  );
+
   group('解析', () {
     test('防御式解析: 数字字符串/千分位, 重复与缺键的行丢弃, 白名单外补全字段丢弃', () {
       final result = SalesIntakeResult.fromJson(intakeResultJson());
@@ -282,7 +368,7 @@ void main() {
   });
 
   group('组合件拆行', () {
-    test('拆成 2 行: 数量相同, 部件不挂文件单价(整套单价写进第一行备注), 折扣留空, 不回传行键', () {
+    test('拆成 2 行: 数量相同, 部件不挂文件单价, 折扣留空, 保留模板来源行键', () {
       final result = SalesIntakeResult.fromJson(intakeResultJson());
       final line = result.lines[4];
       final patch = _patch(
@@ -299,12 +385,13 @@ void main() {
       expect(parts[0].remark, '组合件 WTV-03+WTV-04 整套文件单价 12 USD');
       expect(parts[1].remark, isNull);
       expect(parts.every((r) => r.discount == ''), isTrue);
-      expect(parts.every((r) => r.intakeLineKey == null), isTrue);
+      expect(parts.map((r) => r.intakeLineKey).toSet(), {'S1R13'});
       expect(
         parts.every((r) => r.reviewReason == l10n.salesIntakeMarkerBundlePart),
         isTrue,
       );
-      expect(patch.rows.where((r) => r.intakeLineKey == 'S1R13'), isEmpty);
+      expect(patch.rows.where((r) => r.intakeLineKey == 'S1R13'), hasLength(2));
+      expect(parts.every((r) => !r.setNameEn), isTrue);
     });
 
     test('行数统计与拆行一致', () {

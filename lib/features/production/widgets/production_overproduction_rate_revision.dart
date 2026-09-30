@@ -52,6 +52,8 @@ class ProductionOverproductionRateRevision extends StatelessWidget {
     final rows = productionRateRevisionRows(request);
     if (rows == null) return const Center(child: Text('审批快照不完整，请刷新后再处理'));
     return UtenRevisionTable<Map<String, dynamic>>(
+      tableKey:
+          'features.production.widgets.production_overproduction_rate_revision.ProductionOverproductionRateRevision.build.1',
       key: const ValueKey('production-rate-revision-table'),
       rows: rows,
       columns: [

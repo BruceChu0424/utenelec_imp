@@ -1,3 +1,4 @@
+import '../../../shared/business_columns/business_column.dart';
 import 'dart:convert';
 
 import '../../../shared/formatters/exact_decimal.dart';
@@ -80,6 +81,7 @@ Set<String> procurementChangedFields(
   FinanceProcurementReviewLine before,
   FinanceProcurementReviewLine after,
 ) => {
+  ...businessColumnChangedKeys(before.extraColumns, after.extraColumns),
   if (before.goodsId != after.goodsId ||
       (before.displaySnapshotComplete &&
           after.displaySnapshotComplete &&

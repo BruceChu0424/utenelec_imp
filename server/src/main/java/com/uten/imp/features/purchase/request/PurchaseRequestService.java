@@ -274,6 +274,7 @@ public class PurchaseRequestService {
     }
 
     @Transactional
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_request_item")
     public RequestDetail create(RequestSaveRequest req) {
         tx.bind();
         PurchaseRequest r = new PurchaseRequest();
@@ -287,6 +288,7 @@ public class PurchaseRequestService {
     }
 
     @Transactional
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_request_item", requestArgument=1, documentIdArgument=0)
     public RequestDetail update(UUID id, RequestSaveRequest req) {
         tx.bind();
         PurchaseRequest r = requireRequestForUpdate(id);

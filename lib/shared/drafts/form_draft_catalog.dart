@@ -91,6 +91,13 @@ class FormDraftDescriptor {
 /// Draft policy uses the same create/approve authority as its domain command.
 /// Accounting policy creation is an approval operation, unlike asset entry.
 abstract final class FormDraftCatalog {
+  static const goodsCost = FormDraftDescriptor(
+    title: '货品成本',
+    module: BadgeModule.finance,
+    route: '/basicinfo/goods/:id?tab=cost',
+    permission: Perm.goodsCostView,
+    draftKind: 'goods_cost',
+  );
   static const client = FormDraftDescriptor(
     title: '新增客户',
     module: BadgeModule.sales,
@@ -410,6 +417,7 @@ abstract final class FormDraftCatalog {
 
   /// Completeness index for the single reviewed descriptor catalog.
   static const all = <String, FormDraftDescriptor>{
+    'goodsCost': goodsCost,
     'client': client,
     'supplier': supplier,
     'supplierQuick': supplierQuick,

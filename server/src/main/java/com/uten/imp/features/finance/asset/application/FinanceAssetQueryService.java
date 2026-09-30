@@ -183,6 +183,14 @@ public class FinanceAssetQueryService {
         return detail(summary, books, schedule, "FIXED_ASSET");
     }
 
+    /** Minimal existing-authority projection for display columns; avoids loading schedules per grid row. */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_asset:view')")
+    public AssetWorkbenchResponses.Summary platformSummary(UUID id, boolean deferred) {
+        authorization.require(FinanceAssetAuthorization.VIEW);
+        return summaryDirect(id, deferred);
+    }
+
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public AssetWorkbenchResponses.Detail deferredExpense(UUID id) {

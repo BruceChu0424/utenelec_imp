@@ -44,11 +44,15 @@ void main() {
       }
 
       await settleFrames();
+      await tester.ensureVisible(find.text('必选供应商').first);
+      await settleFrames();
       await tester.tap(find.text('必选供应商').first);
       await settleFrames();
       await tester.tap(find.text('洪武五金'));
       await tester.pump();
       await tester.tap(find.text('确定'));
+      await settleFrames();
+      await tester.ensureVisible(find.text('洪武五金').first);
       await settleFrames();
       await tester.tap(find.text('洪武五金').first);
       await settleFrames();
@@ -113,6 +117,8 @@ void main() {
     // 点击第一个选中行的供应商单元格（必填未选显示红字提示）→ 右侧滑入供应商面板。
     final cells = find.text('必选供应商');
     expect(cells, findsNWidgets(3));
+    await tester.ensureVisible(cells.first);
+    await tester.pumpAndSettle();
     await tester.tap(cells.at(0));
     await tester.pumpAndSettle();
     // 面板出现：列表里点选「洪武五金」→ 确定。

@@ -20,7 +20,7 @@ import java.util.UUID;
  */
 @Getter
 @Setter
-public class StockDocItemLine {
+public class StockDocItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput {
 
     private Integer lineNo;
 

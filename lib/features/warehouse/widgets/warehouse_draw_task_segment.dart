@@ -461,6 +461,8 @@ class _WarehouseDrawTaskSegmentState
         ],
       ),
       body: MasterDataTableView<WarehouseDrawTask>(
+        tableKey:
+            'features.warehouse.widgets.warehouse_draw_task_segment.WarehouseDrawTaskSegmentState.build.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('warehouse-draw-task-table'),

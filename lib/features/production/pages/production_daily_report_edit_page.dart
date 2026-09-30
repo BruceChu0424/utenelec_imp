@@ -35,6 +35,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -476,6 +477,7 @@ class _ProductionDailyReportEditPageState
         for (final group in productionDailyReportInputGroups(d.items)) {
           final it = group.source;
           final row = DailyGridRow()
+            ..platformFields.sourceRecordId = it.id
             ..planNo.text = group.planNo ?? ''
             ..remark.text = it.remark ?? ''
             ..planItemId = group.planItemId
@@ -2133,6 +2135,7 @@ class _ProductionDailyReportEditPageState
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       itemsBody.add({
+        ...platformRowPayload(r),
         'goodsId': r.goods!.id,
         'qty': qty,
         // 不良数只记录，不改良品数；空或 0 不提交。
@@ -2861,6 +2864,7 @@ class _ProductionDailyReportEditPageState
                               ),
                             _savedFields(
                               UtenEditableGrid<DailyGridRow>(
+                                tableKey: 'production.daily.items',
                                 controller: _grid,
                                 stickyHeaderPinned: _gridPinned,
                                 columns: dailyGridColumns(

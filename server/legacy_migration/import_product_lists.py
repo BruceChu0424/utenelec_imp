@@ -146,6 +146,8 @@ def load_rows(data_dir: Path, files: list[str]) -> list[dict]:
                 # 所属仓库(V587)：这批货平时归哪个仓管。列可能缺席(旧导出)，
                 # 缺了就是空串，后面整段自动跳过。
                 "warehouse": g(r, "所属仓库"),
+                # 生产车间(V590)：货品平时在哪个车间生产。列可能缺席(旧导出)。
+                "workshop": g(r, "生产车间"),
             }
             if not rec["code"] and not rec["name"]:
                 continue  # 空行
@@ -210,7 +212,7 @@ def main() -> None:
     cur.execute("""
         SELECT id, code, name, series, material, model, spec, c_number,
                require_remark, m_weight, color_legacy_id, unit_legacy_id,
-               source_type, category_id
+               source_type, category_id, owning_workshop_department_id
         FROM goods WHERE is_deleted = false AND code IS NOT NULL
     """)
     db = {}
@@ -220,6 +222,7 @@ def main() -> None:
             "model": r[5], "spec": r[6], "c_number": r[7], "remark": r[8],
             "m_weight": r[9], "color": r[10], "unit": r[11],
             "source_type": r[12], "category_id": r[13],
+            "owning_workshop": r[14],
         }
     print(f"库内货品（有编号）：{len(db)}")
 
@@ -341,11 +344,46 @@ def main() -> None:
         key = UNIT_ALIAS.get(key, key)
         return unit_by_name.get(key)
 
+    # ----- 生产车间字典(V590 goods.owning_workshop_department_id) -----
+    # Excel「生产车间」是新 ERP 的车间叫法，与本平台 departments 的 WS_* 车间
+    # 名不一致，映射是业务口径（2026-09-29 定，可按需调整后清列重跑）：
+    #   注塑车间→注塑车间(WS_ZHUSU) / 轨道生产车间→轨道装配车间(WS_DLGD) /
+    #   开关插座生产车间·开关插座车间→装配第一车间(WS_ZHUANG) /
+    #   五金车间→五金铜铸车间(WS_WJTZ)
+    # 只填空：库存执行段学习(V590 排产确认/车间改派)后到覆盖，Excel 是初始种子。
+    # 车间不自动建(部门驱动权限，与仓库存根不同)；未匹配名进 workshop_unmatched.csv。
+    WORKSHOP_NAME_MAP = {
+        "注塑车间": "注塑车间",
+        "轨道生产车间": "轨道装配车间",
+        "开关插座生产车间": "装配第一车间",
+        "开关插座车间": "装配第一车间",
+        "五金车间": "五金铜铸车间",
+    }
+    cur.execute("SELECT id, name FROM departments WHERE is_deleted = false AND name IS NOT NULL")
+    workshop_id_by_name = {}
+    for did, name in cur.fetchall():
+        clean = norm_name(name)
+        if clean and clean not in workshop_id_by_name:
+            workshop_id_by_name[clean] = did
+
+    def workshop_department_id(name: str):
+        key = norm_name(name)
+        if not key:
+            return None
+        return workshop_id_by_name.get(WORKSHOP_NAME_MAP.get(key, key))
+
+    def quantity_unit_in_use(goods_id):
+        # V498/V675：货品已有数量记录（BOM 组件等）时基本单位只能走管理员受控核对，
+        # 普通补齐让位跳过，避免触发 goods_quantity_unit_immutable 守卫回滚整批。
+        cur.execute("SELECT fn_goods_quantity_unit_in_use(%s)", (goods_id,))
+        return cur.fetchone()[0]
+
     # ----- 逐条更新 -----
     def blank(v):
         return v is None or (isinstance(v, str) and v.strip() == "")
 
     updates = 0
+    workshop_unmatched: list[tuple] = []   # 生产车间名没映射上部门（进报告 CSV）
     for rec, g in verified:
         sets, params = {}, []
 
@@ -385,9 +423,24 @@ def main() -> None:
 
         if rec["unit"] and g["unit"] is None:
             lid = unit_legacy(rec["unit"])
+            if lid and quantity_unit_in_use(g["id"]):
+                stats["跳过-单位受数量引用(V498)"] += 1
+                lid = None
             if lid:
                 sets["unit_legacy_id"] = lid
                 stats["补-unit_legacy_id"] += 1
+
+        # 生产车间(V590 owning_workshop_department_id)：只填空——运行时学习
+        # (排产确认/车间改派)与执行段回填后到覆盖，Excel 是初始种子。
+        if rec["workshop"] and g["owning_workshop"] is None:
+            did = workshop_department_id(rec["workshop"])
+            if did:
+                sets["owning_workshop_department_id"] = did
+                stats["补-生产车间"] += 1
+            else:
+                stats["车间名未匹配"] += 1
+                workshop_unmatched.append(
+                    (rec["file"], rec["row"], rec["code"], rec["name"], rec["workshop"]))
 
         if not sets:
             stats["无需更新"] += 1
@@ -566,6 +619,9 @@ def main() -> None:
     write_csv("warehouse_unmatched.csv",
               ["归一后产品名称", "Excel所属仓库"],
               sorted(wh_unmatched))
+    write_csv("workshop_unmatched.csv",
+              ["文件", "行号", "产品编号", "产品名称", "Excel生产车间"],
+              sorted(workshop_unmatched))
 
     summary = [
         f"运行时间: {now.isoformat()}  模式: {'APPLY' if args.apply else 'DRY-RUN'}",
@@ -574,6 +630,7 @@ def main() -> None:
         f"名称不符: {len(mismatch)}  编号未命中: {len(unmatched)}",
         f"更新货品: {updates}",
         f"所属仓库写入: {wh_updates}  补建仓库: {len(wh_created)}  Excel有名库里无此货品: {len(wh_unmatched)}",
+        f"生产车间未匹配: {len(workshop_unmatched)}（workshop_unmatched.csv，映射表见脚本 WORKSHOP_NAME_MAP）",
         "",
         "明细统计:",
         *[f"  {k}: {v}" for k, v in sorted(stats.items())],

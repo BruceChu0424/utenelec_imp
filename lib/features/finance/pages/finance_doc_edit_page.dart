@@ -38,6 +38,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -498,6 +499,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         final rows = <FinanceGridRow>[];
         for (final it in d.items) {
           final row = FinanceGridRow(mode: _cfg.itemMode)
+            ..platformFields.sourceRecordId = it.id
             ..appliedLedgerId = it.appliedLedgerId
             ..appliedBillNo = it.appliedBillNo
             ..authoritativeSalesOrderId = it.salesOrderId
@@ -1077,6 +1079,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             ? null
             : r.remark.text.trim();
       }
+      item.addAll(platformRowPayload(r));
       itemsBody.add(item);
     }
     if (_cfg.type == FinanceDocType.receipt &&
@@ -2462,6 +2465,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                               ),
                               _savedFields(
                                 UtenEditableGrid<FinanceGridRow>(
+                                  tableKey:
+                                      'finance.${widget.docType.name}.items',
                                   controller: _grid,
                                   stickyHeaderPinned: _gridPinned,
                                   columns: financeGridColumns(
@@ -2521,22 +2526,26 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     );
   }
 
-  /// 费用/收入/转账/分摊单据挂在明细表下方的合计（全站统一合计条口径）：金额标红，
-  /// 币种取表头（不硬编码 ¥）；钱流明细无单位口径，故不出「合计数量」。
-  Widget _oldTotal(FinanceNameService names) => ValueListenableBuilder<double>(
-    valueListenable: _grid.totalListenable,
-    builder: (_, total, _) => UtenTotalsSummaryBar(
-      key: const Key('finance-edit-totals'),
-      density: true,
-      entries: [
-        UtenTotalEntry(
-          utenAmountTotalLabel(
-            financeCurrencyDisplayLabel(name: names.currency(_currencyId)),
+  /// 费用/收入/转账/分摊单据挂在明细表下方的合计（全站统一合计条口径）：总行数 +
+  /// 金额标红，币种取表头（不硬编码 ¥）；钱流明细无单位口径，故不出「合计数量」。
+  Widget _oldTotal(FinanceNameService names) => ListenableBuilder(
+    listenable: _grid,
+    builder: (_, _) => ValueListenableBuilder<double>(
+      valueListenable: _grid.totalListenable,
+      builder: (_, total, _) => UtenTotalsSummaryBar(
+        key: const Key('finance-edit-totals'),
+        density: true,
+        rowCount: _grid.rows.length,
+        entries: [
+          UtenTotalEntry(
+            utenAmountTotalLabel(
+              financeCurrencyDisplayLabel(name: names.currency(_currencyId)),
+            ),
+            total.toStringAsFixed(2),
+            danger: true,
           ),
-          total.toStringAsFixed(2),
-          danger: true,
-        ),
-      ],
+        ],
+      ),
     ),
   );
 

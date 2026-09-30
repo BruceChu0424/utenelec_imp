@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Getter @Setter
-public class RequestItemLine implements ServerDerivedAmounts {
+public class RequestItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
     private Integer lineNo;
     @NotNull private UUID goodsId;
     private UUID colorId;

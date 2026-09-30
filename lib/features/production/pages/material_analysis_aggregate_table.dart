@@ -848,8 +848,9 @@ final class _MaterialAggregateTableController {
   }
 
   MaterialAggregateOrderRequest requestFor(
-    List<_MaterialAggregateDraft> selected,
-  ) {
+    List<_MaterialAggregateDraft> selected, {
+    bool skipAutoClaim = false,
+  }) {
     final analysis = owner._analysis!;
     final inputs = <MaterialAggregateOrderGroupInput>[];
     final safetyDimensions = <String>{};
@@ -950,6 +951,7 @@ final class _MaterialAggregateTableController {
         owner._dateText(owner._billDate),
         owner._dateText(owner._deliveryDate),
         owner._preparationApproveNow,
+        if (skipAutoClaim) 'skipAutoClaim',
         for (final input in inputs) input.toJson(),
       ]),
     );
@@ -963,12 +965,14 @@ final class _MaterialAggregateTableController {
       deliveryDate: owner._dateText(owner._deliveryDate),
       approveNow: owner._preparationApproveNow,
       groups: inputs,
+      skipAutoClaim: skipAutoClaim,
     );
   }
 
   Future<void> refreshPreview({
     Set<String>? keys,
     bool forSubmission = false,
+    bool skipAutoClaim = false,
   }) async {
     _debounce?.cancel();
     if (saving || uncertain || drafts.isEmpty) return;
@@ -984,10 +988,13 @@ final class _MaterialAggregateTableController {
     }
     if (effectiveKeys.isEmpty) return;
     final scope = effectiveKeys.toList()..sort();
+    // 「足额下单(不扣可用数量)」要换一份带 skipAutoClaim 的提交请求：签名带上
+    // 该标记，让编辑期不带标记的在途预览在提交时被取代而不是被复用。
     final signature =
         '$requestRevision|${scope.join('|')}|${owner._analysis?.version}|${owner._analysis?.fingerprint}|'
         '${owner._warehouseId}|${owner._dateText(owner._billDate)}|${owner._dateText(owner._deliveryDate)}|'
-        '${owner._preparationApproveNow}';
+        '${owner._preparationApproveNow}'
+        '${skipAutoClaim ? '|skipAutoClaim' : ''}';
     final flight = _flight;
     if (flight != null) {
       if (forSubmission && _flightSignature != signature) {
@@ -1004,7 +1011,11 @@ final class _MaterialAggregateTableController {
             (!forSubmission && owner._preparationSubmissionActive)) {
           return;
         }
-        return refreshPreview(keys: keys, forSubmission: forSubmission);
+        return refreshPreview(
+          keys: keys,
+          forSubmission: forSubmission,
+          skipAutoClaim: skipAutoClaim,
+        );
       }
     }
     if (_preview != null &&
@@ -1020,6 +1031,7 @@ final class _MaterialAggregateTableController {
           effectiveKeys,
           signature,
           generation,
+          skipAutoClaim: skipAutoClaim,
         ).whenComplete(() {
           if (identical(_flight, work)) {
             _flight = null;
@@ -1042,14 +1054,15 @@ final class _MaterialAggregateTableController {
     int revision,
     Set<String>? keys,
     String signature,
-    int generation,
-  ) async {
+    int generation, {
+    bool skipAutoClaim = false,
+  }) async {
     try {
       final selected = drafts.values
           .where((draft) => keys == null || keys.contains(draft.key))
           .toList();
       if (selected.isEmpty) return;
-      final request = requestFor(selected);
+      final request = requestFor(selected, skipAutoClaim: skipAutoClaim);
       final token = CancelToken();
       _cancelToken = token;
       final preview = await owner.ref
@@ -1251,11 +1264,17 @@ final class _MaterialAggregateTableController {
   Future<bool> submit(
     List<_MaterialGroup> selectedGroups, {
     bool confirmed = false,
-  }) => submission.submit(selectedGroups, confirmed: confirmed);
+    bool? skipAutoClaim,
+  }) => submission.submit(
+    selectedGroups,
+    confirmed: confirmed,
+    skipAutoClaim: skipAutoClaim,
+  );
 
   Future<bool> submitStage(
     List<_MaterialGroup> selectedGroups, {
     bool confirmed = false,
+    bool skipAutoClaim = false,
   }) async {
     if (saving || selectedGroups.isEmpty) return false;
     if (!uncertain) {
@@ -1287,7 +1306,11 @@ final class _MaterialAggregateTableController {
       // 确认弹窗之前必须撤掉，否则会把弹窗盖在背后转圈。
       owner.bucketActionBusyMessage.value = '正在核对汇总下达内容';
       try {
-        await refreshPreview(keys: keys, forSubmission: true);
+        await refreshPreview(
+          keys: keys,
+          forSubmission: true,
+          skipAutoClaim: skipAutoClaim,
+        );
       } finally {
         owner.bucketActionBusyMessage.value = null;
       }
@@ -2023,6 +2046,13 @@ final class _MaterialAggregateTableController {
     return ordered > 0.000000001
         ? owner._qty(ordered)
         : drafts[aggregate.key]?.totalText ?? owner._qty(pendingQty(aggregate));
+  }
+
+  String quantityRaw(_MaterialAggregate aggregate, {required bool append}) {
+    final ordered = orderedQty(aggregate);
+    if (append && ordered <= 0.000000001) return '0';
+    if (!append && ordered > 0.000000001) return ordered.toString();
+    return drafts[aggregate.key]?.totalText ?? pendingQty(aggregate).toString();
   }
 
   String appendText(_MaterialAggregate aggregate) =>

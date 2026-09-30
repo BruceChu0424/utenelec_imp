@@ -63,12 +63,13 @@ final class SalesLearningPlanner {
     record NameEnCandidate(UUID goodsId, String text) {
     }
 
-    /** 学习计划。 */
-    record Plan(List<AliasUpsert> aliases, List<NameEnCandidate> nameEn) {
+    /** Existing document evidence can survive an ordinary quantity edit without teaching new mappings. */
+    record RetainedAlias(UUID clientId, AliasKind kind, String norm, UUID goodsId) { }
 
-        boolean isEmpty() {
-            return aliases.isEmpty() && nameEn.isEmpty();
-        }
+    /** 学习计划。 */
+    record Plan(List<AliasUpsert> aliases, List<NameEnCandidate> nameEn, List<RetainedAlias> retainedSources) {
+        Plan(List<AliasUpsert> aliases, List<NameEnCandidate> nameEn) { this(aliases, nameEn, List.of()); }
+        boolean isEmpty() { return aliases.isEmpty() && nameEn.isEmpty(); }
     }
 
     static Plan plan(SalesLearningRequest request, IntakeJobLines jobLines) {
@@ -76,6 +77,7 @@ final class SalesLearningPlanner {
         Map<String, AliasUpsert> aliases = new LinkedHashMap<>();
         Map<AliasKey, Set<UUID>> goodsPerKey = new HashMap<>();
         List<NameEnCandidate> nameEnRaw = new ArrayList<>();
+        Set<RetainedAlias> retained = new java.util.LinkedHashSet<>();
         UUID clientId = request.clientId();
 
         for (LearnedLine line : request.lines()) {
@@ -83,7 +85,13 @@ final class SalesLearningPlanner {
             IntakeJobLines.JobLine jobLine = job.line(line.intakeLineKey());
             boolean learnable = line.userConfirmed()
                     || (jobLine != null && jobLine.matchedUnchanged(line.goodsId()));
-            if (!learnable) continue;
+            if (!learnable) {
+                if (!line.userConfirmed() && jobLine == null) {
+                    retain(retained, clientId, AliasKind.PART_NO, line.clientModel(), line.goodsId());
+                    retain(retained, clientId, AliasKind.DESCRIPTION, line.clientGoodsName(), line.goodsId());
+                }
+                continue;
+            }
             String context = context(jobLine);
             if (context == null) continue;
 
@@ -131,7 +139,16 @@ final class SalesLearningPlanner {
                 .thenComparing(AliasUpsert::norm)
                 .thenComparing(AliasUpsert::context));
 
-        return new Plan(List.copyOf(resolved), resolveNameEn(nameEnRaw));
+        return new Plan(List.copyOf(resolved), resolveNameEn(nameEnRaw), List.copyOf(retained));
+    }
+
+    private static void retain(Set<RetainedAlias> retained, UUID client, AliasKind kind, String raw, UUID goods) {
+        String text = ClientDocumentFields.clean(raw);
+        String norm = text == null ? "" : kind == AliasKind.PART_NO ? IntakeTextNormalizer.normalizePart(text)
+                : IntakeTextNormalizer.normalizeDescription(text);
+        if (!usable(text, norm)) return;
+        if (client != null) retained.add(new RetainedAlias(client, kind, norm, goods));
+        retained.add(new RetainedAlias(null, kind, norm, goods));
     }
 
     /** 同一段英文对到多个货品、或同一货品两段不同英文: 都不学; 其余按货品 id 排序。 */

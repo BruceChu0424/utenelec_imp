@@ -652,6 +652,8 @@ class _WarehouseStockDocSegmentState
               ? const UtenHistoryTimePlaceholder()
               : _withFormDraftRows(
                   MasterDataTableView<StockDocListItem>(
+                    tableKey:
+                        'features.warehouse.widgets.warehouse_stock_doc_segment.WarehouseStockDocSegmentState.build.1',
                     // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
                     primary: true,
                     key: Key('stock-doc-segment-table-${widget.docType.code}'),

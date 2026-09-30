@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_drop_target.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../models/goods_import.dart';
@@ -60,47 +61,53 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-              UtenSpacing.s8,
-              UtenSpacing.s12,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '导入货品',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+    // 弹窗整块都是拖放接收区（Web/桌面端）：xlsx 直接拖进来检测。
+    return UtenDropTarget(
+      enabled: !_detecting && !_committing,
+      hint: '松开鼠标检测 Excel',
+      onFiles: (files) => _detectFile(files.first),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s16,
+                UtenSpacing.s12,
+                UtenSpacing.s8,
+                UtenSpacing.s12,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '导入货品',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          Flexible(
-            child: SingleChildScrollView(
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: _body(theme),
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
               padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: _body(theme),
+              child: _actions(theme),
             ),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            child: _actions(theme),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -136,7 +143,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           '可导入列：系列、型号、规格、材质、主颜色、单位、来源、价格、'
           '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
           '${basicDataL10n(context).goodsNameEnImportHint}\n'
-          '客户型号、模具编号、所属仓库、归属车间仅识别不导入。\n'
+          '客户型号、模具编号、所属仓库、生产车间仅识别不导入。\n'
           '缺失的分类/颜色/单位会自动新建；编号重复或已存在会拦下，改完再传。\n'
           '如从「导出货品」取得文件，导出时请不要设置密码。',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -307,6 +314,19 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         if (mounted) setState(() => _detecting = false);
         return;
       }
+      await _detectFile(f);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _detecting = false);
+      context.appError('Excel 文件选择异常，请重试');
+    }
+  }
+
+  /// 检测一个工作簿（文件选择框与拖入共用）。
+  Future<void> _detectFile(PlatformFile f) async {
+    if (!mounted) return;
+    setState(() => _detecting = true);
+    try {
       final bytes = await readGoodsImportFile(f);
       final report = await ref
           .read(goodsImportRepositoryProvider)

@@ -323,6 +323,7 @@ public class StockDocService {
 
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:create')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="stock_doc_item", quantityFields={"countWeight","countQty","qty"})
     public StockDocDetail create(StockDocSaveRequest req) {
         return createInternal(req, null);
     }
@@ -378,6 +379,7 @@ public class StockDocService {
 
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:edit')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="stock_doc_item", requestArgument=1, documentIdArgument=0, quantityFields={"countWeight","countQty","qty"})
     public StockDocDetail update(UUID id, StockDocSaveRequest req) {
         tx.bind();
         // 编辑认领只保护草稿修改，不授予审核能力。

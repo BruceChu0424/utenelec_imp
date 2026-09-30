@@ -241,6 +241,9 @@ class _FinanceAssetWorkbenchPageState
                             routePath: '/finance/assets',
                             query: {'draftForm': 'assetPolicy'},
                           ),
+                          // 本页已有联动容器（横幅折叠+Tab 吸顶），草稿表直接
+                          // 拾取外层注入的控制器，不再自建折叠容器。
+                          linkedScroll: false,
                         )
                       else
                         const SizedBox.shrink(),

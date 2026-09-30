@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -260,6 +261,8 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         const SizedBox(height: UtenSpacing.s12),
         Expanded(
           child: MasterDataTableView<GoodsBomLearningComponent>(
+            tableKey:
+                'features.basic_data.widgets.goods_bom_learning_panel.GoodsBomLearningPanelState._content.1',
             items: rows,
             facets: const {},
             nullCounts: const {},
@@ -314,38 +317,31 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
       child: Text(text),
     );
 
+    // 2026-09-29 用户口径：名称列只放名称；学习状态徽章从名称格副行独立成列，
+    // 并按「格内胶囊改整格底色」口径走 cellColor（无状态行不铺色）。
+    String? learnStateText(GoodsBomLearningComponent row) => row.released
+        ? l10n.bomLearningReleased
+        : !row.inBom
+        ? l10n.bomLearningOutsideBom
+        : row.systemLearned
+        ? l10n.bomLearnedEdge
+        : null;
+
+    UtenStatusBadgeType? learnStateType(GoodsBomLearningComponent row) =>
+        row.released
+        ? UtenStatusBadgeType.neutral
+        : !row.inBom
+        ? UtenStatusBadgeType.warning
+        : row.systemLearned
+        ? UtenStatusBadgeType.info
+        : null;
+
     return [
       MasterColumnDef(
         key: 'material',
         label: l10n.bomLearningMaterial,
         width: 190,
         value: (row) => row.componentName ?? row.componentCode,
-        cellBuilder: (context, row) {
-          final (label, type) = row.released
-              ? (l10n.bomLearningReleased, UtenStatusBadgeType.neutral)
-              : !row.inBom
-              ? (l10n.bomLearningOutsideBom, UtenStatusBadgeType.warning)
-              : row.systemLearned
-              ? (l10n.bomLearnedEdge, UtenStatusBadgeType.info)
-              : (null, null);
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                row.componentName ?? row.componentCode ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (label != null)
-                UtenStatusBadge(
-                  label: label,
-                  type: type!,
-                  size: UtenStatusBadgeSize.small,
-                ),
-            ],
-          );
-        },
       ),
       MasterColumnDef(
         key: 'code',
@@ -358,6 +354,16 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.materialDiscoveryUnit,
         width: 56,
         value: (row) => row.unitName,
+      ),
+      MasterColumnDef(
+        key: 'learnState',
+        label: '状态',
+        width: 150,
+        value: (row) => learnStateText(row) ?? '—',
+        cellColor: (context, row) {
+          final type = learnStateType(row);
+          return type == null ? null : udenStatusBadgeCellColor(context, type);
+        },
       ),
       MasterColumnDef(
         key: 'designQty',

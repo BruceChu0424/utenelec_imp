@@ -180,6 +180,7 @@ public class FinanceReceiptService {
     @PreAuthorize("hasAuthority('finance_receipt:create') and "
             + "(#req.receiptKind == null or !#req.receiptKind.equalsIgnoreCase('CUSTOMER_PREPAYMENT') "
             + "or (hasAuthority('customer_prepayment:view') and hasAuthority('finance:view:all')))")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_receipt_item")
     public FinanceReceiptDetail create(FinanceReceiptSaveRequest req) {
         tx.bind();
         requirePrepaymentView(req.getReceiptKind());
@@ -218,6 +219,7 @@ public class FinanceReceiptService {
     @PreAuthorize("hasAuthority('finance_receipt:edit') and "
             + "(#req.receiptKind == null or !#req.receiptKind.equalsIgnoreCase('CUSTOMER_PREPAYMENT') "
             + "or (hasAuthority('customer_prepayment:view') and hasAuthority('finance:view:all')))")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_receipt_item", requestArgument=1, documentIdArgument=0)
     public FinanceReceiptDetail update(UUID id, FinanceReceiptSaveRequest req) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);

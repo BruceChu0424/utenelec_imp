@@ -257,7 +257,11 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
                 VALUES (:input,:output,:desired,:task) ON CONFLICT(input_node_id,output_source_node_id) DO UPDATE
                 SET allocated_value_local=excluded.allocated_value_local,last_task_id=excluded.last_task_id
                 """,args("input",input.id(),"output",output.id(),"desired",desired,"task",taskId));
-        if(db.update("UPDATE stock_value_nodes SET distributed_value_local=:after WHERE id=:node AND distributed_value_local=:before",
+        // The input is already locked FOR UPDATE above. A zero-difference task still
+        // records its event/share/task facts, but must not invalidate source snapshots
+        // by creating a new xmin for an unchanged distribution projection.
+        if(distributed.compareTo(input.distributed())!=0
+                &&db.update("UPDATE stock_value_nodes SET distributed_value_local=:after WHERE id=:node AND distributed_value_local=:before",
                 args("node",input.id(),"after",distributed,"before",input.distributed()))!=1)throw conflict("在制分配投影已变化");
         db.update("""
                 UPDATE stock_value_production_cost_tasks SET status='APPLIED',before_share_local=:share,

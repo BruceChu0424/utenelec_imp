@@ -287,6 +287,86 @@ class InventoryPositionPostgresTest {
         balance(p.product(),"2","140");money(owned(p.product(),"COGS"),"210");costPosition(p,"700","350","350","0","0");
     }
 
+    @Test void zeroDifferenceAllocationKeepsInputVersionAndStillCommitsFactsRollbackReplayAndMoney(){
+        Production p=production();productionRevision(p,0,"20",true);drainProduction();
+        Map<UUID,String> inputVersions=Map.of(p.bInput(),nodeXmin(p.bInput()),p.eInput(),nodeXmin(p.eInput()));
+        productionRevision(p,1,"20",false);
+        var tasks=productionCosts.pendingWork(100).stream().filter(w->w.executionSegmentId().equals(p.segment())).toList();
+        assertThat(tasks).hasSize(2);
+        for(var work:tasks){
+            UUID input=db.queryForObject("SELECT input_node_id FROM stock_value_production_cost_tasks WHERE id=?",UUID.class,work.taskId());
+            UUID previous=db.queryForObject("SELECT last_task_id FROM stock_value_production_cost_shares WHERE input_node_id=? AND output_source_node_id=?",
+                    UUID.class,input,p.fg().valueNodeId());
+            assertThatThrownBy(()->lockedAll(List.of(work.inputPool(),work.outputPool()),()->{
+                productionCosts.apply(work.taskId());throw new IllegalStateException("zero allocation caller rollback");
+            })).isInstanceOf(IllegalStateException.class).hasMessageContaining("caller rollback");
+            assertThat(db.queryForObject("SELECT status FROM stock_value_production_cost_tasks WHERE id=?",String.class,work.taskId())).isEqualTo("PENDING");
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_events WHERE id=?",Integer.class,work.taskId())).isZero();
+            assertThat(db.queryForObject("SELECT last_task_id FROM stock_value_production_cost_shares WHERE input_node_id=? AND output_source_node_id=?",
+                    UUID.class,input,p.fg().valueNodeId())).isEqualTo(previous);
+            assertThat(nodeXmin(input)).isEqualTo(inputVersions.get(input));
+
+            assertThat(lockedAll(List.of(work.inputPool(),work.outputPool()),()->productionCosts.apply(work.taskId())).applied()).isTrue();
+            // Both observations are outside the committed apply transaction. A no-op UPDATE
+            // would change xmin here even though a same-transaction comparison could miss it.
+            assertThat(nodeXmin(input)).as("zero-difference allocation must not invalidate a source snapshot")
+                    .isEqualTo(inputVersions.get(input));
+            assertThat(db.queryForObject("SELECT status='APPLIED' AND before_distributed_local=after_distributed_local AND value_event_id=id FROM stock_value_production_cost_tasks WHERE id=?",
+                    Boolean.class,work.taskId())).isTrue();
+            assertThat(db.queryForObject("SELECT last_task_id FROM stock_value_production_cost_shares WHERE input_node_id=? AND output_source_node_id=?",
+                    UUID.class,input,p.fg().valueNodeId())).isEqualTo(work.taskId());
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_events WHERE id=? AND operation='COST_ALLOCATE'",Integer.class,work.taskId())).isEqualTo(1);
+            money(db.queryForObject("SELECT known_value_local FROM stock_value_events WHERE id=?",BigDecimal.class,work.taskId()),"0");
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_node_revisions WHERE event_id=?",Integer.class,work.taskId())).isEqualTo(1);
+            int postings=db.queryForObject("SELECT count(*) FROM stock_value_postings WHERE event_id=?",Integer.class,work.taskId());
+            // Zero delta has an event and revision, but the value ledger intentionally
+            // does not manufacture a zero-amount financial posting.
+            assertThat(postings).isZero();
+            assertThat(lockedAll(List.of(work.inputPool(),work.outputPool()),()->productionCosts.apply(work.taskId())).replayed()).isTrue();
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_postings WHERE event_id=?",Integer.class,work.taskId())).isEqualTo(postings);
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_node_revisions WHERE event_id=?",Integer.class,work.taskId())).isEqualTo(1);
+            assertThat(nodeXmin(input)).isEqualTo(inputVersions.get(input));
+        }
+        drainProduction();balance(p.product(),"5","150");costPosition(p,"600","150","450","0","0");
+        productionRevision(p,2,"10",false);drainProduction();
+        assertThat(nodeXmin(p.bInput())).isNotEqualTo(inputVersions.get(p.bInput()));
+        assertThat(nodeXmin(p.eInput())).isNotEqualTo(inputVersions.get(p.eInput()));
+        balance(p.product(),"5","300");costPosition(p,"600","300","300","0","0");
+    }
+
+    @Test void zeroDifferenceAllocationRetainsTheRealInputRowLockUntilCommit() throws Exception {
+        Production p=production();productionRevision(p,0,"20",true);drainProduction();
+        productionRevision(p,1,"20",false);
+        var work=productionCosts.pendingWork(100).stream().filter(w->w.executionSegmentId().equals(p.segment())).findFirst().orElseThrow();
+        UUID input=db.queryForObject("SELECT input_node_id FROM stock_value_production_cost_tasks WHERE id=?",UUID.class,work.taskId());
+        String before=nodeXmin(input);AtomicInteger owner=new AtomicInteger(),waiter=new AtomicInteger();
+        CountDownLatch applied=new CountDownLatch(1),commit=new CountDownLatch(1);var threads=Executors.newFixedThreadPool(2);
+        try{
+            Future<InventoryProductionCostPort.Applied> first=threads.submit(()->lockedAll(List.of(work.inputPool(),work.outputPool()),()->{
+                owner.set(db.queryForObject("SELECT pg_backend_pid()",Integer.class));
+                var result=productionCosts.apply(work.taskId());applied.countDown();await(commit);return result;
+            }));
+            assertThat(applied.await(10,TimeUnit.SECONDS)).isTrue();
+            Future<UUID> second=threads.submit(()->tx.execute(status->{
+                waiter.set(db.queryForObject("SELECT pg_backend_pid()",Integer.class));
+                return db.queryForObject("SELECT id FROM stock_value_nodes WHERE id=? FOR UPDATE",UUID.class,input);
+            }));
+            long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);boolean blocked=false;
+            while(System.nanoTime()<deadline){
+                if(waiter.get()>0&&Boolean.TRUE.equals(db.queryForObject("SELECT ?=ANY(pg_blocking_pids(?))",Boolean.class,owner.get(),waiter.get()))){blocked=true;break;}
+                Thread.sleep(20);
+            }
+            assertThat(blocked).as("the completed zero-difference apply still owns the input row lock").isTrue();
+            assertThat(second.isDone()).isFalse();commit.countDown();
+            assertThat(first.get(10,TimeUnit.SECONDS).applied()).isTrue();
+            assertThat(second.get(10,TimeUnit.SECONDS)).isEqualTo(input);
+        }finally{commit.countDown();threads.shutdownNow();}
+        assertThat(nodeXmin(input)).as("committed zero-difference work must retain the original input version").isEqualTo(before);
+        drainProduction();balance(p.product(),"5","150");costPosition(p,"600","150","450","0","0");
+    }
+
+    private static String nodeXmin(UUID node){return db.queryForObject("SELECT xmin::text FROM stock_value_nodes WHERE id=?",String.class,node);}
+
     @Test void negativeLateCostHasAnExplicitSignedPendingDifferenceAndRetryDoesNotDoubleRedistribute(){
         Production p=production();productionRevision(p,0,"5",true);drainProduction();
         balance(p.product(),"5","600");costPosition(p,"600","600","0","0","0");

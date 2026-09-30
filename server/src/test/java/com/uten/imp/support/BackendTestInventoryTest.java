@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -51,6 +54,13 @@ class BackendTestInventoryTest {
                 .contains("UTEN_RUN_DB_TESTS"));
         assertThat(methods.stream().filter(row -> row.get("method").equals("inherited")).findFirst().orElseThrow().get("id"))
                 .isEqualTo(DiscoveryFixture.class.getName() + "#inherited");
+        assertThat(methods).allSatisfy(row -> assertThat((List<Map<String, Object>>) row.get("system_property_gates"))
+                .containsExactly(Map.of("named", "fixture.optional.workbook", "matches", ".+")));
+        var nested = methods.stream().filter(row -> row.get("method").equals("nested")).findFirst().orElseThrow();
+        assertThat((List<Map<String, Object>>) nested.get("enabled_on_os"))
+                .containsExactly(Map.of("value", List.of("LINUX"), "architectures", List.of()));
+        assertThat((List<Map<String, Object>>) methods.stream().filter(row -> row.get("method").equals("plain"))
+                .findFirst().orElseThrow().get("enabled_on_os")).isEmpty();
     }
 
     // Not @Nested: Surefire excludes this fixture; discovery below is deliberately explicit.
@@ -59,6 +69,7 @@ class BackendTestInventoryTest {
     }
 
     @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+    @EnabledIfSystemProperty(named = "fixture.optional.workbook", matches = ".+")
     static class DiscoveryFixture extends ParentFixture {
         DiscoveryFixture() { throw new AssertionError("Discovery must never construct fixtures"); }
         @Test void plain() { throw new AssertionError("not executed"); }
@@ -66,6 +77,7 @@ class BackendTestInventoryTest {
         void parameters(int value) { throw new AssertionError("not executed"); }
         @TestFactory Stream<DynamicTest> generated() { throw new AssertionError("Factory must not run in discovery"); }
         @Nested class Child {
+            @EnabledOnOs(OS.LINUX)
             @Test void nested() { throw new AssertionError("not executed"); }
         }
     }

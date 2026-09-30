@@ -130,7 +130,7 @@ class SubcontractPreparationPaginationPostgresTest {
         jdbc.execute("CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric)");
         // ADR-098：委外「进行中」display_stage 的 LATERAL progress 子查询要读这四张表(最小列集)。
         jdbc.execute("CREATE TABLE subcontract_short_delivery_cases(id uuid PRIMARY KEY, order_id uuid, order_item_id uuid, status text, severity text, expected_complete_by date)");
-        jdbc.execute("CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, qty numeric, received_qty numeric, returned_qty numeric, is_deleted boolean DEFAULT false)");
+        jdbc.execute("CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, qty numeric, received_qty numeric, returned_qty numeric, is_deleted boolean DEFAULT false, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb)");
         // This pagination fixture has public inventory only. Exact entitlement handoff is
         // exercised against all real migrations by the component outbound integration tests.
         jdbc.execute("""
@@ -195,7 +195,7 @@ class SubcontractPreparationPaginationPostgresTest {
                 CREATE TABLE production_material_analysis_materials(
                     id uuid PRIMARY KEY, analysis_id uuid, analysis_item_id uuid,
                     design_bom_qty numeric,actual_bom_qty numeric,usage_basis text NOT NULL DEFAULT 'DESIGN',usage_reason text,usage_sample_count bigint,usage_defect_rate numeric);
-                CREATE TABLE sales_order_items(id uuid PRIMARY KEY, bill_no text, line_no integer, client_goods_name VARCHAR(500), client_price NUMERIC);
+                CREATE TABLE sales_order_items(id uuid PRIMARY KEY, bill_no text, line_no integer, client_goods_name VARCHAR(500), client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb, goods_name_en_snapshot varchar(255));
                 ALTER TABLE preplan_supply_actions ADD COLUMN status text DEFAULT 'CREATED',
                     ADD COLUMN goods_id uuid, ADD COLUMN unit_id uuid,
                     ADD COLUMN public_surplus_qty numeric DEFAULT 0,

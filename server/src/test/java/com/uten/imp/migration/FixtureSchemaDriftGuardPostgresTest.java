@@ -82,6 +82,12 @@ class FixtureSchemaDriftGuardPostgresTest {
      * 新增条目必须写清理由——它意味着该 fixture 表永远不会被迁移目录约束。
      */
     private static final Set<String> FIXTURE_ONLY_RELATIONS = Set.of(
+            // PlatformColumnServicePostgresTest uses a private two-column document adapter
+            // to prove row replacement/transaction rollback, not a production relation.
+            "platform_test_document_rows",
+            // FlywayConnectionNoticePolicyPostgresTest creates this private table in its
+            // one-migration notice-policy probe; it is not part of the business schema.
+            "policy_probe",
             // 演练/清库探针：断言继承与拦截行为用的临时关系名。
             "reset_probe_inherited",
             "reset_probe_child",

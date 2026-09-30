@@ -33,6 +33,8 @@ OPTIONAL_GATES = {
     "UTEN_RUN_REHEARSAL_DB_TESTS",
 }
 EXPORTER = "com.uten.imp.migration.FlywayChecksumManifestExporterTest#exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested"
+WORKBOOK_PROPERTY = "uten.cost.companyWorkbook"
+WORKBOOK_REVIEW = "com.uten.imp.features.master.goods.costing.CostCompanyWorkbookReviewTest#preservesFortyDetailBlocksIncludingProductsAbsentFromTheThirtySevenRowSummary"
 
 
 def read_json(path):
@@ -242,6 +244,7 @@ def xml_cases(directory):
             try:
                 root = ET.parse(path).getroot()
                 elements = list(root.iter("testcase"))
+                properties = {item.get("name"): item.get("value", "") for item in root.findall("./properties/property")}
                 # Truncated/mismatched XML totals must not silently count as coverage.
                 if root.tag == "testsuite" and int(root.attrib.get("tests", len(elements))) != len(elements):
                     errors.append(f"XML count mismatch: {path.name}")
@@ -259,6 +262,9 @@ def xml_cases(directory):
                                     "seconds": float(case.attrib.get("time", "0")),
                                     "suite": root.attrib.get("name", case.attrib.get("classname", "")),
                                     "suite_seconds": float(root.attrib.get("time", "0")),
+                                    "os_name": properties.get("os.name", ""),
+                                    # Record presence only; private local workbook paths never enter summaries.
+                                    "workbook_property_present": WORKBOOK_PROPERTY in properties,
                                     "skip_reason": (skipped.attrib.get("message", "") + " " + (skipped.text or "")).strip() if skipped is not None else ""})
             except (ET.ParseError, OSError, ValueError) as exc:
                 errors.append(f"Unreadable XML {path.name}: {exc}")
@@ -273,15 +279,38 @@ def method_identity(case, methods):
     return candidate if candidate in methods else None
 
 
-def allowed_skip(case, method):
+def os_family(os_name):
+    if os_name == "Linux":
+        return "LINUX"
+    if re.fullmatch(r"Windows(?: [A-Za-z0-9 ._-]+)?", os_name):
+        return "WINDOWS"
+    if os_name == "Mac OS X":
+        return "MAC"
+    return None
+
+
+def allowed_skip(case, method, runtime_platform=None):
     reason = case["skip_reason"]
     if method["id"] == EXPORTER:
         return "Set -Duten.exportFlywayChecksums=true only in the signed-release CI job" in reason
+    if method["id"] == WORKBOOK_REVIEW:
+        return (method.get("system_property_gates") == [{"named": WORKBOOK_PROPERTY, "matches": ".+"}]
+                and not case.get("workbook_property_present", False)
+                and reason == f"System property [{WORKBOOK_PROPERTY}] does not exist")
+    os_name = case.get("os_name", "")
+    current_os = os_family(os_name)
+    actual_os = {"linux": "LINUX", "win32": "WINDOWS", "darwin": "MAC"}.get(runtime_platform)
+    if current_os and current_os == actual_os and reason == f"Disabled on operating system: {os_name}":
+        # Only a real @EnabledOnOs declaration may explain the platform skip.
+        # Architecture/custom conditions stay fail-closed until explicitly supported.
+        return any(gate.get("value") and not gate.get("architectures")
+                   and set(gate["value"]) <= {"LINUX", "WINDOWS", "MAC"}
+                   and current_os not in gate["value"] for gate in method.get("enabled_on_os", []))
     return any(gate in OPTIONAL_GATES and gate in reason and "Environment variable" in reason
                for gate in method.get("environment_gates", []))
 
 
-def audit_cases(plan, shard_id, cases, maven_exit):
+def audit_cases(plan, shard_id, cases, maven_exit, runtime_platform=None):
     shard = next(part for part in plan["shards"] if part["id"] == shard_id)
     classes = {row["name"]: row for row in plan["classes"] if row["name"] in shard["classes"]}
     methods = {method["id"]: {**method, "phase": row["phase"], "owner": row["name"]}
@@ -312,8 +341,10 @@ def audit_cases(plan, shard_id, cases, maven_exit):
             errors.append(f"Failed test: {identifier}")
             failed_classes.add(method["owner"])
         elif case["status"] == "skipped":
-            permitted = allowed_skip(case, method)
-            skipped.append({"id": identifier, "reason": case["skip_reason"], "permitted": permitted})
+            permitted = allowed_skip(case, method, runtime_platform)
+            skipped.append({"id": identifier, "reason": case["skip_reason"], "permitted": permitted,
+                            "os_name": case.get("os_name", ""),
+                            "workbook_property_present": case.get("workbook_property_present", False)})
             if not permitted:
                 errors.append(f"Unexpected skip: {identifier}: {case['skip_reason']}")
     for exact, count in testcase_ids.items():
@@ -374,7 +405,7 @@ def run_one(plan, shard_id, output, maven, unfiltered=False):
             if source.is_dir():
                 shutil.copytree(source, directory / source.name)
         records, xml_errors = xml_cases(directory)
-        audit = audit_cases(plan, shard_id, records, exit_code)
+        audit = audit_cases(plan, shard_id, records, exit_code, sys.platform)
         audit["errors"].extend(xml_errors)
         if infrastructure_error:
             audit["errors"].append(infrastructure_error)
@@ -384,6 +415,7 @@ def run_one(plan, shard_id, output, maven, unfiltered=False):
         report = {"schema_version": VERSION, "plan_hash": plan["plan_hash"], "source": plan["source"],
                   "shard": shard_id, "coverage": plan["coverage"], "maven_exit_code": exit_code,
                   "unfiltered": unfiltered,
+                  "platform": sys.platform,
                   "elapsed_seconds": round(time.monotonic() - started, 3),
                   "database_tests_enabled": True, "target": str(target), **audit}
         write_json(directory / "report.json", report)
@@ -423,7 +455,7 @@ def verify_reports(plan, reports):
         if report.get("coverage") != "full" or report.get("database_tests_enabled") is not True:
             errors.append(f"Incomplete/DB-disabled run: {path}")
         records, xml_errors = xml_cases(path.parent)
-        audit = audit_cases(plan, shard_id, records, report.get("maven_exit_code", -1))
+        audit = audit_cases(plan, shard_id, records, report.get("maven_exit_code", -1), report.get("platform"))
         if not report.get("complete") or report.get("errors"):
             errors.append(f"Shard {shard_id} did not complete successfully")
         # Recompute from actual XML instead of trusting the report's success flag.

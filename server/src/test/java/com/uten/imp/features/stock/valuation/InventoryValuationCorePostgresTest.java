@@ -66,7 +66,7 @@ class InventoryValuationCorePostgresTest {
                 CREATE TABLE stock_movements(id uuid PRIMARY KEY,transaction_date timestamptz,movement_type smallint,
                     source_doc_type text NOT NULL,source_doc_id uuid,source_item_id uuid,goods_id uuid NOT NULL,
                     color_id uuid,warehouse_id uuid NOT NULL,direction smallint NOT NULL,qty numeric(18,4) NOT NULL,
-                    unit_id uuid,unit_rate numeric(18,6),amount_local numeric(18,4))
+                    unit_id uuid,unit_rate numeric(18,6),amount_local numeric(18,4),cost_identity_snapshot jsonb)
                 """);
         jdbc.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty,amount_local) VALUES (?,?,7,84)",WAREHOUSE,LEGACY_GOODS);
         String migration;

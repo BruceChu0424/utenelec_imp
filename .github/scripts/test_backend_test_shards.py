@@ -165,6 +165,90 @@ class CoverageTests(unittest.TestCase):
         self.assertTrue(allowed["skipped"][0]["permitted"])
         self.assertFalse(runner.audit_cases(plan(), 0, [case], 0)["complete"])
 
+    def test_private_workbook_skip_requires_the_exact_method_property_pattern_and_absence(self):
+        classname, methodname = runner.WORKBOOK_REVIEW.split("#")
+        cls = test_class(classname, (methodname,))
+        method = cls["methods"][0]
+        method["system_property_gates"] = [{"named": runner.WORKBOOK_PROPERTY, "matches": ".+"}]
+        case = testcase(methodname, classname, "skipped",
+                        f"System property [{runner.WORKBOOK_PROPERTY}] does not exist")
+        self.assertTrue(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        for declared in ([], [{"named": "unknown.input", "matches": ".+"}],
+                         [{"named": runner.WORKBOOK_PROPERTY, "matches": ".*"}]):
+            method["system_property_gates"] = declared
+            self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        method["system_property_gates"] = [{"named": runner.WORKBOOK_PROPERTY, "matches": ".+"}]
+        case["workbook_property_present"] = True
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        case["workbook_property_present"] = False
+        case["skip_reason"] = f"System property [{runner.WORKBOOK_PROPERTY}] with value [] does not match regular expression [.+]"
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0)["complete"])
+        other = test_class()
+        other["methods"][0]["system_property_gates"] = method["system_property_gates"]
+        self.assertFalse(runner.audit_cases(plan([other]), 0,
+                         [testcase(status="skipped", reason=f"System property [{runner.WORKBOOK_PROPERTY}] does not exist")], 0)["complete"])
+
+    def test_os_skip_requires_annotation_xml_os_and_actual_execution_platform(self):
+        cls = test_class()
+        method = cls["methods"][0]
+        method["enabled_on_os"] = [{"value": ["LINUX"], "architectures": []}]
+        case = testcase(status="skipped", reason="Disabled on operating system: Windows 11")
+        case["os_name"] = "Windows 11"
+        self.assertTrue(runner.audit_cases(plan([cls]), 0, [case], 0, "win32")["complete"])
+        for actual in (None, "linux", "darwin", "forged-platform"):
+            self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0, actual)["complete"])
+        for declared in ([], [{"value": ["WINDOWS"], "architectures": []}],
+                         [{"value": ["LINUX", "WINDOWS"], "architectures": []}],
+                         [{"value": ["UNKNOWN"], "architectures": []}],
+                         [{"value": ["LINUX"], "architectures": ["aarch64"]}]):
+            method["enabled_on_os"] = declared
+            self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0, "win32")["complete"])
+        method["enabled_on_os"] = [{"value": ["LINUX"], "architectures": []}]
+        case["os_name"] = "Linux"
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0, "win32")["complete"])
+        case["skip_reason"] = "Disabled on operating system: Linux"
+        self.assertFalse(runner.audit_cases(plan([cls]), 0, [case], 0, "linux")["complete"],
+                         "Linux must execute Linux-only tests; its skip can never be accepted")
+
+    def test_os_xml_properties_and_private_property_presence_are_recorded_without_values(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp) / "surefire-reports"
+            directory.mkdir()
+            (directory / "TEST-example.xml").write_text('''<testsuite tests="1"><properties>
+                <property name="os.name" value="Windows 11"/>
+                <property name="uten.cost.companyWorkbook" value="private-do-not-copy.xlsx"/>
+                </properties><testcase classname="example.AtestTest" name="plain">
+                <skipped message="Disabled on operating system: Windows 11"/></testcase></testsuite>''')
+            records, errors = runner.xml_cases(temp)
+            self.assertEqual([], errors)
+            self.assertEqual("Windows 11", records[0]["os_name"])
+            self.assertTrue(records[0]["workbook_property_present"])
+            self.assertNotIn("private-do-not-copy", json.dumps(records))
+
+    def test_os_skip_cannot_be_replayed_as_a_linux_report(self):
+        cls = test_class()
+        cls["methods"][0]["enabled_on_os"] = [{"value": ["LINUX"], "architectures": []}]
+        manifest = plan([cls])
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            case = testcase(status="skipped", reason="Disabled on operating system: Windows 11")
+            directory = root / "shard-0"
+            save_xml(directory, [case])
+            xml = next((directory / "surefire-reports").glob("*.xml"))
+            tree = ET.parse(xml)
+            properties = ET.SubElement(tree.getroot(), "properties")
+            ET.SubElement(properties, "property", name="os.name", value="Windows 11")
+            tree.write(xml, encoding="utf-8")
+            records, _ = runner.xml_cases(directory)
+            report = {"source": manifest["source"], "plan_hash": manifest["plan_hash"], "shard": 0,
+                      "coverage": "full", "database_tests_enabled": True, "maven_exit_code": 0,
+                      "platform": "win32", **runner.audit_cases(manifest, 0, records, 0, "win32")}
+            runner.write_json(directory / "report.json", report)
+            self.assertTrue(runner.verify_reports(manifest, root)["complete"])
+            report["platform"] = "linux"
+            runner.write_json(directory / "report.json", report)
+            self.assertFalse(runner.verify_reports(manifest, root)["complete"])
+
 
 class EvidenceTests(unittest.TestCase):
     def test_missing_duplicate_stale_and_focused_reports_fail(self):

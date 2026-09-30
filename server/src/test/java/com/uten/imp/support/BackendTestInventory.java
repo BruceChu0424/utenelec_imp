@@ -2,6 +2,8 @@ package com.uten.imp.support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.platform.commons.support.AnnotationSupport;
 import org.junit.platform.engine.discovery.ClassNameFilter;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -16,6 +18,7 @@ import java.lang.reflect.AnnotatedElement;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -71,13 +74,15 @@ public final class BackendTestInventory {
                 }
                 if (owner == null || actualClass == null) throw new IllegalStateException("No owning class: " + id);
                 var gates = new LinkedHashSet<String>();
-                addGate(source.getJavaMethod(), gates);
+                var systemProperties = new LinkedHashSet<Map<String, Object>>();
+                var operatingSystems = new LinkedHashSet<Map<String, Object>>();
+                addConditions(source.getJavaMethod(), gates, systemProperties, operatingSystems);
                 for (Class<?> current = source.getJavaMethod().getDeclaringClass(); current != null; current = current.getEnclosingClass()) {
-                    addGate(current, gates);
+                    addConditions(current, gates, systemProperties, operatingSystems);
                 }
                 try {
                     for (Class<?> current = Class.forName(actualClass, false, Thread.currentThread().getContextClassLoader());
-                            current != null; current = current.getEnclosingClass()) addGate(current, gates);
+                            current != null; current = current.getEnclosingClass()) addConditions(current, gates, systemProperties, operatingSystems);
                 } catch (ClassNotFoundException exception) {
                     throw new IllegalStateException(exception);
                 }
@@ -89,6 +94,8 @@ public final class BackendTestInventory {
                 method.put("kind", id.isTest() ? "test" : "template");
                 method.put("unique_id", id.getUniqueId());
                 method.put("environment_gates", gates.stream().sorted().toList());
+                method.put("system_property_gates", List.copyOf(systemProperties));
+                method.put("enabled_on_os", List.copyOf(operatingSystems));
                 byClass.computeIfAbsent(owner, ignored -> new ArrayList<>()).add(method);
             }
         }
@@ -99,8 +106,15 @@ public final class BackendTestInventory {
         return result;
     }
 
-    private static void addGate(AnnotatedElement element, Set<String> gates) {
+    private static void addConditions(AnnotatedElement element, Set<String> gates,
+                                      Set<Map<String, Object>> systemProperties,
+                                      Set<Map<String, Object>> operatingSystems) {
         AnnotationSupport.findRepeatableAnnotations(element, EnabledIfEnvironmentVariable.class)
                 .forEach(annotation -> gates.add(annotation.named()));
+        AnnotationSupport.findRepeatableAnnotations(element, EnabledIfSystemProperty.class)
+                .forEach(annotation -> systemProperties.add(Map.of("named", annotation.named(), "matches", annotation.matches())));
+        AnnotationSupport.findAnnotation(element, EnabledOnOs.class).ifPresent(annotation ->
+                operatingSystems.add(Map.of("value", Arrays.stream(annotation.value()).map(Enum::name).sorted().toList(),
+                        "architectures", Arrays.stream(annotation.architectures()).sorted().toList())));
     }
 }

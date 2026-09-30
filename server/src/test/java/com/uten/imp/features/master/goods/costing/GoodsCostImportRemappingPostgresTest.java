@@ -41,8 +41,10 @@ class GoodsCostImportRemappingPostgresTest {
     Calculation calculation;
     @BeforeAll static void database() throws Exception {
         POSTGRES.start();dataSource=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());sql=new JdbcTemplate(dataSource);
+        // Exact migrated column/default/key shapes; this remains a query/transaction projection,
+        // without claiming to exercise unrelated goods lifecycle checks or business foreign keys.
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(sql, "goods");
         sql.execute("""
-                CREATE TABLE goods(id uuid PRIMARY KEY);
                 CREATE VIEW v_sales_quote_template_storage_references AS SELECT NULL::text storage_provider,NULL::text storage_key,NULL::text storage_version WHERE false;
                 CREATE FUNCTION fn_audit_track_table(text,text,text,boolean) RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN; END $$;
                 CREATE FUNCTION business_data_reset() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM * FROM (VALUES ('stock_movements', 'CLEAR')) rows; END $$;

@@ -50,7 +50,8 @@ class SalesOrderChainSqlPostgresTest {
                         planned_qty numeric(18,4), produced_qty numeric(18,4),
                         updated_at timestamptz NOT NULL DEFAULT now(),
                         client_goods_name VARCHAR(500),
-                        client_price NUMERIC)
+                        client_price NUMERIC, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb,
+                        goods_name_en_snapshot varchar(255))
                     """);
             st.execute("""
                     CREATE TABLE plan_order_item_links (

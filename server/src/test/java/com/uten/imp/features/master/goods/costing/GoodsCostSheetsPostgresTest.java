@@ -43,32 +43,19 @@ class GoodsCostSheetsPostgresTest {
     final UUID actor=UUID.randomUUID(),root=UUID.randomUUID(),material=UUID.randomUUID(),unit=UUID.randomUUID(),edge=UUID.randomUUID();
     @BeforeAll static void migrate() throws Exception {
         POSTGRES.start();dataSource=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());sql=new JdbcTemplate(dataSource);
+        // Read column/default/key shapes from real migrations. This isolated source-query fixture
+        // deliberately omits unrelated master-data lifecycle triggers and foreign keys.
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(sql, "units", "colors", "currencies",
+                "goods", "clients", "goods_bom_items", "purchase_orders", "purchase_order_items",
+                "subcontract_orders", "subcontract_order_items", "permissions", "department_permissions",
+                "user_permission_overrides");
         sql.execute("""
-                CREATE TABLE units(id uuid PRIMARY KEY,name text);
-                CREATE TABLE colors(id uuid PRIMARY KEY,name text);
-                CREATE TABLE currencies(id uuid PRIMARY KEY,name text,is_base_currency boolean NOT NULL DEFAULT false,is_deleted boolean DEFAULT false);
-                CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text,unit_id uuid,color_id uuid,source_type text,
-                    version bigint DEFAULT 1,is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false);
-                CREATE TABLE clients(id uuid PRIMARY KEY,name text DEFAULT '测试客户',owner_employee_id uuid,is_deleted boolean DEFAULT false);
-                CREATE TABLE goods_bom_items(id uuid PRIMARY KEY,goods_id uuid,component_goods_id uuid,color_id uuid,
-                    qty numeric,consumption_basis text DEFAULT 'PER_UNIT',basis_output_qty numeric DEFAULT 1,
-                    allow_partial_package boolean DEFAULT true,updated_at timestamptz DEFAULT now(),sort_order int DEFAULT 1,is_deleted boolean DEFAULT false);
                 CREATE VIEW v_goods_bom_item_usage AS SELECT id bom_item_id,NULL::numeric actual_qty,qty effective_qty,'NO_DATA'::text actual_status,
                     0::bigint sample_count,0::numeric exposure_output_qty,0::numeric net_qty,false system_learned FROM goods_bom_items;
-                CREATE TABLE purchase_orders(id uuid PRIMARY KEY,bill_no text,bill_date date,updated_at timestamptz DEFAULT now(),
-                    supplier_id uuid,currency_id uuid,exchange_rate numeric,tax_rate numeric,purchaser_id uuid,status int,is_deleted boolean DEFAULT false);
-                CREATE TABLE purchase_order_items(id uuid PRIMARY KEY,order_id uuid,goods_id uuid,color_id uuid,unit_id uuid,
-                    unit_rate numeric,price numeric,qty numeric DEFAULT 1,amount_original numeric,extra_columns jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now(),is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_orders(LIKE purchase_orders INCLUDING ALL);
-                CREATE TABLE subcontract_order_items(LIKE purchase_order_items INCLUDING ALL);
-                CREATE TABLE permissions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),code text UNIQUE,name text,module text,category text,sort_order int,
-                    action_type text,description text,grant_policy text[],sensitivity text);
-                CREATE TABLE department_permissions(department_id uuid,permission_id uuid,PRIMARY KEY(department_id,permission_id));
-                CREATE TABLE user_permission_overrides(user_id uuid,permission_id uuid,effect text,authority_source text,source_actor_user_id uuid,
-                    PRIMARY KEY(user_id,permission_id));
                 INSERT INTO permissions(code) VALUES('goods:cost:view');
-                INSERT INTO department_permissions SELECT gen_random_uuid(),id FROM permissions;
-                INSERT INTO user_permission_overrides SELECT gen_random_uuid(),id,'revoke','SUPER_ADMIN',NULL FROM permissions;
+                INSERT INTO department_permissions(department_id,permission_id) SELECT gen_random_uuid(),id FROM permissions;
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source,source_actor_user_id)
+                    SELECT gen_random_uuid(),id,'revoke','SUPER_ADMIN',NULL FROM permissions;
                 CREATE FUNCTION fn_audit_track_table(text,text,text,boolean) RETURNS void LANGUAGE plpgsql AS $$ BEGIN RETURN; END $$;
                 CREATE FUNCTION business_data_reset() RETURNS void LANGUAGE plpgsql AS $$
                 BEGIN PERFORM * FROM (VALUES ('stock_movements', 'CLEAR')) records; END $$;
@@ -81,7 +68,7 @@ class GoodsCostSheetsPostgresTest {
     @BeforeEach void setup() {
         sql.execute("TRUNCATE goods_cost_commands,goods_cost_sheets,goods_cost_snapshots,goods_cost_templates,goods,clients,goods_bom_items,units,purchase_orders,purchase_order_items,subcontract_orders,subcontract_order_items CASCADE");
         sql.update("INSERT INTO units(id,name) VALUES(?,?)",unit,"个");
-        sql.update("INSERT INTO goods(id,code,name,unit_id,source_type) VALUES(?,?,?,?,?),(?,?,?,?,?)",root,"P1","成品",unit,"自制",material,"M1","材料",unit,"采购");
+        sql.update("INSERT INTO goods(id,code,name,unit_id,source_type,version) VALUES(?,?,?,?,?,1),(?,?,?,?,?,1)",root,"P1","成品",unit,"自制",material,"M1","材料",unit,"采购");
         sql.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(?,?,?,?)",edge,root,material,new java.math.BigDecimal("2"));
         db=new NamedParameterJdbcTemplate(dataSource);transaction=new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         references=mock(MasterReferenceValidationPort.class);current=mock(SecurityContextCurrentUser.class);masker=mock(GoodsCostMasker.class);
@@ -117,7 +104,7 @@ class GoodsCostSheetsPostgresTest {
         sql.update("INSERT INTO currencies(id,name) VALUES(?,?)",currency,"人民币");
         sql.update("INSERT INTO purchase_orders(id,bill_no,bill_date,exchange_rate,tax_rate,status,supplier_id,currency_id) VALUES(?,?,?::date,1,13,1,?,?),(?,?,?::date,1,13,0,?,?)",
                 approved,"PO-OK","2026-09-28",supplier,currency,draft,"PO-DRAFT","2026-09-29",supplier,currency);
-        sql.update("INSERT INTO purchase_order_items(id,order_id,goods_id,unit_id,unit_rate,price,amount_original) VALUES(?,?,?,?,25,400,400),(?,?,?,?,20,999,999)",
+        sql.update("INSERT INTO purchase_order_items(id,order_id,goods_id,unit_id,unit_rate,price,amount_original,qty) VALUES(?,?,?,?,25,400,400,1),(?,?,?,?,20,999,999,1)",
                 approvedLine,approved,material,bag,UUID.randomUUID(),draft,material,bag);
         PriceEvidence result=sources.approved(sources.goods(material),false,LocalDate.of(2026,9,29),null);
         assertThat(result.sourceItemId()).isEqualTo(approvedLine);assertThat(result.unitRate()).isEqualTo("25");assertThat(result.originalUnitPrice()).isEqualTo("400");
@@ -165,7 +152,7 @@ class GoodsCostSheetsPostgresTest {
     }
     @Test void customerProductTemplateWinsAndExplicitOverrideAndExclusionRemainStable() {
         permissions(Set.of("goods:view","goods:cost:view","goods:cost:edit","goods:cost:template"));
-        UUID client=UUID.randomUUID();sql.update("INSERT INTO clients(id,owner_employee_id) VALUES(?,?)",client,actor);
+        UUID client=UUID.randomUUID();sql.update("INSERT INTO clients(id,name,owner_employee_id) VALUES(?,'测试客户',?)",client,actor);
         for(int level=0;level<3;level++) {
             String rate=List.of("8","10","12").get(level);
             TemplateInput template=new TemplateInput("费用规则"+level,level>0?root:null,level>1?client:null,

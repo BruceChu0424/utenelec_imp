@@ -70,6 +70,16 @@ class ServerJarPackagingIT {
                     .sorted()
                     .toList())
                     .containsExactlyElementsOf(expectedMigrations);
+            // The shaded migrator must preserve both PostgreSQL and Jackson notices,
+            // rather than silently picking one dependency's overlapping license file.
+            assertThat(entries.stream().filter("META-INF/LICENSE"::equals)).hasSize(1);
+            String licenses = new String(jar.getInputStream(jar.getJarEntry("META-INF/LICENSE")).readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(licenses).contains("PostgreSQL Global Development Group", "Apache License");
+            assertThat(entries.stream().filter("META-INF/NOTICE"::equals)).hasSize(1);
+            String notices = new String(jar.getInputStream(jar.getJarEntry("META-INF/NOTICE")).readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            assertThat(notices).contains("Jackson");
         }
     }
 

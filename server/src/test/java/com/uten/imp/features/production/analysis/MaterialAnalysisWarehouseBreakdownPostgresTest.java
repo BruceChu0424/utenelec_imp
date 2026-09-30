@@ -81,7 +81,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute("CREATE TABLE purchase_requests(id uuid PRIMARY KEY,is_deleted boolean,status integer,is_stopped boolean)");
         jdbc.execute("CREATE TABLE purchase_request_items(id uuid PRIMARY KEY,request_id uuid,qty numeric,ordered_qty numeric,unit_rate numeric,is_deleted boolean)");
         jdbc.execute("CREATE TABLE purchase_orders(id uuid PRIMARY KEY,status integer,is_deleted boolean)");
-        jdbc.execute("CREATE TABLE purchase_order_items(id uuid PRIMARY KEY,order_id uuid,qty numeric,received_qty numeric,returned_qty numeric,unit_rate numeric,is_deleted boolean)");
+        jdbc.execute("CREATE TABLE purchase_order_items(id uuid PRIMARY KEY,order_id uuid,qty numeric,received_qty numeric,returned_qty numeric,unit_rate numeric,is_deleted boolean,extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb)");
         jdbc.execute("CREATE TABLE purchase_receipts(id uuid PRIMARY KEY,status integer,is_deleted boolean,legacy_import_run_id uuid)");
         jdbc.execute("CREATE TABLE purchase_receipt_items(id uuid PRIMARY KEY,order_item_id uuid,receipt_id uuid,qty numeric,unit_rate numeric,is_deleted boolean,legacy_import_run_id uuid)");
         jdbc.execute("CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY,receipt_item_id uuid,receipt_type text,status text,warehouse_stocked_base_qty numeric,failed_base_qty numeric,received_base_qty numeric)");

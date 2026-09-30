@@ -23,6 +23,8 @@
         <uten.build.directory>${project.basedir}/target</uten.build.directory>
         <!-- Optional runner-owned JVM startup arguments; ordinary Maven keeps its defaults. -->
         <uten.test.jvm.args></uten.test.jvm.args>
+        <!-- Explicit runner heap cap only; keep ordinary Maven/JVM ergonomics unchanged. -->
+        <uten.test.jvm.heap.args></uten.test.jvm.heap.args>
         <jjwt.version>0.12.6</jjwt.version>
         <bucket4j.version>8.10.1</bucket4j.version>
         <aliyun-sms.version>4.6.0</aliyun-sms.version>
@@ -263,7 +265,7 @@
                 <configuration>
                     <!-- Mockito inline mocks must be attached explicitly before newer JDKs
                          disable runtime agent loading. Spring Boot manages mockito.version. -->
-                    <argLine>-Xshare:off -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar" ${uten.test.jvm.args}</argLine>
+                    <argLine>-Xshare:off -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar" ${uten.test.jvm.args} ${uten.test.jvm.heap.args}</argLine>
                     <systemPropertyVariables>
                         <!-- Isolated builds and test forks must not roll the live dev log. -->
                         <logging.file.name>${project.build.directory}/logs/surefire-${surefire.forkNumber}.log</logging.file.name>
@@ -282,7 +284,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <argLine>${uten.test.jvm.args}</argLine>
+                    <argLine>${uten.test.jvm.args} ${uten.test.jvm.heap.args}</argLine>
                     <systemPropertyVariables>
                         <logging.file.name>${project.build.directory}/logs/failsafe-${surefire.forkNumber}.log</logging.file.name>
                         <uten.packaging.application-jar>${project.build.directory}/${project.build.finalName}.jar</uten.packaging.application-jar>

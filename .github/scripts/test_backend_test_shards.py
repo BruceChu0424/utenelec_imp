@@ -101,6 +101,123 @@ class InventoryAndBalanceTests(unittest.TestCase):
                 runner.validate_maven_discovery(path)
 
 
+class HeapOptionsTests(unittest.TestCase):
+    def test_java_heap_size_accepts_only_positive_integer_and_optional_binary_unit(self):
+        for value in ("4g", "3g", "3G", "1536m", "512M", "2048k", "2048K", "268435456", "004g"):
+            with self.subTest(value=value):
+                self.assertEqual(value, runner.heap_size(value))
+        for value in (None, 4, "", "0", "00m", "-1g", "+4g", "1.5g", "4gb", "4t", " 4g", "4g ",
+                      "4g\n", "４g", "4g -DskipTests=true", "4g;-Xmx8g", "4g&echo", "${HEAP}",
+                      '"4g"', "-Xmx4g", str(1 << 63), "8589934592g"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                runner.heap_size(value)
+
+    def test_heap_overrides_append_only_the_selected_flags_and_record_them_on_failure(self):
+        inherited = '-Dexample.setting="two words" -Xmx8g'
+        with tempfile.TemporaryDirectory() as temp, patch.object(runner, "source_identity", return_value=SOURCE), \
+                patch.object(runner, "command_log", return_value=7) as command, \
+                patch.dict(runner.os.environ, {"MAVEN_OPTS": inherited}, clear=True), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            root = Path(temp)
+            self.assertFalse(runner.run_one(plan(), 0, root, "mvn", jvm_max_heap="4g", maven_max_heap="1536m"))
+            arguments, _, _, environment = command.call_args.args
+            self.assertIn("-Duten.test.jvm.heap.args=-Xmx4g", arguments)
+            self.assertEqual(inherited + " -Xmx1536m", environment["MAVEN_OPTS"])
+            self.assertNotIn("JAVA_TOOL_OPTIONS", environment)
+            self.assertNotIn("-DargLine", " ".join(arguments))
+            self.assertNotIn("-Duten.test.jvm.args=", " ".join(arguments))
+            self.assertIn(f"-Duten.test.tmpdir={root / 'shard-0' / 'tmp'}", arguments)
+            self.assertIn("-DskipTests=false", arguments)
+            self.assertIn("-DskipITs=false", arguments)
+            self.assertIn("-Dmaven.test.failure.ignore=false", arguments)
+            report = runner.read_json(root / "shard-0" / "report.json")
+            self.assertEqual({"test_jvm_max_heap": "4g", "maven_max_heap": "1536m"}, report["heap_limits"])
+            self.assertFalse(report["complete"])
+            self.assertEqual(7, report["maven_exit_code"])
+            self.assertTrue(any("Maven exited 7" in error for error in report["errors"]))
+            self.assertNotIn(inherited, output.getvalue())
+            self.assertNotIn(inherited, json.dumps(report))
+
+    def test_omitted_options_preserve_inherited_maven_options_and_do_not_set_test_heap(self):
+        for inherited in ({}, {"MAVEN_OPTS": "-Xmx2g -Dexample=kept"}):
+            with self.subTest(inherited=inherited), tempfile.TemporaryDirectory() as temp, \
+                    patch.object(runner, "source_identity", return_value=SOURCE), \
+                    patch.object(runner, "command_log", return_value=7) as command, \
+                    patch.dict(runner.os.environ, inherited, clear=True), contextlib.redirect_stdout(io.StringIO()):
+                root = Path(temp)
+                runner.run_one(plan(), 0, root, "mvn")
+                arguments, _, _, environment = command.call_args.args
+                self.assertFalse(any("uten.test.jvm.heap.args" in argument for argument in arguments))
+                self.assertEqual(inherited.get("MAVEN_OPTS"), environment.get("MAVEN_OPTS"))
+                self.assertEqual("MAVEN_OPTS" in inherited, "MAVEN_OPTS" in environment)
+                self.assertEqual({"test_jvm_max_heap": None, "maven_max_heap": None},
+                                 runner.read_json(root / "shard-0" / "report.json")["heap_limits"])
+
+    def test_each_heap_option_can_be_used_without_the_other(self):
+        for selected in ({"jvm_max_heap": "3g"}, {"maven_max_heap": "1536m"}):
+            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as temp, \
+                    patch.object(runner, "source_identity", return_value=SOURCE), \
+                    patch.object(runner, "command_log", return_value=7) as command, \
+                    patch.dict(runner.os.environ, {}, clear=True), contextlib.redirect_stdout(io.StringIO()):
+                runner.run_one(plan(), 0, Path(temp), "mvn", **selected)
+                arguments, _, _, environment = command.call_args.args
+                self.assertEqual("jvm_max_heap" in selected,
+                                 any("uten.test.jvm.heap.args" in argument for argument in arguments))
+                self.assertEqual("maven_max_heap" in selected, "MAVEN_OPTS" in environment)
+
+    def test_run_baseline_and_focus_forward_the_same_heap_options(self):
+        manifest = plan()
+        for subcommand, extra in (("run", ["--all", "--workers", "3"]), ("baseline", []),
+                                  ("focus", ["--classes", "example.AtestTest"])):
+            with self.subTest(command=subcommand), tempfile.TemporaryDirectory() as temp, \
+                    patch.object(runner, "checked_plan", return_value=manifest), \
+                    patch.object(runner, "maven_executable", return_value="mvn"), \
+                    patch.object(runner, "run_one", return_value=True) as run, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, runner.main([subcommand, "--plan", "plan.json", "--output", temp,
+                                                "--jvm-max-heap", "3g", "--maven-max-heap", "1536m", *extra]))
+                self.assertEqual("3g", run.call_args.kwargs["jvm_max_heap"])
+                self.assertEqual("1536m", run.call_args.kwargs["maven_max_heap"])
+                self.assertEqual(subcommand == "baseline", run.call_args.kwargs.get("unfiltered", False))
+                self.assertEqual("focused-incomplete" if subcommand == "focus" else "full",
+                                 run.call_args.args[0]["coverage"])
+
+    def test_cli_rejects_injected_flags_before_any_execution_for_all_entry_points(self):
+        for subcommand, extra in (("run", ["--all"]), ("baseline", []), ("focus", [])):
+            for option in ("--jvm-max-heap", "--maven-max-heap"):
+                with self.subTest(command=subcommand, option=option), \
+                        patch.object(runner, "run_one") as run, contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as failure:
+                        runner.main([subcommand, "--plan", "unused", "--output", "unused", *extra,
+                                     option, "4g -DskipTests=true"])
+                    self.assertEqual(2, failure.exception.code)
+                    run.assert_not_called()
+
+    def test_direct_call_rejects_bad_heap_before_creating_evidence_or_launching_maven(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(runner, "command_log") as command:
+            root = Path(temp)
+            for selected in ({"jvm_max_heap": "4g\n-Xmx8g"}, {"maven_max_heap": "4g & echo unsafe"}):
+                with self.subTest(selected=selected), self.assertRaises(ValueError):
+                    runner.run_one(plan(), 0, root, "mvn", **selected)
+            self.assertEqual([], list(root.iterdir()))
+            command.assert_not_called()
+
+    def test_pom_heap_property_preserves_surefire_agent_and_both_temp_arglines(self):
+        namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+        pom = ET.parse(runner.ROOT / "server" / "pom.xml").getroot()
+        plugins = {plugin.findtext("m:artifactId", namespaces=namespace): plugin
+                   for plugin in pom.findall("m:build/m:plugins/m:plugin", namespace)}
+        sure = plugins["maven-surefire-plugin"].findtext("m:configuration/m:argLine", namespaces=namespace)
+        fail = plugins["maven-failsafe-plugin"].findtext("m:configuration/m:argLine", namespaces=namespace)
+        self.assertEqual('-Xshare:off -javaagent:"${settings.localRepository}/org/mockito/mockito-core/'
+                         '${mockito.version}/mockito-core-${mockito.version}.jar" '
+                         '${uten.test.jvm.args} ${uten.test.jvm.heap.args}', sure)
+        self.assertEqual("${uten.test.jvm.args} ${uten.test.jvm.heap.args}", fail)
+        self.assertFalse(pom.find("m:properties/m:uten.test.jvm.heap.args", namespace).text)
+        profile = pom.find("m:profiles/m:profile[m:id='isolated-test-temp']/m:properties/m:uten.test.jvm.args", namespace)
+        self.assertEqual('-Djava.io.tmpdir="${uten.test.tmpdir}"', profile.text)
+
+
 class CoverageTests(unittest.TestCase):
     def test_missing_method_cannot_be_hidden_by_passing_class(self):
         result = runner.audit_cases(plan([test_class(methods=("plain", "omitted"))]), 0, [testcase()], 0)

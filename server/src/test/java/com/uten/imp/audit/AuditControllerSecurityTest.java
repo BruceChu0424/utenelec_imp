@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -99,6 +100,8 @@ class AuditControllerSecurityTest {
     @MockitoBean
     private WorkbookDownloadService workbookDownload;
     @MockitoBean
+    private AuditSessionTableExportService sessionTableExport;
+    @MockitoBean
     private AuditService audit;
     @MockitoBean
     private SecurityContextCurrentUser currentUser;
@@ -120,7 +123,7 @@ class AuditControllerSecurityTest {
                 .thenReturn(new ExportPayload(List.of(), List.of(), 0));
         when(auditQuery.detail(42L)).thenReturn(org.mockito.Mockito.mock(AuditLogDetail.class));
         when(runtimeSettings.exportMaxRows()).thenReturn(1_000);
-        when(xlsxExport.build(anyList(), anyList())).thenReturn(new byte[]{1});
+        when(xlsxExport.build(anyList(), anyList(), isNull(), eq("view_admin"))).thenReturn(new byte[]{1});
         when(workbookDownload.protect(any(byte[].class), anyString())).thenReturn(new byte[]{9});
         when(currentUser.get()).thenReturn(Optional.of(new AuthUser(
                 ACTOR_ID,
@@ -290,6 +293,9 @@ class AuditControllerSecurityTest {
         verify(auditQuery).export(
                 any(AuditSearchCriteria.class),
                 eq(1_000));
+        verify(xlsxExport).build(anyList(), anyList(), isNull(), eq("view_admin"));
+        verify(workbookDownload).protect(eq(new byte[]{1}), eq(EXPORT_PROBE_SECRET));
+        verifyNoInteractions(sessionTableExport);
         verify(audit).logExplicit(
                 ACTOR_ID,
                 "investigator",

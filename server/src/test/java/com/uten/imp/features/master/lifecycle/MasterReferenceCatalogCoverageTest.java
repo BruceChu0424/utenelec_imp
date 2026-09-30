@@ -135,6 +135,61 @@ class MasterReferenceCatalogCoverageTest {
         }
     }
 
+    /** Root, current BOM and frozen historical component references remain bounded to the supplied targets. */
+    @Test
+    void costReferencesKeepRootCurrentAndFrozenComponentsWithinTheRequestedBatch() throws SQLException {
+        String query = MasterReferenceCatalog.references(MasterEntityKind.GOODS).stream()
+                .filter(reference -> reference.kind() == MasterReferenceGuard.RefKind.COST_SHEET)
+                .findFirst().orElseThrow().sql();
+        UUID root = UUID.randomUUID(), component = UUID.randomUUID(), frozen = UUID.randomUUID();
+        UUID unrelated = UUID.randomUUID(), absent = UUID.randomUUID(), sheet = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                // This is a query oracle using migrated column shapes, not a cost-document lifecycle fixture.
+                try (var statement = connection.createStatement()) {
+                    statement.execute("CREATE TEMP TABLE goods_cost_sheets ON COMMIT DROP AS SELECT * FROM public.goods_cost_sheets WITH NO DATA");
+                    statement.execute("CREATE TEMP TABLE goods_cost_snapshots ON COMMIT DROP AS SELECT * FROM public.goods_cost_snapshots WITH NO DATA");
+                }
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO goods_cost_sheets(id,goods_id,calculation)
+                        VALUES (?,?,jsonb_build_object('lines',jsonb_build_array(jsonb_build_object('goodsId',CAST(? AS text))))),
+                               (?,?,'{}'::jsonb)
+                        """)) {
+                    insert.setObject(1, sheet); insert.setObject(2, root); insert.setObject(3, component);
+                    insert.setObject(4, UUID.randomUUID()); insert.setObject(5, unrelated); insert.executeUpdate();
+                }
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO goods_cost_snapshots(id,sheet_id,payload)
+                        VALUES (?, ?, jsonb_build_object('calculation',jsonb_build_object('lines',
+                               jsonb_build_array(jsonb_build_object('goodsId',CAST(? AS text))))))
+                        """)) {
+                    insert.setObject(1, UUID.randomUUID()); insert.setObject(2, sheet);
+                    insert.setObject(3, frozen); insert.executeUpdate();
+                }
+                try (var statement = connection.prepareStatement(
+                        "WITH targets AS (SELECT unnest(CAST(? AS uuid[])) AS id) " + query)) {
+                    statement.setArray(1, connection.createArrayOf("uuid", new UUID[]{root, component, frozen, absent}));
+                    Set<UUID> found = new TreeSet<>();
+                    try (var rows = statement.executeQuery()) {
+                        assertThat(rows.getMetaData().getColumnCount()).isEqualTo(6);
+                        while (rows.next()) {
+                            assertThat(found.add(rows.getObject(1, UUID.class))).isTrue();
+                            assertThat(rows.getString(2)).isEqualTo("COST_SHEET");
+                            assertThat(rows.getString(3)).isEqualTo(sheet.toString());
+                            assertThat(rows.getString(4)).isEqualTo("内部成本记录");
+                            assertThat(rows.getObject(5)).isNull();
+                            assertThat(rows.getString(6)).isEqualTo("public");
+                        }
+                    }
+                    assertThat(found).containsExactlyInAnyOrder(root, component, frozen);
+                }
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
     /** 库里所有指向七种主档的列：外键列(分区子表并到父表) + 按命名约定却没外键的 uuid 列。 */
     private static Map<String, MasterEntityKind> inventory() throws SQLException {
         Map<String, MasterEntityKind> out = new TreeMap<>();

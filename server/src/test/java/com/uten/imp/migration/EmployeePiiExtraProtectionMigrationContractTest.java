@@ -117,6 +117,11 @@ class EmployeePiiExtraProtectionMigrationContractTest {
 
             assertNullableVersionedCipher(sql, "id_card");
             assertNullableVersionedCipher(sql, phoneColumn);
+            String idHash = "encode(hmac(btrim(s.id_card), :'hmac_key', 'sha256'), 'hex')";
+            String existingIdentityGuard = file.contains("workers")
+                    ? "and not exists ( select 1 from employee_sensitive existing "
+                        + "where existing.id_card_hash = " + idHash + ") "
+                    : "";
             assertThat(sql)
                     .contains("pg_advisory_xact_lock(1431586126, 282)")
                     .contains("set_config('app.employee_pii_extra_legacy_import', 'v1', true)")
@@ -124,14 +129,27 @@ class EmployeePiiExtraProtectionMigrationContractTest {
                             + "then right(btrim(s.id_card), 4) end")
                     .contains("case when s.rn = 1 "
                             + "and nullif(btrim(s.id_card), '') is not null "
-                            + "then encode(hmac(btrim(s.id_card), :'hmac_key', "
-                            + "'sha256'), 'hex') end")
+                            + existingIdentityGuard + "then " + idHash + " end")
                     .contains("case when nullif(btrim(s." + phoneColumn
                             + "), '') is not null then encode(hmac(btrim(s."
                             + phoneColumn + "), :'hmac_key', 'sha256'), 'hex') end")
                     .doesNotContain("session_replication_role = replica")
                     .doesNotContain("pgp_sym_encrypt(coalesce(nullif")
                     .doesNotContain("app.employee_pii_extra_backfill");
+            int write = sql.indexOf("insert into employee_sensitive");
+            assertThat(write).isPositive();
+            assertThat(sql.indexOf("pg_advisory_xact_lock(1431586126, 282)")).isBetween(0, write - 1);
+            assertThat(sql.indexOf("set_config('app.employee_pii_extra_legacy_import', 'v1', true)"))
+                    .isBetween(0, write - 1);
+            if (file.contains("workers")) {
+                // Formal HR identities already present win over legacy stubs. Both the existence
+                // comparison and inserted hash use the same trimmed value, HMAC key and algorithm.
+                assertThat(sql).contains("row_number() over (partition by nullif(btrim(hs.id_card), '') order by hs.legacy_id) as rn")
+                        .contains("join employees e on e.legacy_id = s.legacy_id and e.code like 'legacy-w-%'");
+            } else {
+                assertThat(sql).contains("row_number() over (partition by nullif(btrim(r.id_card), '') order by r.emp_code) as rn")
+                        .contains("join employees e on e.code = s.emp_code");
+            }
         }
     }
 

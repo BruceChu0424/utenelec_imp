@@ -38,8 +38,7 @@ class MasterReferenceCatalogShapeTest {
             if (!list.contains("'" + reference.kind().name() + "'")) {
                 problems.add(where + "：第二列的引用种类与登记的不一致");
             }
-            if (!reference.sql().contains(" IN (SELECT id FROM targets)")
-                    && !reference.sql().contains("JOIN targets ")) {
+            if (!boundedByTargets(reference.sql())) {
                 problems.add(where + "：没有按本批目标过滤");
             }
             String scope = list.substring(list.lastIndexOf(',') + 1);
@@ -54,6 +53,30 @@ class MasterReferenceCatalogShapeTest {
             if (found == 0) problems.add(where + "：最后一列不是标签可见范围");
         }
         assertThat(problems).isEmpty();
+    }
+
+    /** The first FROM may itself be the bounded target relation; comments/literals are not predicates. */
+    private static boolean boundedByTargets(String source) {
+        String sql = source.replaceAll("'(?:''|[^'])*'", "''")
+                .replaceAll("(?m)--[^\\r\\n]*", " ").replaceAll("(?s)/\\*.*?\\*/", " ");
+        Matcher select = SELECT.matcher(sql);
+        if (!select.find()) return false;
+        String firstFrom = sql.substring(select.end()).stripLeading();
+        return Pattern.compile("(?i)^targets(?:\\s|$)").matcher(firstFrom).find()
+                || Pattern.compile("(?i)\\bJOIN\\s+targets\\s").matcher(sql).find()
+                || Pattern.compile("(?i)\\bIN\\s*\\(\\s*SELECT\\s+id\\s+FROM\\s+targets\\s*\\)").matcher(sql).find();
+    }
+
+    @Test
+    void boundedTargetShapeAcceptsBothJoinOrdersAndRejectsOnlyMentioningTargets() {
+        assertThat(boundedByTargets("SELECT t.id\nFROM targets t JOIN goods_cost_sheets s ON s.goods_id=t.id")).isTrue();
+        assertThat(boundedByTargets("SELECT t.id\nFROM goods_cost_sheets s JOIN targets t ON s.goods_id=t.id")).isTrue();
+        assertThat(boundedByTargets("SELECT s.goods_id\nFROM goods_cost_sheets s WHERE s.goods_id IN (SELECT id FROM targets)")).isTrue();
+        assertThat(boundedByTargets("SELECT s.goods_id\nFROM goods_cost_sheets s")).isFalse();
+        assertThat(boundedByTargets("SELECT t.id\nFROM targets_history t JOIN goods_cost_sheets s ON s.goods_id=t.id")).isFalse();
+        assertThat(boundedByTargets("SELECT s.goods_id, 'JOIN targets fake'\nFROM goods_cost_sheets s")).isFalse();
+        assertThat(boundedByTargets("SELECT s.goods_id\nFROM goods_cost_sheets s -- JOIN targets fake\n")).isFalse();
+        assertThat(boundedByTargets("SELECT s.goods_id\nFROM goods_cost_sheets s /* IN (SELECT id FROM targets) */")).isFalse();
     }
 
     @Test

@@ -77,10 +77,13 @@ class PairedInternalBackupTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.source = self.root / "source"
         (self.source / "final").mkdir(parents=True)
+        self.local = self.root / "local"
+        (self.local / "final").mkdir(parents=True)
         self.target = self.root / "paired"
         self.target.mkdir(mode=0o700)
         self.database = "paired_test_" + uuid.uuid4().hex[:12]
         self.config = paired.Config(database=self.database, media_root=str(self.source),
+                                    local_media_root=str(self.local),
                                     backup_root=str(self.target), pg_dump=shutil.which("pg_dump"),
                                     min_free_bytes=1, min_free_percent=1,
                                     bytes_per_second=100 * 1024**2, max_seconds=120)
@@ -100,6 +103,12 @@ class PairedInternalBackupTest(unittest.TestCase):
                 CREATE TABLE business_facts (id integer PRIMARY KEY, exact_amount numeric(28,8));
                 INSERT INTO business_facts VALUES (1,123.12345678);
             """)
+            for table in paired.PRIVATE_TABLES:
+                cursor.execute("CREATE TABLE " + table + " (id uuid PRIMARY KEY, storage_provider text, "
+                               "storage_key text, storage_version text, storage_size bigint, storage_sha256 text)")
+            cursor.execute("CREATE VIEW v_private_document_storage_references AS " + " UNION ".join(
+                "SELECT storage_provider,storage_key,storage_version FROM " + table + " WHERE storage_provider IS NOT NULL"
+                for table in paired.PRIVATE_TABLES))
 
     def tearDown(self):
         for database in self.created_databases:
@@ -139,6 +148,129 @@ class PairedInternalBackupTest(unittest.TestCase):
 
     def latest(self):
         return (self.target / "latest-success.json").read_bytes()
+
+    def add_private(self, table="goods_cost_imports", data=b"synthetic cost workbook", *, key=None,
+                    provider="local", version=None):
+        key = key or uuid.uuid4().hex + ".xlsx"
+        row = (str(uuid.uuid4()), provider, key, version, len(data), hashlib.sha256(data).hexdigest())
+        if provider == "local":
+            (self.local / "final" / key).write_bytes(data)
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("INSERT INTO " + table + " VALUES (%s,%s,%s,%s,%s,%s)", row)
+        return row
+
+    def test_private_cost_and_shared_quote_references_restore_exact_bytes(self):
+        row = self.add_private()
+        self.add_private("sales_quote_template_versions", key=row[2])
+        attachment = self.add_object(compressed=True)
+        self.add_private("sales_quote_template_candidates", data=attachment[3], key=attachment[1],
+                         provider="internal", version="internal-v1:" + hashlib.sha256(attachment[3]).hexdigest())
+        published = paired.backup(self.config)
+        summary = paired.verify_set(published)
+        self.assertEqual("uten-paired-internal-v2", summary["format"])
+        self.assertEqual((1, 3, 2), tuple(summary[k] for k in ("clean_objects", "private_document_references", "media_objects")))
+        restored = self.database + "_restore"
+        self.create_database(restored)
+        account = pwd.getpwnam("postgres")
+        with (published / "database.dump").open("rb") as source:
+            subprocess.run([shutil.which("pg_restore"), "--exit-on-error", "--dbname=" + restored,
+                            "--host=" + self.config.socket_directory, "--username=postgres"],
+                           stdin=source, check=True, user=account.pw_uid, group=account.pw_gid, extra_groups=[])
+        with paired.connect_peer(dataclasses.replace(self.config, database=restored)) as connection, connection.cursor() as cursor:
+            references = paired.collect_references(cursor, lock=False)
+            paired.verify_media(published, summary, references)
+        self.assertEqual(b"synthetic cost workbook", (published / "media/local/final" / row[2]).read_bytes())
+        with self.assertRaises(ValueError):
+            paired.verify_media(published, summary, references[:-1])
+
+    def test_private_reference_faults_preserve_last_complete_set(self):
+        row = self.add_private()
+        old = paired.backup(self.config)
+        pointer = self.latest()
+        path = self.local / "final" / row[2]
+        original = path.read_bytes()
+        for fault in ("hash", "missing", "size", "version", "conflict", "outbox", "unconfigured"):
+            with self.subTest(fault=fault):
+                config = self.config
+                if fault == "hash": path.write_bytes(b"!" * len(original))
+                elif fault == "missing": path.unlink()
+                elif fault == "unconfigured": config = dataclasses.replace(config, local_media_root=None)
+                else:
+                    with self.connection() as connection, connection.cursor() as cursor:
+                        if fault == "size": cursor.execute("UPDATE goods_cost_imports SET storage_size=1")
+                        elif fault == "version": cursor.execute("UPDATE goods_cost_imports SET storage_version='wrong'")
+                        elif fault == "conflict":
+                            cursor.execute("INSERT INTO sales_quote_template_versions SELECT %s,storage_provider,storage_key,storage_version,1,storage_sha256 FROM goods_cost_imports", (str(uuid.uuid4()),))
+                        elif fault == "outbox":
+                            cursor.execute("INSERT INTO attachment_object_outbox VALUES (%s,NULL,'DELETE_FINAL',%s,NULL,'local','PENDING')", (str(uuid.uuid4()), row[2]))
+                with self.assertRaises(Exception): paired.backup(config)
+                self.assertEqual(pointer, self.latest())
+                paired.verify_set(old)
+                path.write_bytes(original)
+                with self.connection() as connection, connection.cursor() as cursor:
+                    cursor.execute("UPDATE goods_cost_imports SET storage_size=%s,storage_version=NULL", (len(original),))
+                    cursor.execute("DELETE FROM sales_quote_template_versions")
+                    cursor.execute("DELETE FROM attachment_object_outbox")
+
+    def test_private_quote_delete_waits_for_pair_and_new_cost_upload_is_outside_snapshot(self):
+        row = self.add_private("sales_quote_template_candidates")
+        entered, release, deleted = threading.Event(), threading.Event(), threading.Event()
+        results, failures = [], []
+        delete_connection = self.connection()
+        original_copy = paired.copy_object
+        def slow_copy(*args):
+            entered.set()
+            if not release.wait(15): raise TimeoutError("test barrier")
+            return original_copy(*args)
+        def run_backup():
+            try: results.append(paired.backup(self.config))
+            except BaseException as error: failures.append(error)
+        def delete():
+            try:
+                with delete_connection as connection, connection.cursor() as cursor:
+                    cursor.execute("DELETE FROM sales_quote_template_candidates WHERE id=%s", (row[0],))
+                (self.local / "final" / row[2]).unlink(); deleted.set()
+            except BaseException as error: failures.append(error)
+        with patch.object(paired, "copy_object", side_effect=slow_copy):
+            worker = threading.Thread(target=run_backup); worker.start()
+            self.assertTrue(entered.wait(10))
+            deleter = threading.Thread(target=delete); deleter.start()
+            self.add_private()
+            time.sleep(0.3)
+            self.assertFalse(deleted.is_set())
+            release.set(); worker.join(20); deleter.join(20)
+        self.assertEqual([], failures); self.assertTrue(deleted.is_set())
+        self.assertEqual(1, paired.verify_set(results[0])["private_document_references"])
+        delete_connection.close()
+
+    def test_legacy_v1_backup_remains_verifiable(self):
+        self.add_object()
+        published = paired.backup(self.config)
+        summary = json.loads((published / "manifest.json").read_text())
+        summary["format"] = "uten-paired-internal-v1"
+        (published / "manifest.json").write_text(json.dumps(summary))
+        self.assertEqual(1, paired.verify_set(published)["clean_objects"])
+
+    def test_new_private_reference_producer_cannot_silently_escape_inventory(self):
+        self.add_private()
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("DROP VIEW v_private_document_storage_references")
+            cursor.execute("CREATE VIEW v_private_document_storage_references AS "
+                           "SELECT storage_provider,storage_key,storage_version FROM goods_cost_imports UNION "
+                           "SELECT 'local',%s,NULL::text", (uuid.uuid4().hex + ".xlsx",))
+        with self.assertRaisesRegex(ValueError, "not completely covered"):
+            paired.backup(self.config)
+        self.assertFalse((self.target / "latest-success.json").exists())
+
+    def test_pre_private_storage_database_with_embedded_quote_payload_still_backs_up(self):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("DROP VIEW v_private_document_storage_references")
+            for table in paired.PRIVATE_TABLES:
+                cursor.execute("DROP TABLE " + table)
+            cursor.execute("CREATE TABLE sales_quote_template_versions (id uuid PRIMARY KEY, workbook_bytes bytea)")
+            cursor.execute("INSERT INTO sales_quote_template_versions VALUES (%s,%s)",
+                           (str(uuid.uuid4()), b"synthetic pre-V747 embedded document"))
+        self.assertEqual(0, paired.verify_set(paired.backup(self.config))["media_objects"])
 
     def test_full_pair_restores_exact_database_and_both_original_codecs(self):
         objects = [self.add_object(), self.add_object(compressed=True)]

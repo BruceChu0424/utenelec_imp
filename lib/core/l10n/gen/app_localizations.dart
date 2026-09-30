@@ -12283,7 +12283,7 @@ abstract class AppLocalizations {
   /// No description provided for @costBatch.
   ///
   /// In zh, this message translates to:
-  /// **'本批产量'**
+  /// **'测算数量'**
   String get costBatch;
 
   /// No description provided for @costCustomer.
@@ -13725,6 +13725,348 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'核对原因编码'**
   String get costGapCode;
+
+  /// No description provided for @costDailyTable.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本表'**
+  String get costDailyTable;
+
+  /// No description provided for @costCalculationSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算设置'**
+  String get costCalculationSettings;
+
+  /// No description provided for @costAdjustment.
+  ///
+  /// In zh, this message translates to:
+  /// **'调整'**
+  String get costAdjustment;
+
+  /// No description provided for @costFinishAdjustment.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成调整'**
+  String get costFinishAdjustment;
+
+  /// No description provided for @costMoreActions.
+  ///
+  /// In zh, this message translates to:
+  /// **'更多操作'**
+  String get costMoreActions;
+
+  /// No description provided for @costRefreshSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新来源价格与用量'**
+  String get costRefreshSources;
+
+  /// No description provided for @costDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载'**
+  String get costDownload;
+
+  /// No description provided for @costDownloadFormat.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件格式'**
+  String get costDownloadFormat;
+
+  /// No description provided for @costAdvancedOptions.
+  ///
+  /// In zh, this message translates to:
+  /// **'高级选项'**
+  String get costAdvancedOptions;
+
+  /// No description provided for @costOptionalCustomer.
+  ///
+  /// In zh, this message translates to:
+  /// **'指定客户（可选）'**
+  String get costOptionalCustomer;
+
+  /// No description provided for @costAutoCalculating.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在自动计算…'**
+  String get costAutoCalculating;
+
+  /// No description provided for @costAutomaticReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'已自动计算'**
+  String get costAutomaticReady;
+
+  /// No description provided for @costNeedsReviewCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'待核 {count} 项'**
+  String costNeedsReviewCount(int count);
+
+  /// No description provided for @costOnlyPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'只看待核'**
+  String get costOnlyPending;
+
+  /// No description provided for @costAllMaterials.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部物料'**
+  String get costAllMaterials;
+
+  /// No description provided for @costPerProductPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'每成品费用'**
+  String get costPerProductPrice;
+
+  /// No description provided for @costMissingPriceInput.
+  ///
+  /// In zh, this message translates to:
+  /// **'填入单价'**
+  String get costMissingPriceInput;
+
+  /// No description provided for @costDefaultFeeHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加后直接在对应行填写每件产品的费用；不同算法可在高级选项中选择。'**
+  String get costDefaultFeeHelp;
+
+  /// No description provided for @costKnownPartial.
+  ///
+  /// In zh, this message translates to:
+  /// **'已知部分成本'**
+  String get costKnownPartial;
+
+  /// No description provided for @costPriceAvailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取得'**
+  String get costPriceAvailable;
+
+  /// No description provided for @costAutoPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动可靠来源'**
+  String get costAutoPrice;
+
+  /// No description provided for @costResultNotUpdated.
+  ///
+  /// In zh, this message translates to:
+  /// **'结果尚未更新，请重试'**
+  String get costResultNotUpdated;
+
+  /// No description provided for @costActualFilters.
+  ///
+  /// In zh, this message translates to:
+  /// **'筛选实际范围'**
+  String get costActualFilters;
+
+  /// No description provided for @costReturnToTable.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回成本表'**
+  String get costReturnToTable;
+
+  /// No description provided for @costActualEvidence.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际成本依据'**
+  String get costActualEvidence;
+
+  /// No description provided for @costSavedHistory.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史成本记录'**
+  String get costSavedHistory;
+
+  /// No description provided for @costAdjustEstimateQuantity.
+  ///
+  /// In zh, this message translates to:
+  /// **'调整数量'**
+  String get costAdjustEstimateQuantity;
+
+  /// No description provided for @costEstimateBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'按{quantity}{unit}测算'**
+  String costEstimateBasis(String quantity, String unit);
+
+  /// No description provided for @costEstimateBasisWithoutUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'按数量{quantity}测算'**
+  String costEstimateBasisWithoutUnit(String quantity);
+
+  /// No description provided for @costProductionLoading.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取已审生产记录…'**
+  String get costProductionLoading;
+
+  /// No description provided for @costProductionUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产记录暂不可用，点击重试'**
+  String get costProductionUnavailable;
+
+  /// No description provided for @costProductionNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可见的已审生产记录'**
+  String get costProductionNone;
+
+  /// No description provided for @costProductionUnitPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产数量的原报工单位待核实'**
+  String get costProductionUnitPending;
+
+  /// No description provided for @costRecentProductionLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近生产批次 {scope} · 已审有效产量 {quantity}{unit}'**
+  String costRecentProductionLabel(String scope, String quantity, String unit);
+
+  /// No description provided for @costProductionScopeHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前可见生产范围的旁证：已审核报工完成量扣除已确认FQC失效；返工恢复按原来源抵扣。未审核草稿不计入，与入库数量、成本测算数量分开，不代表成本已核清。'**
+  String get costProductionScopeHelp;
+
+  /// No description provided for @costProductionBatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产批次'**
+  String get costProductionBatch;
+
+  /// No description provided for @costApprovedEffectiveOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'已审有效产量'**
+  String get costApprovedEffectiveOutput;
+
+  /// No description provided for @costApprovedReportedOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'原已审报工完成量'**
+  String get costApprovedReportedOutput;
+
+  /// No description provided for @costFqcDeductedOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'FQC确认扣减量'**
+  String get costFqcDeductedOutput;
+
+  /// No description provided for @costReportedDefectOutput.
+  ///
+  /// In zh, this message translates to:
+  /// **'另报不良数量'**
+  String get costReportedDefectOutput;
+
+  /// No description provided for @costProductionFirstReport.
+  ///
+  /// In zh, this message translates to:
+  /// **'范围内首次报工日期'**
+  String get costProductionFirstReport;
+
+  /// No description provided for @costProductionLastReport.
+  ///
+  /// In zh, this message translates to:
+  /// **'范围内最后报工日期'**
+  String get costProductionLastReport;
+
+  /// No description provided for @costProductionReportCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'有效已审报工记录数'**
+  String get costProductionReportCount;
+
+  /// No description provided for @costProductionMemberCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'范围内生产任务数'**
+  String get costProductionMemberCount;
+
+  /// No description provided for @costProductionDraftReports.
+  ///
+  /// In zh, this message translates to:
+  /// **'另有未审核报工'**
+  String get costProductionDraftReports;
+
+  /// No description provided for @costProductionEvidence.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已审生产依据'**
+  String get costProductionEvidence;
+
+  /// No description provided for @costProductionOpenCosts.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看该批次成本依据'**
+  String get costProductionOpenCosts;
+
+  /// No description provided for @costProductionPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产数量待核实，查看依据'**
+  String get costProductionPending;
+
+  /// No description provided for @costProductionSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算依据'**
+  String get costProductionSource;
+
+  /// No description provided for @costProductionCopyScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制批次标识'**
+  String get costProductionCopyScope;
+
+  /// No description provided for @costProductionSourceReport.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅计入已审核且未撤回的报工'**
+  String get costProductionSourceReport;
+
+  /// No description provided for @costProductionSourceFamily.
+  ///
+  /// In zh, this message translates to:
+  /// **'汇总同源拆批及追加生产范围'**
+  String get costProductionSourceFamily;
+
+  /// No description provided for @costProductionSourceProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'扣除确认的FQC失效，返工恢复抵回原来源'**
+  String get costProductionSourceProgress;
+
+  /// No description provided for @costProductionSourceUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'保留原报工计量单位及换算证据'**
+  String get costProductionSourceUnit;
+
+  /// No description provided for @costProductionSourceDefects.
+  ///
+  /// In zh, this message translates to:
+  /// **'另报不良独立列示，不重复扣减有效完成量'**
+  String get costProductionSourceDefects;
+
+  /// No description provided for @costProductionSourceOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'由生产报工及其关联记录提供'**
+  String get costProductionSourceOther;
+
+  /// No description provided for @costProductionProgressPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'报工与车间进度尚未核对一致，暂不显示产量'**
+  String get costProductionProgressPending;
 }
 
 class _AppLocalizationsDelegate

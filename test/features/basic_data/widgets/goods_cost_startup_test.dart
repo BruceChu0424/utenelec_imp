@@ -17,6 +17,17 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 class _StartupCosts extends Fake implements GoodsCostRepository {
   bool confirmed = false;
   int previews = 0, saves = 0;
+  int productionCalls = 0;
+  @override
+  Future<Map<String, dynamic>> productionOutput(
+    String goodsId, {
+    String? executionSegmentId,
+  }) async {
+    productionCalls++;
+    return {'state': 'NONE', 'goodsId': goodsId};
+  }
+
+  Map<String, dynamic>? previewInput;
   GoodsCostCalculation get result => GoodsCostCalculation({
     'lines': <Object>[],
     'fees': <Object>[],
@@ -46,12 +57,23 @@ class _StartupCosts extends Fake implements GoodsCostRepository {
       'name': '成本单',
       'batchQty': '5',
       'exchangeRateToLocal': '1',
+      'priceStrategy': 'MANUAL',
+      'usageStrategy': 'DESIGN',
+      'lineOverrides': [
+        {
+          'path': 'kept-path',
+          'adoptedQty': '0.123456',
+          'unitPrice': '20',
+          'reason': 'kept override',
+        },
+      ],
     },
     'calculation': result.json,
   });
   @override
   Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async {
     previews++;
+    previewInput = copyCostJson(input);
     return result;
   }
 
@@ -109,12 +131,39 @@ Future<void> _pump(WidgetTester tester, _StartupCosts costs) async {
 
 void main() {
   testWidgets(
+    'opening a draft recalculates automatically with its own explicit strategy and overrides',
+    (tester) async {
+      final costs = _StartupCosts();
+      await _pump(tester, costs);
+      expect(costs.previews, 1);
+      expect(costs.saves, 0);
+      expect(costs.previewInput?['batchQty'], '5');
+      expect(costs.previewInput?['priceStrategy'], 'MANUAL');
+      expect(costs.previewInput?['usageStrategy'], 'DESIGN');
+      expect(
+        costMaps(costs.previewInput?['lineOverrides']).single['adoptedQty'],
+        '0.123456',
+      );
+      expect(
+        costMaps(costs.previewInput?['lineOverrides']).single['unitPrice'],
+        '20',
+      );
+      expect(find.text('校验重算'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'startup confirmed cost is read-only without recomputing historical evidence',
     (tester) async {
       final costs = _StartupCosts()..confirmed = true;
       await _pump(tester, costs);
       expect(costs.previews, 0);
+      expect(costs.productionCalls, 0);
+      expect(find.byKey(const Key('cost-production-summary')), findsNothing);
       expect(find.byKey(const Key('cost-save')), findsNothing);
+      expect(find.byKey(const ValueKey('cost-header-batchQty')), findsNothing);
+      await tester.tap(find.byKey(const Key('cost-settings-toggle')));
+      await tester.pumpAndSettle();
       final input = find.descendant(
         of: find.byKey(const ValueKey('cost-header-batchQty')),
         matching: find.byType(TextField),
@@ -128,6 +177,8 @@ void main() {
     (tester) async {
       final costs = _StartupCosts();
       await _pump(tester, costs);
+      await tester.tap(find.byKey(const Key('cost-adjust-quantity')));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('cost-header-batchQty')),
         '-1',

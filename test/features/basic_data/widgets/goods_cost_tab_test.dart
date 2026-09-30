@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_repository.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
@@ -49,6 +50,7 @@ Map<String, dynamic> _input() => {
 Map<String, dynamic> _calculation({String total = '6337.3207'}) => {
   'goodsId': 'product',
   'goodsName': '80N 玻璃开关',
+  'unitName': '件',
   'currencyName': 'CNY',
   'contentDigest': 'receipt-1',
   'lines': [
@@ -94,6 +96,35 @@ Map<String, dynamic> _calculation({String total = '6337.3207'}) => {
 };
 
 class _Costs extends Fake implements GoodsCostRepository {
+  int bootstrapCalls = 0;
+  int productionCalls = 0;
+  Map<String, dynamic>? actualFilters;
+  @override
+  Future<Map<String, dynamic>> productionOutput(
+    String goodsId, {
+    String? executionSegmentId,
+  }) async {
+    productionCalls++;
+    return {'goodsId': goodsId, 'state': 'NONE'};
+  }
+
+  @override
+  Future<GoodsCostCalculation> bootstrap(
+    String goodsId, {
+    String? clientId,
+  }) async {
+    bootstrapCalls++;
+    return GoodsCostCalculation({
+      ..._calculation(),
+      'resolvedInput': {
+        ..._input(),
+        'goodsId': goodsId,
+        'batchQty': '1',
+        'priceStrategy': 'AUTO',
+      },
+    });
+  }
+
   Map<String, dynamic>? saved;
   int previewCalls = 0;
   bool defer = false;
@@ -130,7 +161,11 @@ class _Costs extends Fake implements GoodsCostRepository {
       return c.future;
     }
     return Future.value(
-      GoodsCostCalculation(_calculation(total: '7777.123456')),
+      GoodsCostCalculation(
+        _calculation(
+          total: input['batchQty'] == '1000' ? '6337.3207' : '7777.123456',
+        ),
+      ),
     );
   }
 
@@ -151,22 +186,114 @@ class _Costs extends Fake implements GoodsCostRepository {
   Future<Map<String, dynamic>> actual(
     String goodsId,
     Map<String, dynamic> filters,
-  ) async => {
-    'summary': {
-      'knownInputCostLocal': '12.123456789123456789',
-      'allocatedOutputCostLocal': '10',
-      'actualUnitCostLocal': '1',
-      'outputQtyBase': '10',
-      'fullCostComplete': false,
-    },
-    'costObjects': <Object>[],
-    'inputs': <Object>[],
-    'outputs': <Object>[],
-    'gaps': <Object>[],
-    'filter': filters,
-    'contentDigest': 'actual-1',
-  };
+  ) async {
+    actualFilters = copyCostJson(filters);
+    return {
+      'summary': {
+        'knownInputCostLocal': '12.123456789123456789',
+        'allocatedOutputCostLocal': '10',
+        'actualUnitCostLocal': '1',
+        'outputQtyBase': '10',
+        'fullCostComplete': false,
+      },
+      'costObjects': <Object>[],
+      'inputs': <Object>[],
+      'outputs': <Object>[],
+      'gaps': <Object>[],
+      'filter': filters,
+      'contentDigest': 'actual-1',
+    };
+  }
 }
+
+Map<String, dynamic> _productionFixture() => {
+  'goodsId': 'product',
+  'state': 'READY',
+  'selectionBasis': 'LATEST_APPROVED_REPORT',
+  'scopeId': 'scope-test',
+  'scopeNo': 'ZX-TEST',
+  'unitId': 'box',
+  'unitName': '箱',
+  'approvedReportedQty': '2.123456789123456789',
+  'effectiveCompletedQty': '2.023456789123456789',
+  'fqcDeductedQty': '0.1',
+  'reportedDefectQty': '0.02',
+  'firstReportDate': '2026-09-29',
+  'lastReportDate': '2026-09-30',
+  'lastReportUpdatedAt': '2026-09-30T10:00:00Z',
+  'memberCount': 2,
+  'approvedReportCount': 2,
+  'hasDraftReports': true,
+  'sourceCodes': [
+    'APPROVED_DAILY_REPORT',
+    'EXECUTION_FAMILY',
+    'WORKBENCH_EFFECTIVE_PROGRESS',
+    'FROZEN_REPORTING_UNIT',
+    'INITIAL_REPORT_DEFECTS',
+  ],
+  'issues': <String>[],
+};
+
+class _ProductionCosts extends _Costs {
+  Map<String, dynamic> production = _productionFixture();
+  bool failProduction = false;
+  Completer<Map<String, dynamic>>? pendingProduction;
+  @override
+  Future<Map<String, dynamic>> productionOutput(
+    String goodsId, {
+    String? executionSegmentId,
+  }) async {
+    productionCalls++;
+    if (failProduction) throw StateError('source unavailable');
+    if (pendingProduction != null) return pendingProduction!.future;
+    return copyCostJson(production);
+  }
+}
+
+class _PermissionCosts extends _Costs {
+  int saveCalls = 0, confirmCalls = 0, snapshotCalls = 0;
+  Completer<void>? saveGate;
+  @override
+  Future<GoodsCostSheet> save(
+    String? id,
+    Map<String, dynamic> input, {
+    required String idempotencyKey,
+    int? expectedVersion,
+  }) async {
+    saveCalls++;
+    final result = await super.save(
+      id,
+      input,
+      idempotencyKey: idempotencyKey,
+      expectedVersion: expectedVersion,
+    );
+    if (saveGate != null) await saveGate!.future;
+    return result;
+  }
+
+  @override
+  Future<GoodsCostSheet> confirm(String id, int version, String key) async {
+    confirmCalls++;
+    return sheet(version: version + 1);
+  }
+
+  @override
+  Future<GoodsCostSnapshot> snapshot(String id, int version, String key) async {
+    snapshotCalls++;
+    return GoodsCostSnapshot({'id': 'snapshot', 'calculation': _calculation()});
+  }
+}
+
+const _allCostGrants = {
+  Perm.goodsCostView,
+  Perm.goodsCostEdit,
+  Perm.goodsCostConfirm,
+  Perm.goodsCostExport,
+  Perm.goodsCostTemplate,
+  Perm.goodsView,
+  Perm.goodsEdit,
+  Perm.goodsExport,
+};
 
 class _ProjectedCosts extends _Costs {
   Map<String, dynamic> initial() => {
@@ -216,6 +343,22 @@ class _ProjectedCosts extends _Costs {
 /// A self-consistent synthetic fixture for the rendered UI artifact only.
 /// It is deliberately labelled as a test example, never company actual usage.
 class _RenderCosts extends _Costs {
+  @override
+  Future<Map<String, dynamic>> productionOutput(
+    String goodsId, {
+    String? executionSegmentId,
+  }) async => {
+    ..._productionFixture(),
+    'unitName': '件',
+    'effectiveCompletedQty': '960',
+    'approvedReportedQty': '1000',
+    'fqcDeductedQty': '40',
+    'reportedDefectQty': '12',
+    'hasDraftReports': false,
+  };
+  @override
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async =>
+      sheet(input: input).calculation;
   @override
   GoodsCostSheet sheet({Map<String, dynamic>? input, int version = 3}) {
     final data = super.sheet(input: input, version: version).json;
@@ -304,6 +447,19 @@ class _ResumeCosts extends _Costs {
 }
 
 class _ResolvedCosts extends _Costs {
+  @override
+  Future<GoodsCostCalculation> bootstrap(
+    String goodsId, {
+    String? clientId,
+  }) async {
+    bootstrapCalls++;
+    final calculation = await preview({..._input(), 'batchQty': '1'});
+    return GoodsCostCalculation({
+      ...calculation.json,
+      'resolvedInput': {...calculation.resolvedInput!, 'batchQty': '1'},
+    });
+  }
+
   Map<String, dynamic>? lastPreview;
   @override
   Future<List<Map<String, dynamic>>> list(String goodsId) async => [];
@@ -522,6 +678,7 @@ class _ForeignTemplateCosts extends _ImportedPriceCosts {
   @override
   Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async {
     request = copyCostJson(input);
+    if (input['templateId'] != 'foreign-template') return super.preview(input);
     final fee = {
       'key': 'template-fixed',
       'name': '模板固定费',
@@ -604,6 +761,80 @@ class _ActualEvidenceCosts extends _Costs {
   };
 }
 
+class _MissingPricesCosts extends _Costs {
+  static String path(int index) => List.generate(
+    7,
+    (part) =>
+        '41e936af-0720-4605-8cab-${index.toString().padLeft(4, '0')}${part.toString().padLeft(8, '0')}',
+  ).join('/');
+  @override
+  Future<List<Map<String, dynamic>>> list(String goodsId) async => [];
+  GoodsCostCalculation missing() => GoodsCostCalculation({
+    ..._calculation(),
+    'resolvedInput': {..._input(), 'batchQty': '1', 'priceStrategy': 'AUTO'},
+    'lines': [
+      for (var index = 0; index < 30; index++)
+        {
+          'id': path(index),
+          'path': path(index),
+          'depth': 0,
+          'goodsId': 'missing-$index',
+          'goodsName': '待核材料 ${index + 1}',
+          'goodsCode': 'MAT-${index + 1}',
+          'unitName': '个',
+          'designQty': '2',
+          'actualQty': null,
+          'adoptedQty': '2',
+          'usageBasis': 'DESIGN',
+          'batchQty': '2',
+          'unitPrice': null,
+          'amount': null,
+          'unitContribution': null,
+          'included': true,
+          'valueState': 'MISSING',
+          'route': 'BUY',
+          'priceEvidence': <String, dynamic>{},
+          'extraCosts': <String, dynamic>{},
+        },
+    ],
+    'issues': [
+      for (var index = 0; index < 30; index++)
+        {
+          'code': 'MISSING_PRICE',
+          'path': path(index),
+          'message': '缺少适用且来源完整的成本价格',
+          'blocksConfirmation': true,
+        },
+    ],
+    'totals': {
+      'material': '0',
+      'process': '0',
+      'knownTotal': '0',
+      'unitCost': null,
+      'valueState': 'INCOMPLETE',
+      'missingPriceCount': 30,
+    },
+  });
+  @override
+  Future<GoodsCostCalculation> bootstrap(
+    String goodsId, {
+    String? clientId,
+  }) async {
+    bootstrapCalls++;
+    return missing();
+  }
+
+  @override
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async =>
+      missing();
+}
+
+class _PreviewFailureCosts extends _Costs {
+  @override
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async =>
+      throw StateError('计算服务暂不可用');
+}
+
 class _CostPlatform extends Fake implements PlatformTableRepository {
   @override
   Future<List<PlatformTableCapabilities>> scopes() async => const [
@@ -640,6 +871,7 @@ Future<void> _pump(
   bool costView = true,
   bool costExport = true,
   CurrencyRepository? currencies,
+  StateProvider<Set<String>>? livePermissions,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -658,16 +890,21 @@ Future<void> _pump(
           currencies ?? _Currencies(),
         ),
         sharedPreferencesProvider.overrideWithValue(prefs),
-        currentPermissionsProvider.overrideWithValue({
-          if (costView) Perm.goodsCostView,
-          Perm.goodsEdit,
-          Perm.goodsView,
-          Perm.goodsExport,
-          Perm.goodsCostEdit,
-          Perm.goodsCostConfirm,
-          if (costExport) Perm.goodsCostExport,
-          Perm.goodsCostTemplate,
-        }),
+        if (livePermissions != null)
+          currentPermissionsProvider.overrideWith(
+            (ref) => ref.watch(livePermissions),
+          )
+        else
+          currentPermissionsProvider.overrideWithValue({
+            if (costView) Perm.goodsCostView,
+            Perm.goodsEdit,
+            Perm.goodsView,
+            Perm.goodsExport,
+            Perm.goodsCostEdit,
+            Perm.goodsCostConfirm,
+            if (costExport) Perm.goodsCostExport,
+            Perm.goodsCostTemplate,
+          }),
       ],
       child: MaterialApp(
         theme: buildLightTheme(),
@@ -696,6 +933,33 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+Future<void> _settings(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('cost-settings-toggle')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _quantity(WidgetTester tester) async {
+  if (find.byKey(const ValueKey('cost-header-batchQty')).evaluate().isEmpty) {
+    await tester.tap(find.byKey(const Key('cost-adjust-quantity')));
+    await tester.pumpAndSettle();
+  }
+}
+
+Future<void> _more(WidgetTester tester, String label) async {
+  await tester.tap(find.byKey(const Key('cost-more')));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text(label).last);
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _adjust(WidgetTester tester, String path) async {
+  final button = find.byKey(ValueKey('cost-adjust-$path'));
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -706,6 +970,123 @@ void main() {
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await icons.load();
   });
+  testWidgets(
+    'revoking edit while automatic preview is pending prevents save',
+    (tester) async {
+      final repo = _PermissionCosts();
+      final grants = StateProvider<Set<String>>((ref) => {..._allCostGrants});
+      await _pump(tester, repo, livePermissions: grants);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GoodsCostTab)),
+      );
+      repo.defer = true;
+      await _quantity(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-header-batchQty')),
+        '101',
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pump();
+      expect(repo.pending, hasLength(1));
+      container.read(grants.notifier).state = {..._allCostGrants}
+        ..remove(Perm.goodsCostEdit);
+      repo.pending.single.complete(GoodsCostCalculation(_calculation()));
+      await tester.pumpAndSettle();
+      expect(repo.saveCalls, 0);
+      expect(repo.saved, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'revoking confirm while its dialog is open prevents confirmation',
+    (tester) async {
+      final repo = _PermissionCosts();
+      final grants = StateProvider<Set<String>>((ref) => {..._allCostGrants});
+      await _pump(tester, repo, livePermissions: grants);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GoodsCostTab)),
+      );
+      await _more(tester, '确认成本版本');
+      container.read(grants.notifier).state = {..._allCostGrants}
+        ..remove(Perm.goodsCostConfirm);
+      await tester.pump();
+      await tester.tap(find.text('确认').last);
+      await tester.pumpAndSettle();
+      expect(repo.confirmCalls, 0);
+      expect(repo.saveCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  for (final action in ['confirm', 'export']) {
+    testWidgets(
+      'revoking $action while saving prevents the following command',
+      (tester) async {
+        final repo = _PermissionCosts();
+        final grants = StateProvider<Set<String>>((ref) => {..._allCostGrants});
+        await _pump(tester, repo, livePermissions: grants);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(GoodsCostTab)),
+        );
+        await _quantity(tester);
+        await tester.enterText(
+          find.byKey(const ValueKey('cost-header-batchQty')),
+          '101',
+        );
+        await tester.pump(const Duration(milliseconds: 600));
+        await tester.pumpAndSettle();
+        repo.saveGate = Completer<void>();
+        Future<UtenExportSelection?>? download;
+        if (action == 'confirm') {
+          await _more(tester, '确认成本版本');
+        } else {
+          final button = tester.widget<UtenExportButton>(
+            find.byKey(const Key('cost-download')),
+          );
+          download = button.prepareExport!();
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.text('确认').last);
+        // Export waits for the dialog route to leave the overlay before it
+        // resolves. Start and finish that animation before observing the save.
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        expect(repo.saveCalls, 1);
+        container.read(grants.notifier).state = {..._allCostGrants}
+          ..remove(
+            action == 'confirm' ? Perm.goodsCostConfirm : Perm.goodsCostExport,
+          );
+        repo.saveGate!.complete();
+        await tester.pumpAndSettle();
+        if (download != null) expect(await download, isNull);
+        expect(repo.confirmCalls, 0);
+        expect(repo.snapshotCalls, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets(
+    'revoking cost visibility masks an open production evidence dialog',
+    (tester) async {
+      final repo = _ProductionCosts();
+      final grants = StateProvider<Set<String>>((ref) => {..._allCostGrants});
+      await _pump(tester, repo, livePermissions: grants);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GoodsCostTab)),
+      );
+      await tester.tap(find.byKey(const Key('cost-production-summary')));
+      await tester.pumpAndSettle();
+      expect(find.text('当前已审生产依据'), findsOneWidget);
+      container.read(grants.notifier).state = {..._allCostGrants}
+        ..remove(Perm.goodsCostView);
+      await tester.pumpAndSettle();
+      expect(find.text('当前已审生产依据'), findsNothing);
+      expect(find.text('2.023456789123456789'), findsNothing);
+      expect(find.text('没有成本查看权限'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
   test(
     'same goods on distinct BOM paths keeps overrides and exact decimals independent',
     () {
@@ -742,9 +1123,10 @@ void main() {
     'shows cost-only tabs, distinct identity columns and one visible line per material cell',
     (tester) async {
       await _pump(tester, _Costs());
-      expect(find.text('成本测算'), findsOneWidget);
-      expect(find.text('实际核对'), findsOneWidget);
-      expect(find.text('成本版本'), findsOneWidget);
+      expect(find.byKey(const Key('cost-estimate-basis')), findsOneWidget);
+      expect(find.byKey(const ValueKey('cost-tab-0')), findsNothing);
+      expect(find.text('实际核对'), findsNothing);
+      expect(find.text('成本版本'), findsNothing);
       expect(find.text('报价'), findsNothing);
       expect(find.text('售价'), findsNothing);
       final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
@@ -771,6 +1153,7 @@ void main() {
     (tester) async {
       final repo = _Costs();
       await _pump(tester, repo);
+      await _adjust(tester, 'edge-a');
       await tester.enterText(
         find.byKey(const ValueKey('cost-adoptedQty-edge-a')),
         '0.000007123456',
@@ -796,6 +1179,7 @@ void main() {
     final repo = _Costs();
     await _pump(tester, repo);
     repo.defer = true;
+    await _quantity(tester);
     await tester.enterText(
       find.byKey(const ValueKey('cost-header-batchQty')),
       '101',
@@ -883,9 +1267,7 @@ void main() {
     'subcontract loss policy refuses database-rounding input before save',
     (tester) async {
       await _pump(tester, _Costs());
-      await tester.ensureVisible(find.text('委外允许损耗'));
-      await tester.tap(find.text('委外允许损耗'));
-      await tester.pumpAndSettle();
+      await _more(tester, '委外允许损耗');
       final input = find.descendant(
         of: find.byType(AlertDialog),
         matching: find.byType(TextFormField),
@@ -907,8 +1289,7 @@ void main() {
     'actual costs retain decimal evidence and never claim complete total variance',
     (tester) async {
       await _pump(tester, _Costs());
-      await tester.tap(find.byKey(const ValueKey('cost-tab-1')));
-      await tester.pumpAndSettle();
+      await _more(tester, '实际成本依据');
       expect(find.textContaining('12.123456789123456789'), findsWidgets);
       expect(find.text('尚未覆盖全部人工及间接费用'), findsOneWidget);
       expect(find.text('同口径成本差额'), findsNothing);
@@ -920,9 +1301,7 @@ void main() {
     (tester) async {
       final repo = _ProjectedCosts();
       await _pump(tester, repo);
-      await tester.ensureVisible(find.text('工序与费用'));
-      await tester.tap(find.text('工序与费用'));
-      await tester.pumpAndSettle();
+      await _more(tester, '工序与费用');
       final input = find.byKey(
         const ValueKey('cost-fee-row-COLUMN:inspect:edge-a-value'),
       );
@@ -940,6 +1319,7 @@ void main() {
       final signal = binding.factListenablesOf!(row).last;
       signal.addListener(changed);
       await tester.enterText(input, '0.03');
+      expect(binding.factValuesOf!(row)['amount'], isNull);
       await tester.pump(const Duration(milliseconds: 650));
       await tester.pumpAndSettle();
       expect(binding.factValuesOf!(row)['value'], '0.03');
@@ -958,9 +1338,8 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _Costs(), costExport: false);
-    expect(find.text('成本测算'), findsOneWidget);
-    expect(find.text('下载成本 Excel'), findsNothing);
-    expect(find.text('下载成本 PDF'), findsNothing);
+    expect(find.byKey(const Key('cost-estimate-basis')), findsOneWidget);
+    expect(find.text('下载'), findsNothing);
     expect(tester.takeException(), isNull);
   });
   testWidgets(
@@ -974,15 +1353,9 @@ void main() {
           );
       expect(table().columns.any((c) => c.key == 'fee:auto-inspect'), isTrue);
       expect(repo.saved, isNull);
-      expect(
-        tester
-            .widget<TextFormField>(
-              find.byKey(const ValueKey('cost-header-batchQty')),
-            )
-            .controller!
-            .text,
-        '1',
-      );
+      expect(find.text('按1件测算'), findsOneWidget);
+      expect(find.byKey(const ValueKey('cost-header-batchQty')), findsNothing);
+      await _adjust(tester, 'edge-a');
       await tester.enterText(
         find.byKey(const ValueKey('cost-adoptedQty-edge-a')),
         '0.000007123456',
@@ -1141,10 +1514,7 @@ void main() {
       await tester.pumpAndSettle();
       // Master tables use a double tap to open a record; plain local-draft rows
       // may expose their direct Open action instead of row navigation.
-      if (find
-          .byKey(const ValueKey('cost-header-batchQty'))
-          .evaluate()
-          .isEmpty) {
+      if (find.byType(GoodsCostTab).evaluate().isEmpty) {
         await tester.tap(find.text('待恢复成本方案').first);
         await tester.pump(const Duration(milliseconds: 80));
         await tester.tap(find.text('待恢复成本方案').first);
@@ -1156,15 +1526,7 @@ void main() {
         ).uri.queryParameters['draftId'],
         'cost-draft',
       );
-      expect(
-        tester
-            .widget<TextFormField>(
-              find.byKey(const ValueKey('cost-header-batchQty')),
-            )
-            .controller!
-            .text,
-        '777',
-      );
+      expect(find.text('按777件测算'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1173,6 +1535,7 @@ void main() {
     (tester) async {
       final repo = _ImportedPriceCosts();
       await _pump(tester, repo);
+      await _adjust(tester, 'edge-a');
       final field = find.byKey(const ValueKey('cost-unitPrice-edge-a'));
       expect(tester.widget<TextFormField>(field).controller!.text, '16');
       await tester.enterText(field, '20');
@@ -1195,6 +1558,8 @@ void main() {
     (tester) async {
       final repo = _CurrencyCosts();
       await _pump(tester, repo, currencies: _ExchangeCurrencies());
+      await _settings(tester);
+      await _adjust(tester, 'edge-a');
       final quantity = tester
           .widget<TextFormField>(
             find.byKey(const ValueKey('cost-header-batchQty')),
@@ -1205,8 +1570,7 @@ void main() {
             find.byKey(const ValueKey('cost-unitPrice-edge-a')),
           )
           .controller!;
-      await tester.tap(find.text('工序与费用'));
-      await tester.pumpAndSettle();
+      await _more(tester, '工序与费用');
       final feeQuantity = tester
           .widget<TextFormField>(
             find.byKey(const ValueKey('cost-fee-row-fixed-quantity')),
@@ -1273,9 +1637,7 @@ void main() {
             .controller,
         same(feeQuantity),
       );
-      await tester.ensureVisible(find.text('保存为成本模板'));
-      await tester.tap(find.text('保存为成本模板'));
-      await tester.pumpAndSettle();
+      await _more(tester, '保存为成本模板');
       expect(repo.templateInput?['currencyId'], 'usd');
       expect(repo.templateInput?['exchangeRateToLocal'], '8');
       await tester.ensureVisible(find.byKey(const Key('cost-save')));
@@ -1310,6 +1672,8 @@ void main() {
         repo,
         currencies: _ExchangeCurrencies(hasRate: false),
       );
+      await _settings(tester);
+      await _adjust(tester, 'edge-a');
       tester
           .widget<UtenDropdownField>(
             find.byKey(const Key('cost-currency-selector')),
@@ -1358,6 +1722,7 @@ void main() {
     (tester) async {
       final repo = _ForeignTemplateCosts();
       await _pump(tester, repo, currencies: _ExchangeCurrencies());
+      await _settings(tester);
       tester
           .widget<UtenDropdownField>(
             find.byWidgetPredicate(
@@ -1368,8 +1733,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 650));
       await tester.pumpAndSettle();
       expect(costMaps(repo.request?['fees']), isEmpty);
-      await tester.tap(find.text('工序与费用'));
-      await tester.pumpAndSettle();
+      await _more(tester, '工序与费用');
       expect(
         tester
             .widget<TextFormField>(
@@ -1386,8 +1750,7 @@ void main() {
     'actual missing evidence has actionable gaps and copyable source facts without guessed navigation',
     (tester) async {
       await _pump(tester, _ActualEvidenceCosts());
-      await tester.tap(find.byKey(const ValueKey('cost-tab-1')));
-      await tester.pumpAndSettle();
+      await _more(tester, '实际成本依据');
       expect(find.text('legacy-document-identifier'), findsNothing);
       await tester.ensureVisible(find.byKey(const Key('cost-actual-pending')));
       await tester.tap(find.byKey(const Key('cost-actual-pending')));
@@ -1428,23 +1791,292 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'daily cost view starts automatically with only quantity and optional controls',
+    (tester) async {
+      final repo = _ResolvedCosts();
+      await _pump(tester, repo, size: const Size(1460, 760));
+      expect(repo.bootstrapCalls, 1);
+      expect(repo.saved, isNull);
+      expect(find.byKey(const ValueKey('cost-header-batchQty')), findsNothing);
+      expect(find.byKey(const ValueKey('cost-header-name')), findsNothing);
+      expect(find.byKey(const Key('cost-currency-selector')), findsNothing);
+      expect(find.text('校验重算'), findsNothing);
+      expect(find.text('导入成本表'), findsNothing);
+      expect(find.text('确认成本版本'), findsNothing);
+      expect(find.byKey(const ValueKey('cost-unitPrice-edge-a')), findsNothing);
+      expect(find.byKey(const Key('cost-save')), findsOneWidget);
+      expect(find.byKey(const Key('cost-download')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'thirty missing-price paths keep table header material and save simultaneously visible at 1460x760',
+    (tester) async {
+      final repo = _MissingPricesCosts();
+      await _pump(tester, repo, size: const Size(1460, 760));
+      expect(repo.bootstrapCalls, 1);
+      expect(find.text('待核 30 项'), findsOneWidget);
+      expect(find.text('缺少适用且来源完整的成本价格'), findsNothing);
+      expect(find.textContaining('41e936af-0720'), findsNothing);
+      expect(find.text('待核材料 1').hitTestable(), findsOneWidget);
+      expect(find.text('货品名称').hitTestable(), findsOneWidget);
+      expect(find.byKey(const Key('cost-save')).hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('cost-unitPrice-${_MissingPricesCosts.path(0)}')),
+        findsOneWidget,
+      );
+      expect(find.text('已知部分成本  '), findsOneWidget);
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const Key('cost-render')),
+      );
+      await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          'build/cost-workspace-missing-prices-preview.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+      await tester.tap(find.text('查看依据').first);
+      await tester.pumpAndSettle();
+      expect(find.text('待核材料 1'), findsWidgets);
+      expect(find.textContaining('41e936af-0720'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'save waits for latest automatic calculation without saving old inputs or totals',
+    (tester) async {
+      final repo = _Costs();
+      await _pump(tester, repo);
+      repo.defer = true;
+      await _quantity(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-header-batchQty')),
+        '101',
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(repo.pending.length, 1);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+      );
+      expect(
+        table.platformBinding!.factValuesOf!(table.items.first)['amount'],
+        isNull,
+      );
+      expect(
+        table.platformBinding!.factValuesOf!(
+          table.items.first,
+        )['unitContribution'],
+        isNull,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-header-batchQty')),
+        '102',
+      );
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pump();
+      expect(repo.pending.length, 2);
+      expect(repo.saved, isNull);
+      expect(find.textContaining('6337.3207'), findsNothing);
+      repo.pending[0].complete(
+        GoodsCostCalculation(_calculation(total: '1111')),
+      );
+      await tester.pump();
+      expect(repo.saved, isNull);
+      repo.pending[1].complete(
+        GoodsCostCalculation(_calculation(total: '2222')),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.saved?['batchQty'], '102');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'failed auto calculation does not keep claiming it is calculating',
+    (tester) async {
+      await _pump(tester, _PreviewFailureCosts());
+      await _quantity(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-header-batchQty')),
+        '102',
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      expect(find.text('结果尚未更新，请重试'), findsOneWidget);
+      expect(find.text('正在自动计算…'), findsNothing);
+      expect(find.textContaining('6337.3207'), findsNothing);
+      expect(find.text('计算服务暂不可用'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'main cost table has no permanent navigation tabs and on-demand evidence returns to the same inputs',
+    (tester) async {
+      final repo = _Costs();
+      await _pump(tester, repo, size: const Size(1460, 760));
+      expect(find.byKey(const ValueKey('cost-tab-0')), findsNothing);
+      expect(find.byKey(const ValueKey('cost-tab-1')), findsNothing);
+      expect(find.byKey(const ValueKey('cost-tab-2')), findsNothing);
+      expect(find.text('按1000件测算'), findsOneWidget);
+      expect(find.text('本批产量'), findsNothing);
+      expect(find.byKey(const ValueKey('cost-header-batchQty')), findsNothing);
+      await _quantity(tester);
+      expect(find.text('测算数量'), findsWidgets);
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-header-batchQty')),
+        '1200',
+      );
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pumpAndSettle();
+      final calls = repo.previewCalls;
+      await _more(tester, '实际成本依据');
+      expect(find.byKey(const Key('cost-return-table')), findsOneWidget);
+      expect(find.text('实际成本依据'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cost-return-table')));
+      await tester.pumpAndSettle();
+      expect(find.text('按1200件测算'), findsOneWidget);
+      expect(repo.previewCalls, calls);
+      await _more(tester, '历史成本记录');
+      expect(find.byKey(const Key('cost-return-table')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cost-return-table')));
+      await tester.pumpAndSettle();
+      expect(find.text('按1200件测算'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'approved production quantity uses its original unit without changing the estimate or draft',
+    (tester) async {
+      final repo = _ProductionCosts();
+      await _pump(tester, repo, size: const Size(1460, 760));
+      expect(repo.productionCalls, 1);
+      expect(
+        find.text('最近生产批次 ZX-TEST · 已审有效产量 2.023456789123456789箱'),
+        findsOneWidget,
+      );
+      expect(find.text('按1000件测算'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved?['batchQty'], '1000');
+      expect(repo.saved!.toString(), isNot(contains('scope-test')));
+      expect(repo.saved!.toString(), isNot(contains('effectiveCompletedQty')));
+      await tester.tap(find.byKey(const Key('cost-production-summary')));
+      await tester.pumpAndSettle();
+      expect(find.text('当前已审生产依据'), findsOneWidget);
+      expect(find.text('2.023456789123456789'), findsOneWidget);
+      expect(find.text('2.123456789123456789'), findsOneWidget);
+      expect(find.text('APPROVED_DAILY_REPORT'), findsNothing);
+      expect(find.text('scope-test'), findsNothing);
+      await tester.tap(find.text('查看该批次成本依据'));
+      await tester.pumpAndSettle();
+      expect(repo.actualFilters?['executionSegmentId'], 'scope-test');
+      expect(find.byKey(const Key('cost-return-table')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cost-return-table')));
+      await tester.pumpAndSettle();
+      expect(find.text('按1000件测算'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'production request failure keeps costing usable and retry does not claim no production',
+    (tester) async {
+      final repo = _ProductionCosts()..failProduction = true;
+      await _pump(tester, repo, size: const Size(1460, 760));
+      expect(find.text('生产记录暂不可用，点击重试'), findsOneWidget);
+      expect(find.text('暂无可见的已审生产记录'), findsNothing);
+      expect(find.text('按1000件测算'), findsOneWidget);
+      expect(find.byKey(const Key('cost-save')).hitTestable(), findsOneWidget);
+      expect(find.text('货品名称').hitTestable(), findsOneWidget);
+      repo.failProduction = false;
+      repo.production = {'state': 'NONE'};
+      await tester.tap(find.byKey(const Key('cost-production-summary')));
+      await tester.pumpAndSettle();
+      expect(repo.productionCalls, 2);
+      expect(find.text('暂无可见的已审生产记录'), findsOneWidget);
+      expect(find.text('生产记录暂不可用，点击重试'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'unproven production units hide all quantities and map diagnostics to staff-readable evidence',
+    (tester) async {
+      final repo = _ProductionCosts()
+        ..production = {
+          ..._productionFixture(),
+          'state': 'PENDING_UNIT',
+          'effectiveCompletedQty': '987654321.123',
+          'issues': [
+            'REPORTING_UNIT_IDENTITY_UNPROVEN',
+            'WORKBENCH_PROGRESS_NOT_RECONCILED',
+            'UNKNOWN_INTERNAL_CODE',
+          ],
+        };
+      await _pump(tester, repo);
+      expect(find.text('生产数量待核实，查看依据'), findsOneWidget);
+      expect(find.textContaining('987654321.123'), findsNothing);
+      await tester.tap(find.byKey(const Key('cost-production-summary')));
+      await tester.pumpAndSettle();
+      expect(find.text('2.123456789123456789'), findsNothing);
+      final tables = tester
+          .widgetList<MasterDataTableView<Map<String, dynamic>>>(
+            find.byType(MasterDataTableView<Map<String, dynamic>>),
+          );
+      final evidence = tables.singleWhere(
+        (t) => t.tableKey == 'master.goods.cost.production.evidence',
+      );
+      expect(evidence.items.any((r) => r['value'] == '生产数量的原报工单位待核实'), isTrue);
+      expect(
+        evidence.items.toString(),
+        isNot(contains('UNKNOWN_INTERNAL_CODE')),
+      );
+      expect(
+        evidence.items.toString(),
+        isNot(contains('REPORTING_UNIT_IDENTITY_UNPROVEN')),
+      );
+      expect(
+        evidence.items.any((r) => r['value'] == '报工与车间进度尚未核对一致，暂不显示产量'),
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'late production evidence cannot update a removed live panel or the cost estimate',
+    (tester) async {
+      final pending = Completer<Map<String, dynamic>>();
+      final repo = _ProductionCosts()..pendingProduction = pending;
+      await _pump(tester, repo);
+      expect(find.text('读取已审生产记录…'), findsOneWidget);
+      await _more(tester, '历史成本记录');
+      pending.complete(_productionFixture());
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cost-production-summary')), findsNothing);
+      await tester.tap(find.byKey(const Key('cost-return-table')));
+      await tester.pumpAndSettle();
+      expect(find.text('按1000件测算'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('renders reviewable fixture screenshot', (tester) async {
-    await _pump(tester, _RenderCosts(), size: const Size(1680, 1200));
+    await _pump(tester, _RenderCosts(), size: const Size(1460, 760));
     expect(
       tester.getRect(find.text('单件成本').first).right,
-      lessThanOrEqualTo(1680),
+      lessThanOrEqualTo(1460),
     );
     expect(
       tester.getRect(find.text('本批成本').first).right,
-      lessThanOrEqualTo(1680),
+      lessThanOrEqualTo(1460),
     );
     expect(
       tester
           .getRect(find.byKey(const ValueKey('cost-fee-inspect-edge-a')))
           .right,
-      lessThanOrEqualTo(1680),
+      lessThanOrEqualTo(1460),
     );
     expect(find.textContaining('454.81472'), findsWidgets);
+    expect(find.text('最近生产批次 ZX-TEST · 已审有效产量 960件'), findsOneWidget);
     final boundary = tester.renderObject<RenderRepaintBoundary>(
       find.byKey(const Key('cost-render')),
     );

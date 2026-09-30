@@ -8,13 +8,11 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import fcntl
 import gzip
 import hashlib
 import json
 import os
 from pathlib import Path
-import pwd
 import re
 import shutil
 import signal
@@ -26,12 +24,18 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+if os.name == "posix":
+    import fcntl
+    import pwd
+
 CHUNK = 1024 * 1024
 MAGIC = b"UTENINT\x01"
 KEY = re.compile(r"i1_([A-Z][A-Z0-9_]{0,63})_([0-9]{4}(?:0[1-9]|1[0-2]))_([a-f0-9]{32}(?:\.[a-z0-9]{1,8})?)\Z")
 LEGACY_KEY = re.compile(r"[a-f0-9]{32}(?:\.[a-z0-9]{1,8})?\Z")
 FIELDS = ("id", "owner_type", "owner_id", "storage_key", "storage_version", "sha256",
           "size_bytes", "stored_size_bytes", "storage_encoding", "storage_provider")
+PRIVATE_TABLES = ("sales_quote_template_candidates", "sales_quote_template_versions", "goods_cost_imports")
+IDENTITY_FIELDS = ("storage_provider", "storage_key", "storage_version", "sha256", "size_bytes")
 CONSISTENCY_SQL = """
 SELECT EXISTS (
   SELECT 1 FROM attachments a JOIN attachment_object_outbox o
@@ -50,6 +54,7 @@ class Config:
     port: int = 5432
     postgres_user: str = "postgres"
     media_root: str = "/var/lib/uten-imp-media/attachments"
+    local_media_root: str | None = None
     backup_root: str = "/data/uten-imp-backups/paired"
     pg_dump: str = "/usr/lib/postgresql/16/bin/pg_dump"
     min_free_bytes: int = 10 * 1024**3
@@ -80,6 +85,24 @@ def relative_key(key: str) -> Path:
 
 def open_original(root: Path, relative: Path):
     """Open every path component with NOFOLLOW, including the final file."""
+    if relative.is_absolute() or not relative.parts or any(p in (".", "..") for p in relative.parts):
+        raise ValueError("Invalid relative object path")
+    if os.name != "posix":
+        # Source capture on Windows uses a private, access-controlled directory.
+        # Reject junctions as well as symlinks; compare the opened file identity.
+        real_directory(root)
+        current = root
+        for part in relative.parts:
+            current /= part
+            info = current.lstat()
+            if info.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                raise ValueError("Reparse point in media path")
+        before = current.stat()
+        stream = current.open("rb")
+        if not stat.S_ISREG(before.st_mode) or not os.path.samestat(before, os.fstat(stream.fileno())):
+            stream.close()
+            raise ValueError("Media file identity changed")
+        return stream
     fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         for part in relative.parts[:-1]:
@@ -153,7 +176,10 @@ def check_envelope(path: Path, metadata: dict, max_original: int) -> dict:
                     "stored_size_bytes": 57 + stored_size,
                     "storage_encoding": "GZIP" if codec else "IDENTITY",
                     "storage_version": "internal-v1:" + digest.hex()}
-        if any(metadata.get(key) != value for key, value in expected.items()):
+        required = ("sha256", "size_bytes", "storage_version")
+        if any(metadata.get(key) != expected[key] for key in required) or any(
+                metadata.get(key) is not None and metadata[key] != expected[key]
+                for key in ("stored_size_bytes", "storage_encoding")):
             raise ValueError("Envelope differs from confirmed database identity")
         storage_hash.update(header)
         while chunk := source.read(CHUNK):
@@ -171,8 +197,123 @@ def check_envelope(path: Path, metadata: dict, max_original: int) -> dict:
     return {"storage_sha256": storage_hash.hexdigest(), **expected}
 
 
+def normalize_reference(row: dict) -> dict:
+    row = dict(row)
+    if row.get("source_table") not in ("attachments", *PRIVATE_TABLES):
+        raise ValueError("Unknown media reference producer")
+    try:
+        uuid.UUID(str(row["id"]))
+    except (ValueError, KeyError, TypeError):
+        raise ValueError("Invalid logical media reference identity") from None
+    if (row.get("storage_provider") not in ("internal", "local")
+            or not isinstance(row.get("sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", row["sha256"])
+            or type(row.get("size_bytes")) is not int or not 0 < row["size_bytes"] <= 1024**3):
+        raise ValueError("Unresolved media reference identity")
+    relative_key(row["storage_key"])
+    if row["storage_provider"] == "local":
+        if not LEGACY_KEY.fullmatch(row["storage_key"]) or row.get("storage_version") is not None:
+            raise ValueError("Invalid local object key/version")
+        if (row.get("stored_size_bytes") not in (None, row["size_bytes"])
+                or row.get("storage_encoding") not in (None, "IDENTITY")):
+            raise ValueError("Conflicting local physical metadata")
+        row["stored_size_bytes"], row["storage_encoding"] = row["size_bytes"], "IDENTITY"
+    elif row.get("storage_version") != "internal-v1:" + row["sha256"]:
+        raise ValueError("Internal reference version differs from original digest")
+    elif row["source_table"] == "attachments" and (
+            type(row.get("stored_size_bytes")) is not int or row["stored_size_bytes"] <= 57
+            or row.get("storage_encoding") not in ("IDENTITY", "GZIP")):
+        raise ValueError("CLEAN attachment storage metadata is unresolved")
+    for field in ("id", "owner_id"):
+        if row.get(field) is not None:
+            row[field] = str(row[field])
+    return row
+
+
+def collect_references(cursor, lock=True) -> list[dict]:
+    """Only metadata; never select workbook content, names, previews or business payloads."""
+    suffix = " FOR SHARE" if lock else ""
+    cursor.execute("SELECT " + ",".join(FIELDS) + " FROM attachments "
+                   "WHERE lifecycle_state='CLEAN' ORDER BY id" + suffix)
+    references = [normalize_reference({**dict(zip(FIELDS, values)), "source_table": "attachments"})
+                  for values in cursor.fetchall()]
+    fields = ("id", "storage_provider", "storage_key", "storage_version", "size_bytes", "sha256")
+    for table in PRIVATE_TABLES:
+        cursor.execute("SELECT to_regclass(%s)", ("public." + table,))
+        if cursor.fetchone()[0] is None:
+            continue  # Backward compatible with pre-V747/V755 databases.
+        if table != "goods_cost_imports":
+            cursor.execute("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' "
+                           "AND table_name=%s AND column_name='storage_provider')", (table,))
+            if not cursor.fetchone()[0]:
+                continue  # Pre-V747 workbooks are bytea columns already included in pg_dump.
+        cursor.execute("SELECT id,storage_provider,storage_key,storage_version,storage_size,storage_sha256 "
+                       "FROM public." + table + " WHERE storage_provider IS NOT NULL ORDER BY id" + suffix)
+        references.extend(normalize_reference({**dict(zip(fields, values)), "source_table": table})
+                          for values in cursor.fetchall())
+    # The canonical view is an independent inventory guard against missing a producer.
+    cursor.execute("SELECT to_regclass('public.v_private_document_storage_references')")
+    if cursor.fetchone()[0] is not None:
+        cursor.execute("SELECT storage_provider,storage_key,storage_version FROM v_private_document_storage_references")
+        inventory = set(cursor.fetchall())
+        actual = {tuple(row[key] for key in IDENTITY_FIELDS[:3]) for row in references
+                  if row["source_table"] != "attachments"}
+        if inventory != actual:
+            raise ValueError("Private reference inventory is not completely covered")
+    unique_references(references)
+    return references
+
+
+def unique_references(references: list[dict]) -> list[dict]:
+    objects, identities = {}, set()
+    for row in references:
+        identity = (row["source_table"], row["id"])
+        if identity in identities:
+            raise ValueError("Duplicate logical media reference")
+        identities.add(identity)
+        physical = (row["storage_provider"], relative_key(row["storage_key"]).as_posix())
+        previous = objects.get(physical)
+        if previous is not None and any(previous.get(key) != row.get(key) for key in IDENTITY_FIELDS):
+            raise ValueError("Conflicting identities share one physical object path")
+        if previous is not None:
+            for key in ("stored_size_bytes", "storage_encoding"):
+                if previous.get(key) is not None and row.get(key) is not None and previous[key] != row[key]:
+                    raise ValueError("Conflicting storage metadata for one physical object")
+        else:
+            objects[physical] = row
+    return list(objects.values())
+
+
+def media_final(root: Path, provider: str) -> Path:
+    if provider == "internal":
+        return root / "final"
+    if provider == "local":
+        return root / "local" / "final"
+    raise ValueError("Unsupported media provider")
+
+
+def check_object(path: Path, row: dict, max_original: int = 1024**3) -> dict:
+    normalize_reference(row)
+    if row["storage_provider"] == "internal":
+        return check_envelope(path, row, max_original)
+    digest, count = hashlib.sha256(), 0
+    with open_original(path.parent, Path(path.name)) as stream:
+        while chunk := stream.read(CHUNK):
+            count += len(chunk)
+            if count > min(max_original, row["size_bytes"]):
+                raise ValueError("Local object exceeds confirmed original size")
+            digest.update(chunk)
+    if count != row["size_bytes"] or digest.hexdigest() != row["sha256"]:
+        raise ValueError("Local object original digest or size mismatch")
+    return {"storage_sha256": digest.hexdigest(), "sha256": digest.hexdigest(), "size_bytes": count,
+            "stored_size_bytes": count, "storage_encoding": "IDENTITY", "storage_version": None}
+
+
 def copy_object(source_root: Path, target_root: Path, row: dict, budget: Budget) -> dict:
     relative = relative_key(row["storage_key"])
+    real_directory((source_root / relative).parent)
+    confirmed = check_object(source_root / relative, row, budget.config.max_object_bytes)
+    row = {**row, **confirmed}
     target = target_root / relative
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     budget.check(row["stored_size_bytes"])
@@ -189,7 +330,18 @@ def copy_object(source_root: Path, target_root: Path, row: dict, budget: Budget)
     if copied != row["stored_size_bytes"]:
         raise ValueError("Stored object is incomplete")
     return {**row, "relative_path": relative.as_posix(),
-            **check_envelope(target, row, budget.config.max_object_bytes)}
+            **check_object(target, row, budget.config.max_object_bytes)}
+
+
+def assert_reference_consistency(cursor, references):
+    for row in unique_references(references):
+        cursor.execute("SELECT EXISTS (SELECT 1 FROM attachment_object_outbox WHERE operation='DELETE_FINAL' "
+                       "AND status <> 'SUCCEEDED' AND storage_key=%s "
+                       "AND (storage_provider=%s OR storage_provider='legacy_unknown') "
+                       "AND (storage_version IS NOT DISTINCT FROM %s OR storage_version IS NULL))",
+                       (row["storage_key"], row["storage_provider"], row["storage_version"]))
+        if cursor.fetchone()[0]:
+            raise ValueError("Referenced media has a pending physical-delete intent")
 
 
 def connect_peer(config: Config):
@@ -262,11 +414,18 @@ def validate_config(config: Config):
         raise ValueError("Invalid backup resource or database configuration")
     source = real_directory(Path(config.media_root))
     real_directory(source / "final")
+    if config.local_media_root is not None:
+        local = real_directory(Path(config.local_media_root))
+        real_directory(local / "final")
+        if local == source or local in source.parents or source in local.parents:
+            raise ValueError("Local and internal roots must be physically separate")
     destination = real_directory(Path(config.backup_root))
     real_directory(Path(config.socket_directory))
     if (source == destination or source in destination.parents or destination in source.parents
             or destination.stat().st_uid != 0 or destination.stat().st_mode & 0o077):
         raise ValueError("Backup root must be separate and root-only (0700)")
+    if config.local_media_root and (local == destination or local in destination.parents or destination in local.parents):
+        raise ValueError("Local media and backup roots must be separate")
     executable = Path(config.pg_dump)
     if (not executable.is_absolute() or not executable.is_file()
             or executable.stat().st_uid != 0 or executable.stat().st_mode & 0o022):
@@ -283,7 +442,7 @@ def _backup_locked(config: Config) -> Path:
     media = work / "media" / "final"
     media.mkdir(parents=True, mode=0o700)
     connection = connect_peer(config)
-    count = stored_bytes = original_bytes = 0
+    stored_bytes = original_bytes = 0
     started_at = now()
     try:
         connection.set_session(isolation_level="REPEATABLE READ", readonly=False)
@@ -292,33 +451,33 @@ def _backup_locked(config: Config) -> Path:
             cursor.execute("SET LOCAL statement_timeout = '120s'")
             cursor.execute("SET LOCAL idle_in_transaction_session_timeout = %s", (str(config.max_seconds + 60) + "s",))
             assert_consistent(cursor)
-            cursor.execute("SELECT COUNT(*), COALESCE(SUM(stored_size_bytes),0) FROM attachments "
-                           "WHERE lifecycle_state='CLEAN' AND (storage_provider <> 'internal' "
-                           "OR storage_provider IS NULL OR stored_size_bytes IS NULL)")
-            if cursor.fetchone()[0]:
-                raise ValueError("CLEAN non-internal or unresolved files require explicit reconciliation")
-            cursor.execute("SELECT pg_database_size(current_database()), "
-                           "(SELECT COALESCE(SUM(stored_size_bytes),0) FROM attachments WHERE lifecycle_state='CLEAN')")
-            db_size, media_size = cursor.fetchone()
-            budget.check(int(db_size) + int(media_size))
-        with connection.cursor(name="paired_clean_objects") as objects, (work / "objects.jsonl").open("x", encoding="utf-8") as manifest:
-            objects.itersize = 100
-            objects.execute("SELECT " + ",".join(FIELDS) + " FROM attachments "
-                            "WHERE lifecycle_state='CLEAN' ORDER BY id FOR SHARE")
-            for values in objects:
-                row = dict(zip(FIELDS, values))
-                row["id"], row["owner_id"] = str(row["id"]), str(row["owner_id"])
-                if row["storage_provider"] != "internal":
-                    raise ValueError("Unexpected provider in locked snapshot")
-                record = copy_object(Path(config.media_root) / "final", media, row, budget)
+            references = collect_references(cursor)
+            assert_reference_consistency(cursor, references)
+            objects = unique_references(references)
+            cursor.execute("SELECT pg_database_size(current_database())")
+            budget.check(int(cursor.fetchone()[0]) + sum(row.get("stored_size_bytes") or row["size_bytes"] + 57 for row in objects))
+        with (work / "references.jsonl").open("x", encoding="utf-8") as manifest:
+            for row in references:
+                manifest.write(json.dumps(row, ensure_ascii=False) + "\n")
+            manifest.flush()
+            os.fsync(manifest.fileno())
+        with (work / "objects.jsonl").open("x", encoding="utf-8") as manifest:
+            for row in objects:
+                provider = row["storage_provider"]
+                source = config.media_root if provider == "internal" else config.local_media_root
+                if source is None:
+                    raise ValueError("Referenced local files require an explicit local_media_root")
+                target = media_final(work / "media", provider)
+                target.mkdir(parents=True, mode=0o700, exist_ok=True)
+                record = copy_object(Path(source) / "final", target, row, budget)
                 manifest.write(json.dumps(record, ensure_ascii=False) + "\n")
-                count += 1
-                stored_bytes += row["stored_size_bytes"]
-                original_bytes += row["size_bytes"]
+                stored_bytes += record["stored_size_bytes"]
+                original_bytes += record["size_bytes"]
             manifest.flush()
             os.fsync(manifest.fileno())
         with connection.cursor() as cursor:
             assert_consistent(cursor)
+            assert_reference_consistency(cursor, references)
             cursor.execute("SELECT pg_export_snapshot(), current_setting('server_version'), txid_current_snapshot()::text")
             snapshot, server_version, transaction_snapshot = cursor.fetchone()
         dump_snapshot(config, snapshot, work / "database.dump", budget)
@@ -331,17 +490,20 @@ def _backup_locked(config: Config) -> Path:
         connection.close()
     budget.check()
     dump_size = (work / "database.dump").stat().st_size
-    summary = {"format": "uten-paired-internal-v1", "set_id": set_id, "database": config.database,
+    summary = {"format": "uten-paired-internal-v2", "set_id": set_id, "database": config.database,
                "started_at": started_at, "completed_at": now(),
                "duration_seconds": round(time.monotonic() - budget.started, 3),
                "postgres_version": server_version, "transaction_snapshot": transaction_snapshot,
-               "clean_objects": count, "original_bytes": original_bytes, "stored_bytes": stored_bytes,
+               "clean_objects": sum(row["source_table"] == "attachments" for row in references),
+               "private_document_references": sum(row["source_table"] != "attachments" for row in references),
+               "media_objects": len(objects), "original_bytes": original_bytes, "stored_bytes": stored_bytes,
                "database_dump_bytes": dump_size, "data_bytes": dump_size + stored_bytes,
                "database_dump_sha256": digest_file(work / "database.dump"),
                "objects_manifest_sha256": digest_file(work / "objects.jsonl"),
+               "references_manifest_sha256": digest_file(work / "references.jsonl"),
                "resource_limits": dataclasses.asdict(config),
                "retention": "No automatic removal; preserve older sets until reviewed cleanup",
-               "scope": "Database snapshot and its CLEAN internal final files; unfinished uploads must be retried"}
+               "scope": "Database snapshot, CLEAN attachments and all immutable private document references; unfinished uploads must be retried"}
     write_json(work / "manifest.json", summary)
     for directory, _, _ in os.walk(work, topdown=False):
         sync_directory(Path(directory))
@@ -428,15 +590,64 @@ def backup(config: Config) -> Path:
         os.umask(previous_mask)
 
 
+def read_records(path: Path) -> list[dict]:
+    records = []
+    with open_original(path.parent, Path(path.name)) as stream:
+        while line := stream.readline(16385):
+            if len(line) > 16384:
+                raise ValueError("Oversized media manifest entry")
+            records.append(json.loads(line))
+    return records
+
+
+def verify_media(directory: Path, summary: dict, database_references=None) -> list[dict]:
+    """Verify v2 inventory and bytes; optionally prove the restored DB has exactly these references."""
+    real_directory(directory)
+    if (digest_file(directory / "objects.jsonl") != summary["objects_manifest_sha256"]
+            or digest_file(directory / "references.jsonl") != summary["references_manifest_sha256"]):
+        raise ValueError("Media inventory digest changed")
+    references = [normalize_reference(row) for row in read_records(directory / "references.jsonl")]
+    expected = unique_references(references)
+    if database_references is not None:
+        canonical = lambda rows: sorted(json.dumps(normalize_reference(row), sort_keys=True) for row in rows)
+        if canonical(references) != canonical(database_references):
+            raise ValueError("Restored database media references differ from the paired inventory")
+    objects = read_records(directory / "objects.jsonl")
+    unique_references(objects)
+    identity = lambda row: tuple(row.get(key) for key in IDENTITY_FIELDS)
+    if len(objects) != len(expected) or {identity(row) for row in objects} != {identity(row) for row in expected}:
+        raise ValueError("Physical object inventory does not cover all logical references")
+    stored = original = 0
+    for row in objects:
+        relative = relative_key(row["storage_key"])
+        if row["relative_path"] != relative.as_posix():
+            raise ValueError("Media manifest path differs from its storage key")
+        path = media_final(directory / "media", row["storage_provider"]) / relative
+        real_directory(path.parent)
+        value = check_object(path, row)
+        if any(value[key] != row.get(key) for key in value):
+            raise ValueError("Stored backup metadata or digest changed")
+        stored += value["stored_size_bytes"]
+        original += value["size_bytes"]
+    counts = (sum(row["source_table"] == "attachments" for row in references),
+              sum(row["source_table"] != "attachments" for row in references), len(objects), stored, original)
+    if counts != tuple(summary[key] for key in ("clean_objects", "private_document_references", "media_objects", "stored_bytes", "original_bytes")):
+        raise ValueError("Paired media reference/object totals differ")
+    return objects
+
+
 def verify_set(directory: Path) -> dict:
     real_directory(directory)
     if (directory / "manifest.json").stat().st_size > 65536:
         raise ValueError("Oversized backup manifest")
     summary = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
-    if (summary["format"] != "uten-paired-internal-v1"
+    if (summary["format"] not in ("uten-paired-internal-v1", "uten-paired-internal-v2")
             or digest_file(directory / "database.dump") != summary["database_dump_sha256"]
             or digest_file(directory / "objects.jsonl") != summary["objects_manifest_sha256"]):
         raise ValueError("Backup set manifest/dump integrity failed")
+    if summary["format"] == "uten-paired-internal-v2":
+        verify_media(directory, summary)
+        return summary
     count = stored = original = 0
     real_directory(directory / "media" / "final")
     with (directory / "objects.jsonl").open(encoding="utf-8") as stream:

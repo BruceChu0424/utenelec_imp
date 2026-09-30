@@ -4,6 +4,10 @@
 `/data/uten-imp-backups/paired`。它不向阿里云发送文件，也不替代现有 pgBackRest、
 WAL 归档或异机数据库灾备。当前数据库和该备份目录都在 HDD 阵列上：同机副本不等于异机灾备。
 
+2026-09-30 起新备份使用 `uten-paired-internal-v2`，同时收集 `CLEAN` 附件、客户报价模板候选/版本
+及 `goods_cost_imports` 的私有原件引用。旧 v1 备份仍可用同一程序 `--verify` 校验；v1 不含独立
+私有文档清单，不能据此声称已备份成本导入原件。无需修改既有 Flyway 文件或业务对象 provider。
+
 ## 一致性依据
 
 已退役的日常备份实现在数据库导出后才执行 `rsync --delete`；期间删除文件
@@ -17,13 +21,23 @@ WAL 归档或异机数据库灾备。当前数据库和该备份目录都在 HDD
 脚本在加锁前和读取完全部已锁行后检查 `CLEAN` 与待执行删除队列，发现冲突就整次失败。
 如果取锁时原行已改变，PostgreSQL 的 `40001` 同样导致整次失败，不发布部分成功。
 
+v2 对存在的三张私有文档表也按 UUID 加行锁，核对统一私有引用视图完整性，并对全部引用执行
+精确 provider/key/version 删除队列冲突检查。只读取元数据，不读取名称、预览或工作簿字段。
+同一物理路径的重复引用只复制一次，所有逻辑引用保留在 `references.jsonl`；版本、原始大小、
+摘要或存储元数据相互冲突时整次失败，禁止按任意一行覆盖另一行。
+
 所有已确认内部文件按不可变对象键复制，并校验 57 字节封装、压缩类型、存储大小、
 原始 SHA-256、原始字节数和数据库版本身份；再以同一事务导出的 snapshot 执行 `pg_dump`。
 事务一直保留到导出成功才释放文件删除锁。新上传、新单据和普通读取不需要这些锁，可以继续；
 删除已确认附件可能等待本轮备份，时间上限默认 30 分钟。并发变更、坏文件、缺文件、未知或
-非 internal 的 CLEAN provider、空间不足、超时或中断均失败，旧成功集和旧成功指针保持可用。
+非 internal/local 的 CLEAN provider、空间不足、超时或中断均失败，旧成功集和旧成功指针保持可用。
 
 每套目录包含 `database.dump`、`media/final/`、逐件 `objects.jsonl` 和 `manifest.json`。
+v2 另有 `references.jsonl`，`clean_objects` 仍表示 CLEAN 附件引用数，`private_document_references`
+表示私有文档引用数，`media_objects` 才是去重后的物理文件数。internal 封装文件仍在 `media/final/`；
+local 裸文件在 `media/local/final/`，按数据库原始大小和 SHA-256 校验，local 版本必须为空。
+若有 local 引用，配置必须增加 `local_media_root`，与应用的显式绝对 `UTEN_STORAGE_LOCAL_DIR`
+一致且与 internal 根及备份根互不包含；缺少该配置直接失败，不能把裸文件当成 internal 封装。
 私有清单记录真实业务 UUID、对象键、provider、编码、原始/存储 SHA 和大小；整体清单记录
 数据库版本、快照信息、耗时、文件数量、占用量和资源限制。目录及清单均同步到磁盘后原子
 发布；最后才更新 `latest-success.json`。`.incomplete-*` 是失败证据，不是可恢复的成功集。
@@ -62,6 +76,12 @@ WAL 归档或异机数据库灾备。当前数据库和该备份目录都在 HDD
 下，创建空 `staging/scratch`，核对全部清单和目录 fsync，再按运行账户恢复 0700 文件目录权限。
 数据库中的 CLEAN 元数据必须与该套对象清单 UUID/版本/大小/SHA 全量相符，禁止混用不同日期
 的数据库和文件。先离线验证，之后启动应用，以原有权限试下载并逐字节比对原件。
+
+v2 恢复须同时恢复 `media/local/final/` 到独立的 local 根，并创建对应 `staging/`。
+在恢复库中调用 `collect_references(cursor, lock=False)`，再将结果作为 `verify_media` 的第三个参数，
+证明恢复库所有附件及私有文档引用与配套清单完全一致。`--verify` 仅证明备份文件内部完整性，
+不能代替这一步恢复库比对。任何已有同键文件只可在 provider、版本、原始和物理大小/摘要均一致时复用；
+不一致必须停下处理，禁止覆盖现有对象，也不自动清理未引用的旧对象。
 
 未确认上传不属于已发布业务文件，恢复后需重新上传；`DELETE_PENDING/DELETE_FAILED` 的文件
 不在 CLEAN 配对范围内，其既有精确删除队列可以幂等处理文件不存在。恢复验证完成前不启动

@@ -2,6 +2,8 @@ package com.uten.imp.features.master.goods.costing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
+import com.uten.imp.application.port.InventoryValuationPort;
+import com.uten.imp.application.port.InventoryValueAuthorityPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
@@ -40,6 +42,8 @@ class GoodsCostSheetsPostgresTest {
     MasterReferenceValidationPort references;
     SecurityContextCurrentUser current;
     GoodsCostMasker masker;
+    InventoryValuationPort inventoryValues;
+    InventoryValueAuthorityPort valueAuthority;
     final UUID actor=UUID.randomUUID(),root=UUID.randomUUID(),material=UUID.randomUUID(),unit=UUID.randomUUID(),edge=UUID.randomUUID();
     @BeforeAll static void migrate() throws Exception {
         POSTGRES.start();dataSource=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());sql=new JdbcTemplate(dataSource);
@@ -48,7 +52,7 @@ class GoodsCostSheetsPostgresTest {
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(sql, "units", "colors", "currencies",
                 "goods", "clients", "goods_bom_items", "purchase_orders", "purchase_order_items",
                 "subcontract_orders", "subcontract_order_items", "permissions", "department_permissions",
-                "user_permission_overrides");
+                "user_permission_overrides", "warehouses", "stock_balances", "stock_value_nodes");
         sql.execute("""
                 CREATE VIEW v_goods_bom_item_usage AS SELECT id bom_item_id,NULL::numeric actual_qty,qty effective_qty,'NO_DATA'::text actual_status,
                     0::bigint sample_count,0::numeric exposure_output_qty,0::numeric net_qty,false system_learned FROM goods_bom_items;
@@ -66,7 +70,7 @@ class GoodsCostSheetsPostgresTest {
     }
     @AfterAll static void stop(){POSTGRES.stop();}
     @BeforeEach void setup() {
-        sql.execute("TRUNCATE goods_cost_commands,goods_cost_sheets,goods_cost_snapshots,goods_cost_templates,goods,clients,goods_bom_items,units,purchase_orders,purchase_order_items,subcontract_orders,subcontract_order_items CASCADE");
+        sql.execute("TRUNCATE goods_cost_commands,goods_cost_sheets,goods_cost_snapshots,goods_cost_templates,goods,clients,goods_bom_items,units,currencies,purchase_orders,purchase_order_items,subcontract_orders,subcontract_order_items,warehouses,stock_balances,stock_value_nodes CASCADE");
         sql.update("INSERT INTO units(id,name) VALUES(?,?)",unit,"个");
         sql.update("INSERT INTO goods(id,code,name,unit_id,source_type,version) VALUES(?,?,?,?,?,1),(?,?,?,?,?,1)",root,"P1","成品",unit,"自制",material,"M1","材料",unit,"采购");
         sql.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(?,?,?,?)",edge,root,material,new java.math.BigDecimal("2"));
@@ -75,7 +79,8 @@ class GoodsCostSheetsPostgresTest {
         when(current.requireId()).thenReturn(actor);when(masker.canView()).thenReturn(true);permissions(Set.of("goods:view","goods:cost:view","goods:cost:edit","goods:cost:confirm","goods:cost:export"));
         var access=mock(MasterObjectAccess.class);when(access.readableLabelOwner(anyString())).thenReturn(owner->true);
         var clients=mock(ClientAccessPolicy.class);when(clients.canRead(any(UUID.class),nullable(UUID.class),any())).thenReturn(true);
-        var json=new GoodsCostJson(new ObjectMapper().findAndRegisterModules());sources=new GoodsCostSourceReader(db,references,access);
+        inventoryValues=mock(InventoryValuationPort.class);valueAuthority=mock(InventoryValueAuthorityPort.class);
+        var json=new GoodsCostJson(new ObjectMapper().findAndRegisterModules());sources=new GoodsCostSourceReader(db,references,access,inventoryValues,valueAuthority);
         var imports=mock(CostImportEvidenceGuard.class);when(imports.validate(any(),any())).thenAnswer(call->call.getArgument(1));
         service=new GoodsCostSheetService(db,new GoodsCostCalculator(sources,references,json),json,masker,references,clients,current,mock(TxSessionVars.class),imports);
     }
@@ -109,6 +114,7 @@ class GoodsCostSheetsPostgresTest {
         PriceEvidence result=sources.approved(sources.goods(material),false,LocalDate.of(2026,9,29),null);
         assertThat(result.sourceItemId()).isEqualTo(approvedLine);assertThat(result.unitRate()).isEqualTo("25");assertThat(result.originalUnitPrice()).isEqualTo("400");
         assertThat(result.approvalState()).isEqualTo("APPROVED");
+        assertThat(result.taxMode()).isEqualTo("AS_RECORDED");
         sql.update("UPDATE purchase_order_items SET amount_original=410,extra_columns='[{\"operation\":\"ADD\",\"value\":\"10\"}]'::jsonb WHERE id=?",approvedLine);
         PriceEvidence adjusted=sources.approved(sources.goods(material),false,LocalDate.of(2026,9,29),null);
         assertThat(adjusted.approvalState()).isEqualTo("APPROVED_WITH_COMPONENTS");
@@ -319,6 +325,79 @@ class GoodsCostSheetsPostgresTest {
         Sheet saved=tx(()->service.save(draft.id(),new SaveRequest(1L,"cycle-filled-save",ready)));
         assertThat(saved.calculation().fees().getFirst().amount()).isEqualTo("20");
         assertThat(tx(()->service.confirm(draft.id(),new Command(2,"cycle-filled-confirm"))).status()).isEqualTo("CONFIRMED");
+    }
+    @Test void bootstrapUsesRealDefaultsApprovedRecordedPriceAndApplicableTemplateWithoutCreatingOrReplacingADraft() {
+        templatePermissions();UUID base=UUID.randomUUID(),supplier=UUID.randomUUID(),order=UUID.randomUUID(),line=UUID.randomUUID();
+        sql.update("INSERT INTO currencies(id,name,is_base_currency) VALUES(?,'人民币',true)",base);
+        sql.update("INSERT INTO purchase_orders(id,bill_no,bill_date,exchange_rate,tax_rate,status,supplier_id,currency_id) VALUES(?,'PO-AUTO',?::date,1,13,1,?,?)",
+                order,com.uten.imp.common.time.BusinessTime.today(),supplier,base);
+        sql.update("INSERT INTO purchase_order_items(id,order_id,goods_id,unit_id,unit_rate,qty,price,amount_original) VALUES(?,?,?,?,1,1,5,5)",line,order,material,unit);
+        tx(()->service.saveTemplate(null,new TemplateSave(null,"bootstrap-general-template",new TemplateInput("适用模板",root,null,null,null,null,null,
+                List.of(new FeeInput("setup","固定成本","FIXED_BATCH","PROCESS",null,"1",null,List.of(),"MANUAL",null)),List.of(),null))));
+        Sheet existing=tx(()->service.create(new SaveRequest(null,"existing-manual-cost",input("99"))));
+        long commands=sql.queryForObject("SELECT count(*) FROM goods_cost_commands",Long.class);
+        for(int repeat=0;repeat<2;repeat++) {
+            Map<String,Object> payload=service.bootstrap(root,null);DraftInput resolved=resolved(payload);
+            assertThat(resolved.clientId()).isNull();assertThat(resolved.batchQty()).isEqualTo("1");assertThat(resolved.currencyId()).isEqualTo(base);
+            assertThat(resolved.effectiveDate()).isEqualTo(com.uten.imp.common.time.BusinessTime.today());assertThat(resolved.exchangeRateToLocal()).isEqualTo("1");
+            assertThat(resolved.usageStrategy()).isEqualTo("ACTUAL_FIRST");assertThat(resolved.priceStrategy()).isEqualTo("AUTO");assertThat(resolved.fees()).hasSize(1);
+            Calculation result=service.preview(resolved);assertThat(result.totals().knownTotal()).isEqualTo("11");assertThat(result.totals().valueState()).isEqualTo("COMPLETE");
+            assertThat(result.lines().getFirst().priceEvidence().taxMode()).isEqualTo("AS_RECORDED");assertThat(result.lines().getFirst().unitPrice()).isEqualTo("5");
+        }
+        assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_commands",Long.class)).isEqualTo(commands);
+        assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_sheets",Integer.class)).isEqualTo(1);
+        assertThat(service.get(existing.id()).input().lineOverrides().getFirst().unitPrice()).isEqualTo("99");
+        assertThat(sql.queryForObject("SELECT version FROM goods WHERE id=?",Long.class,root)).isEqualTo(1);
+    }
+    @Test void bootstrapMissingPriceKeepsRowsAndMissingBaseOrPermissionFailsClearly() {
+        assertThatThrownBy(()->service.bootstrap(root,null)).hasMessageContaining("本币");
+        sql.update("INSERT INTO currencies(id,name,is_base_currency) VALUES(?,'人民币',true)",UUID.randomUUID());
+        DraftInput initial=resolved(service.bootstrap(root,null));Calculation result=service.preview(initial);
+        assertThat(result.lines()).hasSize(1);assertThat(result.lines().getFirst().unitPrice()).isNull();assertThat(result.lines().getFirst().amount()).isNull();
+        assertThat(result.totals().valueState()).isEqualTo("INCOMPLETE");assertThat(result.totals().unitCost()).isNull();
+        assertThat(sql.queryForObject("SELECT count(*) FROM goods_cost_sheets",Integer.class)).isZero();
+        when(masker.canView()).thenReturn(false);assertThatThrownBy(()->service.bootstrap(root,null)).hasMessageContaining("权限");
+    }
+    @Test void approvedPriceSearchContinuesPastAFullPageOfIncompleteNewerRecords() {
+        UUID currency=UUID.randomUUID(),supplier=UUID.randomUUID(),order=UUID.randomUUID(),valid=UUID.randomUUID();
+        sql.update("INSERT INTO currencies(id,name) VALUES(?,'人民币')",currency);
+        sql.update("INSERT INTO purchase_orders(id,bill_no,bill_date,exchange_rate,tax_rate,status,supplier_id,currency_id) VALUES(?,'PO-GOOD','2026-09-28',1,13,1,?,?)",order,supplier,currency);
+        sql.update("INSERT INTO purchase_order_items(id,order_id,goods_id,unit_id,unit_rate,qty,price,amount_original) VALUES(?,?,?,?,1,1,5,5)",valid,order,material,unit);
+        UUID broken=UUID.randomUUID();
+        sql.update("INSERT INTO purchase_orders(id,bill_no,bill_date,exchange_rate,tax_rate,status,supplier_id,currency_id) VALUES(?,'PO-BROKEN','2026-09-29',1,13,1,?,?)",broken,supplier,currency);
+        sql.update("INSERT INTO purchase_order_items(id,order_id,goods_id,unit_id,unit_rate,price,amount_original) SELECT gen_random_uuid(),?::uuid,?::uuid,?::uuid,0,99,99 FROM generate_series(1,101)",broken,material,unit);
+        PriceEvidence found=sources.approved(sources.goods(material),false,LocalDate.of(2026,9,30),null);
+        assertThat(found.sourceItemId()).isEqualTo(valid);assertThat(found.originalUnitPrice()).isEqualTo("5");
+    }
+    @Test void inventoryReferenceUsesFormalPendingAndAuthorityGatesAndAcceptsConfirmedZeroValue() {
+        UUID warehouse=UUID.randomUUID(),poolId=UUID.randomUUID(),head=UUID.randomUUID();
+        sql.update("INSERT INTO warehouses(id,is_accountable) VALUES(?,true)",warehouse);
+        sql.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty,amount_local) VALUES(?,?,10,0)",warehouse,material);
+        sql.update("INSERT INTO stock_value_nodes(id,revision) VALUES(?,1)",head);
+        var key=new InventoryValuationPort.PoolKey(warehouse,material,null);
+        var ref=new InventoryValueAuthorityPort.ValueReference(head,1);
+        when(inventoryValues.pool(key)).thenReturn(new InventoryValuationPort.PoolValue(poolId,head,new java.math.BigDecimal("10"),java.math.BigDecimal.ZERO,InventoryValuationPort.State.FINAL,true));
+        var date=com.uten.imp.common.time.BusinessTime.today();
+        assertThat(sources.inventory(sources.goods(material),date)).isNull();verifyNoInteractions(valueAuthority);
+        when(inventoryValues.pool(key)).thenReturn(new InventoryValuationPort.PoolValue(poolId,head,new java.math.BigDecimal("10"),java.math.BigDecimal.ZERO,InventoryValuationPort.State.FINAL,false));
+        when(valueAuthority.authority(ref)).thenReturn(new InventoryValueAuthorityPort.Authority(ref,null,null,0,false,InventoryValueAuthorityPort.Readiness.PENDING_DEPENDENCIES,List.of()));
+        assertThat(sources.inventory(sources.goods(material),date)).isNull();
+        when(valueAuthority.authority(ref)).thenReturn(new InventoryValueAuthorityPort.Authority(ref,java.math.BigDecimal.ZERO,java.math.BigDecimal.ZERO,24,true,InventoryValueAuthorityPort.Readiness.LEGACY_UNVERIFIED,List.of()));
+        assertThat(sources.inventory(sources.goods(material),date)).isNull();
+        when(valueAuthority.authority(ref)).thenReturn(new InventoryValueAuthorityPort.Authority(ref,java.math.BigDecimal.ZERO,java.math.BigDecimal.ZERO,24,true,InventoryValueAuthorityPort.Readiness.READY,List.of()));
+        PriceEvidence valid=sources.inventory(sources.goods(material),date);assertThat(valid.originalUnitPrice()).isEqualTo("0");assertThat(valid.approvalState()).isEqualTo("FINAL_REFERENCE");
+        UUID secondWarehouse=UUID.randomUUID(),secondPool=UUID.randomUUID(),secondHead=UUID.randomUUID();
+        sql.update("INSERT INTO warehouses(id,is_accountable) VALUES(?,true)",secondWarehouse);
+        sql.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty,amount_local) VALUES(?,?,10,20)",secondWarehouse,material);
+        sql.update("INSERT INTO stock_value_nodes(id,revision) VALUES(?,1)",secondHead);
+        var secondKey=new InventoryValuationPort.PoolKey(secondWarehouse,material,null);
+        var secondRef=new InventoryValueAuthorityPort.ValueReference(secondHead,1);
+        when(inventoryValues.pool(secondKey)).thenReturn(new InventoryValuationPort.PoolValue(secondPool,secondHead,new java.math.BigDecimal("10"),new java.math.BigDecimal("20"),InventoryValuationPort.State.PENDING,true));
+        assertThat(sources.inventory(sources.goods(material),date)).isNull();
+        when(inventoryValues.pool(secondKey)).thenReturn(new InventoryValuationPort.PoolValue(secondPool,secondHead,new java.math.BigDecimal("10"),new java.math.BigDecimal("20"),InventoryValuationPort.State.FINAL,false));
+        when(valueAuthority.authority(secondRef)).thenReturn(new InventoryValueAuthorityPort.Authority(secondRef,new java.math.BigDecimal("20"),new java.math.BigDecimal("20"),24,true,InventoryValueAuthorityPort.Readiness.READY,List.of()));
+        assertThat(sources.inventory(sources.goods(material),date).originalUnitPrice()).isEqualTo("1");
+        assertThat(sources.inventory(sources.goods(material),date.minusDays(1))).isNull();
     }
     private String feeValue(DraftInput input,String key){return input.fees().stream().filter(f->f.key().equals(key)).findFirst().orElseThrow().value();}
     private DraftInput withCurrency(DraftInput in,UUID currency,String rate){return new DraftInput(in.goodsId(),in.clientId(),in.name(),in.batchQty(),currency,rate,

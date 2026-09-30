@@ -4,6 +4,7 @@
   "port": 5432,
   "postgres_user": "postgres",
   "media_root": "/var/lib/uten-imp-media/attachments",
+  "local_media_root": null,
   "backup_root": "/data/uten-imp-backups/paired",
   "pg_dump": "/usr/lib/postgresql/16/bin/pg_dump",
   "min_free_bytes": 10737418240,

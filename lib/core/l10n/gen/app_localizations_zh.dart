@@ -6734,7 +6734,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costName => '成本方案名称';
 
   @override
-  String get costBatch => '本批产量';
+  String get costBatch => '测算数量';
 
   @override
   String get costCustomer => '适用客户';
@@ -7459,4 +7459,184 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get costGapCode => '核对原因编码';
+
+  @override
+  String get costDailyTable => '成本表';
+
+  @override
+  String get costCalculationSettings => '计算设置';
+
+  @override
+  String get costAdjustment => '调整';
+
+  @override
+  String get costFinishAdjustment => '完成调整';
+
+  @override
+  String get costMoreActions => '更多操作';
+
+  @override
+  String get costRefreshSources => '刷新来源价格与用量';
+
+  @override
+  String get costDownload => '下载';
+
+  @override
+  String get costDownloadFormat => '文件格式';
+
+  @override
+  String get costAdvancedOptions => '高级选项';
+
+  @override
+  String get costOptionalCustomer => '指定客户（可选）';
+
+  @override
+  String get costAutoCalculating => '正在自动计算…';
+
+  @override
+  String get costAutomaticReady => '已自动计算';
+
+  @override
+  String costNeedsReviewCount(int count) {
+    return '待核 $count 项';
+  }
+
+  @override
+  String get costOnlyPending => '只看待核';
+
+  @override
+  String get costAllMaterials => '全部物料';
+
+  @override
+  String get costPerProductPrice => '每成品费用';
+
+  @override
+  String get costMissingPriceInput => '填入单价';
+
+  @override
+  String get costDefaultFeeHelp => '添加后直接在对应行填写每件产品的费用；不同算法可在高级选项中选择。';
+
+  @override
+  String get costKnownPartial => '已知部分成本';
+
+  @override
+  String get costPriceAvailable => '已取得';
+
+  @override
+  String get costAutoPrice => '自动可靠来源';
+
+  @override
+  String get costResultNotUpdated => '结果尚未更新，请重试';
+
+  @override
+  String get costActualFilters => '筛选实际范围';
+
+  @override
+  String get costReturnToTable => '返回成本表';
+
+  @override
+  String get costActualEvidence => '实际成本依据';
+
+  @override
+  String get costSavedHistory => '历史成本记录';
+
+  @override
+  String get costAdjustEstimateQuantity => '调整数量';
+
+  @override
+  String costEstimateBasis(String quantity, String unit) {
+    return '按$quantity$unit测算';
+  }
+
+  @override
+  String costEstimateBasisWithoutUnit(String quantity) {
+    return '按数量$quantity测算';
+  }
+
+  @override
+  String get costProductionLoading => '读取已审生产记录…';
+
+  @override
+  String get costProductionUnavailable => '生产记录暂不可用，点击重试';
+
+  @override
+  String get costProductionNone => '暂无可见的已审生产记录';
+
+  @override
+  String get costProductionUnitPending => '生产数量的原报工单位待核实';
+
+  @override
+  String costRecentProductionLabel(String scope, String quantity, String unit) {
+    return '最近生产批次 $scope · 已审有效产量 $quantity$unit';
+  }
+
+  @override
+  String get costProductionScopeHelp =>
+      '当前可见生产范围的旁证：已审核报工完成量扣除已确认FQC失效；返工恢复按原来源抵扣。未审核草稿不计入，与入库数量、成本测算数量分开，不代表成本已核清。';
+
+  @override
+  String get costProductionBatch => '生产批次';
+
+  @override
+  String get costApprovedEffectiveOutput => '已审有效产量';
+
+  @override
+  String get costApprovedReportedOutput => '原已审报工完成量';
+
+  @override
+  String get costFqcDeductedOutput => 'FQC确认扣减量';
+
+  @override
+  String get costReportedDefectOutput => '另报不良数量';
+
+  @override
+  String get costProductionFirstReport => '范围内首次报工日期';
+
+  @override
+  String get costProductionLastReport => '范围内最后报工日期';
+
+  @override
+  String get costProductionReportCount => '有效已审报工记录数';
+
+  @override
+  String get costProductionMemberCount => '范围内生产任务数';
+
+  @override
+  String get costProductionDraftReports => '另有未审核报工';
+
+  @override
+  String get costProductionEvidence => '当前已审生产依据';
+
+  @override
+  String get costProductionOpenCosts => '查看该批次成本依据';
+
+  @override
+  String get costProductionPending => '生产数量待核实，查看依据';
+
+  @override
+  String get costProductionSource => '计算依据';
+
+  @override
+  String get costProductionCopyScope => '复制批次标识';
+
+  @override
+  String get costProductionSourceReport => '仅计入已审核且未撤回的报工';
+
+  @override
+  String get costProductionSourceFamily => '汇总同源拆批及追加生产范围';
+
+  @override
+  String get costProductionSourceProgress => '扣除确认的FQC失效，返工恢复抵回原来源';
+
+  @override
+  String get costProductionSourceUnit => '保留原报工计量单位及换算证据';
+
+  @override
+  String get costProductionSourceDefects => '另报不良独立列示，不重复扣减有效完成量';
+
+  @override
+  String get costProductionSourceOther => '由生产报工及其关联记录提供';
+
+  @override
+  String get costProductionProgressPending => '报工与车间进度尚未核对一致，暂不显示产量';
 }

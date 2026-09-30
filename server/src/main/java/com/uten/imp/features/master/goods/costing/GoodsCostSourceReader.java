@@ -1,6 +1,8 @@
 package com.uten.imp.features.master.goods.costing;
 
 import com.uten.imp.application.port.MasterReferenceValidationPort;
+import com.uten.imp.application.port.InventoryValuationPort;
+import com.uten.imp.application.port.InventoryValueAuthorityPort;
 import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -16,9 +18,15 @@ import static com.uten.imp.common.finance.CostCalculationMath.*;
 @Component
 @RequiredArgsConstructor
 public class GoodsCostSourceReader {
+    /** A bounded search stopped; callers may show this row as pending, never as proof that no price exists. */
+    public static final class PriceSearchIncomplete extends RuntimeException {
+        public PriceSearchIncomplete(String message){super(message);}
+    }
     private final NamedParameterJdbcTemplate db;
     private final MasterReferenceValidationPort references;
     private final MasterObjectAccess access;
+    private final InventoryValuationPort inventoryValues;
+    private final InventoryValueAuthorityPort valueAuthority;
     public record GoodsInfo(UUID id,String code,String name,UUID unitId,String unitName,
             UUID colorId,String colorName,String sourceType,String revision) {}
     public record Edge(UUID id,UUID parentId,GoodsInfo goods,BigDecimal designQty,BigDecimal actualQty,
@@ -72,8 +80,13 @@ public class GoodsCostSourceReader {
     }
     public PriceEvidence approved(GoodsInfo goods,boolean subcontract,LocalDate date,UUID explicitItem) {
         String kind=subcontract?"subcontract":"purchase";
-        // Fixed identifiers only; source object scope is evaluated before selecting a candidate.
-        List<Map<String,Object>> rows=db.queryForList("""
+        // Do not let one page of inaccessible/incomplete records hide an older reliable approved price.
+        var parameters=new MapSqlParameterSource().addValue("goods",goods.id()).addValue("color",goods.colorId())
+                .addValue("date",date).addValue("item",explicitItem==null?null:explicitItem.toString())
+                .addValue("lastDate",null).addValue("lastTime",null).addValue("lastItem",null);
+        var visible=access.readableLabelOwner(kind);
+        for(int page=0;page<100;page++) {
+            List<Map<String,Object>> rows=db.queryForList("""
                 SELECT o.id,o.bill_no,o.bill_date,o.updated_at,o.supplier_id,o.currency_id,c.name currency_name,
                        o.exchange_rate,o.tax_rate,o.purchaser_id,i.id item_id,i.unit_id,u.name unit_name,
                        i.unit_rate,i.price,i.qty,i.amount_original,i.extra_columns,i.updated_at item_updated_at,
@@ -85,10 +98,10 @@ public class GoodsCostSourceReader {
                   AND i.goods_id=:goods AND i.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                   AND o.bill_date<=:date AND i.price IS NOT NULL AND i.price>=0
                   AND (CAST(:item AS uuid) IS NULL OR i.id=CAST(:item AS uuid))
-                ORDER BY o.bill_date DESC,o.updated_at DESC,i.id LIMIT 100
-                """.formatted(kind),new MapSqlParameterSource().addValue("goods",goods.id())
-                .addValue("color",goods.colorId()).addValue("date",date).addValue("item",explicitItem==null?null:explicitItem.toString()));
-        var visible=access.readableLabelOwner(kind);
+                  AND (CAST(:lastDate AS date) IS NULL OR (o.bill_date,o.updated_at,i.id)
+                       <(CAST(:lastDate AS date),CAST(:lastTime AS timestamptz),CAST(:lastItem AS uuid)))
+                ORDER BY o.bill_date DESC,o.updated_at DESC,i.id DESC LIMIT 100
+                """.formatted(kind),parameters);
         for(var row:rows) {
             if(!visible.test((UUID)row.get("purchaser_id"))) continue;
             UUID unit=(UUID)row.get("unit_id");
@@ -102,15 +115,19 @@ public class GoodsCostSourceReader {
             boolean adjusted=Boolean.TRUE.equals(row.get("adjustment_rules"))||sourceQty==null||sourceQty.signum()<=0
                     ||sourceAmount==null||sourceAmount.compareTo(sourceQty.multiply(sourcePrice))!=0;
             String explanation=adjusted?"原单含独立计费项或金额依据待核对，不能把整行金额摊到不同批量；原单数量="+text(sourceQty)
-                    +"，原单金额="+text(sourceAmount)+"。请拆分费用或人工复核采用成本。":"已审核单据原计价口径；税率不自动等同含税属性";
+                    +"，原单金额="+text(sourceAmount)+"。请拆分费用或人工复核采用成本。":"按已审核单据原记录价计成本；仅作单位和币种换算，不按税率自动扣税";
             return new PriceEvidence(subcontract?"APPROVED_SUBCONTRACT":"APPROVED_PURCHASE",(UUID)row.get("id"),
                     (UUID)row.get("item_id"),(String)row.get("bill_no"),priceRevision(row),
                     adjusted?"APPROVED_WITH_COMPONENTS":"APPROVED",(UUID)row.get("supplier_id"),(UUID)row.get("currency_id"),(String)row.get("currency_name"),
                     unit,(String)row.get("unit_name"),text(unitRate),text((BigDecimal)row.get("price")),text(fx),
-                    text((BigDecimal)row.get("tax_rate")),"UNCONFIRMED",row.get("bill_date") instanceof LocalDate d?d:((java.sql.Date)row.get("bill_date")).toLocalDate(),
+                    text((BigDecimal)row.get("tax_rate")),"AS_RECORDED",row.get("bill_date") instanceof LocalDate d?d:((java.sql.Date)row.get("bill_date")).toLocalDate(),
                     explanation);
         }
-        return null;
+            if(rows.size()<100)return null;
+            Map<String,Object> last=rows.getLast();
+            parameters.addValue("lastDate",last.get("bill_date")).addValue("lastTime",last.get("updated_at")).addValue("lastItem",last.get("item_id"));
+        }
+        throw new PriceSearchIncomplete("价格候选超过本次核对上限，尚未查完，请选择具体已审核来源或缩小成本日期");
     }
     private static String priceRevision(Map<String,Object> row) {
         StringBuilder value=new StringBuilder();
@@ -126,23 +143,35 @@ public class GoodsCostSourceReader {
         // An inventory reference is a present snapshot, not a reconstructed historical moving average.
         if(!com.uten.imp.common.time.BusinessTime.today().equals(date)) return null;
         var rows=db.queryForList("""
-                SELECT sum(b.qty) qty,sum(b.amount_local) amount,
-                       bool_and(COALESCE(p.state='ACTIVE' AND n.pending_parents=0 AND n.source_final AND n.active
-                            AND n.kind='POOL' AND n.quantity_basis=b.qty AND n.basis_value_local=b.amount_local
-                            AND b.amount_local IS NOT NULL,FALSE)) complete,
-                       string_agg(p.id::text||':'||n.revision::text,',' ORDER BY p.id) revisions
+                SELECT b.warehouse_id,b.qty,b.amount_local
                 FROM stock_balances b JOIN warehouses w ON w.id=b.warehouse_id AND w.is_accountable
-                LEFT JOIN stock_value_pools p ON p.warehouse_id=b.warehouse_id AND p.goods_id=b.goods_id
-                       AND p.color_id IS NOT DISTINCT FROM b.color_id
-                LEFT JOIN stock_value_nodes n ON n.id=p.head_node_id
                 WHERE b.goods_id=:goods AND b.color_id IS NOT DISTINCT FROM CAST(:color AS uuid) AND b.qty>0
+                ORDER BY b.warehouse_id LIMIT 501
                 """,new MapSqlParameterSource().addValue("goods",goods.id()).addValue("color",goods.colorId()));
         if(rows.isEmpty()) return null;
-        var r=rows.getFirst();
-        BigDecimal qty=(BigDecimal)r.get("qty"),amount=(BigDecimal)r.get("amount");
-        if(qty==null || qty.signum()<=0 || amount==null || !Boolean.TRUE.equals(r.get("complete"))) return null;
-        return new PriceEvidence("INVENTORY_REFERENCE",goods.id(),null,null,Objects.toString(r.get("revisions")),
+        if(rows.size()>500)throw new PriceSearchIncomplete("库存参考来源超过本次核对上限，请选择明确的成本价格来源");
+        BigDecimal qty=BigDecimal.ZERO,amount=BigDecimal.ZERO;
+        List<String> revisions=new ArrayList<>();
+        for(var row:rows) {
+            // Reuse the formal publication fence and pool/balance reconciliation, including late-price jobs.
+            var key=new InventoryValuationPort.PoolKey((UUID)row.get("warehouse_id"),goods.id(),goods.colorId());
+            var pool=inventoryValues.pool(key);
+            if(pool==null||pool.state()!=InventoryValuationPort.State.FINAL||pool.propagationPending()||pool.headNodeId()==null
+                    ||pool.qtyBase()==null||pool.qtyBase().signum()<=0||pool.knownValueLocal()==null
+                    ||pool.qtyBase().compareTo((BigDecimal)row.get("qty"))!=0||row.get("amount_local")==null
+                    ||pool.knownValueLocal().compareTo((BigDecimal)row.get("amount_local"))!=0)return null;
+            List<Long> versions=db.queryForList("SELECT revision FROM stock_value_nodes WHERE id=:id",Map.of("id",pool.headNodeId()),Long.class);
+            if(versions.size()!=1)return null;
+            var reference=new InventoryValueAuthorityPort.ValueReference(pool.headNodeId(),versions.getFirst());
+            var authority=valueAuthority.authority(reference);
+            if(authority==null||!authority.costComplete()||authority.readiness()!=InventoryValueAuthorityPort.Readiness.READY
+                    ||authority.lowerKnownValue()==null||authority.upperKnownValue()==null)return null;
+            qty=qty.add(pool.qtyBase());amount=amount.add(pool.knownValueLocal());
+            revisions.add(pool.poolId()+":"+pool.headNodeId()+":"+versions.getFirst()+":"
+                    +text(authority.lowerKnownValue())+":"+text(authority.upperKnownValue()));
+        }
+        return new PriceEvidence("INVENTORY_REFERENCE",goods.id(),null,null,String.join(",",revisions),
                 "FINAL_REFERENCE",null,null,"本币",goods.unitId(),goods.unitName(),"1",text(divide(amount,qty)),"1",null,
-                "AS_RECORDED",date,"现时已核定库存参考：金额="+text(amount)+"；数量="+text(qty));
+                "AS_RECORDED",date,"当前已核定库存参考，已核对价值传播与精确来源：金额="+text(amount)+"；数量="+text(qty));
     }
 }

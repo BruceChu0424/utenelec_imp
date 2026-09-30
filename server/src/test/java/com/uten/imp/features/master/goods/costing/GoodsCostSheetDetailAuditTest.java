@@ -125,7 +125,8 @@ class GoodsCostSheetDetailAuditTest {
         @Bean AuditDetailViewRecorder recorder() { return mock(AuditDetailViewRecorder.class); }
         @Bean GoodsCostSheetController controller(GoodsCostSheetService service,
                 GoodsActualCostSnapshotService actual, AuditDetailViewRecorder recorder) {
-            return new GoodsCostSheetController(service, actual, recorder);
+            return new GoodsCostSheetController(service, actual, recorder,
+                    mock(com.uten.imp.application.port.GoodsProductionOutputQueryPort.class));
         }
     }
 }

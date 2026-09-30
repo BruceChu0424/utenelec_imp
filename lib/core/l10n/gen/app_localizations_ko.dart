@@ -6883,7 +6883,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get costName => '원가표 이름';
 
   @override
-  String get costBatch => '배치 생산량';
+  String get costBatch => '계산 수량';
 
   @override
   String get costCustomer => '적용 고객';
@@ -7614,4 +7614,185 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get costGapCode => '확인 사유 코드';
+
+  @override
+  String get costDailyTable => '원가표';
+
+  @override
+  String get costCalculationSettings => '계산 설정';
+
+  @override
+  String get costAdjustment => '조정';
+
+  @override
+  String get costFinishAdjustment => '조정 완료';
+
+  @override
+  String get costMoreActions => '더 보기';
+
+  @override
+  String get costRefreshSources => '출처 가격 및 사용량 갱신';
+
+  @override
+  String get costDownload => '다운로드';
+
+  @override
+  String get costDownloadFormat => '파일 형식';
+
+  @override
+  String get costAdvancedOptions => '고급 옵션';
+
+  @override
+  String get costOptionalCustomer => '고객 지정 (선택)';
+
+  @override
+  String get costAutoCalculating => '자동 계산 중…';
+
+  @override
+  String get costAutomaticReady => '자동 계산 완료';
+
+  @override
+  String costNeedsReviewCount(int count) {
+    return '확인 필요 $count개';
+  }
+
+  @override
+  String get costOnlyPending => '확인 필요 항목만';
+
+  @override
+  String get costAllMaterials => '모든 재료';
+
+  @override
+  String get costPerProductPrice => '완제품당 비용';
+
+  @override
+  String get costMissingPriceInput => '단가 입력';
+
+  @override
+  String get costDefaultFeeHelp =>
+      '열 추가 후 해당 행에 제품당 비용을 입력하세요. 다른 계산 방식은 고급 옵션에서 선택할 수 있습니다.';
+
+  @override
+  String get costKnownPartial => '확인된 일부 원가';
+
+  @override
+  String get costPriceAvailable => '확인됨';
+
+  @override
+  String get costAutoPrice => '신뢰할 수 있는 출처 자동 선택';
+
+  @override
+  String get costResultNotUpdated => '결과가 갱신되지 않았습니다. 다시 시도하세요';
+
+  @override
+  String get costActualFilters => '실제 범위 필터';
+
+  @override
+  String get costReturnToTable => '원가표로 돌아가기';
+
+  @override
+  String get costActualEvidence => '실제 원가 근거';
+
+  @override
+  String get costSavedHistory => '저장된 원가 기록';
+
+  @override
+  String get costAdjustEstimateQuantity => '계산 수량 조정';
+
+  @override
+  String costEstimateBasis(String quantity, String unit) {
+    return '$quantity $unit 기준 계산';
+  }
+
+  @override
+  String costEstimateBasisWithoutUnit(String quantity) {
+    return '수량 $quantity 기준 계산';
+  }
+
+  @override
+  String get costProductionLoading => '승인된 생산 기록 읽는 중…';
+
+  @override
+  String get costProductionUnavailable => '생산 기록을 불러올 수 없습니다. 다시 시도하세요';
+
+  @override
+  String get costProductionNone => '확인 가능한 승인 생산 보고 없음';
+
+  @override
+  String get costProductionUnitPending => '생산 보고 원래 단위 확인 필요';
+
+  @override
+  String costRecentProductionLabel(String scope, String quantity, String unit) {
+    return '최근 생산 $scope · 승인 유효 생산량 $quantity $unit';
+  }
+
+  @override
+  String get costProductionScopeHelp =>
+      '확인 가능한 현재 생산 범위의 근거입니다. 승인 보고 수량에서 확정 FQC 무효 수량을 차감하고 재작업 복구는 원본에 반영합니다. 미승인 보고는 제외하며 입고 수량 및 원가 계산 수량과 별개입니다. 원가 확정을 의미하지 않습니다.';
+
+  @override
+  String get costProductionBatch => '생산 배치';
+
+  @override
+  String get costApprovedEffectiveOutput => '승인 유효 생산량';
+
+  @override
+  String get costApprovedReportedOutput => '원래 승인된 보고 생산량';
+
+  @override
+  String get costFqcDeductedOutput => '확정 FQC 차감량';
+
+  @override
+  String get costReportedDefectOutput => '별도 보고 불량 수량';
+
+  @override
+  String get costProductionFirstReport => '범위 내 첫 보고일';
+
+  @override
+  String get costProductionLastReport => '범위 내 마지막 보고일';
+
+  @override
+  String get costProductionReportCount => '유효 승인 보고 건수';
+
+  @override
+  String get costProductionMemberCount => '범위 내 생산 작업 수';
+
+  @override
+  String get costProductionDraftReports => '별도 미승인 보고 있음';
+
+  @override
+  String get costProductionEvidence => '현재 승인 생산 근거';
+
+  @override
+  String get costProductionOpenCosts => '이 생산 범위 원가 근거 보기';
+
+  @override
+  String get costProductionPending => '생산 수량 확인 필요 · 근거 보기';
+
+  @override
+  String get costProductionSource => '계산 근거';
+
+  @override
+  String get costProductionCopyScope => '배치 식별자 복사';
+
+  @override
+  String get costProductionSourceReport => '철회되지 않은 승인 보고만 포함';
+
+  @override
+  String get costProductionSourceFamily => '동일 원본의 분할 및 추가 생산 범위';
+
+  @override
+  String get costProductionSourceProgress => '확정 FQC 무효 수량 차감, 재작업 복구는 원본에 반영';
+
+  @override
+  String get costProductionSourceUnit => '원본 보고 단위 및 환산 근거 유지';
+
+  @override
+  String get costProductionSourceDefects => '별도 불량 보고는 유효 완료량에서 중복 차감하지 않음';
+
+  @override
+  String get costProductionSourceOther => '생산 보고 및 관련 기록에서 제공';
+
+  @override
+  String get costProductionProgressPending => '보고와 작업장 진행 수량이 일치하지 않아 수량 표시 보류';
 }

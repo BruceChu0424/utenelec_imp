@@ -4,6 +4,11 @@ import '../../../core/network/api_client.dart';
 import '../models/goods_cost_sheet.dart';
 
 abstract interface class GoodsCostRepository {
+  Future<Map<String, dynamic>> productionOutput(
+    String goodsId, {
+    String? executionSegmentId,
+  });
+  Future<GoodsCostCalculation> bootstrap(String goodsId, {String? clientId});
   Future<Map<String, dynamic>> convertCurrency(
     Map<String, dynamic> input,
     String? targetCurrencyId,
@@ -56,6 +61,24 @@ class DioGoodsCostRepository implements GoodsCostRepository {
   DioGoodsCostRepository(this.api);
   final ApiClient api;
   static const base = '/master/goods/cost-sheets';
+  @override
+  Future<Map<String, dynamic>> productionOutput(
+    String goodsId, {
+    String? executionSegmentId,
+  }) => api.get(
+    '$base/production-output',
+    query: {'goodsId': goodsId, 'executionSegmentId': ?executionSegmentId},
+  );
+  @override
+  Future<GoodsCostCalculation> bootstrap(
+    String goodsId, {
+    String? clientId,
+  }) async => GoodsCostCalculation(
+    await api.get(
+      '$base/bootstrap',
+      query: {'goodsId': goodsId, 'clientId': ?clientId},
+    ),
+  );
   @override
   Future<Map<String, dynamic>> convertCurrency(
     Map<String, dynamic> input,

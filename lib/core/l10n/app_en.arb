@@ -2908,7 +2908,7 @@
   "costVersions": "Cost versions",
   "costNew": "New cost sheet",
   "costName": "Cost sheet name",
-  "costBatch": "Batch output",
+  "costBatch": "Estimate quantity",
   "costCustomer": "Customer scope",
   "costCurrency": "Cost currency",
   "costExchangeRate": "Exchange rate to local",
@@ -3148,5 +3148,99 @@
   "costSourceIdentifier": "Source document identifier",
   "costSourceLineIdentifier": "Source line identifier",
   "costEvidenceIdentifier": "Evidence identifier",
-  "costGapCode": "Reconciliation reason code"
+  "costGapCode": "Reconciliation reason code",
+  "costDailyTable": "Cost sheet",
+  "costCalculationSettings": "Calculation settings",
+  "costAdjustment": "Adjust",
+  "costFinishAdjustment": "Finish adjustment",
+  "costMoreActions": "More actions",
+  "costRefreshSources": "Refresh source prices and usage",
+  "costDownload": "Download",
+  "costDownloadFormat": "File format",
+  "costAdvancedOptions": "Advanced options",
+  "costOptionalCustomer": "Customer (optional)",
+  "costAutoCalculating": "Calculating automatically…",
+  "costAutomaticReady": "Calculated automatically",
+  "costNeedsReviewCount": "{count} items to review",
+  "costOnlyPending": "Show items to review",
+  "costAllMaterials": "All materials",
+  "costPerProductPrice": "Cost per product",
+  "costMissingPriceInput": "Enter price",
+  "costDefaultFeeHelp": "Enter the per-product cost in the applicable row after adding the column. Other methods are available in advanced options.",
+  "@costNeedsReviewCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "costKnownPartial": "Known partial cost",
+  "costPriceAvailable": "Available",
+  "costAutoPrice": "Automatic reliable sources",
+  "costResultNotUpdated": "Results are not updated; retry",
+  "costActualFilters": "Filter actual scope",
+  "costReturnToTable": "Back to cost sheet",
+  "costActualEvidence": "Actual cost evidence",
+  "costSavedHistory": "Saved cost history",
+  "costAdjustEstimateQuantity": "Adjust estimate quantity",
+  "costEstimateBasis": "Estimate for {quantity} {unit}",
+  "costEstimateBasisWithoutUnit": "Estimate for quantity {quantity}",
+  "@costEstimateBasis": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "@costEstimateBasisWithoutUnit": {
+    "placeholders": {
+      "quantity": {
+        "type": "String"
+      }
+    }
+  },
+  "costProductionLoading": "Loading approved production…",
+  "costProductionUnavailable": "Production records unavailable; retry",
+  "costProductionNone": "No visible approved production reports",
+  "costProductionUnitPending": "Original production reporting units need verification",
+  "costRecentProductionLabel": "Latest production {scope} · Approved effective output {quantity} {unit}",
+  "costProductionScopeHelp": "Current evidence within your visible production scope: approved report quantities less confirmed FQC invalidation; rework restoration offsets its original source. Draft reports are excluded. This is separate from received stock and estimate quantity and does not mean costs are complete.",
+  "costProductionBatch": "Production scope",
+  "costApprovedEffectiveOutput": "Approved effective output",
+  "costApprovedReportedOutput": "Original approved reported output",
+  "costFqcDeductedOutput": "Confirmed FQC deduction",
+  "costReportedDefectOutput": "Separately reported defects",
+  "costProductionFirstReport": "First report date in scope",
+  "costProductionLastReport": "Last report date in scope",
+  "costProductionReportCount": "Valid approved report count",
+  "costProductionMemberCount": "Production tasks in scope",
+  "costProductionDraftReports": "Other unapproved reports exist",
+  "costProductionEvidence": "Current approved production evidence",
+  "costProductionOpenCosts": "View costs for this production scope",
+  "@costRecentProductionLabel": {
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      },
+      "quantity": {
+        "type": "String"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "costProductionPending": "Production quantity needs review; view evidence",
+  "costProductionSource": "Calculation evidence",
+  "costProductionCopyScope": "Copy batch identifier",
+  "costProductionSourceReport": "Approved reports that have not been withdrawn",
+  "costProductionSourceFamily": "Related split and supplemental production tasks",
+  "costProductionSourceProgress": "Deduct confirmed FQC invalidation; restore rework against its original source",
+  "costProductionSourceUnit": "Preserve the original reporting unit and conversion evidence",
+  "costProductionSourceDefects": "Reported defects are separate and not deducted twice",
+  "costProductionSourceOther": "Provided by production reports and related records",
+  "costProductionProgressPending": "Reports and workshop progress are not reconciled; quantity is withheld"
 }

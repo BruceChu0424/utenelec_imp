@@ -7132,7 +7132,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costName => 'Cost sheet name';
 
   @override
-  String get costBatch => 'Batch output';
+  String get costBatch => 'Estimate quantity';
 
   @override
   String get costCustomer => 'Customer scope';
@@ -7886,4 +7886,195 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get costGapCode => 'Reconciliation reason code';
+
+  @override
+  String get costDailyTable => 'Cost sheet';
+
+  @override
+  String get costCalculationSettings => 'Calculation settings';
+
+  @override
+  String get costAdjustment => 'Adjust';
+
+  @override
+  String get costFinishAdjustment => 'Finish adjustment';
+
+  @override
+  String get costMoreActions => 'More actions';
+
+  @override
+  String get costRefreshSources => 'Refresh source prices and usage';
+
+  @override
+  String get costDownload => 'Download';
+
+  @override
+  String get costDownloadFormat => 'File format';
+
+  @override
+  String get costAdvancedOptions => 'Advanced options';
+
+  @override
+  String get costOptionalCustomer => 'Customer (optional)';
+
+  @override
+  String get costAutoCalculating => 'Calculating automatically…';
+
+  @override
+  String get costAutomaticReady => 'Calculated automatically';
+
+  @override
+  String costNeedsReviewCount(int count) {
+    return '$count items to review';
+  }
+
+  @override
+  String get costOnlyPending => 'Show items to review';
+
+  @override
+  String get costAllMaterials => 'All materials';
+
+  @override
+  String get costPerProductPrice => 'Cost per product';
+
+  @override
+  String get costMissingPriceInput => 'Enter price';
+
+  @override
+  String get costDefaultFeeHelp =>
+      'Enter the per-product cost in the applicable row after adding the column. Other methods are available in advanced options.';
+
+  @override
+  String get costKnownPartial => 'Known partial cost';
+
+  @override
+  String get costPriceAvailable => 'Available';
+
+  @override
+  String get costAutoPrice => 'Automatic reliable sources';
+
+  @override
+  String get costResultNotUpdated => 'Results are not updated; retry';
+
+  @override
+  String get costActualFilters => 'Filter actual scope';
+
+  @override
+  String get costReturnToTable => 'Back to cost sheet';
+
+  @override
+  String get costActualEvidence => 'Actual cost evidence';
+
+  @override
+  String get costSavedHistory => 'Saved cost history';
+
+  @override
+  String get costAdjustEstimateQuantity => 'Adjust estimate quantity';
+
+  @override
+  String costEstimateBasis(String quantity, String unit) {
+    return 'Estimate for $quantity $unit';
+  }
+
+  @override
+  String costEstimateBasisWithoutUnit(String quantity) {
+    return 'Estimate for quantity $quantity';
+  }
+
+  @override
+  String get costProductionLoading => 'Loading approved production…';
+
+  @override
+  String get costProductionUnavailable =>
+      'Production records unavailable; retry';
+
+  @override
+  String get costProductionNone => 'No visible approved production reports';
+
+  @override
+  String get costProductionUnitPending =>
+      'Original production reporting units need verification';
+
+  @override
+  String costRecentProductionLabel(String scope, String quantity, String unit) {
+    return 'Latest production $scope · Approved effective output $quantity $unit';
+  }
+
+  @override
+  String get costProductionScopeHelp =>
+      'Current evidence within your visible production scope: approved report quantities less confirmed FQC invalidation; rework restoration offsets its original source. Draft reports are excluded. This is separate from received stock and estimate quantity and does not mean costs are complete.';
+
+  @override
+  String get costProductionBatch => 'Production scope';
+
+  @override
+  String get costApprovedEffectiveOutput => 'Approved effective output';
+
+  @override
+  String get costApprovedReportedOutput => 'Original approved reported output';
+
+  @override
+  String get costFqcDeductedOutput => 'Confirmed FQC deduction';
+
+  @override
+  String get costReportedDefectOutput => 'Separately reported defects';
+
+  @override
+  String get costProductionFirstReport => 'First report date in scope';
+
+  @override
+  String get costProductionLastReport => 'Last report date in scope';
+
+  @override
+  String get costProductionReportCount => 'Valid approved report count';
+
+  @override
+  String get costProductionMemberCount => 'Production tasks in scope';
+
+  @override
+  String get costProductionDraftReports => 'Other unapproved reports exist';
+
+  @override
+  String get costProductionEvidence => 'Current approved production evidence';
+
+  @override
+  String get costProductionOpenCosts => 'View costs for this production scope';
+
+  @override
+  String get costProductionPending =>
+      'Production quantity needs review; view evidence';
+
+  @override
+  String get costProductionSource => 'Calculation evidence';
+
+  @override
+  String get costProductionCopyScope => 'Copy batch identifier';
+
+  @override
+  String get costProductionSourceReport =>
+      'Approved reports that have not been withdrawn';
+
+  @override
+  String get costProductionSourceFamily =>
+      'Related split and supplemental production tasks';
+
+  @override
+  String get costProductionSourceProgress =>
+      'Deduct confirmed FQC invalidation; restore rework against its original source';
+
+  @override
+  String get costProductionSourceUnit =>
+      'Preserve the original reporting unit and conversion evidence';
+
+  @override
+  String get costProductionSourceDefects =>
+      'Reported defects are separate and not deducted twice';
+
+  @override
+  String get costProductionSourceOther =>
+      'Provided by production reports and related records';
+
+  @override
+  String get costProductionProgressPending =>
+      'Reports and workshop progress are not reconciled; quantity is withheld';
 }

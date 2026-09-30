@@ -3,6 +3,8 @@ package com.uten.imp.businesschain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.master.goods.costing.GoodsCostContracts;
+import com.uten.imp.features.production.dailyreport.ProductionDailyReportService;
+import com.uten.imp.support.DailyReportApproveRequests;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -26,6 +28,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.io.ByteArrayInputStream;
@@ -71,6 +74,7 @@ class GoodsCostHttpSmokeEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired Flyway flyway;
     @Autowired AutowireCapableBeanFactory beans;
+    @Autowired ProductionDailyReportService reports;
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
     private Authentication owner;
@@ -84,6 +88,34 @@ class GoodsCostHttpSmokeEndToEndTest {
         assertThat(db.queryForObject("SELECT to_regclass('goods_cost_sheets') IS NOT NULL AND to_regclass('inventory_cost_gl_links') IS NOT NULL",Boolean.class)).isTrue();
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
+
+    @Test void openingCostTableNeedsNoFormAndKeepsUnpricedMaterialsVisibleWithoutSavingAnything() throws Exception {
+        long sheetsBefore=db.queryForObject("SELECT count(*) FROM goods_cost_sheets",Long.class);
+        long snapshotsBefore=db.queryForObject("SELECT count(*) FROM goods_cost_snapshots",Long.class);
+        var goodsBefore=db.queryForMap("SELECT version,c_total FROM goods WHERE id=?",world.goodsA());
+        for(int call=0;call<2;call++) {
+            JsonNode opened=body(request(get(ROOT+"/bootstrap").param("goodsId",world.goodsA().toString()),owner,null,200));
+            JsonNode input=opened.path("resolvedInput");
+            assertThat(input.path("goodsId").asText()).isEqualTo(world.goodsA().toString());
+            assertThat(input.path("batchQty").asText()).isEqualTo("1");
+            assertThat(input.path("exchangeRateToLocal").asText()).isEqualTo("1");
+            assertThat(input.path("effectiveDate").asText()).isEqualTo(com.uten.imp.common.time.BusinessTime.today().toString());
+            assertThat(input.path("usageStrategy").asText()).isEqualTo("ACTUAL_FIRST");
+            assertThat(input.path("clientId").isNull()||input.path("clientId").isMissingNode()).isTrue();
+            assertThat(opened.path("lines").size()).isGreaterThanOrEqualTo(3);
+            assertThat(opened.path("lines").toString()).contains(world.goodsB().toString(),world.goodsD().toString());
+            assertThat(opened.path("totals").path("valueState").asText()).isEqualTo("INCOMPLETE");
+            assertThat(opened.path("totals").path("unitCost").isNull()).isTrue();
+            assertThat(opened.path("issues").isEmpty()).isFalse();
+            for(JsonNode line:opened.path("lines")) {
+                assertThat(line.path("goodsName").asText()).isNotBlank();
+                assertThat(line.path("unitName").asText()).isEqualTo("个");
+            }
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM goods_cost_sheets",Long.class)).isEqualTo(sheetsBefore);
+        assertThat(db.queryForObject("SELECT count(*) FROM goods_cost_snapshots",Long.class)).isEqualTo(snapshotsBefore);
+        assertThat(db.queryForMap("SELECT version,c_total FROM goods WHERE id=?",world.goodsA())).isEqualTo(goodsBefore);
+    }
 
     @Test void completeHttpCostLifecycleKeepsConfirmedSnapshotAndBothDownloadsFrozen() throws Exception {
         DraftInput input=input("0.5");
@@ -155,8 +187,56 @@ class GoodsCostHttpSmokeEndToEndTest {
         Authentication restricted=auth(viewer);
         assertThat(restricted.getAuthorities()).noneMatch(authority->authority.getAuthority().equals("goods:cost:view"));
         request(post(ROOT+"/preview"),restricted,input("0.5"),403);
+        request(get(ROOT+"/bootstrap").param("goodsId",world.goodsD().toString()),restricted,null,403);
         request(get(ROOT+"/actual").param("goodsId",world.goodsD().toString()),restricted,null,403);
+        request(get(ROOT+"/production-output").param("goodsId",world.goodsD().toString()),restricted,null,403);
         request(post(ROOT+"/export"),restricted,Map.of("sheetId",UUID.randomUUID(),"snapshotId",UUID.randomUUID(),"format","xlsx"),403);
+    }
+    @Test void productionOutputWithoutApprovedReportsIsReadOnlyAndDoesNotInventActualQuantity() throws Exception {
+        long sheetsBefore=db.queryForObject("SELECT count(*) FROM goods_cost_sheets",Long.class);
+        long reportsBefore=db.queryForObject("SELECT count(*) FROM production_daily_reports",Long.class);
+        long costsBefore=db.queryForObject("SELECT count(*) FROM stock_value_production_cost_objects",Long.class);
+        var before=db.queryForMap("SELECT version,c_total FROM goods WHERE id=?",world.goodsD());
+        for(int call=0;call<2;call++) {
+            JsonNode result=body(request(get(ROOT+"/production-output").param("goodsId",world.goodsD().toString()),owner,null,200));
+            assertThat(result.path("goodsId").asText()).isEqualTo(world.goodsD().toString());
+            assertThat(result.path("state").asText()).isEqualTo("NONE");
+            assertThat(result.path("approvedReportedQty").isNull()).isTrue();
+            assertThat(result.path("effectiveCompletedQty").isNull()).isTrue();
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM goods_cost_sheets",Long.class)).isEqualTo(sheetsBefore);
+        assertThat(db.queryForObject("SELECT count(*) FROM production_daily_reports",Long.class)).isEqualTo(reportsBefore);
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_objects",Long.class)).isEqualTo(costsBefore);
+        assertThat(db.queryForMap("SELECT version,c_total FROM goods WHERE id=?",world.goodsD())).isEqualTo(before);
+    }
+    @Test void productionOutputTracksRealReportApprovalAndReversalBeforeAnyValuationOutputExists() throws Exception {
+        fixture.loginAs(world.superAdminUserId());
+        ReflectionTestUtils.invokeMethod(fixture,"receiveOpeningInputsForA",world,"10");
+        UUID plan=ReflectionTestUtils.invokeMethod(fixture,"approvedPlan",world,world.goodsA(),"10","10");
+        ReflectionTestUtils.invokeMethod(fixture,"issueReadyPlanAndMaterials",world,plan);
+        UUID planItem=ReflectionTestUtils.invokeMethod(fixture,"planItemIdFor",plan,world.goodsA());
+        UUID orderItem=ReflectionTestUtils.invokeMethod(fixture,"orderItemIdOfPlan",plan);
+        Object draft=ReflectionTestUtils.invokeMethod(fixture,"createPrefixReportDraft",world,plan,planItem,orderItem,"4");
+        UUID report=ReflectionTestUtils.invokeMethod(draft,"id"),reporter=ReflectionTestUtils.invokeMethod(draft,"reporter");
+        JsonNode pending=body(request(get(ROOT+"/production-output").param("goodsId",world.goodsA().toString()),owner,null,200));
+        assertThat(pending.path("state").asText()).isEqualTo("NONE");
+        fixture.loginAs(reporter);reports.approve(report,DailyReportApproveRequests.freshKey());
+        UUID segment=db.queryForObject("SELECT execution_segment_id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",UUID.class,report);
+        UUID scope=db.queryForObject("SELECT fn_production_execution_cost_scope(?)",UUID.class,segment);
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_objects WHERE execution_segment_id=?",Integer.class,scope)).isZero();
+        JsonNode approved=body(request(get(ROOT+"/production-output").param("goodsId",world.goodsA().toString()),owner,null,200));
+        assertThat(approved.path("scopeId").asText()).isEqualTo(scope.toString());
+        assertThat(approved.path("approvedReportedQty").asText()).isEqualTo("4");
+        assertThat(approved.path("effectiveCompletedQty").asText()).isEqualTo("4");
+        assertThat(approved.path("fqcDeductedQty").asText()).isEqualTo("0");
+        assertThat(approved.path("unitId").asText()).isEqualTo(world.unitId().toString());
+        assertThat(approved.path("unitName").asText()).isEqualTo("个");
+        request(get(ROOT+"/production-output").param("goodsId",world.goodsD().toString()).param("executionSegmentId",segment.toString()),owner,null,422);
+        fixture.loginAs(reporter);reports.reverse(report);
+        JsonNode reversed=body(request(get(ROOT+"/production-output").param("goodsId",world.goodsA().toString()),owner,null,200));
+        assertThat(reversed.path("state").asText()).isEqualTo("NONE");
+        assertThat(reversed.path("effectiveCompletedQty").isNull()).isTrue();
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_objects WHERE execution_segment_id=?",Integer.class,scope)).isZero();
     }
 
     private DraftInput input(String price){

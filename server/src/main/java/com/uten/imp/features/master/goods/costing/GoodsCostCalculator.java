@@ -19,7 +19,7 @@ import static com.uten.imp.common.finance.CostCalculationMath.*;
 @Component
 @RequiredArgsConstructor
 public class GoodsCostCalculator {
-    public static final String ALGORITHM="GOODS_COST_V1";
+    public static final String ALGORITHM="GOODS_COST_V2_AUTO";
     private final GoodsCostSourceReader sources;
     private final MasterReferenceValidationPort references;
     private final GoodsCostJson json;
@@ -91,7 +91,7 @@ public class GoodsCostCalculator {
         validateDefinitions(input.fees(),input.priceColumns());
         BigDecimal batch=positive(input.batchQty(),"成本批量"),fx=new BigDecimal(normalizeExchangeRate(input.currencyId(),input.exchangeRateToLocal()));
         if(!Set.of("ACTUAL_FIRST","DESIGN").contains(input.usageStrategy())) throw invalid("成本用量策略无效");
-        if(!Set.of("APPROVED_PURCHASE","INVENTORY","MANUAL").contains(input.priceStrategy())) throw invalid("成本取价策略无效");
+        if(!Set.of("AUTO","APPROVED_PURCHASE","INVENTORY","MANUAL").contains(input.priceStrategy())) throw invalid("成本取价策略无效");
         if(input.effectiveDate()==null) throw invalid("请选择成本日期");
         GoodsInfo root=sources.goods(input.goodsId());
         String currency=sources.currency(input.currencyId());
@@ -166,7 +166,7 @@ public class GoodsCostCalculator {
         List<Edge> children=s.edges(goods.id());
         String route=override!=null&&override.route()!=null?override.route():"AUTO";
         if("AUTO".equals(route)) route="外购".equals(goods.sourceType())||"采购".equals(goods.sourceType())?"BUY":
-                "委外".equals(goods.sourceType())?"SUBCONTRACT":children.isEmpty()?"BUY":"MAKE";
+                "委外".equals(goods.sourceType())?"SUBCONTRACT":"自制".equals(goods.sourceType())?"MAKE":children.isEmpty()?"BUY":"MAKE";
         if(!Set.of("MAKE","BUY","SUBCONTRACT","CUSTOMER_SUPPLIED").contains(route)) throw invalid("成本路线无效");
         boolean actual="ACTUAL_FIRST".equals(s.input.usageStrategy())&&"ACTUAL".equals(edge.actualStatus())&&!contractual;
         BigDecimal adopted=actual?edge.effectiveQty():edge.designQty();
@@ -186,9 +186,13 @@ public class GoodsCostCalculator {
                 evidence=new PriceEvidence("CUSTOMER_SUPPLIED",null,null,null,null,"CONFIRMED_ASSUMPTION",null,s.input.currencyId(),null,
                         goods.unitId(),goods.unitName(),"1","0",text(s.fx),null,"AS_RECORDED",s.input.effectiveDate(),override.reason());
             } else {
-                evidence=price(s,goods,route,override);
+                boolean searchIncomplete=false;
+                try{evidence=price(s,goods,route,override);}
+                catch(GoodsCostSourceReader.PriceSearchIncomplete incomplete) {
+                    s.issues.add(new Issue("PRICE_SEARCH_INCOMPLETE",path,incomplete.getMessage(),true));searchIncomplete=true;
+                }
                 if(evidence!=null) {
-                    if("UNCONFIRMED".equals(evidence.taxMode()))s.issues.add(new Issue("TAX_BASIS_UNCONFIRMED",path,"来源税率不代表含税属性，请明确确认按原记录价或含税价折算口径",true));
+                    if("UNCONFIRMED".equals(evidence.taxMode()))s.issues.add(new Issue("TAX_BASIS_UNCONFIRMED",path,"原扣税设置对应的价格来源已变化，现按原记录价展示，请复核该行扣税设置",true));
                     if("APPROVED_WITH_COMPONENTS".equals(evidence.approvalState()))s.issues.add(new Issue("PRICE_COMPONENTS_UNCONFIRMED",path,evidence.reason(),true));
                     BigDecimal original=nonnegative(evidence.originalUnitPrice(),"来源价格");
                     BigDecimal rate=positive(evidence.unitRate(),"来源单位换算率");
@@ -199,7 +203,7 @@ public class GoodsCostCalculator {
                     amount=FinancialExactAmount.book(exactQty.multiply(normalized).project(),"成本金额");
                     unitPrice=FinancialExactAmount.book(normalized.project(),"成本单价");
                     s.revisions.put("price:"+path,json.hash(evidence));
-                } else s.issues.add(new Issue("MISSING_PRICE",path,"缺少适用且来源完整的成本价格",true));
+                } else if(!searchIncomplete)s.issues.add(new Issue("MISSING_PRICE",path,"缺少适用且来源完整的成本价格",true));
             }
         } else if(children.isEmpty()) s.issues.add(new Issue("MISSING_MAKE_BASIS",path,"自制件没有材料或已确认成本依据",true));
         CostLine line=new CostLine(path,parent,path,depth,edge.id(),goods.id(),goods.code(),goods.name(),goods.colorId(),goods.colorName(),
@@ -226,22 +230,31 @@ public class GoodsCostCalculator {
                     s.input.effectiveDate(),override.reason());
         }
         UUID item=override==null?null:override.priceSourceItemId();
-        if(item!=null || "APPROVED_PURCHASE".equals(s.input.priceStrategy())) {
+        boolean automatic="AUTO".equals(s.input.priceStrategy());
+        if(item!=null || automatic || "APPROVED_PURCHASE".equals(s.input.priceStrategy())) {
             boolean taxOnly=override!=null&&override.taxMode()!=null;
             boolean pinned=override!=null&&Objects.toString(override.priceSourceType(),"").endsWith("_PINNED");
             PriceEvidence found=sources.approved(goods,"SUBCONTRACT".equals(route),s.input.effectiveDate(),taxOnly&&!pinned?null:item);
             if(found!=null&&override!=null&&override.taxMode()!=null) {
                 if(!Set.of("AS_RECORDED","EXCLUDE_TAX").contains(override.taxMode()))throw invalid("成本税口径无效");
                 if(!Objects.equals(override.priceSourceItemId(),found.sourceItemId())
-                        ||!Objects.equals(override.priceSourceVersion(),found.sourceVersion()))return found;
+                        ||!Objects.equals(override.priceSourceVersion(),found.sourceVersion())) {
+                    if(!"EXCLUDE_TAX".equals(override.taxMode()))return found;
+                    return new PriceEvidence(found.sourceType(),found.sourceId(),found.sourceItemId(),found.sourceNumber(),found.sourceVersion(),found.approvalState(),
+                            found.supplierId(),found.currencyId(),found.currencyName(),found.unitId(),found.unitName(),found.unitRate(),found.originalUnitPrice(),
+                            found.exchangeRateToLocal(),found.taxRate(),"UNCONFIRMED",found.sourceDate(),found.reason()
+                            +"；原扣税设置尚未复核："+override.reason());
+                }
                 return new PriceEvidence(found.sourceType(),found.sourceId(),found.sourceItemId(),found.sourceNumber(),found.sourceVersion(),found.approvalState(),
                         found.supplierId(),found.currencyId(),found.currencyName(),found.unitId(),found.unitName(),found.unitRate(),found.originalUnitPrice(),
                         found.exchangeRateToLocal(),found.taxRate(),override.taxMode(),found.sourceDate(),
                         "APPROVED_WITH_COMPONENTS".equals(found.approvalState())?found.reason()+"；税口径确认："+override.reason():override.reason());
             }
+            if(found==null&&automatic&&"BUY".equals(route)&&item==null&&(override==null||override.taxMode()==null))
+                return sources.inventory(goods,s.input.effectiveDate());
             return found;
         }
-        if("INVENTORY".equals(s.input.priceStrategy()))return sources.inventory(goods,s.input.effectiveDate());
+        if("INVENTORY".equals(s.input.priceStrategy())&&"BUY".equals(route))return sources.inventory(goods,s.input.effectiveDate());
         return null;
     }
     private List<FeeResult> calculateFees(State s,List<FeeInput> fees) {

@@ -24,8 +24,13 @@ import 'master_data_table_view.dart';
 /// Reads valuation evidence only. Neither quantities nor ledger values can be
 /// edited in this panel, and pending scopes remain visibly incomplete.
 class GoodsCostActualPanel extends ConsumerStatefulWidget {
-  const GoodsCostActualPanel({super.key, required this.goodsId});
+  const GoodsCostActualPanel({
+    super.key,
+    required this.goodsId,
+    this.executionSegmentId,
+  });
   final String goodsId;
+  final String? executionSegmentId;
   @override
   ConsumerState<GoodsCostActualPanel> createState() =>
       _GoodsCostActualPanelState();
@@ -39,7 +44,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
   String? _baselineId;
   DateTime? _from, _to;
   String? _segment, _revision, _error;
-  bool _loading = false;
+  bool _loading = false, _showFilters = false, _showBaseline = false;
   int _tab = 0, _request = 0;
   AppLocalizations get _l => AppLocalizations.of(context);
   Map<String, dynamic> get _filters => {
@@ -51,6 +56,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
   @override
   void initState() {
     super.initState();
+    _segment = widget.executionSegmentId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -74,7 +80,9 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
         _baselines = baselines
             .where((s) => s['status'] == 'CONFIRMED')
             .toList();
-        if (_segment == null) _objects = costMaps(snapshot['costObjects']);
+        if (_segment == null || _objects.isEmpty) {
+          _objects = costMaps(snapshot['costObjects']);
+        }
       });
     } catch (e) {
       if (mounted && request == _request) {
@@ -620,77 +628,94 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          UtenCard(
-            child: LayoutBuilder(
-              builder: (context, box) {
-                final width = box.maxWidth < 480 ? box.maxWidth : 230.0;
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(
-                      width: width,
-                      child: UtenDateField(
-                        label: _l.costActualFrom,
-                        value: _from,
-                        onChanged: (d) => setState(() => _from = d),
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: UtenDateField(
-                        label: _l.costActualTo,
-                        value: _to,
-                        onChanged: (d) => setState(() => _to = d),
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: UtenDropdownField(
-                        label: _l.costSegment,
-                        value: _segment,
-                        items: [
-                          for (final object in {
-                            for (final o in _objects)
-                              costText(o['executionSegmentId']): o,
-                          }.values)
-                            if (object['executionSegmentId'] != null)
-                              UtenDropdownItem(
-                                value: costText(object['executionSegmentId']),
-                                label: costText(object['executionNo']) ?? '—',
-                              ),
-                        ],
-                        onChanged: (v) => setState(() => _segment = v),
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: UtenDropdownField(
-                        label: _l.costVersion,
-                        value: _revision,
-                        items: [
-                          for (final revision in {
-                            for (final r in costMaps(_snapshot?['revisions']))
-                              r['revisionId']: r,
-                          }.values)
-                            UtenDropdownItem(
-                              value: costText(revision['revisionId']),
-                              label:
-                                  '${_l.costVersion} ${revision['version']} · ${revision['occurredAt'] ?? ''}',
-                            ),
-                        ],
-                        onChanged: (v) => setState(() => _revision = v),
-                      ),
-                    ),
-                    UtenButton(
-                      onPressed: _loading ? null : _load,
-                      child: Text(_l.commonRefresh),
-                    ),
-                  ],
-                );
-              },
-            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              UtenButton(
+                type: UtenButtonType.tonal,
+                onPressed: () => setState(() => _showFilters = !_showFilters),
+                child: Text(_l.costActualFilters),
+              ),
+              UtenButton(
+                type: UtenButtonType.tonal,
+                onPressed: () => setState(() => _showBaseline = !_showBaseline),
+                child: Text(_l.costCompare),
+              ),
+            ],
           ),
+          if (_showFilters)
+            UtenCard(
+              child: LayoutBuilder(
+                builder: (context, box) {
+                  final width = box.maxWidth < 480 ? box.maxWidth : 230.0;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: width,
+                        child: UtenDateField(
+                          label: _l.costActualFrom,
+                          value: _from,
+                          onChanged: (d) => setState(() => _from = d),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: UtenDateField(
+                          label: _l.costActualTo,
+                          value: _to,
+                          onChanged: (d) => setState(() => _to = d),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: UtenDropdownField(
+                          label: _l.costSegment,
+                          value: _segment,
+                          items: [
+                            for (final object in {
+                              for (final o in _objects)
+                                costText(o['executionSegmentId']): o,
+                            }.values)
+                              if (object['executionSegmentId'] != null)
+                                UtenDropdownItem(
+                                  value: costText(object['executionSegmentId']),
+                                  label: costText(object['executionNo']) ?? '—',
+                                ),
+                          ],
+                          onChanged: (v) => setState(() => _segment = v),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: UtenDropdownField(
+                          label: _l.costVersion,
+                          value: _revision,
+                          items: [
+                            for (final revision in {
+                              for (final r in costMaps(_snapshot?['revisions']))
+                                r['revisionId']: r,
+                            }.values)
+                              UtenDropdownItem(
+                                value: costText(revision['revisionId']),
+                                label:
+                                    '${_l.costVersion} ${revision['version']} · ${revision['occurredAt'] ?? ''}',
+                              ),
+                          ],
+                          onChanged: (v) => setState(() => _revision = v),
+                        ),
+                      ),
+                      UtenButton(
+                        onPressed: _loading ? null : _load,
+                        child: Text(_l.commonRefresh),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           const SizedBox(height: 12),
           if (_error != null)
             Text(
@@ -745,7 +770,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                 ),
               ),
             ),
-          if (_snapshot != null) ...[
+          if (_snapshot != null && _showBaseline) ...[
             const SizedBox(height: 12),
             _baselineComparison(summary),
             const SizedBox(height: 12),

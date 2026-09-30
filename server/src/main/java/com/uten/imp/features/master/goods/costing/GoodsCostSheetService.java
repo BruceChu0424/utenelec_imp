@@ -96,6 +96,17 @@ public class GoodsCostSheetService {
         Map<String,Object> payload=json.read(json.write(calculation),LinkedHashMap.class);
         payload.put("resolvedInput",resolved);return payload;
     }
+    /** First visit is a read-only unit-cost estimate, not a persisted draft or a guessed customer. */
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> bootstrap(UUID goodsId,UUID clientId) {
+        require(VIEW);
+        if(goodsId==null)throw invalid("请选择成本货品");
+        scope(goodsId,clientId);
+        List<UUID> baseCurrencies=db.queryForList("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",Map.of(),UUID.class);
+        if(baseCurrencies.size()!=1)throw invalid("未配置唯一有效本币，请先核对币种资料");
+        return previewPayload(new DraftInput(goodsId,clientId,"成本测算","1",baseCurrencies.getFirst(),"1",BusinessTime.today(),
+                "ACTUAL_FIRST","AUTO",null,List.of(),List.of(),List.of(),List.of(),Map.of(),null));
+    }
     /** Changes the monetary unit of a draft simulation, never a stored sheet or an actual posting. */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public ConvertedCurrency convertCurrency(ConvertCurrencyRequest request) {
@@ -351,7 +362,7 @@ public class GoodsCostSheetService {
             if(names.getFirst()!=null)extra.put("serverClientName",names.getFirst());
         }
         return new DraftInput(raw.goodsId(),raw.clientId(),name,text(quantity),raw.currencyId(),sheetRateText,
-                date,raw.usageStrategy()==null?"ACTUAL_FIRST":raw.usageStrategy(),raw.priceStrategy()==null?"APPROVED_PURCHASE":raw.priceStrategy(),raw.templateId(),
+                date,raw.usageStrategy()==null?"ACTUAL_FIRST":raw.usageStrategy(),raw.priceStrategy()==null?"AUTO":raw.priceStrategy(),raw.templateId(),
                 List.copyOf(GoodsCostCalculator.list(raw.lineOverrides())),List.copyOf(fees.values()),List.copyOf(columns.values()),
                 List.copyOf(resolvedCells),Map.copyOf(extra),raw.notes());
     }

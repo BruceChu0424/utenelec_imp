@@ -125,15 +125,20 @@ class GoodsCostCalculatorTest {
         assertThat(result.lines().getLast().batchQty()).isEqualTo("1");
         assertThat(result.totals().knownTotal()).isEqualTo("16");
     }
-    @Test void taxAcknowledgementIsBoundToTheExactSourceRevision() {
+    @Test void approvedRecordedPriceNeedsNoTaxAcknowledgementAndExplicitExclusionIsBoundToSourceRevision() {
         when(sources.edges(rootId)).thenReturn(List.of(edge("1",null,"PER_UNIT","1",true)));
-        PriceEvidence first=unconfirmed("1");
+        PriceEvidence first=recorded("1");
         when(sources.approved(eq(material),eq(false),any(),isNull())).thenReturn(first);
-        assertThat(calculator.calculate(input("1",List.of(),List.of())).issues()).anyMatch(issue->issue.code().equals("TAX_BASIS_UNCONFIRMED"));
-        LineOverride ack=new LineOverride(edgeId.toString(),null,null,null,null,null,null,"AS_RECORDED",edgeId,"APPROVED_PURCHASE","按原记录价格计成本","1");
-        assertThat(calculator.calculate(input("1",List.of(ack),List.of())).totals().valueState()).isEqualTo("COMPLETE");
-        when(sources.approved(eq(material),eq(false),any(),isNull())).thenReturn(unconfirmed("2"));
-        assertThat(calculator.calculate(input("1",List.of(ack),List.of())).totals().valueState()).isEqualTo("INCOMPLETE");
+        Calculation automatic=calculator.calculate(input("1",List.of(),List.of()));
+        assertThat(automatic.issues()).noneMatch(issue->issue.code().equals("TAX_BASIS_UNCONFIRMED"));
+        assertThat(automatic.totals().valueState()).isEqualTo("COMPLETE");assertThat(automatic.totals().knownTotal()).isEqualTo("16");
+        LineOverride ack=new LineOverride(edgeId.toString(),null,null,null,null,null,null,"EXCLUDE_TAX",edgeId,"APPROVED_PURCHASE","已核实原价含税，按原税率扣税","1");
+        Calculation excluded=calculator.calculate(input("1",List.of(ack),List.of()));
+        assertThat(excluded.totals().valueState()).isEqualTo("COMPLETE");assertThat(excluded.totals().knownTotal()).isNotEqualTo("16");
+        when(sources.approved(eq(material),eq(false),any(),isNull())).thenReturn(recorded("2"));
+        Calculation stale=calculator.calculate(input("1",List.of(ack),List.of()));
+        assertThat(stale.totals().valueState()).isEqualTo("INCOMPLETE");assertThat(stale.totals().knownTotal()).isEqualTo("16");
+        assertThat(stale.issues()).anyMatch(issue->issue.code().equals("TAX_BASIS_UNCONFIRMED"));
     }
     @Test void managementBaseIncludesDynamicProcessColumnsExactlyOnce() {
         when(sources.edges(rootId)).thenReturn(List.of(edge("1",null,"PER_UNIT","1",true)));
@@ -155,7 +160,7 @@ class GoodsCostCalculatorTest {
     }
     @Test void fixedCommercialAdjustmentCannotBeWashedIntoACompletePriceByTaxAcknowledgement() {
         when(sources.edges(rootId)).thenReturn(List.of(edge("1",null,"PER_UNIT","1",true)));
-        PriceEvidence p=unconfirmed("1");
+        PriceEvidence p=recorded("1");
         PriceEvidence components=new PriceEvidence(p.sourceType(),p.sourceId(),p.sourceItemId(),p.sourceNumber(),p.sourceVersion(),"APPROVED_WITH_COMPONENTS",
                 p.supplierId(),p.currencyId(),p.currencyName(),p.unitId(),p.unitName(),p.unitRate(),p.originalUnitPrice(),p.exchangeRateToLocal(),p.taxRate(),p.taxMode(),p.sourceDate(),"原单另有每批固定费用10元，需拆分核对");
         when(sources.approved(eq(material),eq(false),any(),isNull())).thenReturn(components);
@@ -212,10 +217,52 @@ class GoodsCostCalculatorTest {
         Calculation result=calculator.calculate(input);
         assertThat(result.fees().getFirst().amount()).isNull();assertThat(result.totals().valueState()).isEqualTo("INCOMPLETE");
     }
-    private PriceEvidence unconfirmed(String version) {
+    @Test void automaticBuyPrefersApprovedPriceAndOnlyThenUsesReliableInventoryReference() {
+        when(sources.edges(rootId)).thenReturn(List.of(edge("1",null,"PER_UNIT","1",true)));
+        DraftInput auto=withStrategy(input("1",List.of(),List.of()),"AUTO");
+        assertThat(calculator.calculate(auto).lines().getFirst().priceEvidence().sourceType()).isEqualTo("APPROVED_PURCHASE");
+        verify(sources,never()).inventory(any(),any());
+        when(sources.approved(eq(material),eq(false),any(),isNull())).thenReturn(null);
+        PriceEvidence pool=new PriceEvidence("INVENTORY_REFERENCE",materialId,null,null,"head:1","FINAL_REFERENCE",null,null,"本币",unitId,"kg","1","3","1",null,"AS_RECORDED",auto.effectiveDate(),"已核定库存参考");
+        when(sources.inventory(eq(material),any())).thenReturn(pool);
+        assertThat(calculator.calculate(auto).totals().knownTotal()).isEqualTo("3");
+        clearInvocations(sources);
+        assertThat(calculator.calculate(input("1",List.of(),List.of())).lines().getFirst().unitPrice()).isNull();
+        verify(sources,never()).inventory(any(),any());
+    }
+    @Test void automaticSubcontractNeverAddsAWholeItemInventoryValueToSuppliedMaterials() {
+        GoodsInfo subcontract=new GoodsInfo(materialId,"S1","委外件",unitId,"个",null,null,"委外","1");
+        Edge top=new Edge(edgeId,rootId,subcontract,BigDecimal.ONE,null,BigDecimal.ONE,"NO_DATA",0,null,null,"PER_UNIT",BigDecimal.ONE,true,false,"1");
+        when(sources.edges(rootId)).thenReturn(List.of(top));
+        Calculation result=calculator.calculate(withStrategy(input("1",List.of(),List.of()),"AUTO"));
+        assertThat(result.lines().getFirst().route()).isEqualTo("SUBCONTRACT");
+        assertThat(result.lines().getFirst().unitPrice()).isNull();
+        verify(sources,never()).inventory(any(),any());
+    }
+    @Test void makeWithoutBomRemainsVisibleAsMissingBasisAndNeverUsesAPurchasePrice() {
+        when(sources.edges(rootId)).thenReturn(List.of());
+        Calculation result=calculator.calculate(withStrategy(input("1",List.of(),List.of()),"AUTO"));
+        assertThat(result.lines()).hasSize(1);assertThat(result.lines().getFirst().route()).isEqualTo("MAKE");
+        assertThat(result.totals().valueState()).isEqualTo("INCOMPLETE");
+        assertThat(result.issues()).anyMatch(issue->issue.code().equals("MISSING_MAKE_BASIS"));
+        verify(sources,never()).approved(any(),anyBoolean(),any(),any());verify(sources,never()).inventory(any(),any());
+    }
+    @Test void boundedPriceSearchLeavesTheMaterialTableVisibleWithoutClaimingNoPriceExists() {
+        when(sources.edges(rootId)).thenReturn(List.of(edge("1",null,"PER_UNIT","1",true)));
+        when(sources.approved(eq(material),eq(false),any(),isNull())).thenThrow(new GoodsCostSourceReader.PriceSearchIncomplete("尚未查完"));
+        Calculation result=calculator.calculate(withStrategy(input("1",List.of(),List.of()),"AUTO"));
+        assertThat(result.lines()).hasSize(1);assertThat(result.lines().getFirst().amount()).isNull();
+        assertThat(result.totals().valueState()).isEqualTo("INCOMPLETE");
+        assertThat(result.issues()).anyMatch(issue->issue.code().equals("PRICE_SEARCH_INCOMPLETE"));
+        assertThat(result.issues()).noneMatch(issue->issue.code().equals("MISSING_PRICE"));
+        verify(sources,never()).inventory(any(),any());
+    }
+    private DraftInput withStrategy(DraftInput in,String strategy){return new DraftInput(in.goodsId(),in.clientId(),in.name(),in.batchQty(),in.currencyId(),in.exchangeRateToLocal(),in.effectiveDate(),
+            in.usageStrategy(),strategy,in.templateId(),in.lineOverrides(),in.fees(),in.priceColumns(),in.priceCells(),in.extraFields(),in.notes());}
+    private PriceEvidence recorded(String version) {
         PriceEvidence p=price("400","25","1");
         return new PriceEvidence(p.sourceType(),p.sourceId(),p.sourceItemId(),p.sourceNumber(),version,p.approvalState(),p.supplierId(),p.currencyId(),p.currencyName(),
-                p.unitId(),p.unitName(),p.unitRate(),p.originalUnitPrice(),p.exchangeRateToLocal(),p.taxRate(),"UNCONFIRMED",p.sourceDate(),null);
+                p.unitId(),p.unitName(),p.unitRate(),p.originalUnitPrice(),p.exchangeRateToLocal(),p.taxRate(),"AS_RECORDED",p.sourceDate(),null);
     }
     private DraftInput input(String batch,List<LineOverride> overrides,List<FeeInput> fees) {
         return new DraftInput(rootId,null,"成本",batch,null,"1",LocalDate.of(2026,9,29),"ACTUAL_FIRST","APPROVED_PURCHASE",null,

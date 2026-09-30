@@ -130,8 +130,8 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
     void masterBootstrapPreservesSystemRootsAndResolvesCurrentUuidRelations()
             throws Exception {
         String rootsBefore = scalar("""
-                SELECT material_category_id || '|' || client_category_id || '|' ||
-                       mould_category_id || '|' || supplier_category_id
+                SELECT jsonb_build_array(material_category_id, client_category_id,
+                       mould_category_id, supplier_category_id)::text
                 FROM system_master_category_registry
                 """);
 
@@ -155,6 +155,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 INSERT INTO color_stage(legacy_id, code, name, status)
                 VALUES (1, 'C1', '红色', '使用');
                 """));
+        assertEquals("1", scalar("SELECT count(*) FROM colors WHERE legacy_id=1 AND code='C1'"));
         executeScript("migrate_unit.sql", Map.of("unit_stage", """
                 INSERT INTO unit_stage(legacy_id, code, name, status)
                 VALUES (2, 'U2', '件', '使用');
@@ -186,8 +187,8 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 """));
 
         assertEquals(rootsBefore, scalar("""
-                SELECT material_category_id || '|' || client_category_id || '|' ||
-                       mould_category_id || '|' || supplier_category_id
+                SELECT jsonb_build_array(material_category_id, client_category_id,
+                       mould_category_id, supplier_category_id)::text
                 FROM system_master_category_registry
                 """));
         assertEquals("1", scalar("""
@@ -227,6 +228,34 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
         assertThrows(AssertionError.class, () -> executeScript("migrate_goods_data.sql"));
         assertEquals("1", scalar("SELECT count(*) FROM goods WHERE legacy_id = 14"));
         assertEquals("1", scalar("SELECT count(*) FROM stock_balances WHERE qty = 1"));
+    }
+
+    @Test
+    void colorBootstrapKeepsEveryIdentityWithOrWithoutDuplicateCodes() throws Exception {
+        String initialAllocator = scalar("SELECT count(*) || ':' || coalesce(max(last_seq),0) FROM master_code_sequences WHERE prefix='YS'");
+        executeScript("migrate_color.sql");
+        assertEquals("0", scalar("SELECT count(*) FROM colors"));
+        assertEquals(initialAllocator, scalar("SELECT count(*) || ':' || coalesce(max(last_seq),0) FROM master_code_sequences WHERE prefix='YS'"));
+
+        executeScript("migrate_color.sql", Map.of("color_stage", """
+                INSERT INTO color_stage(legacy_id,code,name,status)
+                VALUES (21,'UNIQUE21','红色','使用'),(22,'UNIQUE22','蓝色','禁用');
+                """));
+        assertEquals("21:UNIQUE21,22:UNIQUE22", scalar("SELECT string_agg(legacy_id || ':' || code, ',' ORDER BY legacy_id) FROM colors"));
+        assertEquals(initialAllocator, scalar("SELECT count(*) || ':' || coalesce(max(last_seq),0) FROM master_code_sequences WHERE prefix='YS'"),
+                "unique source codes must not consume or create an allocator row");
+
+        long expectedSequence = Long.parseLong(scalar("SELECT coalesce(max(last_seq),0)+1 FROM master_code_sequences WHERE prefix='YS'"));
+        executeScript("migrate_color.sql", Map.of("color_stage", """
+                INSERT INTO color_stage(legacy_id,code,name,status)
+                VALUES (31,'DuP','原色','使用'),(32,' dup ','重复码颜色','使用'),(33,'KEEP','独立颜色','禁用');
+                """));
+        assertEquals("31,32,33", scalar("SELECT string_agg(legacy_id::text, ',' ORDER BY legacy_id) FROM colors"));
+        assertEquals("DuP", scalar("SELECT code FROM colors WHERE legacy_id=31"));
+        assertEquals("KEEP", scalar("SELECT code FROM colors WHERE legacy_id=33"));
+        assertEquals(String.format(java.util.Locale.ROOT, "YS%06d", expectedSequence), scalar("SELECT code FROM colors WHERE legacy_id=32"));
+        assertEquals(Long.toString(expectedSequence), scalar("SELECT last_seq FROM master_code_sequences WHERE prefix='YS'"));
+        assertEquals("3", scalar("SELECT count(*) FROM master_code_reservation_members WHERE master_domain='COLOR' AND entity_id IN (SELECT id FROM colors)"));
     }
 
     @Test

@@ -52,7 +52,19 @@ SELECT
     END,
     NULLIF(BTRIM(ordered.name, ' ' || chr(12288)), ''),   -- 去首尾半角/全角空白，空串→NULL
     ordered.status
-FROM ordered CROSS JOIN reserved CROSS JOIN dup_count;
+-- No duplicate codes means no sequence allocation and therefore no reserved
+-- row. Keep all original identities even when that optional allocation is empty.
+FROM ordered CROSS JOIN dup_count LEFT JOIN reserved ON TRUE;
+
+DO $color_identity$
+BEGIN
+    IF (SELECT count(*) FROM colors) <> (SELECT count(*) FROM color_stage)
+       OR EXISTS (SELECT legacy_id FROM color_stage EXCEPT SELECT legacy_id FROM colors)
+       OR EXISTS (SELECT legacy_id FROM colors EXCEPT SELECT legacy_id FROM color_stage) THEN
+        RAISE EXCEPTION 'color bootstrap did not preserve every source identity';
+    END IF;
+END;
+$color_identity$;
 
 
 SELECT '✔ 颜色 总 ' || count(*) ||

@@ -73,6 +73,7 @@ class _PurchaseReportTablePageState
 
   ReportData? _data;
   bool _loading = false;
+  int _loadGeneration = 0;
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
@@ -140,6 +141,9 @@ class _PurchaseReportTablePageState
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
@@ -147,7 +151,7 @@ class _PurchaseReportTablePageState
         'dateFrom': _fmt(_from),
         'dateTo': _fmt(_to),
         if (_keyword.isNotEmpty) 'keyword': _keyword,
-        'page': _page,
+        'page': requestedPage,
         'size': _size,
         for (final e in _filters.entries) 'f.${e.key}': e.value,
         ...sortQueryParams(_sortKey, _sortAsc),
@@ -156,13 +160,13 @@ class _PurchaseReportTablePageState
           ? '/purchase/reports/${_kind.endpoint}'
           : '/purchase/reports/${_docType.code}/${_kind.endpoint}';
       final json = await api.get(path, query: query);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _data = parseReportResponse(json, _page);
+        _data = parseReportResponse(json, requestedPage);
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       context.appError('加载报表失败');
       setState(() => _loading = false);
     }
@@ -495,6 +499,7 @@ class _PurchaseReportTablePageState
       summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: (_kind, _docType, _from, _to, _keyword),
       onPageChange: (p) {
         _page = p;
         _load();

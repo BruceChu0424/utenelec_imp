@@ -87,7 +87,9 @@ class PayrollListNotifier
 
   Future<void> _reloadPage(int page) async {
     _page = page;
-    state = const AsyncLoading();
+    state = const AsyncLoading<PagedResult<PayrollSlip>>().copyWithPrevious(
+      state,
+    );
     // Keep every request inside build: Riverpod discards replaced build futures.
     ref.invalidateSelf();
     try {

@@ -76,6 +76,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
 
   ReportData? _data;
   bool _loading = false;
+  int _loadGeneration = 0;
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
@@ -142,6 +143,9 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
@@ -149,7 +153,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         'dateFrom': _fmt(_from),
         'dateTo': _fmt(_to),
         if (_keyword.isNotEmpty) 'keyword': _keyword,
-        'page': _page,
+        'page': requestedPage,
         'size': _size,
         for (final e in _filters.entries) 'f.${e.key}': e.value,
         ...sortQueryParams(_sortKey, _sortAsc),
@@ -158,13 +162,13 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         '/sales/reports/${_docType.code}/${_kind.endpoint}',
         query: query,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _data = parseReportResponse(json, _page);
+        _data = parseReportResponse(json, requestedPage);
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       context.appError('加载报表失败');
       setState(() => _loading = false);
     }
@@ -550,6 +554,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: (_kind, _docType, _from, _to, _keyword),
       onPageChange: (p) {
         _page = p;
         _load();
@@ -612,6 +617,7 @@ class _SalesClientDetailDialogState
     extends ConsumerState<SalesClientDetailDialog> {
   ReportData? _data;
   bool _loading = false;
+  int _loadGeneration = 0;
   int _page = 1;
   final int _size = 50;
   String? _sortKey;
@@ -624,6 +630,9 @@ class _SalesClientDetailDialogState
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
@@ -639,18 +648,18 @@ class _SalesClientDetailDialogState
           if (widget.docType == SalesReportDocType.order &&
               widget.currencyId != null)
             'currencyId': widget.currencyId,
-          'page': _page,
+          'page': requestedPage,
           'size': _size,
           ...sortQueryParams(_sortKey, _sortAsc),
         },
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _data = parseReportResponse(json, _page);
+        _data = parseReportResponse(json, requestedPage);
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       context.appError('加载客户明细失败');
       setState(() => _loading = false);
     }
@@ -811,6 +820,14 @@ class _SalesClientDetailDialogState
                         summaryBar: reportTotalsBar(data.totals),
                         currentPage: data.page,
                         totalPages: data.totalPages,
+                        paginationScope: (
+                          widget.docType,
+                          widget.docSeg,
+                          widget.clientId,
+                          widget.currencyId,
+                          widget.dateFrom,
+                          widget.dateTo,
+                        ),
                         onPageChange: (p) {
                           _page = p;
                           _load();

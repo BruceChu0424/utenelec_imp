@@ -529,6 +529,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   emptyMessage: '暂无台账记录',
                   currentPage: _page?.page ?? 1,
                   totalPages: _page?.totalPages ?? 1,
+                  paginationScope: _keyword,
                   onPageChange: (p) => _load(p),
                 ),
               ),

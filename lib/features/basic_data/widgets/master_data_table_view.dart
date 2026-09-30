@@ -11,12 +11,18 @@ import '../../../shared/platform_tables/table_column_projection.dart';
 // 列头下方、限高、竖向滚动，不全屏）。翻页（上一页/下一页）后表体竖向回到顶部。
 // 搜索框由调用方放在标题行，不在本组件内。
 
+import 'dart:async';
+
 import 'package:clock/clock.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/master_data_table_rows_controller.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -34,6 +40,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
+
+export '../../../components/data_display/master_data_table_rows_controller.dart';
 
 /// Actual table selection and foreground for custom cell builders.
 /// Single-row focus and checkbox selection share this visual contract.
@@ -243,6 +251,9 @@ class MasterDataTableView<T> extends StatefulWidget {
     super.key,
     required this.columns,
     required this.items,
+    this.unpagedItems = const [],
+    this.rowsController,
+    this.rowVisible,
     required this.facets,
     required this.nullCounts,
     required this.filters,
@@ -254,6 +265,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onSelectionCleared,
     this.isSelected,
     this.rowMenuBuilder,
+    this.backgroundMenuBuilder,
     this.canShowRowMenu,
     this.batchActionsBuilder,
     this.bottomContentPadding = 0,
@@ -267,8 +279,11 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onRetry,
     this.emptyMessage = '暂无数据', // TODO(l10n): 补 arb
     this.currentPage = 1,
+    this.scrollToEndRequest = 0,
     this.totalPages = 1,
     this.onPageChange,
+    this.paginationScope,
+    this.paginationRevision,
     this.summaryBar,
     this.summaryBarInline = false,
     this.toolbarActions,
@@ -326,6 +341,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 未迁移的页面维持原表格横滚表现，逐页开启。
   /// embedded（滑窗/picker 内明细表）与全屏路由恒用表格。
   final bool compactCards;
+
+  /// 目标页加载后递增此令牌，请求在布局完成后滚到末行。0 不触发；同一令牌
+  /// 的普通重建不重复滚动。和翻页同时变化时优先定位末尾，其余翻页仍回顶。
+  final int scrollToEndRequest;
 
   /// 卡片形态的宽度阈值：**表格可用宽度**低于该值切卡片（与各页旧
   /// LayoutBuilder 口径一致，分栏/容器内宽 ≠ 屏宽）。默认 compact 断点（600）；
@@ -388,6 +407,10 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// （多选模式下：该行未勾选则先把选择集替换为仅该行，已勾选则保留多选）。
   /// 条目在手势触发那一刻构建，可按行数据/剪贴板状态决定可用性。
   final List<UtenContextMenuEntry> Function(T item)? rowMenuBuilder;
+
+  /// 列表空白区域的菜单（例如粘贴），空列表与全屏视图也保留入口。
+  /// 不依赖选中行；行与表头自己的菜单优先。加载或错误时不开放。
+  final List<UtenContextMenuEntry> Function()? backgroundMenuBuilder;
 
   /// 按行判断是否存在右键/长按菜单。默认全部存在；返回 false 时该行不会仅因
   /// 页面配置了 [rowMenuBuilder] 就获得空菜单手势或伪可交互状态。
@@ -565,7 +588,25 @@ class MasterDataTableView<T> extends StatefulWidget {
 
   final int currentPage;
   final int totalPages;
-  final void Function(int page)? onPageChange;
+  final FutureOr<void> Function(int page)? onPageChange;
+
+  /// Stable query identity (category, search, status, dates, etc.), excluding
+  /// page number. A change discards the previous sequence of appended pages.
+  /// Header filters and sort are also checked by the table itself.
+  final Object? paginationScope;
+
+  /// Latest accepted response identity for hosts that refresh without setting a
+  /// loading flag. A new response outside an append discards older page rows.
+  final Object? paginationRevision;
+
+  /// Rows outside server pagination, such as local form drafts. They occur once
+  /// before the loaded pages and are replaced immediately when edited/deleted.
+  final List<T> unpagedItems;
+  final MasterDataTableRowsController<T>? rowsController;
+
+  /// A host predicate applied to every retained page (for example, tasks now
+  /// fully covered by a local draft), rather than only the latest response.
+  final bool Function(T)? rowVisible;
 
   /// 表格下方的合计条（通常是 `UtenTotalsSummaryBar`）。
   ///
@@ -588,6 +629,213 @@ class MasterDataTableView<T> extends StatefulWidget {
 
 class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     with UtenColumnHeaderDragHost<MasterDataTableView<T>> {
+  final _pages = <int, List<T>>{};
+  late List<T> _items;
+  int? _appendPage;
+  int _acceptedPage = 1;
+  String? _appendError;
+  int _appendGeneration = 0;
+  bool _appendScheduled = false;
+  int? _exhaustedPage;
+  Map<String, String?> _filterSnapshot = const {};
+  bool _queryChanged = false;
+
+  bool get _busy =>
+      widget.isLoading || widget.loadingMore || _appendPage != null;
+  bool get _loadingMore => widget.loadingMore || _appendPage != null;
+  int get _currentPage => _acceptedPage;
+  bool get _automaticPagination =>
+      widget.onPageChange != null && widget.onLoadMore == null;
+
+  void _syncRows() {
+    final rows = _automaticPagination
+        ? _pages.values.expand((rows) => rows)
+        : widget.items;
+    // Only an actual row identity is suitable for de-duplication. Equal cell
+    // text does not imply the same business record.
+    final identity = widget.rowKeyOf ?? widget.idOf;
+    final merged = <T>[];
+    final indexes = <String, int>{};
+    for (final row in [...widget.unpagedItems, ...rows]) {
+      final id = identity?.call(row);
+      final index = id == null || id.isEmpty ? null : indexes[id];
+      if (index == null) {
+        if (id != null && id.isNotEmpty) indexes[id] = merged.length;
+        merged.add(row);
+      } else {
+        merged[index] = row;
+      }
+    }
+    _items = widget.rowVisible == null
+        ? merged
+        : merged.where(widget.rowVisible!).toList();
+    widget.rowsController?.update(_items);
+    widget.rowsController?.bindPagination(this, _loadNextFromController, _busy);
+  }
+
+  void _resetPages() {
+    _appendGeneration++;
+    _appendPage = null;
+    _appendError = null;
+    _exhaustedPage = null;
+    _acceptedPage = widget.currentPage;
+    _pages
+      ..clear()
+      ..[widget.currentPage] = widget.items;
+    _syncRows();
+  }
+
+  /// Returns true only for an accepted continuation, so the scroll position is
+  /// retained while explicit navigation still starts at the top of its page.
+  bool _updatePages(MasterDataTableView<T> oldWidget) {
+    final scopeChanged =
+        oldWidget.paginationScope != widget.paginationScope ||
+        !mapEquals(_filterSnapshot, widget.filters) ||
+        oldWidget.sortColumn != widget.sortColumn ||
+        oldWidget.sortAscending != widget.sortAscending ||
+        !_sameColumnKeys(oldWidget.columns, widget.columns);
+    _filterSnapshot = Map.of(widget.filters);
+    _queryChanged = scopeChanged;
+    if (!_automaticPagination || scopeChanged) {
+      _resetPages();
+      return false;
+    }
+    if (_appendPage != null) {
+      if (widget.error != null && !widget.loadingMore && !widget.isLoading) {
+        _appendError = widget.error;
+        _appendPage = null;
+      } else if (!widget.loadingMore &&
+          !widget.isLoading &&
+          widget.currentPage == _appendPage) {
+        if (widget.items.isEmpty) _exhaustedPage = widget.currentPage;
+        _pages[widget.currentPage] = widget.items;
+        _acceptedPage = widget.currentPage;
+        _appendPage = null;
+        _appendError = null;
+        _syncRows();
+        return true;
+      }
+      _syncRows();
+      return true;
+    }
+    final reloadStarted =
+        (!oldWidget.loadingMore && widget.loadingMore) ||
+        (!oldWidget.isLoading && widget.isLoading);
+    if (reloadStarted ||
+        oldWidget.currentPage != widget.currentPage ||
+        oldWidget.paginationRevision != widget.paginationRevision) {
+      _resetPages();
+    } else if (_appendError == null) {
+      _pages[widget.currentPage] = widget.items;
+      _syncRows();
+    } else {
+      _syncRows();
+    }
+    return false;
+  }
+
+  void _scheduleAppend() {
+    if (!_automaticPagination ||
+        _busy ||
+        _appendScheduled ||
+        _currentPage >= widget.totalPages ||
+        _exhaustedPage == _currentPage ||
+        _appendError != null ||
+        widget.error != null) {
+      return;
+    }
+    _appendScheduled = true;
+    final generation = _appendGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _appendScheduled = false;
+      if (!mounted || generation != _appendGeneration || _busy) return;
+      _appendNextPage();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  Future<void> _appendNextPage() async {
+    if (!_automaticPagination ||
+        _busy ||
+        _currentPage >= widget.totalPages ||
+        _exhaustedPage == _currentPage ||
+        (widget.error != null && _appendError == null)) {
+      return;
+    }
+    final target = _currentPage + 1;
+    final generation = ++_appendGeneration;
+    setState(() {
+      _appendPage = target;
+      _appendError = null;
+    });
+    widget.rowsController?.bindPagination(this, _loadNextFromController, true);
+    if (_fullscreen) _fsTick.value++;
+    try {
+      await widget.onPageChange!(target);
+    } catch (_) {
+      if (!mounted || generation != _appendGeneration) return;
+      setState(() {
+        _appendPage = null;
+        _appendError = '下一页加载失败，请重试';
+      });
+      widget.rowsController?.bindPagination(
+        this,
+        _loadNextFromController,
+        false,
+      );
+      if (_fullscreen) _fsTick.value++;
+      return;
+    }
+    // The callback may finish before the parent rebuilds, or be a synchronous
+    // provider setter. Accept rows only from a completed widget update.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          generation != _appendGeneration ||
+          _appendPage == null ||
+          widget.loadingMore ||
+          widget.isLoading) {
+        return;
+      }
+      if (widget.currentPage != target || widget.error != null) {
+        setState(() {
+          _appendPage = null;
+          _appendError = widget.error ?? '下一页加载失败，请重试';
+        });
+        widget.rowsController?.bindPagination(
+          this,
+          _loadNextFromController,
+          false,
+        );
+        if (_fullscreen) _fsTick.value++;
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  Future<void> _loadNextFromController() async {
+    if (_appendError != null || widget.error != null) return;
+    await _appendNextPage();
+  }
+
+  void _gotoPage(int page) {
+    if (_busy || widget.onPageChange == null) return;
+    _appendGeneration++;
+    _appendError = null;
+    widget.onPageChange!(page);
+  }
+
+  Widget _appendFailure() => Padding(
+    padding: const EdgeInsets.all(UtenSpacing.s8),
+    child: Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(_appendError ?? '下一页加载失败'),
+        TextButton(onPressed: _appendNextPage, child: const Text('重试')),
+      ],
+    ),
+  );
+
   final _platform = PlatformTableController<T>();
   List<MasterColumnDef<T>>? _platformColumnCache;
   List<MasterColumnDef<T>>? _platformBaseCache;
@@ -639,11 +887,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       context,
       descriptor: PlatformTableDescriptor<T>(
         kind: 'master',
-        revision: (widget.items, widget.leadingGroups),
+        revision: (_items, widget.leadingGroups),
         tableKey: widget.tableKey,
         columnKeys: widget.columns.map((c) => c.key).toList(),
         rows: [
-          ...widget.items,
+          ..._items,
           for (final group in widget.leadingGroups ?? <MasterDataGroup<T>>[])
             ...group.items,
         ],
@@ -711,7 +959,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 _platform.canonicalKey(column.key),
               ) ==
               true &&
-          widget.items.any((row) {
+          _items.any((row) {
             final value = column.value(row)?.trim();
             return value != null && value.isNotEmpty && value != '—';
           })) {
@@ -863,6 +1111,52 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   late final ScrollController _bodyH;
   // 表体竖向滚动：翻页时 jumpTo(0) 回顶（从第一条开始）。
   late final ScrollController _bodyV;
+  bool get _usesPrimaryScroll => widget.primary && !_fullscreen;
+  ScrollController? get _verticalScrollController =>
+      _usesPrimaryScroll ? PrimaryScrollController.maybeOf(context) : _bodyV;
+  int? _pendingScrollToEnd;
+  int _scrollToEndAttempts = 0;
+  bool _scrollToEndScheduled = false;
+
+  void _scheduleScrollToEnd() {
+    if (_pendingScrollToEnd == null ||
+        _scrollToEndScheduled ||
+        widget.isLoading ||
+        widget.error != null ||
+        widget.items.isEmpty) {
+      return;
+    }
+    _scrollToEndScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToEndScheduled = false;
+      if (!mounted ||
+          _pendingScrollToEnd == null ||
+          widget.isLoading ||
+          widget.error != null ||
+          widget.items.isEmpty) {
+        return;
+      }
+      final controller = _verticalScrollController;
+      if (controller == null || controller.positions.length != 1) return;
+      final position = controller.position;
+      if (!position.hasContentDimensions) return;
+      final target = position.maxScrollExtent;
+      if (!target.isFinite || (target - position.pixels).abs() < 0.5) {
+        _pendingScrollToEnd = null;
+        return;
+      }
+      controller.jumpTo(target);
+      // Lazy rows can revise maxScrollExtent after this jump. Recheck the next
+      // layout, but bound retries so later rebuilds cannot trap the user at end.
+      if (++_scrollToEndAttempts < 8) {
+        _scheduleScrollToEnd();
+        WidgetsBinding.instance.scheduleFrame();
+      } else {
+        _pendingScrollToEnd = null;
+      }
+    });
+  }
+
   // 联动表格与带悬浮留白表格共用横滚条覆盖层，与 _bodyH 双向同步。
   // 横滚条按实际末行定位，额外滚动留白不改变横滚条与末行的间距。
   late final ScrollController _overlayH = ScrollController();
@@ -974,9 +1268,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 表体右缘竖向内容滚动条（自绘，2026-09-22）。
   Widget _buildVerticalScrollbar() {
-    final controller = widget.primary
-        ? PrimaryScrollController.maybeOf(context)
-        : _bodyV;
+    final controller = _verticalScrollController;
     final innerPhase = UtenInnerScrollActiveScope.maybeOf(context);
     if (innerPhase == null) {
       return UtenContentScrollbar(
@@ -1302,6 +1594,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void initState() {
     super.initState();
+    _filterSnapshot = Map.of(widget.filters);
+    _resetPages();
     _platform.addListener(_platformChanged);
     assert(
       !widget.selectable || widget.idOf != null,
@@ -1318,6 +1612,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     _bodyH = ScrollController();
     _bodyV = ScrollController();
+    if (widget.scrollToEndRequest != 0) {
+      _pendingScrollToEnd = widget.scrollToEndRequest;
+    }
     _pageCtrl = TextEditingController(text: '${widget.currentPage}');
     if (widget.stickyHeaderPinned != null) {
       _sticky = UtenStickyHeaderTracker(
@@ -1448,6 +1745,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.rowsController, widget.rowsController)) {
+      oldWidget.rowsController?.detachPagination(this);
+    }
+    final appended = _updatePages(oldWidget);
     _configurePlatform();
     // 包括 200 -> 0 / 移除悬浮动作：新布局不再启用覆盖层时也必须撤掉旧留白。
     if (oldWidget.bottomContentPadding != widget.bottomContentPadding ||
@@ -1485,22 +1786,42 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // primary 模式下竖向 position 由祖先 NestedScrollView 持有（_bodyV 无 client），
     // 须走 PrimaryScrollController；且 didUpdateWidget 处于 build 期，inner position
     // 首次翻页可能尚未挂载 → 推迟到帧结束后再 jump。
-    if (oldWidget.currentPage != widget.currentPage) {
-      if (widget.primary) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          final ScrollController? c = PrimaryScrollController.maybeOf(context);
-          if (c != null && c.hasClients) {
-            c.jumpTo(0);
-          }
-        });
-      } else if (_bodyV.hasClients) {
-        _bodyV.jumpTo(0);
-      }
+    final requestedEnd =
+        widget.scrollToEndRequest != 0 &&
+        oldWidget.scrollToEndRequest != widget.scrollToEndRequest;
+    if (requestedEnd) {
+      _pendingScrollToEnd = widget.scrollToEndRequest;
+      _scrollToEndAttempts = 0;
+    } else if ((!appended && oldWidget.currentPage != widget.currentPage) ||
+        oldWidget.paginationScope != widget.paginationScope ||
+        widget.scrollToEndRequest == 0) {
+      _pendingScrollToEnd = null;
+    }
+    if (!appended &&
+        !requestedEnd &&
+        (oldWidget.currentPage != widget.currentPage || _queryChanged)) {
+      final page = widget.currentPage;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            widget.currentPage != page ||
+            _pendingScrollToEnd != null) {
+          return;
+        }
+        final controller = _verticalScrollController;
+        if (controller != null && controller.hasClients) controller.jumpTo(0);
+      });
     }
     // 外部翻页后，跳页输入框同步回当前页（用户未提交的输入被放弃，符合直觉）。
-    if (oldWidget.currentPage != widget.currentPage) {
-      _pageCtrl.text = '${widget.currentPage}';
+    if (_pageCtrl.text != '$_currentPage') {
+      if (_fullscreen) {
+        // The pager lives in a different route during fullscreen. Updating its
+        // controller in this route's build would mark that TextFormField dirty.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _pageCtrl.text = '$_currentPage';
+        });
+      } else {
+        _pageCtrl.text = '$_currentPage';
+      }
     }
     // 全屏中：数据/列变化 bump tick，驱动全屏路由内的表格重建。
     // didUpdateWidget 处于 build 阶段，直接写 ValueNotifier 会让全屏路由里的
@@ -1559,8 +1880,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       Expanded(child: _buildTableStage(ctx2)),
                       if (widget.summaryBar != null && !widget.summaryBarInline)
                         _buildSummaryBar(ctx2),
-                      if (!widget.embedded && widget.totalPages > 1)
-                        _buildPager(ctx2),
+                      if (widget.totalPages > 1) _buildPager(ctx2),
                     ],
                   ),
                 ),
@@ -1623,7 +1943,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 取样池：主数据 + 前导分组条目(分组行与主行共用同一套列宽，故一并参与测算，
   /// 保证展开/折叠分组时列宽不跳动；分组条目通常是禁用/不明货品，量小不影响性能)。
   List<T> _widthSamplePool() => <T>[
-    ...widget.items,
+    ..._items,
     for (final g in (widget.leadingGroups ?? <MasterDataGroup<T>>[]))
       ...g.items,
   ];
@@ -1733,6 +2053,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   void dispose() {
+    widget.rowsController?.detachPagination(this);
     _projection?.remove(this);
     _platform.dispose();
     // 跟手浮层/拖拽态由 UtenColumnDragHideHost.dispose（super 链）统一卸除。
@@ -1854,7 +2175,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if ((widget.facets[def.key] ?? const []).isNotEmpty) return null;
     final counts = <String, int>{};
     var nullCount = 0;
-    for (final it in widget.items) {
+    for (final it in _items) {
       final v = _facetRawValue(def, it);
       if (v == null) {
         nullCount++;
@@ -1873,7 +2194,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 实际渲染/可勾选的行 = 宿主行 − 本地筛选命不中的行，再按本地排序整理。
   List<T> get _displayItems {
-    var rows = widget.items;
+    var rows = _items;
     if (_rowFilters.isNotEmpty) {
       final defs = _columnByKey;
       rows = rows.where((it) {
@@ -2058,7 +2379,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (_fullscreen) {
       return const SizedBox.shrink();
     }
-    // 嵌入模式（详情页明细表）：无界高度场景按内容收缩、无翻页条。
+    // 嵌入模式（详情页明细表）：无界高度场景按内容收缩。
     // 吸顶表（stickyHeaderPinned）外包滚轮截停门：一格越置顶点即止 + 停顿窗吞
     // 同一滚势的后续格 + 短表够不着顶时按需撑高（见 UtenStickyWheelGate）。
     if (widget.embedded) {
@@ -2068,6 +2389,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           _buildTable(context),
           if (widget.summaryBar != null && !widget.summaryBarInline)
             _buildSummaryBar(context),
+          if (widget.totalPages > 1) _buildPager(context),
           if (_hasFloatingBatchActions)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -2114,14 +2436,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 合计条随表体滚动（summaryBarInline）：作为竖向滚动内容的
     // 最后一项（数据行与「加载更多」指示器之后），行少时紧跟末行。
     final summaryInline = widget.summaryBarInline && widget.summaryBar != null;
-    final summaryIndex = plan.length + (widget.loadingMore ? 1 : 0);
+    final hasFooter = _loadingMore || _appendError != null;
+    final summaryIndex = plan.length + (hasFooter ? 1 : 0);
     final list = ListView.builder(
-      controller: widget.primary ? null : _bodyV,
+      controller: _usesPrimaryScroll ? null : _bodyV,
       // primary 模式：交还给祖先 NestedScrollView 注入的 PrimaryScrollController
       // 参与联动。shrinkWrap 必须关（否则短表 maxScrollExtent=0，header 收完后
       // 滚动卡死）；physics 必须 AlwaysScrollable（行少时 body 也要能滚→header 才收）。
-      primary: widget.primary,
-      shrinkWrap: widget.primary || widget.virtualized ? false : true,
+      primary: _usesPrimaryScroll,
+      shrinkWrap:
+          widget.primary ||
+              widget.virtualized ||
+              (_automaticPagination && !widget.embedded)
+          ? false
+          : true,
       physics: widget.primary
           ? const AlwaysScrollableScrollPhysics()
           : const ClampingScrollPhysics(),
@@ -2146,7 +2474,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             ),
           );
         }
-        if (widget.loadingMore && i == plan.length) {
+        if (_appendError != null && i == plan.length) {
+          return _ViewportPinnedRow(
+            controller: _bodyH,
+            contentWidth: total,
+            fallbackViewportWidth: viewportWidth,
+            child: _appendFailure(),
+          );
+        }
+        if (_loadingMore && i == plan.length) {
           return const Padding(
             padding: EdgeInsets.all(UtenSpacing.s12),
             child: Center(
@@ -2242,33 +2578,67 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (metrics.extentAfter < _loadMoreEdge) widget.onLoadMore!();
   }
 
+  void _onPaginationWheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        event.scrollDelta.dy <= 0 ||
+        event.scrollDelta.dy.abs() < event.scrollDelta.dx.abs()) {
+      return;
+    }
+    final axisModifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
+    if (HardwareKeyboard.instance.logicalKeysPressed.any(
+      axisModifiers.contains,
+    )) {
+      return;
+    }
+    final controller = _verticalScrollController;
+    if (controller == null || !controller.hasClients) return;
+    // At a clamped edge Flutter may emit no ScrollNotification at all. Observe
+    // the wheel without claiming it from the normal scroll/zoom machinery.
+    if (controller.positions.any((p) => p.extentAfter <= 0.5)) {
+      _scheduleAppend();
+    }
+  }
+
   /// 表格批量动作与采购任务工作台一致：选择摘要仍在表头上方，真正业务动作
   /// 悬浮在右下角。动作层属于表格自身，因此普通视图和全屏路由使用同一实现。
   Widget _buildTableStage(BuildContext context) {
-    return NotificationListener<ScrollMetricsNotification>(
-      onNotification: (notification) {
-        if (notification.metrics.axis == Axis.vertical) _scheduleHBarUpdate();
-        return false;
-      },
-      child: NotificationListener<ScrollNotification>(
+    return Listener(
+      onPointerSignal: _onPaginationWheel,
+      behavior: HitTestBehavior.translucent,
+      child: NotificationListener<ScrollMetricsNotification>(
         onNotification: (notification) {
-          if (notification.metrics.axis == Axis.vertical) {
-            _scheduleHBarUpdate();
-            _maybeTriggerLoadMore(notification.metrics);
-          }
+          if (notification.metrics.axis == Axis.vertical) _scheduleHBarUpdate();
           return false;
         },
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _buildTable(context),
-            if (_hasFloatingBatchActions)
-              PositionedDirectional(
-                end: UtenSpacing.s16,
-                bottom: UtenSpacing.s16,
-                child: _buildFloatingBatchActions(context),
-              ),
-          ],
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification.metrics.axis == Axis.vertical) {
+              _scheduleHBarUpdate();
+              _maybeTriggerLoadMore(notification.metrics);
+              final forward =
+                  notification is ScrollUpdateNotification &&
+                      notification.dragDetails != null &&
+                      (notification.scrollDelta ?? 0) > 0 ||
+                  notification is OverscrollNotification &&
+                      notification.overscroll > 0;
+              if (forward && notification.metrics.extentAfter <= 0.5) {
+                _scheduleAppend();
+              }
+            }
+            return false;
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildTable(context),
+              if (_hasFloatingBatchActions)
+                PositionedDirectional(
+                  end: UtenSpacing.s16,
+                  bottom: UtenSpacing.s16,
+                  child: _buildFloatingBatchActions(context),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -2281,8 +2651,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Widget _stateShell(Widget child) {
     if (widget.scrollingHeader != null) {
       return ListView(
-        controller: widget.primary ? null : _bodyV,
-        primary: widget.primary,
+        controller: _usesPrimaryScroll ? null : _bodyV,
+        primary: _usesPrimaryScroll,
         shrinkWrap: !widget.primary,
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
@@ -2291,7 +2661,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ],
       );
     }
-    if (!widget.primary) {
+    if (!_usesPrimaryScroll) {
       return Center(child: child);
     }
     return LayoutBuilder(
@@ -2395,8 +2765,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // naturally in that bounded viewport; primary mode still participates in
     // the ancestor NestedScrollView.
     return CustomScrollView(
-      controller: widget.primary ? null : _bodyV,
-      primary: widget.primary,
+      controller: _usesPrimaryScroll ? null : _bodyV,
+      primary: _usesPrimaryScroll,
       physics: widget.primary
           ? const AlwaysScrollableScrollPhysics()
           : const ClampingScrollPhysics(),
@@ -2415,9 +2785,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       columns: visibleColumns,
       header: widget.scrollingHeader,
       items: _displayItems,
-      primary: widget.primary,
-      loadingMore: widget.loadingMore,
-      controller: widget.primary ? null : _bodyV,
+      primary: _usesPrimaryScroll,
+      loadingMore: _loadingMore,
+      footer: _appendError == null ? null : _appendFailure(),
+      controller: _usesPrimaryScroll ? null : _bodyV,
       bottomPadding: math.max(UtenSpacing.s8, widget.bottomContentPadding),
       isSelected: (item) {
         if (widget.selectable) {
@@ -2472,11 +2843,23 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  Widget _buildTable(BuildContext context) => TableColumnProjectionTarget(
-    tableKey: _platform.tableKey,
-    owner: this,
-    child: _buildProjectedTable(context),
-  );
+  Widget _buildTable(BuildContext context) {
+    _scheduleScrollToEnd();
+    final table = TableColumnProjectionTarget(
+      tableKey: _platform.tableKey,
+      owner: this,
+      child: _buildProjectedTable(context),
+    );
+    if (widget.backgroundMenuBuilder == null) return table;
+    return UtenContextMenuRegion(
+      behavior: HitTestBehavior.opaque,
+      entriesBuilder: () => widget.isLoading || widget.error != null
+          ? const <UtenContextMenuEntry>[]
+          : widget.backgroundMenuBuilder!(),
+      child: table,
+    );
+  }
+
   Widget _buildProjectedTable(BuildContext context) {
     _projectionOwner = ModalRoute.of(context);
     _publishProjection();
@@ -2484,10 +2867,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 嵌入场景（滑窗/picker/弹窗内明细表）默认不显示全屏按钮：整屏路由在受限容器里会铺满
     // 屏幕（详细排产滑窗 bug）。显式 showFullscreenToggle 可覆盖。
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
-    if (widget.isLoading && widget.items.isEmpty) {
+    if (widget.isLoading && _items.isEmpty) {
       return _stateShell(const CircularProgressIndicator(strokeWidth: 2.5));
     }
-    if (widget.error != null) {
+    if (widget.error != null &&
+        _appendError == null &&
+        widget.unpagedItems.isEmpty) {
       return _stateShell(
         UtenEmpty.error(
           key: widget.errorKey,
@@ -2509,7 +2894,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
     // 本地取值筛选把行全部滤空时同样走空态（描述行会报筛选生效数，可一键清除）。
     final displayItems = _displayItems;
-    if ((widget.items.isEmpty || displayItems.isEmpty) && !hasGroupRows) {
+    if (displayItems.isEmpty && !hasGroupRows) {
       final activeFilters = _clearableFilterKeys.length;
       return _emptyStateWithToolbarActions(
         UtenEmpty(
@@ -2666,7 +3051,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       double? bodyStageWidth;
       final Widget tableBody = _BodyFlex(
         embedded: widget.embedded,
-        primary: widget.primary,
+        primary: _usesPrimaryScroll,
         virtualized: widget.virtualized,
         child: _maybeSelectionArea(
           Stack(
@@ -3576,8 +3961,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _buildPager(BuildContext context) {
     final theme = Theme.of(context);
-    final canPrev = widget.currentPage > 1;
-    final canNext = widget.currentPage < widget.totalPages;
+    final canPrev = !_busy && _currentPage > 1;
+    final canNext = !_busy && _currentPage < widget.totalPages;
     // 「上一页/下一页」带文案时的固有宽度随字号一起放大：窄屏（375px）叠大字号（1.5×）
     // 就超出可用宽。按可用宽 × 当前字号判断，放不下就收成纯图标按钮——
     // 翻页条**恒为一行**（改折行会把表体挤到纵向溢出，得不偿失）。
@@ -3587,14 +3972,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 250 * textScale + 54;
-          void goto(int page) => widget.onPageChange?.call(page);
+          void goto(int page) => _gotoPage(page);
           return Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (compact)
                 IconButton(
                   onPressed: (canPrev && widget.onPageChange != null)
-                      ? () => goto(widget.currentPage - 1)
+                      ? () => goto(_currentPage - 1)
                       : null,
                   icon: const Icon(Icons.chevron_left_rounded, size: 20),
                   tooltip: '上一页', // TODO(l10n): 补 arb
@@ -3602,7 +3987,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               else
                 TextButton.icon(
                   onPressed: (canPrev && widget.onPageChange != null)
-                      ? () => goto(widget.currentPage - 1)
+                      ? () => goto(_currentPage - 1)
                       : null,
                   icon: const Icon(Icons.chevron_left_rounded, size: 20),
                   label: const Text('上一页'), // TODO(l10n): 补 arb
@@ -3617,6 +4002,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       child: TextFormField(
                         errorBuilder: utenTextFieldErrorBuilder,
                         controller: _pageCtrl,
+                        enabled: !_busy,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
                         style: theme.textTheme.bodySmall,
@@ -3636,9 +4022,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                         onFieldSubmitted: (v) {
                           final p = int.tryParse(v.trim());
                           final target = p == null
-                              ? widget.currentPage
+                              ? _currentPage
                               : p.clamp(1, widget.totalPages);
-                          if (target != widget.currentPage) {
+                          if (target != _currentPage) {
                             goto(target);
                           } else {
                             _pageCtrl.text = '$target';
@@ -3659,7 +4045,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               if (compact)
                 IconButton(
                   onPressed: (canNext && widget.onPageChange != null)
-                      ? () => goto(widget.currentPage + 1)
+                      ? () => goto(_currentPage + 1)
                       : null,
                   icon: const Icon(Icons.chevron_right_rounded, size: 20),
                   tooltip: '下一页', // TODO(l10n): 补 arb
@@ -3667,7 +4053,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               else
                 TextButton.icon(
                   onPressed: (canNext && widget.onPageChange != null)
-                      ? () => goto(widget.currentPage + 1)
+                      ? () => goto(_currentPage + 1)
                       : null,
                   icon: const Text('下一页'), // TODO(l10n): 补 arb
                   label: const Icon(Icons.chevron_right_rounded, size: 20),

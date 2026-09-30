@@ -10,6 +10,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 
@@ -41,8 +42,8 @@ class InventoryCostPostingDialog extends ConsumerStatefulWidget {
 
 class _InventoryCostPostingDialogState
     extends ConsumerState<InventoryCostPostingDialog> {
-  late DateTime _from = widget.from;
-  late DateTime _to = widget.to;
+  late DateTime _from = ChinaDateTime.dateOnly(widget.from);
+  late DateTime _to = ChinaDateTime.dateOnly(widget.to);
   List<Map<String, dynamic>> _rows = const [];
   List<Map<String, dynamic>> _periods = const [];
   Map<String, dynamic>? _policy;
@@ -595,7 +596,7 @@ class _InventoryCostPostingDialogState
                       value: _from,
                       enabled: !_busy,
                       onChanged: (value) {
-                        setState(() => _from = value);
+                        setState(() => _from = ChinaDateTime.dateOnly(value));
                         _load();
                       },
                     ),
@@ -607,7 +608,7 @@ class _InventoryCostPostingDialogState
                       value: _to,
                       enabled: !_busy,
                       onChanged: (value) {
-                        setState(() => _to = value);
+                        setState(() => _to = ChinaDateTime.dateOnly(value));
                         _load();
                       },
                     ),

@@ -674,6 +674,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                     emptyMessage: '暂无颜色', // TODO(l10n): 补 arb
                     currentPage: _page?.page ?? 1,
                     totalPages: _page?.totalPages ?? 1,
+                    paginationScope: _keyword,
                     onPageChange: (p) => _loadColors(p),
                   ),
                 ),

@@ -581,6 +581,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       },
       onOpen: _showGoodsDetail,
       rowMenuOverride: _goodsMenuItems,
+      backgroundMenuBuilder: _goodsPasteMenuItems,
       // 批量操作在右键菜单(多选时出批量项)；工具条只保留「已选 N 项 + 取消选择」。
       batchActionsOverride: (pane, ids) => const [],
       loadLeadingGroups: _leadingGroups,
@@ -670,8 +671,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     bool copyMode = false,
   }) {
     final body = <String, dynamic>{
-      // 粘贴 = 原货品的副本：归源货品所在分类(编号也用该分类的分配器，
-      // 与原件同族)，当前打开的分类只兜底快照缺分类的极端情况。
+      // 显式指定分类优先；复制粘贴传当前目标分类，普通保存仍保留原分类。
       'categoryId': resolveGoodsSaveCategoryId(
         currentCategoryId: currentCategoryId,
         sourceCategoryId: d.categoryId,
@@ -793,11 +793,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final d = result.detail;
     context.appSuccess(
       '已复制货品「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '')}」'
-      '${clip.bomItems.isEmpty ? '' : '(含 ${clip.bomItems.length} 个组件)'}，粘贴后将建在原货品所在分类',
+      '${clip.bomItems.isEmpty ? '' : '(含 ${clip.bomItems.length} 个组件)'}，可切换到目标分类后粘贴',
     );
   }
 
-  /// 按剪贴板快照在原货品所在分类下新建货品(编号自动生成，名称加「(n)」副本标记)，
+  /// 按剪贴板快照在当前分类下新建货品(编号自动生成，名称加「(n)」副本标记)，
   /// 随后把快照里的组件行原样粘到新货品上(全量复制)。每个新货品两次请求
   /// (新建货品 + 服务端原子粘组件)；失败的逐条说明原因，不吞掉。
   /// 完成后跳到列表最后一页——列表按编号正序，新副本编号最大，落在最下面。
@@ -805,6 +805,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane, {
     required int copies,
   }) async {
+    if (!_canCreateMaster || pane.busy) return;
     final clips = ref.read(goodsClipboardProvider).goodsList;
     if (clips.isEmpty) return;
     final bomRepo = ref.read(goodsBomRepositoryProvider);
@@ -825,6 +826,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
             final body = _goodsSaveBody(
               d,
               currentCategoryId: pane.categoryId,
+              categoryId: pane.categoryId,
               copyMode: true,
             );
             final newName = _pastedGoodsName(d.name, taken);
@@ -894,7 +896,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (mounted && outcome.succeeded > 0) await _reloadToLastPage(pane);
   }
 
-  /// 重载并跳到最后一页：新建/粘贴的货品编号在其分类族内最大，按编号正序通常
+  /// 重载并跳到最后一页末行：新建/粘贴的货品编号在其分类族内最大，按编号正序通常
   /// 排在列表下面（在祖先分类下浏览、子树里存在编号序更大的别族货品时例外，
   /// 结果弹窗已报成功数，此处不保证视口正好落在副本行）。
   Future<void> _reloadToLastPage(
@@ -903,13 +905,14 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     await pane.reload();
     final last = pane.page?.totalPages ?? 1;
     if (last > 1) await pane.reload(page: last);
+    pane.scrollToEnd();
   }
 
   /// 批量粘贴：弹窗选每个货品粘贴份数，再逐个新建(编号自动生成)。
   Future<void> _batchPasteGoodsMulti(
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
   ) async {
-    if (pane.busy) return;
+    if (!_canCreateMaster || pane.busy) return;
     final clips = ref.read(goodsClipboardProvider).goodsList;
     if (clips.isEmpty) return;
     var copies = 1;
@@ -1011,7 +1014,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     ref.read(goodsClipboardProvider.notifier).copyGoodsList(clips);
     pane.clearSelection();
     context.appSuccess(
-      '已复制 ${clips.length} 个货品(含组件)，粘贴后将建在原货品所在分类', // TODO(l10n): 补 arb
+      '已复制 ${clips.length} 个货品(含组件)，可切换到目标分类后粘贴', // TODO(l10n): 补 arb
     );
   }
 
@@ -1236,6 +1239,30 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     }
   }
 
+  /// 粘贴只依赖当前分类与剪贴板，行菜单、批量菜单和空白区共用。
+  List<UtenContextMenuEntry> _goodsPasteMenuItems(
+    MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
+  ) {
+    final enabled =
+        _canCreateMaster &&
+        !pane.busy &&
+        ref.read(goodsClipboardProvider).hasGoods;
+    return [
+      UtenMenuItem(
+        label: '粘贴货品',
+        icon: Icons.content_paste_rounded,
+        enabled: enabled,
+        onTap: () => _pasteGoodsCopies(pane, copies: 1),
+      ),
+      UtenMenuItem(
+        label: '批量粘贴…', // TODO(l10n): 补 arb
+        icon: Icons.content_copy_rounded,
+        enabled: enabled,
+        onTap: () => _batchPasteGoodsMulti(pane),
+      ),
+    ];
+  }
+
   /// 行菜单条目（右击/长按弹出）。多选（选中 >1 且当前行在集合）→ 批量操作菜单
   /// (作用于选中集)；单行 → 单操作菜单。组件保证右键时当前行已纳入选择集。
   List<UtenContextMenuEntry> _goodsMenuItems(
@@ -1260,18 +1287,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         icon: Icons.copy_rounded,
         onTap: () => _copyGoods(pane, g),
       ),
-      UtenMenuItem(
-        label: '粘贴货品',
-        icon: Icons.content_paste_rounded,
-        enabled: _canCreateMaster && clip.hasGoods,
-        onTap: () => _pasteGoodsCopies(pane, copies: 1),
-      ),
-      UtenMenuItem(
-        label: '批量粘贴…', // TODO(l10n): 补 arb
-        icon: Icons.content_copy_rounded,
-        enabled: _canCreateMaster && clip.hasGoods,
-        onTap: () => _batchPasteGoodsMulti(pane),
-      ),
+      ..._goodsPasteMenuItems(pane),
       UtenMenuItem(
         label: disabled ? '启用货品' : '禁用货品',
         icon: disabled
@@ -1350,18 +1366,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         onTap: () => pane.batchDelete(selected),
       ),
       const UtenMenuDivider(),
-      UtenMenuItem(
-        label: '粘贴货品',
-        icon: Icons.content_paste_rounded,
-        enabled: _canCreateMaster && clip.hasGoods,
-        onTap: () => _pasteGoodsCopies(pane, copies: 1),
-      ),
-      UtenMenuItem(
-        label: '批量粘贴…', // TODO(l10n): 补 arb
-        icon: Icons.content_copy_rounded,
-        enabled: _canCreateMaster && clip.hasGoods,
-        onTap: () => _batchPasteGoodsMulti(pane),
-      ),
+      ..._goodsPasteMenuItems(pane),
     ];
   }
 

@@ -278,6 +278,13 @@ class _WarehouseDocumentHistoryViewState
         emptyMessage: _emptyMessage,
         currentPage: result.page,
         totalPages: result.totalPages,
+        paginationScope: (
+          widget.type,
+          _keyword,
+          _status,
+          widget.dateFrom,
+          widget.dateTo,
+        ),
         onPageChange: _load,
       ),
     );

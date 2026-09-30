@@ -73,6 +73,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
   /// 表头列筛选（2026-09-16）：委外商（dict 桶，value=UUID）+ 任务状态（派生固定枚举）。
   String? _supplierIdFilter;
   String? _statusFilter;
+  final _tableRows = MasterDataTableRowsController<OutboundTask>();
   Set<String> _selectedIds = {};
   bool _openingBatch = false;
 
@@ -139,11 +140,17 @@ class _WarehouseSubcontractOutboundWorkbenchState
       setState(() {
         _result = result;
         _loading = false;
-        final availableIds = result.items
+      });
+      // Reconcile after the table has combined any appended pages.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || version != _requestVersion) return;
+        final visibleIds = _tableRows.items
             .where(_selectable)
             .map((item) => item.planId)
             .toSet();
-        _selectedIds = _selectedIds.intersection(availableIds);
+        if (_selectedIds.any((id) => !visibleIds.contains(id))) {
+          setState(() => _selectedIds = _selectedIds.intersection(visibleIds));
+        }
       });
       refreshBadges(ref);
     } on ApiException catch (error) {
@@ -253,6 +260,9 @@ class _WarehouseSubcontractOutboundWorkbenchState
         ],
       ),
       body: MasterDataTableView<OutboundTask>(
+        rowsController: _tableRows,
+        paginationRevision: _result,
+        paginationScope: (_keyword, WarehouseListScope.of(context)),
         tableKey:
             'features.warehouse.widgets.warehouse_subcontract_outbound_workbench.WarehouseSubcontractOutboundWorkbenchState.build.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。

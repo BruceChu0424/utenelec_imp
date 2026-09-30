@@ -1056,10 +1056,28 @@ class _AuditEventTable extends StatelessWidget {
     required this.items,
     required this.onOpen,
     this.stickyHeaderPinned,
+    required this.rowsController,
+    required this.paginationScope,
+    required this.paginationRevision,
+    required this.currentPage,
+    required this.totalPages,
+    required this.loadingMore,
+    required this.error,
+    required this.onRetry,
+    required this.onPageChange,
   });
 
   final List<AuditLogEntry> items;
   final ValueChanged<AuditLogEntry> onOpen;
+  final MasterDataTableRowsController<AuditLogEntry> rowsController;
+  final Object paginationScope;
+  final Object? paginationRevision;
+  final int currentPage;
+  final int totalPages;
+  final bool loadingMore;
+  final String? error;
+  final VoidCallback onRetry;
+  final Future<void> Function(int) onPageChange;
 
   /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
   final ValueNotifier<bool>? stickyHeaderPinned;
@@ -1078,6 +1096,15 @@ class _AuditEventTable extends StatelessWidget {
         'features.admin.pages.audit_overview_widgets.AuditEventTable.build.1',
     key: const Key('audit-event-table'),
     embedded: true,
+    rowsController: rowsController,
+    paginationScope: paginationScope,
+    paginationRevision: paginationRevision,
+    currentPage: currentPage,
+    totalPages: totalPages,
+    loadingMore: loadingMore,
+    error: error,
+    onRetry: onRetry,
+    onPageChange: onPageChange,
     stickyHeaderPinned: stickyHeaderPinned,
     columns: [
       MasterColumnDef(
@@ -1191,10 +1218,28 @@ class _AuditSessionTable extends StatelessWidget {
     required this.sessions,
     required this.onOpen,
     this.stickyHeaderPinned,
+    required this.rowsController,
+    required this.paginationScope,
+    required this.paginationRevision,
+    required this.currentPage,
+    required this.totalPages,
+    required this.loadingMore,
+    required this.error,
+    required this.onRetry,
+    required this.onPageChange,
   });
 
   final List<AuditSessionSummary> sessions;
   final ValueChanged<AuditSessionSummary> onOpen;
+  final MasterDataTableRowsController<AuditSessionSummary> rowsController;
+  final Object paginationScope;
+  final Object? paginationRevision;
+  final int currentPage;
+  final int totalPages;
+  final bool loadingMore;
+  final String? error;
+  final VoidCallback onRetry;
+  final Future<void> Function(int) onPageChange;
 
   /// 表头吸顶信号（全站表格滚动口径 2026-09-22）；null = 表头随页滚动。
   final ValueNotifier<bool>? stickyHeaderPinned;
@@ -1207,6 +1252,15 @@ class _AuditSessionTable extends StatelessWidget {
         'features.admin.pages.audit_overview_widgets.AuditSessionTable.build.1',
     key: const Key('audit-session-table'),
     embedded: true,
+    rowsController: rowsController,
+    paginationScope: paginationScope,
+    paginationRevision: paginationRevision,
+    currentPage: currentPage,
+    totalPages: totalPages,
+    loadingMore: loadingMore,
+    error: error,
+    onRetry: onRetry,
+    onPageChange: onPageChange,
     stickyHeaderPinned: stickyHeaderPinned,
     columns: [
       const MasterColumnDef(
@@ -1556,139 +1610,6 @@ class _AuditEmptyCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AuditPagination extends StatefulWidget {
-  const _AuditPagination({
-    required this.currentPage,
-    required this.totalPages,
-    required this.loading,
-    required this.onPageChanged,
-  });
-
-  final int currentPage;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPageChanged;
-
-  @override
-  State<_AuditPagination> createState() => _AuditPaginationState();
-}
-
-class _AuditPaginationState extends State<_AuditPagination> {
-  late final TextEditingController _controller;
-
-  int get _lastPage => math.max(widget.totalPages, 1);
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: '${widget.currentPage}');
-  }
-
-  @override
-  void didUpdateWidget(covariant _AuditPagination oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentPage != widget.currentPage &&
-        _controller.text != '${widget.currentPage}') {
-      _controller.text = '${widget.currentPage}';
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _jump() {
-    final parsed = int.tryParse(_controller.text.trim());
-    if (parsed == null) {
-      _controller.text = '${widget.currentPage}';
-      return;
-    }
-    final page = parsed.clamp(1, _lastPage).toInt();
-    _controller.text = '$page';
-    if (!widget.loading && page != widget.currentPage) {
-      widget.onPageChanged(page);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (MediaQuery.sizeOf(context).width < 600) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            tooltip: '上一页',
-            onPressed: !widget.loading && widget.currentPage > 1
-                ? () => widget.onPageChanged(widget.currentPage - 1)
-                : null,
-            icon: const Icon(Icons.chevron_left_rounded),
-          ),
-          Flexible(
-            child: Text(
-              '第 ${widget.currentPage} / $_lastPage 页',
-              textAlign: TextAlign.center,
-            ),
-          ),
-          IconButton(
-            tooltip: '下一页',
-            onPressed: !widget.loading && widget.currentPage < widget.totalPages
-                ? () => widget.onPageChanged(widget.currentPage + 1)
-                : null,
-            icon: const Icon(Icons.chevron_right_rounded),
-          ),
-        ],
-      );
-    }
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
-      children: [
-        IconButton(
-          tooltip: '上一页',
-          onPressed: !widget.loading && widget.currentPage > 1
-              ? () => widget.onPageChanged(widget.currentPage - 1)
-              : null,
-          icon: const Icon(Icons.chevron_left_rounded),
-        ),
-        Text('第 ${widget.currentPage} / $_lastPage 页'),
-        SizedBox(
-          width: 88,
-          child: Semantics(
-            textField: true,
-            label: '跳转页码，范围 1 到 $_lastPage',
-            child: TextField(
-              key: const ValueKey('audit-page-jump-field'),
-              controller: _controller,
-              enabled: !widget.loading,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              textInputAction: TextInputAction.go,
-              onSubmitted: (_) => _jump(),
-              decoration: const InputDecoration(labelText: '页码', isDense: true),
-            ),
-          ),
-        ),
-        FilledButton.tonal(
-          key: const ValueKey('audit-page-jump-button'),
-          onPressed: widget.loading ? null : _jump,
-          child: const Text('跳转'),
-        ),
-        IconButton(
-          tooltip: '下一页',
-          onPressed: !widget.loading && widget.currentPage < widget.totalPages
-              ? () => widget.onPageChanged(widget.currentPage + 1)
-              : null,
-          icon: const Icon(Icons.chevron_right_rounded),
-        ),
-      ],
     );
   }
 }

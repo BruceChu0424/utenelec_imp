@@ -312,6 +312,8 @@ class _SubcontractBusinessListPageState
     extends ConsumerState<_SubcontractBusinessListPage>
     with DraftBulkDeleteMixin<_SubcontractBusinessListPage> {
   final _controller = _BusinessPagedController();
+  final _tableRows = MasterDataTableRowsController<SubcontractDocListItem>();
+  int _reloadGeneration = 0;
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _BizSeg? _seg;
@@ -525,6 +527,7 @@ class _SubcontractBusinessListPageState
   }
 
   Future<void> _reload([int? page, bool silent = false]) async {
+    final generation = ++_reloadGeneration;
     if (!_shouldLoad) return;
     unawaited(_loadBillNoFacets());
     await _controller.load(
@@ -532,13 +535,15 @@ class _SubcontractBusinessListPageState
       silent: silent,
       fetch: _fetch,
     );
-    if (mounted) {
-      retainDraftSelection(
-        (_controller.result?.items ?? const <SubcontractDocListItem>[])
-            .where(_deletableDraft)
-            .map((row) => row.id),
-      );
+    if (!mounted || generation != _reloadGeneration || _controller.error != null) {
+      return;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _reloadGeneration) return;
+      retainDraftSelection(
+        _tableRows.items.where(_deletableDraft).map((row) => row.id),
+      );
+    });
   }
 
   void _selectSeg(_BizSeg seg) {
@@ -849,6 +854,7 @@ class _SubcontractBusinessListPageState
                     ? const UtenHistoryTimePlaceholder()
                     : _withDraftCategory(
                         MasterDataTableView<SubcontractDocListItem>(
+                          rowsController: _tableRows,
                           tableKey:
                               'features.subcontract.pages.subcontract_business_list_pages.SubcontractBusinessListPageState.build.1',
                           // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
@@ -914,12 +920,16 @@ class _SubcontractBusinessListPageState
                           emptyMessage: seg.history
                               ? '该时间段内暂无记录'
                               : _p.emptyMessage,
-                          currentPage: _controller.page,
+                          currentPage: _controller.result?.page ?? 1,
                           totalPages: _controller.result?.totalPages ?? 1,
-                          onPageChange: (p) {
-                            clearDraftSelection();
-                            _reload(p);
-                          },
+                          paginationRevision: _controller.result,
+                          paginationScope: (
+                            _p.type,
+                            _controller.keyword,
+                            _seg,
+                            _historyTime,
+                          ),
+                          onPageChange: (p) => _reload(p),
                         ),
                       ),
               );

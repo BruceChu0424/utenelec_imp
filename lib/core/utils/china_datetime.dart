@@ -17,6 +17,14 @@ abstract final class ChinaDateTime {
     return DateTime.utc(value.year, value.month, value.day);
   }
 
+  /// 仅保留墙上年月日，并统一为 UTC 日期载体；不把它解释为真实时间点。
+  static DateTime dateOnly(DateTime businessDate) =>
+      DateTime.utc(businessDate.year, businessDate.month, businessDate.day);
+
+  /// 按业务日期的年月取得月初，仍使用不受设备时区影响的 UTC 日期载体。
+  static DateTime startOfMonth(DateTime businessDate) =>
+      DateTime.utc(businessDate.year, businessDate.month);
+
   /// 把一个真实时间点转换为中国墙上时间。
   static DateTime fromInstant(DateTime instant) =>
       _wallClock(instant.toUtc().add(utcOffset));

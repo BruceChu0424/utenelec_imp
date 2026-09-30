@@ -356,6 +356,8 @@ abstract class _MaterialAnalysisPageBase
     if (_analysis != null) _requestCompanionReads(reads);
   }
 
+  final _candidateTableRows =
+      MasterDataTableRowsController<MaterialAnalysisSalesCandidateLine>();
   MaterialAnalysisSalesCandidatePage? _candidatePage;
   String? _warehouseId;
   final Set<String> _warehouseIds = {};

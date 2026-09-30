@@ -103,6 +103,7 @@ class SuggestionListPage extends ConsumerWidget {
             emptyMessage: '暂无建议',
             currentPage: page.page,
             totalPages: page.totalPages,
+            paginationScope: scope,
             onPageChange: (p) =>
                 ref.read(suggestionListProvider.notifier).goToPage(p),
           );

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../../core/theme/uten_tokens.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -46,6 +51,9 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
   String? _segment, _revision, _error;
   bool _loading = false, _showFilters = false, _showBaseline = false;
   int _tab = 0, _request = 0;
+  final _outer = ScrollController();
+  bool _fullscreen = false;
+  Completer<void>? _fullscreenClosed;
   AppLocalizations get _l => AppLocalizations.of(context);
   Map<String, dynamic> get _filters => {
     if (_segment != null) 'executionSegmentId': _segment,
@@ -623,240 +631,261 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
           ),
         ),
     ];
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 60),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              UtenButton(
-                type: UtenButtonType.tonal,
-                onPressed: () => setState(() => _showFilters = !_showFilters),
-                child: Text(_l.costActualFilters),
-              ),
-              UtenButton(
-                type: UtenButtonType.tonal,
-                onPressed: () => setState(() => _showBaseline = !_showBaseline),
-                child: Text(_l.costCompare),
-              ),
-            ],
-          ),
-          if (_showFilters)
-            UtenCard(
-              child: LayoutBuilder(
-                builder: (context, box) {
-                  final width = box.maxWidth < 480 ? box.maxWidth : 230.0;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      SizedBox(
-                        width: width,
-                        child: UtenDateField(
-                          label: _l.costActualFrom,
-                          value: _from,
-                          onChanged: (d) => setState(() => _from = d),
-                        ),
-                      ),
-                      SizedBox(
-                        width: width,
-                        child: UtenDateField(
-                          label: _l.costActualTo,
-                          value: _to,
-                          onChanged: (d) => setState(() => _to = d),
-                        ),
-                      ),
-                      SizedBox(
-                        width: width,
-                        child: UtenDropdownField(
-                          label: _l.costSegment,
-                          value: _segment,
-                          items: [
-                            for (final object in {
-                              for (final o in _objects)
-                                costText(o['executionSegmentId']): o,
-                            }.values)
-                              if (object['executionSegmentId'] != null)
-                                UtenDropdownItem(
-                                  value: costText(object['executionSegmentId']),
-                                  label: costText(object['executionNo']) ?? '—',
-                                ),
-                          ],
-                          onChanged: (v) => setState(() => _segment = v),
-                        ),
-                      ),
-                      SizedBox(
-                        width: width,
-                        child: UtenDropdownField(
-                          label: _l.costVersion,
-                          value: _revision,
-                          items: [
-                            for (final revision in {
-                              for (final r in costMaps(_snapshot?['revisions']))
-                                r['revisionId']: r,
-                            }.values)
-                              UtenDropdownItem(
-                                value: costText(revision['revisionId']),
-                                label:
-                                    '${_l.costVersion} ${revision['version']} · ${revision['occurredAt'] ?? ''}',
-                              ),
-                          ],
-                          onChanged: (v) => setState(() => _revision = v),
-                        ),
-                      ),
-                      UtenButton(
-                        onPressed: _loading ? null : _load,
-                        child: Text(_l.commonRefresh),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          const SizedBox(height: 12),
-          if (_error != null)
-            Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          if (_loading) const LinearProgressIndicator(),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final (label, key) in [
-                (_l.costScopeInput, 'knownInputCostLocal'),
-                (_l.costPeriodOutput, 'allocatedOutputCostLocal'),
-                (_l.costExcludedOutput, 'excludedOutputCostLocal'),
-                (_l.costActualWip, 'heldWipLocal'),
-                (_l.costUnitCost, 'actualUnitCostLocal'),
-              ])
-                SizedBox(
-                  width: 212,
-                  child: UtenCard(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+    return UtenCollapsingHeaderScrollView(
+      controller: _outer,
+      collapsingHeader: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_showFilters)
+              UtenCard(
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final width = box.maxWidth < 480 ? box.maxWidth : 230.0;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
                       children: [
-                        Text(label),
-                        const SizedBox(height: 8),
-                        Text(
-                          financeMoneyText(costText(summary[key])),
-                          style: Theme.of(context).textTheme.titleLarge,
+                        SizedBox(
+                          width: width,
+                          child: UtenDateField(
+                            label: _l.costActualFrom,
+                            value: _from,
+                            onChanged: (d) => setState(() => _from = d),
+                          ),
+                        ),
+                        SizedBox(
+                          width: width,
+                          child: UtenDateField(
+                            label: _l.costActualTo,
+                            value: _to,
+                            onChanged: (d) => setState(() => _to = d),
+                          ),
+                        ),
+                        SizedBox(
+                          width: width,
+                          child: UtenDropdownField(
+                            label: _l.costSegment,
+                            value: _segment,
+                            items: [
+                              for (final object in {
+                                for (final o in _objects)
+                                  costText(o['executionSegmentId']): o,
+                              }.values)
+                                if (object['executionSegmentId'] != null)
+                                  UtenDropdownItem(
+                                    value: costText(
+                                      object['executionSegmentId'],
+                                    ),
+                                    label:
+                                        costText(object['executionNo']) ?? '—',
+                                  ),
+                            ],
+                            onChanged: (v) => setState(() => _segment = v),
+                          ),
+                        ),
+                        SizedBox(
+                          width: width,
+                          child: UtenDropdownField(
+                            label: _l.costVersion,
+                            value: _revision,
+                            items: [
+                              for (final revision in {
+                                for (final r in costMaps(
+                                  _snapshot?['revisions'],
+                                ))
+                                  r['revisionId']: r,
+                              }.values)
+                                UtenDropdownItem(
+                                  value: costText(revision['revisionId']),
+                                  label:
+                                      '${_l.costVersion} ${revision['version']} · ${revision['occurredAt'] ?? ''}',
+                                ),
+                            ],
+                            onChanged: (v) => setState(() => _revision = v),
+                          ),
+                        ),
+                        UtenButton(
+                          onPressed: _loading ? null : _load,
+                          child: Text(_l.commonRefresh),
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 ),
-            ],
-          ),
-          if (_snapshot != null && summary['fullCostComplete'] != true)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(_l.costActualIncomplete),
+              ),
+
+            if (_error != null)
+              Text(
+                _error!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            if (_loading) const LinearProgressIndicator(),
+            if (rows.isEmpty && _snapshot != null) _actualSummary(summary),
+            if (_snapshot != null && summary['fullCostComplete'] != true)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                child: Text(_l.costActualIncomplete),
+              ),
+            if (_snapshot != null && _showBaseline)
+              _baselineComparison(summary),
+          ],
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+        child: MasterDataTableView<Map<String, dynamic>>(
+          key: ValueKey('cost-actual-$_tab'),
+          tableKey: 'master.goods.cost.actual.$_tab',
+          primary: true,
+          summaryBarInline: true,
+          onFullscreenChanged: (value) {
+            _fullscreen = value;
+            if (!value) {
+              _fullscreenClosed?.complete();
+              _fullscreenClosed = null;
+            }
+          },
+          columns: columns,
+          items: rows,
+          rowKeyOf: (r) =>
+              (r['inputNodeId'] ??
+                      r['sourceNodeId'] ??
+                      r['costObjectId'] ??
+                      r['id'] ??
+                      '')
+                  .toString(),
+          rowMenuBuilder: (r) => [
+            UtenMenuItem(
+              label: _l.costViewEvidence,
+              onTap: () => _showEvidence(r),
             ),
-          if (_pendingItems().isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: UtenButton(
+          ],
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          isLoading: _loading,
+          emptyMessage: _l.costNoActual,
+          toolbarLeadingActions: [
+            for (final (index, label) in [
+              (0, _l.costActualKnown),
+              (1, _l.costActualOutput),
+              (2, _l.costVersions),
+            ])
+              UtenButton(
+                height: UtenTableToolbar.controlHeight,
+                onPressed: () async {
+                  await _leaveFullscreen();
+                  if (mounted) setState(() => _tab = index);
+                },
+                child: Text(label),
+              ),
+            UtenButton(
+              height: UtenTableToolbar.controlHeight,
+              onPressed: () async {
+                await _leaveFullscreen();
+                if (mounted) {
+                  setState(() => _showFilters = !_showFilters);
+                  _revealHeader();
+                }
+              },
+              child: Text(_l.costActualFilters),
+            ),
+            UtenButton(
+              height: UtenTableToolbar.controlHeight,
+              onPressed: () async {
+                await _leaveFullscreen();
+                if (mounted) {
+                  setState(() => _showBaseline = !_showBaseline);
+                  _revealHeader();
+                }
+              },
+              child: Text(_l.costCompare),
+            ),
+            if (_pendingItems().isNotEmpty)
+              UtenButton(
                 key: const Key('cost-actual-pending'),
-                type: UtenButtonType.tonal,
+                height: UtenTableToolbar.controlHeight,
                 onPressed: _showPending,
                 child: Text(
                   '${_l.costPendingItems} (${_pendingItems().length})',
                 ),
               ),
-            ),
-          if (_snapshot != null && _showBaseline) ...[
-            const SizedBox(height: 12),
-            _baselineComparison(summary),
-            const SizedBox(height: 12),
-          ],
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final (index, label) in [
-                (0, _l.costActualKnown),
-                (1, _l.costActualOutput),
-                (2, _l.costVersions),
-              ])
-                UtenButton(
-                  type: _tab == index
-                      ? UtenButtonType.primary
-                      : UtenButtonType.tonal,
-                  onPressed: () => setState(() => _tab = index),
-                  child: Text(label),
+            if (_snapshot != null &&
+                ref.watch(costWorkbenchCapabilityProvider).canExport)
+              for (final format in ['xlsx', 'pdf'])
+                UtenExportButton(
+                  endpoint: '${DioGoodsCostRepository.base}/actual/export',
+                  report: '',
+                  height: UtenTableToolbar.controlHeight,
+                  icon: null,
+                  type: UtenButtonType.primary,
+                  queryParams: const {},
+                  requiredPermission:
+                      CostWorkbenchCapability.exportPermission,
+                  enabled: !_loading,
+                  tableKey: 'master.goods.cost.actual.$_tab',
+                  label: format == 'xlsx'
+                      ? _l.costDownloadExcel
+                      : _l.costDownloadPdf,
+                  prepareExport: () async => UtenExportSelection(
+                    extension: format,
+                    filename: 'actual_cost_${widget.goodsId}',
+                    bodyParams: {
+                      'goodsId': widget.goodsId,
+                      ...costMap(_snapshot?['filter']),
+                      'format': format,
+                      'expectedDigest': _snapshot?['contentDigest'],
+                    },
+                  ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 520,
-            child: MasterDataTableView<Map<String, dynamic>>(
-              key: ValueKey('cost-actual-$_tab'),
-              tableKey: 'master.goods.cost.actual.$_tab',
-              columns: columns,
-              items: rows,
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-              isLoading: _loading,
-              emptyMessage: _l.costNoActual,
-              summaryBar: UtenTotalsSummaryBar(
-                entries: [
-                  UtenTotalEntry(
-                    _l.costActualOutput,
-                    financeMoneyText(
-                      costText(summary['allocatedOutputCostLocal']),
-                    ),
-                  ),
-                  UtenTotalEntry(
-                    _l.costActualQty,
-                    costText(summary['outputQtyBase']) ?? '—',
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (_snapshot != null &&
-              ref.watch(costWorkbenchCapabilityProvider).canExport)
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final format in ['xlsx', 'pdf'])
-                  UtenExportButton(
-                    endpoint: '${DioGoodsCostRepository.base}/actual/export',
-                    report: '',
-                    queryParams: const {},
-                    requiredPermission:
-                        CostWorkbenchCapability.exportPermission,
-                    enabled: !_loading,
-                    tableKey: 'master.goods.cost.actual.$_tab',
-                    label: format == 'xlsx'
-                        ? _l.costDownloadExcel
-                        : _l.costDownloadPdf,
-                    prepareExport: () async => UtenExportSelection(
-                      extension: format,
-                      filename: 'actual_cost_${widget.goodsId}',
-                      bodyParams: {
-                        'goodsId': widget.goodsId,
-                        ...costMap(_snapshot?['filter']),
-                        'format': format,
-                        'expectedDigest': _snapshot?['contentDigest'],
-                      },
-                    ),
-                  ),
-              ],
-            ),
-        ],
+          ],
+          summaryBar: _actualSummary(summary),
+        ),
       ),
     );
+  }
+
+  Widget _actualSummary(Map<String, dynamic> summary) => UtenTotalsSummaryBar(
+    entries: [
+      for (final (label, key) in [
+        (_l.costScopeInput, 'knownInputCostLocal'),
+        (_l.costPeriodOutput, 'allocatedOutputCostLocal'),
+        (_l.costExcludedOutput, 'excludedOutputCostLocal'),
+        (_l.costActualWip, 'heldWipLocal'),
+        (_l.costUnitCost, 'actualUnitCostLocal'),
+      ])
+        UtenTotalEntry(label, financeMoneyText(costText(summary[key]))),
+      UtenTotalEntry(
+        _l.costActualQty,
+        costText(summary['outputQtyBase']) ?? '—',
+      ),
+    ],
+  );
+  Future<void> _leaveFullscreen() async {
+    if (_fullscreenClosed != null) {
+      await _fullscreenClosed!.future;
+      return;
+    }
+    if (!_fullscreen) return;
+    final done = _fullscreenClosed ??= Completer<void>();
+    Navigator.of(context, rootNavigator: true).pop();
+    await done.future;
+  }
+
+  void _revealHeader() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (mounted && _outer.hasClients) {
+      _outer.animateTo(0, duration: UtenAnim.fast, curve: Curves.easeOut);
+    }
+  });
+  @override
+  void dispose() {
+    _request++;
+    _outer.dispose();
+    super.dispose();
   }
 }

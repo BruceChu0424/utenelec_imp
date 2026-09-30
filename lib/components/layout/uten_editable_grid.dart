@@ -2482,6 +2482,17 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ),
       ],
     );
+    // 粘贴属于整张表：空表、筛选后为空、末行后的空白也必须能进入。
+    // 行/表头仍使用各自更深层的菜单；背景菜单不伪造行、不改变当前选择。
+    final bodyWithMenu =
+        widget.showAddRow && widget.selectionEnabled && widget.cloneRow != null
+        ? UtenContextMenuRegion(
+            behavior: HitTestBehavior.opaque,
+            entriesBuilder: _pasteMenuEntries,
+            onActionCompleted: () => _clearSelection(),
+            child: body,
+          )
+        : body;
     // 操作条放在 Stack 之外（外层 Column），随页滚动且永不被 sticky 表头覆盖。
     // 编辑模式（showAddRow）只保留「表头设置」+ 宿主批量动作（全选走表头复选框、
     // 复制/粘贴/删除走行菜单）；只选/任务模式（含 onRemoveRows）保留全选与移出按钮。
@@ -2505,13 +2516,13 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
 
     if (actionsBar == null) {
-      return resolve(body);
+      return resolve(bodyWithMenu);
     }
     return resolve(
       Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [actionsBar, body],
+        children: [actionsBar, bodyWithMenu],
       ),
     );
   }
@@ -2667,6 +2678,27 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
   }
 
+  /// 背景与行菜单共用的表级粘贴能力，不依赖任何已存在的行。
+  List<UtenContextMenuEntry> _pasteMenuEntries() {
+    final clone = widget.cloneRow;
+    if (clone == null) return const [];
+    final c = widget.controller;
+    return [
+      UtenMenuItem(
+        label: '粘贴',
+        icon: Icons.content_paste_rounded,
+        enabled: c.hasBuffer,
+        onTap: () => c.paste(clone),
+      ),
+      UtenMenuItem(
+        label: '批量粘贴',
+        icon: Icons.library_add_rounded,
+        enabled: c.hasBuffer,
+        onTap: () => _pasteMany(context, clone),
+      ),
+    ];
+  }
+
   /// 行菜单条目：复制选中/粘贴/批量粘贴/在上方插入空行/删除选中。
   /// cloneRow 未提供（页面无行克隆）时不显复制粘贴组；缓冲为空时粘贴置灰不隐藏
   /// （与 UtenContextMenu「看得见功能边界」约定一致）。所有操作与操作条同一套
@@ -2684,18 +2716,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
           enabled: n > 0,
           onTap: () => c.copySelected(clone),
         ),
-        UtenMenuItem(
-          label: '粘贴',
-          icon: Icons.content_paste_rounded,
-          enabled: c.hasBuffer,
-          onTap: () => c.paste(clone),
-        ),
-        UtenMenuItem(
-          label: '批量粘贴',
-          icon: Icons.library_add_rounded,
-          enabled: c.hasBuffer,
-          onTap: () => _pasteMany(context, clone),
-        ),
+        ..._pasteMenuEntries(),
       ],
       UtenMenuItem(
         label: '在上方插入空行',

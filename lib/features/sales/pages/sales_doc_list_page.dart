@@ -132,6 +132,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     with DraftBulkDeleteMixin<SalesDocListPage> {
   SalesDocConfig get _cfg => SalesDocConfig.by(widget.docType);
   var _list = PagedListController<SalesDocListItem>();
+  final _tableRows = MasterDataTableRowsController<SalesDocListItem>();
+  int _reloadGeneration = 0;
 
   /// 大类分段（仅订货单）：pending/production/shippable/monthDone；
   /// null = 未选择引导态（不发请求）。
@@ -547,7 +549,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   }
 
   Future<void> _reload([int? page, bool silent = false]) async {
-    if (page != null) clearDraftSelection();
+    final generation = ++_reloadGeneration;
+    if (page == 1) clearDraftSelection();
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     final statusScope = _statusScope;
     if (statusScope != null) {
@@ -556,14 +559,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     if (!_shouldLoad) return;
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
-    if (!mounted) return;
-    retainDraftSelection(
-      _canDeleteDrafts
-          ? (_list.page?.items ?? const <SalesDocListItem>[])
-                .where((row) => isDeletableSalesDraftRow(row, widget.docType))
-                .map((row) => row.id)
-          : const <String>[],
-    );
+    if (!mounted || generation != _reloadGeneration || _list.error != null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _reloadGeneration) return;
+      retainDraftSelection(
+        _canDeleteDrafts
+            ? _tableRows.items
+                  .where((row) => isDeletableSalesDraftRow(row, widget.docType))
+                  .map((row) => row.id)
+            : const <String>[],
+      );
+    });
   }
 
   /// 大类段 → 后端筛选（与 stats 口径一致）。待生产/生产中自 V545 起按数量派生
@@ -1095,6 +1103,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                         ))
                 : _withDraftCategory(
                     MasterDataTableView<SalesDocListItem>(
+                      rowsController: _tableRows,
                       tableKey: 'sales.${widget.docType.name}.list',
                       selectable: _canDeleteDrafts,
                       idOf: (row) =>
@@ -1143,6 +1152,15 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                           : '暂无${_cfg.shortLabel}单',
                       currentPage: _list.currentPage,
                       totalPages: _list.totalPages,
+                      paginationRevision: _list.page,
+                      paginationScope: (
+                        widget.docType,
+                        _list.normalizedKeyword,
+                        _stage,
+                        _statusSeg,
+                        _shippableFirst,
+                        _historyTime,
+                      ),
                       onPageChange: (p) => _reload(p),
                     ),
                   ),

@@ -168,6 +168,8 @@
   "navNotice": "Notices",
   "navProfile": "Me",
   "navSettings": "Settings",
+  "navCollapse": "Collapse navigation",
+  "navExpand": "Expand navigation",
   "settingsTitle": "Settings",
   "settingsSectionAppearance": "Appearance",
   "settingsThemeMode": "Theme mode",
@@ -2934,11 +2936,11 @@
   "costUnit": "Base unit",
   "costAdoptedQty": "Adopted usage",
   "costUsageSource": "Usage source",
-  "costPricingQty": "Batch pricing quantity",
+  "costPricingQty": "Priced quantity",
   "costPrice": "Unit price",
   "costPriceUnitRate": "Price unit conversion",
   "costPriceSource": "Price source",
-  "costLineAmount": "Batch amount",
+  "costLineAmount": "Estimated amount",
   "costUnitContribution": "Cost per product",
   "costStatus": "Status",
   "costIncluded": "Included in total",
@@ -3111,7 +3113,7 @@
   "costPriceNormalizedHelp": "Unit price is shown in this cost sheet currency per material base unit. Original price, unit conversion and tax basis are available in source details.",
   "costCurrencyConverted": "Costs converted to the target currency; not saved yet",
   "costUnitContributionShort": "Unit cost",
-  "costLineAmountShort": "Batch cost",
+  "costLineAmountShort": "Estimated amount",
   "costPendingItems": "Items to reconcile",
   "costViewEvidence": "View evidence",
   "costViewSource": "Open source",
@@ -3151,7 +3153,7 @@
   "costGapCode": "Reconciliation reason code",
   "costDailyTable": "Cost sheet",
   "costCalculationSettings": "Calculation settings",
-  "costAdjustment": "Adjust",
+  "costAdjustment": "Adjust usage",
   "costFinishAdjustment": "Finish adjustment",
   "costMoreActions": "More actions",
   "costRefreshSources": "Refresh source prices and usage",
@@ -3242,5 +3244,24 @@
   "costProductionSourceUnit": "Preserve the original reporting unit and conversion evidence",
   "costProductionSourceDefects": "Reported defects are separate and not deducted twice",
   "costProductionSourceOther": "Provided by production reports and related records",
-  "costProductionProgressPending": "Reports and workshop progress are not reconciled; quantity is withheld"
+  "costProductionProgressPending": "Reports and workshop progress are not reconciled; quantity is withheld",
+  "costPerUnitLabel": "Cost per {unit}",
+  "costAutomaticPriceHelp": "Filled from {source}. Edit directly to use a manual price in this sheet.",
+  "costEstimateAmountHelp": "Priced material quantity × adopted unit price, plus this row’s fees. Estimating 1,000 finished units using two components each prices 2,000 components. This is an estimate, not reported production or booked cost.",
+  "costUnitContributionHelp": "This row’s material and fees per finished-product unit: estimated amount divided by estimate quantity. The finished-product unit belongs to this cost version.",
+  "costMaterialPriceNotApplied": "Summary assemblies and customer-supplied material do not carry a separate material price; see row evidence.",
+  "@costPerUnitLabel": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "@costAutomaticPriceHelp": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  }
 }

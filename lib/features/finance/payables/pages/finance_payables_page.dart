@@ -83,6 +83,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   // 代数）：共享状态见 MasterServerColumnFilters。
   final _columnFilters = MasterServerColumnFilters();
   bool _applyingOffset = false;
+  final _tableRows = MasterDataTableRowsController<FinancePayableItem>();
   Set<String> _selectedIds = <String>{};
   final Map<String, FinancePayableItem> _selectedItemsById = {};
   _PayablesWorkspaceView _workspace = _PayablesWorkspaceView.payables;
@@ -281,7 +282,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
   }
 
   void _setSelectedIds(Set<String> ids) {
-    final current = _result?.items ?? const <FinancePayableItem>[];
+    final current = _tableRows.items;
     setState(() {
       _selectedIds = ids;
       _selectedItemsById.removeWhere((id, _) => !ids.contains(id));
@@ -960,6 +961,20 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
         ),
         Expanded(
           child: MasterDataTableView<FinancePayableItem>(
+            rowsController: _tableRows,
+            paginationRevision: _result,
+            paginationScope: (
+              _keyword,
+              _businessType,
+              _supplierId,
+              _status,
+              _settlementMethodId,
+              _currencyId,
+              _dateFrom,
+              _dateTo,
+              _dueFrom,
+              _dueTo,
+            ),
             tableKey:
                 'features.finance.payables.pages.finance_payables_page.FinancePayablesPageState._buildPayablesTablePane.1',
             primary: true,

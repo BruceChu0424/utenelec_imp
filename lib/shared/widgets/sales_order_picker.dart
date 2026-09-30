@@ -107,6 +107,7 @@ class _SalesOrderPickerSheetState
     extends ConsumerState<_SalesOrderPickerSheet> {
   PagedResult<SalesDocListItem>? _page;
   bool _loading = false;
+  int _loadGeneration = 0;
   String? _error;
   final _keywordCtl = TextEditingController();
   String _keyword = '';
@@ -154,6 +155,8 @@ class _SalesOrderPickerSheetState
   }
 
   Future<void> _load(int page) async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -172,19 +175,19 @@ class _SalesOrderPickerSheetState
             sort: _sortKey,
             order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
           );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _page = r;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _error = '加载销售订单失败';
         _loading = false;
@@ -314,6 +317,7 @@ class _SalesOrderPickerSheetState
                 emptyMessage: '暂无已审销售订单',
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,
+                paginationScope: (_keyword, _selectedSellerId),
                 onPageChange: (p) => _load(p),
               ),
             ),

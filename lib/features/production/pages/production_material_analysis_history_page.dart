@@ -62,6 +62,7 @@ class _ProductionMaterialAnalysisHistoryPageState
   String _status = '';
   String _sourceType = '';
   bool _loading = false;
+  int _loadGeneration = 0;
   String? _error;
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
@@ -80,7 +81,8 @@ class _ProductionMaterialAnalysisHistoryPageState
   }
 
   Future<void> _load({int page = 1}) async {
-    if (_loading) return;
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -98,13 +100,13 @@ class _ProductionMaterialAnalysisHistoryPageState
             sourceType: _sourceType.isEmpty ? null : _sourceType,
           );
       await namesReady;
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _page = result;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _loading = false;
         _error = productionErrorMessage(error, fallback: '物料分析记录加载失败，请稍后重试');
@@ -322,6 +324,7 @@ class _ProductionMaterialAnalysisHistoryPageState
       emptyMessage: '没有符合条件的物料分析记录',
       currentPage: page?.page ?? 1,
       totalPages: page?.totalPages ?? 0,
+      paginationScope: (_search.text, _status, _sourceType),
       onPageChange: (value) => _load(page: value),
     );
   }

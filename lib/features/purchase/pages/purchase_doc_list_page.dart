@@ -104,6 +104,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     with DraftBulkDeleteMixin<PurchaseDocListPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
   final _list = PagedListController<PurchaseDocListItem>();
+  final _tableRows = MasterDataTableRowsController<PurchaseDocListItem>();
+  int _reloadGeneration = 0;
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -314,16 +316,19 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   }
 
   Future<void> _reload([int? page, bool silent = false]) async {
+    final generation = ++_reloadGeneration;
     if (!_shouldLoad) return;
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
-    if (mounted) {
-      retainDraftSelection(
-        (_list.page?.items ?? const <PurchaseDocListItem>[])
-            .where(_deletableDraft)
-            .map((row) => row.id),
-      );
+    if (!mounted || generation != _reloadGeneration || _list.error != null) {
+      return;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _reloadGeneration) return;
+      retainDraftSelection(
+        _tableRows.items.where(_deletableDraft).map((row) => row.id),
+      );
+    });
   }
 
   void _selectSeg(_PurchaseDocSeg seg) {
@@ -719,6 +724,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                       ? const UtenHistoryTimePlaceholder()
                       : _withDraftCategory(
                           MasterDataTableView<PurchaseDocListItem>(
+                            rowsController: _tableRows,
                             tableKey: 'purchase.${widget.docType.name}.list',
                             // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                             primary: true,
@@ -783,10 +789,14 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                                 : '暂无${_cfg.shortLabel}单', // TODO(l10n): 补 arb
                             currentPage: _list.currentPage,
                             totalPages: _list.totalPages,
-                            onPageChange: (p) {
-                              clearDraftSelection();
-                              _reload(p);
-                            },
+                            paginationRevision: _list.page,
+                            paginationScope: (
+                              widget.docType,
+                              _list.normalizedKeyword,
+                              _seg,
+                              _historyTime,
+                            ),
+                            onPageChange: (p) => _reload(p),
                           ),
                         ),
                 );

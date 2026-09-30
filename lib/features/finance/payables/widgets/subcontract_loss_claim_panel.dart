@@ -325,6 +325,7 @@ class _SubcontractLossClaimPanelState
             emptyMessage: '暂无符合条件的委外超耗责任单',
             currentPage: _result?.page ?? 1,
             totalPages: _result?.totalPages ?? 1,
+            paginationScope: (_keyword, _status),
             onPageChange: (page) => _load(page),
           ),
         ),

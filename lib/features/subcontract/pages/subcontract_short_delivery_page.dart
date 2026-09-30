@@ -708,6 +708,7 @@ class _SubcontractShortDeliveryPageState
       },
       currentPage: result?.page ?? 1,
       totalPages: result?.totalPages ?? 1,
+      paginationScope: (_keyword, _orderId, _supplierId, _seg, _historyTime),
       onPageChange: (page) {
         setState(() => _page = page);
         _load(page: page);

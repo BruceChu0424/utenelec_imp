@@ -317,6 +317,7 @@ class _SupplierSettlementPanelState
                 emptyMessage: '暂无供应商月结批次',
                 currentPage: _result?.page ?? 1,
                 totalPages: _result?.totalPages ?? 1,
+                paginationScope: (_keyword, _status),
                 onPageChange: (page) => _load(page),
               ),
             ),

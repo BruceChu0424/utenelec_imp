@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import 'uten_context_menu_policy.dart';
 
 /// 菜单条目基类（[UtenMenuItem] 或 [UtenMenuDivider]）。
 sealed class UtenContextMenuEntry {
@@ -134,12 +135,14 @@ class UtenContextMenuRegion extends StatelessWidget {
     required this.child,
     this.onMenuOpening,
     this.onActionCompleted,
+    this.behavior = HitTestBehavior.translucent,
   });
 
   final List<UtenContextMenuEntry> Function() entriesBuilder;
   final VoidCallback? onMenuOpening;
   final FutureOr<void> Function()? onActionCompleted;
   final Widget child;
+  final HitTestBehavior behavior;
 
   Future<void> _open(BuildContext context, Offset globalPosition) async {
     final entries = entriesBuilder();
@@ -171,16 +174,16 @@ class UtenContextMenuRegion extends StatelessWidget {
     // 在该指针抬键的微任务里 removeAny 掉它（微任务在本次事件同步分发之后、
     // 下一帧绘制之前执行，系统工具条不会闪出来），用户只看到我们的一份。
     return Listener(
-      behavior: HitTestBehavior.translucent,
+      behavior: behavior,
       onPointerDown: (event) {
-        if (event.buttons & kSecondaryButton == 0) return;
+        if (!claimUtenContextMenuPointer(event)) return;
         _secondaryPointerInFlight = event.pointer;
         unawaited(_open(context, event.position));
       },
       onPointerUp: (event) => _dismissSystemContextMenu(event.pointer),
       onPointerCancel: (event) => _dismissSystemContextMenu(event.pointer),
       child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
+        behavior: behavior,
         // 手机/触屏：长按出同一个菜单。与单击选中/双击打开共存：
         // 长按与 tap 是不同识别器，tap 先赢则长按自动取消，行为符合直觉。
         onLongPressStart: (d) => unawaited(_open(context, d.globalPosition)),
@@ -240,10 +243,15 @@ class _UtenContextMenuOverlay extends StatelessWidget {
       children: [
         // 点菜单外任意位置关闭（左键/右键都关，与系统右键菜单行为一致）。
         Positioned.fill(
-          child: GestureDetector(
+          child: Listener(
             behavior: HitTestBehavior.translucent,
-            onTap: onDismiss,
-            onSecondaryTapDown: (_) => onDismiss(),
+            onPointerDown: (event) {
+              if (event.buttons & kSecondaryButton != 0) onDismiss();
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: onDismiss,
+            ),
           ),
         ),
         Positioned(

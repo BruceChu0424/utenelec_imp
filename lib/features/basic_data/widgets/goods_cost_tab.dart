@@ -10,16 +10,22 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_store.dart';
@@ -110,17 +116,22 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   String? _confirmKey;
   String? _copyKey;
   final _feeGrid = UtenEditableGridController<GoodsCostFeeRow>();
+  final _feeScroll = ScrollController();
+  final _materialOuterScroll = ScrollController();
+  final _feePinned = ValueNotifier<bool>(false);
+  bool _materialFullscreen = false;
+  Completer<void>? _fullscreenClosed;
   GoodsCostRepository get _repository => ref.read(goodsCostRepositoryProvider);
   AppLocalizations get _l => AppLocalizations.of(context);
   CostWorkbenchCapability get _capability =>
       ref.read(costWorkbenchCapabilityProvider);
   bool get _canCostEdit => _capability.canCreate;
-  bool get _editable =>
+  bool get _canSaveDraft =>
       _capability.canEditSheet(
         serverAllowed: _sheet == null || _sheet!.canEdit,
       ) &&
-      !_busy &&
       _historical == null;
+  bool get _editable => _canSaveDraft && !_busy;
   bool get _stale => _calculatedRevision != _inputRevision;
   bool get _canDownload => _capability.canExportSheet(
     serverAllowed: _sheet == null ? _capability.canCreate : _sheet!.canExport,
@@ -313,7 +324,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   void _toggleSettings() {
-    setState(() => _showSettings = !_showSettings);
+    final scroll = _bodyTab == 0 ? _materialOuterScroll : _feeScroll;
+    final headerCollapsed = scroll.hasClients && scroll.offset > 0;
+    setState(() => _showSettings = headerCollapsed || !_showSettings);
     if (_showSettings) unawaited(_loadSettings());
   }
 
@@ -574,6 +587,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<void> _open(String id) async {
+    await _leaveMaterialFullscreen();
+    if (!mounted) return;
     if (_dirty) {
       context.appError(_l.costLeavePrompt);
       return;
@@ -627,6 +642,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<void> _recover(FormDraft draft) async {
+    await _leaveMaterialFullscreen();
+    if (!mounted) return;
     if (_dirty) {
       context.appError(_l.costLeavePrompt);
       return;
@@ -848,142 +865,172 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     );
   }
 
-  Widget _estimatePane() => LayoutBuilder(
-    builder: (context, box) => Column(
-      children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: (box.maxHeight * .34).clamp(150, 290),
-          ),
-          child: SingleChildScrollView(
-            primary: false,
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _header(),
-                const SizedBox(height: 8),
-                _summary(),
-                if (_historical != null) Text(_l.costSnapshotReadOnly),
-                if (_pendingIssues.isNotEmpty || _stale)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          _stale
-                              ? (_calculating || (_debounce?.isActive ?? false)
-                                    ? _l.costAutoCalculating
-                                    : _l.costResultNotUpdated)
-                              : _l.costNeedsReviewCount(_pendingIssues.length),
-                          key: const Key('cost-pending-summary'),
-                        ),
-                        if (_pendingIssues.isNotEmpty)
-                          UtenButton(
-                            type: UtenButtonType.tonal,
-                            onPressed: _showCalculationIssues,
-                            child: Text(_l.costViewEvidence),
-                          ),
-                        if (_pendingIssues.isNotEmpty)
-                          UtenButton(
-                            key: const Key('cost-pending-filter'),
-                            type: UtenButtonType.tonal,
-                            onPressed: () =>
-                                setState(() => _onlyPending = !_onlyPending),
-                            child: Text(
-                              _onlyPending
-                                  ? _l.costAllMaterials
-                                  : _l.costOnlyPending,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: _bodyTab == 0
-                ? _materialTable()
-                : SingleChildScrollView(primary: false, child: _feeTable()),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 38),
-          child: _actions(),
-        ),
-      ],
-    ),
-  );
-  List<Map<String, dynamic>> get _pendingIssues =>
-      _calculation?.issues ?? const [];
-  String _currentMoney(Object? value) => _stale ? '…' : _money(value);
-  Widget _summary() {
-    final totals = _calculation?.totals ?? const <String, dynamic>{};
-    final currency = costText(_calculation?.json['currencyName']) ?? '';
-    final incomplete = _calculation?.complete != true;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final (label, key) in [
-          (incomplete ? _l.costKnownPartial : _l.costTotalLabel, 'knownTotal'),
-          (_l.costUnitCost, 'unitCost'),
-        ])
-          UtenCard(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('$label  '),
-                Text(
-                  '$currency ${_currentMoney(totals[key])}',
-                  style: Theme.of(context).textTheme.titleMedium,
+  Widget _estimatePane() {
+    if (_bodyTab == 1) {
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: UtenGridPageScrollbar(
+              pinned: _feePinned,
+              controller: _feeScroll,
+              child: ListView(
+                controller: _feeScroll,
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s12,
+                  0,
+                  UtenSpacing.s12,
+                  UtenFloatingActionGroup.scrollClearance,
                 ),
-              ],
+                children: [_header(), _feeTable()],
+              ),
             ),
           ),
-      ],
+          if (_canSaveDraft)
+            PositionedDirectional(
+              end: UtenSpacing.s16,
+              bottom: UtenSpacing.s16,
+              child: UtenFloatingActionGroup(children: _saveActions()),
+            ),
+        ],
+      );
+    }
+    return UtenCollapsingHeaderScrollView(
+      key: const Key('cost-collapsing-scroll'),
+      controller: _materialOuterScroll,
+      collapsingHeader: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+        child: _header(),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+        child: _materialTable(),
+      ),
     );
   }
 
-  Widget _actions() => Wrap(
-    spacing: 8,
-    runSpacing: 8,
-    crossAxisAlignment: WrapCrossAlignment.center,
-    children: [
-      if (_editable)
-        UtenButton(
-          key: const Key('cost-save'),
-          onPressed: _save,
-          child: Text(_l.costSaveDraft),
-        ),
-      if (_canDownload)
-        UtenExportButton(
-          key: const Key('cost-download'),
-          endpoint: '${DioGoodsCostRepository.base}/export',
-          report: '',
-          queryParams: const {},
-          requiredPermission: CostWorkbenchCapability.exportPermission,
-          tableKey: _bodyTab == 0 ? _tableKey : 'master.goods.cost.fees',
-          enabled: !_busy,
-          label: _l.costDownload,
-          prepareExport: () => _prepareDownload(null),
-        ),
-      UtenButton(
-        key: const Key('cost-more'),
-        type: UtenButtonType.tonal,
-        onPressed: _busy ? null : _moreActions,
-        child: Text(_l.costMoreActions),
+  List<Map<String, dynamic>> get _pendingIssues =>
+      _calculation?.issues ?? const [];
+  String _currentMoney(Object? value) => _stale ? '…' : _money(value);
+  Widget _costSummary() => UtenTotalsSummaryBar(
+    entries: [
+      UtenTotalEntry(
+        _calculation?.complete == true
+            ? _l.costTotalLabel
+            : _l.costKnownPartial,
+        '${costText(_calculation?.json['currencyName']) ?? ''} ${_currentMoney(_calculation?.totals['knownTotal'])}',
+      ),
+      UtenTotalEntry(
+        _l.costUnitCost,
+        _currentMoney(_calculation?.totals['unitCost']),
+      ),
+      UtenTotalEntry(
+        _l.costStatus,
+        _stale
+            ? _l.costCalculationStale
+            : _status(_calculation?.totals['valueState']),
       ),
     ],
   );
+  List<Widget> _saveActions() => [
+    if (_canSaveDraft)
+      UtenButton(
+        key: const Key('cost-save'),
+        type: UtenButtonType.danger,
+        size: UtenButtonSize.large,
+        icon: Icons.save_outlined,
+        isLoading: _busy,
+        onPressed: _busy ? null : _save,
+        child: Text(_l.costSaveDraft),
+      ),
+  ];
+  List<Widget> _tableActions() => [
+    if (_editable)
+      UtenButton(
+        key: const Key('cost-add-column'),
+        height: UtenTableToolbar.controlHeight,
+        onPressed: _addPriceColumn,
+        child: Text(_l.costAddPriceColumn),
+      ),
+    UtenButton(
+      key: const Key('cost-settings-toggle'),
+      height: UtenTableToolbar.controlHeight,
+      onPressed: () async {
+        await _leaveMaterialFullscreen();
+        if (mounted) {
+          _toggleSettings();
+          _revealCostHeader();
+        }
+      },
+      child: Text(_l.costCalculationSettings),
+    ),
+    if (_editable)
+      UtenButton(
+        key: const Key('cost-customer-toggle'),
+        height: UtenTableToolbar.controlHeight,
+        onPressed: () async {
+          await _leaveMaterialFullscreen();
+          if (mounted) {
+            setState(() => _showCustomer = !_showCustomer);
+            _revealCostHeader();
+          }
+        },
+        child: Text(_clientName ?? _l.costOptionalCustomer),
+      ),
+    if (_canDownload)
+      UtenExportButton(
+        key: const Key('cost-download'),
+        endpoint: '${DioGoodsCostRepository.base}/export',
+        report: '',
+        queryParams: const {},
+        requiredPermission: CostWorkbenchCapability.exportPermission,
+        height: UtenTableToolbar.controlHeight,
+        icon: null,
+        type: UtenButtonType.primary,
+        tableKey: _bodyTab == 0 ? _tableKey : 'master.goods.cost.fees',
+        enabled: !_busy,
+        label: _l.costDownload,
+        prepareExport: () => _prepareDownload(null),
+      ),
+    if (_pendingIssues.isNotEmpty)
+      UtenButton(
+        key: const Key('cost-pending-filter'),
+        height: UtenTableToolbar.controlHeight,
+        onPressed: () => setState(() => _onlyPending = !_onlyPending),
+        child: Text(_onlyPending ? _l.costAllMaterials : _l.costOnlyPending),
+      ),
+    UtenButton(
+      key: const Key('cost-more'),
+      height: UtenTableToolbar.controlHeight,
+      onPressed: _busy
+          ? null
+          : () async {
+              await _leaveMaterialFullscreen();
+              if (mounted) await _moreActions();
+            },
+      child: Text(_l.costMoreActions),
+    ),
+  ];
+  Future<void> _leaveMaterialFullscreen() async {
+    if (_fullscreenClosed != null) {
+      await _fullscreenClosed!.future;
+      return;
+    }
+    if (!_materialFullscreen) return;
+    final closed = _fullscreenClosed ??= Completer<void>();
+    Navigator.of(context, rootNavigator: true).pop();
+    await closed.future;
+  }
+
+  void _revealCostHeader() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final scroll = _bodyTab == 0 ? _materialOuterScroll : _feeScroll;
+      if (scroll.hasClients) {
+        scroll.animateTo(0, duration: UtenAnim.fast, curve: Curves.easeOut);
+      }
+    });
+  }
+
   Future<void> _moreActions() async {
     final actions = <(String, Future<void> Function())>[
       (
@@ -1090,12 +1137,18 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
               MasterColumnDef(
                 key: 'adjust',
                 label: _l.costAdjustment,
-                width: 100,
+                width: 130,
                 value: (_) => _l.costAdjustment,
                 cellBuilder: (_, r) => UtenButton(
                   type: UtenButtonType.tonal,
                   onPressed: () => Navigator.pop(dialog, r),
-                  child: Text(_l.costAdjustment),
+                  child: Flexible(
+                    child: Text(
+                      _l.costAdjustment,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -1123,81 +1176,110 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     }
   }
 
-  Widget _versionPane() => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(12, 0, 12, 60),
-    child: Column(
-      children: [
-        SizedBox(
-          height: 450,
-          child: MasterDataTableView<Map<String, dynamic>>(
-            tableKey: 'master.goods.cost.versions',
-            columns: [
-              _readColumn('name', _l.costName, 220),
-              _readColumn(
-                'status',
-                _l.costStatus,
-                130,
-                text: (r) => _status(r['status']),
-              ),
-              _readColumn('version', _l.costVersion, 90),
-              _readColumn('batchQty', _l.costBatch, 120),
-              _readColumn('knownTotal', _l.costKnownTotal, 150),
-              _readColumn('updatedAt', _l.costUpdated, 190),
-              MasterColumnDef(
-                key: 'action',
-                label: _l.costAction,
-                width: 120,
-                value: (_) => _l.costOpen,
-                cellBuilder: (_, row) => UtenButton(
-                  type: UtenButtonType.tonal,
-                  onPressed: _busy ? null : () => _open(row['id'].toString()),
-                  child: Text(_l.costOpen),
-                ),
-              ),
-            ],
-            items: _versions,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            emptyMessage: _l.costEmpty,
-            toolbarLeadingActions: [
-              UtenButton(
-                type: UtenButtonType.tonal,
-                onPressed: _busy
-                    ? null
-                    : () => _action(() async {
-                        _versions = await _repository.list(widget.detail.id);
-                        await _refreshLocalDrafts();
-                      }),
-                child: Text(_l.commonRefresh),
-              ),
-              if (_sheet != null)
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  onPressed: _busy ? null : _compareVersions,
-                  child: Text(_l.costCompare),
-                ),
-              if (_sheet != null)
-                UtenButton(
-                  type: UtenButtonType.tonal,
-                  onPressed: _busy ? null : _showSnapshots,
-                  child: Text(_l.costHistory),
+  Widget _versionPane() => UtenCollapsingHeaderScrollView(
+    collapsingHeader: _localDrafts.isEmpty
+        ? null
+        : Column(
+            children: [
+              for (final draft in _localDrafts)
+                ListTile(
+                  title: _oneLine(draft.title),
+                  subtitle: _oneLine(draft.updatedAt.toIso8601String()),
+                  trailing: UtenButton(
+                    onPressed: _busy ? null : () => _recover(draft),
+                    child: Text(_l.costRecoverLocal),
+                  ),
                 ),
             ],
           ),
-        ),
-        for (final draft in _localDrafts)
-          ListTile(
-            title: _oneLine(draft.title),
-            subtitle: Text(draft.updatedAt.toIso8601String()),
-            trailing: UtenButton(
+    body: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+      child: MasterDataTableView<Map<String, dynamic>>(
+        tableKey: 'master.goods.cost.versions',
+        primary: true,
+        onFullscreenChanged: (value) {
+          _materialFullscreen = value;
+          if (!value) {
+            _fullscreenClosed?.complete();
+            _fullscreenClosed = null;
+          }
+        },
+        columns: [
+          _readColumn('name', _l.costName, 220),
+          _readColumn(
+            'status',
+            _l.costStatus,
+            130,
+            text: (r) => _status(r['status']),
+          ),
+          for (final (key, label, width) in [
+            ('version', _l.costVersion, 90.0),
+            ('batchQty', _l.costBatch, 120.0),
+            ('knownTotal', _l.costKnownTotal, 150.0),
+          ])
+            MasterColumnDef(
+              key: key,
+              label: label,
+              width: width,
+              type: key == 'knownTotal' ? 'money' : 'number',
+              value: (r) => costText(r[key]),
+              exactValueOf: (r) => costText(r[key]),
+              cellBuilder: (_, r) => _oneLine(r[key], align: TextAlign.right),
+            ),
+          _readColumn('updatedAt', _l.costUpdated, 190),
+          MasterColumnDef(
+            key: 'action',
+            label: _l.costAction,
+            width: 120,
+            value: (_) => _l.costOpen,
+            cellBuilder: (_, row) => UtenButton(
               type: UtenButtonType.tonal,
-              onPressed: _busy ? null : () => _recover(draft),
-              child: Text(_l.costRecoverLocal),
+              onPressed: _busy ? null : () => _open(row['id'].toString()),
+              child: Text(_l.costOpen),
             ),
           ),
-      ],
+        ],
+        items: _versions,
+        rowKeyOf: (r) => r['id'].toString(),
+        rowMenuBuilder: (row) => [
+          UtenMenuItem(
+            label: _l.costOpen,
+            onTap: () => _open(row['id'].toString()),
+            enabled: !_busy,
+          ),
+        ],
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        emptyMessage: _l.costEmpty,
+        toolbarLeadingActions: [
+          if (_sheet != null)
+            UtenButton(
+              height: UtenTableToolbar.controlHeight,
+              onPressed: _busy ? null : _compareVersions,
+              child: Text(_l.costCompare),
+            ),
+          if (_sheet != null)
+            UtenButton(
+              height: UtenTableToolbar.controlHeight,
+              onPressed: _busy ? null : _showSnapshots,
+              child: Text(_l.costHistory),
+            ),
+        ],
+        toolbarActions: [
+          UtenButton(
+            height: UtenTableToolbar.controlHeight,
+            onPressed: _busy
+                ? null
+                : () => _action(() async {
+                    _versions = await _repository.list(widget.detail.id);
+                    await _refreshLocalDrafts();
+                  }),
+            child: Text(_l.commonRefresh),
+          ),
+        ],
+      ),
     ),
   );
   MasterColumnDef<Map<String, dynamic>> _readColumn(
@@ -1222,6 +1304,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       c.dispose();
     }
     _feeGrid.dispose();
+    _feeScroll.dispose();
+    _materialOuterScroll.dispose();
+    _feePinned.dispose();
     _calculationSignal.dispose();
     super.dispose();
   }

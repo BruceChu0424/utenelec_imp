@@ -451,6 +451,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
             key: const Key('rd-task-desktop-table'),
             data: data,
             items: data.items,
+            paginationScope: (widget.seg, _keyword, _category),
             loading: _loading,
             filters: _tableFilters,
             onFilterChanged: (key, value) => setState(() {
@@ -628,6 +629,7 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.onOpenGoods,
     required this.onSelectionChanged,
     required this.onPageChanged,
+    required this.paginationScope,
     this.canResolve,
     this.onResolve,
   });
@@ -646,6 +648,7 @@ class _DesktopTaskTable extends StatelessWidget {
   /// 行被点选时回调（驱动上方「标记完成」上下文条）。
   final ValueChanged<RdTaskRow> onSelectionChanged;
   final ValueChanged<int> onPageChanged;
+  final Object paginationScope;
 
   /// 「标记完成」可做判定与执行（行右键/长按菜单；窄屏卡片上完成动作也走这里）。
   final bool Function(RdTaskRow)? canResolve;
@@ -822,6 +825,7 @@ class _DesktopTaskTable extends StatelessWidget {
       emptyMessage: '当前筛选下没有研发任务',
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: paginationScope,
       onPageChange: onPageChanged,
     );
   }

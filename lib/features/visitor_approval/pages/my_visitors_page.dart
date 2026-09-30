@@ -11,6 +11,10 @@
 //
 // 响应式：compact 自套 UtenContentContainer 收敛；medium+ 外壳已收敛；
 // 窄屏表格横向滚动即可。
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -48,6 +52,8 @@ class MyVisitorsPage extends ConsumerStatefulWidget {
 
 class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   int _page = 1;
+  final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
+  final _tableRows = MasterDataTableRowsController<VisitorApplication>();
 
   /// 表头「状态」筛选（null = 后端默认 hostReviewing「待我确认」）。
   String? _status;
@@ -228,10 +234,16 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final list = ref.watch(myAsHostProvider(_query));
+    final paginationScope = (_status, ref.watch(masterDataSessionKeyProvider));
+    final list = _retainedPage.resolve(
+      paginationScope,
+      ref.watch(myAsHostProvider(_query)),
+    );
     return Scaffold(
       appBar: UtenAppBar(title: l10n.myVisitorsTitle, showBackButton: true),
       body: list.when(
+        skipLoadingOnReload: true,
+        skipError: true,
         loading: () => const UtenSkeletonList(itemCount: 4),
         error: (e, _) => UtenEmpty.error(
           message: '$e',
@@ -247,8 +259,13 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               tableKey:
                   'features.visitor_approval.pages.my_visitors_page.MyVisitorsPageState.build.1',
               key: const Key('my-visitors-table'),
+              paginationScope: paginationScope,
+              loadingMore: list.isLoading,
+              error: list.hasError ? '${list.error}' : null,
+              onRetry: () => ref.invalidate(myAsHostProvider(_query)),
               columns: _columns(l10n),
               items: page.items,
+              rowsController: _tableRows,
               facets: {'status': _statusFacets(l10n)},
               nullCounts: const {},
               filters: {'status': _status ?? 'hostReviewing'},
@@ -260,7 +277,8 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               onSelectedIdsChanged: (next) =>
                   setState(() => _selectedIds = next),
               batchActionsBuilder: _isHostReviewing
-                  ? (context, ids) => _batchActions(context, ids, page.items)
+                  ? (context, ids) =>
+                        _batchActions(context, ids, _tableRows.items)
                   : null,
               // 确认接待/拒绝保留为行菜单（右击/长按）；无行详情路由。
               rowMenuBuilder: (app) => [
@@ -281,7 +299,14 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               // 常态 0-3 条；仍接分页以防极端堆积。
               currentPage: page.page,
               totalPages: page.totalPages,
-              onPageChange: (p) => setState(() => _page = p),
+              onPageChange: (p) async {
+                setState(() => _page = p);
+                await _retainedPage.waitFor(
+                  ref,
+                  myAsHostProvider(_query),
+                  () => ref.read(myAsHostProvider(_query).future),
+                );
+              },
             ),
           );
           // 分段栏(ADR-100)：本页此前只有表头下拉筛状态、且不带任何计数，于是

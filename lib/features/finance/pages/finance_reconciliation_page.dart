@@ -381,6 +381,7 @@ class _FinanceReconciliationPageState
                   emptyMessage: '暂无流水',
                   currentPage: _page?.page ?? 1,
                   totalPages: _page?.totalPages ?? 1,
+                  paginationScope: _keyword,
                   onPageChange: (p) => _load(p),
                 ),
               ),

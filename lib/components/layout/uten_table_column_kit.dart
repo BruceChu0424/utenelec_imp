@@ -33,6 +33,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_button.dart';
 import '../feedback/uten_context_menu.dart';
+import '../feedback/uten_context_menu_policy.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import 'uten_drag_reorder_list.dart';
 
@@ -1062,7 +1063,7 @@ class UtenColumnHeaderMenuRegion extends StatelessWidget {
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
-        if (event.buttons & kSecondaryButton == 0) return;
+        if (!claimUtenContextMenuPointer(event)) return;
         _secondaryPointerInFlight = event.pointer;
         final entries = entriesBuilder();
         if (entries.isEmpty) return;

@@ -108,6 +108,7 @@ class _WarehouseInboundExpectationsViewState
   /// 批量送检多选（与到货异常批量入库同款选择指纹幂等键范式）。
   /// 必须是可变 Set：_load 里会对它 removeWhere 清理失效选择，
   /// const Set 在 Web 上无条件抛「Cannot modify constant Set」。
+  final _tableRows = MasterDataTableRowsController<InboundExpectation>();
   Set<String> _selectedIds = <String>{};
   bool _batchSending = false;
   String? _batchSelectionFingerprint;
@@ -246,7 +247,7 @@ class _WarehouseInboundExpectationsViewState
       }
       return;
     }
-    final currentItems = _result?.items ?? const <InboundExpectation>[];
+    final currentItems = _tableRows.items;
     final selected = currentItems
         .where((task) => selectedIds.contains(task.id))
         .toList(growable: false);
@@ -368,7 +369,7 @@ class _WarehouseInboundExpectationsViewState
       }
       return;
     }
-    final currentItems = _result?.items ?? const <InboundExpectation>[];
+    final currentItems = _tableRows.items;
     final selected = currentItems
         .where((task) => selectedIds.contains(task.id))
         .toList(growable: false);
@@ -476,11 +477,19 @@ class _WarehouseInboundExpectationsViewState
       setState(() {
         _result = result;
         _loading = false;
-        final currentIds = result.items
+      });
+      // Reconcile after the table has combined any appended pages.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!current()) return;
+        final visibleIds = _tableRows.items
             .where(_canBatchOperate)
             .map((task) => task.id)
             .toSet();
-        _selectedIds.removeWhere((id) => !currentIds.contains(id));
+        if (_selectedIds.any((id) => !visibleIds.contains(id))) {
+          setState(
+            () => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),
+          );
+        }
       });
     } on ApiException catch (error) {
       if (!current()) return;
@@ -696,6 +705,14 @@ class _WarehouseInboundExpectationsViewState
         ],
       ),
       body: MasterDataTableView<InboundExpectation>(
+        rowsController: _tableRows,
+        paginationRevision: _result,
+        paginationScope: (
+          _keyword,
+          _orderType,
+          _supplierIdFilter,
+          WarehouseListScope.of(context),
+        ),
         tableKey:
             'features.warehouse.widgets.warehouse_inbound_expectations_view.WarehouseInboundExpectationsViewState._buildList.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。

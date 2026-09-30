@@ -527,6 +527,11 @@ class _WarehouseDrawTaskSegmentState
             : '没有匹配的待领任务',
         currentPage: _result?.page ?? 1,
         totalPages: _result?.totalPages ?? 1,
+        paginationScope: (
+          widget.keyword,
+          _status,
+          WarehouseListScope.of(context),
+        ),
         onPageChange: _load,
       ),
     );

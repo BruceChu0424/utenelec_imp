@@ -75,6 +75,7 @@ class _FinanceReportTablePageState
 
   ReportData? _data;
   bool _loading = false;
+  int _loadGeneration = 0;
   String? _error;
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
@@ -204,6 +205,9 @@ class _FinanceReportTablePageState
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final requestedPage = _page;
     setState(() {
       _loading = true;
       _error = null;
@@ -216,19 +220,19 @@ class _FinanceReportTablePageState
         'dateTo': _fmt(_to),
         if (_clientId != null) 'clientId': _clientId,
         if (_keyword.isNotEmpty) 'keyword': _keyword,
-        'page': _page,
+        'page': requestedPage,
         'size': _size,
         for (final e in _filters.entries) 'f.${e.key}': e.value,
         ...sortQueryParams(_sortKey, _sortAsc),
       };
       final json = await api.get(_variant.endpoint, query: query);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _data = parseReportResponse(json, _page);
+        _data = parseReportResponse(json, requestedPage);
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       context.appError('加载报表失败：$e');
       setState(() {
         _loading = false;
@@ -603,6 +607,14 @@ class _FinanceReportTablePageState
       summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: (
+        widget.cardId,
+        _variantIndex,
+        _from,
+        _to,
+        _keyword,
+        _clientId,
+      ),
       onPageChange: (p) {
         _page = p;
         _load();

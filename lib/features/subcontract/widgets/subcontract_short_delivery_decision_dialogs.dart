@@ -23,12 +23,12 @@ showSubcontractShortDeliveryWaitDialog(
   BuildContext context, {
   required SubcontractShortDeliveryCase row,
 }) {
-  final today = DateTime.now();
+  final today = ChinaDateTime.today();
   DateTime? expected = row.expectedCompleteBy == null
       ? null
       : ChinaDateTime.tryParse(row.expectedCompleteBy);
-  if (expected != null &&
-      expected.isBefore(DateTime(today.year, today.month, today.day))) {
+  if (expected != null) expected = ChinaDateTime.dateOnly(expected);
+  if (expected != null && expected.isBefore(today)) {
     expected = null;
   }
   final note = TextEditingController(text: row.decisionNote ?? '');
@@ -56,8 +56,9 @@ showSubcontractShortDeliveryWaitDialog(
                   label: '预计到齐日期',
                   value: expected,
                   required: true,
-                  firstDate: DateTime(today.year, today.month, today.day),
-                  onChanged: (value) => setState(() => expected = value),
+                  firstDate: today,
+                  onChanged: (value) =>
+                      setState(() => expected = ChinaDateTime.dateOnly(value)),
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 UtenInput(

@@ -100,7 +100,8 @@ class _FormDraftCategoryTableState<T>
   void didUpdateWidget(covariant FormDraftCategoryTable<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.scope != oldWidget.scope ||
-        widget.table.currentPage != oldWidget.table.currentPage) {
+        widget.search != oldWidget.search ||
+        widget.table.paginationScope != oldWidget.table.paginationScope) {
       _localSelected.clear();
     }
   }
@@ -169,37 +170,40 @@ class _FormDraftCategoryTableState<T>
   @override
   Widget build(BuildContext context) {
     final table = widget.table;
+    final paginated = table.onPageChange != null;
     final formalItems = table.error == null ? table.items : <T>[];
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
-    if (drafts.isEmpty) return table;
+    // Keep the wrapper's runtime type stable while a paginated table appends.
+    // Local drafts are outside server pagination and remain actionable above
+    // the complete loaded sequence, including after reaching page two.
+    if (drafts.isEmpty && table.onPageChange == null) return table;
     final recovering = <String, FormDraft>{
       for (final draft in drafts)
         for (final id in formDraftConfirmedIds(draft)) id: draft,
     };
-    final local = table.currentPage == 1
-        ? drafts
-              .where(
-                (draft) =>
-                    (formDraftConfirmedIds(draft).isEmpty ||
-                        ((widget.includeConfirmedWithoutRecord ||
-                                table.error != null) &&
-                            !formalItems.any(
-                              (item) => formDraftConfirmedIds(
-                                draft,
-                              ).contains(_id(item)),
-                            ))) &&
-                    _matches(draft),
-              )
-              .toList()
-        : <FormDraft>[];
+    final local = (paginated || table.currentPage == 1 ? drafts : <FormDraft>[])
+        .where(
+          (draft) =>
+              (formDraftConfirmedIds(draft).isEmpty ||
+                  ((widget.includeConfirmedWithoutRecord ||
+                          table.error != null) &&
+                      !formalItems.any(
+                        (item) =>
+                            formDraftConfirmedIds(draft).contains(_id(item)),
+                      ))) &&
+              _matches(draft),
+        )
+        .toList();
     final localIds = {for (final draft in local) '$_prefix${draft.id}'};
     _localSelected.removeWhere((id) => !localIds.contains(id));
     final rows = <FormDraftCategoryRow<T>>[
-      for (final draft in local) FormDraftCategoryRow(draft: draft),
+      if (!paginated)
+        for (final draft in local) FormDraftCategoryRow(draft: draft),
       for (final item in formalItems)
         FormDraftCategoryRow(record: item, draft: recovering[_id(item)]),
     ];
-    if (local.isEmpty &&
+    if (table.onPageChange == null &&
+        local.isEmpty &&
         !table.items.any((item) => recovering.containsKey(_id(item)))) {
       return table;
     }
@@ -217,6 +221,21 @@ class _FormDraftCategoryTableState<T>
         );
 
     return MasterDataTableView<FormDraftCategoryRow<T>>(
+      rowVisible: table.rowVisible == null
+          ? null
+          : (row) => row.isLocal || table.rowVisible!(row.record as T),
+      paginationScope: (widget.scope, widget.search, table.paginationScope),
+      paginationRevision: table.paginationRevision,
+      rowsController: table.rowsController?.adapt<FormDraftCategoryRow<T>>(
+        (rows) =>
+            rows.where((row) => !row.isLocal).map((row) => row.record as T),
+      ),
+      unpagedItems: [
+        if (paginated)
+          for (final draft in local) FormDraftCategoryRow<T>(draft: draft),
+        for (final item in table.unpagedItems)
+          FormDraftCategoryRow<T>(record: item, draft: recovering[_id(item)]),
+      ],
       tableKey: table.tableKey,
       platformBinding: binding == null
           ? null
@@ -489,10 +508,10 @@ class _FormDraftCategoryTableState<T>
       sortColumn: table.sortColumn,
       sortAscending: table.sortAscending,
       onSortChange: table.onSortChange,
-      isLoading: table.isLoading && rows.isEmpty,
+      isLoading: table.isLoading && rows.isEmpty && local.isEmpty,
       loadingMore: table.loadingMore,
       onLoadMore: table.onLoadMore,
-      error: local.isNotEmpty ? null : table.error,
+      error: paginated || local.isEmpty ? table.error : null,
       onRetry: table.onRetry,
       emptyMessage: table.emptyMessage,
       currentPage: table.currentPage,

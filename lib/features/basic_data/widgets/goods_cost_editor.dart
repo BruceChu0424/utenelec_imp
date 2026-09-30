@@ -554,14 +554,14 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     ),
   );
   Widget _header() => LayoutBuilder(
-    builder: (context, box) {
-      final fieldWidth = box.maxWidth < 500 ? box.maxWidth : 220.0;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+    builder: (context, box) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+          child: Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s4,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
@@ -578,39 +578,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              if (_editable)
-                UtenButton(
-                  key: const Key('cost-adjust-quantity'),
-                  type: UtenButtonType.tonal,
-                  onPressed: () {
-                    setState(() => _showSettings = true);
-                    unawaited(_loadSettings());
-                  },
-                  child: Text(_l.costAdjustEstimateQuantity),
-                ),
-              if (_showCustomer || _input['clientId'] != null)
-                SizedBox(width: fieldWidth, child: _customerField())
-              else
-                UtenButton(
-                  key: const Key('cost-customer-toggle'),
-                  type: UtenButtonType.tonal,
-                  onPressed: _editable
-                      ? () => setState(() => _showCustomer = true)
-                      : null,
-                  child: Text(_l.costOptionalCustomer),
-                ),
-              UtenButton(
-                key: const Key('cost-settings-toggle'),
-                type: UtenButtonType.tonal,
-                onPressed: _toggleSettings,
-                child: Text(_l.costCalculationSettings),
-              ),
               if (_sheet != null)
-                Text(
-                  '${_sheet!.number} · ${_status(_sheet!.status)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                _oneLine('${_sheet!.number} · ${_status(_sheet!.status)}'),
+              if (_historical != null) _oneLine(_l.costSnapshotReadOnly),
               if (_historical == null &&
                   (_sheet == null || _sheet!.status == 'DRAFT'))
                 ConstrainedBox(
@@ -625,16 +595,34 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                     }),
                   ),
                 ),
+              if (_pendingIssues.isNotEmpty || _stale)
+                Text(
+                  _stale
+                      ? (_calculating || (_debounce?.isActive ?? false)
+                            ? _l.costAutoCalculating
+                            : _l.costResultNotUpdated)
+                      : _l.costNeedsReviewCount(_pendingIssues.length),
+                  key: const Key('cost-pending-summary'),
+                ),
+              if (_pendingIssues.isNotEmpty)
+                TextButton(
+                  onPressed: _showCalculationIssues,
+                  child: Text(_l.costViewEvidence),
+                ),
             ],
           ),
-          if (_showSettings) ...[
-            const SizedBox(height: 8),
-            if (_settingsLoading) const LinearProgressIndicator(),
-            _advancedHeader(),
-          ],
+        ),
+        if (_showCustomer)
+          SizedBox(
+            width: box.maxWidth < 500 ? box.maxWidth : 245,
+            child: _customerField(),
+          ),
+        if (_showSettings) ...[
+          if (_settingsLoading) const LinearProgressIndicator(),
+          _advancedHeader(),
         ],
-      );
-    },
+      ],
+    ),
   );
   Widget _advancedHeader() => UtenCard(
     child: LayoutBuilder(
@@ -784,6 +772,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       all,
       depthOf: (r) => (r['depth'] as num?)?.toInt() ?? 0,
     );
+    // Fullscreen can briefly retain a row widget while a new calculation replaces
+    // its Map object. The BOM occurrence path is the identity across snapshots.
+    final treeByPath = {for (final row in all) row['path']: projection[row]!};
     final visible = <Map<String, dynamic>>[];
     for (var i = 0; i < all.length; i++) {
       final row = all[i];
@@ -806,7 +797,12 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       label: label,
       width: width,
       type: 'number',
-      info: key == 'unitPrice' ? _l.costPriceNormalizedHelp : null,
+      info: switch (key) {
+        'unitPrice' => _l.costPriceNormalizedHelp,
+        'amount' => _l.costEstimateAmountHelp,
+        'unitContribution' => _l.costUnitContributionHelp,
+        _ => null,
+      },
       defaultVisible: !hidden,
       value: (r) => costText(r[key]),
       exactValueOf: (r) =>
@@ -823,16 +819,24 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       cellBuilder: (_, r) =>
           editable &&
               _editable &&
-              (_adjustingPaths.contains(r['path']) ||
-                  (key == 'unitPrice' && r['unitPrice'] == null)) &&
+              (key == 'unitPrice' || _adjustingPaths.contains(r['path'])) &&
               (key != 'unitPrice' ||
                   (r['included'] == true && r['route'] != 'CUSTOMER_SUPPLIED'))
           ? _lineEditor(r, key)
-          : _oneLine(
-              _stale && {'amount', 'unitContribution', 'batchQty'}.contains(key)
-                  ? '…'
-                  : r[key],
-              align: TextAlign.right,
+          : Tooltip(
+              message:
+                  key == 'unitPrice' &&
+                      (r['included'] != true ||
+                          r['route'] == 'CUSTOMER_SUPPLIED')
+                  ? _l.costMaterialPriceNotApplied
+                  : '',
+              child: _oneLine(
+                _stale &&
+                        {'amount', 'unitContribution', 'batchQty'}.contains(key)
+                    ? '…'
+                    : r[key],
+                align: TextAlign.right,
+              ),
             ),
     );
     final columns = <MasterColumnDef<Map<String, dynamic>>>[
@@ -844,7 +848,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         fillsCellHeight: true,
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) {
-          final tree = projection[row]!;
+          final tree = treeByPath[row['path']];
+          if (tree == null) return _oneLine(row['goodsName']);
           return UtenTreeTableCell(
             depth: tree.depth,
             sequence: '',
@@ -924,8 +929,13 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         ),
       ),
       number('batchQty', _l.costPricingQty, hidden: true),
-      number('unitPrice', _l.costPrice, editable: true, width: 115),
-      number('unitContribution', _l.costUnitContributionShort),
+      number('unitPrice', _l.costPrice, editable: true, width: 160),
+      number(
+        'unitContribution',
+        (costText(_calculation?.json['unitName']) ?? '').isEmpty
+            ? _l.costUnitContributionShort
+            : _l.costPerUnitLabel(costText(_calculation?.json['unitName'])!),
+      ),
       number('amount', _l.costLineAmountShort),
       MasterColumnDef(
         key: 'priceSource',
@@ -996,7 +1006,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       MasterColumnDef(
         key: 'adjust',
         label: _l.costAdjustment,
-        width: 110,
+        width: 130,
         value: (_) => _l.costAdjustment,
         cellBuilder: (_, row) => !_editable
             ? const SizedBox.shrink()
@@ -1007,11 +1017,14 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                   final path = row['path'].toString();
                   if (!_adjustingPaths.add(path)) _adjustingPaths.remove(path);
                 }),
-                child: Text(
-                  _adjustingPaths.contains(row['path'])
-                      ? _l.commonConfirm
-                      : _l.costAdjustment,
-                  maxLines: 1,
+                child: Flexible(
+                  child: Text(
+                    _adjustingPaths.contains(row['path'])
+                        ? _l.commonConfirm
+                        : _l.costAdjustment,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
       ),
@@ -1028,8 +1041,30 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       ),
     ];
     return MasterDataTableView<Map<String, dynamic>>(
-      key: ValueKey('cost-material-${_sheet?.id}-${_historical?.id}'),
+      key: ValueKey('cost-material-${widget.detail.id}'),
       tableKey: _GoodsCostTabState._tableKey,
+      primary: true,
+      summaryBarInline: true,
+      onFullscreenChanged: (value) {
+        _materialFullscreen = value;
+        if (!value) {
+          _fullscreenClosed?.complete();
+          _fullscreenClosed = null;
+        }
+      },
+      batchActionsBuilder: _canCostEdit ? (_, _) => _saveActions() : null,
+      rowMenuBuilder: (row) => [
+        UtenMenuItem(
+          label: _l.costViewEvidence,
+          onTap: () => _showEvidence(row),
+        ),
+        if (_editable)
+          UtenMenuItem(
+            label: _l.costAdjustment,
+            onTap: () =>
+                setState(() => _adjustingPaths.add(row['path'].toString())),
+          ),
+      ],
       platformBinding: PlatformTableBinding<Map<String, dynamic>>(
         tableKey: _GoodsCostTabState._tableKey,
         scope: 'view_goods_cost',
@@ -1068,30 +1103,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       }),
       enableTextSelection: !_editable,
       emptyMessage: _l.costEmpty,
-      toolbarLeadingActions: [
-        if (_editable)
-          UtenButton(
-            key: const Key('cost-add-column'),
-            onPressed: _addPriceColumn,
-            child: Text(_l.costAddPriceColumn),
-          ),
-      ],
-      summaryBar: UtenTotalsSummaryBar(
-        entries: [
-          UtenTotalEntry(
-            _calculation?.complete == true
-                ? _l.costTotalLabel
-                : _l.costKnownPartial,
-            '${costText(_calculation?.json['currencyName']) ?? ''} ${_currentMoney(_calculation?.totals['knownTotal'])}',
-          ),
-          UtenTotalEntry(
-            _l.costStatus,
-            _stale
-                ? _l.costCalculationStale
-                : _status(_calculation?.totals['valueState']),
-          ),
-        ],
-      ),
+      toolbarLeadingActions: _tableActions(),
+      summaryBar: _costSummary(),
     );
   }
 
@@ -1100,6 +1113,11 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     final override = costMaps(
       _input['lineOverrides'],
     ).where((r) => r['path'] == path).firstOrNull;
+    final automaticPrice =
+        field == 'unitPrice' &&
+        row['unitPrice'] != null &&
+        override?['unitPrice'] == null &&
+        costMap(row['priceEvidence'])['sourceType'] != 'MANUAL';
     return TextFormField(
       key: ValueKey('cost-$field-$path'),
       textAlign: TextAlign.right,
@@ -1115,11 +1133,25 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       ),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       errorBuilder: utenTextFieldErrorBuilder,
-      decoration: UtenInputDecoration(
-        InputDecoration(
-          isDense: true,
-          hintText: field == 'unitPrice' ? _l.costMissingPriceInput : null,
+      decoration: applyAutofillHint(
+        UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText: field == 'unitPrice' ? _l.costMissingPriceInput : null,
+          ),
+          info: field != 'unitPrice'
+              ? null
+              : automaticPrice
+              ? _l.costAutomaticPriceHelp(
+                  costText(costMap(row['priceEvidence'])['sourceNumber']) ??
+                      _status(costMap(row['priceEvidence'])['sourceType']),
+                )
+              : override?['unitPrice'] != null
+              ? _l.costManual
+              : null,
         ),
+        Theme.of(context),
+        autofilled: automaticPrice,
       ),
       onChanged: (text) => _change(
         () => _input = updateCostOverride(_currentInput(), path, {
@@ -1552,6 +1584,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         _stale ? null : costText(_feeResultsByKey[r.json['key']]?['amount']);
     return UtenEditableGrid<GoodsCostFeeRow>(
       tableKey: 'master.goods.cost.fees',
+      stickyHeaderPinned: _feePinned,
+      toolbarActions: _tableActions(),
       platformBinding: PlatformTableBinding<GoodsCostFeeRow>(
         tableKey: 'master.goods.cost.fees',
         scope: 'view_goods_cost',
@@ -1693,14 +1727,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           cellBuilder: (_, r) => field(r, 'reason'),
         ),
       ],
-      footer: UtenTotalsSummaryBar(
-        entries: [
-          UtenTotalEntry(
-            _l.costKnownTotal,
-            _currentMoney(_calculation?.totals['knownTotal']),
-          ),
-        ],
-      ),
+      footer: _costSummary(),
     );
   }
 
@@ -1755,6 +1782,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             TextButton(
               onPressed: () {
                 _change(() {
+                  _input = _currentInput();
                   _input['lineOverrides'] = costMaps(
                     _input['lineOverrides'],
                   ).where((r) => r['path'] != row['path']).toList();
@@ -1880,6 +1908,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
   }
 
   Future<void> _showSnapshots() async {
+    await _leaveMaterialFullscreen();
+    if (!mounted) return;
     if (_dirty) {
       context.appError(_l.costLeavePrompt);
       return;

@@ -1,4 +1,5 @@
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -222,6 +223,37 @@ Future<void> _selectMaterial(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'same-day history picker range remains queryable across UTC and device dates',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+      await _selectMaterial(tester);
+      await tester.tap(find.byKey(const Key('where-used-custom-history')));
+      await tester.pumpAndSettle();
+      // Invoke the real control callback: this regression targets date-carrier
+      // boundaries, independently of the existing collapsible-header layout.
+      tester
+          .widget<OutlinedButton>(find.byKey(const Key('where-used-date-from')))
+          .onPressed!();
+      await tester.pumpAndSettle();
+      final today = ChinaDateTime.today();
+      tester
+          .widget<CalendarDatePicker>(find.byType(CalendarDatePicker))
+          .onDateChanged(DateTime(today.year, today.month, today.day));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      final before = api.reportCalls;
+      tester
+          .widget<FilledButton>(find.byKey(const Key('where-used-search')))
+          .onPressed!();
+      await tester.pumpAndSettle();
+      expect(api.reportCalls, before + 1);
+      expect(api.lastQuery?['dateFrom'], ChinaDateTime.formatDate(today));
+      expect(api.lastQuery?['dateTo'], ChinaDateTime.formatDate(today));
+    },
+  );
   testWidgets(
     'result row opens source detail, BOM, and stock link without losing state',
     (tester) async {

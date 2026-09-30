@@ -649,6 +649,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                     emptyMessage: '暂无仓库',
                     currentPage: _page?.page ?? 1,
                     totalPages: _page?.totalPages ?? 1,
+                    paginationScope: _keyword,
                     onPageChange: (p) => _loadWarehouses(p),
                   ),
                 ),

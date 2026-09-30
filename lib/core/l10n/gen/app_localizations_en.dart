@@ -377,6 +377,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navSettings => 'Settings';
 
   @override
+  String get navCollapse => 'Collapse navigation';
+
+  @override
+  String get navExpand => 'Expand navigation';
+
+  @override
   String get settingsTitle => 'Settings';
 
   @override
@@ -7210,7 +7216,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costUsageSource => 'Usage source';
 
   @override
-  String get costPricingQty => 'Batch pricing quantity';
+  String get costPricingQty => 'Priced quantity';
 
   @override
   String get costPrice => 'Unit price';
@@ -7222,7 +7228,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costPriceSource => 'Price source';
 
   @override
-  String get costLineAmount => 'Batch amount';
+  String get costLineAmount => 'Estimated amount';
 
   @override
   String get costUnitContribution => 'Cost per product';
@@ -7768,7 +7774,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costUnitContributionShort => 'Unit cost';
 
   @override
-  String get costLineAmountShort => 'Batch cost';
+  String get costLineAmountShort => 'Estimated amount';
 
   @override
   String get costPendingItems => 'Items to reconcile';
@@ -7894,7 +7900,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costCalculationSettings => 'Calculation settings';
 
   @override
-  String get costAdjustment => 'Adjust';
+  String get costAdjustment => 'Adjust usage';
 
   @override
   String get costFinishAdjustment => 'Finish adjustment';
@@ -8077,4 +8083,26 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get costProductionProgressPending =>
       'Reports and workshop progress are not reconciled; quantity is withheld';
+
+  @override
+  String costPerUnitLabel(String unit) {
+    return 'Cost per $unit';
+  }
+
+  @override
+  String costAutomaticPriceHelp(String source) {
+    return 'Filled from $source. Edit directly to use a manual price in this sheet.';
+  }
+
+  @override
+  String get costEstimateAmountHelp =>
+      'Priced material quantity × adopted unit price, plus this row’s fees. Estimating 1,000 finished units using two components each prices 2,000 components. This is an estimate, not reported production or booked cost.';
+
+  @override
+  String get costUnitContributionHelp =>
+      'This row’s material and fees per finished-product unit: estimated amount divided by estimate quantity. The finished-product unit belongs to this cost version.';
+
+  @override
+  String get costMaterialPriceNotApplied =>
+      'Summary assemblies and customer-supplied material do not carry a separate material price; see row evidence.';
 }

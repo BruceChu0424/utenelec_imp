@@ -75,7 +75,7 @@ void main() {
     // 下推后端；桶来自 facets?queue=mine 的 claimNos 键。
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();
-    final api = _ExpenseApi();
+    final api = _ExpenseApi(totalPages: 3);
 
     await tester.pumpWidget(
       ProviderScope(
@@ -117,12 +117,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['sort'], 'claimNo');
     expect(api.lastQuery?['order'], 'asc');
+
+    await tester
+        .widget<MasterDataTableView<ExpenseClaim>>(
+          find.byKey(const Key('expense-list-table')),
+        )
+        .onPageChange!(2);
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['page'], 2);
+    tester
+        .widget<MasterDataTableView<ExpenseClaim>>(
+          find.byKey(const Key('expense-list-table')),
+        )
+        .onSortChange!('claimNo', false);
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['order'], 'desc');
+    expect(
+      api.lastQuery?['page'],
+      1,
+      reason: 'Changing only the sort direction resets the accumulated range',
+    );
     expect(tester.takeException(), isNull);
   });
 }
 
 class _ExpenseApi extends ApiClient {
-  _ExpenseApi() : super(Dio());
+  _ExpenseApi({this.totalPages = 1}) : super(Dio());
+
+  final int totalPages;
 
   Map<String, dynamic>? lastQuery;
 
@@ -172,10 +194,10 @@ class _ExpenseApi extends ApiClient {
             ],
           },
         ],
-        'page': 1,
+        'page': query?['page'] ?? 1,
         'size': 24,
-        'total': 1,
-        'totalPages': 1,
+        'total': totalPages,
+        'totalPages': totalPages,
       };
     }
     return const <String, dynamic>{'items': <Map<String, dynamic>>[]};

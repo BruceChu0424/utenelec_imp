@@ -436,6 +436,7 @@ class _FinanceArApOverviewPageState
       return;
     }
     final requestGeneration = ++_reportRequestGeneration;
+    final requestedPage = _page;
     if (_noUnifiedSearchMatches) {
       setState(() {
         _loading = false;
@@ -456,7 +457,7 @@ class _FinanceArApOverviewPageState
         if (_keyword.isNotEmpty) 'keyword': _keyword,
         if (_categoryType != null) 'categoryType': _categoryType,
         if (_categoryId != null) 'categoryId': _categoryId,
-        'page': _page,
+        'page': requestedPage,
         'size': _size,
         ...sortQueryParams(_sortKey, _sortAsc),
       };
@@ -466,7 +467,7 @@ class _FinanceArApOverviewPageState
       );
       if (!mounted || requestGeneration != _reportRequestGeneration) return;
       setState(() {
-        _data = parseReportResponse(json, _page);
+        _data = parseReportResponse(json, requestedPage);
         _loading = false;
         _reportError = null;
       });
@@ -863,6 +864,14 @@ class _FinanceArApOverviewPageState
       emptyMessage: '暂无应收应付数据',
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: (
+        _categoryType,
+        _categoryId,
+        _from,
+        _to,
+        _displayMode,
+        _keyword,
+      ),
       onPageChange: (p) {
         _page = p;
         _load();

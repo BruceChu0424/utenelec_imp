@@ -1,5 +1,7 @@
 // ADR-098 委外回厂短交判定页：待判定段渲染、两种判定弹窗与请求体、通知深链打开详情。
 import 'package:dio/dio.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -207,6 +209,39 @@ Future<_FakeRepo> _pump(
 }
 
 void main() {
+  testWidgets('分批到货同一业务日保留原预计日期并标准化选择器值', (tester) async {
+    final today = ChinaDateTime.today();
+    final date = ChinaDateTime.formatDate(today);
+    final repo = await _pump(
+      tester,
+      rows: [
+        _case(
+          id: 'same-day',
+          severity: 'BELOW_FLOOR',
+          expectedCompleteBy: date,
+        ),
+      ],
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('short-delivery-wait-same-day')),
+    );
+    await tester.pumpAndSettle();
+    var field = tester.widget<UtenDateField>(
+      find.byKey(const Key('short-delivery-expected-date')),
+    );
+    expect(field.firstDate, today);
+    expect(field.value, today);
+    field.onChanged(DateTime(today.year, today.month, today.day));
+    await tester.pumpAndSettle();
+    field = tester.widget<UtenDateField>(
+      find.byKey(const Key('short-delivery-expected-date')),
+    );
+    expect(field.value!.isUtc, isTrue);
+    await tester.tap(find.byKey(const Key('short-delivery-wait-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.decisions.single['expectedCompleteBy'], date);
+    expect(repo.decisions.single['decision'], 'WAIT_MORE');
+  });
   testWidgets('待判定段：严重短交带标签与操作按钮，接受损耗必须填说明后才提交', (tester) async {
     final repo = await _pump(
       tester,

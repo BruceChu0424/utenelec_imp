@@ -184,6 +184,8 @@
   "navNotice": "通知",
   "navProfile": "我的",
   "navSettings": "设置",
+  "navCollapse": "收起导航栏",
+  "navExpand": "展开导航栏",
   "settingsTitle": "设置",
   "settingsSectionAppearance": "外观",
   "settingsThemeMode": "主题模式",
@@ -3756,11 +3758,11 @@
   "costUnit": "基本单位",
   "costAdoptedQty": "本次采用量",
   "costUsageSource": "采用来源",
-  "costPricingQty": "本批计价数量",
+  "costPricingQty": "计价用量",
   "costPrice": "采用单价",
   "costPriceUnitRate": "计价单位换算率",
   "costPriceSource": "价格来源",
-  "costLineAmount": "本批金额",
+  "costLineAmount": "测算金额",
   "costUnitContribution": "每成品成本贡献",
   "costStatus": "状态",
   "costIncluded": "参与合计",
@@ -3932,8 +3934,8 @@
   "costExchangeRateRequired": "请输入明确且大于0的十进制汇率",
   "costPriceNormalizedHelp": "单价按本成本单币种和物料基本单位显示。原始采购单价、计价单位换算及税口径在来源详情查看。",
   "costCurrencyConverted": "成本金额已按目标币种转换，尚未保存",
-  "costUnitContributionShort": "单件成本",
-  "costLineAmountShort": "本批成本",
+  "costUnitContributionShort": "单位成本",
+  "costLineAmountShort": "测算金额",
   "costPendingItems": "待核项目",
   "costViewEvidence": "查看依据",
   "costViewSource": "查看来源",
@@ -3973,7 +3975,7 @@
   "costGapCode": "核对原因编码",
   "costDailyTable": "成本表",
   "costCalculationSettings": "计算设置",
-  "costAdjustment": "调整",
+  "costAdjustment": "调整用量",
   "costFinishAdjustment": "完成调整",
   "costMoreActions": "更多操作",
   "costRefreshSources": "刷新来源价格与用量",
@@ -4064,5 +4066,24 @@
   "costProductionSourceUnit": "保留原报工计量单位及换算证据",
   "costProductionSourceDefects": "另报不良独立列示，不重复扣减有效完成量",
   "costProductionSourceOther": "由生产报工及其关联记录提供",
-  "costProductionProgressPending": "报工与车间进度尚未核对一致，暂不显示产量"
+  "costProductionProgressPending": "报工与车间进度尚未核对一致，暂不显示产量",
+  "costPerUnitLabel": "每{unit}成本",
+  "costAutomaticPriceHelp": "自动取自{source}，可以直接修改；修改后本单采用手工单价。",
+  "costEstimateAmountHelp": "本物料的计价用量×采用单价，加上本行费用。例如按1000件测算、每件用料2个，则按2000个计价。这是成本测算金额，不是生产实产或实际过账金额。",
+  "costUnitContributionHelp": "本行材料及费用对每一个成品计量单位的成本贡献；测算金额除以测算数量。成品单位由本成本版本确定。",
+  "costMaterialPriceNotApplied": "汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。",
+  "@costPerUnitLabel": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "@costAutomaticPriceHelp": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  }
 }

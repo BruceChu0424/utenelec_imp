@@ -108,6 +108,8 @@ class _WarehouseSalesOutboundWorkbenchState
   String? _error;
   String _keyword = '';
   bool _searchPending = false;
+  final _tableRows =
+      MasterDataTableRowsController<WarehouseSalesOutboundSummary>();
   final Set<String> _selectedIds = {};
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
@@ -161,7 +163,6 @@ class _WarehouseSalesOutboundWorkbenchState
     setState(() {
       _loading = true;
       _error = null;
-      _selectedIds.clear();
     });
     try {
       final result = await ref
@@ -187,6 +188,18 @@ class _WarehouseSalesOutboundWorkbenchState
       setState(() {
         _result = result;
         _loading = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || version != _requestVersion) return;
+        final visibleIds = _tableRows.items
+            .where(_canSelect)
+            .map((item) => item.id)
+            .toSet();
+        if (_selectedIds.any((id) => !visibleIds.contains(id))) {
+          setState(
+            () => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),
+          );
+        }
       });
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
@@ -310,7 +323,7 @@ class _WarehouseSalesOutboundWorkbenchState
   Future<void> _openBatch(Set<String> ids) async {
     final action = _batchAction;
     if (_loading || action == null) return;
-    final targets = (_result?.items ?? const <WarehouseSalesOutboundSummary>[])
+    final targets = _tableRows.items
         .where((item) => ids.contains(item.id) && _canSelect(item))
         .toList();
     if (targets.isEmpty || targets.length != ids.length) return;
@@ -414,6 +427,14 @@ class _WarehouseSalesOutboundWorkbenchState
           : _seg!.history && _historyTime.isNone
           ? const UtenHistoryTimePlaceholder()
           : MasterDataTableView<WarehouseSalesOutboundSummary>(
+              rowsController: _tableRows,
+              paginationRevision: _result,
+              paginationScope: (
+                _keyword,
+                _seg,
+                _historyTime,
+                WarehouseListScope.of(context),
+              ),
               tableKey:
                   'features.warehouse.widgets.warehouse_sales_outbound_workbench.WarehouseSalesOutboundWorkbenchState.build.1',
               // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。

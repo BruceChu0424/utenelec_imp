@@ -10,13 +10,18 @@
 
 | 平台 | 触发 |
 |---|---|
-| 桌面（Windows/macOS/Linux） | 鼠标右击（`onSecondaryTapDown`） |
+| 桌面（Windows/macOS/Linux） | 鼠标右击（原始 `Listener.onPointerDown`） |
 | Web | 同样吃鼠标右击；**必须**配合 `main.dart` 里的 `BrowserContextMenu.disableContextMenu()` 屏蔽浏览器自带右键菜单（kIsWeb 守卫，已在入口处理好），否则两个菜单叠着出 |
 | 手机/触屏 | 长按（`onLongPressStart`）出同一个菜单；菜单里应放「查看详情」等条目作为打开路径的兜底 |
 
 菜单本体是挂在 **root Overlay** 上的自绘小框（不走 `PopupMenu`，便于精确锚定指针位置 +
 控制宽度/分隔线/置灰样式）：宽 216、条目高 40、限高 420 可竖滚；点外部、右键空白或选中
 条目后关闭；靠近屏幕右/下边缘自动向左/向上翻转，保证不出屏。
+
+`UtenContextMenuPolicy` 在 `MaterialApp.builder` 统一拦截次级按键的默认选择手势：
+右键只显示业务菜单，没有配置业务菜单的区域不弹「全选/复制」工具条。
+左键文字拖选、键盘复制和触屏长按仍保留。嵌套菜单按原始事件仲裁，行/表头优先于背景菜单，
+同一次右键不会叠加两份业务菜单。
 
 ---
 
@@ -64,6 +69,7 @@ UtenContextMenuRegion(
 MasterDataTableView<GoodsListItem>(
   // ...
   rowMenuBuilder: _goodsMenuItems,  // List<UtenContextMenuEntry> Function(T item)
+  backgroundMenuBuilder: _pasteMenuItems, // 不依赖行，空列表/全屏也可粘贴
 )
 ```
 
@@ -76,6 +82,8 @@ MasterDataTableView<GoodsListItem>(
 - 条目在每次手势时重新构建，可按行数据（状态=使用/禁用）、权限（`Perm.goodsEdit` 等）、
   剪贴板（`goodsClipboardProvider`）实时决定 label 与 `enabled`。
 - 触屏无右键 → 长按出菜单；菜单首项通常是「查看详情」，弥补触屏双击打开不直观的短板。
+- `backgroundMenuBuilder` 用于空白区域和空列表的操作，加载/错误状态不开放；
+  使用不透明命中区域覆盖整块空白，背景操作不改变行选择集。
 
 ---
 
@@ -111,6 +119,8 @@ MasterDataTableView<GoodsListItem>(
 - 条目：复制选中 / 粘贴 / 批量粘贴 / 在上方插入空行 / 删除选中，全部复用操作条同一套
   `UtenEditableGridController` 逻辑与确认弹窗；粘贴统一追加表尾。
 - 复制粘贴组仅在页面提供 `cloneRow`（行深拷贝）时显示；缓冲为空时粘贴置灰不隐藏。
+- 可编辑且启用交互时，空表、筛选为空和表格空白区域也提供「粘贴 / 批量粘贴」；
+  与行菜单共用粘贴逻辑。只读或暂停交互的表格不开放这个入口。
 - **接入顺序坑**：组件 `_open` 先调 `entriesBuilder` 再回调 `onMenuOpening`——归位选中
   必须写在 `entriesBuilder` 开头（grid 即如此），否则「复制选中 (n)」计数是归位前的旧值。
 - 各行模型 `clone()` 的取舍契约：拷用户录入 + 主档透传；**不拷**上游明细 id/来源谱系/

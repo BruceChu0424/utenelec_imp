@@ -847,6 +847,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         ),
         currentPage: _page?.page ?? 1,
         totalPages: _page?.totalPages ?? 1,
+        paginationScope: (
+          _categoryId,
+          _warehouseId,
+          _includeLineSide,
+          _keyword,
+          ref.read(instantInventoryPrefsProvider),
+        ),
         onPageChange: (p) => _load(p),
       ),
     );

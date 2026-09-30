@@ -858,6 +858,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       ),
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
+      paginationScope: (_scope, _keyword, _abc, _onlyDead, _agedOver180),
       onPageChange: _loadHealth,
     );
   }
@@ -911,6 +912,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       emptyMessage: '今天没有建议盘点的货品',
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
+      paginationScope: _scope,
       onPageChange: _loadCycle,
     );
   }
@@ -949,6 +951,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       emptyMessage: '近$_alertDays天没有称重异常',
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
+      paginationScope: _alertDays,
       onPageChange: _loadAlerts,
     );
   }
@@ -1029,6 +1032,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
       },
       currentPage: rows?.page ?? 1,
       totalPages: rows?.totalPages ?? 1,
+      paginationScope: (_learningFilter, _keyword),
       onPageChange: _loadLearning,
     );
   }

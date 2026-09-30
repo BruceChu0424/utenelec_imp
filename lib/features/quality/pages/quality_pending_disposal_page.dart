@@ -654,6 +654,7 @@ class _QualityPendingDisposalPageState
                   emptyMessage: _emptyMessage,
                   currentPage: _page,
                   totalPages: _totalPages,
+                  paginationScope: (_keyword, _typeFilter, _statusFilter),
                   onPageChange: (next) => setState(() => _page = next),
                 ),
               ),

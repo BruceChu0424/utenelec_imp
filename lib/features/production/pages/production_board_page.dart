@@ -401,9 +401,11 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   /// 勾选状态：orderItemId → 本次排产量（跨页保留，勾选时默认=缺口，可改）。
   final Map<String, double> _selected = {};
+  final _tableRows = MasterDataTableRowsController<SchedulePendingRow>();
   final Map<String, SchedulePendingRow> _selectedRows = {};
 
   bool _hasLoaded = false;
+  int _requestVersion = 0;
 
   /// 表头值筛选（当前仅 status：紧急/正常）。
   Map<String, String?> _filters = {};
@@ -486,6 +488,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   }
 
   Future<void> _load() async {
+    final requestVersion = ++_requestVersion;
     _hasLoaded = true;
     setState(() {
       _loading = true;
@@ -507,7 +510,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         ),
         repo.schedulePendingFacets(keyword: kw),
       ]);
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
       final page = results[0] as PagedResult<SchedulePendingRow>;
       // 服务端已把越界页码回退到最后一页；与本地页码对齐
       if (page.page != _pageNo) _pageNo = page.page;
@@ -528,7 +531,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _error = productionErrorMessage(e, fallback: '加载待排产列表失败');
         _loading = false;
@@ -689,7 +692,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   /// 同步桌面表格的受控多选集合。MasterDataTableView 会把跨页已选 id
   /// 一并回传；这里只为当前页新选行补齐数量/行快照，取消项则从两张表同时移除。
   void _replaceSelectedIds(Set<String> nextIds) {
-    final currentRows = {for (final row in _rows) row.orderItemId: row};
+    final currentRows = {
+      for (final row in _tableRows.items) row.orderItemId: row,
+    };
     final availableRows = <String, SchedulePendingRow>{
       ..._selectedRows,
       ...currentRows,
@@ -774,6 +779,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       children: [
         Expanded(
           child: MasterDataTableView<SchedulePendingRow>(
+            rowsController: _tableRows,
+            paginationRevision: _page,
+            paginationScope: (widget.keyword, _pageSize),
             tableKey:
                 'features.production.pages.production_board_page.PendingPanelState._list.1',
             compactCards: true,

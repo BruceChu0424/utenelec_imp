@@ -21,6 +21,9 @@
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 文档：docs/03-页面/我的页.md（§HR 端：员工修改审批）
 
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -63,6 +66,10 @@ class HrProfileChangesListPage extends ConsumerStatefulWidget {
 
 class _HrProfileChangesListPageState
     extends ConsumerState<HrProfileChangesListPage> {
+  final _retainedPage =
+      RetainedAsyncPage<ProfileChangePage<HrProfileChangeListItem>>();
+  Object get _paginationScope =>
+      (_status, _departmentId, ref.watch(masterDataSessionKeyProvider));
   String? _status; // null = 默认待审
   int _page = 1; // 当前页（服务端真分页）
 
@@ -255,7 +262,10 @@ class _HrProfileChangesListPageState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final async = ref.watch(hrProfileChangeQueueProvider(_query));
+    final async = _retainedPage.resolve(
+      _paginationScope,
+      ref.watch(hrProfileChangeQueueProvider(_query)),
+    );
     // 待审段红徽章：读徽章汇总入口 hrProfileReview 的待办事实数（与导航徽章、
     // /pending-count 端点同源同一口径），不自己再发请求。
     final pendingTodo = ref.watch(
@@ -320,6 +330,8 @@ class _HrProfileChangesListPageState
   ) {
     final facets = ref.watch(hrProfileChangeFacetsProvider(_effectiveStatus));
     return async.when(
+      skipLoadingOnReload: true,
+      skipError: true,
       data: (page) => RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(hrProfileChangeQueueProvider);
@@ -331,6 +343,10 @@ class _HrProfileChangesListPageState
           tableKey:
               'features.hr_profile.pages.hr_profile_changes_list_page.HrProfileChangesListPageState._buildBody.1',
           key: const Key('hr-profile-changes-table'),
+          paginationScope: _paginationScope,
+          loadingMore: async.isLoading,
+          error: async.hasError ? '${async.error}' : null,
+          onRetry: () => ref.invalidate(hrProfileChangeQueueProvider(_query)),
           columns: _columns(l10n),
           items: page.items,
           // 部门桶来自后端全量聚合；状态桶即三个队列分段。
@@ -358,7 +374,14 @@ class _HrProfileChangesListPageState
           emptyMessage: l10n.profileChangeHrQueueEmpty,
           currentPage: page.page,
           totalPages: page.totalPages,
-          onPageChange: (p) => setState(() => _page = p),
+          onPageChange: (p) async {
+            setState(() => _page = p);
+            await _retainedPage.waitFor(
+              ref,
+              hrProfileChangeQueueProvider(_query),
+              () => ref.read(hrProfileChangeQueueProvider(_query).future),
+            );
+          },
         ),
       ),
       loading: () => const UtenSkeletonList(itemCount: 6),

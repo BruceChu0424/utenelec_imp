@@ -177,7 +177,7 @@ void main() {
     (tester) async {
       final costs = _StartupCosts();
       await _pump(tester, costs);
-      await tester.tap(find.byKey(const Key('cost-adjust-quantity')));
+      await tester.tap(find.byKey(const Key('cost-settings-toggle')));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const ValueKey('cost-header-batchQty')),

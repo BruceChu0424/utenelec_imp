@@ -158,6 +158,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   bool _cancelBusy = false;
   String? _error;
   PagedResult<SalesOrderProgressRow>? _result;
+  final _tableRows = MasterDataTableRowsController<SalesOrderProgressRow>();
 
   /// 阶段计数（后端全量口径）；null = 尚未返回，徽章不显示。
   Map<String, int>? _stageCounts;
@@ -222,7 +223,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   }
 
   Future<void> _load(int page) async {
-    if (page != _page) clearDraftSelection();
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
     final seg = _seg!;
@@ -255,11 +255,14 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
             billNo: _columnFilters['billNo'],
           );
       if (!mounted || version != _requestVersion) return;
-      retainDraftSelection(
-        _canDeleteDrafts
-            ? res.items.where(_isDraftRow).map((row) => row.orderId)
-            : const <String>[],
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || version != _requestVersion) return;
+        retainDraftSelection(
+          _canDeleteDrafts
+              ? _tableRows.items.where(_isDraftRow).map((row) => row.orderId)
+              : const <String>[],
+        );
+      });
       setState(() {
         _result = res;
         _page = page;
@@ -654,6 +657,8 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     }
     return _withDraftCategory(
       MasterDataTableView<SalesOrderProgressRow>(
+        rowsController: _tableRows,
+        paginationRevision: _result,
         tableKey:
             'features.sales.pages.sales_order_progress_page.SalesOrderProgressPageState._body.1',
         selectable: _canDeleteDrafts,
@@ -715,6 +720,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         emptyMessage: _seg!.history ? '该时间段内暂无订单' : '该阶段暂无订单',
         currentPage: _result?.page ?? 1,
         totalPages: _result?.totalPages ?? 1,
+        paginationScope: (_keyword, _seg, _historyTime),
         onPageChange: _load,
       ),
     );

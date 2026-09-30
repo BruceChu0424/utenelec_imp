@@ -777,6 +777,7 @@ class _MaterialAnalysisBucketPageState
       emptyMessage: _host._l10n.materialTaskEmpty,
       currentPage: filteredPage,
       totalPages: filteredTotalPages,
+      paginationScope: (_host._analysis?.analysisId, _bucket, _taskFilter),
       onPageChange: (next) => setState(() => _pageNo = next),
     );
   }

@@ -23,7 +23,7 @@ class GoodsCostDocumentMapperTest {
                 new TableColumnProjection.Column("amount", "伪造合计", 130d, "text", null)));
         var document = GoodsCostDocumentMapper.map(snapshot, "ALL", null, projection);
         var table = document.sections().stream().filter(s -> s.name().equals("物料明细")).findFirst().orElseThrow();
-        assertThat(table.columns()).extracting(c -> c.label()).containsExactly("货品名称", "表面处理单价或费率", "表面处理计价数量", "表面处理金额", "批次行成本");
+        assertThat(table.columns()).extracting(c -> c.label()).containsExactly("货品名称", "表面处理单价或费率", "表面处理计价数量", "表面处理 · 测算金额", "测算金额");
         var row = table.rows().getFirst();
         assertThat((BigDecimal) row.get("fee:finish")).isEqualByComparingTo("0.05");
         assertThat((BigDecimal) row.get("feeQty:finish")).isEqualByComparingTo("2");
@@ -69,6 +69,22 @@ class GoodsCostDocumentMapperTest {
         for(var item:labels.entrySet()) {
             var document=GoodsCostDocumentMapper.map(snapshotWithPrice(item.getKey()," "),"MATERIAL",null,null);
             assertThat(document.sections().getFirst().rows().getFirst().get("priceSource")).isEqualTo(item.getValue());
+        }
+    }
+    @Test void estimateLabelsFollowTheFrozenProductUnitAndDoNotImplyActualProductionAmounts() throws Exception {
+        var mapper=new ObjectMapper().findAndRegisterModules();
+        for(String unit:List.of("套","件","")) {
+            com.fasterxml.jackson.databind.node.ObjectNode root=mapper.valueToTree(snapshot());
+            ((com.fasterxml.jackson.databind.node.ObjectNode)root.path("calculation")).put("unitName",unit);
+            var document=GoodsCostDocumentMapper.map(mapper.treeToValue(root,GoodsCostContracts.Snapshot.class),"ALL",null,null);
+            assertThat(document.metadata()).anyMatch(value->value.startsWith("测算数量: ")).noneMatch(value->value.startsWith("批量: "));
+            var materials=document.sections().stream().filter(section->section.name().equals("物料明细")).findFirst().orElseThrow();
+            assertThat(materials.columns().stream().filter(column->column.key().equals("unitContribution")).findFirst().orElseThrow().label())
+                    .isEqualTo(unit.isBlank()?"单位成本":"每"+unit+"成本");
+            assertThat(materials.columns().stream().filter(column->column.key().equals("batchQty")).findFirst().orElseThrow().label()).isEqualTo("计价用量");
+            for(String sectionName:List.of("成本汇总","物料明细","工序与费用"))
+                assertThat(document.sections().stream().filter(section->section.name().equals(sectionName)).findFirst().orElseThrow()
+                        .columns().stream().filter(column->column.key().equals("amount")).findFirst().orElseThrow().label()).isEqualTo("测算金额");
         }
     }
     private static GoodsCostContracts.Snapshot snapshotWithPrice(String sourceType,String number)throws Exception {

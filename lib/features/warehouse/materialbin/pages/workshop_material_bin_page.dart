@@ -65,6 +65,7 @@ class _WorkshopMaterialBinPageState
   String _view = _viewStock;
   PagedResult<WmRequisition>? _history;
   bool _historyLoading = false;
+  int _historyLoadGeneration = 0;
   String? _historyError;
   String? _busyTitle;
   String? _myLocation;
@@ -228,31 +229,37 @@ class _WorkshopMaterialBinPageState
   }
 
   Future<void> _loadHistory(int page) async {
+    final generation = ++_historyLoadGeneration;
     final setting = _current;
     if (setting == null) return;
+    final workshopId = setting.workshopDepartmentId;
+    bool current() =>
+        mounted &&
+        generation == _historyLoadGeneration &&
+        _current?.workshopDepartmentId == workshopId;
     setState(() {
       _historyLoading = true;
       _historyError = null;
     });
     try {
       final result = await _repo.requisitions(
-        workshopId: setting.workshopDepartmentId,
+        workshopId: workshopId,
         page: page,
       );
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
         _history = result;
         _historyLoading = false;
       });
     } on ApiException catch (e) {
-      if (mounted) {
+      if (current()) {
         setState(() {
           _historyLoading = false;
           _historyError = e.message;
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (current()) {
         setState(() {
           _historyLoading = false;
           _historyError = '加载记录失败, 请重试';
@@ -815,6 +822,7 @@ class _WorkshopMaterialBinPageState
       onRetry: () => _loadHistory(page?.page ?? 1),
       currentPage: page?.page ?? 1,
       totalPages: page?.totalPages ?? 1,
+      paginationScope: _current?.workshopDepartmentId,
       onPageChange: _loadHistory,
       emptyMessage: '还没有领料、退回记录',
     );

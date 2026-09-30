@@ -565,6 +565,8 @@ abstract class _MaterialAnalysisCandidatesState
     MaterialAnalysisSalesCandidatePage? page,
     List<MaterialAnalysisSalesCandidateLine> lines,
   ) => MasterDataTableView<MaterialAnalysisSalesCandidateLine>(
+    rowsController: _candidateTableRows,
+    paginationRevision: page,
     tableKey:
         'features.production.pages.material_analysis_candidates.MaterialAnalysisCandidatesState._salesCandidateTable.1',
     key: const Key('material-analysis-candidate-table'),
@@ -575,7 +577,8 @@ abstract class _MaterialAnalysisCandidatesState
     selectedIds: _sourceQtyControllers.keys.toSet(),
     showSelectionSummary: false,
     bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-    onSelectedIdsChanged: (ids) => _replaceCandidateIds(ids, lines),
+    onSelectedIdsChanged: (ids) =>
+        _replaceCandidateIds(ids, _candidateTableRows.items),
     // 2026-09-25 单号列统一：销售单号值来自服务端 facets
     // (与列表同一过滤上下文)，值筛选走服务端精确匹配。
     facets: {'orderNo': _candidateDocNoFacets['orderNo'] ?? const []},
@@ -603,6 +606,7 @@ abstract class _MaterialAnalysisCandidatesState
     emptyMessage: '暂无可分析的已审销售订单产品',
     currentPage: page?.page ?? _candidatePageNo,
     totalPages: page?.totalPages ?? 1,
+    paginationScope: _candidateKeyword,
     onPageChange: (value) => _loadCandidates(page: value),
   );
 

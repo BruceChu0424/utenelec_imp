@@ -2,6 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -294,6 +299,40 @@ const _allCostGrants = {
   Perm.goodsEdit,
   Perm.goodsExport,
 };
+
+class _FirstSaveCosts extends _Costs {
+  Completer<GoodsCostSheet>? pendingSave;
+  int snapshotsCreated = 0;
+  @override
+  Future<List<Map<String, dynamic>>> list(String goodsId) async => [];
+  @override
+  Future<GoodsCostSheet> save(
+    String? id,
+    Map<String, dynamic> input, {
+    required String idempotencyKey,
+    int? expectedVersion,
+  }) async {
+    expect(id, isNull);
+    expect(expectedVersion, isNull);
+    saved = copyCostJson(input);
+    if (pendingSave != null) return pendingSave!.future;
+    return sheet(input: input, version: 1);
+  }
+
+  @override
+  Future<GoodsCostSnapshot> snapshot(
+    String id,
+    int version,
+    String idempotencyKey,
+  ) async {
+    snapshotsCreated++;
+    return GoodsCostSnapshot({
+      'id': 'snapshot-fullscreen',
+      'input': saved,
+      'calculation': _calculation(),
+    });
+  }
+}
 
 class _ProjectedCosts extends _Costs {
   Map<String, dynamic> initial() => {
@@ -647,6 +686,15 @@ class _CurrencyCosts extends _ImportedPriceCosts {
   }
 }
 
+class _PendingFeesCosts extends _CurrencyCosts {
+  bool failPreview = false;
+  @override
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async {
+    if (failPreview) throw StateError('preview unavailable');
+    return super.preview(input);
+  }
+}
+
 class _ForeignTemplateCosts extends _ImportedPriceCosts {
   Map<String, dynamic>? request;
   @override
@@ -872,6 +920,7 @@ Future<void> _pump(
   bool costExport = true,
   CurrencyRepository? currencies,
   StateProvider<Set<String>>? livePermissions,
+  double textScale = 1,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -908,6 +957,12 @@ Future<void> _pump(
       ],
       child: MaterialApp(
         theme: buildLightTheme(),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('zh'),
@@ -940,7 +995,7 @@ Future<void> _settings(WidgetTester tester) async {
 
 Future<void> _quantity(WidgetTester tester) async {
   if (find.byKey(const ValueKey('cost-header-batchQty')).evaluate().isEmpty) {
-    await tester.tap(find.byKey(const Key('cost-adjust-quantity')));
+    await tester.tap(find.byKey(const Key('cost-settings-toggle')));
     await tester.pumpAndSettle();
   }
 }
@@ -1502,6 +1557,12 @@ void main() {
           child: MaterialApp.router(
             routerConfig: router,
             theme: buildLightTheme(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.noScaling),
+              child: child!,
+            ),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             locale: const Locale('zh'),
@@ -1559,12 +1620,12 @@ void main() {
       final repo = _CurrencyCosts();
       await _pump(tester, repo, currencies: _ExchangeCurrencies());
       await _settings(tester);
-      await _adjust(tester, 'edge-a');
       final quantity = tester
           .widget<TextFormField>(
             find.byKey(const ValueKey('cost-header-batchQty')),
           )
           .controller!;
+      await _adjust(tester, 'edge-a');
       final price = tester
           .widget<TextFormField>(
             find.byKey(const ValueKey('cost-unitPrice-edge-a')),
@@ -1673,7 +1734,6 @@ void main() {
         currencies: _ExchangeCurrencies(hasRate: false),
       );
       await _settings(tester);
-      await _adjust(tester, 'edge-a');
       tester
           .widget<UtenDropdownField>(
             find.byKey(const Key('cost-currency-selector')),
@@ -1804,7 +1864,10 @@ void main() {
       expect(find.text('校验重算'), findsNothing);
       expect(find.text('导入成本表'), findsNothing);
       expect(find.text('确认成本版本'), findsNothing);
-      expect(find.byKey(const ValueKey('cost-unitPrice-edge-a')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('cost-unitPrice-edge-a')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('cost-save')), findsOneWidget);
       expect(find.byKey(const Key('cost-download')), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -1826,7 +1889,11 @@ void main() {
         find.byKey(ValueKey('cost-unitPrice-${_MissingPricesCosts.path(0)}')),
         findsOneWidget,
       );
-      expect(find.text('已知部分成本  '), findsOneWidget);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+      );
+      expect(table.summaryBarInline, isTrue);
+      expect(table.summaryBar, isNotNull);
       final boundary = tester.renderObject<RenderRepaintBoundary>(
         find.byKey(const Key('cost-render')),
       );
@@ -2059,14 +2126,290 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'automatic price is editable immediately but focus alone never changes its source',
+    (tester) async {
+      final repo = _Costs();
+      await _pump(tester, repo);
+      final price = find.byKey(const ValueKey('cost-unitPrice-edge-a'));
+      expect(
+        tester.widget<TextFormField>(price).controller!.text,
+        '0.123456789123456',
+      );
+      expect(
+        (tester
+                    .widget<TextField>(
+                      find.descendant(
+                        of: price,
+                        matching: find.byType(TextField),
+                      ),
+                    )
+                    .decoration!
+                as UtenInputDecoration)
+            .autofilled,
+        isTrue,
+      );
+      final calls = repo.previewCalls;
+      await tester.tap(price);
+      await tester.pumpAndSettle();
+      expect(repo.previewCalls, calls);
+      expect(
+        (tester
+                    .widget<TextField>(
+                      find.descendant(
+                        of: price,
+                        matching: find.byType(TextField),
+                      ),
+                    )
+                    .decoration!
+                as UtenInputDecoration)
+            .autofilled,
+        isTrue,
+      );
+      await tester.enterText(price, '0.3456789123456789');
+      await tester.pump();
+      expect(
+        (tester
+                    .widget<TextField>(
+                      find.descendant(
+                        of: price,
+                        matching: find.byType(TextField),
+                      ),
+                    )
+                    .decoration!
+                as UtenInputDecoration)
+            .autofilled,
+        isFalse,
+      );
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pumpAndSettle();
+      final overrides = costMaps(repo.saved?['lineOverrides']);
+      expect(overrides.single['unitPrice'], '0.3456789123456789');
+      expect(overrides.single['priceSourceType'], 'MANUAL');
+      expect(overrides.single['adoptedQty'], isNull);
+      expect(repo.saved?['batchQty'], '1000');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'first save and immutable download stay usable inside fullscreen before safely opening settings',
+    (tester) async {
+      final repo = _FirstSaveCosts()..pendingSave = Completer<GoodsCostSheet>();
+      await _pump(tester, repo, size: const Size(1460, 760));
+      await tester.tap(
+        find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('退出全屏'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.saved, isNotNull);
+      expect(
+        tester.widget<UtenButton>(find.byKey(const Key('cost-save'))).isLoading,
+        isTrue,
+      );
+      repo.pendingSave!.complete(repo.sheet(input: repo.saved, version: 1));
+      await tester.pumpAndSettle();
+      expect(find.text('退出全屏'), findsOneWidget);
+      expect(
+        find.byKey(const Key('cost-download')).hitTestable(),
+        findsOneWidget,
+      );
+      final download = tester.widget<UtenExportButton>(
+        find.byKey(const Key('cost-download')),
+      );
+      final preparing = download.prepareExport!();
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '确认'));
+      await tester.pumpAndSettle();
+      final selection = await preparing;
+      expect(selection?.bodyParams['snapshotId'], 'snapshot-fullscreen');
+      expect(repo.snapshotsCreated, 1);
+      await tester.tap(find.byKey(const Key('cost-settings-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('退出全屏'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('cost-header-batchQty')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('cost-header-batchQty')),
+            )
+            .controller!
+            .text,
+        '1',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'shared wheel handoff pins the table before inner scrolling and settings reveals its collapsed header',
+    (tester) async {
+      await _pump(tester, _MissingPricesCosts(), size: const Size(1460, 760));
+      expect(find.byType(UtenCollapsingHeaderScrollView), findsOneWidget);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+      );
+      table.onSelectedIdsChanged!({
+        _MissingPricesCosts.path(0),
+        _MissingPricesCosts.path(1),
+      });
+      await tester.pumpAndSettle();
+      final nested = tester.state<NestedScrollViewState>(
+        find.byType(NestedScrollView),
+      );
+      final point = tester.getCenter(find.text('待核材料 2'));
+      await tester.sendEventToBinding(
+        PointerScrollEvent(position: point, scrollDelta: const Offset(0, 700)),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        nested.outerController.offset,
+        closeTo(nested.outerController.position.maxScrollExtent, .5),
+      );
+      expect(nested.innerController.offset, closeTo(0, .5));
+      expect(find.text('货品名称').hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const Key('cost-download')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('cost-save')).hitTestable(), findsOneWidget);
+      final headerTop = tester.getTopLeft(find.text('货品名称')).dy;
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const Key('cost-render')),
+      );
+      await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          'build/cost-workspace-pinned-preview.png',
+        ).writeAsBytes(data!.buffer.asUint8List());
+        image.dispose();
+      });
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.sendEventToBinding(
+        PointerScrollEvent(position: point, scrollDelta: const Offset(0, 200)),
+      );
+      await tester.pumpAndSettle();
+      expect(nested.innerController.offset, greaterThan(0));
+      expect(tester.getTopLeft(find.text('货品名称')).dy, closeTo(headerTop, .5));
+      nested.innerController.jumpTo(
+        nested.innerController.position.maxScrollExtent,
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getBottomLeft(find.text('待核材料 30')).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('cost-save'))).dy),
+      );
+      await tester.tap(find.byKey(const Key('cost-settings-toggle')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('cost-header-batchQty')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'large text and narrow viewport retain single-line editable costs without overflow',
+    (tester) async {
+      await _pump(tester, _Costs(), size: const Size(375, 760), textScale: 1.5);
+      expect(
+        find.byKey(const ValueKey('cost-unitPrice-edge-a')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('cost-save')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'restoring one material recommendation preserves unsaved fees after calculation failure',
+    (tester) async {
+      final repo = _PendingFeesCosts();
+      await _pump(tester, repo);
+      await _more(tester, '工序与费用');
+      repo.failPreview = true;
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-fee-row-fixed-value')),
+        '99.123456789',
+      );
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pumpAndSettle();
+      expect(find.text('preview unavailable'), findsOneWidget);
+      await _more(tester, '组装结构');
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>).first,
+      );
+      final details = table.columns.singleWhere((c) => c.key == 'details');
+      final button =
+          details.cellBuilder!(
+                tester.element(find.byType(GoodsCostTab)),
+                table.items.first,
+              )
+              as UtenButton;
+      button.onPressed!();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('恢复推荐值'));
+      await tester.pumpAndSettle();
+      await _more(tester, '工序与费用');
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('cost-fee-row-fixed-value')),
+            )
+            .controller!
+            .text,
+        '99.123456789',
+      );
+      repo.failPreview = false;
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pumpAndSettle();
+      expect(
+        costMaps(
+          repo.saved?['fees'],
+        ).singleWhere((r) => r['key'] == 'fixed')['value'],
+        '99.123456789',
+      );
+      expect(
+        costMaps(
+          repo.saved?['lineOverrides'],
+        ).where((r) => r['path'] == 'edge-a'),
+        isEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'repeated fullscreen exit reuses the same closing route without popping the goods page',
+    (tester) async {
+      await _pump(tester, _Costs());
+      await tester.tap(
+        find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+      );
+      await tester.pumpAndSettle();
+      final action = tester
+          .widget<UtenButton>(find.byKey(const Key('cost-settings-toggle')))
+          .onPressed!;
+      action();
+      action();
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsCostTab), findsOneWidget);
+      expect(find.text('退出全屏'), findsNothing);
+      expect(find.byKey(const Key('cost-save')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('renders reviewable fixture screenshot', (tester) async {
     await _pump(tester, _RenderCosts(), size: const Size(1460, 760));
     expect(
-      tester.getRect(find.text('单件成本').first).right,
+      tester.getRect(find.text('每件成本').first).right,
       lessThanOrEqualTo(1460),
     );
     expect(
-      tester.getRect(find.text('本批成本').first).right,
+      tester.getRect(find.text('测算金额').first).right,
       lessThanOrEqualTo(1460),
     );
     expect(

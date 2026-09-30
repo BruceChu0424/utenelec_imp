@@ -1,4 +1,6 @@
 // 我的访客（2026-09-10 状态表头筛选 + 批量确认接待）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,9 +16,10 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakeVisitorStaffRepository extends Fake
     implements VisitorStaffRepository {
-  _FakeVisitorStaffRepository({required this.items});
+  _FakeVisitorStaffRepository({required this.items, this.nextPage});
 
   final List<VisitorApplication> items;
+  Completer<PagedResult<VisitorApplication>>? nextPage;
   final List<Map<String, dynamic>> listCalls = [];
   final List<String> confirmed = [];
 
@@ -27,12 +30,13 @@ class _FakeVisitorStaffRepository extends Fake
     int size = 20,
   }) async {
     listCalls.add({'status': status, 'page': page});
+    if (page == 2 && nextPage != null) return nextPage!.future;
     return PagedResult(
       items: items,
       page: page,
       size: size,
       total: items.length,
-      totalPages: 1,
+      totalPages: nextPage == null ? 1 : 2,
     );
   }
 
@@ -83,6 +87,108 @@ MasterDataTableView<VisitorApplication> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets(
+    'pending family page keeps the mounted table and appends its rows',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final nextPage = Completer<PagedResult<VisitorApplication>>();
+      final repo = _FakeVisitorStaffRepository(
+        items: [_application('first', VisitorApplicationStatus.hostReviewing)],
+        nextPage: nextPage,
+      );
+      await tester.pumpWidget(_app(repo, preferences));
+      await tester.pumpAndSettle();
+
+      final finder = find.byKey(const Key('my-visitors-table'));
+      final originalState = tester.state(finder);
+      final request = _table(tester).rowsController!.loadNextPage();
+      await tester.pump();
+      await tester.pump();
+      expect(tester.state(finder), same(originalState));
+      expect(_table(tester).loadingMore, isTrue);
+      expect(_table(tester).rowsController!.items.map((row) => row.id), [
+        'first',
+      ]);
+
+      nextPage.complete(
+        PagedResult(
+          items: [
+            _application('second', VisitorApplicationStatus.hostReviewing),
+          ],
+          page: 2,
+          size: 20,
+          total: 2,
+          totalPages: 2,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await request;
+      expect(tester.state(finder), same(originalState));
+      expect(_table(tester).currentPage, 2);
+      expect(_table(tester).rowsController!.items.map((row) => row.id), [
+        'first',
+        'second',
+      ]);
+      expect(repo.listCalls.map((call) => call['page']), [1, 2]);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'failed family append keeps earlier rows and can retry page two',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final firstAttempt = Completer<PagedResult<VisitorApplication>>();
+      final repo = _FakeVisitorStaffRepository(
+        items: [_application('first', VisitorApplicationStatus.hostReviewing)],
+        nextPage: firstAttempt,
+      );
+      await tester.pumpWidget(_app(repo, preferences));
+      await tester.pumpAndSettle();
+
+      final finder = find.byKey(const Key('my-visitors-table'));
+      final originalState = tester.state(finder);
+      final request = _table(tester).rowsController!.loadNextPage();
+      await tester.pump();
+      firstAttempt.completeError(StateError('offline'));
+      await tester.pumpAndSettle();
+      await request;
+      expect(tester.state(finder), same(originalState));
+      expect(_table(tester).currentPage, 1);
+      expect(_table(tester).rowsController!.items.map((row) => row.id), [
+        'first',
+      ]);
+
+      final retryReply = Completer<PagedResult<VisitorApplication>>();
+      repo.nextPage = retryReply;
+      await tester.tap(find.descendant(of: finder, matching: find.text('重试')));
+      await tester.pump();
+      retryReply.complete(
+        PagedResult(
+          items: [
+            _application('second', VisitorApplicationStatus.hostReviewing),
+          ],
+          page: 2,
+          size: 20,
+          total: 2,
+          totalPages: 2,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_table(tester).currentPage, 2);
+      expect(_table(tester).rowsController!.items.map((row) => row.id), [
+        'first',
+        'second',
+      ]);
+      expect(repo.listCalls.map((call) => call['page']), [1, 2, 2]);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('batch host-confirm skips rows not awaiting this host', (
     tester,
   ) async {

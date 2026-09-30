@@ -641,6 +641,13 @@ class _FinanceAssetLedgerPanelState
         emptyMessage: '暂无${widget.ledger.label}，请先创建草稿并完成审批',
         currentPage: result?.page ?? _query.page,
         totalPages: result?.totalPages ?? 1,
+        paginationScope: (
+          widget.ledger,
+          _query.q,
+          _query.status,
+          _query.categoryId,
+          _query.departmentId,
+        ),
         onPageChange: (page) => _changeQuery(_query.copyWith(page: page)),
         toolbarActions: widget.capabilities.canEdit
             ? [

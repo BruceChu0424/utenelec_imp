@@ -85,6 +85,8 @@ class _ProductionFinishedInboundTasksViewState
   /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
   final _columnFilters = MasterServerColumnFilters();
   int _requestVersion = 0;
+  final _tableRows =
+      MasterDataTableRowsController<ProductionFinishedInboundTask>();
   final Set<String> _selectedIds = <String>{};
 
   @override
@@ -156,14 +158,22 @@ class _ProductionFinishedInboundTasksViewState
       setState(() {
         _result = result;
         _loading = false;
-        final currentIds = <String>{
-          for (final task in result.items)
+      });
+      // Reconcile after the table has combined any appended pages.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || requestVersion != _requestVersion) return;
+        final visibleIds = <String>{
+          for (final task in _tableRows.items)
             if (task.isArrivalRegistration)
               'reg:${task.reportId ?? ''}'
             else if ((task.documentId ?? '').isNotEmpty)
               'doc:${task.documentId}',
         }..removeWhere((id) => id.endsWith(':') || id.endsWith(':null'));
-        _selectedIds.removeWhere((id) => !currentIds.contains(id));
+        if (_selectedIds.any((id) => !visibleIds.contains(id))) {
+          setState(
+            () => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),
+          );
+        }
       });
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
@@ -278,7 +288,7 @@ class _ProductionFinishedInboundTasksViewState
       context.appWarning('登记送检与最终点收属于不同步骤，请分开选择');
       return;
     }
-    final targets = (_result?.items ?? const <ProductionFinishedInboundTask>[])
+    final targets = _tableRows.items
         .where(
           (task) =>
               (task.documentId ?? '').isNotEmpty &&
@@ -312,8 +322,7 @@ class _ProductionFinishedInboundTasksViewState
     Set<String> selectedIds,
     InboundRoute route,
   ) async {
-    final currentItems =
-        _result?.items ?? const <ProductionFinishedInboundTask>[];
+    final currentItems = _tableRows.items;
     final reportIds = <String>{
       for (final id in selectedIds)
         if (id.startsWith('reg:')) id.substring(4),
@@ -361,7 +370,7 @@ class _ProductionFinishedInboundTasksViewState
     final registrationStage =
         registerCount > 0 ||
         (count == 0 &&
-            (_result?.items.any((task) => task.isArrivalRegistration) ?? true));
+            _tableRows.items.any((task) => task.isArrivalRegistration));
     return [
       // 待登记任务：与预计到货同款两颗路线按钮(同名同义、同一组件)。
       if (registrationStage)
@@ -442,6 +451,14 @@ class _ProductionFinishedInboundTasksViewState
         ],
       ),
       body: MasterDataTableView<ProductionFinishedInboundTask>(
+        rowsController: _tableRows,
+        paginationRevision: _result,
+        paginationScope: (
+          _keyword,
+          _taskStageFilter,
+          _warehouseIdFilter,
+          WarehouseListScope.of(context),
+        ),
         tableKey:
             'features.warehouse.widgets.production_finished_inbound_tasks_view.ProductionFinishedInboundTasksViewState._buildTable.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。

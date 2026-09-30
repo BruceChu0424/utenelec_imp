@@ -99,6 +99,7 @@ class _SalesShipmentTaskWorkbenchState
   final _columnFilters = MasterServerColumnFilters();
 
   // ===== 财务批量审批（仅 financeAudit 模式；仓库模式恒空）=====
+  final _tableRows = MasterDataTableRowsController<SalesDocListItem>();
   final Set<String> _selectedIds = <String>{};
   final Map<String, SalesDocListItem> _selectedById = {};
   bool _busyDecision = false;
@@ -312,7 +313,7 @@ class _SalesShipmentTaskWorkbenchState
         ..clear()
         ..addAll(normalized);
       _selectedById.removeWhere((id, _) => !normalized.contains(id));
-      for (final item in _result?.items ?? const <SalesDocListItem>[]) {
+      for (final item in _tableRows.items) {
         if (normalized.contains(item.id)) _selectedById[item.id] = item;
       }
     });
@@ -720,6 +721,15 @@ class _SalesShipmentTaskWorkbenchState
     final table = AbsorbPointer(
       absorbing: _busyDecision,
       child: MasterDataTableView<SalesDocListItem>(
+        rowsController: _tableRows,
+        paginationRevision: _result,
+        paginationScope: (
+          _keyword,
+          _isFinance,
+          _financeAudit,
+          _financeRejected,
+          _warehouseWorkStatus,
+        ),
         tableKey:
             'features.sales.widgets.sales_shipment_task_workbench.SalesShipmentTaskWorkbenchState._table.1',
         // primary 联动（折叠头收完 → 表格内滚），独立/嵌入两态同款。

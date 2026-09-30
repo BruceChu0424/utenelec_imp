@@ -91,6 +91,8 @@ class _FinanceSalesOrderConfirmationPageState
   String? _error;
   String _keyword = '';
   int _requestVersion = 0;
+  final _tableRows =
+      MasterDataTableRowsController<SalesOrderFinancePendingItem>();
   final Set<String> _selectedIds = <String>{};
   final Map<String, SalesOrderFinancePendingItem> _selectedItems =
       <String, SalesOrderFinancePendingItem>{};
@@ -306,11 +308,7 @@ class _FinanceSalesOrderConfirmationPageState
       context.appWarning('单次最多选择 $_maxBatchSize 笔订单');
       return;
     }
-    final pageItems = {
-      for (final item
-          in _result?.items ?? const <SalesOrderFinancePendingItem>[])
-        item.orderId: item,
-    };
+    final pageItems = {for (final item in _tableRows.items) item.orderId: item};
     setState(() {
       _selectedIds
         ..clear()
@@ -730,6 +728,9 @@ class _FinanceSalesOrderConfirmationPageState
         ],
       ),
       body: MasterDataTableView<SalesOrderFinancePendingItem>(
+        rowsController: _tableRows,
+        paginationRevision: _result,
+        paginationScope: (_keyword, _showRejected, widget.changesOnly),
         tableKey: 'sales.order.items',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,

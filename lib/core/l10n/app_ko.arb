@@ -168,6 +168,8 @@
   "navNotice": "공지",
   "navProfile": "내 정보",
   "navSettings": "설정",
+  "navCollapse": "탐색 메뉴 접기",
+  "navExpand": "탐색 메뉴 펼치기",
   "settingsTitle": "설정",
   "settingsSectionAppearance": "화면",
   "settingsThemeMode": "테마",
@@ -2821,11 +2823,11 @@
   "costUnit": "기본 단위",
   "costAdoptedQty": "적용 사용량",
   "costUsageSource": "사용량 출처",
-  "costPricingQty": "배치 가격 수량",
+  "costPricingQty": "계산 사용량",
   "costPrice": "적용 단가",
   "costPriceUnitRate": "가격 단위 환산율",
   "costPriceSource": "가격 출처",
-  "costLineAmount": "배치 금액",
+  "costLineAmount": "예상 금액",
   "costUnitContribution": "완제품당 원가",
   "costStatus": "상태",
   "costIncluded": "합계 포함",
@@ -2998,7 +3000,7 @@
   "costPriceNormalizedHelp": "단가는 현재 원가표 통화와 재료 기본 단위 기준입니다. 원래 가격, 단위 환산 및 세금 기준은 출처 상세에서 확인할 수 있습니다.",
   "costCurrencyConverted": "대상 통화로 원가를 변환했습니다. 아직 저장되지 않았습니다",
   "costUnitContributionShort": "단위 원가",
-  "costLineAmountShort": "배치 원가",
+  "costLineAmountShort": "예상 금액",
   "costPendingItems": "확인 대기 항목",
   "costViewEvidence": "근거 보기",
   "costViewSource": "출처 열기",
@@ -3038,7 +3040,7 @@
   "costGapCode": "확인 사유 코드",
   "costDailyTable": "원가표",
   "costCalculationSettings": "계산 설정",
-  "costAdjustment": "조정",
+  "costAdjustment": "사용량 조정",
   "costFinishAdjustment": "조정 완료",
   "costMoreActions": "더 보기",
   "costRefreshSources": "출처 가격 및 사용량 갱신",
@@ -3129,5 +3131,24 @@
   "costProductionSourceUnit": "원본 보고 단위 및 환산 근거 유지",
   "costProductionSourceDefects": "별도 불량 보고는 유효 완료량에서 중복 차감하지 않음",
   "costProductionSourceOther": "생산 보고 및 관련 기록에서 제공",
-  "costProductionProgressPending": "보고와 작업장 진행 수량이 일치하지 않아 수량 표시 보류"
+  "costProductionProgressPending": "보고와 작업장 진행 수량이 일치하지 않아 수량 표시 보류",
+  "costPerUnitLabel": "{unit}당 원가",
+  "costAutomaticPriceHelp": "{source}에서 자동 적용. 직접 수정하면 이 원가표에 수동 단가가 적용됩니다.",
+  "costEstimateAmountHelp": "계산 사용량 × 적용 단가 + 해당 행 비용입니다. 완제품 1,000개에 각 부품 2개를 쓰면 부품 2,000개로 계산합니다. 실제 생산량이나 회계 전기 금액이 아닌 원가 추정입니다.",
+  "costUnitContributionHelp": "완제품 단위당 해당 행의 자재 및 비용 기여분입니다. 예상 금액을 계산 수량으로 나눈 값이며 완제품 단위는 이 원가 버전을 따릅니다.",
+  "costMaterialPriceNotApplied": "집계 조립품 또는 고객 지급 자재는 별도 자재 단가를 적용하지 않습니다. 행 계산 근거를 확인하세요.",
+  "@costPerUnitLabel": {
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "@costAutomaticPriceHelp": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -328,6 +328,12 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
         onRetry: () => _load(_result?.page ?? 1),
         currentPage: _result?.page ?? 1,
         totalPages: _result?.totalPages ?? 1,
+        paginationScope: (
+          widget.status,
+          widget.kind,
+          widget.keyword,
+          WarehouseListScope.of(context),
+        ),
         onPageChange: _load,
         emptyMessage: pending
             ? (widget.kind == 'RETURN' ? '没有待收的退回' : '没有待发的领料申请')

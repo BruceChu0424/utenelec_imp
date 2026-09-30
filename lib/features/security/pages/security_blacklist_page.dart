@@ -5,6 +5,9 @@
 // 历史申请状态不变；行级留痕由后端 fn_audit + 审计事件承载）。
 //
 // 响应式：compact 自套 UtenContentContainer 收敛；窄屏表格横向滚动即可。
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -39,6 +42,7 @@ class SecurityBlacklistPage extends ConsumerStatefulWidget {
 
 class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
   int _page = 1;
+  final _retainedPage = RetainedAsyncPage<PagedResult<VisitorBlacklistItem>>();
   bool _busy = false;
 
   Future<void> _unblacklist(VisitorBlacklistItem item) async {
@@ -83,13 +87,19 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final list = ref.watch(visitorBlacklistProvider(_page));
+    final paginationScope = ref.watch(masterDataSessionKeyProvider);
+    final list = _retainedPage.resolve(
+      paginationScope,
+      ref.watch(visitorBlacklistProvider(_page)),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.securityBlacklistTitle,
         showBackButton: true,
       ),
       body: list.when(
+        skipLoadingOnReload: true,
+        skipError: true,
         loading: () => const UtenSkeletonList(itemCount: 4),
         error: (e, _) => UtenEmpty.error(
           message: '$e',
@@ -105,6 +115,10 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
               tableKey:
                   'features.security.pages.security_blacklist_page.SecurityBlacklistPageState.build.1',
               key: const Key('security-blacklist-table'),
+              paginationScope: paginationScope,
+              loadingMore: list.isLoading,
+              error: list.hasError ? '${list.error}' : null,
+              onRetry: () => ref.invalidate(visitorBlacklistProvider(_page)),
               columns: _columns(l10n),
               items: page.items,
               facets: const {},
@@ -124,7 +138,14 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
               // 黑名单是运营小集合（常态个位数），仍接后端分页防极端堆积。
               currentPage: page.page,
               totalPages: page.totalPages,
-              onPageChange: (p) => setState(() => _page = p),
+              onPageChange: (p) async {
+                setState(() => _page = p);
+                await _retainedPage.waitFor(
+                  ref,
+                  visitorBlacklistProvider(_page),
+                  () => ref.read(visitorBlacklistProvider(_page).future),
+                );
+              },
             ),
           );
           if (isCompact) {

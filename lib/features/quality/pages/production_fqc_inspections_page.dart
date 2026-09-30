@@ -45,6 +45,7 @@ class _ProductionFqcInspectionsPageState
   String _keyword = '';
   int _requestVersion = 0;
   bool _canDecideByScope = false;
+  final _tableRows = MasterDataTableRowsController<ProductionFqcInspection>();
   final Set<String> _selectedIds = <String>{};
 
   @override
@@ -86,8 +87,16 @@ class _ProductionFqcInspectionsPageState
         _result = result;
         _canDecideByScope = canDecideByScope;
         _loading = false;
-        final currentIds = result.items.map((item) => item.id).toSet();
-        _selectedIds.removeWhere((id) => !currentIds.contains(id));
+      });
+      // Reconcile after the table has combined any appended pages.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || requestVersion != _requestVersion) return;
+        final visibleIds = _tableRows.items.map((item) => item.id).toSet();
+        if (_selectedIds.any((id) => !visibleIds.contains(id))) {
+          setState(
+            () => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),
+          );
+        }
       });
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) return;
@@ -203,7 +212,7 @@ class _ProductionFqcInspectionsPageState
       return;
     }
     final inspections = [
-      for (final item in _result?.items ?? const <ProductionFqcInspection>[])
+      for (final item in _tableRows.items)
         if (selectedIds.contains(item.id) && item.active) item,
     ];
     if (inspections.isEmpty) {
@@ -312,6 +321,9 @@ class _ProductionFqcInspectionsPageState
             const SizedBox(height: UtenSpacing.s12),
             Expanded(
               child: MasterDataTableView<ProductionFqcInspection>(
+                rowsController: _tableRows,
+                paginationRevision: _result,
+                paginationScope: (_keyword, _status),
                 tableKey:
                     'features.quality.pages.production_fqc_inspections_page.ProductionFqcInspectionsPageState._buildTable.1',
                 key: const Key('production-fqc-inspection-table'),

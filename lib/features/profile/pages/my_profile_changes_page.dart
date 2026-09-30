@@ -11,6 +11,9 @@
 // 选中即切到对应分段并回第 1 页（下推后端 status 参数，非页内裁剪）。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -44,6 +47,10 @@ class MyProfileChangesPage extends ConsumerStatefulWidget {
 }
 
 class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
+  final _retainedPage =
+      RetainedAsyncPage<ProfileChangePage<MyProfileChangeListItem>>();
+  Object get _paginationScope =>
+      (_status, ref.watch(masterDataSessionKeyProvider));
   String? _status; // null = 全部
   int _page = 1; // 当前页（服务端真分页：翻页/换筛选都从后端按页拉取）
   final List<UtenSegment<String?>> _segments = [];
@@ -122,8 +129,9 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         UtenSegment(value: 'rejected', label: l10n.profileChangeFilterRejected),
       ]);
 
-    final async = ref.watch(
-      myProfileChangesProvider((status: _status, page: _page)),
+    final async = _retainedPage.resolve(
+      _paginationScope,
+      ref.watch(myProfileChangesProvider((status: _status, page: _page))),
     );
 
     Widget body = Column(
@@ -164,6 +172,8 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     AsyncValue<ProfileChangePage<MyProfileChangeListItem>> async,
   ) {
     return async.when(
+      skipLoadingOnReload: true,
+      skipError: true,
       data: (page) => RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(myProfileChangesProvider);
@@ -175,6 +185,12 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
           tableKey:
               'features.profile.pages.my_profile_changes_page.MyProfileChangesPageState._buildBody.1',
           key: const Key('my-profile-changes-table'),
+          paginationScope: _paginationScope,
+          loadingMore: async.isLoading,
+          error: async.hasError ? '${async.error}' : null,
+          onRetry: () => ref.invalidate(
+            myProfileChangesProvider((status: _status, page: _page)),
+          ),
           columns: _columns(l10n),
           items: page.items,
           facets: {'status': _statusFacets(l10n)},
@@ -203,7 +219,16 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
           emptyMessage: l10n.profileChangeListEmpty,
           currentPage: page.page,
           totalPages: page.totalPages,
-          onPageChange: (p) => setState(() => _page = p),
+          onPageChange: (p) async {
+            setState(() => _page = p);
+            await _retainedPage.waitFor(
+              ref,
+              myProfileChangesProvider((status: _status, page: _page)),
+              () => ref.read(
+                myProfileChangesProvider((status: _status, page: _page)).future,
+              ),
+            );
+          },
         ),
       ),
       loading: () => const Center(child: CircularProgressIndicator()),

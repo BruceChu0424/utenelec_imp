@@ -61,6 +61,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     with DraftBulkDeleteMixin<FinanceDocListPage> {
   FinanceDocConfig get _cfg => FinanceDocConfig.by(widget.docType);
   final _list = PagedListController<FinanceDocListItem>();
+  final _tableRows = MasterDataTableRowsController<FinanceDocListItem>();
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -220,14 +221,19 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     ref.invalidate(documentStatusCountsProvider(_statusScope));
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
-    if (!mounted || generation != _reloadGeneration) return;
-    retainDraftSelection(
-      _canSelectDrafts && _list.error == null
-          ? (_list.page?.items ?? const <FinanceDocListItem>[])
-                .where(_isDeletableDraft)
-                .map((item) => item.id)
-          : const <String>[],
-    );
+    if (!mounted || generation != _reloadGeneration || _list.error != null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _reloadGeneration) return;
+      retainDraftSelection(
+        _canSelectDrafts
+            ? _tableRows.items
+                  .where(_isDeletableDraft)
+                  .map((item) => item.id)
+            : const <String>[],
+      );
+    });
   }
 
   void _onStatus(int? s) {
@@ -502,6 +508,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                     ),
                     tablePane: _withFormDraftRows(
                       MasterDataTableView<FinanceDocListItem>(
+                        rowsController: _tableRows,
                         tableKey: 'finance.${widget.docType.name}.list',
                         // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
                         primary: true,
@@ -569,6 +576,12 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                         emptyMessage: '暂无${_cfg.shortLabel}单',
                         currentPage: _list.currentPage,
                         totalPages: _list.totalPages,
+                        paginationRevision: _list.page,
+                        paginationScope: (
+                          widget.docType,
+                          _list.normalizedKeyword,
+                          _statusFilter,
+                        ),
                         onPageChange: (p) => _reload(p),
                       ),
                     ),

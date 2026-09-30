@@ -47,6 +47,77 @@ const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
   testWidgets(
+    'continuous pages keep typed business rows and live local drafts',
+    (tester) async {
+      final drafts = _Drafts([_draft('local')]);
+      final rows = MasterDataTableRowsController<_Record>();
+      var page = 1;
+      final selectedRecords = <_Record>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [formDraftsProvider.overrideWith(() => drafts)],
+          child: MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (context, update) => FormDraftCategoryTable<_Record>(
+                  scope: _scope,
+                  table: MasterDataTableView<_Record>(
+                    columns: [
+                      MasterColumnDef(
+                        key: 'billNo',
+                        label: '单号',
+                        width: 200,
+                        value: (r) => r.number,
+                      ),
+                    ],
+                    items: page == 1
+                        ? const [_Record('one', 'XD-1')]
+                        : const [_Record('two', 'XD-2')],
+                    rowsController: rows,
+                    selectable: true,
+                    idOf: (r) => r.id,
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    onSelectedIdsChanged: (ids) {
+                      selectedRecords.clear();
+                      selectedRecords.addAll(
+                        rows.items.where((row) => ids.contains(row.id)),
+                      );
+                    },
+                    currentPage: page,
+                    totalPages: 2,
+                    paginationScope: 'same-query',
+                    onPageChange: (next) => update(() => page = next),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await rows.loadNextPage();
+      await tester.pumpAndSettle();
+      expect(page, 2);
+      expect(rows.items.map((row) => row.id), ['one', 'two']);
+      expect(find.text('未提交草稿'), findsOneWidget);
+      final table = tester.widget<MasterDataTableView<_Union>>(
+        find.byType(MasterDataTableView<_Union>),
+      );
+      table.onSelectedIdsChanged!({'one', 'two', 'form-draft:local'});
+      await tester.pump();
+      expect(selectedRecords.map((row) => row.id), ['one', 'two']);
+      await drafts.delete('local');
+      await tester.pumpAndSettle();
+      expect(find.text('未提交草稿'), findsNothing);
+      expect(rows.items.map((row) => row.id), ['one', 'two']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'empty standalone draft category opens without table assertions',
     (tester) async {
       await tester.pumpWidget(

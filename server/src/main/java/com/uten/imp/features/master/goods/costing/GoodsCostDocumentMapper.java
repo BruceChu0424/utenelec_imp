@@ -34,7 +34,7 @@ public final class GoodsCostDocumentMapper {
         List<String> metadata = new ArrayList<>(List.of(
                 "成本单: " + snapshot.sheetNo(), "版本: " + snapshot.sheetVersion() + " / " + kind(snapshot.kind()),
                 "货品: " + calc.goodsCode() + " " + calc.goodsName(),
-                "批量: " + calc.batchQty() + " " + calc.unitName(),
+                "测算数量: " + calc.batchQty() + " " + calc.unitName(),
                 "币种: " + text(calc.currencyName()) + " / 本币换算率: " + text(calc.exchangeRateToLocal()),
                 "计算时间: " + calc.calculatedAt(), "快照: " + snapshot.id(),
                 "计算摘要: " + snapshot.contentDigest(), "算法: " + calc.algorithmVersion(),
@@ -63,12 +63,12 @@ public final class GoodsCostDocumentMapper {
 
     private static ExportDocument.Section summary(Calculation calc) {
         Totals t = calc.totals();
-        return new ExportDocument.Section("成本汇总", List.of(textCol("name", "项目"), numberCol("amount", "批次金额"),
+        return new ExportDocument.Section("成本汇总", List.of(textCol("name", "项目"), numberCol("amount", "测算金额"),
                 textCol("state", "口径")), List.of(
                 row("name", "材料", "amount", decimal(t.material())), row("name", "加工", "amount", decimal(t.process())),
                 row("name", "管理分摊", "amount", decimal(t.management())), row("name", "其他", "amount", decimal(t.other())),
                 row("name", "已知成本合计", "amount", decimal(t.knownTotal()), "state", stateLabel(t.valueState())),
-                row("name", "单位成本", "amount", decimal(t.unitCost()), "state", "按本次批量折算"),
+                row("name", "单位成本", "amount", decimal(t.unitCost()), "state", "按测算数量折算"),
                 row("name", "缺价物料数", "amount", t.missingPriceCount()),
                 row("name", "采用真实量物料数", "amount", t.actualUsageCount()),
                 row("name", "采用设计量物料数", "amount", t.designUsageCount())));
@@ -79,16 +79,16 @@ public final class GoodsCostDocumentMapper {
         List<ExportColumn> columns = new ArrayList<>(List.of(textCol("goodsCode", "货品编号"), textCol("goodsName", "货品名称"),
                 textCol("colorName", "颜色"), textCol("unitName", "单位"), numberCol("designQty", "设计使用数量"),
                 numberCol("actualQty", "真实使用数量"), numberCol("adoptedQty", "采用量"), textCol("usageBasis", "用量来源"),
-                numberCol("batchQty", "批次计价数量"), numberCol("perProductQty", "每产品用量"), numberCol("unitPrice", "采用单价"),
+                numberCol("batchQty", "计价用量"), numberCol("perProductQty", "每产品用量"), numberCol("unitPrice", "采用单价"),
                 textCol("priceSource", "价格来源"),
-                numberCol("unitContribution", "对本产品单位成本"), numberCol("amount", "批次行成本"),
+                numberCol("unitContribution", unitContributionLabel(snapshot.calculation().unitName())), numberCol("amount", "测算金额"),
                 numberCol("materialAmount", "纯材料金额"), numberCol("feeAmount", "本行费用金额"),
                 textCol("valueState", "成本状态"), textCol("route", "计价方式"), textCol("included", "参与合计"),
                 textCol("path", "BOM路径"), textCol("usageReason", "用量依据")));
         if (snapshot.input().priceColumns() != null) for (PriceColumn column : snapshot.input().priceColumns()) {
             columns.add(numberCol("fee:" + column.key(), column.name() + "单价或费率"));
             columns.add(numberCol("feeQty:" + column.key(), column.name() + "计价数量"));
-            columns.add(numberCol("feeAmount:" + column.key(), column.name() + "金额"));
+            columns.add(numberCol("feeAmount:" + column.key(), column.name() + " · 测算金额"));
         }
         List<Map<String, Object>> rows = new ArrayList<>();
         for (CostLine line : snapshot.calculation().lines()) {
@@ -148,7 +148,7 @@ public final class GoodsCostDocumentMapper {
                 textCol("goodsCode", "货品编号"), textCol("goodsName", "对应物料"), textCol("unitName", "单位"),
                 textCol("type", "计费方式"), textCol("category", "归集分类"), textCol("target", "归属物料路径"),
                 numberCol("value", "单价或费率"), numberCol("quantity", "计价数量"), textCol("baseKeys", "基数项目"), numberCol("baseAmount", "计费基数"),
-                numberCol("unitAmount", "单位分摊"), numberCol("amount", "批次金额"), textCol("state", "状态"),
+                numberCol("unitAmount", "单位分摊"), numberCol("amount", "测算金额"), textCol("state", "状态"),
                 textCol("source", "来源"), textCol("reason", "说明"));
         return new ExportDocument.Section(partial ? "选中物料费用" : "工序与费用", frozenColumns(columns, projection), rows);
     }
@@ -181,6 +181,7 @@ public final class GoodsCostDocumentMapper {
     public static ExportColumn textCol(String key, String label) { return new ExportColumn(key, label, ExportColumn.TEXT); }
     public static ExportColumn numberCol(String key, String label) { return new ExportColumn(key, label, ExportColumn.QTY); }
     public static BigDecimal decimal(String value) { return value == null || value.isBlank() ? null : new BigDecimal(value); }
+    private static String unitContributionLabel(String unitName) {return unitName==null||unitName.isBlank()?"单位成本":"每"+unitName.strip()+"成本";}
     private static String text(String value) { return Objects.toString(value, "待核定"); }
     private static String kind(String kind) { return "CONFIRMED".equals(kind) ? "已确认" : "草稿快照"; }
     public static String stateLabel(String value) {

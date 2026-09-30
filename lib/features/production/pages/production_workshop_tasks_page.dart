@@ -100,6 +100,8 @@ class ProductionWorkshopTasksPage extends ConsumerStatefulWidget {
 class _ProductionWorkshopTasksPageState
     extends ConsumerState<ProductionWorkshopTasksPage> {
   List<ProductionExecutionWorkbenchSegment> _items = const [];
+  final _tableRows =
+      MasterDataTableRowsController<ProductionExecutionWorkbenchSegment>();
   final Set<String> _selected = {};
 
   /// 跑批遮罩的唯一通道(2026-09-21 用户口径「批量开工/批量领料/批量设路线
@@ -404,7 +406,7 @@ class _ProductionWorkshopTasksPageState
   /// 勾选中可设路线的行(批量设路线的目标)。
   List<ProductionExecutionWorkbenchSegment> _selectedRouteTasks(
     Set<String> ids,
-  ) => _items
+  ) => _tableRows.items
       .where((task) => ids.contains(task.segmentId) && _routeSettableTask(task))
       .toList(growable: false);
 
@@ -435,7 +437,7 @@ class _ProductionWorkshopTasksPageState
         )
         .toList(growable: false);
     if (followers.isEmpty) return [task];
-    return _items
+    return _tableRows.items
         .where(
           (row) =>
               row.segmentId == task.segmentId ||
@@ -1143,11 +1145,18 @@ class _ProductionWorkshopTasksPageState
         _totalPages = result.totalPages;
         _draftReportQty = const {};
         _resetServerDraftState();
-        final available = _items
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || generation != _loadGeneration) return;
+        final available = _tableRows.items
             .where(_selectableTask)
             .map((item) => item.segmentId)
             .toSet();
-        _selected.removeWhere((id) => !available.contains(id));
+        if (_selected.any((id) => !available.contains(id))) {
+          setState(
+            () => _selected.removeWhere((id) => !available.contains(id)),
+          );
+        }
       });
       // 服务端报工草稿任何分类下都拉：正文扣减只在「生产中」生效，但「草稿」
       // 分段行与两处分段计数（草稿=本地+服务端、生产中=扣全量承接）都要它。
@@ -1261,7 +1270,7 @@ class _ProductionWorkshopTasksPageState
       _serverReportDraftsError = null;
       _draftFullyClaimedCount = fullyClaimed;
       // 扣减可能让个别行失去报工资格：勾选集同步收敛，与 _load 收口同一谓词。
-      final available = _items
+      final available = _tableRows.items
           .where(_selectableTask)
           .map((item) => item.segmentId)
           .toSet();
@@ -1371,7 +1380,7 @@ class _ProductionWorkshopTasksPageState
   /// 否则会把「先确认路线」的行喂给服务端 409、并拖垮同计划的批量开工（计划内原子）。
   List<ProductionExecutionWorkbenchSegment> _selectedDrawTasks(
     Set<String> ids,
-  ) => _items
+  ) => _tableRows.items
       .where(
         (task) =>
             ids.contains(task.segmentId) &&
@@ -1383,7 +1392,7 @@ class _ProductionWorkshopTasksPageState
   /// 「批量开工」的计数与提交目标（同一谓词）：勾选中 ∩ 齐套链路线放行 ∩ 可开工。
   List<ProductionExecutionWorkbenchSegment> _selectedStartTasks(
     Set<String> ids,
-  ) => _items
+  ) => _tableRows.items
       .where((task) => ids.contains(task.segmentId) && _canEnterStart(task))
       .toList(growable: false);
 
@@ -1624,7 +1633,7 @@ class _ProductionWorkshopTasksPageState
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
     final drawIds = done.drawSegmentIds.toSet();
-    final drawTasks = _items
+    final drawTasks = _tableRows.items
         .where(
           (task) =>
               drawIds.contains(task.segmentId) &&
@@ -1774,7 +1783,7 @@ class _ProductionWorkshopTasksPageState
     if (!_canCreateReport || _selected.isEmpty || _navigating) return;
     final requested = _selected.toList(growable: false);
     if (requested.length > 1 &&
-        _items.any(
+        _tableRows.items.any(
           (task) => requested.contains(task.segmentId) && !task.canBatchReport,
         )) {
       context.appWarning(
@@ -1783,7 +1792,7 @@ class _ProductionWorkshopTasksPageState
       );
       return;
     }
-    final workshops = _items
+    final workshops = _tableRows.items
         .where((task) => requested.contains(task.segmentId))
         .map((task) => task.workshopDepartmentId ?? task.workshopName ?? '')
         .where((value) => value.isNotEmpty)
@@ -2669,6 +2678,11 @@ class _ProductionWorkshopTasksPageState
                       : MasterDataTableView<
                           ProductionExecutionWorkbenchSegment
                         >(
+                          rowsController: _tableRows,
+                          paginationRevision: _items,
+                          rowVisible: (task) =>
+                              _status != 'IN_PROGRESS' ||
+                              !_draftFullyClaimed(task),
                           tableKey:
                               'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.1',
                           columns: _columnsFor(_status!),
@@ -2822,7 +2836,7 @@ class _ProductionWorkshopTasksPageState
                                 ..clear()
                                 ..addAll(
                                   requested.where(
-                                    (id) => _items.any(
+                                    (id) => _tableRows.items.any(
                                       (task) =>
                                           task.segmentId == id &&
                                           _selectableTask(task),
@@ -2899,6 +2913,14 @@ class _ProductionWorkshopTasksPageState
                           canOpenRow: (task) => task.planId.isNotEmpty,
                           currentPage: _page,
                           totalPages: _totalPages,
+                          paginationScope: (
+                            _keyword,
+                            _status,
+                            _preparationFilter,
+                            _routeFilter,
+                            _workshopDepartmentId,
+                            _historyTime,
+                          ),
                           onPageChange: (page) {
                             _page = page;
                             _load();

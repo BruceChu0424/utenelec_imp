@@ -93,6 +93,7 @@ class ExpenseListNotifier
   String? _lastCategory;
   String? _lastClaimNo;
   String? _lastSortColumn;
+  bool? _lastSortAscending;
 
   @override
   Future<PagedResult<ExpenseClaim>> build() async {
@@ -114,7 +115,8 @@ class ExpenseListNotifier
         _lastStatus != status ||
         _lastCategory != category ||
         _lastClaimNo != claimNo ||
-        _lastSortColumn != sortColumn) {
+        _lastSortColumn != sortColumn ||
+        _lastSortAscending != sortAscending) {
       _page = 1;
     }
     _lastFilter = filter;
@@ -122,6 +124,7 @@ class ExpenseListNotifier
     _lastCategory = category;
     _lastClaimNo = claimNo;
     _lastSortColumn = sortColumn;
+    _lastSortAscending = sortAscending;
     return ref
         .watch(expenseRepositoryProvider)
         .listMine(
@@ -163,7 +166,9 @@ class ExpenseListNotifier
 
   Future<void> _reloadPage(int page) async {
     _page = page;
-    state = const AsyncLoading();
+    state = const AsyncLoading<PagedResult<ExpenseClaim>>().copyWithPrevious(
+      state,
+    );
     ref.invalidateSelf();
     try {
       await future;
@@ -479,12 +484,15 @@ class ExpenseApprovalListNotifier
 
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
+    final previous = state;
     state = const AsyncLoading<PagedResult<ExpenseClaim>>().copyWithPrevious(
-      state,
+      previous,
     );
     final generation = _requestGeneration;
     final result = await AsyncValue.guard(() => _fetch(page));
-    if (generation == _requestGeneration) state = result;
+    if (generation == _requestGeneration) {
+      state = result.hasError ? result.copyWithPrevious(previous) : result;
+    }
   }
 
   Future<PagedResult<ExpenseClaim>> _fetch(int page) {

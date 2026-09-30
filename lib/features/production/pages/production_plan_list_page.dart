@@ -566,6 +566,12 @@ class _ProductionPlanListPageState
                         emptyMessage: '暂无生产计划单',
                         currentPage: _list.currentPage,
                         totalPages: _list.totalPages,
+                        paginationRevision: _list.page,
+                        paginationScope: (
+                          _list.normalizedKeyword,
+                          _statusFilter,
+                          _workshopIdFilter,
+                        ),
                         onPageChange: (p) => _reload(p),
                       ),
                     ),

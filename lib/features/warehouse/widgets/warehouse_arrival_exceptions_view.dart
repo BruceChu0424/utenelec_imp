@@ -595,6 +595,7 @@ class _WarehouseArrivalExceptionsViewState
             : '目前没有到货异常',
         currentPage: result.page,
         totalPages: result.totalPages,
+        paginationScope: (_keyword, _history, WarehouseListScope.of(context)),
         onPageChange: _load,
       ),
     );

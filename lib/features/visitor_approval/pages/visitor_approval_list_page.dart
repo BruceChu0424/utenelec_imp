@@ -15,6 +15,10 @@
 // 内层水平 padding 相应让位）；窄屏表格横向滚动即可。
 // 2026-09-18 UI 统一收口：错误态改 ApiException 提取 message、分段行间距
 // 对齐报销审批队列口径（top 12 / bottom 8）。
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -58,6 +62,8 @@ class _VisitorApprovalListPageState
     extends ConsumerState<VisitorApprovalListPage> {
   ApprovalTab _tab = ApprovalTab.pending;
   int _page = 1;
+  final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
+  final _tableRows = MasterDataTableRowsController<VisitorApplication>();
 
   /// 表头「状态」筛选：在当前分段状态集内再收敛（待审批段 = pending|hostReviewing）。
   String? _statusFilter;
@@ -333,7 +339,16 @@ class _VisitorApprovalListPageState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final list = ref.watch(visitorApprovalListProvider(_query));
+    final paginationScope = (
+      _tab,
+      _statusFilter,
+      _hostDepartmentId,
+      ref.watch(masterDataSessionKeyProvider),
+    );
+    final list = _retainedPage.resolve(
+      paginationScope,
+      ref.watch(visitorApprovalListProvider(_query)),
+    );
     final facets = ref.watch(visitorApprovalFacetsProvider(_tabStatus));
     final isCompact = context.breakpoint.isCompact;
 
@@ -383,6 +398,8 @@ class _VisitorApprovalListPageState
         ),
         Expanded(
           child: list.when(
+            skipLoadingOnReload: true,
+            skipError: true,
             loading: () => const UtenSkeletonList(itemCount: 6),
             error: (e, _) => UtenEmpty.error(
               // 与信息变更审核/通知列表同款：ApiException 提取 message，兜底通用文案。
@@ -400,8 +417,14 @@ class _VisitorApprovalListPageState
                 tableKey:
                     'features.visitor_approval.pages.visitor_approval_list_page.VisitorApprovalListPageState.build.1',
                 key: const Key('visitor-approval-table'),
+                paginationScope: paginationScope,
+                loadingMore: list.isLoading,
+                error: list.hasError ? '${list.error}' : null,
+                onRetry: () =>
+                    ref.invalidate(visitorApprovalListProvider(_query)),
                 columns: _columns(l10n),
                 items: page.items,
+                rowsController: _tableRows,
                 facets: {
                   'status': _statusBuckets(
                     facets.valueOrNull?['status'] ?? const [],
@@ -423,7 +446,8 @@ class _VisitorApprovalListPageState
                 onSelectedIdsChanged: (next) =>
                     setState(() => _selectedIds = next),
                 batchActionsBuilder: _isPendingTab
-                    ? (context, ids) => _batchActions(context, ids, page.items)
+                    ? (context, ids) =>
+                          _batchActions(context, ids, _tableRows.items)
                     : null,
                 // 双击行进入审批详情：push（2026-09-24 起，原来 go 会抹掉列表实例，
                 // 详情返回只能落 default；push 后详情 pop 回本页，数据由
@@ -432,7 +456,14 @@ class _VisitorApprovalListPageState
                 emptyMessage: l10n.visitorApprovalEmpty,
                 currentPage: page.page,
                 totalPages: page.totalPages,
-                onPageChange: (p) => setState(() => _page = p),
+                onPageChange: (p) async {
+                  setState(() => _page = p);
+                  await _retainedPage.waitFor(
+                    ref,
+                    visitorApprovalListProvider(_query),
+                    () => ref.read(visitorApprovalListProvider(_query).future),
+                  );
+                },
               ),
             ),
           ),

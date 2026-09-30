@@ -198,6 +198,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
       emptyMessage: '该货品暂无库存余额',
       currentPage: _balances?.page ?? 1,
       totalPages: _balances?.totalPages ?? 1,
+      paginationScope: widget.goodsId,
       onPageChange: _load,
     );
   }

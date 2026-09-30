@@ -360,6 +360,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get navSettings => '설정';
 
   @override
+  String get navCollapse => '탐색 메뉴 접기';
+
+  @override
+  String get navExpand => '탐색 메뉴 펼치기';
+
+  @override
   String get settingsTitle => '설정';
 
   @override
@@ -6961,7 +6967,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get costUsageSource => '사용량 출처';
 
   @override
-  String get costPricingQty => '배치 가격 수량';
+  String get costPricingQty => '계산 사용량';
 
   @override
   String get costPrice => '적용 단가';
@@ -6973,7 +6979,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get costPriceSource => '가격 출처';
 
   @override
-  String get costLineAmount => '배치 금액';
+  String get costLineAmount => '예상 금액';
 
   @override
   String get costUnitContribution => '완제품당 원가';
@@ -7501,7 +7507,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get costUnitContributionShort => '단위 원가';
 
   @override
-  String get costLineAmountShort => '배치 원가';
+  String get costLineAmountShort => '예상 금액';
 
   @override
   String get costPendingItems => '확인 대기 항목';
@@ -7622,7 +7628,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get costCalculationSettings => '계산 설정';
 
   @override
-  String get costAdjustment => '조정';
+  String get costAdjustment => '사용량 조정';
 
   @override
   String get costFinishAdjustment => '조정 완료';
@@ -7795,4 +7801,26 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get costProductionProgressPending => '보고와 작업장 진행 수량이 일치하지 않아 수량 표시 보류';
+
+  @override
+  String costPerUnitLabel(String unit) {
+    return '$unit당 원가';
+  }
+
+  @override
+  String costAutomaticPriceHelp(String source) {
+    return '$source에서 자동 적용. 직접 수정하면 이 원가표에 수동 단가가 적용됩니다.';
+  }
+
+  @override
+  String get costEstimateAmountHelp =>
+      '계산 사용량 × 적용 단가 + 해당 행 비용입니다. 완제품 1,000개에 각 부품 2개를 쓰면 부품 2,000개로 계산합니다. 실제 생산량이나 회계 전기 금액이 아닌 원가 추정입니다.';
+
+  @override
+  String get costUnitContributionHelp =>
+      '완제품 단위당 해당 행의 자재 및 비용 기여분입니다. 예상 금액을 계산 수량으로 나눈 값이며 완제품 단위는 이 원가 버전을 따릅니다.';
+
+  @override
+  String get costMaterialPriceNotApplied =>
+      '집계 조립품 또는 고객 지급 자재는 별도 자재 단가를 적용하지 않습니다. 행 계산 근거를 확인하세요.';
 }

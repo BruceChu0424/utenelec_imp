@@ -736,6 +736,18 @@ abstract class AppLocalizations {
   /// **'设置'**
   String get navSettings;
 
+  /// No description provided for @navCollapse.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起导航栏'**
+  String get navCollapse;
+
+  /// No description provided for @navExpand.
+  ///
+  /// In zh, this message translates to:
+  /// **'展开导航栏'**
+  String get navExpand;
+
   /// No description provided for @settingsTitle.
   ///
   /// In zh, this message translates to:
@@ -12439,7 +12451,7 @@ abstract class AppLocalizations {
   /// No description provided for @costPricingQty.
   ///
   /// In zh, this message translates to:
-  /// **'本批计价数量'**
+  /// **'计价用量'**
   String get costPricingQty;
 
   /// No description provided for @costPrice.
@@ -12463,7 +12475,7 @@ abstract class AppLocalizations {
   /// No description provided for @costLineAmount.
   ///
   /// In zh, this message translates to:
-  /// **'本批金额'**
+  /// **'测算金额'**
   String get costLineAmount;
 
   /// No description provided for @costUnitContribution.
@@ -13495,13 +13507,13 @@ abstract class AppLocalizations {
   /// No description provided for @costUnitContributionShort.
   ///
   /// In zh, this message translates to:
-  /// **'单件成本'**
+  /// **'单位成本'**
   String get costUnitContributionShort;
 
   /// No description provided for @costLineAmountShort.
   ///
   /// In zh, this message translates to:
-  /// **'本批成本'**
+  /// **'测算金额'**
   String get costLineAmountShort;
 
   /// No description provided for @costPendingItems.
@@ -13741,7 +13753,7 @@ abstract class AppLocalizations {
   /// No description provided for @costAdjustment.
   ///
   /// In zh, this message translates to:
-  /// **'调整'**
+  /// **'调整用量'**
   String get costAdjustment;
 
   /// No description provided for @costFinishAdjustment.
@@ -14067,6 +14079,36 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'报工与车间进度尚未核对一致，暂不显示产量'**
   String get costProductionProgressPending;
+
+  /// No description provided for @costPerUnitLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'每{unit}成本'**
+  String costPerUnitLabel(String unit);
+
+  /// No description provided for @costAutomaticPriceHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'自动取自{source}，可以直接修改；修改后本单采用手工单价。'**
+  String costAutomaticPriceHelp(String source);
+
+  /// No description provided for @costEstimateAmountHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'本物料的计价用量×采用单价，加上本行费用。例如按1000件测算、每件用料2个，则按2000个计价。这是成本测算金额，不是生产实产或实际过账金额。'**
+  String get costEstimateAmountHelp;
+
+  /// No description provided for @costUnitContributionHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'本行材料及费用对每一个成品计量单位的成本贡献；测算金额除以测算数量。成品单位由本成本版本确定。'**
+  String get costUnitContributionHelp;
+
+  /// No description provided for @costMaterialPriceNotApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。'**
+  String get costMaterialPriceNotApplied;
 }
 
 class _AppLocalizationsDelegate

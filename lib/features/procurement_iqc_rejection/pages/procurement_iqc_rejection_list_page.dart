@@ -519,6 +519,7 @@ class _ProcurementIqcRejectionListPageState
       emptyMessage: _emptyMessage,
       currentPage: result.page,
       totalPages: result.totalPages,
+      paginationScope: (_receiptType, _status, _keyword),
       onPageChange: _load,
     );
   }

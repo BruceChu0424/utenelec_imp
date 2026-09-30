@@ -103,6 +103,7 @@ class _WarehouseStockDocSegmentState
   String? _hostLocation;
 
   final _list = PagedListController<StockDocListItem>();
+  final _tableRows = MasterDataTableRowsController<StockDocListItem>();
   int _reloadGeneration = 0;
   bool _outboundBusy = false;
   int _outboundGeneration = 0;
@@ -276,13 +277,15 @@ class _WarehouseStockDocSegmentState
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration) return;
-    retainDraftSelection(
-      _canSelectDrafts && _list.error == null
-          ? (_list.page?.items ?? const <StockDocListItem>[])
-                .where(_isSelectableDraft)
-                .map((item) => item.id)
-          : const <String>[],
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _reloadGeneration) return;
+      if (_list.error != null) return;
+      retainDraftSelection(
+        _canSelectDrafts
+            ? _tableRows.items.where(_isSelectableDraft).map((item) => item.id)
+            : const <String>[],
+      );
+    });
   }
 
   Future<void> _openBatch() async {
@@ -294,7 +297,7 @@ class _WarehouseStockDocSegmentState
         selectedDraftIds.isEmpty) {
       return;
     }
-    final ids = (_list.page?.items ?? const <StockDocListItem>[])
+    final ids = _tableRows.items
         .where(
           (d) => d.status == 0 && !d.closed && selectedDraftIds.contains(d.id),
         )
@@ -335,7 +338,7 @@ class _WarehouseStockDocSegmentState
         _list.error != null) {
       return;
     }
-    final ids = (_list.page?.items ?? const <StockDocListItem>[])
+    final ids = _tableRows.items
         .where((d) => d.status == 0 && !d.closed && selectedIds.contains(d.id))
         .map((d) => d.id)
         .toList();
@@ -652,6 +655,8 @@ class _WarehouseStockDocSegmentState
               ? const UtenHistoryTimePlaceholder()
               : _withFormDraftRows(
                   MasterDataTableView<StockDocListItem>(
+                    rowsController: _tableRows,
+                    paginationRevision: _list.page,
                     tableKey:
                         'features.warehouse.widgets.warehouse_stock_doc_segment.WarehouseStockDocSegmentState.build.1',
                     // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -686,14 +691,12 @@ class _WarehouseStockDocSegmentState
                                 onPressed:
                                     _outboundBusy ||
                                         draftDeleteBusy ||
-                                        !(_list.page?.items ??
-                                                const <StockDocListItem>[])
-                                            .any(
-                                              (item) =>
-                                                  item.status == 0 &&
-                                                  !item.closed &&
-                                                  ids.contains(item.id),
-                                            ) ||
+                                        !_tableRows.items.any(
+                                          (item) =>
+                                              item.status == 0 &&
+                                              !item.closed &&
+                                              ids.contains(item.id),
+                                        ) ||
                                         _list.loading ||
                                         _list.error != null
                                     ? null
@@ -709,14 +712,12 @@ class _WarehouseStockDocSegmentState
                                 onPressed:
                                     _outboundBusy ||
                                         draftDeleteBusy ||
-                                        !(_list.page?.items ??
-                                                const <StockDocListItem>[])
-                                            .any(
-                                              (item) =>
-                                                  item.status == 0 &&
-                                                  !item.closed &&
-                                                  ids.contains(item.id),
-                                            ) ||
+                                        !_tableRows.items.any(
+                                          (item) =>
+                                              item.status == 0 &&
+                                              !item.closed &&
+                                              ids.contains(item.id),
+                                        ) ||
                                         _list.loading ||
                                         _list.error != null
                                     ? null
@@ -777,6 +778,15 @@ class _WarehouseStockDocSegmentState
                         : '暂无${widget.docType.label}',
                     currentPage: _list.currentPage,
                     totalPages: _list.totalPages,
+                    paginationScope: (
+                      widget.docType,
+                      _list.normalizedKeyword,
+                      _seg,
+                      _issueStatus,
+                      _historyTime,
+                      widget.productionReturnRequests,
+                      WarehouseListScope.of(context),
+                    ),
                     onPageChange: (p) => _reload(p),
                   ),
                 ),

@@ -94,8 +94,9 @@ class _Counters {
 Future<_Counters> _pump(
   WidgetTester tester,
   _FakeBatchRepository batch,
-  _FakeStatusRepository status,
-) async {
+  _FakeStatusRepository status, {
+  Future<PagedResult<_Row>> Function(MasterPaneQuery)? loadPage,
+}) async {
   final counters = _Counters();
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -129,6 +130,7 @@ Future<_Counters> _pump(
     ),
     loadPage: (q) async {
       counters.listCalls++;
+      if (loadPage != null) return loadPage(q);
       return PagedResult(
         items: _rows,
         page: 1,
@@ -238,6 +240,41 @@ void main() {
     await tester.tap(find.text('知道了'));
     await tester.pumpAndSettle();
     expect(_table(tester).selectedIds, {'g3', 'g4'}, reason: '失败的留着方便处理后重试');
+  });
+
+  testWidgets('追加第二页后批量操作携带两页货品各自的版本', (tester) async {
+    final batch = _FakeBatchRepository();
+    await _pump(
+      tester,
+      batch,
+      _FakeStatusRepository(),
+      loadPage: (query) async => PagedResult<_Row>(
+        items: [_rows[query.page - 1]],
+        page: query.page,
+        size: 1,
+        total: 2,
+        totalPages: 2,
+      ),
+    );
+    _table(tester).onSelectedIdsChanged!({'g0'});
+    await tester.pumpAndSettle();
+
+    final displayedRows = _table(tester).rowsController!;
+    await displayedRows.loadNextPage();
+    await tester.pumpAndSettle();
+    expect(displayedRows.items.map((row) => row.id), ['g0', 'g1']);
+    expect(_table(tester).selectedIds, {'g0'});
+    _table(tester).onSelectedIdsChanged!({'g0', 'g1'});
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('master-batch-disable')));
+    await tester.pumpAndSettle();
+    expect(batch.statusCalls, hasLength(1));
+    expect(
+      {for (final item in batch.statusCalls.single.$3) item.id: item.version},
+      {'g0': 7, 'g1': 8},
+      reason: '仍显示的上一页行必须留在批量命令的版本快照中',
+    );
   });
 
   testWidgets('行启停走单条窄命令，带列表行版本，不先拉详情', (tester) async {

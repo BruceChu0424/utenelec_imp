@@ -106,6 +106,9 @@ abstract interface class MasterEntityPaneController<TItem, TDetail> {
 
   /// 重拉当前页(以及前导分组)；[page] 为空时留在当前页。
   Future<void> reload({int? page});
+
+  /// 当前页加载完成后滚到列表末尾，供追加/粘贴完成后的定位使用。
+  void scrollToEnd();
   void clearSelection();
 
   /// 行操作互斥(防连点)：已有操作在跑时直接返回 null。
@@ -158,6 +161,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.detailReadOnlyHint,
     this.extraMenuItems,
     this.rowMenuOverride,
+    this.backgroundMenuBuilder,
     this.extraBatchActions,
     this.batchActionsOverride,
     this.cardActions,
@@ -234,6 +238,12 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     TItem row,
   )?
   rowMenuOverride;
+
+  /// 不依赖货品/客户等数据行的列表操作，空分类仍可使用（例如粘贴货品）。
+  final List<UtenContextMenuEntry> Function(
+    MasterEntityPaneController<TItem, TDetail> pane,
+  )?
+  backgroundMenuBuilder;
   final List<Widget> Function(
     MasterEntityPaneController<TItem, TDetail> pane,
     Set<String> ids,
@@ -291,9 +301,11 @@ class MasterEntityDetailPane<TItem, TDetail> extends ConsumerStatefulWidget {
 class _MasterEntityDetailPaneState<TItem, TDetail>
     extends ConsumerState<MasterEntityDetailPane<TItem, TDetail>>
     implements MasterEntityPaneController<TItem, TDetail> {
+  final _tableRows = MasterDataTableRowsController<TItem>();
   final _categoryRequests = LatestRequestGuard();
   final _listRequests = LatestRequestGuard();
   final _groupRequests = LatestRequestGuard();
+  final _facetRequests = LatestRequestGuard();
 
   ProductCategoryDetail? _category;
   bool _loading = true;
@@ -313,6 +325,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool _sortAsc = true;
   Set<String> _selectedIds = {};
   bool _busy = false;
+  int _scrollToEndRequest = 0;
 
   MasterEntityPaneConfig<TItem, TDetail> get _c => widget.config;
 
@@ -360,10 +373,22 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool get busy => _busy;
 
   @override
+  void scrollToEnd() {
+    if (!mounted ||
+        _listLoading ||
+        _listError != null ||
+        (_page?.items.isEmpty ?? true)) {
+      return;
+    }
+    setState(() => _scrollToEndRequest++);
+  }
+
+  @override
   void clearSelection() => setState(() => _selectedIds = {});
 
   @override
   Future<void> reload({int? page}) async {
+    if (!mounted) return;
     await Future.wait([_loadList(page ?? _pageNum), _loadGroups()]);
     // 删空当前页时回退上一页，避免列表空白。
     final current = _page;
@@ -511,7 +536,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   Map<String, TItem> _rowsById() => {
-    for (final row in _page?.items ?? <TItem>[]) _c.idOf(row): row,
+    for (final row in _tableRows.items) _c.idOf(row): row,
     for (final group in _groups)
       for (final row in group.items) _c.idOf(row): row,
   };
@@ -527,6 +552,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   Future<void> _load() async {
     final generation = _categoryRequests.begin();
+    // Category-dependent reads from the prior category must stop publishing
+    // immediately, even while the new category detail is still loading.
+    _listRequests.begin();
+    _groupRequests.begin();
+    _facetRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -607,9 +637,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   /// 表头筛选下拉选项。失败不阻塞列表，静默降级为空下拉。
   Future<void> _loadFacets() async {
+    final generation = _facetRequests.begin();
     try {
       final facets = await _c.loadFacets(widget.categoryId);
-      if (mounted) setState(() => _facets = facets);
+      if (mounted && _facetRequests.isCurrent(generation)) {
+        setState(() => _facets = facets);
+      }
     } catch (_) {
       // Facets are optional; the primary list remains usable.
     }
@@ -962,9 +995,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
             // primary:true → 表体参与「卡片折叠 → 表格内滚」联动。
             Expanded(
               child: MasterDataTableView<TItem>(
+                rowsController: _tableRows,
+                paginationRevision: _page,
+                paginationScope: (widget.categoryId, _keyword),
                 tableKey:
                     'features.basic_data.widgets.master_entity_detail_pane.MasterEntityDetailPaneState.build.1',
                 primary: true,
+                scrollToEndRequest: _scrollToEndRequest,
                 columns: _c.columns,
                 items: _page?.items ?? <TItem>[],
                 // 多选：最前列勾选框 + 表头三态全选；选中非空时工具条出批量操作区。
@@ -974,6 +1011,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 onSelectedIdsChanged: (s) => setState(() => _selectedIds = s),
                 batchActionsBuilder: _batchActions,
                 rowMenuBuilder: _menuItems,
+                backgroundMenuBuilder: _c.backgroundMenuBuilder == null
+                    ? null
+                    : () => _c.backgroundMenuBuilder!(this),
                 toolbarActions: exportInCard || _c.export == null
                     ? null
                     : _exportButtons(large: true),

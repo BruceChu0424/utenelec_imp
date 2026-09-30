@@ -84,6 +84,8 @@ class _FinanceProcurementApprovalTasksPageState
   /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
   /// 排序列 key 见 [_kSortFields]，null = 服务端默认序。
   final _columnFilters = MasterServerColumnFilters();
+  final _tableRows =
+      MasterDataTableRowsController<FinanceProcurementApprovalTask>();
   Set<String> _selectedIds = <String>{};
   final Map<String, FinanceProcurementApprovalTask> _selectedTasksById = {};
   bool _busyDecision = false;
@@ -342,8 +344,7 @@ class _FinanceProcurementApprovalTasksPageState
 
   void _setSelectedIds(Set<String> next) {
     if (_batchClaim != null) return;
-    final currentItems =
-        _result?.items ?? const <FinanceProcurementApprovalTask>[];
+    final currentItems = _tableRows.items;
     final capped = next.length > _maxBatchSize;
     final normalized = capped ? next.take(_maxBatchSize).toSet() : next;
     setState(() {
@@ -662,6 +663,9 @@ class _FinanceProcurementApprovalTasksPageState
         ],
       ),
       body: MasterDataTableView<FinanceProcurementApprovalTask>(
+        rowsController: _tableRows,
+        paginationRevision: _result,
+        paginationScope: (_keyword, _orderType),
         tableKey:
             'features.finance.pages.finance_procurement_approval_tasks_page.FinanceProcurementApprovalTasksPageState._buildList.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。

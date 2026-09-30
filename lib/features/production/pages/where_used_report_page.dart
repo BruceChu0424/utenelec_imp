@@ -518,7 +518,10 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             firstDate: DateTime(2010),
             lastDate: DateTime(2100),
           );
-          if (picked != null && picked != initialDate) onPicked(picked);
+          if (picked != null) {
+            final date = ChinaDateTime.dateOnly(picked);
+            if (date != ChinaDateTime.dateOnly(initialDate)) onPicked(date);
+          }
         },
         icon: const Icon(Icons.event_outlined, size: 18),
         label: Align(alignment: Alignment.centerLeft, child: Text(label)),
@@ -624,6 +627,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           '可切换到“全部已知关系”或“全部历史”；当前仍可能受 BOM 拒绝行影响。',
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: (_material?.id, _source, _limitHistoryDates, _from, _to),
       onPageChange: (page) {
         if (_loading) return;
         _page = page;

@@ -156,6 +156,7 @@ class _IncrementListState
                   ),
                   currentPage: _data?.page ?? 1,
                   totalPages: _data?.totalPages ?? 0,
+                  paginationScope: _status,
                   onPageChange: _load,
                   emptyMessage: '没有符合条件的追加用料申请',
                 ),

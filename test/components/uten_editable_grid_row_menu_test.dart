@@ -12,9 +12,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 
 class _Row extends EditableGridRow {
-  _Row(this.name);
+  _Row(this.name, {this.kind = '默认'});
 
   final String name;
+  final String kind;
   bool selected = false;
 
   @override
@@ -29,6 +30,7 @@ UtenEditableGrid<_Row> _grid(
   void Function(List<_Row>)? onRemoveRows,
   bool controlledSelection = false,
   bool selectionEnabled = true,
+  bool withFilters = false,
   bool Function(_Row row)? canSelectRow,
 }) {
   return UtenEditableGrid<_Row>(
@@ -38,11 +40,20 @@ UtenEditableGrid<_Row> _grid(
         key: 'name',
         label: '名称',
         width: 120,
+        filterValueOf: withFilters ? (row) => row.name : null,
         cellBuilder: (context, row) => Text(row.name),
       ),
+      if (withFilters)
+        EditableGridColumn<_Row>(
+          key: 'kind',
+          label: '类型',
+          width: 120,
+          filterValueOf: (row) => row.kind,
+          cellBuilder: (context, row) => Text(row.kind),
+        ),
     ],
     createBlankRow: () => _Row('新行'),
-    cloneRow: withClone ? (r) => _Row(r.name) : null,
+    cloneRow: withClone ? (r) => _Row(r.name, kind: r.kind) : null,
     showAddRow: showAddRow,
     selectable: selectable,
     selectionEnabled: selectionEnabled,
@@ -67,8 +78,12 @@ Widget _wrap(UtenEditableGrid<_Row> grid) => MaterialApp(
 
 /// 以鼠标右键点在 [finder] 中心（桌面触发路径；onSecondaryTapDown 在按下即触发）。
 Future<void> _rightClick(WidgetTester tester, Finder finder) async {
+  await _rightClickAt(tester, tester.getCenter(finder));
+}
+
+Future<void> _rightClickAt(WidgetTester tester, Offset position) async {
   final gesture = await tester.startGesture(
-    tester.getCenter(finder),
+    position,
     kind: PointerDeviceKind.mouse,
     buttons: kSecondaryButton,
   );
@@ -110,6 +125,134 @@ void main() {
 
     await _rightClick(tester, find.text('行1'));
     expect(find.text('删除选中 (1)'), findsOneWidget);
+    expect(find.text('粘贴'), findsOneWidget);
+    expect(find.text('在上方插入空行'), findsOneWidget);
+  });
+
+  testWidgets('背景菜单不覆盖表头菜单，也不触发行选择', (tester) async {
+    final c = UtenEditableGridController<_Row>(initial: [_Row('行1')]);
+    await tester.pumpWidget(_wrap(_grid(c)));
+
+    await _rightClick(tester, find.text('名称'));
+    expect(find.text('固定到左侧'), findsOneWidget);
+    expect(find.text('粘贴'), findsNothing);
+    expect(find.text('在上方插入空行'), findsNothing);
+    expect(c.selectedCount, 0);
+  });
+
+  testWidgets('复制后清空明细，右击空表右侧空白仍能粘贴并立即显示', (tester) async {
+    final c = UtenEditableGridController<_Row>(initial: [_Row('已复制货品')]);
+    await tester.pumpWidget(_wrap(_grid(c)));
+
+    await _rightClick(tester, find.text('已复制货品'));
+    await tester.tap(find.text('复制选中 (1)'));
+    await tester.pump();
+    c.clear();
+    await tester.pump();
+
+    final empty = find.text('暂无明细，点击下方按钮添加');
+    // 点击表体右侧的纯空白，而非空态文字，验证整个表体都能命中背景菜单。
+    await _rightClickAt(tester, Offset(740, tester.getCenter(empty).dy));
+    expect(find.text('粘贴'), findsOneWidget);
+    expect(find.text('批量粘贴'), findsOneWidget);
+    expect(find.textContaining('复制选中 ('), findsNothing);
+    expect(find.textContaining('删除选中 ('), findsNothing);
+    expect(find.text('在上方插入空行'), findsNothing);
+
+    await tester.tap(find.text('粘贴'));
+    await tester.pump();
+    expect(c.rows.map((row) => row.name), ['已复制货品']);
+    expect(find.text('已复制货品'), findsOneWidget);
+    expect(empty, findsNothing);
+  });
+
+  testWidgets('空表粘贴无缓冲时置灰，已有缓冲时支持批量粘贴', (tester) async {
+    final c = UtenEditableGridController<_Row>();
+    await tester.pumpWidget(_wrap(_grid(c)));
+    await _rightClick(tester, find.text('暂无明细，点击下方按钮添加'));
+    for (final label in ['粘贴', '批量粘贴']) {
+      expect(
+        tester
+            .widget<InkWell>(
+              find.ancestor(
+                of: find.text(label),
+                matching: find.byType(InkWell),
+              ),
+            )
+            .onTap,
+        isNull,
+      );
+    }
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump();
+
+    c.addRow(_Row('批量货品'));
+    c.selectAll();
+    c.copySelected((row) => _Row(row.name));
+    c.batchDelete();
+    await tester.pump();
+    await _rightClick(tester, find.text('暂无明细，点击下方按钮添加'));
+    await tester.tap(find.text('批量粘贴'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '3');
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(c.length, 3);
+    expect(find.text('批量货品'), findsNWidgets(3));
+  });
+
+  testWidgets('表头筛选组合导致空表时仍可粘贴，筛选保持原范围', (tester) async {
+    final first = _Row('行1', kind: '类型甲');
+    final c = UtenEditableGridController<_Row>(
+      initial: [
+        first,
+        _Row('行2', kind: '类型乙'),
+      ],
+    );
+    c.selectOnly(first);
+    c.copySelected((row) => _Row(row.name, kind: row.kind));
+    c.clearSelection();
+    await tester.pumpWidget(_wrap(_grid(c, withFilters: true)));
+
+    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('行1（1）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('类型乙（1）'));
+    await tester.pumpAndSettle();
+
+    final empty = find.text('没有符合表头筛选条件的行');
+    expect(empty, findsOneWidget);
+    await _rightClick(tester, empty);
+    expect(find.text('粘贴'), findsOneWidget);
+    expect(find.text('在上方插入空行'), findsNothing);
+    await tester.tap(find.text('粘贴'));
+    await tester.pumpAndSettle();
+    expect(c.length, 3);
+    expect(empty, findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('所有'));
+    await tester.pumpAndSettle();
+    expect(find.text('类型甲'), findsNWidgets(2));
+    expect(empty, findsNothing);
+  });
+
+  testWidgets('无克隆能力、只读或保存期间的空表不开放背景粘贴', (tester) async {
+    final c = UtenEditableGridController<_Row>();
+    for (final grid in [
+      _grid(c, withClone: false),
+      _grid(c, showAddRow: false),
+      _grid(c, selectionEnabled: false),
+    ]) {
+      await tester.pumpWidget(_wrap(grid));
+      await _rightClick(tester, find.text('暂无明细，点击下方按钮添加'));
+      expect(find.text('粘贴'), findsNothing);
+      expect(find.text('批量粘贴'), findsNothing);
+    }
   });
 
   testWidgets('复制 → 粘贴：缓冲为空时粘贴置灰，复制后粘贴追加到表尾', (tester) async {

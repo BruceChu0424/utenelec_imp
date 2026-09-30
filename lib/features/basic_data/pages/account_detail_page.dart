@@ -103,7 +103,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
 
   void _resetDates() {
     _to = ChinaDateTime.today();
-    _from = DateTime(_to.year, _to.month);
+    _from = ChinaDateTime.startOfMonth(_to);
   }
 
   String _date(DateTime value) =>
@@ -805,6 +805,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             emptyMessage: '该时间范围内暂无账户流水',
             currentPage: _statement?.page ?? 1,
             totalPages: _statement?.totalPages ?? 1,
+            paginationScope: (widget.accountId, _flowKeyword, _from, _to),
             onPageChange: _loadFlow,
           ),
         ),
@@ -941,9 +942,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
                 if (picked == null || !mounted) return;
                 setState(() {
                   if (start) {
-                    _from = picked;
+                    _from = ChinaDateTime.asWallTime(picked);
                   } else {
-                    _to = picked;
+                    _to = ChinaDateTime.asWallTime(picked);
                   }
                 });
                 // 撤掉「查询」按钮后，选完日期即刻重查（2026-09-11）。

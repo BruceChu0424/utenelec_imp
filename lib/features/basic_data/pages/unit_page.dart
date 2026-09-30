@@ -565,6 +565,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                     emptyMessage: '暂无单位', // TODO(l10n): 补 arb
                     currentPage: _page?.page ?? 1,
                     totalPages: _page?.totalPages ?? 1,
+                    paginationScope: _keyword,
                     onPageChange: (p) => _loadUnits(p),
                   ),
                 ),

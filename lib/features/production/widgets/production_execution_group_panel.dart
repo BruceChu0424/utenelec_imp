@@ -191,6 +191,7 @@ class _ProductionExecutionGroupPanelState
         },
         currentPage: _page,
         totalPages: _totalPages,
+        paginationScope: widget.keyword,
         onPageChange: (page) {
           _page = page;
           _load();

@@ -13,6 +13,10 @@
 // medium+ 外壳（MainShellPage）已收敛内容区，页面不再重复套容器；
 // 窄屏表格横向滚动即可。
 
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,16 +35,30 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/payroll_slip.dart';
 import '../providers/payroll_providers.dart';
 
-class PayrollSlipListPage extends ConsumerWidget {
+class PayrollSlipListPage extends ConsumerStatefulWidget {
   const PayrollSlipListPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final list = ref.watch(payrollListProvider);
+  ConsumerState<PayrollSlipListPage> createState() =>
+      _PayrollSlipListPageState();
+}
+
+class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
+  final _retainedPage = RetainedAsyncPage<PagedResult<PayrollSlip>>();
+
+  @override
+  Widget build(BuildContext context) {
     final filter = ref.watch(payrollFilterProvider);
+    final paginationScope = (filter, ref.watch(masterDataSessionKeyProvider));
+    final list = _retainedPage.resolve(
+      paginationScope,
+      ref.watch(payrollListProvider),
+    );
 
     // compact 自套容器补 gutter；medium+ 外壳已收敛，避免双层 gutter
     Widget body = list.when(
+      skipLoadingOnReload: true,
+      skipError: true,
       loading: () => const UtenSkeletonList(itemCount: 8),
       error: (e, _) => UtenEmpty.error(
         message: '加载失败：$e',
@@ -53,6 +71,10 @@ class PayrollSlipListPage extends ConsumerWidget {
           tableKey:
               'features.payroll.pages.payroll_slip_list_page.PayrollSlipListPage.build.1',
           key: const Key('payroll-slip-table'),
+          paginationScope: paginationScope,
+          loadingMore: list.isLoading,
+          error: list.hasError ? '${list.error}' : null,
+          onRetry: () => ref.invalidate(payrollListProvider),
           columns: _columns,
           items: page.items,
           facets: {'status': _statusFacets()},

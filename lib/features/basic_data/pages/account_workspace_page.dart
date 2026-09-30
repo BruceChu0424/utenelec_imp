@@ -835,6 +835,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                       emptyMessage: '暂无账户',
                       currentPage: _page?.page ?? 1,
                       totalPages: _page?.totalPages ?? 1,
+                      paginationScope: _keyword,
                       onPageChange: _loadAccounts,
                     ),
                   ),

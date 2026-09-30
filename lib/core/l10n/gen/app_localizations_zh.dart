@@ -351,6 +351,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get navSettings => '设置';
 
   @override
+  String get navCollapse => '收起导航栏';
+
+  @override
+  String get navExpand => '展开导航栏';
+
+  @override
   String get settingsTitle => '设置';
 
   @override
@@ -6812,7 +6818,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costUsageSource => '采用来源';
 
   @override
-  String get costPricingQty => '本批计价数量';
+  String get costPricingQty => '计价用量';
 
   @override
   String get costPrice => '采用单价';
@@ -6824,7 +6830,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costPriceSource => '价格来源';
 
   @override
-  String get costLineAmount => '本批金额';
+  String get costLineAmount => '测算金额';
 
   @override
   String get costUnitContribution => '每成品成本贡献';
@@ -7344,10 +7350,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costCurrencyConverted => '成本金额已按目标币种转换，尚未保存';
 
   @override
-  String get costUnitContributionShort => '单件成本';
+  String get costUnitContributionShort => '单位成本';
 
   @override
-  String get costLineAmountShort => '本批成本';
+  String get costLineAmountShort => '测算金额';
 
   @override
   String get costPendingItems => '待核项目';
@@ -7467,7 +7473,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costCalculationSettings => '计算设置';
 
   @override
-  String get costAdjustment => '调整';
+  String get costAdjustment => '调整用量';
 
   @override
   String get costFinishAdjustment => '完成调整';
@@ -7639,4 +7645,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get costProductionProgressPending => '报工与车间进度尚未核对一致，暂不显示产量';
+
+  @override
+  String costPerUnitLabel(String unit) {
+    return '每$unit成本';
+  }
+
+  @override
+  String costAutomaticPriceHelp(String source) {
+    return '自动取自$source，可以直接修改；修改后本单采用手工单价。';
+  }
+
+  @override
+  String get costEstimateAmountHelp =>
+      '本物料的计价用量×采用单价，加上本行费用。例如按1000件测算、每件用料2个，则按2000个计价。这是成本测算金额，不是生产实产或实际过账金额。';
+
+  @override
+  String get costUnitContributionHelp =>
+      '本行材料及费用对每一个成品计量单位的成本贡献；测算金额除以测算数量。成品单位由本成本版本确定。';
+
+  @override
+  String get costMaterialPriceNotApplied => '汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。';
 }

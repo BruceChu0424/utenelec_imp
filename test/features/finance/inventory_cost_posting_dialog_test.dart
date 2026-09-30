@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -15,6 +16,8 @@ Future<void> _open(
   bool canPost = false,
   double width = 1280,
   StateProvider<Set<String>>? grants,
+  DateTime? from,
+  DateTime? to,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1;
@@ -39,8 +42,8 @@ Future<void> _open(
         supportedLocales: AppLocalizations.supportedLocales,
         home: Scaffold(
           body: InventoryCostPostingDialog(
-            from: DateTime(2026, 9),
-            to: DateTime(2026, 9, 29),
+            from: from ?? DateTime(2026, 9),
+            to: to ?? DateTime(2026, 9, 29),
           ),
         ),
       ),
@@ -50,6 +53,37 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets(
+    'same business day normalizes mixed inputs and picker values without weakening range guard',
+    (tester) async {
+      final api = _Api();
+      await _open(
+        tester,
+        api,
+        from: DateTime(2026, 10),
+        to: DateTime.utc(2026, 10),
+      );
+      int reads() =>
+          api.reads.where((path) => path.endsWith('/postings')).length;
+      expect(reads(), 1);
+      var fields = tester
+          .widgetList<UtenDateField>(find.byType(UtenDateField))
+          .toList();
+      expect(fields.first.value!.isUtc, isTrue);
+      expect(fields.last.value!.isUtc, isTrue);
+      fields.first.onChanged(DateTime(2026, 10));
+      await tester.pumpAndSettle();
+      expect(reads(), 2);
+      fields = tester
+          .widgetList<UtenDateField>(find.byType(UtenDateField))
+          .toList();
+      expect(fields.first.value!.isUtc, isTrue);
+      fields.first.onChanged(DateTime(2026, 10, 2));
+      await tester.pumpAndSettle();
+      expect(reads(), 2);
+      expect(find.text('来源开始日期不能晚于结束日期'), findsWidgets);
+    },
+  );
   testWidgets(
     'permission revoked during confirmation cannot post inventory cost',
     (tester) async {

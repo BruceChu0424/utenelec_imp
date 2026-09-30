@@ -73,6 +73,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   ReportData? _data;
   bool _loading = false;
+  int _loadGeneration = 0;
 
   /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
   bool _dirty = false;
@@ -176,13 +177,16 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   };
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final requestedPage = _page;
     setState(() => _loading = true);
     final api = ref.read(apiClientProvider);
     try {
       final query = <String, dynamic>{
         if (_partyId != null) 'partyId': _partyId,
         'side': _side,
-        'page': _page,
+        'page': requestedPage,
         'size': _size,
         if (_view != _StmtView.annual) ...{
           'dateFrom': _fmt(_from),
@@ -192,13 +196,13 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         ...sortQueryParams(_sortKey, _sortAsc),
       };
       final json = await api.get(_endpoint, query: query);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _data = parseReportResponse(json, _page);
+        _data = parseReportResponse(json, requestedPage);
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       context.appError('加载对帐单失败：$e');
       setState(() => _loading = false);
     }
@@ -591,6 +595,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       summaryBar: reportTotalsBar(data.totals),
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: (_side, _view, _partyId, _year, _from, _to, _keyword),
       onPageChange: (p) {
         _page = p;
         _load();

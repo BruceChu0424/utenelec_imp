@@ -510,6 +510,12 @@ class _WarehouseQualityResultsPageState
                 emptyMessage: _emptyMessage,
                 currentPage: result.page,
                 totalPages: result.totalPages,
+                paginationScope: (
+                  _effectiveKeyword,
+                  _receiptType,
+                  _statusSeg,
+                  _historyTime,
+                ),
                 onPageChange: _load,
               ),
       ),

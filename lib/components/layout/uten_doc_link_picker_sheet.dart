@@ -654,6 +654,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
             emptyMessage: _cfg.step1EmptyMessage,
             currentPage: _docPage?.page ?? 1,
             totalPages: _docPage?.totalPages ?? 1,
+            paginationScope: (_keyword, _partyId),
             onPageChange: (p) => _loadDocs(p),
           ),
         ),

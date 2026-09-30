@@ -198,8 +198,8 @@ void main() {
     expect(body, containsPair('mouldId', null));
   });
 
-  test('paste keeps the source goods category (copy is its duplicate)', () {
-    // 粘贴 = 原件的副本：归源货品所在分类（编号分配器同族），当前打开的分类不抢。
+  test('save preserves source category unless a destination is requested', () {
+    // 普通保存保留原分类；粘贴命令显式传入当前打开的目标分类。
     expect(
       resolveGoodsSaveCategoryId(
         currentCategoryId: 'category-v6',

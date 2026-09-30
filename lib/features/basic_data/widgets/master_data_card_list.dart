@@ -37,6 +37,7 @@ class MasterDataCardList<T> extends StatelessWidget {
     this.onActionCompleted,
     this.bottomPadding = UtenSpacing.s8,
     this.header,
+    this.footer,
   });
 
   /// 可见且有序的列（MasterDataTableView._visibleIndices 的产物）。
@@ -66,6 +67,7 @@ class MasterDataCardList<T> extends StatelessWidget {
   /// 列表底部留白（悬浮胶囊避让等，宿主经 bottomContentPadding 传入）。
   final double bottomPadding;
   final Widget? header;
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -85,10 +87,17 @@ class MasterDataCardList<T> extends StatelessWidget {
         bottom: bottomPadding,
       ),
       itemCount:
-          items.length + (loadingMore ? 1 : 0) + (header == null ? 0 : 1),
+          items.length +
+          (loadingMore ? 1 : 0) +
+          (footer == null ? 0 : 1) +
+          (header == null ? 0 : 1),
       itemBuilder: (context, index) {
         if (header != null && index == 0) return header!;
         final itemIndex = index - (header == null ? 0 : 1);
+        if (footer != null &&
+            itemIndex == items.length + (loadingMore ? 1 : 0)) {
+          return footer!;
+        }
         if (itemIndex == items.length) {
           return const Padding(
             padding: EdgeInsets.all(UtenSpacing.s12),

@@ -8,6 +8,10 @@
 // reject-batch，全成全败，不再前端逐单循环）。
 // 历史：2026-09-09 表格化；2026-09-10 表头筛选 + 责任提示；2026-09-16 类别桶。
 
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -49,6 +53,8 @@ class ExpenseApprovalListPage extends ConsumerStatefulWidget {
 class _ExpenseApprovalListPageState
     extends ConsumerState<ExpenseApprovalListPage> {
   /// 待审批段多选：报销单 id（跨页保留）。换分段清空。
+  final _tableRows = MasterDataTableRowsController<ExpenseClaim>();
+  final _retainedPage = RetainedAsyncPage<PagedResult<ExpenseClaim>>();
   Set<String> _selectedIds = {};
   final Map<String, int> _selectedVersions = {};
 
@@ -58,12 +64,20 @@ class _ExpenseApprovalListPageState
   @override
   Widget build(BuildContext context) {
     final queue = ref.watch(approvalQueueProvider);
-    final listAsync = ref.watch(expenseApprovalListProvider);
+    final rawList = ref.watch(expenseApprovalListProvider);
     final facets = ref.watch(expenseApprovalFacetsProvider(queue));
     final filters = ref.watch(expenseApprovalFiltersProvider);
     // 2026-09-25 单号列统一：报销单号表头排序（服务端白名单 claimNo）。
     final sortColumn = ref.watch(expenseApprovalSortColumnProvider);
     final sortAscending = ref.watch(expenseApprovalSortAscendingProvider);
+    final paginationScope = (
+      queue,
+      filters,
+      sortColumn,
+      sortAscending,
+      ref.watch(masterDataSessionKeyProvider),
+    );
+    final listAsync = _retainedPage.resolve(paginationScope, rawList);
     final summaryAsync = ref.watch(expenseQueueSummaryProvider);
     final permissions = ref.watch(currentPermissionsProvider);
     final canApprove = permissions.contains(Perm.expenseApprove);
@@ -154,6 +168,8 @@ class _ExpenseApprovalListPageState
           ],
         ),
         body: listAsync.when(
+          skipLoadingOnReload: true,
+          skipError: true,
           loading: () => const UtenSkeletonList(itemCount: 4),
           error: (e, _) => UtenEmpty.error(
             message: '加载失败，请重试',
@@ -161,9 +177,14 @@ class _ExpenseApprovalListPageState
             onAction: () => ref.invalidate(expenseApprovalListProvider),
           ),
           data: (page) => MasterDataTableView<ExpenseClaim>(
+            rowsController: _tableRows,
             tableKey:
                 'features.expense.pages.expense_approval_list_page.ExpenseApprovalListPageState.build.1',
             key: const Key('expense-approval-table'),
+            paginationScope: paginationScope,
+            loadingMore: listAsync.isLoading,
+            error: listAsync.hasError ? '${listAsync.error}' : null,
+            onRetry: () => ref.invalidate(expenseApprovalListProvider),
             primary: true,
             columns: _columns,
             items: page.items,
@@ -189,7 +210,7 @@ class _ExpenseApprovalListPageState
             selectedIds: _selectedIds,
             onSelectedIdsChanged: (next) => setState(() {
               _selectedVersions.removeWhere((id, _) => !next.contains(id));
-              for (final claim in page.items) {
+              for (final claim in _tableRows.items) {
                 if (next.contains(claim.id) &&
                     !_selectedIds.contains(claim.id)) {
                   _selectedVersions[claim.id] = claim.version;

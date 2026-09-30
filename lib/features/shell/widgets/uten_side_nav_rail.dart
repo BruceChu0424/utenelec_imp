@@ -5,6 +5,7 @@
 // - 全高 surface 底 + 右侧 1px 发丝边框，与内容区自然分层
 // - 宽度 ≥1280dp 时 extended（常驻文字标签），否则纯图标 + Tooltip；大字号档按窗口
 //   口径再判一次（extendedFor），超大档起收成图标栏
+// - 大屏底部按钮可手动收起 / 展开，偏好由外壳持有
 // - 顶部品牌位：extended 放横向字标 UtenWordmarkLogo.compact；
 //   折叠态字标太宽放不下，改用品牌吉祥物小图标
 // - 通知项未读角标（Badge，>0 显示）
@@ -17,6 +18,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/brand/uten_brand_mascot.dart';
 import '../../../components/brand/uten_wordmark_logo.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 
 /// 桌面 / 平板端左侧导航栏。
 ///
@@ -34,6 +36,7 @@ class UtenSideNavRail extends StatelessWidget {
 
     /// 是否展开常驻标签（外壳在屏宽 ≥1280dp 时传 true）。
     this.extended = false,
+    this.onToggleExtended,
   });
 
   final int selectedIndex;
@@ -41,6 +44,9 @@ class UtenSideNavRail extends StatelessWidget {
   final List<String> labels;
   final List<int> badgeCounts;
   final bool extended;
+
+  /// 允许手动切换时显示按钮；窄屏 / 大字号自动图标栏不强行展开。
+  final VoidCallback? onToggleExtended;
 
   /// 展开态最小宽度
   static const double _extendedWidth = 216;
@@ -101,14 +107,30 @@ class UtenSideNavRail extends StatelessWidget {
         leading: extended
             ? const Padding(
                 padding: EdgeInsets.fromLTRB(20, 20, 16, 16),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: UtenWordmarkLogo.compact(),
-                ),
+                child: UtenWordmarkLogo.compact(),
               )
             : const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20),
                 child: UtenBrandMascot.size(40),
+              ),
+        trailingAtBottom: true,
+        trailing: onToggleExtended == null
+            ? null
+            : Semantics(
+                expanded: extended,
+                child: IconButton(
+                  tooltip: extended
+                      ? AppLocalizations.of(context).navCollapse
+                      : AppLocalizations.of(context).navExpand,
+                  onPressed: onToggleExtended,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 48,
+                    height: 48,
+                  ),
+                  icon: Icon(
+                    extended ? Icons.menu_open_rounded : Icons.menu_rounded,
+                  ),
+                ),
               ),
         destinations: [
           for (var i = 0; i < labels.length; i++)

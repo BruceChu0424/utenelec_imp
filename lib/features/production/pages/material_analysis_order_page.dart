@@ -207,7 +207,8 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   },
                   selectionSummaryCount: selected,
                   onSelectedIdsChanged: (ids) =>
-                      _host._changeMaterialTableSelection(shown, ids),
+                      _host._changeMaterialTableSelection(rows, ids),
+                  paginationScope: (widget.host, _rowsAnalysis),
                   currentPage: page,
                   totalPages: pages,
                   onPageChange: (next) => setState(() => _page = next),

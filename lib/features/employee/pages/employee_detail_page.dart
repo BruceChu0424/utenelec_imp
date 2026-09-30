@@ -1417,9 +1417,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       String Function(String date) expired,
     ) {
       if (dateStr == null) return null;
-      final d = DateTime.tryParse(dateStr);
+      final d = ChinaDateTime.tryParse(dateStr);
       if (d == null) return null;
-      final days = DateUtils.dateOnly(d).difference(today).inDays;
+      final days = ChinaDateTime.dateOnly(d).difference(today).inDays;
       if (days < 0) return expired(dateStr);
       if (days <= 30) return expiring(dateStr, days);
       return null;

@@ -562,6 +562,7 @@ class _GoodsWeightLearningViewState
       emptyMessage: '还没有称重记录',
       currentPage: _records?.page ?? 1,
       totalPages: _records?.totalPages ?? 1,
+      paginationScope: (widget.goodsId, _kindFilter, _stageFilter),
       onPageChange: _loadRecords,
     );
   }

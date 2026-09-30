@@ -11,6 +11,10 @@
 //
 // 响应式：medium+ 外壳（MainShellPage）已收敛内容区；表格自身处理窄屏横向滚动。
 
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,6 +56,9 @@ class ExpenseListPage extends ConsumerStatefulWidget {
 
 class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
     with DraftBulkDeleteMixin<ExpenseListPage> {
+  final _retainedPage = RetainedAsyncPage<PagedResult<ExpenseClaim>>();
+  final _tableRows = MasterDataTableRowsController<ExpenseClaim>();
+
   bool _isOwnDraft(ExpenseClaim claim) =>
       claim.status == ExpenseClaimStatus.draft &&
       claim.applicantId == ref.read(sessionProvider).user?.employeeId;
@@ -90,14 +97,18 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
 
   @override
   Widget build(BuildContext context) {
-    ref.listen(expenseListProvider, (_, next) {
+    ref.listen(expenseListProvider, (previous, next) {
       if (next.isLoading || !next.hasValue) return;
+      if (next.requireValue.page > 1 &&
+          next.requireValue.page != previous?.valueOrNull?.page) {
+        return;
+      }
       retainDraftSelection([
         for (final claim in next.requireValue.items)
           if (_isOwnDraft(claim)) claim.id,
       ]);
     });
-    final list = ref.watch(expenseListProvider);
+    final rawList = ref.watch(expenseListProvider);
     final counts = ref.watch(expenseCountsProvider);
     // 「处理中」= 本人已交出去、正在审批或等出纳付款的单(球不在我手上但也没完)。
     // 与工作台「我的报销」卡黄数同一个入口(徽章汇总), 免得这里和工作台各算各的。
@@ -114,6 +125,16 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
     final claimNoFilter = ref.watch(expenseClaimNoFilterProvider);
     final sortColumn = ref.watch(expenseSortColumnProvider);
     final sortAscending = ref.watch(expenseSortAscendingProvider);
+    final paginationScope = (
+      filter,
+      statusFilter,
+      categoryFilter,
+      claimNoFilter,
+      sortColumn,
+      sortAscending,
+      ref.watch(masterDataSessionKeyProvider),
+    );
+    final list = _retainedPage.resolve(paginationScope, rawList);
     final mineFacets = ref.watch(expenseMineFacetsProvider);
     final total = list.valueOrNull?.total ?? 0;
 
@@ -223,6 +244,8 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                 ],
               ),
               body: list.when(
+                skipLoadingOnReload: true,
+                skipError: true,
                 loading: () =>
                     filter == ExpenseFilter.draft &&
                         ref
@@ -268,6 +291,11 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                     primary: true,
                     columns: _columns,
                     items: page.items,
+                    rowsController: _tableRows,
+                    paginationScope: paginationScope,
+                    loadingMore: list.isLoading,
+                    error: list.hasError ? '${list.error}' : null,
+                    onRetry: () => ref.invalidate(expenseListProvider),
                     facets: {
                       'status': _statusFacets(filter),
                       // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
@@ -312,7 +340,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                         documentLabel: '报销单',
                         delete: (id) => _deleteDraft(
                           id,
-                          page.items
+                          _tableRows.items
                               .firstWhere((claim) => claim.id == id)
                               .version,
                         ),
@@ -323,10 +351,8 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                     emptyMessage: '暂无报销单',
                     currentPage: page.page,
                     totalPages: page.totalPages,
-                    onPageChange: (p) {
-                      clearDraftSelection();
-                      ref.read(expenseListProvider.notifier).goToPage(p);
-                    },
+                    onPageChange: (p) =>
+                        ref.read(expenseListProvider.notifier).goToPage(p),
                   ),
                 ),
               ),

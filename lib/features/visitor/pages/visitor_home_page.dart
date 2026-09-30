@@ -7,6 +7,8 @@
 //
 // 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer 收敛
 //（列表页 maxWidth 1600，宽屏居中不拉宽，水平 gutter 由容器提供）。
+import '../../../shared/models/retained_async_page.dart';
+import '../../../shared/models/paged_result.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -42,6 +44,7 @@ class VisitorHomePage extends ConsumerStatefulWidget {
 class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   VisitorFilter _filter = VisitorFilter.all;
   int _page = 1;
+  final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
 
   String? get _status => switch (_filter) {
     VisitorFilter.all => null,
@@ -62,7 +65,11 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final visitor = ref.watch(visitorSessionProvider).visitor;
-    final apps = ref.watch(visitorApplicationsProvider(_query));
+    final paginationScope = (_filter, visitor?.id);
+    final apps = _retainedPage.resolve(
+      paginationScope,
+      ref.watch(visitorApplicationsProvider(_query)),
+    );
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -130,6 +137,8 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
             ),
             Expanded(
               child: apps.when(
+                skipLoadingOnReload: true,
+                skipError: true,
                 loading: () => const UtenSkeletonList(itemCount: 6),
                 error: (e, _) => UtenEmpty.error(
                   message: '$e',
@@ -146,6 +155,11 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                     bottomContentPadding:
                         UtenFloatingActionGroup.scrollClearance,
                     key: const Key('visitor-home-table'),
+                    paginationScope: paginationScope,
+                    loadingMore: apps.isLoading,
+                    error: apps.hasError ? '${apps.error}' : null,
+                    onRetry: () =>
+                        ref.invalidate(visitorApplicationsProvider(_query)),
                     columns: _columns(l10n),
                     items: page.items,
                     facets: const {},
@@ -159,7 +173,16 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                     // 后端分页的翻页条（页多时可用）。
                     currentPage: page.page,
                     totalPages: page.totalPages,
-                    onPageChange: (p) => setState(() => _page = p),
+                    onPageChange: (p) async {
+                      setState(() => _page = p);
+                      await _retainedPage.waitFor(
+                        ref,
+                        visitorApplicationsProvider(_query),
+                        () => ref.read(
+                          visitorApplicationsProvider(_query).future,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),

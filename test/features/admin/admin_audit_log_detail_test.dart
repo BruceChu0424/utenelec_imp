@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
@@ -366,9 +367,10 @@ void main() {
     await tester.pumpAndSettle();
     await _selectDefaultAuditScope(tester, eventView: false);
 
-    final next = find.byTooltip('下一页');
-    await _scrollAuditPageUntilVisible(tester, next);
-    await tester.tap(next);
+    final table = tester.widget<MasterDataTableView<AuditSessionSummary>>(
+      find.byKey(const Key('audit-session-table')),
+    );
+    await table.rowsController!.loadNextPage();
     await tester.pumpAndSettle();
 
     expect(repository.sessionCalls, hasLength(2));
@@ -1179,10 +1181,15 @@ void main() {
     await _selectDefaultAuditScope(tester);
     final summaryCallCount = repository.summaryCalls.length;
 
-    final jumpField = find.byKey(const ValueKey('audit-page-jump-field'));
-    await _scrollAuditPageUntilVisible(tester, jumpField);
-    await tester.enterText(jumpField, '79');
-    await tester.tap(find.byKey(const ValueKey('audit-page-jump-button')));
+    final jumpField = find.descendant(
+      of: find.byKey(const Key('audit-event-table')),
+      matching: find.byType(TextFormField),
+    );
+    final editor = find.descendant(
+      of: jumpField,
+      matching: find.byType(EditableText),
+    );
+    tester.widget<EditableText>(editor).onSubmitted!('79');
     await tester.pumpAndSettle();
 
     expect(repository.listCalls.last['page'], 79);

@@ -71,6 +71,58 @@ void main() {
   });
 
   group('中国业务时间', () {
+    test('业务到期天数准确保留昨日以及 0、30、31 天边界', () {
+      final today = ChinaDateTime.today(utcNow: DateTime.utc(2026, 9, 30, 16));
+      for (final item in {
+        '2026-09-30': -1,
+        '2026-10-01': 0,
+        '2026-10-31': 30,
+        '2026-11-01': 31,
+      }.entries) {
+        final fromApi = ChinaDateTime.tryParse(item.key)!;
+        final fromPicker = DateTime.parse(item.key);
+        for (final value in [fromApi, fromPicker]) {
+          final date = ChinaDateTime.dateOnly(value);
+          expect(date.isUtc, isTrue);
+          expect(date.difference(today).inDays, item.value);
+        }
+      }
+    });
+    test('业务月初保持 UTC 日期载体，跨月及跨年范围不倒置', () {
+      for (final instant in [
+        DateTime.utc(2026, 9, 30, 15, 59),
+        DateTime.utc(2026, 9, 30, 16),
+        DateTime.parse('2026-09-30T10:00:00-06:00'),
+        DateTime.utc(2026, 12, 31, 16),
+      ]) {
+        final today = ChinaDateTime.today(utcNow: instant);
+        final first = ChinaDateTime.startOfMonth(today);
+        expect(first.isUtc, isTrue);
+        expect(first.year, today.year);
+        expect(first.month, today.month);
+        expect(first.day, 1);
+        expect(first.isAfter(today), isFalse);
+      }
+      expect(
+        ChinaDateTime.startOfMonth(DateTime(2026, 10, 31, 23)),
+        DateTime.utc(2026, 10),
+      );
+    });
+
+    test('日期选择器同日标准化后有效，真正晚于止日仍被拒绝', () {
+      final today = ChinaDateTime.today(utcNow: DateTime.utc(2026, 9, 30, 16));
+      final selected = DateTime(2026, 10);
+      expect(selected.isUtc, isFalse);
+      final normalized = ChinaDateTime.asWallTime(selected);
+      expect(normalized.isUtc, isTrue);
+      expect(normalized, today);
+      expect(normalized.isAfter(today), isFalse);
+      expect(
+        ChinaDateTime.asWallTime(DateTime(2026, 10, 2)).isAfter(today),
+        isTrue,
+      );
+    });
+
     test('UTC 跨日按 Asia/Shanghai 的 UTC+8 计算', () {
       final value = ChinaDateTime.now(
         utcNow: DateTime.utc(2026, 7, 30, 16, 30),

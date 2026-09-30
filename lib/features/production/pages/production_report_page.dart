@@ -78,6 +78,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
 
   ReportData? _data;
   bool _loading = false;
+  int _loadGeneration = 0;
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
@@ -135,6 +136,9 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final requestedPage = _page;
     setState(() => _loading = true);
     // 分段计数与列表同步重取（写操作成功 / 返回本页 / 手动改筛选都经过这里）。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
@@ -145,7 +149,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         'dateTo': _fmt(_to),
         if (_status != null) 'status': _status,
         if (_keyword.isNotEmpty) 'keyword': _keyword,
-        'page': _page,
+        'page': requestedPage,
         'size': _size,
         for (final e in _filters.entries) 'f.${e.key}': e.value,
         ...sortQueryParams(_sortKey, _sortAsc),
@@ -154,13 +158,13 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         '/production/reports/plan/${_kind.endpoint}',
         query: query,
       );
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _data = parseReportResponse(json, _page);
+        _data = parseReportResponse(json, requestedPage);
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       context.appError('加载报表失败');
       setState(() => _loading = false);
     }
@@ -523,6 +527,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         summaryBar: reportTotalsBar(data.totals),
         currentPage: data.page,
         totalPages: data.totalPages,
+        paginationScope: (_kind, _status, _from, _to, _keyword),
         onPageChange: (p) {
           _page = p;
           _load();

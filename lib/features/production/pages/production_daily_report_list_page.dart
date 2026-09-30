@@ -59,6 +59,8 @@ class _ProductionDailyReportListPageState
     extends ConsumerState<ProductionDailyReportListPage>
     with DraftBulkDeleteMixin<ProductionDailyReportListPage> {
   final _list = PagedListController<ProductionDailyReportListItem>();
+  final _tableRows = MasterDataTableRowsController<ProductionDailyReportListItem>();
+  int _reloadGeneration = 0;
   int? _statusFilter;
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
 
@@ -146,14 +148,21 @@ class _ProductionDailyReportListPageState
   );
 
   Future<void> _reload([int? page, bool silent = false]) async {
+    final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
-    if (!mounted) return;
-    retainDraftSelection([
-      for (final item in _list.page?.items ?? <ProductionDailyReportListItem>[])
-        if (item.status == kProductionStatusDraft) item.id,
-    ]);
+    if (!mounted || generation != _reloadGeneration || _list.error != null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _reloadGeneration) return;
+      retainDraftSelection(
+        _tableRows.items
+            .where((item) => item.status == kProductionStatusDraft)
+            .map((item) => item.id),
+      );
+    });
   }
 
   void _onStatus(int? s) {
@@ -347,6 +356,7 @@ class _ProductionDailyReportListPageState
                     Expanded(
                       child: _withFormDraftRows(
                         MasterDataTableView<ProductionDailyReportListItem>(
+                          rowsController: _tableRows,
                           tableKey: 'production.daily.list',
                           columns: _columns(names),
                           items: _list.page?.items ?? const [],
@@ -390,6 +400,12 @@ class _ProductionDailyReportListPageState
                           emptyMessage: '暂无日报数据',
                           currentPage: _list.currentPage,
                           totalPages: _list.totalPages,
+                          paginationRevision: _list.page,
+                          paginationScope: (
+                            _list.normalizedKeyword,
+                            _statusFilter,
+                            _workshopIdFilter,
+                          ),
                           onPageChange: (p) => _reload(p),
                         ),
                       ),

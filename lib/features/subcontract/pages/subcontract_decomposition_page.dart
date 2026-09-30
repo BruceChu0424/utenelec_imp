@@ -1033,6 +1033,7 @@ class _SubcontractDecompositionPageState
       emptyMessage: _seg?.history == true ? '该时间段内暂无委外任务' : '当前筛选下没有委外任务',
       currentPage: data.page,
       totalPages: data.totalPages,
+      paginationScope: (_keyword, _seg, _exception, _historyTime),
       onPageChange: (page) {
         setState(() => _page = page);
         _load(page: page);

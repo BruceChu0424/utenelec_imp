@@ -1137,6 +1137,13 @@ class _WorkshopMaterialReportsPageState
       emptyMessage: '这段时间没有内料仓收发记录',
       currentPage: page?.page ?? 1,
       totalPages: page?.totalPages ?? 1,
+      paginationScope: (
+        _binId,
+        _periodId,
+        _view,
+        _selectedPeriod?.startDate,
+        _selectedPeriod?.endDate,
+      ),
       onPageChange: _loadData,
     );
   }

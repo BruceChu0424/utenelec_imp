@@ -340,6 +340,7 @@ class _FinanceQuoteReviewListPageState
         emptyMessage: _emptyMessage(l10n),
         currentPage: result.page,
         totalPages: result.totalPages,
+        paginationScope: (_state, _keyword),
         onPageChange: _load,
         toolbarActions: [
           UtenButton(

@@ -287,6 +287,15 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
             ),
       currentPage: data?.page ?? 1,
       totalPages: data?.totalPages ?? 1,
+      paginationScope: (
+        widget.goodsId,
+        _warehouseId,
+        _colorFilter,
+        _typeFilter,
+        _from,
+        _to,
+        _includeAdjustments,
+      ),
       onPageChange: _load,
     );
   }

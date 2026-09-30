@@ -502,6 +502,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                     emptyMessage: '暂无币种',
                     currentPage: _page?.page ?? 1,
                     totalPages: _page?.totalPages ?? 1,
+                    paginationScope: _keyword,
                     onPageChange: (p) => _loadCurrencies(p),
                   ),
                 ),

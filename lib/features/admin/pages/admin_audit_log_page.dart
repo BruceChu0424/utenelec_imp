@@ -3,9 +3,11 @@
 // 面向管理员回答：谁、何时、做了什么、结果如何、是否有风险、具体改了什么。
 // 写侧由请求覆盖、显式安全事件和数据库脱敏触发器共同落 audit_log，本页是只读调查入口。
 // 仅持 audit_log:view 的核查人员可见；导出还需 audit_log:export。
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,6 +104,54 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   final _searchController = TextEditingController();
   final _requestIdController = TextEditingController();
   final _scrollController = ScrollController();
+  final _eventRows = MasterDataTableRowsController<AuditLogEntry>();
+  final _sessionRows = MasterDataTableRowsController<AuditSessionSummary>();
+
+  Object get _paginationScope => (
+    _actionFilter,
+    _keyword,
+    _targetTypeFilter,
+    _eventSourceFilter,
+    _requestId,
+    _operationKindFilter,
+    _actorScopeFilter,
+    _selectedActor?.actorId,
+    _anonymousMode,
+    _systemAnomalyMode,
+    _riskFilter,
+    _categoryFilter,
+    _outcomeFilter,
+    _dateRange,
+    ref.watch(masterDataSessionKeyProvider),
+  );
+
+  void _appendAtScrollEnd(ScrollMetrics metrics) {
+    if (metrics.axis != Axis.vertical ||
+        metrics.extentAfter > 0.5 ||
+        !_canLoad ||
+        _activeLoading) {
+      return;
+    }
+    unawaited(
+      _sessionMode ? _sessionRows.loadNextPage() : _eventRows.loadNextPage(),
+    );
+  }
+
+  void _onPaginationWheel(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent ||
+        event.scrollDelta.dy <= 0 ||
+        event.scrollDelta.dy.abs() < event.scrollDelta.dx.abs() ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final axisModifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
+    if (HardwareKeyboard.instance.logicalKeysPressed.any(
+      axisModifiers.contains,
+    )) {
+      return;
+    }
+    _appendAtScrollEnd(_scrollController.position);
+  }
 
   // 2026-09-22 全站表格滚动口径：会话/事件两张明细表表头吸顶；任一表置顶后
   // 页面滚动条才显示（替换本页此前自带的常显 Scrollbar——常显条与全站
@@ -899,7 +949,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         child: UtenContentContainer.wide(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final scrollView = RefreshIndicator(
+              final content = RefreshIndicator(
                 onRefresh: _refresh,
                 child: CustomScrollView(
                   controller: _scrollController,
@@ -1095,7 +1145,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       const SliverToBoxAdapter(
                         child: LinearProgressIndicator(),
                       ),
-                    if (_canLoad && _sessionMode && _sessionError != null)
+                    if (_canLoad &&
+                        _sessionMode &&
+                        _sessionError != null &&
+                        sessions.isEmpty)
                       SliverToBoxAdapter(
                         child: _AuditErrorCard(
                           message: _sessionError!,
@@ -1122,6 +1175,15 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditSessionTable(
                           sessions: sessions,
+                          rowsController: _sessionRows,
+                          paginationRevision: _sessionPage,
+                          paginationScope: _paginationScope,
+                          currentPage: _sessionPage?.page ?? 1,
+                          totalPages: _sessionPage?.totalPages ?? 1,
+                          loadingMore: _sessionLoading,
+                          error: _sessionError,
+                          onRetry: () => _loadSessions(_sessionPageNum),
+                          onPageChange: _loadSessions,
                           stickyHeaderPinned: _sessionsPinned,
                           onOpen: (session) => showUtenAdaptivePanel<void>(
                             context: context,
@@ -1140,23 +1202,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                         ),
                       ),
                     if (_canLoad &&
-                        _sessionMode &&
-                        _sessionPage != null &&
-                        _sessionError == null)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: UtenSpacing.s20,
-                          ),
-                          child: _AuditPagination(
-                            currentPage: _sessionPage!.page,
-                            totalPages: _sessionPage!.totalPages,
-                            loading: _sessionLoading,
-                            onPageChanged: _loadSessions,
-                          ),
-                        ),
-                      ),
-                    if (_canLoad && !_sessionMode && _error != null)
+                        !_sessionMode &&
+                        _error != null &&
+                        items.isEmpty)
                       SliverToBoxAdapter(
                         child: _AuditErrorCard(
                           message: _error!,
@@ -1174,25 +1222,17 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditEventTable(
                           items: items,
+                          rowsController: _eventRows,
+                          paginationRevision: _page,
+                          paginationScope: _paginationScope,
+                          currentPage: _page?.page ?? 1,
+                          totalPages: _page?.totalPages ?? 1,
+                          loadingMore: _loading,
+                          error: _error,
+                          onRetry: () => _load(_pageNum),
+                          onPageChange: _load,
                           stickyHeaderPinned: _eventsPinned,
                           onOpen: _openDetail,
-                        ),
-                      ),
-                    if (_canLoad &&
-                        !_sessionMode &&
-                        _page != null &&
-                        _error == null)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: UtenSpacing.s20,
-                          ),
-                          child: _AuditPagination(
-                            currentPage: _page!.page,
-                            totalPages: _page!.totalPages,
-                            loading: _loading,
-                            onPageChanged: _load,
-                          ),
                         ),
                       ),
                     if (_error == null)
@@ -1215,6 +1255,23 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       ),
                     ),
                   ],
+                ),
+              );
+              final scrollView = Listener(
+                onPointerSignal: _onPaginationWheel,
+                behavior: HitTestBehavior.translucent,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    final forward =
+                        notification is ScrollUpdateNotification &&
+                            notification.dragDetails != null &&
+                            (notification.scrollDelta ?? 0) > 0 ||
+                        notification is OverscrollNotification &&
+                            notification.overscroll > 0;
+                    if (forward) _appendAtScrollEnd(notification.metrics);
+                    return false;
+                  },
+                  child: content,
                 ),
               );
               if (constraints.maxWidth < 720) return scrollView;

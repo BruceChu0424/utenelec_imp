@@ -105,6 +105,7 @@ class _OperationsWorkbenchPageState
   String? _sortColumn;
   bool _sortAscending = true;
 
+  final _tableRows = MasterDataTableRowsController<OperationsWorkbenchTask>();
   final Set<String> _selectedIds = {};
 
   OperationsWorkbenchGateway get _repository =>
@@ -221,8 +222,16 @@ class _OperationsWorkbenchPageState
         _data = next;
         _page = next.page;
         _loading = false;
-        final currentIds = next.items.map((item) => item.id).toSet();
-        _selectedIds.removeWhere((id) => !currentIds.contains(id));
+      });
+      // Reconcile after the table has combined any appended pages.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || requestId != _requestId) return;
+        final visibleIds = _tableRows.items.map((item) => item.id).toSet();
+        if (_selectedIds.any((id) => !visibleIds.contains(id))) {
+          setState(
+            () => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),
+          );
+        }
       });
     } catch (error) {
       if (!mounted || requestId != _requestId) return;
@@ -353,10 +362,9 @@ class _OperationsWorkbenchPageState
 
   List<OperationsWorkbenchTask> get _selectedTasks {
     final selected = _selectedIds;
-    return _data?.items
-            .where((item) => selected.contains(item.id))
-            .toList(growable: false) ??
-        const [];
+    return _tableRows.items
+        .where((item) => selected.contains(item.id))
+        .toList(growable: false);
   }
 
   _SelectionPrimaryAction? get _selectionPrimaryAction {
@@ -676,6 +684,14 @@ class _OperationsWorkbenchPageState
                     child: _DesktopTaskTable(
                       key: const Key('operations-workbench-desktop-table'),
                       data: data,
+                      rowsController: _tableRows,
+                      paginationScope: (
+                        widget.department,
+                        _keyword,
+                        _seg,
+                        _exception,
+                        _historyTime,
+                      ),
                       items: data.items,
                       selectedIds: _selectedIds,
                       selectable: tableSelectable,
@@ -750,6 +766,8 @@ class _DesktopTaskTable extends StatelessWidget {
   const _DesktopTaskTable({
     super.key,
     required this.data,
+    required this.rowsController,
+    required this.paginationScope,
     required this.items,
     required this.selectedIds,
     required this.selectable,
@@ -770,6 +788,8 @@ class _DesktopTaskTable extends StatelessWidget {
   });
 
   final OperationsWorkbenchData data;
+  final MasterDataTableRowsController<OperationsWorkbenchTask> rowsController;
+  final Object paginationScope;
   final List<OperationsWorkbenchTask> items;
   final Set<String> selectedIds;
   final bool selectable;
@@ -796,6 +816,9 @@ class _DesktopTaskTable extends StatelessWidget {
     // primary:true → 表体参与「概览卡折叠 → 表格内滚」联动（拾取外层
     // UtenCollapsingHeaderScrollView 注入的 PrimaryScrollController）。
     return MasterDataTableView<OperationsWorkbenchTask>(
+      rowsController: rowsController,
+      paginationRevision: data,
+      paginationScope: paginationScope,
       tableKey:
           'features.operations_workbench.pages.operations_workbench_page.DesktopTaskTable.build.1',
       primary: true,

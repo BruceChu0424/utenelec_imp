@@ -79,6 +79,7 @@ class StockDocListPage extends ConsumerStatefulWidget {
 class _StockDocListPageState extends ConsumerState<StockDocListPage>
     with DraftBulkDeleteMixin<StockDocListPage> {
   final _list = PagedListController<StockDocListItem>();
+  final _tableRows = MasterDataTableRowsController<StockDocListItem>();
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -246,14 +247,19 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     if (!_shouldLoad) return;
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
-    if (!mounted || generation != _reloadGeneration) return;
-    retainDraftSelection(
-      _canSelectDrafts && _list.error == null
-          ? (_list.page?.items ?? const <StockDocListItem>[])
-                .where(isStockDraftDeleteCandidate)
-                .map((item) => item.id)
-          : const <String>[],
-    );
+    if (!mounted || generation != _reloadGeneration || _list.error != null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _reloadGeneration) return;
+      retainDraftSelection(
+        _canSelectDrafts
+            ? _tableRows.items
+                  .where(isStockDraftDeleteCandidate)
+                  .map((item) => item.id)
+            : const <String>[],
+      );
+    });
   }
 
   void _selectSeg(_StockDocSeg seg) {
@@ -573,6 +579,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                       ? const UtenHistoryTimePlaceholder()
                       : _withFormDraftRows(
                           MasterDataTableView<StockDocListItem>(
+                            rowsController: _tableRows,
                             tableKey: 'warehouse.${widget.docType.name}.list',
                             // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                             primary: true,
@@ -653,6 +660,14 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                                 : '暂无${widget.docType.label}', // TODO(l10n): 补 arb
                             currentPage: _list.currentPage,
                             totalPages: _list.totalPages,
+                            paginationRevision: _list.page,
+                            paginationScope: (
+                              widget.docType,
+                              _list.normalizedKeyword,
+                              _seg,
+                              _issueStatus,
+                              _historyTime,
+                            ),
                             onPageChange: (p) => _reload(p),
                           ),
                         ),

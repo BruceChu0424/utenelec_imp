@@ -587,6 +587,16 @@ class _QualityInspectionRecordsPageState
     emptyMessage: '当前筛选下没有检测记录',
     currentPage: data.page,
     totalPages: data.totalPages,
+    paginationScope: (
+      _domain,
+      _decision,
+      _sourceType,
+      _effective,
+      _disposition,
+      _keyword,
+      _dateRange?.start,
+      _dateRange?.end,
+    ),
     onPageChange: (page) => _load(page: page),
   );
 

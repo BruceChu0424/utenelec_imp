@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 import hashlib
 import json
 import locale
@@ -21,6 +22,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import xml.etree.ElementTree as ET
@@ -386,6 +388,44 @@ def heap_options(parser):
                         help="Optional Maven parent maximum heap, e.g. 1536m; appends to MAVEN_OPTS")
 
 
+@contextmanager
+def maven_parent_environment(environment, temporary, report_directory, working_directory):
+    """Set parent tmp at JVM startup without promoting it into test user properties."""
+    value = "-Djava.io.tmpdir=" + Path(temporary).resolve().as_posix()
+    escapes = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t", "\f": "\\f"}
+    # java's launcher reads @files using its native platform encoding, unlike
+    # Java 21's default UTF-8 application file I/O (Windows may still use CP936).
+    contents = ('"' + "".join(escapes.get(character, character) for character in value) + '"\n').encode(locale.getencoding())
+    # Keep the exact startup input even when Maven cannot start or its tests fail.
+    archive = Path(report_directory) / "maven-parent-jvm.args"
+    archive.write_bytes(contents)
+    # POSIX mvn splits MAVEN_OPTS without interpreting embedded quotes. A generated,
+    # whitespace-free relative @token also works when the repo/output path has spaces.
+    working_directory = Path(working_directory).resolve()
+    launcher = Path(tempfile.mkdtemp(prefix="target-maven-launch-", dir=working_directory))
+    created_path = launcher.resolve()
+    created_identity = launcher.stat().st_dev, launcher.stat().st_ino
+    try:
+        argument_file = launcher / "parent.args"
+        argument_file.write_bytes(contents)
+        token = "@" + argument_file.relative_to(working_directory).as_posix()
+        if any(character.isspace() for character in token):
+            raise ValueError("Maven parent argument-file token must not contain whitespace")
+        configured = environment.copy()
+        existing = configured.get("MAVEN_OPTS", "")
+        configured["MAVEN_OPTS"] = (existing + " " if existing else "") + token
+        yield configured
+    finally:
+        # Keep evidence (and the original launcher) if something changed the archive.
+        if not archive.is_file() or archive.read_bytes() != contents:
+            raise OSError("Maven parent argument archive changed; launcher preserved: " + str(launcher))
+        if (launcher.is_symlink() or launcher.resolve() != created_path or created_path.parent != working_directory
+                or not launcher.is_dir()
+                or (launcher.stat().st_dev, launcher.stat().st_ino) != created_identity):
+            raise OSError("Maven launcher identity changed; refusing cleanup: " + str(launcher))
+        shutil.rmtree(launcher)
+
+
 def run_one(plan, shard_id, output, maven, unfiltered=False, jvm_max_heap=None, maven_max_heap=None):
     # Validate again for callers that use this module directly rather than argparse.
     if jvm_max_heap is not None:
@@ -417,15 +457,16 @@ def run_one(plan, shard_id, output, maven, unfiltered=False, jvm_max_heap=None, 
     command = [maven, "-B", "-ntp", "clean", "verify", f"-Duten.build.directory={target}",
                "-DskipTests=false", "-Dmaven.test.skip=false", "-DskipITs=false", "-Dmaven.test.failure.ignore=false",
                "-DforkCount=1", "-DreuseForks=true", "-Djunit.jupiter.execution.parallel.enabled=false",
-               f"-Djava.io.tmpdir={temp}", f"-Duten.test.tmpdir={temp}",
+               f"-Duten.test.tmpdir={temp}",
                *([f"-Duten.test.jvm.heap.args=-Xmx{jvm_max_heap}"] if jvm_max_heap is not None else []),
                *([] if unfiltered else include_args)]
     started = time.monotonic()
     exit_code = -1
     infrastructure_error = None
     try:
-        exit_code = command_log(command, ROOT / "server", directory / "maven.log", env)
-    except (OSError, subprocess.SubprocessError) as exc:
+        with maven_parent_environment(env, temp, directory, ROOT / "server") as launch_env:
+            exit_code = command_log(command, ROOT / "server", directory / "maven.log", launch_env)
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         infrastructure_error = f"Maven could not run: {exc}"
     finally:
         for phase in ("surefire", "failsafe"):
@@ -444,6 +485,9 @@ def run_one(plan, shard_id, output, maven, unfiltered=False, jvm_max_heap=None, 
                   "shard": shard_id, "coverage": plan["coverage"], "maven_exit_code": exit_code,
                   "unfiltered": unfiltered,
                   "heap_limits": {"test_jvm_max_heap": jvm_max_heap, "maven_max_heap": maven_max_heap},
+                  "maven_parent_arguments": {"file": str(directory / "maven-parent-jvm.args"), "encoding": locale.getencoding(),
+                      "sha256": hashlib.sha256((directory / "maven-parent-jvm.args").read_bytes()).hexdigest()
+                      if (directory / "maven-parent-jvm.args").is_file() else None},
                   "platform": sys.platform,
                   "elapsed_seconds": round(time.monotonic() - started, 3),
                   "database_tests_enabled": True, "target": str(target), **audit}

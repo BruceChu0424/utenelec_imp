@@ -122,11 +122,13 @@ class HeapOptionsTests(unittest.TestCase):
             self.assertFalse(runner.run_one(plan(), 0, root, "mvn", jvm_max_heap="4g", maven_max_heap="1536m"))
             arguments, _, _, environment = command.call_args.args
             self.assertIn("-Duten.test.jvm.heap.args=-Xmx4g", arguments)
-            self.assertEqual(inherited + " -Xmx1536m", environment["MAVEN_OPTS"])
+            self.assertRegex(environment["MAVEN_OPTS"], re.escape(inherited + " -Xmx1536m ")
+                             + r"@target-maven-launch-[^\s]+/parent\.args$")
             self.assertNotIn("JAVA_TOOL_OPTIONS", environment)
             self.assertNotIn("-DargLine", " ".join(arguments))
             self.assertNotIn("-Duten.test.jvm.args=", " ".join(arguments))
             self.assertIn(f"-Duten.test.tmpdir={root / 'shard-0' / 'tmp'}", arguments)
+            self.assertFalse(any(argument.startswith("-Djava.io.tmpdir=") for argument in arguments))
             self.assertIn("-DskipTests=false", arguments)
             self.assertIn("-DskipITs=false", arguments)
             self.assertIn("-Dmaven.test.failure.ignore=false", arguments)
@@ -148,8 +150,9 @@ class HeapOptionsTests(unittest.TestCase):
                 runner.run_one(plan(), 0, root, "mvn")
                 arguments, _, _, environment = command.call_args.args
                 self.assertFalse(any("uten.test.jvm.heap.args" in argument for argument in arguments))
-                self.assertEqual(inherited.get("MAVEN_OPTS"), environment.get("MAVEN_OPTS"))
-                self.assertEqual("MAVEN_OPTS" in inherited, "MAVEN_OPTS" in environment)
+                prefix = inherited.get("MAVEN_OPTS", "")
+                self.assertRegex(environment["MAVEN_OPTS"], re.escape(prefix + " " if prefix else "")
+                                 + r"@target-maven-launch-[^\s]+/parent\.args$")
                 self.assertEqual({"test_jvm_max_heap": None, "maven_max_heap": None},
                                  runner.read_json(root / "shard-0" / "report.json")["heap_limits"])
 
@@ -163,7 +166,7 @@ class HeapOptionsTests(unittest.TestCase):
                 arguments, _, _, environment = command.call_args.args
                 self.assertEqual("jvm_max_heap" in selected,
                                  any("uten.test.jvm.heap.args" in argument for argument in arguments))
-                self.assertEqual("maven_max_heap" in selected, "MAVEN_OPTS" in environment)
+                self.assertEqual("maven_max_heap" in selected, "-Xmx1536m" in environment["MAVEN_OPTS"])
 
     def test_run_baseline_and_focus_forward_the_same_heap_options(self):
         manifest = plan()
@@ -459,6 +462,135 @@ class EvidenceTests(unittest.TestCase):
                 patch.object(runner, "command_log", return_value=7) as command, patch.dict(runner.os.environ, {}, clear=True):
             runner.run_one(manifest, 0, Path(temp), "mvn", unfiltered=True)
             self.assertFalse(any("includesFile" in argument for argument in command.call_args.args[0]))
+
+
+class MavenParentTempTests(unittest.TestCase):
+    def setUp(self):
+        self.workspace = tempfile.TemporaryDirectory()
+        self.addCleanup(self.workspace.cleanup)
+        self.root = Path(self.workspace.name) / "repository with spaces 中文"
+        self.cwd = self.root / "server"
+        self.cwd.mkdir(parents=True)
+        self.report = self.root / "reports with spaces"
+        self.report.mkdir()
+        self.temporary = self.report / "temporary files"
+        self.temporary.mkdir()
+
+    def argument_path(self, environment):
+        token = environment["MAVEN_OPTS"].split()[-1]
+        self.assertTrue(token.startswith("@"))
+        self.assertFalse(any(character.isspace() for character in token))
+        return self.cwd / token[1:]
+
+    def test_startup_file_handles_space_paths_and_preserves_inherited_options(self):
+        inherited = {"MAVEN_OPTS": '-Xmx512m -Dkept="two words"', "OTHER": "unchanged"}
+        with runner.maven_parent_environment(inherited, self.temporary, self.report, self.cwd) as environment:
+            argument_file = self.argument_path(environment)
+            self.assertTrue(argument_file.is_file())
+            self.assertTrue(environment["MAVEN_OPTS"].startswith(inherited["MAVEN_OPTS"] + " @"))
+            self.assertEqual("unchanged", environment["OTHER"])
+            contents = argument_file.read_bytes()
+            self.assertEqual(('"-Djava.io.tmpdir=' + self.temporary.resolve().as_posix() + '"\n')
+                             .encode(runner.locale.getencoding()), contents)
+            self.assertEqual(contents, (self.report / "maven-parent-jvm.args").read_bytes())
+        self.assertFalse(argument_file.parent.exists())
+        self.assertEqual('-Xmx512m -Dkept="two words"', inherited["MAVEN_OPTS"])
+
+    def test_exception_removes_only_own_launcher_but_keeps_archived_startup_input(self):
+        protected = self.cwd / "target-other-run"
+        protected.mkdir()
+        (protected / "keep.txt").write_text("other worker")
+        with self.assertRaisesRegex(OSError, "launch failed"):
+            with runner.maven_parent_environment({}, self.temporary, self.report, self.cwd) as environment:
+                argument_file = self.argument_path(environment)
+                original = argument_file.read_bytes()
+                raise OSError("launch failed")
+        self.assertFalse(argument_file.parent.exists())
+        self.assertEqual(original, (self.report / "maven-parent-jvm.args").read_bytes())
+        self.assertEqual("other worker", (protected / "keep.txt").read_text())
+
+    def test_parallel_workers_keep_distinct_live_argument_files(self):
+        barrier = threading.Barrier(2)
+        files, failures = [], []
+        def worker(number):
+            try:
+                report = self.report / str(number)
+                temporary = report / "tmp"
+                temporary.mkdir(parents=True)
+                with runner.maven_parent_environment({}, temporary, report, self.cwd) as environment:
+                    argument_file = self.argument_path(environment)
+                    files.append(argument_file)
+                    barrier.wait(timeout=10)
+                    self.assertEqual(2, len(set(files)))
+                    self.assertTrue(all(path.is_file() for path in files))
+                    barrier.wait(timeout=10)
+            except BaseException as error:
+                failures.append(error)
+        workers = [threading.Thread(target=worker, args=(number,)) for number in range(2)]
+        for worker_thread in workers:
+            worker_thread.start()
+        for worker_thread in workers:
+            worker_thread.join(timeout=15)
+        self.assertFalse(any(worker_thread.is_alive() for worker_thread in workers))
+        self.assertEqual([], failures)
+        self.assertTrue(all(not path.parent.exists() for path in files))
+        archived = [(self.report / str(number) / "maven-parent-jvm.args").read_bytes() for number in range(2)]
+        self.assertNotEqual(*archived)
+
+    def test_cleanup_refuses_a_replaced_launcher_directory(self):
+        with self.assertRaisesRegex(OSError, "identity changed"):
+            with runner.maven_parent_environment({}, self.temporary, self.report, self.cwd) as environment:
+                argument_file = self.argument_path(environment)
+                original = argument_file.parent.with_name(argument_file.parent.name + "-preserved")
+                self.assertEqual(self.cwd.resolve(), original.resolve().parent)
+                argument_file.parent.rename(original)
+                argument_file.parent.mkdir()
+                (argument_file.parent / "keep.txt").write_text("replacement is not ours")
+        self.assertEqual("replacement is not ours", (argument_file.parent / "keep.txt").read_text())
+        self.assertEqual((original / "parent.args").read_bytes(),
+                         (self.report / "maven-parent-jvm.args").read_bytes())
+
+    def test_missing_archive_keeps_original_startup_input_and_fails_closed(self):
+        with self.assertRaisesRegex(OSError, "archive changed; launcher preserved"):
+            with runner.maven_parent_environment({}, self.temporary, self.report, self.cwd) as environment:
+                argument_file = self.argument_path(environment)
+                original = argument_file.read_bytes()
+                (self.report / "maven-parent-jvm.args").unlink()
+        self.assertEqual(original, argument_file.read_bytes())
+
+    def test_maven_launch_exception_keeps_failure_report_and_parameter_evidence(self):
+        captured = []
+        def fail(command, cwd, logfile, environment):
+            captured.append(self.argument_path(environment))
+            self.assertTrue(captured[0].is_file())
+            self.assertFalse(any(argument.startswith("-Djava.io.tmpdir=") for argument in command))
+            raise OSError("synthetic executable missing")
+        with patch.object(runner, "ROOT", self.root), patch.object(runner, "source_identity", return_value=SOURCE), \
+                patch.object(runner, "command_log", side_effect=fail), patch.dict(runner.os.environ, {}, clear=True), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(runner.run_one(plan(), 0, self.report, "missing-maven"))
+        report = runner.read_json(self.report / "shard-0/report.json")
+        self.assertEqual(-1, report["maven_exit_code"])
+        self.assertFalse(report["complete"])
+        self.assertTrue(any("synthetic executable missing" in error for error in report["errors"]))
+        self.assertTrue((self.report / "shard-0/maven-parent-jvm.args").is_file())
+        archived = self.report / "shard-0/maven-parent-jvm.args"
+        self.assertEqual({"file": str(archived), "encoding": runner.locale.getencoding(),
+                          "sha256": runner.hashlib.sha256(archived.read_bytes()).hexdigest()},
+                         report["maven_parent_arguments"])
+        self.assertFalse(captured[0].parent.exists())
+
+    def test_unrepresentable_native_path_fails_before_maven_with_explicit_failure_report(self):
+        with patch.object(runner, "ROOT", self.root), patch.object(runner, "source_identity", return_value=SOURCE), \
+                patch.object(runner.locale, "getencoding", return_value="ascii"), \
+                patch.object(runner, "command_log") as command, contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(runner.run_one(plan(), 0, self.report, "mvn"))
+        command.assert_not_called()
+        report = runner.read_json(self.report / "shard-0/report.json")
+        self.assertFalse(report["complete"])
+        self.assertTrue(any("ascii" in error and "encode" in error for error in report["errors"]))
+        self.assertIsNone(report["maven_parent_arguments"]["sha256"])
+        self.assertEqual([], list(self.cwd.glob("target-maven-launch-*")))
 
 
 class SourceIdentityTests(unittest.TestCase):

@@ -1,5 +1,6 @@
 package com.uten.imp.security;
 
+import com.uten.imp.UtenImpApplication;
 import org.flywaydb.core.Flyway;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -17,6 +18,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -79,7 +81,7 @@ final class PermissionCatalogTestSupport {
 
     /** 扫描编译产物中的全部主代码类，读取类级与方法级 @PreAuthorize(常量拼接在编译期已内联)。 */
     static List<Guard> guards() throws IOException {
-        Path classes = Path.of("target", "classes");
+        Path classes = applicationClassesDirectory();
         List<Guard> result = new ArrayList<>();
         try (Stream<Path> files = Files.walk(classes.resolve("com/uten/imp"))) {
             for (Path file : files.filter(p -> p.toString().endsWith(".class")).toList()) {
@@ -113,7 +115,27 @@ final class PermissionCatalogTestSupport {
                 }
             }
         }
+        if (result.isEmpty()) {
+            throw new IOException("No permission guards found in loaded application classes: " + classes);
+        }
         return result;
+    }
+
+    private static Path applicationClassesDirectory() throws IOException {
+        var source = UtenImpApplication.class.getProtectionDomain().getCodeSource();
+        if (source == null || !"file".equals(source.getLocation().getProtocol())) {
+            throw new IOException("Loaded application classes have no filesystem code source");
+        }
+        final Path classes;
+        try {
+            classes = Path.of(source.getLocation().toURI());
+        } catch (URISyntaxException exception) {
+            throw new IOException("Cannot resolve loaded application classes", exception);
+        }
+        if (!Files.isDirectory(classes.resolve("com/uten/imp"))) {
+            throw new IOException("Loaded application classes directory is missing: " + classes);
+        }
+        return classes;
     }
 
     static Set<String> codes(String expression) {

@@ -4,6 +4,8 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import tempfile
 import sys
@@ -370,6 +372,150 @@ class ProgressLoggingTests(unittest.TestCase):
             self.assertEqual([0], result)
             self.assertIn("BUILD SUCCESS", capture.getvalue())
             self.assertIn("BUILD SUCCESS", log.read_text())
+
+
+class WorkflowGatingTests(unittest.TestCase):
+    """Keep optional comparison separate from the mandatory complete-suite gate."""
+    @classmethod
+    def setUpClass(cls):
+        cls.workflow = (runner.ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+
+    def job(self, name):
+        match = re.search(r"^  " + re.escape(name) + r":\n(.*?)(?=^  [\w-]+:\n|\Z)",
+                          self.workflow, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(match, f"Missing required workflow job {name}")
+        return match.group(1)
+
+    def step(self, job, contains):
+        blocks = re.findall(r"^      - (.*?)(?=^      - |\Z)", job, re.MULTILINE | re.DOTALL)
+        matches = [block for block in blocks if contains in block]
+        self.assertEqual(1, len(matches), f"Expected one step containing {contains}")
+        return matches[0]
+
+    def needs(self, job):
+        line = re.search(r"^    needs: (.+)$", job, re.MULTILINE)
+        self.assertIsNotNone(line)
+        return {value.strip() for value in line.group(1).strip("[]").split(",")}
+
+    def gate_script(self):
+        block = self.step(self.job("backend-db"), "backend_test_shards.py verify ")
+        lines = block.splitlines()
+        start = lines.index("        run: |") + 1
+        return "\n".join(line[10:] for line in lines[start:] if line.startswith("          "))
+
+    def test_optional_reference_never_disables_any_full_partition(self):
+        planning, shards = self.job("backend-plan"), self.job("backend-shards")
+        self.assertIn("--shards 4", planning)
+        self.assertEqual({"backend-plan"}, self.needs(shards))
+        self.assertRegex(shards, r"(?m)^        shard: \[0, 1, 2, 3\]$")
+        self.assertRegex(shards, r"(?m)^      fail-fast: false$")
+        for job in (planning, shards):
+            self.assertNotIn("compare_reference", job)
+            self.assertNotRegex(job, r"(?m)^    if:")
+            self.assertNotIn("continue-on-error:", job)
+        run = self.step(shards, "backend_test_shards.py run ")
+        self.assertNotRegex(run, r"(?m)^        if:")
+        self.assertIn('UTEN_RUN_DB_TESTS: "true"', run)
+        self.assertIn("--shard ${{ matrix.shard }} --output server/target-ci-reports", run)
+
+    def test_ordinary_reference_job_is_an_explicit_successful_noop(self):
+        switch = re.search(r"(?m)^      compare_reference:\n(?:        .*\n)*", self.workflow)
+        self.assertIsNotNone(switch)
+        self.assertIn("        type: boolean\n", switch.group())
+        self.assertIn("        default: false\n", switch.group())
+        reference = self.job("backend-reference")
+        self.assertNotRegex(reference, r"(?m)^    if:")
+        self.assertEqual({"backend-plan"}, self.needs(reference))
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.compare_reference", reference)
+        noop = self.step(reference, "Additional serial comparison was not requested")
+        self.assertIn("if: env.RUN_REFERENCE != 'true'", noop)
+        self.assertIn("run: echo ", noop)
+        baseline = self.step(reference, "backend_test_shards.py baseline ")
+        self.assertIn("if: env.RUN_REFERENCE == 'true'", baseline)
+        self.assertIn('UTEN_RUN_DB_TESTS: "true"', baseline)
+        self.assertIn("--plan server/target-ci-plan/plan.json --output server/target-ci-reference", baseline)
+        self.assertNotIn("continue-on-error:", reference)
+
+    def test_comparison_waits_for_all_producers_and_downloads_same_run_artifacts(self):
+        reference, gate = self.job("backend-reference"), self.job("backend-db")
+        self.assertEqual({"backend-plan", "backend-shards", "backend-reference"}, self.needs(gate))
+        self.assertRegex(gate, r"(?m)^    if: always\(\)$")
+        self.assertNotIn("backend_test_shards.py compare ", reference)
+        self.assertNotIn("backend-test-results-*", reference)
+        self.assertIn("--reports server/target-ci-reports --reference server/target-ci-reference", self.gate_script())
+        download = self.step(gate, "name: backend-unfiltered-reference")
+        self.assertIn("actions/download-artifact@", download)
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.compare_reference", download)
+        self.assertIn("path: server/target-ci-reference", download)
+        parallel = self.step(gate, "pattern: backend-test-results-*")
+        self.assertIn("path: server/target-ci-reports", parallel)
+        self.assertIn("merge-multiple: true", parallel)
+        for job in (reference, gate, self.job("backend-shards")):
+            self.assertNotIn("run-id:", job, "Evidence must come from this workflow run")
+            self.assertNotIn("continue-on-error:", job)
+
+    def test_failures_keep_raw_reference_and_reconciliation_evidence(self):
+        reference_upload = self.step(self.job("backend-reference"), "name: backend-unfiltered-reference")
+        self.assertIn("actions/upload-artifact@", reference_upload)
+        self.assertIn("if: always() && env.RUN_REFERENCE == 'true'", reference_upload)
+        self.assertIn("server/target-ci-reference/", reference_upload)
+        self.assertIn("!server/target-ci-reference/**/tmp/**", reference_upload)
+        for job, marker in (("backend-shards", "name: backend-test-results-"),
+                            ("backend-db", "name: backend-test-summary")):
+            upload = self.step(self.job(job), marker)
+            self.assertIn("if: always()", upload)
+            self.assertIn("if-no-files-found: error", upload)
+        summary = self.step(self.job("backend-db"), "name: backend-test-summary")
+        self.assertIn("server/target-ci-reports/verification.json", summary)
+        self.assertIn("server/target-ci-reports/comparison.json", summary)
+
+    def test_fast_lane_also_exercises_build_directory_independence(self):
+        self.assertIn("-Duten.build.directory=target-fast verify", self.job("backend-fast"))
+
+    def test_actual_gate_shell_rejects_failed_or_skipped_producers_and_comparison(self):
+        gate = self.job("backend-db")
+        for variable, job in (("PLAN_RESULT", "backend-plan"), ("PARTITION_RESULT", "backend-shards"),
+                              ("REFERENCE_RESULT", "backend-reference")):
+            self.assertIn(variable + ": ${{ needs." + job + ".result }}", gate)
+        self.assertIn("COMPARE_REFERENCE: ${{ github.event_name == 'workflow_dispatch' && inputs.compare_reference }}", gate)
+        bash = shutil.which("bash")
+        if runner.os.name == "nt" and shutil.which("git"):
+            git_bash = Path(shutil.which("git")).parent.parent / "bin/bash.exe"
+            if git_bash.is_file():
+                bash = str(git_bash)
+        if not bash:
+            self.skipTest("Bash is required to execute the actual GitHub gate shell")
+        # Stub only the expensive Python commands. Execute the workflow's real Bash
+        # conditions and exit propagation, including the producer-result checks.
+        stub = '''python3() {
+  printf '%s\\n' "$2" >> "$TEST_GATE_TRACE"
+  case "$2" in
+    verify) return "$VERIFY_EXIT" ;;
+    compare) return "$COMPARE_EXIT" ;;
+    *) return 99 ;;
+  esac
+}
+'''
+        cases = [
+            ({"COMPARE_REFERENCE": "false", "COMPARE_EXIT": "99"}, True, ["verify"]),
+            ({"COMPARE_REFERENCE": "true"}, True, ["verify", "compare"]),
+            ({"VERIFY_EXIT": "1"}, False, ["verify"]),
+            ({"COMPARE_REFERENCE": "true", "COMPARE_EXIT": "1"}, False, ["verify", "compare"]),
+            ({"PLAN_RESULT": "failure"}, False, ["verify"]),
+            ({"PARTITION_RESULT": "failure"}, False, ["verify"]),
+            ({"PARTITION_RESULT": "skipped"}, False, ["verify"]),
+            ({"REFERENCE_RESULT": "failure"}, False, ["verify"]),
+            ({"COMPARE_REFERENCE": "true", "REFERENCE_RESULT": "cancelled"}, False, ["verify", "compare"]),
+        ]
+        for overrides, success, expected_calls in cases:
+            with self.subTest(overrides=overrides), tempfile.TemporaryDirectory() as temp:
+                environment = {**runner.os.environ, "PLAN_RESULT": "success", "PARTITION_RESULT": "success",
+                               "REFERENCE_RESULT": "success", "COMPARE_REFERENCE": "false", "VERIFY_EXIT": "0",
+                               "COMPARE_EXIT": "0", "TEST_GATE_TRACE": "trace.txt", **overrides}
+                result = subprocess.run([bash, "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", stub + self.gate_script()],
+                                        cwd=temp, env=environment, capture_output=True, text=True, timeout=10)
+                self.assertEqual(success, result.returncode == 0, result.stderr)
+                self.assertEqual(expected_calls, (Path(temp) / "trace.txt").read_text().splitlines())
 
 
 if __name__ == "__main__":

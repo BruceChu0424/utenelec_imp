@@ -1018,7 +1018,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
     }
 
     private void emit(Map<String, Object> record) throws Exception {
-        Path output = Path.of(System.getProperty("uten.production.measurements", "target/production-scale-measurements.jsonl"));
+        Path output = Path.of(System.getProperty("uten.production.measurements",
+                Path.of(System.getProperty("uten.build.directory", "target"), "production-scale-measurements.jsonl").toString()));
         Files.createDirectories(output.toAbsolutePath().getParent());
         Files.writeString(output, json.writeValueAsString(record) + System.lineSeparator(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }

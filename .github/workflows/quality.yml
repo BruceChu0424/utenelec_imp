@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      compare_reference:
+        description: Run an additional unfiltered serial reference and compare every test instance
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,7 +60,8 @@ jobs:
           cache: maven
       - name: Unit, architecture, and contract tests (DB-gated tests skip by design)
         working-directory: server
-        run: mvn --batch-mode --no-transfer-progress verify
+        # Exercise build-directory independence in the early lane too.
+        run: mvn --batch-mode --no-transfer-progress -Duten.build.directory=target-fast verify
 
   backend-plan:
     name: Backend / discover complete test inventory
@@ -123,11 +129,55 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  backend-reference:
+    name: Backend / optional unfiltered reference
+    needs: backend-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      RUN_REFERENCE: ${{ github.event_name == 'workflow_dispatch' && inputs.compare_reference }}
+    steps:
+      # A successful no-op job in ordinary runs preserves the release gate's
+      # pending-job contract; the complete sharded suite is always mandatory.
+      - name: Ordinary run uses the complete parallel suite
+        if: env.RUN_REFERENCE != 'true'
+        run: echo 'Additional serial comparison was not requested; all full-suite partitions remain required.'
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        if: env.RUN_REFERENCE == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        if: env.RUN_REFERENCE == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: env.RUN_REFERENCE == 'true'
+        with:
+          name: backend-test-plan
+          path: server/target-ci-plan
+      - name: Original unfiltered serial Maven verify on the same Linux environment
+        if: env.RUN_REFERENCE == 'true'
+        env:
+          UTEN_RUN_DB_TESTS: "true"
+        run: python3 .github/scripts/backend_test_shards.py baseline --plan server/target-ci-plan/plan.json --output server/target-ci-reference
+      - name: Preserve unfiltered reference even after failure
+        if: always() && env.RUN_REFERENCE == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: backend-unfiltered-reference
+          path: |
+            server/target-ci-reference/
+            !server/target-ci-reference/**/tmp/**
+          if-no-files-found: error
+          retention-days: 14
+
   backend-db:
     # Preserve the existing required-check name. Success means all four complete
     # partitions passed AND their actual reports reconcile with the discovered plan.
     name: "Backend / Java 21 (full: DB full-chain)"
-    needs: [backend-plan, backend-shards]
+    needs: [backend-plan, backend-shards, backend-reference]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -144,14 +194,26 @@ jobs:
           pattern: backend-test-results-*
           path: server/target-ci-reports
           merge-multiple: true
+      - name: Collect unfiltered reference after all producers finish
+        if: github.event_name == 'workflow_dispatch' && inputs.compare_reference
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: backend-unfiltered-reference
+          path: server/target-ci-reference
       - name: Require successful jobs and reconcile complete test coverage
         env:
           PLAN_RESULT: ${{ needs.backend-plan.result }}
           PARTITION_RESULT: ${{ needs.backend-shards.result }}
+          REFERENCE_RESULT: ${{ needs.backend-reference.result }}
+          COMPARE_REFERENCE: ${{ github.event_name == 'workflow_dispatch' && inputs.compare_reference }}
         run: |
           python3 .github/scripts/backend_test_shards.py verify --plan server/target-ci-plan/plan.json --reports server/target-ci-reports
+          if [ "$COMPARE_REFERENCE" = true ]; then
+            python3 .github/scripts/backend_test_shards.py compare --plan server/target-ci-plan/plan.json --reports server/target-ci-reports --reference server/target-ci-reference
+          fi
           test "$PLAN_RESULT" = success
           test "$PARTITION_RESULT" = success
+          test "$REFERENCE_RESULT" = success
       - name: Preserve complete-suite reconciliation and future scheduling hints
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -160,6 +222,7 @@ jobs:
           path: |
             server/target-ci-reports/verification.json
             server/target-ci-reports/timings.json
+            server/target-ci-reports/comparison.json
           if-no-files-found: error
           retention-days: 14
 

@@ -197,7 +197,8 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
             assertNotNull(dimensions);assertEquals(1,dimensions.path("Actual Loops").asInt());
             assertNotNull(candidates);assertTrue(candidates.path("Actual Rows").asInt()<20,"unrelated history never enters warehouse/fulfillment evaluation");
         }
-        Path output=Path.of(System.getProperty("uten.wakeup.evidenceDirectory","target/wakeup-query-evidence"));Files.createDirectories(output);
+        Path output=Path.of(System.getProperty("uten.wakeup.evidenceDirectory",
+                Path.of(System.getProperty("uten.build.directory","target"),"wakeup-query-evidence").toString()));Files.createDirectories(output);
         var mapper=new ObjectMapper();mapper.writerWithDefaultPrettyPrinter().writeValue(output.resolve("old-plans.json").toFile(),oldPlans);
         mapper.writerWithDefaultPrettyPrinter().writeValue(output.resolve("candidate-plans.json").toFile(),newPlans);
         Files.writeString(output.resolve("queries.txt"),"OLD\n"+legacy+"\nCANDIDATE\n"+candidate+"\nPARAMETERS\n"+params);

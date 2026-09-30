@@ -258,7 +258,8 @@ class WarehouseIqcBatchScalePostgresTest {
     }
     private static long gcMillis() { return java.lang.management.ManagementFactory.getGarbageCollectorMXBeans().stream().mapToLong(b->Math.max(0,b.getCollectionTime())).sum(); }
     private void emit(Map<String,Object> record) throws Exception {
-        Path path=Path.of(System.getProperty("uten.warehouse.scale.output","target/warehouse-iqc-scale.jsonl"));
+        Path path=Path.of(System.getProperty("uten.warehouse.scale.output",
+                Path.of(System.getProperty("uten.build.directory","target"),"warehouse-iqc-scale.jsonl").toString()));
         Files.createDirectories(path.toAbsolutePath().getParent());Files.writeString(path,json.writeValueAsString(record)+System.lineSeparator(),StandardOpenOption.CREATE,StandardOpenOption.APPEND);
     }
 }

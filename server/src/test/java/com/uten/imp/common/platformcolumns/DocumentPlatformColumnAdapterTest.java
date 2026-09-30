@@ -20,6 +20,7 @@ class DocumentPlatformColumnAdapterTest {
     private final ObjectMapper json=new ObjectMapper();
     private final UUID doc=UUID.randomUUID(),line=UUID.randomUUID();
     private final Object entity=new Object();
+    private int detailReads;
     private void permissions(String... rights){when(user.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"staff",Set.of(rights),false,true,false)));}
     private DocumentPlatformColumnAdapter adapter(Map<String,Object> header){
         Query query=mock(Query.class);when(em.createNativeQuery(anyString())).thenReturn(query);
@@ -27,7 +28,7 @@ class DocumentPlatformColumnAdapterTest {
         when(query.getResultList()).thenReturn(Collections.singletonList(new Object[]{line,doc}));
         when(em.find(Object.class,doc,LockModeType.PESSIMISTIC_WRITE)).thenReturn(entity);
         return new DocumentPlatformColumnAdapter("test_item","Test",user,em,json,Set.of("test:view"),Set.of("test:edit"),
-            Set.of("test:price"),Object.class,"SELECT id,parent_id FROM test_items WHERE id IN (:ids)",id->header,
+            Set.of("test:price"),Object.class,"SELECT id,parent_id FROM test_items WHERE id IN (:ids)",id->{detailReads++;return header;},
             (id,node)->DocumentPlatformColumnAdapter.draft(node)&&node.path("writable").asBoolean(false),
             List.of(new PlatformColumnResourceAdapter.FactDefinition("qty","Quantity",false),new PlatformColumnResourceAdapter.FactDefinition("price","Price",true)))
             .documentCreateAuthorities(Set.of("test:create"));
@@ -84,5 +85,24 @@ class DocumentPlatformColumnAdapterTest {
         var adapter=adapter(header(0,false)).documentRows("SELECT id FROM test_items WHERE parent_id=:document");
         assertThatThrownBy(()->adapter.recordIdsForDocument(doc)).isInstanceOf(ApiException.class);
         verify(em,never()).find(any(),any(),any(LockModeType.class));
+    }
+    @Test void lockedSnapshotUsesOneDomainReadForVisibleFrozenRowsWithoutGrantingAWrite(){
+        permissions("test:view");
+        var adapter=adapter(header(1,false)).documentRows("SELECT id FROM test_items WHERE parent_id=:document");
+        Query query=mock(Query.class);when(em.createNativeQuery("SELECT id FROM test_items WHERE parent_id=:document")).thenReturn(query);
+        when(query.setParameter("document",doc)).thenReturn(query);when(query.getResultList()).thenReturn(List.of(line));
+        assertThat(adapter.recordIdsForDocument(doc)).containsExactly(line);
+        assertThat(detailReads).isEqualTo(1);
+        verify(em,never()).createNativeQuery("SELECT id,parent_id FROM test_items WHERE id IN (:ids)");
+        assertThatThrownBy(()->adapter.authorize(Set.of(line),true)).isInstanceOf(ApiException.class);
+    }
+    @Test void lockedSnapshotRejectsALiveRowHiddenByTheDomainDetailInsteadOfSilentlyOmittingIt(){
+        permissions("test:view","test:edit");
+        var adapter=adapter(header(0,false)).documentRows("SELECT id FROM test_items WHERE parent_id=:document");
+        Query query=mock(Query.class);when(em.createNativeQuery("SELECT id FROM test_items WHERE parent_id=:document")).thenReturn(query);
+        when(query.setParameter("document",doc)).thenReturn(query);when(query.getResultList()).thenReturn(List.of(line,UUID.randomUUID()));
+        assertThatThrownBy(()->adapter.recordIdsForDocument(doc)).isInstanceOf(ApiException.class).hasMessageContaining("查看范围");
+        assertThat(detailReads).isEqualTo(1);
+        verify(em).refresh(entity,LockModeType.PESSIMISTIC_WRITE);
     }
 }

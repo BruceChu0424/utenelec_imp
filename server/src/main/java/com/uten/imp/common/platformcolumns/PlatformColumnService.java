@@ -234,7 +234,8 @@ public class PlatformColumnService {
         adapter.lockDocumentSave(documentId,request);
         Set<UUID> ids=adapter.recordIdsForDocument(documentId);
         if(ids==null)throw conflict("该单据不能安全解析扩展字段来源");
-        if(!ids.isEmpty())authorize(adapter,ids,false);
+        // The adapter's locked snapshot already checks every live row's read scope.
+        // Actual field edits/preservation are independently authorized in prepare/applyFields.
         return ids;
     }
 

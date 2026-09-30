@@ -46,6 +46,8 @@ final class ProductionJdbcMeasurement {
         final Map<String, Long> zeroDmlCallsByFingerprint = new LinkedHashMap<>();
         final Map<String, String> labelsByFingerprint = new LinkedHashMap<>();
         final Map<String, CapturedQuery> explainCandidates = new LinkedHashMap<>();
+        /** Opt-in diagnosis records only SQL shape fingerprints, table identifiers and code locations. */
+        final List<Map<String,Object>> statementOrigins = new java.util.ArrayList<>();
 
         Map<String, Object> result() {
             Map<String,Object> result = new LinkedHashMap<>(Map.of("jdbcCalls", jdbcCalls, "logicalStatements", logicalStatements,
@@ -111,6 +113,20 @@ final class ProductionJdbcMeasurement {
                 + " md5=" + sample.md5Statements + " setConfig=" + sample.setConfigStatements
                 + " commits=" + sample.commits + " jdbcMillis=" + Math.round(sample.jdbcNanos / 1_000_000.0)
                 + " commitMillis=" + Math.round(sample.commitNanos / 1_000_000.0));
+        String traceDirectory = System.getProperty("uten.jdbc.measurement.trace-directory");
+        if (traceDirectory != null && !traceDirectory.isBlank()) {
+            var output = new LinkedHashMap<String,Object>(sample.result());
+            output.put("statementOrigins", sample.statementOrigins);
+            try {
+                var directory = java.nio.file.Path.of(traceDirectory);
+                java.nio.file.Files.createDirectories(directory);
+                var file = directory.resolve(caller().replace('#','_') + ".json");
+                new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter()
+                        .writeValue(file.toFile(), output);
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Cannot write the requested SQL-shape diagnostics", failure);
+            }
+        }
     }
 
     private static String caller() {
@@ -214,6 +230,17 @@ final class ProductionJdbcMeasurement {
             if (current.setConfig()) sample.setConfigStatements += batch ? queued[0] : 1;
             sample.fingerprints.merge(fingerprint, 1L, Long::sum);
             sample.labelsByFingerprint.putIfAbsent(fingerprint, current.label());
+            if (System.getProperty("uten.jdbc.measurement.trace-directory") != null) {
+                var tables = new java.util.LinkedHashSet<String>();
+                var matcher = java.util.regex.Pattern.compile("(?i)\\b(?:from|join|update|into)\\s+([a-z_][a-z_0-9.]*)").matcher(sql);
+                while (matcher.find()) tables.add(matcher.group(1));
+                var locations = StackWalker.getInstance().walk(frames -> frames
+                        .filter(frame -> frame.getClassName().startsWith("com.uten.imp.")
+                                && !frame.getClassName().startsWith(ProductionJdbcMeasurement.class.getName()))
+                        .limit(12).map(frame -> frame.getClassName() + "#" + frame.getMethodName() + ":" + frame.getLineNumber()).toList());
+                sample.statementOrigins.add(Map.of("fingerprint", fingerprint, "logicalStatements", batch ? queued[0] : 1,
+                        "tables", List.copyOf(tables), "locations", locations));
+            }
             if (explainable) sample.explainCandidates.putIfAbsent(fingerprint,
                     new CapturedQuery(fingerprint,preparedSql,Map.copyOf(bindings)));
             sample.instrumentationNanos += System.nanoTime() - accountingStarted;

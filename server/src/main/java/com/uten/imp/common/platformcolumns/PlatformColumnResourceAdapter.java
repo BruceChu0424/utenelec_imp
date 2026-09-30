@@ -45,7 +45,11 @@ public interface PlatformColumnResourceAdapter {
     /** Acquire the domain's complete request-aware lock prefix before the snapshot takes its header lock. */
     default void lockDocumentSave(UUID documentId,Object request) { }
 
-    /** Save-bridge snapshot: lock the parent and require read scope, without granting field writes. */
+    /**
+     * Save-bridge snapshot: lock the parent and return all live detail ids only after checking
+     * the parent's and every returned row's read scope. Fail closed if any live row is hidden;
+     * silently omitting it could discard its saved fields. This does not grant field writes.
+     */
     default Set<UUID> recordIdsForDocument(UUID documentId) {
         throw new UnsupportedOperationException("This platform resource has no document save bridge");
     }

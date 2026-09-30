@@ -102,10 +102,20 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
 
     public Set<UUID> recordIdsForDocument(UUID documentId) {
         if (documentRowsLookup == null) throw new IllegalStateException("Document row lookup not registered for " + scope);
-        lockedDocument(documentId);
+        JsonNode header = lockedDocument(documentId);
         @SuppressWarnings("unchecked") List<UUID> rows = em.createNativeQuery(documentRowsLookup)
                 .setParameter("document", documentId).getResultList();
-        return new LinkedHashSet<>(rows);
+        Set<UUID> ids = new LinkedHashSet<>(rows);
+        if (!ids.isEmpty()) {
+            // The fixed lookup proves parent membership; the same locked domain detail proves
+            // row visibility. Do not reload every parent/detail just to discard its write hints.
+            JsonNode items = header.get("items");
+            if (items == null || !items.isArray()) throw missing();
+            Set<String> visible = new HashSet<>();
+            for (JsonNode item : items) visible.add(item.path("id").asText());
+            for (UUID id : ids) if (!visible.contains(id.toString())) throw missing();
+        }
+        return ids;
     }
 
     @Override public void requireDocumentFieldWrite(UUID documentId) {

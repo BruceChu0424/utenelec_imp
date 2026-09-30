@@ -424,7 +424,7 @@ class PlatformColumnServicePostgresTest {
         public Map<UUID,RecordAccess> authorizeCreated(Set<UUID> ids){if(ids.stream().anyMatch(id->!PlatformColumnSaveLineage.wasPersisted(id)))throw new ApiException(ErrorCode.CONFLICT);return authorize(ids,false);}
         public boolean supportsValues(){return !personal||projectionRecords;}public boolean personalDefinitions(){return personal;}public boolean preserveValuesOnReset(){return preserve;}
         public List<FactDefinition> facts(){return List.of(new FactDefinition("qty","数量",false),new FactDefinition("price","单价",true));}
-        public Set<UUID> recordIdsForDocument(UUID id){if(!documentId.equals(id))throw new ApiException(ErrorCode.NOT_FOUND);return Set.of(record);}
+        public Set<UUID> recordIdsForDocument(UUID id){if(!documentId.equals(id))throw new ApiException(ErrorCode.NOT_FOUND);authorize(Set.of(record),false);return Set.of(record);}
         public void requireDocumentFieldWrite(UUID id){recordIdsForDocument(id);requireDocumentSaveAccess(false);if(!writable)throw new ApiException(ErrorCode.CONFLICT,"当前单据不允许修改扩展字段");}
         public Map<UUID,UUID> parentDocuments(Set<UUID> ids){Map<UUID,UUID> result=new HashMap<>();ids.forEach(id->result.put(id,parents.get(id)));return result;}
         public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){

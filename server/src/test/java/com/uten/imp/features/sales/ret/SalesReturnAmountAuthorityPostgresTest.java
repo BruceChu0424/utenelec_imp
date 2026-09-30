@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.sales.ret.dto.ReturnItemLine;
 import com.uten.imp.features.sales.ret.dto.ReturnSaveRequest;
@@ -19,7 +20,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -116,7 +116,9 @@ class SalesReturnAmountAuthorityPostgresTest {
 
     private ReturnSaveRequest request(Fixture fixture) {
         var request = new ReturnSaveRequest();
-        request.setBillDate(LocalDate.of(2026, 9, 7));
+        // The source is historical, but this is a new return whose reversible
+        // AR posting belongs to the current Asia/Shanghai business period.
+        request.setBillDate(BusinessTime.today());
         request.setClientId(fixture.clientId());
         request.setWarehouseId(fixture.warehouseId());
         request.setCurrencyId(fixture.currencyId());
@@ -169,6 +171,40 @@ class SalesReturnAmountAuthorityPostgresTest {
                 BigDecimal.class, fixture.shipmentItemId())).isEqualByComparingTo("3");
         assertThat(jdbc.queryForObject("SELECT amount_original FROM ar_ap_ledger WHERE source_doc_id=?",
                 BigDecimal.class, first)).isEqualByComparingTo("-0.3333");
+    }
+
+    @Test
+    void priorBusinessMonthReturnReversalPreservesOriginalDocumentQuantityAndCredit() {
+        Fixture fixture = seed();
+        var priorPeriod = request(fixture);
+        priorPeriod.setBillDate(BusinessTime.today().withDayOfMonth(1).minusDays(1));
+        UUID returned = service.create(priorPeriod).getId();
+        service.approve(returned);
+        var documentBefore = jdbc.queryForMap("""
+                SELECT status, ar_posted, is_deleted, total_original, total_local
+                FROM sales_returns WHERE id=?
+                """, returned);
+        var ledgerBefore = jdbc.queryForMap("SELECT * FROM ar_ap_ledger WHERE source_doc_id=?", returned);
+        var shipmentBefore = jdbc.queryForMap("""
+                SELECT returned_qty, returned_amount FROM sales_shipment_items WHERE id=?
+                """, fixture.shipmentItemId());
+
+        assertThatThrownBy(() -> service.reverse(returned))
+                .isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT))
+                .hasMessageContaining("跨会计期间红冲");
+
+        assertThat(jdbc.queryForMap("""
+                SELECT status, ar_posted, is_deleted, total_original, total_local
+                FROM sales_returns WHERE id=?
+                """, returned)).isEqualTo(documentBefore);
+        assertThat(jdbc.queryForMap("SELECT * FROM ar_ap_ledger WHERE source_doc_id=?", returned))
+                .isEqualTo(ledgerBefore);
+        assertThat(jdbc.queryForMap("""
+                SELECT returned_qty, returned_amount FROM sales_shipment_items WHERE id=?
+                """, fixture.shipmentItemId())).isEqualTo(shipmentBefore);
+        assertThat(jdbc.queryForObject("SELECT SUM(received_base_qty) FROM sales_return_quality_items WHERE return_id=?",
+                BigDecimal.class, returned)).isEqualByComparingTo("1");
     }
 
     @Test

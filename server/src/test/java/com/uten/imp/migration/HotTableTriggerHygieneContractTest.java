@@ -5,7 +5,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -83,16 +82,16 @@ class HotTableTriggerHygieneContractTest {
             "stock_value_nodes.trg_stock_value_node_lifecycle_upd",
             "stock_value_nodes.trg_stock_value_revision_fact");
 
-    private static PostgreSQLContainer<?> database;
+    private static MigratedSchemaBaseline.ScopedDatabase database;
 
     @BeforeAll
-    static void migrate() {
-        database = MigratedSchemaBaseline.startMigratedContainer("trigger_hygiene");
+    static void migrate() throws SQLException {
+        database = MigratedSchemaBaseline.openDatabase("trigger_hygiene");
     }
 
     @AfterAll
-    static void stop() {
-        if (database != null) database.stop();
+    static void stop() throws SQLException {
+        if (database != null) database.close();
     }
 
     @Test

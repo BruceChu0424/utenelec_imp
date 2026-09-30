@@ -34,7 +34,6 @@ import org.springframework.test.context.support.DirtiesContextTestExecutionListe
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -59,20 +58,19 @@ import static org.assertj.core.api.Assertions.*;
 class LegacyOpeningOffsetEndToEndTest {
     private static final AtomicInteger SEQUENCE=new AtomicInteger(920000);
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
-    private static PostgreSQLContainer<?> template;
+    private static MigratedSchemaBaseline.ScopedDatabase database;
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) throws Exception {
-        template=MigratedSchemaBaseline.startMigratedContainer("opening_offset_template");
-        try(var ignored=MigratedSchemaBaseline.cloneConnection(template,"opening_offset_runtime")) { }
-        properties.add("spring.datasource.url",()->MigratedSchemaBaseline.jdbcUrlFor(template,"opening_offset_runtime"));
-        properties.add("spring.datasource.username",template::getUsername);
-        properties.add("spring.datasource.password",template::getPassword);
+        database=MigratedSchemaBaseline.openDatabase("opening_offset");
+        properties.add("spring.datasource.url",database::getJdbcUrl);
+        properties.add("spring.datasource.username",database::getUsername);
+        properties.add("spring.datasource.password",database::getPassword);
         properties.add("uten.jwt.secret",()->SECRET);properties.add("uten.crypto.pgp-master-key",()->SECRET);
         properties.add("uten.crypto.hmac-key",()->SECRET);properties.add("uten.bootstrap.admin-login",()->"opening-offset-admin");
         properties.add("uten.bootstrap.admin-password",()->SECRET+"Aa1!");
     }
     public static class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
-        @Override public void afterTestClass(TestContext ignored){if(template!=null)template.stop();}
+        @Override public void afterTestClass(TestContext ignored) throws Exception {if(database!=null)database.close();}
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired PlatformTransactionManager transactions;

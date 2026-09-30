@@ -1,0 +1,6433 @@
+{
+  "schema_version": 1,
+  "source_run": "https://github.com/BruceChu0424/utenelec_imp/actions/runs/36624069189",
+  "source_sha": "f2fcd4f36c844e2c7cf3be1defaeb6fb8bd41018",
+  "purpose": "Scheduling hints only; never evidence that tests passed.",
+  "classes": {
+    "com.uten.imp.support.MigratedSchemaBaselinePostgresTest": {
+      "seconds": 34.94,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.application.port.WarehouseTaskScopeTest": {
+      "seconds": 0.065,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.application.concurrency.FulfillmentMutationLocksPostgresTest": {
+      "seconds": 13.26,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptorTest": {
+      "seconds": 0.019,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.V238ToCurrentSyntheticMigrationPostgresTest": {
+      "seconds": 24.67,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AuditFreshStartGuardPostgresTest": {
+      "seconds": 60.82,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CustomerPrepaymentNonEmptyUpgradePostgresTest": {
+      "seconds": 25.12,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcReleaseFunctionRepairContractTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementIqcRejectionFinanceClosureMigrationContractTest": {
+      "seconds": 0.035,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.RestoredCatalogConvergencePostgresTest": {
+      "seconds": 14.66,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsUuidReimportContractTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcRecoveryAndLegacyCutoverMigrationContractTest": {
+      "seconds": 0.012,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacySubcontractSettlementProvenancePostgresTest": {
+      "seconds": 42.05,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractTargetOutboundPreparationPostgresTest": {
+      "seconds": 25.63,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CustomerPrepaymentHistoricalReversalPostgresTest": {
+      "seconds": 15.64,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountBalanceNativeCurrencyUpgradePostgresTest": {
+      "seconds": 25.47,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionExecutionWorkbenchMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionPurchaseReceiptProvenanceMigrationTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ActualOutputAppliedHistoryForwardMigrationPostgresTest": {
+      "seconds": 48.04,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ActualProductionOutputMigrationPostgresTest": {
+      "seconds": 23.46,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionExecutionSegmentOperationsMigrationTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ClientDefaultSettlementMethodUuidContractTest": {
+      "seconds": 0.011,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ExecutionMaterialCapacityPostgresTest": {
+      "seconds": 25.07,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanSupplyLineGrowthMigrationContractTest": {
+      "seconds": 0.012,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FixtureSchemaDdlTest": {
+      "seconds": 0.012,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractMakeBeforeOrderMigrationContractTest": {
+      "seconds": 0.016,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionDailyReportApproveCommandMigrationPostgresTest": {
+      "seconds": 25.33,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.MaterialAnalysisExecutionGrowthMigrationPostgresTest": {
+      "seconds": 20.16,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedInWarehouseConfirmationPostgresTest": {
+      "seconds": 12.55,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CustomerPrepaymentMigrationPostgresTest": {
+      "seconds": 25.11,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FrozenAnalysisLabelMigrationPostgresTest": {
+      "seconds": 26.24,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CrossReallocationPermissionContractTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PurchaseCommercialPricePermissionPostgresTest": {
+      "seconds": 13.54,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PurchaseReportUuidReferencePostgresTest": {
+      "seconds": 9.133,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SettlementMethodUuidAuthorityContractTest": {
+      "seconds": 0.007,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CategoryDrivenMasterCodeMigrationContractTest": {
+      "seconds": 0.009,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ManualSubcontractMaterialIssueCreateRetirementMigrationContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionMaterialAnalysisMigrationContractTest": {
+      "seconds": 0.009,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ExecutionSegmentPublicSurplusMigrationPostgresTest": {
+      "seconds": 23.36,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FinancialPrepaymentBookPostgresTest": {
+      "seconds": 17.28,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractPreparationEntitlementHandoffMigrationContractTest": {
+      "seconds": 0.012,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountBalanceAdjustmentBatchShapePostgresTest": {
+      "seconds": 24.77,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ManagerPermissionDelegationMigrationContractTest": {
+      "seconds": 0.008,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanFutureSupplyMigrationPostgresTest": {
+      "seconds": 24.87,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseArrivalExceptionStockInBatchMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementIqcWarehouseStockInMigrationContractTest": {
+      "seconds": 0.007,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.BusinessIdentifierRegistryMigrationContractTest": {
+      "seconds": 0.073,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountBalanceNativeCurrencyMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseWeightLedgerMigrationContractTest": {
+      "seconds": 0.019,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsCostIntegrityMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.OrderItemSourceMergeMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionLinkedStockDocumentGuardMigrationTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ArApDualCurrencySettlementPostgresTest": {
+      "seconds": 15.5,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.BusinessIdentifierRegistryPostgresTest": {
+      "seconds": 10.82,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.VisibilityWriteSeparationMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.NoticePopupAcknowledgementMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionMaterialAnalysisBorrowMigrationPostgresTest": {
+      "seconds": 10.03,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementIqcRejectionDefenseInDepthPostgresTest": {
+      "seconds": 13.79,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.EmployeePiiExtraProtectionPostgresTest": {
+      "seconds": 9.61,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SchemaIndexHygieneContractTest": {
+      "seconds": 26.66,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseArrivalRegistrationIdempotencyMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.RemoveProductionBomPolicyMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PagePermissionDelegationRetirementMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LiveMasterRelationshipMigrationTest": {
+      "seconds": 0.012,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ReceivableSettlementPostApplyGuardPostgresTest": {
+      "seconds": 8.756,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsMeasurementUnitUuidContractTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyReceiptConsiderationProvenancePostgresTest": {
+      "seconds": 21.03,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ExecutionMaterialCoverageEquivalencePostgresTest": {
+      "seconds": 23.28,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.RuntimeMaintenancePrivilegePostgresTest": {
+      "seconds": 24.5,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PermissionSurfaceCatalogPostgresTest": {
+      "seconds": 25.11,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementInspectionBatchIdentityMigrationPostgresTest": {
+      "seconds": 17.95,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementInspectionOptionalPassReasonPostgresTest": {
+      "seconds": 1.624,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcSourceReversalMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FinancialActualBankReceiptPostgresTest": {
+      "seconds": 17.08,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseDocumentHistoryPermissionMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.RootSupplyMigrationPostgresTest": {
+      "seconds": 17.72,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionSupplySourceGuardMigrationTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyBankTransferLinesPostgresTest": {
+      "seconds": 25.66,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.MaterialAnalysisPlanGrowthMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractPermissionSurfacePostgresTest": {
+      "seconds": 13.17,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionGoodsWorkshopPreferenceMigrationTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PermissionCatalogSplitAndHostWhitelistMigrationPostgresTest": {
+      "seconds": 25.62,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FlywayMigrationImmutabilityTest": {
+      "seconds": 0.007,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ResponsibilityLockOrderMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.HotTableTriggerHygieneContractTest": {
+      "seconds": 24.92,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehousePlaceMasterRelationsMigrationPostgresTest": {
+      "seconds": 22.08,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProfileChangeSnapshotProtectionMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractPreparationCommitmentMigrationPostgresTest": {
+      "seconds": 45.11,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CrossAnalysisReallocationMigrationContractTest": {
+      "seconds": 0.006,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyFinanceSourceProvenancePostgresTest": {
+      "seconds": 25.84,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ClientSupplierOwnerEmployeeUuidContractTest": {
+      "seconds": 0.004,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.QualityInspectionRecordFeedIndexMigrationContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanStockEntitlementMigrationContractTest": {
+      "seconds": 0.007,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ManualSubcontractMaterialIssueCreateRetirementPostgresTest": {
+      "seconds": 13.55,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ExecutionMaterialCoverageMigrationContractPostgresTest": {
+      "seconds": 19.49,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.MaterialAnalysisParticipatingWarehousesPostgresTest": {
+      "seconds": 14.45,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedInboundBatchMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyFinanceImportSmokePostgresTest": {
+      "seconds": 25.23,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FinanceReceiptSettlementAuthorityMigrationContractTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WorkshopMaterialV740ContractTest": {
+      "seconds": 0.036,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanPublicSafetyReplenishmentMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanExternalSupplySourceGuardMigrationContractTest": {
+      "seconds": 0.007,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanReallocationGuardMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SalesReceivableFinanceReleaseMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionBomLearningPostgresTest": {
+      "seconds": 32.16,
+      "tests": 27,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyBootstrapCoordinatorPostgresTest": {
+      "seconds": 178.2,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsOrderPolicyMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FinancialBookAllocationPostgresTest": {
+      "seconds": 17.64,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.StockBalanceAdjustmentPermissionMigrationTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsCostIntegrityPostgresTest": {
+      "seconds": 1.698,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionPlanDrawActiveUniquenessMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcReplenishmentMaterialPostgresTest": {
+      "seconds": 25.09,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementIqcWarehouseStockInUpgradePostgresTest": {
+      "seconds": 119.6,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementIqcRejectionFinanceClosurePostgresTest": {
+      "seconds": 38.62,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsMeasurementUnitUuidMigrationContractTest": {
+      "seconds": 0.007,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.EmployeePiiExtraProtectionMigrationContractTest": {
+      "seconds": 0.015,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AuditFreshStartGuardCallbackTest": {
+      "seconds": 0.511,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ClientDefaultSettlementMethodUuidPostgresTest": {
+      "seconds": 10.22,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PurchaseCommercialPricePermissionMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SupplierPayablesIntegrityMigrationContractTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountStyleUuidStrictAuthorityPostgresTest": {
+      "seconds": 25.52,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CategoryDrivenCodeUpgradePostgresTest": {
+      "seconds": 25.7,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.UtenImpMigratorTest": {
+      "seconds": 0.014,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyMasterCodeMetadataContractTest": {
+      "seconds": 0.009,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionDailyReportWorkersMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionExactDemandSnapshotMigrationContractTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.RuntimeReferenceWriteAuthorityContractTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FixtureSchemaDriftGuardPostgresTest": {
+      "seconds": 25.26,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.EmployeePositionNumberingManagementCenterMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseWorkshopUuidPostgresTest": {
+      "seconds": 9.382,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AuditClassificationMigrationPostgresTest": {
+      "seconds": 27.09,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SalesShipmentWarehouseEventMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PermissionCatalogActionTaxonomyMigrationContractTest": {
+      "seconds": 0.037,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PurchaseReportUuidReferenceContractTest": {
+      "seconds": 0.045,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ReviewInboxDeptTargetingMigrationContractTest": {
+      "seconds": 0.01,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ManagerPermissionDelegationPostgresTest": {
+      "seconds": 25.23,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractQuantityBasisMigrationPostgresTest": {
+      "seconds": 15.4,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseArrivalRegistrationIdempotencyPostgresTest": {
+      "seconds": 24.99,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementDefaultPriceContextMigrationPostgresTest": {
+      "seconds": 21.28,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseSameMainFulfillmentPostgresTest": {
+      "seconds": 14.99,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.MasterCodeLifetimeReservationMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountPaymentStyleUuidPostgresTest": {
+      "seconds": 9.101,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SystemPostingStyleUuidRolePostgresTest": {
+      "seconds": 25.33,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedArrivalRegistrationReversalMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementInspectionOptionalPassReasonMigrationContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SalesReturnQualityQuarantineMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.UncategorizedMasterCategoryContractTest": {
+      "seconds": 0.009,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionSubcontractSupplyTransitionMigrationTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.BomControlStageMigrationContractTest": {
+      "seconds": 0.011,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedInboundBatchPostgresTest": {
+      "seconds": 24.89,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ExpenseClaimFullchainMigrationPostgresTest": {
+      "seconds": 102.3,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SettlementMethodUuidAuthorityPostgresTest": {
+      "seconds": 9.419,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PagePermissionStaffScopeMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedInboundRejectedResidualMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.DirectMakeAnalysisLineageMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountBalanceReconciliationMigrationContractTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanAnalysisExactStockPegMigrationContractTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractComponentOutboundPostgresTest": {
+      "seconds": 18.36,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PurchaseUnitNormalizationMigrationTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcEmptyDatabaseMigrationPostgresTest": {
+      "seconds": 24.97,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanMakeEntitlementDelegationMigrationPostgresTest": {
+      "seconds": 11.15,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyBootstrapSchemaCompatibilityPostgresTest": {
+      "seconds": 97.84,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FinancialExactAmountMigrationHelperPostgresTest": {
+      "seconds": 15.52,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementCommercialSnapshotGuardPostgresTest": {
+      "seconds": 33.76,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.UncategorizedMasterCategoryPostgresTest": {
+      "seconds": 9.172,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcReplenishmentMaterialMigrationContractTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CrossAnalysisReallocationMigrationPostgresTest": {
+      "seconds": 10.18,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ActualProductionSurplusStockCostMigrationPostgresTest": {
+      "seconds": 24.22,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FinancePaymentCommandAuthorityMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ReceivableSettlementMetadataMigrationContractTest": {
+      "seconds": 0.005,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.OrdinaryStorageBoundaryMigrationPostgresTest": {
+      "seconds": 19.33,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseWeightLedgerMigrationPostgresTest": {
+      "seconds": 25.35,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsOwningWarehouseMigrationContractTest": {
+      "seconds": 0.003,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ActualOutputSupplementScopePostgresTest": {
+      "seconds": 25.29,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementQtyChangeMigrationPostgresTest": {
+      "seconds": 26.51,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProfessionalAssetSubledgerMigrationContractTest": {
+      "seconds": 0.008,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FlywayChecksumManifestExporterTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 1
+    },
+    "com.uten.imp.migration.SubcontractShortDeliveryMigrationContractTest": {
+      "seconds": 0.01,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractPreparedOutboundOverQuantityMigrationContractTest": {
+      "seconds": 0.009,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AuditTriggerCoverageMigrationContractTest": {
+      "seconds": 1.772,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProcurementConsiderationMigrationPostgresTest": {
+      "seconds": 16.53,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyBootstrapCryptoPostgresTest": {
+      "seconds": 2.978,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionOrderSnapshotApprovalGuardMigrationContractTest": {
+      "seconds": 0.009,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProfileChangeSnapshotProtectionPostgresTest": {
+      "seconds": 10.05,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionDrawCancelIssueWordingMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractTargetOutboundPreparationMigrationContractTest": {
+      "seconds": 0.023,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.MaterialAnalysisParticipatingWarehousesMigrationContractTest": {
+      "seconds": 0.004,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SalesShipmentPolicyMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanMakeEntitlementDelegationMigrationContractTest": {
+      "seconds": 0.012,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SecurityPermissionMigrationTest": {
+      "seconds": 27.35,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PurchaseCommercialPricePermissionDriftPostgresTest": {
+      "seconds": 13.83,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PermissionGrantPreservationPostgresTest": {
+      "seconds": 11.57,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionPlanningDraftMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcQualityReleaseMigrationContractTest": {
+      "seconds": 0.007,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SystemPostingStyleUuidRoleContractTest": {
+      "seconds": 0.017,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountPaymentStyleUuidContractTest": {
+      "seconds": 0.007,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractPermissionSurfaceMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractComponentOutboundMigrationContractTest": {
+      "seconds": 0.009,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ManagerPermissionDelegationGenerationMigrationContractTest": {
+      "seconds": 0.006,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.MasterCodeLifetimeReservationPostgresTest": {
+      "seconds": 9.684,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractPreparationEntitlementHandoffMigrationPostgresTest": {
+      "seconds": 25.21,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.V275UuidRelationUpgradePostgresTest": {
+      "seconds": 9.363,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanPublicSurplusMigrationContractTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PermissionOverrideTombstoneMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseGoodsPlacePreferenceIqcSourceMigrationContractTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionMaterialAppendOnlyLedgerMigrationTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionExecutionRequirementShapeMigrationContractTest": {
+      "seconds": 0.007,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.CurrentHeadNonEmptyCloneRehearsalTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 1
+    },
+    "com.uten.imp.migration.AuditLoginSessionCorrelationMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcInspectionSheetMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountStyleUuidStrictAuthorityContractTest": {
+      "seconds": 0.012,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedArrivalPartialRegistrationMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractMakeDelegationRouteGuardPostgresTest": {
+      "seconds": 25.3,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedArrivalPartialRegistrationPostgresTest": {
+      "seconds": 14.44,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AccountLegacyCurrencyBackfillPostgresTest": {
+      "seconds": 15.25,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionMakeSupplyLifecycleMigrationTest": {
+      "seconds": 0.01,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WarehouseWorkshopUuidContractTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.GoodsHistorySnapshotDeferredTriggerPostgresTest": {
+      "seconds": 9.261,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedInWarehouseConfirmationMigrationContractTest": {
+      "seconds": 0.013,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.PreplanPublicSupplyRuntimeMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AttachmentStorageIdentityMigrationPostgresTest": {
+      "seconds": 17.98,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFinishedArrivalRegistrationMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.FinancialActualBankPaymentPostgresTest": {
+      "seconds": 17.58,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.AuditTriggerCoveragePostgresTest": {
+      "seconds": 25.44,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.WorkshopMaterialV740SchemaPostgresTest": {
+      "seconds": 49.0,
+      "tests": 24,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.BusinessIdentifierCollationLookupPostgresTest": {
+      "seconds": 58.33,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.MeasurementCaptureLearningMigrationContractTest": {
+      "seconds": 0.006,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SalesReceivableFinanceReleasePostgresTest": {
+      "seconds": 13.85,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionFqcPassAllBatchMigrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.ProductionCompletionReverseMigrationTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.LegacyMigrationSafetyContractTest": {
+      "seconds": 0.044,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SubcontractTargetReceiptGuardPreparedOutboundMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.migration.SalesShipmentFinanceReleaseRateMigrationContractTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.receipt.ReceiptCommercialMaskContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.receipt.PurchaseReceiptAmountAuthorityTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.receipt.PurchaseReceiptArrivalAllowanceTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.PurchaseCommercialPriceVisibilityTest": {
+      "seconds": 0.363,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.PurchaseGoodsHistorySnapshotContractTest": {
+      "seconds": 0.021,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.ret.PurchaseReturnAmountAuthorityTest": {
+      "seconds": 0.002,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.request.PurchaseRequestServiceUnitPolicyTest": {
+      "seconds": 0.68,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.request.ProductionPurchaseRequestFacadeTest": {
+      "seconds": 0.007,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.request.PurchaseRequestDecompositionPreviewTest": {
+      "seconds": 0.013,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.ProcurementSupplierHistoryPostgresTest": {
+      "seconds": 33.0,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.order.PurchaseOrderSupplierSelectionTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.order.PurchaseOrderSourceMergeSplitTest": {
+      "seconds": 1.3,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.order.PurchaseOrderCommercialSplitTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.order.PurchaseOrderSaveRequestValidationTest": {
+      "seconds": 0.035,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncPostgresTest": {
+      "seconds": 31.03,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.common.PurchaseLineUnitPolicyTest": {
+      "seconds": 0.012,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.purchase.PurchaseGoodsHistorySnapshotPostgresTest": {
+      "seconds": 9.154,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.dashboard.DashboardOverviewServiceTest": {
+      "seconds": 0.627,
+      "tests": 25,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeLifecycleGuardTest": {
+      "seconds": 0.004,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeePiiExtraBackfillRunnerPostgresTest": {
+      "seconds": 27.03,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeePiiWriterTest": {
+      "seconds": 0.102,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeQueryServiceSelfProfileTest": {
+      "seconds": 1.03,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeSensitiveWritePolicyTest": {
+      "seconds": 0.007,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeListQueryOrderByTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeAttachmentAccessPolicyTest": {
+      "seconds": 0.157,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeAvatarControllerTest": {
+      "seconds": 0.449,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeOnboardingServiceTest": {
+      "seconds": 0.618,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.EmployeeCommandPositionGuardTest": {
+      "seconds": 0.163,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.employee.MyProfileControllerSecurityTest": {
+      "seconds": 1.161,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.myview.MyDepartmentServiceTest": {
+      "seconds": 0.094,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.DepartmentServiceTest": {
+      "seconds": 0.048,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.WorkforceOverviewServiceTest": {
+      "seconds": 0.008,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.DepartmentEmployeePickerSecurityContractTest": {
+      "seconds": 0.087,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.staffpermission.PermissionDelegationPolicyTest": {
+      "seconds": 0.094,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.staffpermission.PagePermissionDelegationFeatureGateTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.staffpermission.PagePermissionWorkspaceServiceTest": {
+      "seconds": 0.635,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.staffpermission.DepartmentPermissionStaffQueryTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.staffpermission.PagePermissionOrganizationScopePostgresTest": {
+      "seconds": 26.01,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.staffpermission.OrganizationPermissionManagementScopeServiceTest": {
+      "seconds": 0.017,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.department.staffpermission.PermissionSurfaceRegistryTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.OrganizationReferenceAdapterTest": {
+      "seconds": 0.009,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.org.hrtask.HrTaskClaimTakeoverAuditTest": {
+      "seconds": 0.169,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpenseClaimCategoryFilterTest": {
+      "seconds": 1.228,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest": {
+      "seconds": 0.237,
+      "tests": 41,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpenseApplicantQueryCategoryFacetsTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ocr.InvoiceTextParserTest": {
+      "seconds": 0.006,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ocr.InvoiceRecognitionAuthorizationTest": {
+      "seconds": 0.109,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ocr.InvoiceRecognitionServiceTest": {
+      "seconds": 0.088,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpenseClaimChainPostgresTest": {
+      "seconds": 33.3,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpenseClaimAttachmentAccessPolicyTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpenseClaimSubmissionSnapshotTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpenseFinancePostingLockOrderTest": {
+      "seconds": 0.487,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.expenseclaim.ExpensePaymentProofAttachmentAccessPolicyTest": {
+      "seconds": 0.078,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.AttachmentPreviewServiceTest": {
+      "seconds": 0.043,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.BusinessAttachmentResetCompletionPostgresTest": {
+      "seconds": 2.317,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.AttachmentUploadGrantServiceTest": {
+      "seconds": 0.037,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.AttachmentDeletionProviderScopeTest": {
+      "seconds": 0.161,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.AttachmentCategoryUpdateTest": {
+      "seconds": 0.525,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.AttachmentMalwareScannerTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.AttachmentContentInspectorTest": {
+      "seconds": 0.012,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.features.attachment.AttachmentDownloadVerifierTest": {
+      "seconds": 0.01,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.outbound.WarehouseSubcontractOutboundColumnFilterTest": {
+      "seconds": 0.346,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.WarehouseArrivalExceptionStockInBatchServiceTest": {
+      "seconds": 0.538,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementArrivalGuardPostgresTest": {
+      "seconds": 33.71,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionBatchCommandTest": {
+      "seconds": 0.006,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionQuarantinePostgresTest": {
+      "seconds": 25.54,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationIdempotencyTest": {
+      "seconds": 0.125,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionRecordContractTest": {
+      "seconds": 0.012,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionReasonPolicyTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionWeightMathTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementArrivalExpectationQueryContractTest": {
+      "seconds": 0.082,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionDeterminismContractTest": {
+      "seconds": 0.019,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementIqcDispositionAmountBehaviorTest": {
+      "seconds": 0.493,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionReplayPolicyTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementArrivalOwnerTaskHistoryContractTest": {
+      "seconds": 0.004,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.WarehouseQualityResultApiContractTest": {
+      "seconds": 0.015,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationContractTest": {
+      "seconds": 0.322,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.WarehouseArrivalExceptionBatchStockInControllerContractTest": {
+      "seconds": 0.137,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInBatchExecutionTest": {
+      "seconds": 0.253,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionIntegrityPostgresTest": {
+      "seconds": 41.22,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionBatchContractTest": {
+      "seconds": 0.008,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementArrivalMaterialBoundTest": {
+      "seconds": 0.011,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementArrivalColumnFilterTest": {
+      "seconds": 0.225,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementArrivalWorkflowContractTest": {
+      "seconds": 0.027,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInApiContractTest": {
+      "seconds": 0.019,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.inbound.ProcurementInspectionQuantityProjectionPostgresTest": {
+      "seconds": 3.573,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskColumnFilterTest": {
+      "seconds": 0.092,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskServiceTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationServiceTest": {
+      "seconds": 1.517,
+      "tests": 20,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.history.WarehouseHistoryControllerSecurityTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.history.WarehouseHistoryQueryContractTest": {
+      "seconds": 0.021,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.history.WarehouseHistoryProjectionContractTest": {
+      "seconds": 0.006,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.history.WarehouseHistoryQueryPostgresTest": {
+      "seconds": 26.04,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialAllocationCalculatorTest": {
+      "seconds": 0.029,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionServiceTest": {
+      "seconds": 0.089,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.reporting.MaterializedViewRefreshSchedulerTest": {
+      "seconds": 0.211,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.receipt.FinanceReceiptKindFilterTest": {
+      "seconds": 0.571,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.receipt.FinanceReceiptSettlementTest": {
+      "seconds": 0.149,
+      "tests": 29,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinanceDocumentMutationLockContractTest": {
+      "seconds": 0.007,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.application.FinanceAssetLedgerPostingServiceTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.application.FinanceAssetSourceNormalizationTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.application.FinanceAssetReviewRevisionServiceTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.application.FinanceAssetAttachmentAccessPolicyTest": {
+      "seconds": 0.024,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.application.FinanceAssetAuthorizationTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.application.FinanceAssetReviewRevisionPostgresTest": {
+      "seconds": 30.19,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.application.FinanceAssetFeatureGateTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.FixedAssetRequestValidationTest": {
+      "seconds": 0.784,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.api.AssetWorkbenchRequestValidationTest": {
+      "seconds": 0.021,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.api.AssetMoneySerializationTest": {
+      "seconds": 0.013,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.AssetSubmissionPolicyTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.CorporateAssetBookPolicyTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.StraightLineScheduleCalculatorTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.AssetPostingPolicyTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.AssetPostingFingerprintTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.AssetCategoryPolicyReadinessTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.FinanceAssetStateMachineTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.domain.AssetPeriodClosePolicyTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.asset.FixedAssetPaginationTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.PaymentStyleHierarchyLockOrderContractTest": {
+      "seconds": 0.007,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SubcontractLossClaimAmountVisibilityTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementIqcRejectionV440FlowContractTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementPayablesAmountSqlContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementIqcRejectionServiceContractTest": {
+      "seconds": 0.444,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.warehouse.WarehouseIqcReturnContractTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.warehouse.WarehouseIqcReturnPostgresTest": {
+      "seconds": 25.29,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementPayablesCurrencyFilterTest": {
+      "seconds": 0.106,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementPayablesPermissionContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementReceiptAmountAuthorityContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierSettlementAndClaimContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierOpenItemOffsetSqlContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierClosedPeriodGuardTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierPayableHistoricalStatementContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierPaymentTermServiceTest": {
+      "seconds": 0.003,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierLegacyOpeningStatementPostgresTest": {
+      "seconds": 26.99,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SubcontractLossClaimOutboxContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementReceiptArrivalAllowanceContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SubcontractLossClaimIntegrityContractTest": {
+      "seconds": 1.82,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SubcontractLossPreMutationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierPayablePostingContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierClosedPeriodLockOrderContractTest": {
+      "seconds": 0.007,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierPayableHoldGuardBehaviorTest": {
+      "seconds": 0.005,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementReceiptReverseLockOrderContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementReturnAmountAuthorityContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementIqcRejectionDatePolicyTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.ProcurementCaseAttachmentAccessPolicyTest": {
+      "seconds": 0.128,
+      "tests": 21,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payables.SupplierPaymentTermBoundaryContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinanceDocumentAccessPolicyTest": {
+      "seconds": 0.109,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.AdditionalFinancialDetailViewAuditControllerTest": {
+      "seconds": 0.7,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payment.FinancePaymentSettlementPostgresTest": {
+      "seconds": 31.82,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.payment.FinancePaymentSettlementTest": {
+      "seconds": 0.412,
+      "tests": 25,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.receivables.FinanceReceiptSourceAllocationExactTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.receivables.CustomerPrepaymentSummaryPostgresTest": {
+      "seconds": 29.02,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.receivables.CustomerPrepaymentPermissionContractTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.receivables.SalesMoneyProjectionPressurePostgresTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 1
+    },
+    "com.uten.imp.features.finance.receivables.SalesSourceUuidIndexPressurePostgresTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 1
+    },
+    "com.uten.imp.features.finance.receivables.CustomerPrepaymentQueryExactTest": {
+      "seconds": 0.104,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.accountflow.AccountFlowLedgerPostingTest": {
+      "seconds": 0.008,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.accountflow.AccountFlowLedgerServiceTest": {
+      "seconds": 0.007,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.accountflow.AccountFlowAppendOnlyContractTest": {
+      "seconds": 0.061,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.accountflow.AccountPostingReversalPostgresTest": {
+      "seconds": 29.6,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinanceAttachmentAccessPolicyTest": {
+      "seconds": 0.178,
+      "tests": 37,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.LegacyOpeningReversalFloorTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinancialDecimalTextSerializationTest": {
+      "seconds": 0.075,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.accountbalance.AccountBalanceAdjustmentAuditIdentityContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.accountbalance.AccountBalanceAdjustmentServiceValidationTest": {
+      "seconds": 0.019,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.accountbalance.AccountBalanceAdjustmentControllerSecurityTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinanceSensitiveDetailViewAuditControllerTest": {
+      "seconds": 1.908,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinanceDocumentObjectScopeContractTest": {
+      "seconds": 0.064,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.bank_transfer.FinanceBankTransferServiceTest": {
+      "seconds": 0.268,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.FinanceReportPartyStatementTest": {
+      "seconds": 0.344,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.FinanceReportTotalsTest": {
+      "seconds": 0.011,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.FinanceReportObjectScopeTest": {
+      "seconds": 0.037,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.FinanceLegacyOpeningSummaryPostgresTest": {
+      "seconds": 4.187,
+      "tests": 20,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.CustomerPrepaymentReportIntegrityContractTest": {
+      "seconds": 0.005,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.SupplierPayableHistoricalIntegrityContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.FinancePayableReportSqlContractTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.FinanceLegacyOpeningStatementPostgresTest": {
+      "seconds": 3.866,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.CustomerPrepaymentReportOrderChainContractTest": {
+      "seconds": 0.004,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.AccountStatementScalePostgresTest": {
+      "seconds": 44.86,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.report.AccountStatementAuthorizationTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalReviewTest": {
+      "seconds": 0.214,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalEligibilityOrderTest": {
+      "seconds": 0.101,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementOrderFinanceReviewAccessTest": {
+      "seconds": 0.558,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalBatchControllerTest": {
+      "seconds": 0.218,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.PurchaseOrderPendingCapacityTest": {
+      "seconds": 0.004,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementApprovalDisplaySnapshotPostgresTest": {
+      "seconds": 2.72,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementFinanceReconfirmationDecisionTest": {
+      "seconds": 0.013,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementApprovalProjectionQueryTest": {
+      "seconds": 0.125,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalBatchValidationTest": {
+      "seconds": 0.006,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementOrderFinanceDecisionResponseTest": {
+      "seconds": 0.575,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementApprovalRevisionSnapshotPostgresTest": {
+      "seconds": 1.884,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementOrderSourceRequirementTest": {
+      "seconds": 0.02,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalTaskActionPolicyTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementRejectedOrderEditTest": {
+      "seconds": 0.011,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.procurement.ProcurementFinanceSubmitterOwnerGuardTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.SubcontractWasteLossGlAccountingTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlPostingServiceIsolationTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlPostingServiceApAccountingTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlPostingLegacyCashGuardTest": {
+      "seconds": 0.01,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlPostingCrossPeriodReversalGuardTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlVoucherSourceDocumentUuidContractTest": {
+      "seconds": 0.007,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlPostingLegacyCashScopePostgresTest": {
+      "seconds": 27.28,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlPostingServiceReceiptAccountingTest": {
+      "seconds": 0.015,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlReportLineSheetContractTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.GlPostingServicePaymentAccountingTest": {
+      "seconds": 0.007,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.gl.CustomerPrepaymentGlAccountingContractTest": {
+      "seconds": 0.004,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinancePaymentStyleValidationTest": {
+      "seconds": 0.214,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinanceLegacyMutationServiceTest": {
+      "seconds": 0.531,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.reconciliation.FinanceReconciliationAuthorizationTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.reconciliation.FinanceReconciliationEntryKindFilterTest": {
+      "seconds": 0.109,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.ArApLedgerServiceImplTest": {
+      "seconds": 0.108,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.ArApOffsetReverseGuardTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.ArApClaimProjectionReverseTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.ArApLedgerQueryServiceTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.ArApSettlementPolicyTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.ArApPayableQueryServiceTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.PartyOpenBalanceQueryPostgresTest": {
+      "seconds": 2.213,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.arap.ArApLedgerViewAllContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.finance.FinanceDocumentMutationConcurrencyPostgresTest": {
+      "seconds": 34.56,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.AiControllerSecurityContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.client.AiJsonExtractorTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.client.OpenAiChatClientTest": {
+      "seconds": 1.454,
+      "tests": 21,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.client.AnthropicMessagesClientTest": {
+      "seconds": 0.051,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.provider.AiProviderServiceTest": {
+      "seconds": 0.157,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.provider.AiProviderPostgresTest": {
+      "seconds": 30.57,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.provider.AiEndpointPolicyTest": {
+      "seconds": 0.036,
+      "tests": 50,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.gateway.AiConnectionTesterTest": {
+      "seconds": 0.606,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.gateway.AiGatewayTest": {
+      "seconds": 1.733,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.job.AiJobQueuePostgresTest": {
+      "seconds": 8.883,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.job.AiJobServiceTest": {
+      "seconds": 0.252,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.job.AiJobUploadTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.ai.job.AiJobWorkerTest": {
+      "seconds": 2.882,
+      "tests": 18,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.BootstrapRunnerTest": {
+      "seconds": 0.013,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.RefreshTransactionBoundaryTest": {
+      "seconds": 0.46,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.LoginServiceAuditOrderingTest": {
+      "seconds": 0.346,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.TokenIssuerRefreshAuditNoiseTest": {
+      "seconds": 0.461,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.AuthenticationRequestValidationTest": {
+      "seconds": 0.046,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.StaffRefreshRemoteAccessTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.InactivePermissionResolutionContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.AuthControllerValidationTest": {
+      "seconds": 0.593,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.DocumentScopeCapabilityServiceTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.LoginFailureRecorderTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.PermissionResolverManagerDelegationTest": {
+      "seconds": 0.395,
+      "tests": 20,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.TokenIssuerLogoutAuditTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.PasswordAccessInvalidationTest": {
+      "seconds": 0.137,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.AuthLogoutSecurityIntegrationTest": {
+      "seconds": 1.251,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.PermissionResolverSecondaryDepartmentTest": {
+      "seconds": 0.013,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.StaffRefreshReuseClassificationTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.StaffTokenResponseFactoryTest": {
+      "seconds": 0.133,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.PasswordHistorySettingsTest": {
+      "seconds": 0.118,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.auth.AuthSessionPropagationTest": {
+      "seconds": 0.117,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchAccessPolicyTest": {
+      "seconds": 0.004,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.operations.workbench.SubcontractPreparationPaginationPostgresTest": {
+      "seconds": 6.2,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTimestampMappingTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchProvisionalStockPostgresTest": {
+      "seconds": 27.18,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryServiceTest": {
+      "seconds": 0.015,
+      "tests": 20,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesOrderSourceQuoteUuidContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesMasterReferenceValidatorTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesDocumentAccessPolicyTest": {
+      "seconds": 0.006,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.SalesIntakeMatchingRegressionTest": {
+      "seconds": 6.037,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.SalesIntakeStorePostgresTest": {
+      "seconds": 25.9,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.GoodsMatcherTest": {
+      "seconds": 0.012,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.IntakePricingAndClientTest": {
+      "seconds": 0.004,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.IntakeLayoutAndExtractionTest": {
+      "seconds": 0.235,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.SalesIntakeSaveLearningPostgresTest": {
+      "seconds": 0.787,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.IntakeHeaderAndPromptTest": {
+      "seconds": 0.178,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.SalesIntakePipelineTest": {
+      "seconds": 4.903,
+      "tests": 19,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.SalesIntakeLayoutLearnerOrderingTest": {
+      "seconds": 0.424,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.intake.SalesDocumentIntakeJobHandlerTest": {
+      "seconds": 0.556,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesQuoteGoodsSnapshotContractTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.quote.SalesQuoteStateRulesTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.quote.SalesQuoteAttachmentFinanceReadTest": {
+      "seconds": 0.139,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.quote.SalesQuoteFinanceFlowPostgresTest": {
+      "seconds": 33.38,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnQualitySecurityContractTest": {
+      "seconds": 0.383,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnQualityIdempotencyPostgresTest": {
+      "seconds": 30.09,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityTest": {
+      "seconds": 0.143,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnQualityIdempotencyReplayTest": {
+      "seconds": 0.142,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnQualityIdempotencyWiringTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnCustomerDispositionPostgresTest": {
+      "seconds": 25.59,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnQualityOwnerBoundaryTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnAmountAuthorityPostgresTest": {
+      "seconds": 29.73,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnQualityServiceTest": {
+      "seconds": 0.003,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.ret.SalesReturnChainTest": {
+      "seconds": 0.002,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesOtherShipmentWriteLockTest": {
+      "seconds": 0.275,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesGoodsHistorySnapshotContractTest": {
+      "seconds": 0.149,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesDocumentAttachmentAccessPolicyTest": {
+      "seconds": 0.152,
+      "tests": 23,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesHeaderSourceUuidContractTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesDtoCapabilityContractTest": {
+      "seconds": 0.008,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderClientPriceGuardTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderDepositFinanceOwnershipContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderCancellationGuardTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderExchangeRateAuthorityTest": {
+      "seconds": 1.69,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderFinanceConfirmServiceTest": {
+      "seconds": 0.307,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderRevisionServiceTest": {
+      "seconds": 0.011,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderProgressSqlTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderRejectedRevisionContractTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderPlanProgressQueryTest": {
+      "seconds": 0.009,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderQuantityFormulaTest": {
+      "seconds": 0.001,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderTimelineServiceTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderCommercialAuthorityTest": {
+      "seconds": 0.003,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderProgressStageTest": {
+      "seconds": 0.004,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderCurrencyFilterTest": {
+      "seconds": 0.144,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderPlanProgressServiceTest": {
+      "seconds": 0.005,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesClientLastTermsPostgresTest": {
+      "seconds": 28.46,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.ExecutionSegmentSalesAllocationPostgresTest": {
+      "seconds": 28.91,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderQuoteTermsBookTest": {
+      "seconds": 0.003,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderQtyChangeReconfirmPostgresTest": {
+      "seconds": 29.43,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.order.SalesOrderCancelledAnalysisRevisionPostgresTest": {
+      "seconds": 28.86,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentWarehouseWeightTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.WarehouseTransitionTargetsContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentWarehouseReservationSqlContractTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.warehouse.WarehouseSalesOutboundContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentCurrencyFilterTest": {
+      "seconds": 0.776,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentReverseGuardTest": {
+      "seconds": 0.007,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentFinanceRatePolicyTest": {
+      "seconds": 0.007,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentFinanceGatePolicyTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentFinanceRateSqlContractTest": {
+      "seconds": 0.043,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentWarehouseTransitionPolicyTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.shipment.SalesShipmentOwnerBoundaryTest": {
+      "seconds": 0.019,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.report.SalesReportOwnerScopeTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesPriceAuthorityTest": {
+      "seconds": 0.006,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesDetailViewAuditControllerTest": {
+      "seconds": 1.407,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesIntakeSaveHooksTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.sales.SalesShipmentPolicySecurityContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockBalanceAdjustmentControllerSecurityTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockInstantInventorySearchContractTest": {
+      "seconds": 0.127,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocReviewedOutboundTest": {
+      "seconds": 0.791,
+      "tests": 21,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionDrawOwnershipAndReverseGuardContractTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockCountPolicyTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockGoodsHistorySnapshotContractTest": {
+      "seconds": 0.023,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.DocumentDirectLockTest": {
+      "seconds": 2.522,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionMaterialReturnCanonicalGateTest": {
+      "seconds": 0.052,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocToWarehouseFilterTest": {
+      "seconds": 0.011,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.InventoryMutationLockBatchPostgresTest": {
+      "seconds": 2.45,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocFinishedInboundBatchContractTest": {
+      "seconds": 0.006,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocumentAttachmentAccessPolicyTest": {
+      "seconds": 0.01,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockCostMaskerTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockServiceTest": {
+      "seconds": 0.292,
+      "tests": 21,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.InventoryDerivedNodeLegacyPostgresTest": {
+      "seconds": 2.815,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.InventoryValuationCorePostgresTest": {
+      "seconds": 17.61,
+      "tests": 29,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.InventoryValueOpeningMigrationPostgresTest": {
+      "seconds": 22.58,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.InventoryValueWorkSchedulerTest": {
+      "seconds": 1.366,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.ValueBoundsTest": {
+      "seconds": 0.009,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.ProcurementCostSourceEvidenceTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.InventoryValueAuthorityMigrationPostgresTest": {
+      "seconds": 23.35,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.InventoryValueWorkConcurrencyPostgresTest": {
+      "seconds": 3.502,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.StockDocumentQuantityPrecisionBoundaryTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.valuation.InventoryPositionPostgresTest": {
+      "seconds": 55.86,
+      "tests": 26,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocFinishedInboundConfirmationTest": {
+      "seconds": 0.019,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.InventoryTransactionalIntegrityPostgresTest": {
+      "seconds": 26.31,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockReservationWarehouseSplitTest": {
+      "seconds": 0.127,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocCostVisibilityTest": {
+      "seconds": 0.016,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockReservationSalesCompatibilityPostgresTest": {
+      "seconds": 25.65,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.SubcontractOutboundWakeHookContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ShelfLabelQueryPostgresTest": {
+      "seconds": 26.64,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.SalesReservationSafetyStockPostgresTest": {
+      "seconds": 25.84,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ShelfPlaceParserTest": {
+      "seconds": 0.007,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionMaterialIssueReturnPostgresTest": {
+      "seconds": 26.15,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocActualWeightContractTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionLinkedStockDocumentGuardPostgresTest": {
+      "seconds": 25.76,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockBalanceAdjustmentServiceTest": {
+      "seconds": 0.252,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockBalanceWeightQueryTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionLinkedStockDocumentServiceContractTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.InstantInventoryColumnFacetFilterTest": {
+      "seconds": 0.008,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.GoodsOwningWarehouseSyncPostgresTest": {
+      "seconds": 2.613,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionMaterialAppendOnlyLedgerPostgresTest": {
+      "seconds": 26.25,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocDetailPeopleNameTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocPublicSurplusTest": {
+      "seconds": 0.018,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocWeightCapturePostgresTest": {
+      "seconds": 29.46,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.weight.WeightUnitTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.weight.StockWeightResolverTest": {
+      "seconds": 0.007,
+      "tests": 18,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.weight.StockWeightControllerSecurityTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.weight.ApwEstimatorTest": {
+      "seconds": 0.026,
+      "tests": 24,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.weight.ApwPredictorGoldenTest": {
+      "seconds": 0.007,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionStockTaskAccessPolicyTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockBalanceAdjustmentUuidRelationContractTest": {
+      "seconds": 0.006,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.FinishedInboundAllocatorTest": {
+      "seconds": 0.003,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.AuthorizedBalanceAdjustmentProtectionTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocIssueBatchContractTest": {
+      "seconds": 0.002,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.report.StockReportTotalsTest": {
+      "seconds": 0.136,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.report.StockReportCostVisibilityTest": {
+      "seconds": 0.008,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.InstantInventoryTotalsTest": {
+      "seconds": 0.006,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionDrawRequestGateTest": {
+      "seconds": 0.008,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerRoutingTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMaterialUsageSourceScopeTest": {
+      "seconds": 0.239,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerCancellationPolicyTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMaterialReadGuardWiringTest": {
+      "seconds": 0.122,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMainWarehouseAllocationTest": {
+      "seconds": 0.023,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMaterialSettlementServiceTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMaterialIssueCaptureHashTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.allocation.ProductionMaterialReturnDrawInstructionServiceTest": {
+      "seconds": 0.002,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ProductionStockLockOrderContractTest": {
+      "seconds": 0.018,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocumentPhysicalProjectionTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ledger.StockLedgerSqlTest": {
+      "seconds": 0.008,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ledger.StockLedgerRowMaskingTest": {
+      "seconds": 0.005,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ledger.StockLedgerQueryPostgresTest": {
+      "seconds": 27.67,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ledger.StockLedgerControllerSecurityTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.ledger.StockMovementTypeCatalogTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.InventoryMutationLockOwnershipTest": {
+      "seconds": 0.004,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocWeightCaptureContractTest": {
+      "seconds": 0.007,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockQueryCostVisibilityTest": {
+      "seconds": 0.005,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.StockDocWeightJsonContractTest": {
+      "seconds": 0.015,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.insight.WarehouseInsightPostgresTest": {
+      "seconds": 27.01,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.insight.WarehouseInsightControllerSecurityTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.insight.WarehouseInsightSqlTest": {
+      "seconds": 0.003,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.stock.insight.WarehouseInsightDefinitionsTest": {
+      "seconds": 0.008,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorSmsServiceTest": {
+      "seconds": 0.354,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorDirectoryServiceTest": {
+      "seconds": 0.128,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorAuthSessionPropagationTest": {
+      "seconds": 0.811,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.sms.AliyunSmsGatewayTest": {
+      "seconds": 0.192,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorDirectoryControllerSecurityContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorRequestValidationTest": {
+      "seconds": 0.41,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorApprovalFacetQueryTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorAdmissionConcurrencyPostgresTest": {
+      "seconds": 4.373,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorAdmissionPolicyTest": {
+      "seconds": 0.371,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorOtpVerifierTest": {
+      "seconds": 0.127,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorNumberAuthorityContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorRefreshAuditNoiseTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorSmsIssuanceTransactionTest": {
+      "seconds": 0.126,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorAuthServicePhoneNormalizationTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorApplicationPaginationTest": {
+      "seconds": 0.135,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.visitor.VisitorBlacklistTest": {
+      "seconds": 0.006,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemsetting.SystemSettingGeneratedTimestampPostgresTest": {
+      "seconds": 1.949,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemsetting.SystemSettingsBatchUpdateTest": {
+      "seconds": 0.137,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemsetting.SystemSettingsServiceRetentionValidationTest": {
+      "seconds": 0.016,
+      "tests": 19,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemsetting.SystemSettingRegistryContractTest": {
+      "seconds": 25.86,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemsetting.UpdaterStatusServiceTest": {
+      "seconds": 0.022,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.AdminRemoteAccessRequestValidationTest": {
+      "seconds": 0.291,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.UserAccountLifecycleOptimisticLockContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemtest.BusinessDataResetDrainFilterTest": {
+      "seconds": 0.206,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemtest.BusinessDataResetFeatureGateTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.systemtest.DrainAwareTaskSchedulerTest": {
+      "seconds": 0.311,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.DataScopeOwnerCandidateSqlContractTest": {
+      "seconds": 0.236,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.serverstatus.ServerStatusTest": {
+      "seconds": 0.141,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.serverstatus.ServerStatusProbeTest": {
+      "seconds": 0.023,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.serverstatus.ScheduledTaskCatalogTest": {
+      "seconds": 0.076,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.serverstatus.ServerStatusControllerSecurityTest": {
+      "seconds": 0.153,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.DataScopeHistoricalOwnerCandidateTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.AccountSupportBoundaryTest": {
+      "seconds": 0.265,
+      "tests": 19,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.DataScopeRequestValidationTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.DataScopeCasGuardTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.workflow.WorkflowReviewerEligibilitySqlContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.DepartmentPermissionAdminServiceTest": {
+      "seconds": 0.02,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.AdminAccountLifecycleLockTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.admin.CrossReallocationPermissionOverrideAdminServiceTest": {
+      "seconds": 0.134,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.receipt.SubcontractReceiptAmountAuthorityTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.receipt.SubcontractReceiptArrivalAllowanceTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssuePlanAuthorityTest": {
+      "seconds": 0.13,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueManualCreateRetirementTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueWeightTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.material_issue.SubcontractMaterialConservationPostgresTest": {
+      "seconds": 25.73,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueSafetyGateTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.inquiry.SubcontractInquiryPriceVisibilityTest": {
+      "seconds": 0.248,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturnAuthorityTest": {
+      "seconds": 0.373,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.application.SubcontractApplicationDecompositionPreviewTest": {
+      "seconds": 0.253,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.SubcontractGoodsHistorySnapshotContractTest": {
+      "seconds": 0.017,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.ret.SubcontractReturnAmountAuthorityTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanServiceTest": {
+      "seconds": 0.045,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.plan.SubcontractReadProjectionContractTest": {
+      "seconds": 0.004,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.plan.SubcontractOutboundDetailPostgresTest": {
+      "seconds": 2.149,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanStateMachineTest": {
+      "seconds": 0.027,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.plan.SubcontractOutboundReadModelContractTest": {
+      "seconds": 0.009,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.waste.SubcontractWasteStockAccountingTest": {
+      "seconds": 0.385,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryAutoSettleTest": {
+      "seconds": 0.143,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryPolicyTest": {
+      "seconds": 0.001,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.order.SubcontractOrderSystemQtyChangeTest": {
+      "seconds": 0.006,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.order.SubcontractOrderMergeGuardTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.order.SubcontractCommercialPriceVisibilityTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.order.SubcontractOrderMaterialAuthorityTest": {
+      "seconds": 0.007,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.order.SubcontractOrderCommercialSplitTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.order.SubcontractOrderInProgressFilterTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.order.SubcontractOrderSupplierSelectionTest": {
+      "seconds": 0.0,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.subcontract.report.SubcontractReportCommercialVisibilityTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.suggestion.SuggestionPagingAndIntegrityTest": {
+      "seconds": 0.621,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.suggestion.SuggestionRequestValidationTest": {
+      "seconds": 0.01,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.documents.ReportDraftExclusionContractTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.documents.DocumentStatusCountSqlContractTest": {
+      "seconds": 0.004,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.documents.DocumentDraftCountSqlContractTest": {
+      "seconds": 0.006,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.documents.ProductionTaskDraftCountPostgresTest": {
+      "seconds": 26.04,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.report.RetainedListReportBoundaryTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.report.EmployeeJoinPrecedenceContractTest": {
+      "seconds": 0.028,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.report.MasterReferenceJoinPrecedenceContractTest": {
+      "seconds": 0.023,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.common.taskclaim.TaskClaimMutationConcurrencyPostgresTest": {
+      "seconds": 3.015,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.common.taskclaim.TaskClaimServiceTest": {
+      "seconds": 0.274,
+      "tests": 26,
+      "skipped": 0
+    },
+    "com.uten.imp.features.common.taskclaim.SalesQuoteFinanceClaimPolicyTest": {
+      "seconds": 0.121,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ProductionDrawNoticeTest": {
+      "seconds": 0.148,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ManualNoticePopupPostgresTest": {
+      "seconds": 2.066,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ChainNoticeOutboxEventTest": {
+      "seconds": 0.025,
+      "tests": 25,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.outbox.OutboxWarnThrottlerTest": {
+      "seconds": 0.001,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.outbox.BusinessOutboxSchedulerTest": {
+      "seconds": 0.252,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.outbox.BusinessOutboxPostgresTest": {
+      "seconds": 27.14,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.HrNoticeServiceTest": {
+      "seconds": 0.014,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ReviewNoticeAudienceTest": {
+      "seconds": 0.004,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ProductionWorkshopMaterialNoticeContractTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.DeliveryDueWarningSchedulerSettingTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.SubcontractReturnDueNoticeTest": {
+      "seconds": 0.008,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ProcurementIqcRejectionNoticeTest": {
+      "seconds": 0.461,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ProductionMaterialIncrementNoticeTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ChainNoticeReadyEventTest": {
+      "seconds": 0.124,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.CelebrationSchedulerPostgresTest": {
+      "seconds": 26.66,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.WorkshopArrivalNoticeRegressionTest": {
+      "seconds": 0.01,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.WorkshopNoticeScopePostgresTest": {
+      "seconds": 3.891,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ProductionMaterialDiscoveryNoticeTest": {
+      "seconds": 0.005,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.WorkshopArrivalEvidencePostgresTest": {
+      "seconds": 7.598,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ProcurementIqcStockInNoticeTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ChainNoticeWarehouseKeeperRoutingTest": {
+      "seconds": 0.003,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ProductionOverproductionRateNoticeTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.SubcontractChainNoticeTest": {
+      "seconds": 0.011,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ServerStatusAlertSchedulerTest": {
+      "seconds": 0.129,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.NoticeServiceTest": {
+      "seconds": 0.576,
+      "tests": 64,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.NoticePermissionCandidatePostgresTest": {
+      "seconds": 14.46,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.ChainNoticeProductionWorkshopScopeTest": {
+      "seconds": 0.007,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.notice.NoticeControllerContractTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.ProductionWorkshopMembershipSuperAdminTest": {
+      "seconds": 0.002,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionExecutionSegmentControllerTest": {
+      "seconds": 0.153,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionAssignmentValidatorTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionCompletionReversePostgresTest": {
+      "seconds": 28.07,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionCompletionBatchFollowupTest": {
+      "seconds": 0.255,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchServiceSortTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSecurityContractTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionExecutionSegmentOperationsPostgresTest": {
+      "seconds": 26.28,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionExecutionSegmentServiceTest": {
+      "seconds": 0.409,
+      "tests": 24,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchRelatedDocumentsContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionCompletionReverseServiceContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionExecutionWorkbenchQueryPostgresTest": {
+      "seconds": 67.28,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionWorkCardServiceTest": {
+      "seconds": 0.13,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.execution.ProductionDrawRequestPostgresTest": {
+      "seconds": 4.467,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionPlanTraceProjectionTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionPlanAttachmentAccessPolicyTest": {
+      "seconds": 0.009,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionProductNoAuthorityContractTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionPlanMaterialProgressTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionPlanOwnerActionCapabilityContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionPlanServiceTest": {
+      "seconds": 0.712,
+      "tests": 24,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionPlanProductNoAssignmentTest": {
+      "seconds": 0.005,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.plan.ProductionProductNoAllocatorTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionReportGeneratedDocumentUuidContractTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionDailyReportSourceUuidContractTest": {
+      "seconds": 0.008,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ReportablePlanLineQuerySecurityContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandTest": {
+      "seconds": 0.07,
+      "tests": 24,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionFqcFinishedInboundServiceTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionDailyReportControllerBatchFilterTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionDailyReportPlanLinkGraphTest": {
+      "seconds": 0.026,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionDailyReportAttachmentAccessPolicyTest": {
+      "seconds": 0.012,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.DailyReportOutputAllocationServiceTest": {
+      "seconds": 0.028,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionDailyReportCommandPostgresTest": {
+      "seconds": 26.95,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.DailyReportCountedCloseoutTest": {
+      "seconds": 0.012,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuardTest": {
+      "seconds": 0.023,
+      "tests": 21,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ReportablePlanLinePostgresTest": {
+      "seconds": 33.77,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.dailyreport.ProductionDailyReportMoneyFreezeContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.MaterialConsumptionMathSqlContractPostgresTest": {
+      "seconds": 1.965,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionPlanningServiceBomControlStageTest": {
+      "seconds": 0.016,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.BomColorResolutionSqlContractTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionPlanningServiceProductSpecTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.MrpAnalysisApprovalValidationTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionPlanningRequestValidatorTest": {
+      "seconds": 0.144,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionSegmentPostgresTest": {
+      "seconds": 33.13,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.AnalysisExecutionSnapshotScopeTest": {
+      "seconds": 0.003,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionPlanningPackageServiceTest": {
+      "seconds": 0.004,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionPlanningMainWarehouseBudgetTest": {
+      "seconds": 0.149,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.CompleteKitAllocatorTest": {
+      "seconds": 0.012,
+      "tests": 15,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionBatchSourceBoundaryTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionPackageCommandStatusTest": {
+      "seconds": 0.129,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.LegacyMrpWriteEndpointRetirementContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionWarehouseDrawTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionPlanSubresourceScopeContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionPlanningDraftServiceTest": {
+      "seconds": 0.296,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionPackageCommandReplayTest": {
+      "seconds": 0.262,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionMaterialFulfillmentPostgresTest": {
+      "seconds": 26.42,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.MrpRowTest": {
+      "seconds": 0.002,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionPlanningRequestedStatusTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionExecutionPlanningServiceSupplyRouteTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionWorkshopPreferencePreviewSqlTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionMakeSubplanLifecycleContractTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.mrp.ProductionGoodsWorkshopPreferenceServiceTest": {
+      "seconds": 0.005,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ExecutionSalesAllocationCapacityPostgresTest": {
+      "seconds": 1.895,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionPurchaseSupplyTransitionPostgresTest": {
+      "seconds": 30.65,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionFulfillmentLedgerServiceTest": {
+      "seconds": 0.136,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionReadinessReconcilerTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionMakeReceiptLifecycleContractTest": {
+      "seconds": 0.009,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionInspectionStockInServiceTest": {
+      "seconds": 0.26,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionContinuousZeroBudgetTest": {
+      "seconds": 0.013,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.PlanningPackageFingerprintTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionSubcontractSupplyTransitionContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionReceiptAvailabilityPostgresTest": {
+      "seconds": 1.767,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionDrawDiscoveryBatchContractTest": {
+      "seconds": 0.014,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionMakeSupplyLifecyclePostgresTest": {
+      "seconds": 35.33,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ProductionPurchaseReceiptProvenancePostgresTest": {
+      "seconds": 31.89,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.fulfillment.ContinuousSupplyBudgetTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.chain.ProductionChainHealthContractTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.schedule.ProductionScheduleNeedTest": {
+      "seconds": 0.003,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.schedule.ProductionScheduleOrderLinesTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.report.ProductionReportTotalsTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.report.ProductionWhereUsedQueryServiceTest": {
+      "seconds": 0.03,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.ProductionLegacyWriteControllerTest": {
+      "seconds": 0.275,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.CrossReallocationCandidateContractTest": {
+      "seconds": 0.538,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.SubcontractPreparationPermissionContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.GoodsOwningWarehouseWritePostgresTest": {
+      "seconds": 2.297,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.ProductionBomFootprintReachabilityPostgresTest": {
+      "seconds": 1.66,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateAllocationConstraintSchedulingPostgresTest": {
+      "seconds": 5.829,
+      "tests": 29,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisAllocationSnapshotPostgresTest": {
+      "seconds": 9.506,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateDelegationProjectionTest": {
+      "seconds": 0.009,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisSourceRequirementProjectionTest": {
+      "seconds": 0.005,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateQuantityAllocatorTest": {
+      "seconds": 0.064,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialSnapshotInputPostgresTest": {
+      "seconds": 1.726,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisServiceBehaviorTest": {
+      "seconds": 0.645,
+      "tests": 88,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.ProductionMaterialAnalysisPersistencePostgresTest": {
+      "seconds": 28.0,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.ProductionMutationFootprintPostgresTest": {
+      "seconds": 27.5,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupQueryPostgresTest": {
+      "seconds": 46.01,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.CrossAnalysisReallocationWorkflowContractTest": {
+      "seconds": 0.023,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisCancelRequestTest": {
+      "seconds": 0.007,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.SubcontractComponentCustodyProjectionPostgresTest": {
+      "seconds": 1.795,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisCommandBatchLookupTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanMakeInboundSplitTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanFormalWarehouseTransferTest": {
+      "seconds": 0.007,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisMainWarehouseSafetyCommandTest": {
+      "seconds": 0.185,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisStructureScopeTest": {
+      "seconds": 0.258,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisProductChildrenProjectionPostgresTest": {
+      "seconds": 30.0,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateAliasReadBatchingTest": {
+      "seconds": 0.446,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisRouteAutoConfirmTest": {
+      "seconds": 0.004,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyProgressServiceTest": {
+      "seconds": 0.014,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisOptionalRouteReasonPostgresTest": {
+      "seconds": 28.3,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateMissingDeepAliasRepairTest": {
+      "seconds": 0.011,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanStockEntitlementServiceTest": {
+      "seconds": 0.009,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanReallocationRestoreRevokeServiceTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupServiceTest": {
+      "seconds": 0.011,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.ProductionMaterialAnalysisWorkflowContractTest": {
+      "seconds": 0.1,
+      "tests": 23,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisBomTreeHibernatePostgresTest": {
+      "seconds": 26.84,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisOneTableContractTest": {
+      "seconds": 0.029,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateMaterialProjectionMathTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisWarehouseBreakdownPostgresTest": {
+      "seconds": 1.77,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialStockReallocationPriorityServiceTest": {
+      "seconds": 0.007,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateMaterialOrderPreviewServiceTest": {
+      "seconds": 0.688,
+      "tests": 23,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisSafetyReplenishmentProjectionTest": {
+      "seconds": 0.003,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.ProductionFootprintRowVersionPostgresTest": {
+      "seconds": 1.798,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanInboundAllocationProjectionContractTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanAnalysisCancellationSliceServiceTest": {
+      "seconds": 0.139,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregatePrivateIntentReaderTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupHookContractTest": {
+      "seconds": 0.004,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisResponseProjectionTest": {
+      "seconds": 1.157,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisOptionalRouteReasonTest": {
+      "seconds": 0.005,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisUuidFallbackContractTest": {
+      "seconds": 0.016,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregatePrivateCoveragePropagationTest": {
+      "seconds": 0.097,
+      "tests": 16,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateAdoptionIntentReaderTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanSystemFormalizationTest": {
+      "seconds": 0.01,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.SubcontractMakeTaskReadAccessTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisControllerTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanMakePublicSupplyServiceTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisFlowStageServiceTest": {
+      "seconds": 0.036,
+      "tests": 34,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialConsumptionMathTest": {
+      "seconds": 0.001,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisPlanningEligibilityTest": {
+      "seconds": 0.057,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisPublicSafetyWorkflowContractTest": {
+      "seconds": 0.007,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisBomSnapshotReaderTest": {
+      "seconds": 0.245,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanInboundAllocationProjectionBudgetTest": {
+      "seconds": 0.014,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.SubcontractComponentEntitledLotsPostgresTest": {
+      "seconds": 1.964,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisRouteGroupIndexTest": {
+      "seconds": 0.169,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanMakeAdmittedBudgetPostgresTest": {
+      "seconds": 1.894,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.SubcontractMakeTaskServiceLockTaskTest": {
+      "seconds": 0.13,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateMaterialAllocationBatchingTest": {
+      "seconds": 0.035,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.SubcontractMakeTaskAutomaticNotificationTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisPlanningGapAggregationTest": {
+      "seconds": 0.005,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateMaterialSourceCoveragePostgresTest": {
+      "seconds": 28.4,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanExternalSupplySourceGuardPostgresTest": {
+      "seconds": 27.72,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateMaterialOrderRequestBoundaryTest": {
+      "seconds": 0.023,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanReallocationMakeSupplementTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PriorityCompleteKitAllocatorTest": {
+      "seconds": 0.003,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateAdoptionIntentTest": {
+      "seconds": 0.285,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AnalysisLinkedSalesOrderServiceTest": {
+      "seconds": 0.011,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PlannedAllowanceCommandIdentityTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanAnalysisFormalTransferServiceTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisArrayMembershipPostgresTest": {
+      "seconds": 3.151,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialAnalysisSupplyCoverageReaderTest": {
+      "seconds": 0.009,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateOriginalTargetAllocatorTest": {
+      "seconds": 0.059,
+      "tests": 16,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialStockReallocationServiceTest": {
+      "seconds": 0.024,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.AggregateMaterialSourceReleaseTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.SubcontractMakeTaskNotificationPostgresTest": {
+      "seconds": 27.19,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.PreplanAnalysisStockPegServiceTest": {
+      "seconds": 0.145,
+      "tests": 16,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.analysis.MaterialPreparationBudgetReaderTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.directtransfer.ProductionWorkshopDirectTransferServiceTest": {
+      "seconds": 0.289,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.directtransfer.WorkshopDirectTransferQuantityPostgresTest": {
+      "seconds": 1.711,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.directtransfer.WorkshopDirectTargetReasonPostgresTest": {
+      "seconds": 26.18,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcRecordContractTest": {
+      "seconds": 0.004,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcReplenishmentMaterialContractTest": {
+      "seconds": 0.006,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcAttachmentAccessPolicyTest": {
+      "seconds": 0.286,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcPassAllTransactionContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcInspectionControllerContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcInspectionServiceTest": {
+      "seconds": 0.137,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcReplenishmentServiceTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcFinishedInboundIntegrationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcRecoveryPostgresTest": {
+      "seconds": 13.45,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcRecoveryIntegrationContractTest": {
+      "seconds": 0.004,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcReplenishmentMaterialServiceTest": {
+      "seconds": 0.148,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.production.quality.ProductionFqcPassAllServiceBehaviorTest": {
+      "seconds": 0.005,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.procurement.ProcurementDocumentStateLockPostgresTest": {
+      "seconds": 26.13,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.procurement.ProductionDemandRequestReleaseTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.procurement.ProductionRequestApplicantIdentityContractTest": {
+      "seconds": 0.666,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.procurement.ProcurementDocumentStateLockTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.procurement.DemandDecompositionControllerContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.learning.SalesMasterLearningAdapterTest": {
+      "seconds": 0.14,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.learning.IntakeNormalizerSqlParityPostgresTest": {
+      "seconds": 7.213,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.learning.GoodsNameCatalogTest": {
+      "seconds": 0.009,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.learning.IntakeModelNormExpressionContractTest": {
+      "seconds": 0.04,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.learning.ClientDocumentFieldsTest": {
+      "seconds": 0.003,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.learning.SalesLearningPlannerTest": {
+      "seconds": 0.008,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.referencemethod.ReferenceMethodServiceTermsTest": {
+      "seconds": 0.274,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.referencemethod.ReferenceMethodFacetsTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.supplier.SupplierDefaultSettlementMethodTest": {
+      "seconds": 0.396,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.supplier.SupplierOwnerEmployeeFilterTest": {
+      "seconds": 0.008,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.supplier.SupplierKeywordSpecificationTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.ClientSupplierOwnerEmployeeServiceTest": {
+      "seconds": 0.421,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.warehouse.WarehouseKeeperControllerContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.warehouse.WarehouseScopeServiceTest": {
+      "seconds": 0.145,
+      "tests": 15,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.warehouse.WarehouseListTopLevelOnlyPageTest": {
+      "seconds": 0.135,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.warehouse.WarehouseParentAccountableFilterTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsStockSummaryTest": {
+      "seconds": 0.003,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsMasterRelationshipResolverTest": {
+      "seconds": 0.414,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsJsonSerializationContractTest": {
+      "seconds": 0.019,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsListMasterNameResolutionTest": {
+      "seconds": 0.54,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsBomPasteReplaceTest": {
+      "seconds": 0.276,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsCostValuePolicyTest": {
+      "seconds": 0.021,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsCategoryRootScopeTest": {
+      "seconds": 0.151,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsListUuidReferenceTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsBomControlFieldsTest": {
+      "seconds": 0.008,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsBomLearningQueryServiceTest": {
+      "seconds": 0.006,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsUuidRelationshipServiceTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsQuantityUnitPolicyTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsBomLearningQueryPostgresTest": {
+      "seconds": 25.53,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsOrderPolicyFieldsTest": {
+      "seconds": 0.009,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportNormalizationTest": {
+      "seconds": 0.001,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportRearInsertCodeTest": {
+      "seconds": 0.231,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest": {
+      "seconds": 0.779,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportOptionalCodeTest": {
+      "seconds": 0.045,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportControllerTest": {
+      "seconds": 0.163,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportFileValidationTest": {
+      "seconds": 0.054,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportPaperTest": {
+      "seconds": 0.035,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportUuidOnlyContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsBomImportServiceTest": {
+      "seconds": 1.787,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.importing.GoodsImportNameEnTest": {
+      "seconds": 0.026,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsDiscountVisibilityTest": {
+      "seconds": 0.022,
+      "tests": 15,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsBomExportColumnsTest": {
+      "seconds": 0.007,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsPricePrecisionTest": {
+      "seconds": 0.017,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsNameEnTest": {
+      "seconds": 0.006,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsQuantityUnitLifecyclePostgresTest": {
+      "seconds": 8.887,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsAttachmentAccessPolicyTest": {
+      "seconds": 0.006,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsBomStubIsolationTest": {
+      "seconds": 0.004,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsNameEnServiceTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.goods.GoodsBomBatchDeleteTest": {
+      "seconds": 0.449,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.account.AccountBalanceFormulaTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.account.AccountSecurityAndRedactionTest": {
+      "seconds": 0.142,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.account.AccountCodeEditContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.account.AccountFinancialHistoryGuardTest": {
+      "seconds": 0.011,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.account.AccountReadModelQueryTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.reference.MasterReferenceValidationAdapterTest": {
+      "seconds": 0.172,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.lifecycle.MasterLifecycleControllerTest": {
+      "seconds": 0.187,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.lifecycle.MasterReferenceCatalogCoverageTest": {
+      "seconds": 25.99,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.lifecycle.MasterReferenceCatalogShapeTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.lifecycle.MasterReferenceGuardFixedPointTest": {
+      "seconds": 0.009,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientOwnerlessGrantVisibilityContractTest": {
+      "seconds": 0.0,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientAccessBatchUpdateTest": {
+      "seconds": 0.004,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientShipAddressOwnerBoundaryTest": {
+      "seconds": 0.144,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientControllerStubDefaultContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientNameEnTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientCreditFloorPolicyTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientSelectableOnlyFilterTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientDictionaryTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientOwnershipWriteBoundaryTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientLegacyFinanceStubFilterTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientFacetVisibilityConsistencyTest": {
+      "seconds": 0.01,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientDictItemTest": {
+      "seconds": 0.002,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientPreviousOwnerVisibilityTest": {
+      "seconds": 0.001,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientAccessReasonTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientAccessPolicyTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientAccessServiceBoundaryTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientOwnerEmployeeFilterTest": {
+      "seconds": 0.004,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientStatusOwnerLockTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.WebsiteInquiryClientAdapterTest": {
+      "seconds": 0.144,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientAccessCandidateBoundaryTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientReadSnapshotContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.client.ClientAccessLockOrderContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.unit.UnitDimensionFacetFilterTest": {
+      "seconds": 0.006,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.unit.UnitMassUnitCodeTest": {
+      "seconds": 0.014,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.CategoryHierarchyMoveContractTest": {
+      "seconds": 0.162,
+      "tests": 16,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.paymentstyle.PaymentStyleReferenceGuardMigrationContractTest": {
+      "seconds": 0.153,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.paymentstyle.PaymentStyleHierarchyConcurrencyPostgresTest": {
+      "seconds": 28.47,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.paymentstyle.PaymentStyleServiceTest": {
+      "seconds": 0.155,
+      "tests": 23,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.paymentstyle.PaymentStyleHierarchyLockConsumerContractTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.master.ColorUnitOnlineLegacyIdentityTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.features.CoreBusinessDetailViewAuditControllerTest": {
+      "seconds": 3.013,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.webinquiry.WebsiteInquiryServiceTest": {
+      "seconds": 0.279,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.payroll.PayrollServiceTest": {
+      "seconds": 0.708,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.features.payroll.PayrollControllerAuditTest": {
+      "seconds": 0.417,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.payroll.PayrollPdfServiceTest": {
+      "seconds": 0.006,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.features.SensitiveDetailViewAuditControllerTest": {
+      "seconds": 2.144,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.profilechange.ProfileChangeSnapshotWriteAuthorityContractTest": {
+      "seconds": 0.011,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.features.profilechange.ProfileChangeSnapshotCodecTest": {
+      "seconds": 0.005,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.features.profilechange.ProfileChangeQueryServiceTest": {
+      "seconds": 0.572,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.features.LowSensitivityDetailViewAuditControllerTest": {
+      "seconds": 3.118,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.config.ProductionStorageSafetyGateTest": {
+      "seconds": 0.025,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.config.WebMvcConfigInterceptorOrderTest": {
+      "seconds": 0.548,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.cloud.PrimaryHealthIndicatorTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.cloud.CloudRoutingDataSourceTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.config.cloud.CloudSecurityConfigurationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.cloud.CloudDataSourceConfigTest": {
+      "seconds": 0.009,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.config.cloud.CloudSchedulerIsolationContractTest": {
+      "seconds": 0.373,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.AiJobUploadCorsPreflightTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.config.SpringDocProfileConfigurationContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.MetricsUriTagBudgetContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.PostgresJitPolicyPostgresTest": {
+      "seconds": 1.869,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.config.FulfillmentSourceConflictRetryConfigTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.config.ProductionSecretStrengthSafetyGateTest": {
+      "seconds": 0.014,
+      "tests": 15,
+      "skipped": 0
+    },
+    "com.uten.imp.config.HealthProbeConfigurationContractTest": {
+      "seconds": 0.005,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.ChinaLocaleDefaultsTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.InternalTestConfigurationContractTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.config.SecurityDefaultsTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.config.ProductionSecretCipherKeyGateTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.config.SecurityCorsAuditIntegrationTest": {
+      "seconds": 1.119,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.config.RequestHeaderBudgetIntegrationTest": {
+      "seconds": 0.658,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.config.InternalTestRuntimeSafetyGateTest": {
+      "seconds": 0.037,
+      "tests": 42,
+      "skipped": 0
+    },
+    "com.uten.imp.config.ProductionDatabaseTlsSafetyGateTest": {
+      "seconds": 0.015,
+      "tests": 27,
+      "skipped": 0
+    },
+    "com.uten.imp.security.JwtStaffClaimMinimizationTest": {
+      "seconds": 0.004,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.security.PreAuthorizeCodesAreActiveContractTest": {
+      "seconds": 25.18,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.security.SensitiveActionPermissionContractTest": {
+      "seconds": 0.143,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.security.ProductionMaterialReadAccessPolicyTest": {
+      "seconds": 0.01,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.security.StepUpAdvisorConfigTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.security.BoundedPasswordEncoderTest": {
+      "seconds": 0.537,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.security.PermissionCatalogBidirectionalContractTest": {
+      "seconds": 0.635,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.security.DocumentActionPermissionContractTest": {
+      "seconds": 0.702,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.security.MasterDataActionPermissionContractTest": {
+      "seconds": 0.006,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.security.JwtVisitorPiiMinimizationTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.security.DocumentAccessReadWriteSeparationTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.security.OrganizationMasterPermissionContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.security.PermissionGrantPolicyContractTest": {
+      "seconds": 0.972,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.security.TransactionAuditActorBinderTest": {
+      "seconds": 0.132,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.security.PasswordPolicyTest": {
+      "seconds": 0.013,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.security.DocumentReversedDeleteProtectionContractTest": {
+      "seconds": 0.009,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.security.ExportRateLimiterTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.security.TxSessionVarsTransactionBindingPostgresTest": {
+      "seconds": 2.299,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.security.StaffAuthorityResolverTest": {
+      "seconds": 0.003,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.security.SubmitterPrincipalRestorerTest": {
+      "seconds": 0.012,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.security.CommercialOrderAttachmentAccessPolicyTest": {
+      "seconds": 0.037,
+      "tests": 29,
+      "skipped": 0
+    },
+    "com.uten.imp.security.LoginRateLimiterTest": {
+      "seconds": 0.067,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.security.TxSessionVarsBindingPostgresTest": {
+      "seconds": 2.095,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.security.ExportRateLimitInterceptorTest": {
+      "seconds": 0.263,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.security.PasswordChangeRequiredFilterTest": {
+      "seconds": 0.017,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.security.JwtAuthorizationVersionTest": {
+      "seconds": 0.14,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.security.NullOwnerIsNotPublicContractTest": {
+      "seconds": 0.831,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.security.TemporaryPasswordGeneratorTest": {
+      "seconds": 0.003,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.security.SecretCipherTest": {
+      "seconds": 0.042,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.security.AutomaticRequestPolicyTest": {
+      "seconds": 0.004,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.security.LocalNetworkGuardFilterTest": {
+      "seconds": 0.008,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.security.CommercialPriceVisibilityTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.security.DocumentOrdinaryWriteOwnerGuardContractTest": {
+      "seconds": 0.073,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.security.DocumentScopedOperationWriteTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.security.RemoteAccessPolicyTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.security.PermissionChainReachabilityContractTest": {
+      "seconds": 0.312,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditSummaryAggregationTest": {
+      "seconds": 0.398,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditServiceWritePolicyTest": {
+      "seconds": 0.033,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditActorDirectoryTest": {
+      "seconds": 0.005,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditDetailViewRecorderTest": {
+      "seconds": 0.005,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditDeviceContextTest": {
+      "seconds": 0.004,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditSessionQueryContractTest": {
+      "seconds": 0.004,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditRetentionSchedulerTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.UserOperationAuditInterceptorTest": {
+      "seconds": 0.006,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditEventInterpreterTest": {
+      "seconds": 0.022,
+      "tests": 32,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditQueryServiceTest": {
+      "seconds": 0.335,
+      "tests": 32,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditSessionControllerSecurityTest": {
+      "seconds": 0.848,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditRetentionPostgresTest": {
+      "seconds": 31.32,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditControllerSecurityTest": {
+      "seconds": 1.049,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditSessionQueryPostgresTest": {
+      "seconds": 30.15,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditRequestContextFilterTest": {
+      "seconds": 0.014,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditActionNamesTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditServiceTransactionContractTest": {
+      "seconds": 0.149,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditSessionIdPersistenceTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditClassifierTest": {
+      "seconds": 0.003,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditAiPlatformLabelsTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.audit.AuditAccountMaskTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.ops.BusinessDataResetServicePostgresTest": {
+      "seconds": 34.78,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.ops.BusinessDataResetSparsePostgresTest": {
+      "seconds": 38.9,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.ops.ResetBusinessDataV446PostgresTest": {
+      "seconds": 26.34,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.ops.ResetBusinessDataScriptContractTest": {
+      "seconds": 0.025,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.ops.BusinessDataResetSqlContractTest": {
+      "seconds": 0.397,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.legacy.migration.LegacyPurchaseUnitFallbackContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.legacy.migration.LegacyCategoryCodePreservationTest": {
+      "seconds": 0.134,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.DocumentDraftCountScopePostgresTest": {
+      "seconds": 32.47,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.DailyReportCountedCloseoutEndToEndTest": {
+      "seconds": 19.05,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.UnplacedPublicSupplyEndToEndTest": {
+      "seconds": 33.24,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SubcontractPreparationActualWarehousePostgresTest": {
+      "seconds": 49.71,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionMaterialConsumptionProjectionEndToEndTest": {
+      "seconds": 10.17,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionMaterialRequestNumberMigrationPostgresTest": {
+      "seconds": 39.01,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ScopedPublicSurplusReaderPostgresTest": {
+      "seconds": 60.07,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SubcontractSoleComponentUnlockEndToEndTest": {
+      "seconds": 58.17,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopSupplyAdversarialEndToEndTest": {
+      "seconds": 127.4,
+      "tests": 15,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialCustodyPostgresTest": {
+      "seconds": 22.31,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PrelockStatementBudgetEndToEndTest": {
+      "seconds": 23.62,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WarehouseIqcBatchScalePostgresTest": {
+      "seconds": 51.47,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialAggregateOrderScalePostgresTest": {
+      "seconds": 18.24,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.GlReportLineBindingPostgresTest": {
+      "seconds": 4.886,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MasterLearningRequestAuditPostgresTest": {
+      "seconds": 3.754,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.AggregateMaterialDirectTransferEndToEndTest": {
+      "seconds": 81.1,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionExecutionRouteGateEndToEndTest": {
+      "seconds": 401.7,
+      "tests": 47,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SubcontractComponentReturnLegEndToEndTest": {
+      "seconds": 14.31,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopDirectTransferBatchEndToEndTest": {
+      "seconds": 124.0,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SalesShipmentBatchPhysicalSourcesEndToEndTest": {
+      "seconds": 5.417,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.FullChainEndToEndTest": {
+      "seconds": 973.9,
+      "tests": 162,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionMaterialIncrementEndToEndTest": {
+      "seconds": 48.32,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ActualSurplusEarlyFinalEndToEndTest": {
+      "seconds": 18.01,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialAnalysisScaleRequestBoundaryTest": {
+      "seconds": 0.077,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialPreparationBudgetPostgresTest": {
+      "seconds": 98.08,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialAnalysisBlankSourceRoutePostgresTest": {
+      "seconds": 9.843,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopDirectSourceHistoryPostgresTest": {
+      "seconds": 32.88,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopNoticeDeliveryEndToEndTest": {
+      "seconds": 31.52,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.IqcTriggerProfileEndToEndTest": {
+      "seconds": 38.44,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionMaterialAnalysisScalePostgresTest": {
+      "seconds": 104.8,
+      "tests": 12,
+      "skipped": 6
+    },
+    "com.uten.imp.businesschain.PermissionAdministrationPostgresTest": {
+      "seconds": 31.08,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialCountPostgresTest": {
+      "seconds": 15.0,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MainWarehouseSafetyBudgetEndToEndTest": {
+      "seconds": 42.72,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialReturnValueDagEndToEndTest": {
+      "seconds": 84.21,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialRouteMasterWriteBackEndToEndTest": {
+      "seconds": 15.7,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PreplanPublicFutureReplenishmentEndToEndTest": {
+      "seconds": 146.4,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionOverproductionRateEndToEndTest": {
+      "seconds": 29.35,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialIssuePostgresTest": {
+      "seconds": 9.398,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopPlanningUrgeEndToEndTest": {
+      "seconds": 99.96,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialStockAuthorizationPostgresTest": {
+      "seconds": 7.821,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionExecutionBatchEndToEndTest": {
+      "seconds": 101.3,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialRouteAutoConfirmEndToEndTest": {
+      "seconds": 11.48,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionQuantityAdversarialEndToEndTest": {
+      "seconds": 130.2,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionFqcBatchViewEndToEndTest": {
+      "seconds": 41.63,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProcurementOrderSourceRevisionEndToEndTest": {
+      "seconds": 39.23,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionFinishedInPreStockEndToEndTest": {
+      "seconds": 44.01,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionCostInputCandidatesPostgresTest": {
+      "seconds": 13.46,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PreplanFutureTransferForwardMigrationPostgresTest": {
+      "seconds": 30.22,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.DashboardOverviewPostgresTest": {
+      "seconds": 6.542,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionDrawDiscoveryBatchEndToEndTest": {
+      "seconds": 91.93,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SessionIdleEnforcementPostgresTest": {
+      "seconds": 37.3,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProcurementInspectionBatchEndToEndTest": {
+      "seconds": 61.1,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PreplanReallocationMakeSupplementEndToEndTest": {
+      "seconds": 183.0,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PurchaseRequestPartialOrderEndToEndTest": {
+      "seconds": 16.67,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopPublicSurplusEndToEndTest": {
+      "seconds": 218.5,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionMaterialDiscoveryEndToEndTest": {
+      "seconds": 104.1,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PlasticUsageAttachmentPostgresTest": {
+      "seconds": 12.94,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SubcontractShortDeliveryEndToEndTest": {
+      "seconds": 18.26,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PreplanPrivateFutureTransferEndToEndTest": {
+      "seconds": 204.3,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialAnalysisPreviewPrelockPostgresTest": {
+      "seconds": 16.32,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SessionSnapshotPostgresTest": {
+      "seconds": 4.269,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionExecutionBatchCostEndToEndTest": {
+      "seconds": 44.39,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.FinishedInboundCostFootprintEndToEndTest": {
+      "seconds": 22.24,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialWorkshopAnchorEndToEndTest": {
+      "seconds": 213.6,
+      "tests": 30,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkbenchBadgeSummaryPostgresTest": {
+      "seconds": 31.39,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.QualifiedSourceWarehouseEndToEndTest": {
+      "seconds": 208.7,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialStartGatePostgresTest": {
+      "seconds": 62.84,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.DocumentTransitionTimeEndToEndTest": {
+      "seconds": 7.473,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SubcontractToleranceAutoSettleEndToEndTest": {
+      "seconds": 10.06,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SalesShipmentWarehouseAssignmentEndToEndTest": {
+      "seconds": 13.99,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MakePublicSupplyEndToEndTest": {
+      "seconds": 332.2,
+      "tests": 17,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MasterDataIntegrityEndToEndTest": {
+      "seconds": 13.29,
+      "tests": 15,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopContinuousSupplyEndToEndTest": {
+      "seconds": 119.4,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.AggregateMaterialOrderEndToEndTest": {
+      "seconds": 480.9,
+      "tests": 25,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MoneyConservationEndToEndTest": {
+      "seconds": 27.69,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PeriodicEdgeReadersPostgresTest": {
+      "seconds": 9.966,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PreplanReallocationMainWarehouseEndToEndTest": {
+      "seconds": 136.8,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionBomLearningEndToEndTest": {
+      "seconds": 25.45,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialAnalysisStructureScopeEndToEndTest": {
+      "seconds": 56.62,
+      "tests": 11,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SubcontractLossValueEndToEndTest": {
+      "seconds": 42.68,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.PreplanPlannedQuantitySingleEntryEndToEndTest": {
+      "seconds": 284.4,
+      "tests": 32,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.CriticalHttpContractEndToEndTest": {
+      "seconds": 62.38,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialClosePostgresTest": {
+      "seconds": 61.51,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionPlannedOverproductionAllowanceEndToEndTest": {
+      "seconds": 50.48,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ScopedMakePublicSupplyReaderPostgresTest": {
+      "seconds": 66.07,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.DailyReportDefectLearningEndToEndTest": {
+      "seconds": 51.31,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.GoodsIssueMethodSwitchPostgresTest": {
+      "seconds": 7.463,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProcurementIqcPreStockInEndToEndTest": {
+      "seconds": 49.22,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.SalesShipmentFinanceReleaseRateEndToEndTest": {
+      "seconds": 11.52,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.ProductionScheduleOrderLinesEndToEndTest": {
+      "seconds": 7.65,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.LegacyOpeningOffsetEndToEndTest": {
+      "seconds": 42.51,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MaterialAnalysisReservationPreviewEndToEndTest": {
+      "seconds": 116.8,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.WorkshopMaterialReturnSourceConservationEndToEndTest": {
+      "seconds": 89.97,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.StepUpHttpContractPostgresTest": {
+      "seconds": 12.34,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MasterIntakeLearningPostgresTest$WithGoodsOwnerScope": {
+      "seconds": 4.018,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.businesschain.MasterIntakeLearningPostgresTest": {
+      "seconds": 11.65,
+      "tests": 0,
+      "skipped": 0
+    },
+    "com.uten.imp.architecture.BusinessChainScenarioMatrixTest": {
+      "seconds": 0.002,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.architecture.DetailViewAuditCoverageArchitectureTest": {
+      "seconds": 0.089,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.architecture.ProcurementFinancePermissionDocumentationContractTest": {
+      "seconds": 0.014,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.architecture.LineSideWordingContractTest": {
+      "seconds": 1.076,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.architecture.BomPresencePredicateContractTest": {
+      "seconds": 0.698,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.architecture.TopLevelWriteAuditContextArchitectureTest": {
+      "seconds": 0.015,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.architecture.ArchitectureBoundaryTest": {
+      "seconds": 2.359,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.common.files.ImageDimensionGuardTest": {
+      "seconds": 0.548,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.files.document.ZipSafetyTest": {
+      "seconds": 0.53,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.common.files.document.DocumentSnifferAndPromptTableTest": {
+      "seconds": 0.122,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.common.files.document.PdfTextReaderTest": {
+      "seconds": 1.834,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.common.files.document.SpreadsheetGridReaderTest": {
+      "seconds": 1.85,
+      "tests": 13,
+      "skipped": 0
+    },
+    "com.uten.imp.common.export.WorkbookDownloadServiceTest": {
+      "seconds": 0.371,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.export.ExportPasswordRequestValidationTest": {
+      "seconds": 0.022,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementReceiptIntentTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementReturnHeaderAuthorityTest": {
+      "seconds": 0.013,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementCaseBookAllocationPostgresTest": {
+      "seconds": 2.841,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.PartyOpenBalancesTest": {
+      "seconds": 0.014,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementReturnQualityPolicyTest": {
+      "seconds": 0.019,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementOrderClosurePolicyTest": {
+      "seconds": 0.006,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ServerDerivedAmountsContractTest": {
+      "seconds": 0.521,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementConsiderationBasisTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementReturnPayableAuthorityTest": {
+      "seconds": 0.006,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementCommercialSnapshotPolicyTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.MoneyPolicyTest": {
+      "seconds": 0.006,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.MoneyPolicyDiscountFromUnitPriceTest": {
+      "seconds": 0.004,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.ProcurementIqcReplacementAllocationBehaviorTest": {
+      "seconds": 0.022,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.finance.FinancialBookAllocationTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.MultipartRequestErrorTest": {
+      "seconds": 0.064,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.RequestUuidSetsTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.DownloadContentDispositionTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.GlobalExceptionHandlerTest": {
+      "seconds": 0.018,
+      "tests": 12,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.StandardDocumentLifecycleCapabilitiesTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.JsonRequestBodyLimitAdviceTest": {
+      "seconds": 0.014,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.PageResponseTest": {
+      "seconds": 0.005,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.web.ImportedDocumentLifecycleCapabilitiesTest": {
+      "seconds": 0.019,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.common.storage.OssStorageServiceTest": {
+      "seconds": 1.136,
+      "tests": 23,
+      "skipped": 0
+    },
+    "com.uten.imp.common.storage.LocalDiskStorageServiceTest": {
+      "seconds": 0.02,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.storage.InternalStorageServiceTest": {
+      "seconds": 0.396,
+      "tests": 14,
+      "skipped": 0
+    },
+    "com.uten.imp.common.storage.InternalAttachmentLifecyclePostgresTest": {
+      "seconds": 49.51,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.common.saleschain.SalesChainStatusTest": {
+      "seconds": 0.018,
+      "tests": 26,
+      "skipped": 0
+    },
+    "com.uten.imp.common.saleschain.SalesOrderChainSqlPostgresTest": {
+      "seconds": 2.061,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.docnumber.DocNumberServiceTest": {
+      "seconds": 0.004,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.validation.MeasurementWeightRequestValidationTest": {
+      "seconds": 0.034,
+      "tests": 6,
+      "skipped": 0
+    },
+    "com.uten.imp.common.validation.RequestBoundaryValidationTest": {
+      "seconds": 0.708,
+      "tests": 9,
+      "skipped": 0
+    },
+    "com.uten.imp.common.mastercode.CategoryParentMovePreviewContractTest": {
+      "seconds": 0.007,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.mastercode.MasterCodeServiceTest": {
+      "seconds": 0.008,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.mastercode.CategoryDrivenCodeServiceContractTest": {
+      "seconds": 0.011,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.common.mastercode.CategoryDrivenCodeServicePostgresTest": {
+      "seconds": 35.3,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.integrity.OperationalCommercialSignGuardWiringTest": {
+      "seconds": 0.003,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.integrity.LinkedDocumentIntegrityServiceTest": {
+      "seconds": 0.007,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.common.integrity.ProductionSupplySourceGuardTest": {
+      "seconds": 0.005,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.integrity.SourceQuantityBasisTest": {
+      "seconds": 0.008,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.common.integrity.NonNegativeCommercialSignGuardTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.domain.BaseEntityPersistablePostgresTest": {
+      "seconds": 3.465,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.inventory.MainWarehouseStockBudgetTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.util.EmployeeNameResolverWriteTest": {
+      "seconds": 0.005,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.common.util.PostgresUuidOrderTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.common.util.ChinaMobileNumberTest": {
+      "seconds": 0.001,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.common.util.IdCardUtilTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.util.PaymentMethodReferenceResolverTest": {
+      "seconds": 0.005,
+      "tests": 5,
+      "skipped": 0
+    },
+    "com.uten.imp.common.util.SettlementMethodReferenceResolverTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.util.FinancialExactAmountTest": {
+      "seconds": 0.003,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.report.ReportQueryKitCollectPagesTest": {
+      "seconds": 0.001,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.report.ReportTotalsCalculatorTest": {
+      "seconds": 0.005,
+      "tests": 8,
+      "skipped": 0
+    },
+    "com.uten.imp.common.NativeSqlTextBlockWhitespaceContractTest": {
+      "seconds": 0.896,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.common.time.BusinessTimeTest": {
+      "seconds": 0.003,
+      "tests": 2,
+      "skipped": 0
+    },
+    "com.uten.imp.common.concurrency.OptimisticLocksTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.common.text.IntakeTextNormalizerTest": {
+      "seconds": 0.003,
+      "tests": 7,
+      "skipped": 0
+    },
+    "com.uten.imp.responsibility.DataHandoverPostgresTest": {
+      "seconds": 39.21,
+      "tests": 10,
+      "skipped": 0
+    },
+    "com.uten.imp.responsibility.ClientHandoverEventRecorderContractTest": {
+      "seconds": 0.001,
+      "tests": 1,
+      "skipped": 0
+    },
+    "com.uten.imp.responsibility.DataHandoverSourceContractTest": {
+      "seconds": 0.002,
+      "tests": 3,
+      "skipped": 0
+    },
+    "com.uten.imp.responsibility.EmployeeOffboardHandoverContractTest": {
+      "seconds": 0.002,
+      "tests": 4,
+      "skipped": 0
+    },
+    "com.uten.imp.responsibility.DataHandoverAtomicityContractTest": {
+      "seconds": 0.0,
+      "tests": 1,
+      "skipped": 0
+    }
+  }
+}

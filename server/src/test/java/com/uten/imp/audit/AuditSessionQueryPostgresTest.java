@@ -2,6 +2,7 @@ package com.uten.imp.audit;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,9 +10,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDate;
@@ -25,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners = AuditSessionQueryPostgresTest.Cleanup.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 @Testcontainers(disabledWithoutDocker = true)
 @WithMockUser(authorities = "audit_log:view")
 @SpringBootTest(
@@ -41,15 +46,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         })
 class AuditSessionQueryPostgresTest {
 
-    @Container
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine");
+    private static MigratedSchemaBaseline.ScopedDatabase database;
 
     @DynamicPropertySource
-    static void dataSource(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    static void dataSource(DynamicPropertyRegistry registry) throws java.sql.SQLException {
+        database = MigratedSchemaBaseline.openDatabase("audit_session_query");
+        registry.add("spring.datasource.url", database::getJdbcUrl);
+        registry.add("spring.datasource.username", database::getUsername);
+        registry.add("spring.datasource.password", database::getPassword);
+    }
+
+    public static class Cleanup extends AbstractTestExecutionListener {
+        // afterTestClass listeners run in reverse order: close Spring/Hikari first.
+        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder() - 1; }
+        @Override public void afterTestClass(TestContext ignored) throws java.sql.SQLException {
+            if (database != null) database.close();
+        }
     }
 
     @Autowired

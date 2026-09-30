@@ -1,11 +1,10 @@
 package com.uten.imp.features.master.lifecycle;
 
-import org.flywaydb.core.Flyway;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -40,11 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class MasterReferenceCatalogCoverageTest {
 
-    private static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>("postgres:16-alpine")
-                    .withDatabaseName("master_reference_catalog")
-                    .withUsername("uten")
-                    .withPassword("uten");
+    private static MigratedSchemaBaseline.ScopedDatabase POSTGRES;
 
     private static final Map<String, MasterEntityKind> MASTER_TABLES = Map.of(
             "goods", MasterEntityKind.GOODS,
@@ -67,18 +62,13 @@ class MasterReferenceCatalogCoverageTest {
     private static final Pattern NAMED = Pattern.compile("(?:^|_)(goods|color|unit|warehouse|client|supplier|mould)_ids?$");
 
     @BeforeAll
-    static void migrateRealSchema() {
-        POSTGRES.start();
-        Flyway.configure()
-                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
+    static void migrateRealSchema() throws SQLException {
+        POSTGRES = MigratedSchemaBaseline.openDatabase("master_reference_catalog");
     }
 
     @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    static void stopPostgres() throws SQLException {
+        if (POSTGRES != null) POSTGRES.close();
     }
 
     @Test

@@ -38,12 +38,8 @@ jobs:
       - name: Scan full git history
         run: gitleaks git . --redact --no-banner --verbose
 
-  # 2026-09-18 起后端拆两级并行（原单 job 约 1.5 小时，任何一轮红都要等它跑完才见信号）：
-  #   - backend-fast：不设 UTEN_RUN_DB_TESTS，约 190 个 DB 门控测试按设计 SKIP，
-  #     编译 + 单元 + 架构 + 契约（非 DB）在几十分钟内给出信号；
-  #   - backend-db：完整套件（与原 job 完全一致），仍是权威合并门。
-  # 快道会重复慢道里的非 DB 测试——故意保留：慢道必须始终是完整套件，
-  # 慢构建不允许静默变成部分跑（见原 job 注释）。
+  # The fast lane remains an early signal. The full gate below requires every
+  # discovered Surefire and Failsafe test across isolated, duration-balanced jobs.
   backend-fast:
     name: "Backend / Java 21 (fast: unit + architecture)"
     runs-on: ubuntu-latest
@@ -61,12 +57,10 @@ jobs:
         working-directory: server
         run: mvn --batch-mode --no-transfer-progress verify
 
-  backend-db:
-    name: "Backend / Java 21 (full: DB full-chain)"
+  backend-plan:
+    name: Backend / discover complete test inventory
     runs-on: ubuntu-latest
-    # Full PostgreSQL rehearsals and business-chain tests need room for cold runners.
-    # Keep the complete suite; a slow build must not silently become a partial run.
-    timeout-minutes: 240
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -76,11 +70,98 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Full verification incl. PostgreSQL rehearsals and full-chain tests
-        working-directory: server
+      - name: Verify test partitioning and report reconciliation
+        run: python3 -m unittest discover -s .github/scripts -p 'test_backend_test_shards.py' -v
+      - name: Discover all tests and balance four complete partitions
         env:
           UTEN_RUN_DB_TESTS: "true"
-        run: mvn --batch-mode --no-transfer-progress verify
+        run: python3 .github/scripts/backend_test_shards.py plan --output server/target-ci-plan --shards 4 --history .github/test-timings/backend.json
+      - name: Preserve exact test plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: backend-test-plan
+          path: server/target-ci-plan/
+          if-no-files-found: error
+          retention-days: 14
+
+  backend-shards:
+    name: Backend / DB partition ${{ matrix.shard }}
+    needs: backend-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      # Collect all failures in one run; no partition is allowed to fail silently.
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: backend-test-plan
+          path: server/target-ci-plan
+      - name: Run complete assigned partition with isolated PostgreSQL
+        env:
+          UTEN_RUN_DB_TESTS: "true"
+        run: python3 .github/scripts/backend_test_shards.py run --plan server/target-ci-plan/plan.json --shard ${{ matrix.shard }} --output server/target-ci-reports
+      - name: Preserve test results and timings even after failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: backend-test-results-${{ matrix.shard }}
+          path: |
+            server/target-ci-reports/
+            !server/target-ci-reports/**/tmp/**
+          if-no-files-found: error
+          retention-days: 14
+
+  backend-db:
+    # Preserve the existing required-check name. Success means all four complete
+    # partitions passed AND their actual reports reconcile with the discovered plan.
+    name: "Backend / Java 21 (full: DB full-chain)"
+    needs: [backend-plan, backend-shards]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: backend-test-plan
+          path: server/target-ci-plan
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: backend-test-results-*
+          path: server/target-ci-reports
+          merge-multiple: true
+      - name: Require successful jobs and reconcile complete test coverage
+        env:
+          PLAN_RESULT: ${{ needs.backend-plan.result }}
+          PARTITION_RESULT: ${{ needs.backend-shards.result }}
+        run: |
+          python3 .github/scripts/backend_test_shards.py verify --plan server/target-ci-plan/plan.json --reports server/target-ci-reports
+          test "$PLAN_RESULT" = success
+          test "$PARTITION_RESULT" = success
+      - name: Preserve complete-suite reconciliation and future scheduling hints
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: backend-test-summary
+          path: |
+            server/target-ci-reports/verification.json
+            server/target-ci-reports/timings.json
+          if-no-files-found: error
+          retention-days: 14
 
   frontend:
     name: Flutter / Web

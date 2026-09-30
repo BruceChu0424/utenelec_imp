@@ -5,7 +5,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -159,16 +158,16 @@ class SchemaIndexHygieneContractTest {
             ORDER BY 1
             """.formatted(PROBE_INDEX_ON_LEADING_COLUMN);
 
-    private static PostgreSQLContainer<?> database;
+    private static MigratedSchemaBaseline.ScopedDatabase database;
 
     @BeforeAll
-    static void migrate() {
-        database = MigratedSchemaBaseline.startMigratedContainer("index_hygiene");
+    static void migrate() throws SQLException {
+        database = MigratedSchemaBaseline.openDatabase("index_hygiene");
     }
 
     @AfterAll
-    static void stop() {
-        if (database != null) database.stop();
+    static void stop() throws SQLException {
+        if (database != null) database.close();
     }
 
     @Test

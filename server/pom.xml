@@ -21,6 +21,8 @@
         <java.version>21</java.version>
         <!-- Give concurrent local tests their own output directory. -->
         <uten.build.directory>${project.basedir}/target</uten.build.directory>
+        <!-- Optional runner-owned JVM startup arguments; ordinary Maven keeps its defaults. -->
+        <uten.test.jvm.args></uten.test.jvm.args>
         <jjwt.version>0.12.6</jjwt.version>
         <bucket4j.version>8.10.1</bucket4j.version>
         <aliyun-sms.version>4.6.0</aliyun-sms.version>
@@ -206,6 +208,11 @@
 
         <!-- 测试 -->
         <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
@@ -248,7 +255,7 @@
                 <configuration>
                     <!-- Mockito inline mocks must be attached explicitly before newer JDKs
                          disable runtime agent loading. Spring Boot manages mockito.version. -->
-                    <argLine>-Xshare:off -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
+                    <argLine>-Xshare:off -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar" ${uten.test.jvm.args}</argLine>
                     <systemPropertyVariables>
                         <!-- Isolated builds and test forks must not roll the live dev log. -->
                         <logging.file.name>${project.build.directory}/logs/surefire-${surefire.forkNumber}.log</logging.file.name>
@@ -267,6 +274,7 @@
                     </execution>
                 </executions>
                 <configuration>
+                    <argLine>${uten.test.jvm.args}</argLine>
                     <systemPropertyVariables>
                         <logging.file.name>${project.build.directory}/logs/failsafe-${surefire.forkNumber}.log</logging.file.name>
                         <uten.packaging.application-jar>${project.build.directory}/${project.build.finalName}.jar</uten.packaging.application-jar>
@@ -376,4 +384,16 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <profile>
+            <id>isolated-test-temp</id>
+            <activation>
+                <property><name>uten.test.tmpdir</name></property>
+            </activation>
+            <properties>
+                <!-- Quote here, not in the CLI argument: nested quotes break mvn.cmd on Windows. -->
+                <uten.test.jvm.args>-Djava.io.tmpdir="${uten.test.tmpdir}"</uten.test.jvm.args>
+            </properties>
+        </profile>
+    </profiles>
 </project>

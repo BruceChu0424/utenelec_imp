@@ -7,75 +7,235 @@ import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
- * <b>真实迁移基线（2026-09-18 起）：新 fixture 不再手写 DDL 的根治路径。</b>
+ * Real migration fixtures: one fresh, fully migrated template per test JVM, with
+ * a private database clone for every lease. No template survives a JVM/CI run.
  *
- * <p>历史问题：约 80 个 {@code *PostgresTest} 各自手写最小建表语句，迁移每给
- * 既有表加一列（V584/V595/V599 一轮 7 类失败），fixture 不跟 CI 就红一轮
- * 1.5 小时的 DB 全链。本类提供从 <b>真实 Flyway 迁移目录</b>生成的共享基线：
- * 迁移到头一次，之后按 Postgres 模板库机制低成本克隆给每个测试类——
- * schema 永远等于正式目录头，迁移加列零维护，也不存在「fixture 列漂移」。
- *
- * <p>用法（对照 {@code AuditClassificationMigrationPostgresTest} 的既有模式）：
- * <pre>
- * static final PostgreSQLContainer&lt;?&gt; TEMPLATE = MigratedSchemaBaseline.startMigratedContainer("my_test_template");
- *
- * // 每个用例（或每个测试类）克隆一份，互不污染：
- * try (Connection db = MigratedSchemaBaseline.cloneConnection(TEMPLATE, "my_test_case")) {
- *     // 只插入行级 fixture；真实表/视图/函数/触发器全部就位
- * }
- * </pre>
- *
- * <p>克隆用容器自带的 {@code createdb -T}（模板库机制，秒级、含全部
- * 表/视图/函数/触发器），数据库名走命令行参数、不进 SQL 文本。
- * 注意：模板库克隆要求模板上没有并发会话（Postgres 限制），克隆前先关掉
- * 指向模板库的连接（本类迁完后即刻释放，Flyway 连接池随容器生命周期关闭）。
+ * <p>Use {@link #openDatabase(String)} for tests of the current business schema.
+ * Close the lease after JDBC connections and Spring contexts are closed. Closing
+ * a lease drops only that clone; only the JVM shutdown hook owns the container.
+ * Tests of empty/older/partial migrations or cluster-wide roles must continue to
+ * own their dedicated containers, using the compatibility helpers if useful.
+ * The shared template is never exposed or opened by fixture consumers.
  */
 public final class MigratedSchemaBaseline {
+    private MigratedSchemaBaseline() { }
 
-    private MigratedSchemaBaseline() {
+    private static final class Shared {
+        private static final TemplatePool POOL = new TemplatePool(
+                () -> new PostgreSQLContainer<>("postgres:16-alpine")
+                        .withDatabaseName("uten_migrated_template")
+                        .withReuse(false),
+                MigratedSchemaBaseline::migrate);
+
+        static {
+            Runtime.getRuntime().addShutdownHook(new Thread(POOL::close, "migrated-schema-cleanup"));
+        }
     }
 
-    /**
-     * 启动一个 postgres:16-alpine 容器并把正式迁移目录跑到头。
-     * 返回的容器自身数据库就是模板库（schema = 当前迁移头）。
-     */
-    public static PostgreSQLContainer<?> startMigratedContainer(String databaseName) {
-        PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
-                .withDatabaseName(databaseName);
-        postgres.start();
+    /** A new isolated current-schema database; labels need not be globally unique. */
+    public static ScopedDatabase openDatabase(String label) throws SQLException {
+        return Shared.POOL.open(label);
+    }
+
+    static int processMigrationCount() {
+        return Shared.POOL.migrationCount();
+    }
+
+    /** A database lease deliberately has no container/start/stop API. */
+    public static final class ScopedDatabase implements AutoCloseable {
+        private final TemplatePool owner;
+        private final String name;
+        private final String jdbcUrl;
+        private final String username;
+        private final String password;
+        private boolean closed;
+
+        private ScopedDatabase(TemplatePool owner, PostgreSQLContainer<?> template, String name) {
+            this.owner = owner;
+            this.name = name;
+            this.jdbcUrl = jdbcUrlFor(template, name);
+            this.username = template.getUsername();
+            this.password = template.getPassword();
+        }
+
+        public String getJdbcUrl() {
+            synchronized (owner) {
+                owner.requireOpen(this);
+                return jdbcUrl;
+            }
+        }
+
+        public String getUsername() { return username; }
+        public String getPassword() { return password; }
+
+        public Connection openConnection() throws SQLException {
+            synchronized (owner) {
+                owner.requireOpen(this);
+                return DriverManager.getConnection(jdbcUrl, username, password);
+            }
+        }
+
+        @Override
+        public void close() throws SQLException {
+            owner.release(this);
+        }
+    }
+
+    /** Package visibility allows lifecycle/failure tests without exposing ownership to consumers. */
+    static final class TemplatePool implements AutoCloseable {
+        private final Supplier<PostgreSQLContainer<?>> factory;
+        private final Consumer<PostgreSQLContainer<?>> migration;
+        private final Set<ScopedDatabase> leases = new HashSet<>();
+        private PostgreSQLContainer<?> template;
+        private boolean closed;
+        private int migrations;
+
+        TemplatePool(Supplier<PostgreSQLContainer<?>> factory, Consumer<PostgreSQLContainer<?>> migration) {
+            this.factory = factory;
+            this.migration = migration;
+        }
+
+        synchronized ScopedDatabase open(String label) throws SQLException {
+            validateLabel(label);
+            if (closed) throw new IllegalStateException("Migrated template pool is closed");
+            if (template == null) {
+                PostgreSQLContainer<?> candidate = factory.get();
+                try {
+                    candidate.start();
+                    migration.accept(candidate);
+                    migrations++;
+                    template = candidate;
+                } catch (RuntimeException | Error failure) {
+                    stopAfterFailure(candidate, failure);
+                    throw failure;
+                }
+            }
+            // Serialize template copies; consumers cannot hold template connections.
+            String name = label + "_" + UUID.randomUUID().toString().replace("-", "");
+            createClone(template, name);
+            ScopedDatabase lease = new ScopedDatabase(this, template, name);
+            leases.add(lease);
+            return lease;
+        }
+
+        private void requireOpen(ScopedDatabase lease) {
+            if (closed || lease.closed) throw new IllegalStateException("Migrated database lease is closed");
+        }
+
+        private synchronized void release(ScopedDatabase lease) throws SQLException {
+            if (lease.closed) return;
+            dropClone(template, lease.name);
+            lease.closed = true;
+            leases.remove(lease);
+        }
+
+        synchronized int migrationCount() { return migrations; }
+
+        @Override
+        public synchronized void close() {
+            if (closed) return;
+            closed = true;
+            leases.forEach(lease -> lease.closed = true);
+            leases.clear();
+            if (template != null) template.stop();
+        }
+    }
+
+    private static void validateLabel(String label) {
+        // 30 + '_' + 32 hex chars stays within PostgreSQL's 63-byte identifier limit.
+        if (label == null || !label.matches("[a-z][a-z0-9_]{0,29}")) {
+            throw new IllegalArgumentException("Database label must contain 1-30 lowercase identifier characters");
+        }
+    }
+
+    private static void validateDatabaseName(String name) {
+        if (name == null || !name.matches("[a-z][a-z0-9_]{0,62}")) {
+            throw new IllegalArgumentException("Invalid fixture database name");
+        }
+    }
+
+    private static void migrate(PostgreSQLContainer<?> postgres) {
         Flyway.configure()
                 .dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
                 .locations("classpath:db/migration")
                 .load()
                 .migrate();
-        return postgres;
     }
 
-    /**
-     * 在同一实例上从模板库克隆一个新数据库（Postgres TEMPLATE 机制），返回指向
-     * 克隆库的连接。克隆库与模板库、与其它克隆库完全隔离。
-     */
+    /** Compatibility API: the caller owns this dedicated container and must stop it. */
+    public static PostgreSQLContainer<?> startMigratedContainer(String databaseName) {
+        validateDatabaseName(databaseName);
+        PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName(databaseName).withReuse(false);
+        try {
+            postgres.start();
+            migrate(postgres);
+            return postgres;
+        } catch (RuntimeException | Error failure) {
+            stopAfterFailure(postgres, failure);
+            throw failure;
+        }
+    }
+
+    /** Compatibility API for migration-specific templates; the caller owns the container/clones. */
     public static Connection cloneConnection(
             PostgreSQLContainer<?> template, String cloneDatabaseName) throws SQLException {
+        createClone(template, cloneDatabaseName);
         try {
-            template.execInContainer(
-                    "createdb", "-U", template.getUsername(),
-                    "-T", template.getDatabaseName(), cloneDatabaseName);
-        } catch (InterruptedException failure) {
-            Thread.currentThread().interrupt();
-            throw new SQLException("模板库克隆被中断", failure);
-        } catch (IOException failure) {
-            throw new SQLException("模板库克隆失败", failure);
+            return DriverManager.getConnection(jdbcUrlFor(template, cloneDatabaseName),
+                    template.getUsername(), template.getPassword());
+        } catch (SQLException failure) {
+            try {
+                dropClone(template, cloneDatabaseName);
+            } catch (SQLException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+            throw failure;
         }
-        return DriverManager.getConnection(
-                jdbcUrlFor(template, cloneDatabaseName),
-                template.getUsername(), template.getPassword());
     }
 
-    /** 同实例、指定数据库的 JDBC URL（沿用容器的主机/端口/参数）。 */
+    private static void createClone(PostgreSQLContainer<?> template, String name) throws SQLException {
+        validateDatabaseName(name);
+        if (name.equals(template.getDatabaseName())) throw new IllegalArgumentException("Cannot clone over the template");
+        execute(template, "createdb", "-U", template.getUsername(), "-T", template.getDatabaseName(), name);
+    }
+
+    private static void dropClone(PostgreSQLContainer<?> template, String name) throws SQLException {
+        execute(template, "dropdb", "-U", template.getUsername(), "--if-exists", "--force", name);
+    }
+
+    private static void execute(PostgreSQLContainer<?> template, String... command) throws SQLException {
+        try {
+            var result = template.execInContainer(command);
+            if (result.getExitCode() != 0) {
+                throw new SQLException(command[0] + " failed (exit " + result.getExitCode() + "): " + result.getStderr());
+            }
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            throw new SQLException("Fixture database operation interrupted", failure);
+        } catch (IOException failure) {
+            throw new SQLException("Fixture database operation failed", failure);
+        }
+    }
+
+    private static void stopAfterFailure(PostgreSQLContainer<?> postgres, Throwable failure) {
+        try {
+            postgres.stop();
+        } catch (RuntimeException | Error cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+        }
+    }
+
+    /** Same server and JDBC parameters, with a different database name. */
     public static String jdbcUrlFor(PostgreSQLContainer<?> container, String databaseName) {
+        validateDatabaseName(databaseName);
         String url = container.getJdbcUrl();
         int queryStart = url.indexOf('?');
         String baseUrl = queryStart < 0 ? url : url.substring(0, queryStart);

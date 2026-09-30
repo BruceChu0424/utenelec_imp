@@ -177,6 +177,9 @@ flutter build web --release --no-pub --no-web-resources-cdn --dart-define=API_BA
 
 后端完整验证需要 Java 21、Docker/PostgreSQL/Testcontainers：
 
+CI 的完整后端门禁按独立分片执行并核对全部实际报告；本地分片运行、耗时解释及原始顺序入口见
+[全量测试分片与耗时核对](15-全量测试分片与耗时核对.md)。分片通过不能省略打包集成测试或数据库场景。
+
 ```powershell
 Push-Location server
 try {

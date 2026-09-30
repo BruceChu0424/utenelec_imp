@@ -14,6 +14,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -48,6 +49,15 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
     }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
+    // V730 has none of these unrelated AI/template retention schemas at Spring startup.
+    // Keep the actual sales/learning/stock services real; only background entry points are inert
+    // here. Their current-schema worker/profile tests cover their normal behavior separately.
+    @MockitoBean(enforceOverride=true)
+    com.uten.imp.features.sales.learning.SalesLearningEvidenceCleanupScheduler learningCleanup;
+    @MockitoBean(enforceOverride=true)
+    com.uten.imp.features.sales.template.SalesQuoteTemplateCleanupScheduler templateCleanup;
+    @MockitoBean(enforceOverride=true)
+    com.uten.imp.features.ai.provider.AiProviderSecretRewrap providerStartupRewrap;
     @BeforeEach void bridgeCurrentJavaToTheUnmodifiedV730QuantityView(){
         // The fixture intentionally boots V730. Current Java has a V732 reader
         // name; this test-only bridge reads the original view verbatim, adds no
@@ -74,16 +84,31 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
             // 当前 Java 的实体与查询需要后续迁移给既有表加的列/对象; 与 V731 编号回填互相独立、
             // 且不触碰 V730 库上尚不存在的对象(整段 V733..V743 连放会在跳版本的库上断), 按需逐个
             // verbatim 应用: V739 BOM 用量、V735 draw_batch_no、V740 issue_method/内料仓、
-            // V742 AI 列、V743 重量账列。V731 延后到测试中段单独验证; V732 保持手工重建的形态。
+            // V742 AI 列、V743 重量账列、V744 商业扩展列、V748 销售英文名称快照、V752 别名证据。
+            // V744/V748 为当前 SalesOrderItem ORM 的无关新增字段; V752 让实际 afterSave 挂钩
+            // 读取空的客户别名证据。三者均不读取或改变物料发现请求、编号注册/序列或数量事实。
+            // V731 延后到测试中段单独验证; V732 保持上述旧视图桥。
             for(String suffix:new String[]{"__bom_design_and_actual_usage.sql","__draw_batch_no.sql",
                     "__workshop_material_periodic_costing.sql","__ai_platform_sales_intake_learning.sql",
-                    "__warehouse_weight_ledger_and_learning.sql"}){
+                    "__warehouse_weight_ledger_and_learning.sql","__business_document_extra_columns.sql",
+                    "__sales_document_english_name_snapshot.sql","__sales_alias_document_evidence.sql"}){
                 java.nio.file.Path bridge=migrationFiles.stream()
                         .filter(file->file.getFileName().toString().endsWith(suffix))
                         .findFirst().orElseThrow();
                 db.execute(java.nio.file.Files.readString(bridge));
             }
         }catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
+        assertEquals(730,latestRecordedMigration(),"compatibility bridges must not advance Flyway history");
+        assertFalse(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='production_material_discovery_requests'
+                    AND column_name='request_no')
+                """,Boolean.class),"the V731 number column must not exist while seeding historical requests");
+        assertEquals(List.of("extra_columns","goods_name_en_snapshot"),db.queryForList("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='sales_order_items'
+                  AND column_name IN('extra_columns','goods_name_en_snapshot') ORDER BY column_name
+                """,String.class));
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
@@ -102,7 +127,9 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
 
         var flyway=Flyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                 .locations("classpath:db/migration").target("731").load();
+        assertEquals(730,latestRecordedMigration());
         assertEquals(1,flyway.migrate().migrationsExecuted);
+        assertEquals(731,latestRecordedMigration());
         flyway.validate();assertEquals(0,flyway.migrate().migrationsExecuted);
         assertEquals(materialFacts,materialFacts(),"number backfill must not alter demands, reservations, documents, lines or request authorizations");
         Set<String> numbers=new HashSet<>();
@@ -175,6 +202,7 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
     }
 
     private ProductionMaterialDiscoveryEndToEndTest task(){var fixture=new ProductionMaterialDiscoveryEndToEndTest();beans.autowireBean(fixture);fixture.prepare();return fixture;}
+    private int latestRecordedMigration(){return db.queryForObject("SELECT MAX(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class);}
     private UUID legacyRequest(ProductionMaterialDiscoveryEndToEndTest task,long version,String key,boolean cancel){
         UUID id=UUID.randomUUID();
         db.update("""

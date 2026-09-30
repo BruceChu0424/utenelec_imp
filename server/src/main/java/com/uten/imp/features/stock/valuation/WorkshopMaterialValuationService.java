@@ -83,22 +83,26 @@ public class WorkshopMaterialValuationService {
             throw conflict("盘点过账的冲回必须指向同一期已经入账的同类过账");
     }
 
-    /** 盘盈核定价: 池当时已知均价 → 最近一次调入这种料的单价 → 0(不留成本未定)。 */
+    /**
+     * 盘盈参考价按提交时已知组成金额独立核定，不把参考来源宣布为完整成本。
+     * 全局传播未完可以让原池/事件保持 PENDING，不能因此丢掉已有参考金额。
+     * 本次 receive 的新 SOURCE 按该参考额核定；原来源以后追加价不追改盘盈核定额。
+     */
     private BigDecimal gainCost(PoolKey pool,BigDecimal qty){
         PoolValue current=values.pool(pool);
-        if(current.state()==State.FINAL&&current.knownValueLocal()!=null
+        if(current.state()!=State.LEGACY_UNVERIFIED&&current.knownValueLocal()!=null
                 &&current.qtyBase()!=null&&current.qtyBase().signum()>0)
             return share(current.knownValueLocal(),qty,current.qtyBase());
         Map<String,Object> args=new HashMap<>();
         args.put("bin",pool.warehouseId());args.put("goods",pool.goodsId());args.put("color",pool.colorId());
         var recent=db.queryForList("""
-                SELECT movement.amount_local,movement.qty
+                SELECT event.known_value_local AS amount_local,movement.qty
                 FROM stock_movements movement
-                JOIN stock_value_events event ON event.movement_id=movement.id AND event.result_state='FINAL'
+                JOIN stock_value_events event ON event.movement_id=movement.id
                 WHERE movement.warehouse_id=:bin AND movement.goods_id=:goods
                   AND movement.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                   AND movement.movement_type=7 AND movement.direction=1
-                  AND movement.qty>0 AND movement.amount_local IS NOT NULL
+                  AND movement.qty>0 AND event.known_value_local IS NOT NULL
                 ORDER BY movement.transaction_date DESC,movement.created_at DESC,movement.id DESC
                 LIMIT 1
                 """,args);

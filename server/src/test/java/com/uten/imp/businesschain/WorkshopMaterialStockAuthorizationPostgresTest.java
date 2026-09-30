@@ -3,6 +3,11 @@ package com.uten.imp.businesschain;
 import com.uten.imp.application.port.InventoryMovementCostReference.WorkshopMaterialBin;
 import com.uten.imp.application.port.InventoryMovementCostReference.WorkshopMaterialBinKind;
 import com.uten.imp.application.port.LineSideWarehousePort;
+import com.uten.imp.application.port.InventoryValuationPort;
+import com.uten.imp.application.port.InventoryValuationPort.EventContext;
+import com.uten.imp.application.port.InventoryValuationPort.PoolKey;
+import com.uten.imp.application.port.InventoryValuationPort.SourceAdjustment;
+import com.uten.imp.application.port.InventoryValuationPort.State;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
@@ -15,6 +20,7 @@ import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
 import com.uten.imp.features.stock.dto.WorkshopMaterialDocumentCommand;
 import com.uten.imp.features.stock.dto.WorkshopMaterialDocumentCommand.Kind;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -23,8 +29,13 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -50,19 +61,40 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false","uten.policy-intelligence.enabled=false",
+        "uten.inventory.value-work-initial-delay-ms=3600000",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only","uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners=WorkshopMaterialStockAuthorizationPostgresTest.Cleanup.class,
+        mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class WorkshopMaterialStockAuthorizationPostgresTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
+    private static MigratedSchemaBaseline.ScopedDatabase database;
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
+        // FINAL is guarded by the entire database's durable valuation queues.
+        // FullChain deliberately leaves unfinished cost scopes in its own worlds;
+        // these priced-pool scenarios need a private database, not altered prices
+        // or an exception to the production publication fence.
+        database=MigratedSchemaBaseline.openDatabase("workshop_stock_value");
+        registry.add("spring.datasource.url",database::getJdbcUrl);
+        registry.add("spring.datasource.username",database::getUsername);
+        registry.add("spring.datasource.password",database::getPassword);
+        var attachments=java.nio.file.Files.createTempDirectory("workshop-stock-attachments-");
+        registry.add("uten.storage.local-dir",attachments::toString);
+    }
+    public static class Cleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
+        @Override public void afterTestClass(TestContext ignored) throws Exception {if(database!=null)database.close();}
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired PlatformTransactionManager transactions;
     @Autowired StockDocService stock;
     @Autowired StockService stockService;
     @Autowired InventoryValueWorkService valueWork;
+    @Autowired InventoryValuationPort values;
     @Autowired DocNumberService docNumbers;
     @Autowired LineSideWarehousePort lineSide;
     FullChainEndToEndTest fixture;
@@ -243,6 +275,142 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_movements WHERE warehouse_id=? AND goods_id=?",
                 Integer.class,b.bin(),granule));
         balance(b.leaf(),granule,"10","100");
+    }
+
+    @Test void gainUsesTheKnownPoolAverageWhileAnUnrelatedCostJobIsPending(){
+        Bin b=enabledBin("pending-pool");
+        UUID goods=granule(b,"已知均价","OWN",0);
+        otherIn(b,goods,"20","10");
+        issue(b,goods,"10",b.period());
+        otherIn(b,goods,"10","30");
+        issue(b,goods,"10",b.period());
+        settleValue(goods);
+        balance(b.bin(),goods,"20","300"); // Average 15; latest transfer was 20.
+        UUID unrelated=pendingUnrelatedCost(b);
+        try {
+            assertEquals(State.PENDING,values.pool(new PoolKey(b.bin(),goods,null)).state());
+            Posting gain=gainCount(b,goods,"20","0","22");
+            assertKnownGain(gain,"30");
+        } finally {
+            settleValue(goods,unrelated);
+        }
+        balance(b.bin(),goods,"22","330");
+        assertEquals(State.FINAL,values.pool(new PoolKey(b.bin(),goods,null)).state());
+    }
+
+    @Test void gainUsesTheKnownTransferPriceEvenWhenItsRecordedStateWasPending(){
+        Bin b=enabledBin("pending-transfer");
+        UUID goods=granule(b,"已知调入价","OWN",0);
+        UUID unrelated=pendingUnrelatedCost(b);
+        try {
+            otherIn(b,goods,"10","20");
+            issue(b,goods,"10",b.period());
+            otherIssue(b,goods,"10",b.period());
+            balance(b.bin(),goods,"0","0");
+            assertEquals("PENDING",db.queryForObject("""
+                    SELECT event.result_state FROM stock_value_events event
+                    JOIN stock_movements movement ON movement.id=event.movement_id
+                    WHERE movement.goods_id=? AND movement.warehouse_id=? AND movement.movement_type=7
+                    """,String.class,goods,b.bin()));
+            Posting gain=gainCount(b,goods,"10","10","2");
+            assertKnownGain(gain,"40");
+        } finally {
+            settleValue(goods,unrelated);
+        }
+        balance(b.bin(),goods,"2","40");
+        assertEquals(State.FINAL,values.pool(new PoolKey(b.bin(),goods,null)).state());
+    }
+
+    @Test void gainFreezesOnlyTheKnownComponentWhileOriginalCostRemainsUnpriced(){
+        gainReferenceDoesNotFinalizeOrRepriceOriginalCost(true);
+    }
+
+    @Test void zeroKnownGainRemainsZeroWhenTheOriginalCostArrivesLater(){
+        gainReferenceDoesNotFinalizeOrRepriceOriginalCost(false);
+    }
+
+    private void gainReferenceDoesNotFinalizeOrRepriceOriginalCost(boolean partlyKnown){
+        Bin b=enabledBin("unpriced-reference");
+        UUID goods=granule(b,"尚未补齐成本","OWN",0);
+        if(partlyKnown)otherIn(b,goods,"10","20");
+        var request=new StockDocSaveRequest();
+        request.setDocType("OTHER_IN");request.setWarehouseId(b.leaf());request.setBillDate(today());
+        request.setItems(List.of(line(b,goods,"10"))); // Deliberately unpriced, not a free receipt.
+        stock.approve(stock.create(request).getId());
+        UUID unpricedSource=db.queryForObject("""
+                SELECT node.id FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id
+                WHERE pool.goods_id=? AND node.kind='SOURCE' AND NOT node.source_final
+                """,UUID.class,goods);
+        String transferred=partlyKnown?"20":"10",closing=partlyKnown?"22":"12",reference=partlyKnown?"20":"0";
+        issue(b,goods,transferred,b.period());
+        assertEquals(State.PENDING,values.pool(new PoolKey(b.bin(),goods,null)).state());
+        Posting gain=gainCount(b,goods,transferred,"0",closing);
+        assertKnownGain(gain,reference);
+        assertFalse(db.queryForObject("SELECT source_final FROM stock_value_nodes WHERE id=?",Boolean.class,unpricedSource));
+        inTx(()->{
+            lock(goods);
+            UUID event=UUID.randomUUID();
+            return values.adjustSource(new SourceAdjustment(new EventContext(event,"TEST_COST_ADJUST",event,event,1,
+                    b.user(),b.world().employeeId(),"workshop-late-price:"+event,BusinessTime.startOfDay(today())),
+                    unpricedSource,new BigDecimal("100"),true));
+        });
+        settleValue(goods);
+        balance(b.bin(),goods,closing,partlyKnown?"320":"100");
+        money(reference,db.queryForObject("""
+                SELECT node.basis_value_local FROM stock_value_events event
+                JOIN stock_value_nodes node ON node.id=event.result_node_id WHERE event.movement_id=?
+                """,BigDecimal.class,gain.movement()));
+        assertEquals(State.FINAL,values.pool(new PoolKey(b.bin(),goods,null)).state());
+    }
+
+    /** A real deferred source-cost adjustment holds the global publication fence. */
+    private UUID pendingUnrelatedCost(Bin b){
+        UUID goods=granule(b,"独立待传播成本","OWN",0);
+        otherIn(b,goods,"10","1");
+        UUID source=db.queryForObject("""
+                SELECT event.result_node_id FROM stock_value_events event
+                JOIN stock_movements movement ON movement.id=event.movement_id
+                WHERE movement.goods_id=? AND event.operation='RECEIVE'
+                """,UUID.class,goods);
+        inTx(()->{
+            lock(goods);
+            UUID event=UUID.randomUUID();
+            var result=values.adjustSource(new SourceAdjustment(new EventContext(event,"TEST_COST_ADJUST",
+                    event,event,1,b.user(),b.world().employeeId(),"workshop-reference:"+event,BusinessTime.startOfDay(today())),
+                    source,BigDecimal.ONE,true));
+            assertTrue(result.pendingTasks()>0);
+            return result;
+        });
+        assertTrue(valueWork.hasPendingWork());
+        return goods;
+    }
+
+    private Posting gainCount(Bin b,UUID goods,String transferred,String other,String closing){
+        startCounting(b,b.period());
+        return inTx(()->{
+            lock(goods);
+            UUID line=UUID.randomUUID(),count=submittedCount(b,b.period(),1,null);
+            db.update("""
+                    INSERT INTO workshop_material_period_lines(id,period_id,goods_id,unit_id,cost_basis,opening_qty,
+                        transfer_in_qty,other_issue_qty,closing_qty)
+                    VALUES (?,?,?,?,'OWN',0,?,?,?)
+                    """,line,b.period(),goods,b.kg(),new BigDecimal(transferred),new BigDecimal(other),new BigDecimal(closing));
+            Posting result=post(b,count,line,goods,"GAIN","2",null,"SUBMIT");
+            db.update("UPDATE workshop_material_periods SET status='COUNTED',row_version=row_version+1 WHERE id=?",b.period());
+            return result;
+        });
+    }
+
+    private void assertKnownGain(Posting gain,String amount){
+        var row=db.queryForMap("""
+                SELECT event.known_value_local,event.result_state,node.source_final,node.pending_parents
+                FROM stock_value_events event JOIN stock_value_nodes node ON node.id=event.result_node_id
+                WHERE event.movement_id=?
+                """,gain.movement());
+        money(amount,(BigDecimal)row.get("known_value_local"));
+        assertEquals("PENDING",row.get("result_state"),"The global publication fence remains in force");
+        assertEquals(true,row.get("source_final"),"A gain fixes its own reference value at count time");
+        assertEquals(0,((Number)row.get("pending_parents")).intValue());
     }
 
     // ---------------------------------------------------------------------------------------------

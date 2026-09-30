@@ -91,20 +91,23 @@ class UtenExportButton extends ConsumerStatefulWidget {
 class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   bool _loading = false;
   bool _preparing = false;
+  bool get _authorized =>
+      widget.requiredPermission == null ||
+      ref.read(currentPermissionsProvider).contains(widget.requiredPermission);
 
   Future<void> _onTap() async {
-    if (!widget.enabled || _loading || _preparing) return;
+    if (!widget.enabled || !_authorized || _loading || _preparing) return;
     setState(() => _preparing = true);
     try {
       final selection = widget.prepareExport == null
           ? const UtenExportSelection()
           : await widget.prepareExport!();
-      if (selection == null || !mounted) return;
+      if (selection == null || !mounted || !_authorized) return;
       final pwd = await showDialog<String>(
         context: context,
         builder: (_) => const _ExportPasswordDialog(),
       );
-      if (pwd == null || !mounted) return;
+      if (pwd == null || !mounted || !_authorized) return;
       await _doExport(pwd, selection);
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -116,6 +119,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   }
 
   Future<void> _doExport(String password, UtenExportSelection selection) async {
+    if (!widget.enabled || !_authorized) return;
     setState(() => _loading = true);
     try {
       final projection = TableColumnProjectionScope.resolve(

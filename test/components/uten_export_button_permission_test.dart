@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 Widget _app({required Set<String> permissions, required Widget child}) {
@@ -19,6 +23,48 @@ Widget _app({required Set<String> permissions, required Widget child}) {
 }
 
 void main() {
+  testWidgets(
+    'revoking export permission while password dialog is open prevents download',
+    (tester) async {
+      final grants = StateProvider<Set<String>>(
+        (ref) => {Perm.goodsCostExport},
+      );
+      final api = _NoDownloadApi();
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          currentPermissionsProvider.overrideWith((ref) => ref.watch(grants)),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: UtenExportButton(
+                endpoint: '/reports/export',
+                report: 'cost',
+                queryParams: {},
+                requiredPermission: Perm.goodsCostExport,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('下载表格'));
+      await tester.pumpAndSettle();
+      container.read(grants.notifier).state = {};
+      await tester.pump();
+      await tester.tap(find.text('直接下载'));
+      await tester.pumpAndSettle();
+      expect(api.downloads, 0);
+      expect(find.text('下载表格'), findsNothing);
+    },
+  );
   testWidgets('export button is hidden without its required permission', (
     tester,
   ) async {
@@ -107,4 +153,18 @@ void main() {
 
     expect(find.text('下载Excel'), findsNothing);
   });
+}
+
+class _NoDownloadApi extends ApiClient {
+  _NoDownloadApi() : super(Dio());
+  int downloads = 0;
+  @override
+  Future<Uint8List> downloadBytes(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+  }) async {
+    downloads++;
+    throw StateError('Revoked export must not reach the network');
+  }
 }

@@ -664,6 +664,7 @@ Future<void> _pump(
           Perm.goodsView,
           Perm.goodsExport,
           Perm.goodsCostEdit,
+          Perm.goodsCostConfirm,
           if (costExport) Perm.goodsCostExport,
           Perm.goodsCostTemplate,
         }),

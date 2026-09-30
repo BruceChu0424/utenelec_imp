@@ -1689,6 +1689,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
   }
 
   Future<void> _saveTemplate() async {
+    if (!_capability.canManageTemplates || !_editable) return;
     final result = await _action(
       () => _repository.saveTemplate({
         'name': _input['name'],

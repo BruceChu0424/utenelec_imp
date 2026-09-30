@@ -4,12 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 
 const inventoryCostPostingEndpoint = '/finance/gl/inventory-cost';
@@ -51,15 +52,9 @@ class _InventoryCostPostingDialogState
   bool _changed = false;
   int _loadGeneration = 0;
   ApiClient get _api => ref.read(apiClientProvider);
-  bool get _canRead {
-    final permissions = ref.read(currentPermissionsProvider);
-    return permissions.contains(Perm.financeReportView) &&
-        permissions.contains(Perm.goodsCostView);
-  }
-
-  bool get _canPost =>
-      _canRead &&
-      ref.read(currentPermissionsProvider).contains(Perm.financePostExecute);
+  bool get _canRead =>
+      ref.read(costWorkbenchCapabilityProvider).canReadPostings;
+  bool get _canPost => ref.read(costWorkbenchCapabilityProvider).canPost;
   static String _month(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}';
   static String _date(DateTime date) =>
@@ -231,6 +226,7 @@ class _InventoryCostPostingDialogState
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   TextFormField(
+                    errorBuilder: utenTextFieldErrorBuilder,
                     controller: reference,
                     minLines: 1,
                     maxLines: 3,
@@ -338,6 +334,7 @@ class _InventoryCostPostingDialogState
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   TextFormField(
+                    errorBuilder: utenTextFieldErrorBuilder,
                     controller: reason,
                     decoration: UtenInputDecoration(
                       InputDecoration(labelText: l10n.inventoryCostReason),
@@ -467,10 +464,9 @@ class _InventoryCostPostingDialogState
 
   @override
   Widget build(BuildContext context) {
-    final permissions = ref.watch(currentPermissionsProvider);
+    final capability = ref.watch(costWorkbenchCapabilityProvider);
     final l10n = AppLocalizations.of(context);
-    if (!permissions.contains(Perm.financeReportView) ||
-        !permissions.contains(Perm.goodsCostView)) {
+    if (!capability.canReadPostings) {
       return AlertDialog(
         content: Text(l10n.inventoryCostNoAccess),
         actions: [
@@ -481,7 +477,7 @@ class _InventoryCostPostingDialogState
         ],
       );
     }
-    final canPost = permissions.contains(Perm.financePostExecute);
+    final canPost = capability.canPost;
     final selectedPeriod = _periods
         .where((item) => item['period'] == _period)
         .firstOrNull;

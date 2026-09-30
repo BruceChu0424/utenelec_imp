@@ -24,7 +24,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
-import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
@@ -101,13 +101,15 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   final _feeGrid = UtenEditableGridController<GoodsCostFeeRow>();
   GoodsCostRepository get _repository => ref.read(goodsCostRepositoryProvider);
   AppLocalizations get _l => AppLocalizations.of(context);
-  bool get _canCostEdit =>
-      ref.read(currentPermissionsProvider).contains(Perm.goodsCostEdit);
+  CostWorkbenchCapability get _capability =>
+      ref.read(costWorkbenchCapabilityProvider);
+  bool get _canCostEdit => _capability.canCreate;
   bool get _editable =>
-      _canCostEdit &&
+      _capability.canEditSheet(
+        serverAllowed: _sheet == null || _sheet!.canEdit,
+      ) &&
       !_busy &&
-      _historical == null &&
-      (_sheet == null || _sheet!.canEdit);
+      _historical == null;
   bool get _stale => _calculatedRevision != _inputRevision;
   double get _materialHeight =>
       (145 + (_calculation?.lines.length ?? 0) * 66).clamp(260, 620).toDouble();
@@ -146,7 +148,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     if (widget.detail.costMasked ||
         !_canCostEdit ||
-        !ref.read(currentPermissionsProvider).contains(Perm.goodsCostView) ||
+        !_capability.canRead ||
         data['goodsId'] != widget.detail.id) {
       throw StateError(_l.costNoPermission);
     }
@@ -211,8 +213,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     'extraFields': <String, String>{},
   };
   Future<void> _boot() async {
-    if (widget.detail.costMasked ||
-        !ref.read(currentPermissionsProvider).contains(Perm.goodsCostView)) {
+    if (widget.detail.costMasked || !_capability.canRead) {
       if (mounted) setState(() => _loading = false);
       return;
     }
@@ -336,6 +337,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   Future<void> _preview() async {
     if (!mounted ||
         widget.detail.costMasked ||
+        !_capability.canRead ||
         _input.isEmpty ||
         _historical != null ||
         (_sheet != null && _sheet!.status != 'DRAFT')) {
@@ -402,6 +404,12 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<GoodsCostSheet> _saveCurrent() async {
+    if (!_capability.canEditSheet(
+          serverAllowed: _sheet == null || _sheet!.canEdit,
+        ) ||
+        _historical != null) {
+      throw StateError(_l.costNoPermission);
+    }
     final sheet = await _repository.save(
       _sheet?.id,
       copyCostJson(_currentInput()),
@@ -422,6 +430,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<void> _confirm() async {
+    if (!_capability.canConfirmSheet(
+      serverAllowed: _sheet?.canConfirm == true,
+    )) {
+      return;
+    }
     final ok = await UtenDialog.show(
       context,
       title: _l.costConfirm,
@@ -429,10 +442,19 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       confirmLabel: _l.commonConfirm,
       cancelLabel: _l.commonCancel,
     );
-    if (ok != true || !mounted) return;
+    if (ok != true ||
+        !mounted ||
+        !_capability.canConfirmSheet(
+          serverAllowed: _sheet?.canConfirm == true,
+        )) {
+      return;
+    }
     await _action(() async {
       var sheet = _sheet;
       if (sheet == null || _dirty) sheet = await _saveCurrent();
+      if (!_capability.canConfirmSheet(serverAllowed: sheet.canConfirm)) {
+        throw StateError(_l.costNoPermission);
+      }
       _confirmKey ??= const Uuid().v4();
       final confirmed = await _repository.confirm(
         sheet.id,
@@ -448,6 +470,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<void> _new() async {
+    if (!_capability.canCreate) return;
     if (_dirty) {
       context.appError(_l.costLeavePrompt);
       return;
@@ -488,7 +511,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
 
   Future<void> _copy() async {
     final existing = _sheet;
-    if (existing == null) return;
+    if (existing == null || !_capability.canCreate) return;
     await _action(() async {
       _copyKey ??= const Uuid().v4();
       final name = '${costText(_input['name']) ?? ''} · ${_l.costCopySuffix}';
@@ -541,6 +564,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   }
 
   Future<UtenExportSelection?> _prepareDownload(String format) async {
+    if (!_capability.canExportSheet(serverAllowed: _sheet?.canExport == true)) {
+      return null;
+    }
     var section = _bodyTab == 1 ? 'FEES' : 'ALL';
     var selectedOnly = false;
     final ready = await _dialogWhenRemoved<bool>(
@@ -593,12 +619,18 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         ),
       ),
     );
-    if (ready != true || !mounted) return null;
+    if (ready != true ||
+        !mounted ||
+        !_capability.canExportSheet(serverAllowed: _sheet?.canExport == true)) {
+      return null;
+    }
     GoodsCostSnapshot? snapshot = _historical;
     snapshot ??= await _action(() async {
       var sheet = _sheet;
       if (sheet == null || _dirty) sheet = await _saveCurrent();
-      if (!sheet.canExport) throw StateError(_l.costNoPermission);
+      if (!_capability.canExportSheet(serverAllowed: sheet.canExport)) {
+        throw StateError(_l.costNoPermission);
+      }
       return _repository.snapshot(sheet.id, sheet.version, const Uuid().v4());
     });
     if (snapshot == null) return null;
@@ -652,7 +684,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   Widget build(BuildContext context) {
     super.build(context);
     if (widget.detail.costMasked ||
-        !ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView)) {
+        !ref.watch(costWorkbenchCapabilityProvider).canRead) {
       return Center(child: Text(_l.costNoPermission));
     }
     if (_loading) return const Center(child: CircularProgressIndicator());
@@ -832,7 +864,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
           onPressed: _preview,
           child: Text(_l.costRecalculate),
         ),
-      if (_sheet?.canConfirm == true && !_busy && _historical == null)
+      if (_capability.canConfirmSheet(
+            serverAllowed: _sheet?.canConfirm == true,
+          ) &&
+          !_busy &&
+          _historical == null)
         UtenButton(
           key: const Key('cost-confirm'),
           onPressed: !_stale && _calculation?.complete == true
@@ -852,22 +888,19 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
           onPressed: _busy ? null : _new,
           child: Text(_l.costNew),
         ),
-      if (_editable &&
-          ref
-              .watch(currentPermissionsProvider)
-              .contains(Perm.goodsCostTemplate))
+      if (_editable && _capability.canManageTemplates)
         UtenButton(
           type: UtenButtonType.tonal,
           onPressed: _saveTemplate,
           child: Text(_l.costSaveTemplate),
         ),
-      if (_sheet?.canExport == true)
+      if (_capability.canExportSheet(serverAllowed: _sheet?.canExport == true))
         for (final format in ['xlsx', 'pdf'])
           UtenExportButton(
             endpoint: '${DioGoodsCostRepository.base}/export',
             report: '',
             queryParams: const {},
-            requiredPermission: Perm.goodsCostExport,
+            requiredPermission: CostWorkbenchCapability.exportPermission,
             tableKey: _bodyTab == 0 ? _tableKey : 'master.goods.cost.fees',
             enabled: !_busy,
             label: format == 'xlsx' ? _l.costDownloadExcel : _l.costDownloadPdf,

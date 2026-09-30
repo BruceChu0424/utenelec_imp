@@ -4,10 +4,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/providers/sales_completion_count_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_progress_badge.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 
@@ -16,9 +19,15 @@ void main() {
     'reading completion messages keeps unprocessed shippable orders in badge',
     (tester) async {
       final api = _ReadApi();
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'sales-test'),
+            ),
             apiClientProvider.overrideWithValue(api),
             fixedBadgeSummaryOverride(
               badgeSummaryFixture(entries: {BadgeEntry.salesAttention: (5, 0)}),

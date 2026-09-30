@@ -14,6 +14,7 @@ Future<void> _open(
   _Api api, {
   bool canPost = false,
   double width = 1280,
+  StateProvider<Set<String>>? grants,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1;
@@ -23,11 +24,13 @@ Future<void> _open(
       overrides: [
         apiClientProvider.overrideWithValue(api),
         currentPermissionsProvider.overrideWith(
-          (ref) => {
-            Perm.financeReportView,
-            Perm.goodsCostView,
-            if (canPost) Perm.financePostExecute,
-          },
+          (ref) => grants != null
+              ? ref.watch(grants)
+              : {
+                  Perm.financeReportView,
+                  Perm.goodsCostView,
+                  if (canPost) Perm.financePostExecute,
+                },
         ),
       ],
       child: MaterialApp(
@@ -47,6 +50,63 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets(
+    'permission revoked during confirmation cannot post inventory cost',
+    (tester) async {
+      final grants = StateProvider<Set<String>>(
+        (ref) => {
+          Perm.financeReportView,
+          Perm.goodsCostView,
+          Perm.financePostExecute,
+        },
+      );
+      final api = _Api();
+      await _open(tester, api, grants: grants);
+      await tester.tap(find.byKey(const ValueKey('inventory-cost-post')));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(InventoryCostPostingDialog)),
+      );
+      container.read(grants.notifier).state = {
+        Perm.financeReportView,
+        Perm.goodsCostView,
+      };
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('inventory-cost-confirm')));
+      await tester.pumpAndSettle();
+      expect(api.writes, isEmpty);
+      expect(find.byKey(const ValueKey('inventory-cost-post')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'revoking cost visibility masks an already loaded financial dialog',
+    (tester) async {
+      final grants = StateProvider<Set<String>>(
+        (ref) => {
+          Perm.financeReportView,
+          Perm.goodsCostView,
+          Perm.financePostExecute,
+        },
+      );
+      final api = _Api();
+      await _open(tester, api, grants: grants);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(InventoryCostPostingDialog)),
+      );
+      container.read(grants.notifier).state = {
+        Perm.financeReportView,
+        Perm.financePostExecute,
+      };
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('inventory-cost-post')), findsNothing);
+      expect(api.writes, isEmpty);
+    },
+  );
   testWidgets(
     'disabled strategy cannot close a period even with zero pending postings',
     (tester) async {

@@ -32,6 +32,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../basic_data/models/client_node.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -558,10 +559,7 @@ class _FinanceReportTablePageState
       items: data.rows,
       toolbarActions: [
         if (widget.cardId == 'gl' &&
-            ref
-                .watch(currentPermissionsProvider)
-                .contains(Perm.financeReportView) &&
-            ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView))
+            ref.watch(costWorkbenchCapabilityProvider).canReadPostings)
           UtenButton(
             key: const ValueKey('inventory-cost-open'),
             type: UtenButtonType.secondary,

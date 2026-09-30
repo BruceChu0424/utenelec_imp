@@ -15,6 +15,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../../shared/stock_ledger/stock_ledger_models.dart';
 import '../models/goods_cost_sheet.dart';
 import '../repositories/goods_cost_repository.dart';
@@ -54,6 +55,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
   }
 
   Future<void> _load() async {
+    if (!ref.read(costWorkbenchCapabilityProvider).canRead) return;
     final request = ++_request;
     setState(() {
       _loading = true;
@@ -538,6 +540,9 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
 
   @override
   Widget build(BuildContext context) {
+    if (!ref.watch(costWorkbenchCapabilityProvider).canRead) {
+      return Center(child: Text(_l.costNoPermission));
+    }
     final summary = costMap(_snapshot?['summary']);
     final rows = costMaps(
       _snapshot?[switch (_tab) {
@@ -794,7 +799,8 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
             ),
           ),
           const SizedBox(height: 12),
-          if (_snapshot != null)
+          if (_snapshot != null &&
+              ref.watch(costWorkbenchCapabilityProvider).canExport)
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -804,7 +810,8 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                     endpoint: '${DioGoodsCostRepository.base}/actual/export',
                     report: '',
                     queryParams: const {},
-                    requiredPermission: Perm.goodsCostExport,
+                    requiredPermission:
+                        CostWorkbenchCapability.exportPermission,
                     enabled: !_loading,
                     tableKey: 'master.goods.cost.actual.$_tab',
                     label: format == 'xlsx'

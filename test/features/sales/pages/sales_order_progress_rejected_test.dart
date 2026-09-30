@@ -4,12 +4,15 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/pages/sales_order_progress_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 /// 页面 build 期捕获本页路径（onPageResume 返回即刷新用），需包一层 GoRouter。
 Widget _host() {
@@ -33,10 +36,16 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _ProgressApi();
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'sales-test'),
+            ),
             apiClientProvider.overrideWithValue(api),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.salesOrderView,

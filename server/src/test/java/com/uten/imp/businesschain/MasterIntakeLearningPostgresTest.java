@@ -9,6 +9,7 @@ import com.uten.imp.application.port.MasterIntakeLookupPort.ClientCandidateQuery
 import com.uten.imp.application.port.MasterIntakeLookupPort.ClientSignal;
 import com.uten.imp.application.port.MasterIntakeLookupPort.GoodsRow;
 import com.uten.imp.application.port.SalesMasterLearningPort;
+import com.uten.imp.application.port.SalesLearningReceiptPort.StepResult;
 import com.uten.imp.application.port.SalesMasterLearningPort.LearnedLine;
 import com.uten.imp.application.port.SalesMasterLearningPort.SalesLearningRequest;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
@@ -26,6 +27,7 @@ import com.uten.imp.features.master.learning.ClientFromDocumentController;
 import com.uten.imp.features.master.learning.ClientGoodsAliasController;
 import com.uten.imp.features.master.learning.ClientGoodsAliasView;
 import com.uten.imp.features.master.party.PartyDirectoryService;
+import com.uten.imp.features.sales.learning.SalesLearningReceiptService;
 import com.uten.imp.common.web.PageResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +60,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -106,6 +111,7 @@ class MasterIntakeLearningPostgresTest {
     @Autowired GoodsService goodsService;
     @Autowired ClientService clientService;
     @Autowired PartyDirectoryService partyDirectory;
+    @Autowired SalesLearningReceiptService learningReceipts;
 
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
@@ -639,13 +645,31 @@ class MasterIntakeLearningPostgresTest {
 
     @Test
     void learningFailureAfterCommitNeverRollsBackTheBusinessSave() {
+        assertFailedLearningRetainsEvidenceUntilRetrySucceeds(false);
+    }
+
+    @Test
+    void failedLearningReceiptRetriesTheSameSavedSourceWithoutConsumingItEarly() {
+        assertFailedLearningRetainsEvidenceUntilRetrySucceeds(true);
+    }
+
+    private void assertFailedLearningRetainsEvidenceUntilRetrySucceeds(boolean withReceipt) {
         Seller a = seller("a", SALES_PERMS);
         UUID sunas = client(a, "SUN", "尼日利亚SUNAS", null, null, null, null);
         UUID white = color("白色");
         UUID ga = goods("F1", "Z9两开" + tag, "GZ23/D" + tag, "Z9", white, "21", false, false, "使用");
         UUID job = UUID.randomUUID();
-        jobResult(job, a);
         String poison = "BOOM-" + tag;
+        jobResult(job, a, line("R1", poison, null, "", "MATCHED", ga, null));
+        UUID orderId = UUID.randomUUID();
+        UUID receiptId = withReceipt ? UUID.randomUUID() : null;
+        SalesLearningRequest request = new SalesLearningRequest("order", orderId, sunas, a.userId(), a.employeeId(),
+                List.of(new LearnedLine(ga, poison, null, "R1", true, false)),
+                Map.of("email", "kept@sunas.example"), job, List.of(), receiptId);
+        if (withReceipt) {
+            when(jobUsage.reserveLearning(eq(job), eq(a.userId()), eq("order"), eq(orderId),
+                    any(java.time.OffsetDateTime.class))).thenReturn(true);
+        }
         String function = "test_fail_alias_" + tag.toLowerCase(Locale.ROOT);
         db.execute("CREATE FUNCTION " + function + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
                 + "IF NEW.alias_text LIKE 'BOOM-%' THEN RAISE EXCEPTION 'simulated learning failure'; END IF; "
@@ -653,13 +677,17 @@ class MasterIntakeLearningPostgresTest {
         db.execute("CREATE TRIGGER " + function + " BEFORE INSERT ON client_goods_aliases "
                 + "FOR EACH ROW EXECUTE FUNCTION " + function + "()");
         try {
-            UUID orderId = UUID.randomUUID();
             fixture.loginAs(a.userId());
             new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
                 insertOrderHeader(orderId, sunas, a);
-                learning.learnAfterCommit(new SalesLearningRequest("order", orderId, sunas, a.userId(), a.employeeId(),
-                        List.of(new LearnedLine(ga, poison, null, null, true, false)),
-                        Map.of("email", "kept@sunas.example"), job));
+                // The receipt retry must match the actual saved goods/label identity.
+                db.update("""
+                        insert into sales_order_items(id, order_id, bill_no, bill_date, goods_id, qty, client_model,
+                            goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
+                        select gen_random_uuid(), id, bill_no, bill_date, ?, 10, ?, 'SNAP', 'snapshot',
+                            'MASTER_AT_APPROVAL', now() from sales_orders where id = ?
+                        """, ga, poison, orderId);
+                learning.learnAfterCommit(request);
             });
 
             assertThat(db.queryForObject("select count(*) from sales_orders where id = ?", Integer.class, orderId))
@@ -668,10 +696,48 @@ class MasterIntakeLearningPostgresTest {
             assertThat(db.queryForObject("select email from clients where id = ?", String.class, sunas))
                     .as("同一学习事务里的客户资料补全一并回滚").isNull();
             assertThat(contacts(sunas, "EMAIL")).isEmpty();
-            verify(jobUsage).markUsed(eq(job), eq(a.userId()), eq("order"), eq(orderId));
+            verify(jobUsage, never()).markUsed(eq(job), eq(a.userId()), eq("order"), eq(orderId));
+            assertThat(jobUsage.resultFor(job, a.userId())).as("失败不能清空唯一可信识别源").isPresent();
+            if (withReceipt) {
+                var receipt = learningReceipts.owned(receiptId);
+                assertThat(receipt.request()).isEqualTo(request);
+                assertThat(receipt.state()).isEqualTo("FAILED");
+                assertThat(receipt.retryUntil()).isAfter(java.time.OffsetDateTime.now());
+                assertThat(learningReceipts.canConsume(receiptId)).isFalse();
+                assertThat(db.queryForObject("""
+                        select steps->'MASTER'->>'status' from sales_document_learning_receipts where id = ?
+                        """, String.class, receiptId)).isEqualTo("FAILED");
+                // Other completed steps retain their source evidence while MASTER awaits retry.
+                learningReceipts.run(receiptId, "LAYOUT", job, StepResult::done);
+                learningReceipts.run(receiptId, "TEMPLATE", job, StepResult::done);
+                assertThat(learningReceipts.evidence(receiptId, job)).isPresent();
+                assertThat(learningReceipts.canConsume(receiptId)).isFalse();
+                verify(jobUsage, never()).markUsed(eq(job), eq(a.userId()), eq("order"), eq(orderId));
+            }
         } finally {
             db.execute("DROP TRIGGER " + function + " ON client_goods_aliases");
             db.execute("DROP FUNCTION " + function + "()");
+        }
+        // Retry the original saved request, not a replacement document or receipt.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> learning.learnAfterCommit(request));
+        assertThat(db.queryForObject("select count(*) from sales_orders where id = ?", Integer.class, orderId)).isEqualTo(1);
+        assertThat(aliasRow(sunas, "PART_NO", poison, ga)).containsEntry("confirm_count", 1);
+        assertThat(db.queryForObject("select email from clients where id = ?", String.class, sunas))
+                .isEqualTo("kept@sunas.example");
+        assertThat(contacts(sunas, "EMAIL")).containsExactly(Map.entry("kept@sunas.example", true));
+        verify(jobUsage, times(1)).markUsed(eq(job), eq(a.userId()), eq("order"), eq(orderId));
+        if (withReceipt) {
+            assertThat(learningReceipts.owned(receiptId).state()).isEqualTo("SUCCEEDED");
+            assertThat(learningReceipts.owned(receiptId).request()).isEqualTo(request);
+            assertThat(db.queryForObject("""
+                    select count(*) from sales_document_learning_receipts where doc_type = 'order' and doc_id = ?
+                    """, Integer.class, orderId)).isEqualTo(1);
+            assertThat(db.queryForObject("""
+                    select (steps->'MASTER'->>'attempts')::int from sales_document_learning_receipts where id = ?
+                    """, Integer.class, receiptId)).isEqualTo(2);
+            new TransactionTemplate(transactionManager).executeWithoutResult(status -> learning.learnAfterCommit(request));
+            verify(jobUsage, times(1)).markUsed(eq(job), eq(a.userId()), eq("order"), eq(orderId));
+            assertThat(aliasRow(sunas, "PART_NO", poison, ga)).containsEntry("confirm_count", 1);
         }
     }
 

@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,8 +44,19 @@ class GlVoucherSourceDocumentUuidContractTest {
         String normalized = canonical(service);
         String compact = service.replaceAll("\\s+", "");
 
-        assertThat(count(service, "INSERT INTO gl_vouchers")).isEqualTo(16);
-        assertThat(count(compact, "source_type,source_doc_id,remark")).isEqualTo(15);
+        // Projection extraction must not silently remove a writer from the contract.
+        Path glPackage = sourcePath("src/main/java/com/uten/imp/features/finance/gl");
+        try (var files = Files.list(glPackage)) {
+            List<Path> projections = files.filter(path -> path.getFileName().toString().equals("GlPostingService.java")
+                    || path.getFileName().toString().endsWith("GlProjection.java")).toList();
+            assertThat(projections).extracting(path -> path.getFileName().toString())
+                    .contains("GlPostingService.java", "ActualInventoryCostGlProjection.java", "SubcontractWasteLossGlProjection.java");
+            for (Path projection : projections) {
+                String text = Files.readString(projection, StandardCharsets.UTF_8);
+                assertEveryInsertCarriesSourceUuid(text, "gl_vouchers", "source_type", projection);
+                assertEveryInsertCarriesSourceUuid(text, "gl_entries", "source_doc_type", projection);
+            }
+        }
         assertThat(compact).contains(
                 "source_type,source_doc_id,source_ref,idempotency_key,reversal_of_voucher_id,remark");
         assertThat(normalized)
@@ -52,7 +65,6 @@ class GlVoucherSourceDocumentUuidContractTest {
                 .contains("'AUTO', 'PAYMENT', t.id")
                 .contains("'AUTO', 'EXPENSE', t.id")
                 .contains("'AUTO', 'INCOME', t.id")
-                .contains("'AUTO', 'COST_CARRY', d.id")
                 .contains("'AUTO', 'BANK_TRANSFER', t.id")
                 .contains("'AUTO', 'EXPENSE', :doc")
                 .contains("'AUTO','SUPPLIER_CLAIM_LEDGER',ledger.source_doc_id")
@@ -77,6 +89,41 @@ class GlVoucherSourceDocumentUuidContractTest {
                 .doesNotContain("JOIN gl_vouchers v ON v.voucher_no")
                 .doesNotContain("voucher.voucher_no=:billNo")
                 .doesNotContain("WHERE e.bill_no = v.voucher_no");
+
+        String actual = canonical(source("src/main/java/com/uten/imp/features/finance/gl/ActualInventoryCostGlProjection.java"));
+        assertThat(actual)
+                .contains("'AUTO','ACTUAL_COGS',posting_id")
+                .contains("voucher.voucher_date,voucher.period,'ACTUAL_COGS',cost.posting_id")
+                .contains("voucher.source_type='ACTUAL_COGS' AND voucher.source_doc_id=cost.posting_id")
+                .contains("SELECT cost.posting_id,voucher.id,cost.source_period,cost.target_period,cost.event_id,cost.node_id")
+                .doesNotContain("DELETE FROM gl_vouchers")
+                .doesNotContain("voucher.voucher_no=cost.");
+        assertThat(count(actual, "voucher.source_type='ACTUAL_COGS' AND voucher.source_doc_id=cost.posting_id"))
+                .as("Both entry and immutable link use the exact posting UUID").isEqualTo(2);
+        assertThat(compact).contains("ActualInventoryCostGlProjection.postReady(em,period)");
+        assertThat(GlPostingService.REGENERATED_SOURCE_TYPES)
+                .doesNotContain("ACTUAL_COGS", "COST_CARRY");
+
+        String subcontract = canonical(source("src/main/java/com/uten/imp/features/finance/gl/SubcontractWasteLossGlProjection.java"));
+        assertThat(subcontract).contains("'AUTO','SUBCONTRACT_ABNORMAL_LOSS',loss.waste_id");
+        assertThat(count(subcontract, "voucher.period,'SUBCONTRACT_ABNORMAL_LOSS',loss.waste_id"))
+                .as("Debit and credit carry the same immutable waste document UUID").isEqualTo(2);
+        assertThat(count(subcontract, "AND voucher.source_doc_id=loss.waste_id"))
+                .as("Both legs join their header by source UUID").isEqualTo(2);
+    }
+
+    private static void assertEveryInsertCarriesSourceUuid(String source, String table, String typeColumn, Path owner) {
+        var inserts = Pattern.compile("INSERT\\s+INTO\\s+" + table + "\\s*\\(([^)]+)\\)", Pattern.CASE_INSENSITIVE)
+                .matcher(source);
+        int inspected = 0;
+        while (inserts.find()) {
+            inspected++;
+            List<String> columns = List.of(inserts.group(1).replaceAll("\\s+", "").split(","));
+            assertThat(columns).as(owner + " " + table + " insert " + inspected)
+                    .contains(typeColumn, "source_doc_id");
+        }
+        assertThat(inspected).as(owner + " must expose every " + table + " insert to the source contract")
+                .isPositive().isEqualTo(count(source, "INSERT INTO " + table));
     }
 
     private static int count(String source, String token) {
@@ -88,9 +135,12 @@ class GlVoucherSourceDocumentUuidContractTest {
     }
 
     private static String source(String serverRelativePath) throws IOException {
+        return Files.readString(sourcePath(serverRelativePath), StandardCharsets.UTF_8);
+    }
+
+    private static Path sourcePath(String serverRelativePath) {
         Path direct = Path.of(serverRelativePath);
-        Path path = Files.exists(direct) ? direct : Path.of("server").resolve(serverRelativePath);
-        return Files.readString(path, StandardCharsets.UTF_8);
+        return Files.exists(direct) ? direct : Path.of("server").resolve(serverRelativePath);
     }
 
     private static String canonical(String value) {

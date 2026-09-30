@@ -116,10 +116,12 @@ class GlPostingServiceReceiptAccountingTest {
     @Test
     void arPostingFailsClosedBeforeDeleteWhenCoreStylesAreUnavailable() {
         EntityManager em = mock(EntityManager.class);
+        Query inventoryLock = queryReturning(0L);
         List<String> sqlStatements = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
+            if (sql.contains("'uten:inventory-cost:gl'")) return inventoryLock;
             return queryReturning(sql.contains("FROM finance_expenses expense")
                     && sql.contains("expense.gl_status=2") ? 0L : 1L);
         });
@@ -129,15 +131,18 @@ class GlPostingServiceReceiptAccountingTest {
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("系统过账角色")
                 .hasMessageContaining("科目 UUID");
-        assertThat(sqlStatements).hasSize(4);
+        assertThat(sqlStatements).hasSize(5);
         assertThat(sqlStatements.getFirst())
-                .contains("pg_advisory_xact_lock")
-                .contains("hashtextextended");
+                .isEqualTo("SELECT pg_advisory_xact_lock(hashtextextended('uten:inventory-cost:gl',0))");
+        assertThat(sqlStatements.get(1)).contains("pg_advisory_xact_lock_shared", "'PAYMENT_STYLE_HIERARCHY'");
+        assertThat(sqlStatements.get(2)).contains("pg_advisory_xact_lock", "hashtextextended(:key");
+        verify(inventoryLock).getSingleResult();
         assertThat(sqlStatements.getLast())
                 .contains("WITH required_role(role_key)")
                 .contains("'AR_CONTROL'")
                 .contains("'SALES_REVENUE'")
                 .contains("system_posting_style_id(required.role_key)");
+        assertThat(sqlStatements).noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers"));
     }
 
     @Test

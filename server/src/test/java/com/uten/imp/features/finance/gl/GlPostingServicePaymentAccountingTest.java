@@ -25,10 +25,12 @@ class GlPostingServicePaymentAccountingTest {
     @Test
     void paymentPostingFailsClosedBeforeDeleteWhenARequiredStyleIsUnavailable() {
         EntityManager em = mock(EntityManager.class);
+        Query inventoryLock = queryReturning(0L);
         List<String> sqlStatements = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
+            if (sql.contains("'uten:inventory-cost:gl'")) return inventoryLock;
             return queryReturning(sql.contains("WITH required_role(role_key)") ? 1L : 0L);
         });
 
@@ -38,7 +40,8 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("系统过账角色")
                 .hasMessageContaining("科目 UUID");
 
-        assertThat(sqlStatements).hasSize(4);
+        assertThat(sqlStatements).hasSize(5);
+        assertInventoryLockBeforePreflight(sqlStatements, inventoryLock);
         assertThat(sqlStatements.getLast())
                 .contains("WITH required_role(role_key)")
                 .contains("FROM finance_payments payment")
@@ -51,10 +54,12 @@ class GlPostingServicePaymentAccountingTest {
     @Test
     void historicalPaymentAmountsBlockRegenerationBeforeExistingVouchersAreDeleted() {
         EntityManager em = mock(EntityManager.class);
+        Query inventoryLock = queryReturning(0L);
         List<String> sqlStatements = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
+            if (sql.contains("'uten:inventory-cost:gl'")) return inventoryLock;
             return queryReturning(sql.contains("amount_authority_version NOT IN(1,2)") ? 2L : 0L);
         });
 
@@ -66,7 +71,8 @@ class GlPostingServicePaymentAccountingTest {
 
         // Customer-advance and legacy V0 receipt-GL reconciliation are separate
         // preflights before payment authority; neither may delete vouchers.
-        assertThat(sqlStatements).hasSize(9);
+        assertThat(sqlStatements).hasSize(10);
+        assertInventoryLockBeforePreflight(sqlStatements, inventoryLock);
         assertThat(sqlStatements.getLast())
                 .contains("FROM finance_payments payment")
                 .contains("payment.amount_authority_version NOT IN(1,2)");
@@ -178,10 +184,12 @@ class GlPostingServicePaymentAccountingTest {
     @Test
     void confirmedExpenseBlocksRegenerationBeforeAnyVoucherDelete() {
         EntityManager em = mock(EntityManager.class);
+        Query inventoryLock = queryReturning(0L);
         List<String> sqlStatements = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             sqlStatements.add(sql);
+            if (sql.contains("'uten:inventory-cost:gl'")) return inventoryLock;
             return queryReturning(sql.contains("FROM finance_expenses expense")
                     && sql.contains("expense.gl_status=2") ? 1L : 0L);
         });
@@ -192,8 +200,8 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("已财务确认")
                 .hasMessageContaining("禁止物理删除");
 
-        assertThat(sqlStatements).hasSize(3);
-        assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements).hasSize(4);
+        assertInventoryLockBeforePreflight(sqlStatements, inventoryLock);
         assertThat(sqlStatements.getLast())
                 .contains("expense.status=1")
                 .contains("expense.gl_status=2")
@@ -229,6 +237,14 @@ class GlPostingServicePaymentAccountingTest {
                 .contains("entry.direction=1")
                 .contains("entry.direction=-1")
                 .contains("SUM(entry.direction * entry.amount)");
+    }
+
+    private static void assertInventoryLockBeforePreflight(List<String> statements, Query inventoryLock) {
+        assertThat(statements.getFirst())
+                .isEqualTo("SELECT pg_advisory_xact_lock(hashtextextended('uten:inventory-cost:gl',0))");
+        assertThat(statements.get(1)).contains("pg_advisory_xact_lock_shared", "'PAYMENT_STYLE_HIERARCHY'");
+        assertThat(statements.get(2)).contains("pg_advisory_xact_lock", "hashtextextended(:key");
+        verify(inventoryLock).getSingleResult();
     }
 
     private static Query queryReturning(long result) {

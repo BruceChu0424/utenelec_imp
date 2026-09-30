@@ -72,6 +72,8 @@ public class AuditEventInterpreter {
             Map.entry("view_supplier_detail", "查看供应商档案"),
             Map.entry("view_account_detail", "查看资金账户档案"),
             Map.entry("view_goods_detail", "查看货品详情"),
+            Map.entry("view_goods_cost_sheet_detail", "查看货品成本单详情"),
+            Map.entry("view_goods_cost_snapshot_detail", "查看货品成本版本详情"),
             Map.entry("view_mould_detail", "查看模具详情"),
             Map.entry("view_currency_detail", "查看币种详情"),
             Map.entry("view_payment_style_detail", "查看收付款类别详情"),
@@ -931,6 +933,8 @@ public class AuditEventInterpreter {
         // 基础资料
         values.put("material_categories", "货品分类");
         values.put("goods", "货品");
+        values.put("goods_cost_sheets", "货品成本单");
+        values.put("goods_cost_snapshots", "货品成本版本");
         values.put("goods_bom_items", "货品 BOM");
         values.put("goods_import_batches", "货品导入批次");
         values.put("goods_import_creations", "货品导入生成记录");

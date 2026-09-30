@@ -492,11 +492,36 @@ class WorkshopMaterialIssuePostgresTest {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("SET LOCAL lock_timeout = '30s'");
                 statement.execute("SET LOCAL statement_timeout = '300s'");
+                // 未生成 attachment 的上传会话也有清理 outbox。显式保留这个外键形态，
+                // 使单跑就能重现全量里前序附件测试留下的状态；整段在 finally 回滚。
+                try (var uploadFixture = connection.prepareStatement("""
+                        WITH session AS (
+                            INSERT INTO attachment_upload_sessions(
+                                storage_key, owner_type, owner_id, user_id, original_name, content_type,
+                                expected_size_bytes, expires_at, status, storage_provider)
+                            VALUES (gen_random_uuid()::text, 'SALES_ORDER', gen_random_uuid(), ?,
+                                    'reset-fixture.txt', 'text/plain', 1, now() + interval '1 hour', 'PENDING', 'local')
+                            RETURNING id, storage_key
+                        )
+                        INSERT INTO attachment_object_outbox(
+                            upload_session_id, operation, storage_key, dedupe_key, storage_provider)
+                        SELECT id, 'DELETE_STAGING', storage_key, 'reset-fixture|' || storage_key, 'local'
+                        FROM session
+                        """)) {
+                    uploadFixture.setObject(1, shop.workshopUser());
+                    assertEquals(1, uploadFixture.executeUpdate());
+                }
                 // reset 的附件门拦全库业务附件; 共享库里前面用例留下的附件行会触发拒绝
                 // (单跑恒绿、全量红)。本用例的关注点是认料/机台的保留口径, 按生产
                 // 「附件清理准备已完成」的状态先清业务附件行(事务内, 回滚不留痕)。
                 statement.execute(
-                        "DELETE FROM attachment_object_outbox WHERE attachment_id IN (SELECT id FROM attachments WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT'))");
+                        """
+                        DELETE FROM attachment_object_outbox
+                        WHERE attachment_id IN (SELECT id FROM attachments
+                                WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT'))
+                           OR upload_session_id IN (SELECT id FROM attachment_upload_sessions
+                                WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT'))
+                        """);
                 statement.execute(
                         "DELETE FROM attachments WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT')");
                 statement.execute(

@@ -145,8 +145,7 @@ class WorkshopMaterialClosePostgresTest {
         bench.stockIn(expense, "5", "5");
         bench.stockIn(gain, "5", "8");
         bench.stockIn(loss, "5", "6");
-        // 颗粒入库的价值任务必须在结算前算完: 结算读池均价核定盘盈, 慢机上不等,
-        // 结算落库的 value_at_close 就是 0(本地快机靠调度器抢先跑完才碰巧绿)。
+        // 先完成原仓颗粒入库的价值传播，再发料调入内料仓。
         var preCloseGoods = new java.util.ArrayList<UUID>(List.of(bench.world.goodsA(), bench.world.goodsB(), bench.world.goodsE()));
         preCloseGoods.addAll(bench.granules);
         InventoryValueWorkTestSupport.drain(bench.valueWork, db, preCloseGoods);
@@ -160,6 +159,15 @@ class WorkshopMaterialClosePostgresTest {
         bench.issue(gain, "1", null);
         bench.issue(loss, "1", null);
 
+        // 发料是从原仓到内料仓的新一轮价值传播。盘盈在提交盘点时按内料仓当时的
+        // 池均价核定，因此入库后等原仓、结算后再等都不能替代这里的调入价值就绪。
+        InventoryValueWorkTestSupport.drain(bench.valueWork, db, preCloseGoods);
+        var gainPool = beans.getBean(com.uten.imp.application.port.InventoryValuationPort.class).pool(
+                new com.uten.imp.application.port.InventoryValuationPort.PoolKey(bench.bin, gain, null));
+        assertEquals(com.uten.imp.application.port.InventoryValuationPort.State.FINAL, gainPool.state());
+        money("1", gainPool.qtyBase());
+        money("8", gainPool.knownValueLocal());
+
         UUID first = bench.firstPeriod;
         UUID count = bench.startCount(first, BusinessTime.today().minusDays(1));
         bench.weighed(count, "own", own, "1.8");
@@ -172,9 +180,7 @@ class WorkshopMaterialClosePostgresTest {
         assertEquals("QUEUED", counted.closeState());
 
         assertEquals(Result.CLOSED, closes.attempt(first, TriggerKind.AFTER_COUNT, bench.admin));
-        // 结算自身的出库/盘盈事件会再排一轮价值任务; 盘盈按池均价核定, 断言前等价值池就位
-        // (慢机上不等会出现 value_at_close=0)。池属于各颗粒货品——drain 范围必须含 bench
-        // 建的全部颗粒, 只等 A/B/E 会漏掉颗粒的入库价值任务(本地快机靠调度器抢先跑完)。
+        // 结算后的成本分摊还会排价值任务；等产品及各颗粒传播完，再断言最终成本。
         var drainGoods = new java.util.ArrayList<UUID>(List.of(bench.world.goodsA(), bench.world.goodsB(), bench.world.goodsE()));
         drainGoods.addAll(bench.granules);
         InventoryValueWorkTestSupport.drain(bench.valueWork, db, drainGoods);

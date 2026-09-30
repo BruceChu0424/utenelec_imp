@@ -7390,6 +7390,106 @@ class FullChainEndToEndTest {
     }
 
     @Test
+    void salesReturn_editAndApprovalKeepCompleteOldAndRequestedSourceLocks() throws Exception {
+        for(boolean editFirst:List.of(false,true)) {
+            World w=seedWorld(editFirst?"return-edit-prefix":"return-approve-prefix");receiveOpeningInputsForA(w,"5");
+            var oldSource=directFreeShipmentForReturn(w,w.goodsB());
+            var newSource=directFreeShipmentForReturn(w,w.goodsE());
+            UUID oldItem=oldSource.getItems().getFirst().getId(),newItem=newSource.getItems().getFirst().getId();
+            var draft=customerReturnService.create(directReturnRequest(w,oldSource,"1"));
+            var revised=directReturnRequest(w,newSource,"2");
+            var prefix=com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.declared(Set.of(),
+                    Set.of(new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(w.goodsB(),null),
+                            new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(w.goodsE(),null)),Set.of());
+            var held=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+            var waiterPid=new java.util.concurrent.atomic.AtomicInteger();
+            try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+                var holder=workers.submit(()->{loginAs(w.superAdminUserId());try {
+                    new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->{
+                        fulfillmentMutationLocks.acquire(()->prefix).verifyUnchanged();held.countDown();
+                        try {if(!release.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("return prefix holder timeout");}
+                        catch(InterruptedException failure){Thread.currentThread().interrupt();throw new AssertionError(failure);}
+                        if(editFirst)customerReturnService.update(draft.getId(),revised);else customerReturnService.approve(draft.getId());
+                    });
+                }finally{SecurityContextHolder.clearContext();}});
+                assertTrue(held.await(20,java.util.concurrent.TimeUnit.SECONDS));
+                var waiter=workers.submit(()->{loginAs(w.superAdminUserId());try {
+                    return assertThrows(ApiException.class,()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->{
+                        waiterPid.set(jdbc.queryForObject("SELECT pg_backend_pid()",Integer.class));
+                        if(editFirst)customerReturnService.approve(draft.getId());else customerReturnService.update(draft.getId(),revised);
+                    }));
+                }finally{SecurityContextHolder.clearContext();}});
+                long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12);boolean waiting=false;
+                while(System.nanoTime()<deadline&&!waiting) {
+                    if(waiterPid.get()!=0)waiting=Boolean.TRUE.equals(jdbc.queryForObject(
+                            "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=? AND locktype='advisory' AND NOT granted)",Boolean.class,waiterPid.get()));
+                    if(!waiting)Thread.sleep(20);
+                }
+                assertTrue(waiting,"return update/approval must queue on the complete inventory prefix before its own header");
+                release.countDown();holder.get(20,java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(ErrorCode.CONFLICT,waiter.get(20,java.util.concurrent.TimeUnit.SECONDS).getCode());
+            }finally{release.countDown();}
+            assertEquals(editFirst?newItem:oldItem,jdbc.queryForObject("SELECT out_item_id FROM sales_return_items WHERE return_id=?",UUID.class,draft.getId()));
+            assertEquals(0,bigDecimalFor("SELECT returned_qty FROM sales_shipment_items WHERE id=?",oldItem).compareTo(new BigDecimal(editFirst?"0":"1")));
+            assertEquals(0,bigDecimalFor("SELECT returned_qty FROM sales_shipment_items WHERE id=?",newItem).signum());
+            if(editFirst) {
+                customerReturnService.approve(draft.getId());
+                assertEquals(0,bigDecimalFor("SELECT returned_qty FROM sales_shipment_items WHERE id=?",newItem).compareTo(new BigDecimal("2")));
+                assertEquals(0,bigDecimalFor("SELECT returned_qty FROM sales_shipment_items WHERE id=?",oldItem).signum());
+            }
+        }
+    }
+
+    @Test
+    void salesReturn_changedSourceRejectsWrongGoodsOrCustomerWithoutLosingExistingFields() {
+        World w=seedWorld("return-source-fields");receiveOpeningInputsForA(w,"5");
+        var oldSource=directFreeShipmentForReturn(w,w.goodsB());var newSource=directFreeShipmentForReturn(w,w.goodsE());
+        var draft=customerReturnService.create(directReturnRequest(w,oldSource,"1"));UUID oldRow=draft.getItems().getFirst().getId();
+        var column=platformColumnService.create("sales_return_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("退货保留说明","TEXT",false,null));
+        var cells=List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"原始退货要求"));
+        platformColumnService.write("sales_return_item",oldRow,new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(0,cells));
+        World other=seedWorld("return-other-client");loginAs(w.superAdminUserId());
+        for(int invalid=0;invalid<3;invalid++) {
+            var request=directReturnRequest(w,newSource,"1");var line=request.getItems().getFirst();
+            line.setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(oldRow,1,cells));
+            if(invalid==0)line.setGoodsId(w.goodsB());
+            else if(invalid==1)request.setClientId(other.clientId());
+            else line.setOutItemId(UUID.randomUUID());
+            var rejected=assertThrows(ApiException.class,()->customerReturnService.update(draft.getId(),request));
+            assertEquals(ErrorCode.CONFLICT,rejected.getCode());
+            assertTrue(rejected.getMessage().contains(List.of("货品或颜色不一致","客户与来源出货客户不一致","原出货来源不存在").get(invalid)));
+            assertEquals(oldRow,jdbc.queryForObject("SELECT id FROM sales_return_items WHERE return_id=?",UUID.class,draft.getId()));
+            assertEquals(oldSource.getItems().getFirst().getId(),jdbc.queryForObject("SELECT out_item_id FROM sales_return_items WHERE return_id=?",UUID.class,draft.getId()));
+            assertEquals("原始退货要求",jdbc.queryForObject("SELECT cells->0->>'value' FROM platform_record_fields WHERE scope='sales_return_item' AND record_id=?",String.class,oldRow));
+            assertEquals(1L,jdbc.queryForObject("SELECT version FROM platform_record_fields WHERE scope='sales_return_item' AND record_id=?",Long.class,oldRow));
+        }
+        var valid=directReturnRequest(w,newSource,"1");
+        valid.getItems().getFirst().setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(oldRow,1,cells));
+        var updated=customerReturnService.update(draft.getId(),valid);UUID newRow=updated.getItems().getFirst().getId();
+        assertNotEquals(oldRow,newRow,"the domain rebuilds return rows; the bridge must bind to actual new persistence");
+        assertEquals(newSource.getItems().getFirst().getId(),jdbc.queryForObject("SELECT out_item_id FROM sales_return_items WHERE id=?",UUID.class,newRow));
+        assertEquals("原始退货要求",jdbc.queryForObject("SELECT cells->0->>'value' FROM platform_record_fields WHERE scope='sales_return_item' AND record_id=?",String.class,newRow));
+        assertEquals(draft.getId(),jdbc.queryForObject("SELECT source_document_id FROM platform_record_fields WHERE scope='sales_return_item' AND record_id=?",UUID.class,newRow));
+        customerReturnService.approve(draft.getId());
+        assertEquals(0,bigDecimalFor("SELECT returned_qty FROM sales_shipment_items WHERE id=?",oldSource.getItems().getFirst().getId()).signum());
+        assertEquals(0,bigDecimalFor("SELECT returned_qty FROM sales_shipment_items WHERE id=?",newSource.getItems().getFirst().getId()).compareTo(BigDecimal.ONE));
+    }
+
+    private ShipmentDetail directFreeShipmentForReturn(World world,UUID goods) {
+        var request=directCustomerShipmentRequest(world,"FREE","3");request.getItems().getFirst().setGoodsId(goods);
+        var created=shipmentService.create(request);shipmentService.confirmSales(created.getId(),0L);shipThroughWarehouse(created.getId());
+        return shipmentService.detail(created.getId());
+    }
+
+    private com.uten.imp.features.sales.ret.dto.ReturnSaveRequest directReturnRequest(World world,ShipmentDetail source,String qty) {
+        var request=new com.uten.imp.features.sales.ret.dto.ReturnSaveRequest();request.setBillDate(BusinessTime.today());
+        request.setClientId(world.clientId());request.setWarehouseId(world.warehouseId());request.setCurrencyId(source.getCurrencyId());request.setReturnReason("真实来源退货回归");
+        var line=new com.uten.imp.features.sales.ret.dto.ReturnItemLine();line.setOutItemId(source.getItems().getFirst().getId());
+        line.setGoodsId(source.getItems().getFirst().getGoodsId());line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));
+        request.setItems(List.of(line));return request;
+    }
+
+    @Test
     void directCustomerShipment_twoWarehousePicksSerializeOneFinitePool() throws Exception {
         World w=seedWorld("direct-competing-picks-v511");receiveOpeningInputsForA(w,"5");loginAs(w.superAdminUserId());
         UUID first=shipmentService.create(directCustomerShipmentRequest(w,"FREE","6")).getId();shipmentService.confirmSales(first,0L);confirmShipmentFinance(first);

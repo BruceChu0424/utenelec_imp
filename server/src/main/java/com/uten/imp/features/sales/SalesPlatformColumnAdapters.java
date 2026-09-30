@@ -83,6 +83,7 @@ public class SalesPlatformColumnAdapters {
                 "SELECT id,return_id FROM sales_return_items WHERE id IN (:ids) AND NOT is_deleted",
                 retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false),LINE)
                 .documentRows("SELECT id FROM sales_return_items WHERE return_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.sales.ret.dto.ReturnSaveRequest.class,retService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("sales_return:create"));
     }
 

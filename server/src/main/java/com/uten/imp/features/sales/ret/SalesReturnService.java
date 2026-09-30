@@ -204,6 +204,14 @@ public class SalesReturnService {
         return toDetail(r, items, true, true);
     }
 
+    /** Preserve the original source/inventory prefix before the field bridge locks the return header. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('sales_return:edit')")
+    public void lockPlatformColumnSave(UUID id, ReturnSaveRequest request) {
+        tx.bind();
+        mutationFootprint.lockReturn(id, requestedFootprint(request));
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('sales_return:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_return_item", requestArgument=1, documentIdArgument=0)

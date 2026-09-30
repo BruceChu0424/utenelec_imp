@@ -42,9 +42,17 @@ public interface PlatformColumnResourceAdapter {
      */
     Map<UUID, RecordAccess> authorize(Set<UUID> recordIds, boolean write);
 
-    /** Explicit save-bridge hook: return live detail-row ids for an authorized and locked document. */
+    /** Acquire the domain's complete request-aware lock prefix before the snapshot takes its header lock. */
+    default void lockDocumentSave(UUID documentId,Object request) { }
+
+    /** Save-bridge snapshot: lock the parent and require read scope, without granting field writes. */
     default Set<UUID> recordIdsForDocument(UUID documentId) {
         throw new UnsupportedOperationException("This platform resource has no document save bridge");
+    }
+
+    /** Pre-save write guard, including empty documents and new or removed detail rows. */
+    default void requireDocumentFieldWrite(UUID documentId) {
+        throw new UnsupportedOperationException("Document field write authorization is not registered");
     }
 
     /** Atomic create bridge only; this does not authorize editing existing resources. */

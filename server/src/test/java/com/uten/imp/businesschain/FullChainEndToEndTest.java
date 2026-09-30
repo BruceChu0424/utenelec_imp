@@ -82,6 +82,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -194,6 +195,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService financeApproval;
     @Autowired private com.uten.imp.features.common.taskclaim.TaskClaimService reviewClaims;
     @Autowired private jakarta.persistence.EntityManager quantityEntityManager;
+    @Autowired private com.uten.imp.common.platformcolumns.PlatformColumnService platformColumnService;
     @Autowired private com.uten.imp.features.purchase.receipt.PurchaseReceiptService purchaseReceiptService;
     @Autowired private com.uten.imp.features.purchase.ret.PurchaseReturnService supplierPurchaseReturnService;
     @Autowired private com.uten.imp.features.warehouse.inbound.ProcurementInspectionService inspectionService;
@@ -7222,6 +7224,9 @@ class FullChainEndToEndTest {
         var request=directCustomerShipmentRequest(w,"CHARGED","3");
         var draft=shipmentService.create(request);
         UUID id=draft.getId(),itemId=draft.getItems().getFirst().getId();
+        var column=platformColumnService.create("sales_shipment_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("直送保留说明","TEXT",false,null));
+        var preservedCells=List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"客户原始装箱要求"));
+        platformColumnService.write("sales_shipment_item",itemId,new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(0,preservedCells));
         assertFalse(draft.getWorkflow().isSalesConfirmed());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->reviewClaims.claim("SALES_SHIPMENT_FINANCE_AUDIT",id.toString())).getCode());
         var outbound=new WarehouseWorkTransitionRequest();outbound.setTargetStatus("SHIPPED");
@@ -7236,14 +7241,24 @@ class FullChainEndToEndTest {
         var edited=shipmentService.update(id,revised);
         assertEquals(itemId,edited.getItems().getFirst().getId());
         assertEquals(1,edited.getWorkflow().getReviewRevision());
+        assertEquals(1L,jdbc.queryForObject("SELECT version FROM platform_record_fields WHERE scope='sales_shipment_item' AND record_id=?",Long.class,itemId));
+        assertEquals("客户原始装箱要求",jdbc.queryForObject("SELECT cells->0->>'value' FROM platform_record_fields WHERE scope='sales_shipment_item' AND record_id=?",String.class,itemId));
         shipmentService.confirmSales(id,1L);
         confirmShipmentFinance(id);
         var approvedChange=directCustomerShipmentRequest(w,"CHARGED","5");
         approvedChange.setExpectedRevision(1L);approvedChange.getItems().getFirst().setId(itemId);
+        approvedChange.getItems().getFirst().setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(itemId,1,
+                List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(column.id(),"借撤回修改已确认字段"))));
+        assertThrows(ApiException.class,()->shipmentService.update(id,approvedChange),"confirmed fields cannot be changed by a business edit that revokes approval");
+        assertEquals(0,count("SELECT count(*) FROM sales_shipment_finance_release_events WHERE shipment_id=? AND event_type='REVOKED'",id));
+        assertEquals(1L,shipmentService.detail(id).getWorkflow().getReviewRevision());
+        approvedChange.getItems().getFirst().setPlatformFields(new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(itemId,1,preservedCells));
         var changed=shipmentService.update(id,approvedChange);
         assertEquals(0,changed.getFinanceAudit().intValue());
         assertFalse(changed.getWorkflow().isSalesConfirmed());
         assertEquals(1,count("SELECT count(*) FROM sales_shipment_finance_release_events WHERE shipment_id=? AND event_type='REVOKED'",id));
+        assertEquals(1L,jdbc.queryForObject("SELECT version FROM platform_record_fields WHERE scope='sales_shipment_item' AND record_id=?",Long.class,itemId));
+        assertEquals("客户原始装箱要求",jdbc.queryForObject("SELECT cells->0->>'value' FROM platform_record_fields WHERE scope='sales_shipment_item' AND record_id=?",String.class,itemId));
         shipmentService.confirmSales(id,2L);confirmShipmentFinance(id);
         // V582 一步式：EXCEPTION/PICKING/PICKED/退拣回路整体删除，财审放行即 PENDING_PICK，
         // 仓库一键确认出库（选仓、扣库存、消费预留、AR 同事务完成；预留创建即消费，
@@ -7324,6 +7339,54 @@ class FullChainEndToEndTest {
         assertEquals(ErrorCode.FORBIDDEN,assertThrows(ApiException.class,()->shipmentService.detail(direct.getId())).getCode());
         var onlyDirect=createUserWithPerms(w,"only-direct-shipment-view","sales_other_shipment:view","sales:view:all");loginAs(onlyDirect);
         assertEquals(direct.getId(),shipmentService.detail(direct.getId()).getId());
+    }
+
+    @Test
+    void directCustomerShipment_editAndSalesConfirmationKeepInventoryBeforeHeaderLocks() throws Exception {
+        for(boolean editFirst:List.of(false,true)) {
+            World w=seedWorld(editFirst?"direct-edit-prefix":"direct-confirm-prefix");loginAs(w.superAdminUserId());
+            var draft=shipmentService.create(directCustomerShipmentRequest(w,"FREE","3"));
+            var revised=directCustomerShipmentRequest(w,"FREE","4");revised.setExpectedRevision(0L);
+            revised.getItems().getFirst().setId(draft.getItems().getFirst().getId());
+            revised.getItems().getFirst().setGoodsId(w.goodsE());
+            var prefix=com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.declared(Set.of(),
+                    Set.of(new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(w.goodsB(),null),
+                            new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(w.goodsE(),null)),Set.of());
+            var held=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+            var waiterPid=new java.util.concurrent.atomic.AtomicInteger();
+            try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+                var holder=workers.submit(()->{loginAs(w.superAdminUserId());try {
+                    new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->{
+                        fulfillmentMutationLocks.acquire(()->prefix).verifyUnchanged();held.countDown();
+                        try {if(!release.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("shipment prefix holder timeout");}
+                        catch(InterruptedException failure){Thread.currentThread().interrupt();throw new AssertionError(failure);}
+                        if(editFirst)shipmentService.update(draft.getId(),revised);else shipmentService.confirmSales(draft.getId(),0L);
+                    });
+                }finally{SecurityContextHolder.clearContext();}});
+                assertTrue(held.await(20,java.util.concurrent.TimeUnit.SECONDS));
+                var waiter=workers.submit(()->{loginAs(w.superAdminUserId());try {
+                    return assertThrows(ApiException.class,()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->{
+                        waiterPid.set(jdbc.queryForObject("SELECT pg_backend_pid()",Integer.class));
+                        if(editFirst)shipmentService.confirmSales(draft.getId(),0L);else shipmentService.update(draft.getId(),revised);
+                    }));
+                }finally{SecurityContextHolder.clearContext();}});
+                long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12);boolean waiting=false;
+                while(System.nanoTime()<deadline&&!waiting) {
+                    if(waiterPid.get()!=0)waiting=Boolean.TRUE.equals(jdbc.queryForObject(
+                            "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=? AND locktype='advisory' AND NOT granted)",Boolean.class,waiterPid.get()));
+                    if(!waiting)Thread.sleep(20);
+                }
+                assertTrue(waiting,"the real edit/confirmation must queue on the inventory prefix before taking the shipment header");
+                release.countDown();holder.get(20,java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(ErrorCode.CONFLICT,waiter.get(20,java.util.concurrent.TimeUnit.SECONDS).getCode());
+            }finally{release.countDown();}
+            assertEquals(0,bigDecimalFor("SELECT qty FROM sales_shipment_items WHERE shipment_id=?",draft.getId())
+                    .compareTo(new BigDecimal(editFirst?"4":"3")));
+            assertEquals(editFirst?w.goodsE():w.goodsB(),jdbc.queryForObject("SELECT goods_id FROM sales_shipment_items WHERE shipment_id=?",UUID.class,draft.getId()));
+            var finalState=shipmentService.detail(draft.getId());
+            assertEquals(editFirst?1:0,finalState.getWorkflow().getReviewRevision());
+            assertEquals(!editFirst,finalState.getWorkflow().isSalesConfirmed());
+        }
     }
 
     @Test

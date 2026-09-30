@@ -599,6 +599,14 @@ public class SalesShipmentService {
         return out;
     }
 
+    /** The field snapshot must follow the same complete S/I prefix as update and review commands. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:edit','sales_other_shipment:edit')")
+    public void lockPlatformColumnSave(UUID id, ShipmentSaveRequest request) {
+        tx.bind();
+        mutationFootprint.lockShipment(id, requestedFootprint(request));
+    }
+
     @Transactional
     @PreAuthorize("hasAnyAuthority('sales_shipment:edit','sales_other_shipment:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="sales_shipment_item", requestArgument=1, documentIdArgument=0)

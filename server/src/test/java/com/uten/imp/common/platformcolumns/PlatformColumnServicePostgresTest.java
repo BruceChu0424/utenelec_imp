@@ -189,6 +189,84 @@ class PlatformColumnServicePostgresTest {
         assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_fields",Integer.class)).isEqualTo(1);
     }
 
+    @Test void legalBusinessEditPreservesFrozenFieldsWithoutWritingOrAdvancingTheirVersion() {
+        var column=define("goods","历史备注","TEXT",false,null);
+        tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(column.id(),"原值")))));
+        var documents=businessDocuments(false);master.writable=false;
+        var line=new SaveLine(record,1,new BigDecimal("11"));
+        documents.saveSame(master.documentId,new SaveRequest(List.of(line)));
+        line.setPlatformFields(new PlatformColumnLineInput.Fields(record,1,List.of(new CellInput(column.id(),"原值"))));
+        documents.saveSame(master.documentId,new SaveRequest(List.of(line)));
+        assertThat(sql.queryForObject("SELECT qty FROM platform_test_document_rows",BigDecimal.class)).isEqualByComparingTo("11");
+        assertThat(read("goods").version()).isEqualTo(1);
+        assertThat(read("goods").cells().getFirst().value()).isEqualTo("原值");
+        assertThat(service.search("goods","").getFirst().personalUsageCount()).isEqualTo(1);
+        assertThatThrownBy(()->tx(()->service.write("goods",record,new Write(1,List.of(new CellInput(column.id(),"原值"))))))
+                .isInstanceOf(ApiException.class); // The public write endpoint is never exempted.
+    }
+
+    @Test void frozenFieldChangesAndStaleVersionsFailBeforeTheBusinessCanReopenTheDocument() {
+        var column=define("goods","历史备注","TEXT",false,null);
+        tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(column.id(),"原值")))));
+        var documents=businessDocuments(false);master.writable=false;
+        for(var input:List.of(
+                new PlatformColumnLineInput.Fields(record,1,List.of(new CellInput(column.id(),"篡改"))),
+                new PlatformColumnLineInput.Fields(record,1,List.of()),
+                new PlatformColumnLineInput.Fields(record,0,List.of(new CellInput(column.id(),"原值"))),
+                new PlatformColumnLineInput.Fields(null,0,List.of(new CellInput(column.id(),"新增绕过"))),
+                new PlatformColumnLineInput.Fields(null,0,List.of()))) {
+            var line=new SaveLine(record,1,new BigDecimal("11"));line.setPlatformFields(input);
+            assertThatThrownBy(()->documents.saveSame(master.documentId,new SaveRequest(List.of(line)))).isInstanceOf(ApiException.class);
+            assertThat(sql.queryForObject("SELECT qty FROM platform_test_document_rows",BigDecimal.class)).isEqualByComparingTo("10");
+            assertThat(read("goods").version()).isEqualTo(1);
+            assertThat(read("goods").cells().getFirst().value()).isEqualTo("原值");
+        }
+        var line=new SaveLine(record,1,BigDecimal.TEN);
+        assertThatThrownBy(()->documents.save(master.documentId,new SaveRequest(List.of(line)))).isInstanceOf(ApiException.class);
+        assertThat(sql.queryForObject("SELECT id FROM platform_test_document_rows",UUID.class)).isEqualTo(record);
+    }
+
+    @Test void readSnapshotCannotPreserveARecordOutsideItsAuthorizedScope() {
+        var documents=businessDocuments(false);master.allowed.remove(record);
+        assertThatThrownBy(()->documents.saveSame(master.documentId,new SaveRequest(List.of(new SaveLine(record,1,BigDecimal.ONE)))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不可见");
+        assertThat(sql.queryForObject("SELECT qty FROM platform_test_document_rows",BigDecimal.class)).isEqualByComparingTo("10");
+    }
+
+    @Test void frozenMaskedRoundTripPreservesTheHiddenValueButCannotDeleteIt() {
+        var column=define("goods","隐藏金额","NUMBER",true,null);
+        tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(column.id(),"7")))));
+        var documents=businessDocuments(false);master.writable=false;master.priceVisible=false;
+        var line=new SaveLine(record,1,BigDecimal.TEN);
+        line.setPlatformFields(new PlatformColumnLineInput.Fields(record,1,List.of(new CellInput(column.id(),null))));
+        documents.saveSame(master.documentId,new SaveRequest(List.of(line)));
+        assertThat(sql.queryForObject("SELECT cells->0->>'value' FROM platform_record_fields WHERE record_id=?",String.class,record)).isEqualTo("7");
+        assertThat(read("goods").version()).isEqualTo(1);
+        assertThat(read("goods").cells().getFirst().masked()).isTrue();
+        line.setPlatformFields(new PlatformColumnLineInput.Fields(record,1,List.of()));
+        assertThatThrownBy(()->documents.saveSame(master.documentId,new SaveRequest(List.of(line)))).isInstanceOf(ApiException.class).hasMessageContaining("敏感字段");
+    }
+
+    @Test void unchangedFieldsCannotBeRekeyedOntoAnExistingSiblingRow() {
+        var column=define("goods","原始来源","TEXT",false,null);
+        tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(column.id(),"来源值")))));
+        var documents=businessDocuments(false);UUID sibling=UUID.randomUUID();
+        master.allowed.add(sibling);master.parents.put(sibling,master.documentId);
+        sql.update("INSERT INTO platform_test_document_rows VALUES(?,10)",sibling);
+        var line=new SaveLine(record,1,BigDecimal.TEN);
+        assertThatThrownBy(()->documents.saveExistingSibling(master.documentId,new SaveRequest(List.of(line))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("本次新建");
+        assertThat(sql.queryForList("SELECT record_id FROM platform_record_fields",UUID.class)).containsExactly(record);
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_test_document_rows",Integer.class)).isEqualTo(2);
+    }
+
+    @Test void documentBridgeStillRequiresFunctionalEditAuthorityWhenNoFieldsWereSubmitted() {
+        var documents=businessDocuments(false);master.canDefine=false;
+        assertThatThrownBy(()->documents.saveSame(master.documentId,new SaveRequest(List.of(new SaveLine(record,1,BigDecimal.ONE)))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("编辑权限");
+        assertThat(sql.queryForObject("SELECT qty FROM platform_test_document_rows",BigDecimal.class)).isEqualByComparingTo("10");
+    }
+
     @Test void legacySaveWithoutAStableSourceCannotSilentlyDropStoredFields() {
         var column=define("goods","备注","TEXT",false,null);
         tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(column.id(),"原值")))));
@@ -284,7 +362,20 @@ class PlatformColumnServicePostgresTest {
             sql.update("DELETE FROM platform_test_document_rows");UUID next=UUID.randomUUID();allowed.add(next);parents.put(next,documentId);
             BigDecimal qty=changeQty?BigDecimal.ONE:request.items().getFirst().getQty();
             sql.update("INSERT INTO platform_test_document_rows VALUES(?,?)",next,qty);
+            PlatformColumnSaveLineage.recordPersisted(next); // Mirrors the actual JPA @PostPersist callback.
             return new SaveResult(documentId,List.of(new SavedLine(next,1,qty)));
+        }
+        @PlatformColumnDocumentSave(scope="goods",requestArgument=1,documentIdArgument=0)
+        public SaveResult saveSame(UUID document,SaveRequest request){
+            var line=request.items().getFirst();
+            sql.update("UPDATE platform_test_document_rows SET qty=? WHERE id=?",line.getQty(),line.getId());
+            return new SaveResult(documentId,List.of(new SavedLine(line.getId(),1,line.getQty())));
+        }
+        @PlatformColumnDocumentSave(scope="goods",requestArgument=1,documentIdArgument=0)
+        public SaveResult saveExistingSibling(UUID document,SaveRequest request){
+            var line=request.items().getFirst();
+            UUID sibling=sql.queryForObject("SELECT id FROM platform_test_document_rows WHERE id<>?",UUID.class,line.getId());
+            return new SaveResult(documentId,List.of(new SavedLine(sibling,1,line.getQty())));
         }
         @PlatformColumnDocumentSave(scope="goods")
         public SaveResult create(SaveRequest request) {
@@ -304,6 +395,7 @@ class PlatformColumnServicePostgresTest {
                 BigDecimal qty=index==0?new BigDecimal("4"):new BigDecimal(changeQty?"7":"6");
                 var derived=new SaveLine(null,index+1,qty);PlatformColumnSaveLineage.copyToken(original,derived);
                 UUID next=UUID.randomUUID();allowed.add(next);parents.put(next,documentId);sql.update("INSERT INTO platform_test_document_rows VALUES(?,?)",next,qty);
+                PlatformColumnSaveLineage.recordPersisted(next);
                 PlatformColumnSaveLineage.registerSaved(derived,next);output.add(new SavedLine(next,index+1,qty));
             }
             return new SaveResult(documentId,output);
@@ -333,6 +425,7 @@ class PlatformColumnServicePostgresTest {
         public boolean supportsValues(){return !personal||projectionRecords;}public boolean personalDefinitions(){return personal;}public boolean preserveValuesOnReset(){return preserve;}
         public List<FactDefinition> facts(){return List.of(new FactDefinition("qty","数量",false),new FactDefinition("price","单价",true));}
         public Set<UUID> recordIdsForDocument(UUID id){if(!documentId.equals(id))throw new ApiException(ErrorCode.NOT_FOUND);return Set.of(record);}
+        public void requireDocumentFieldWrite(UUID id){recordIdsForDocument(id);requireDocumentSaveAccess(false);if(!writable)throw new ApiException(ErrorCode.CONFLICT,"当前单据不允许修改扩展字段");}
         public Map<UUID,UUID> parentDocuments(Set<UUID> ids){Map<UUID,UUID> result=new HashMap<>();ids.forEach(id->result.put(id,parents.get(id)));return result;}
         public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){
             if(!allowed.containsAll(ids))throw new ApiException(ErrorCode.FORBIDDEN,"记录不可见");

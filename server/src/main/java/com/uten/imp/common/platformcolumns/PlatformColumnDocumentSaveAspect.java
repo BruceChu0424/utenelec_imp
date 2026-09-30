@@ -43,7 +43,7 @@ public class PlatformColumnDocumentSaveAspect {
         List<?> requested=items(request);
         List<Object> identities=requested.stream().map(row->snapshotIdentity(row,configuration.quantityFields())).toList();
         UUID document=configuration.documentIdArgument()<0?null:uuid(argument(args,configuration.documentIdArgument()));
-        Set<UUID> oldRecords=document==null?Set.of():fields.documentRecords(configuration.scope(),document);
+        Set<UUID> oldRecords=document==null?Set.of():fields.documentRecords(configuration.scope(),document,request);
         boolean hasStored=document!=null&&fields.hasStoredFields(configuration.scope(),oldRecords);
         boolean aware=requested.stream().allMatch(line->value(line,"platformFields")!=null);
         Set<UUID> sources=new HashSet<>();
@@ -56,10 +56,13 @@ public class PlatformColumnDocumentSaveAspect {
             if(source!=null&&(!oldRecords.contains(source)||!sources.add(source)))throw conflict("扩展字段来源明细不存在、重复或不属于当前单据");
             if(input==null) {
                 if(hasStored&&source==null)throw conflict("该单据已有扩展字段，请刷新页面后保存以保留原始明细关联");
-                prepared.add(source==null?null:fields.prepareFields(configuration.scope(),source,0,null,true,false));
-            }else prepared.add(fields.prepareFields(configuration.scope(),source,input.expectedVersion(),input.cells(),false,document==null));
+                prepared.add(source==null?null:fields.prepareDocumentFields(configuration.scope(),source,0,null,true,false));
+            }else prepared.add(fields.prepareDocumentFields(configuration.scope(),source,input.expectedVersion(),input.cells(),false,document==null));
         }
         if(hasStored&&!aware&&!sources.containsAll(oldRecords))throw conflict("当前客户端无法证明保留或删除了哪些扩展字段，请刷新页面后保存");
+        if(document!=null&&(prepared.stream().anyMatch(proof->hasFields(proof)&&!proof.unchanged())
+                ||(hasStored&&!sources.containsAll(oldRecords))))
+            fields.requireDocumentFieldWrite(configuration.scope(),document);
         if(configuration.mapping()==PlatformColumnDocumentSave.Mapping.DOMAIN_LINEAGE) {
             Set<UUID> tokens=new LinkedHashSet<>();
             List<UUID> lineTokens=new ArrayList<>();

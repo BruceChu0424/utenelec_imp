@@ -11,6 +11,7 @@ import jakarta.persistence.LockModeType;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.function.BiPredicate;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
@@ -34,6 +35,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
     private final List<FactDefinition> facts;
     private String documentRowsLookup;
     private Set<String> creators = Set.of();
+    private BiConsumer<UUID,Object> documentSaveLocks = (id,request) -> { };
 
     public DocumentPlatformColumnAdapter(String scope, String label, SecurityContextCurrentUser current,
             EntityManager em, ObjectMapper json, Set<String> readers, Set<String> writers,
@@ -72,6 +74,17 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
         return this;
     }
 
+    /** Fixed domain registration; request types and lock plans never come from client-supplied metadata. */
+    public <R> DocumentPlatformColumnAdapter documentSaveLocks(Class<R> requestType,BiConsumer<UUID,R> locks) {
+        Objects.requireNonNull(requestType);Objects.requireNonNull(locks);
+        documentSaveLocks = (id,request) -> locks.accept(id,requestType.cast(request));
+        return this;
+    }
+
+    @Override public void lockDocumentSave(UUID documentId,Object request) {
+        documentSaveLocks.accept(documentId,request);
+    }
+
     @Override public void requireDocumentSaveAccess(boolean create) {
         if (create) {
             if (!hasAny(creators) || current.get().map(user -> user.getImpersonatedBy() != null).orElse(true))
@@ -89,16 +102,30 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
 
     public Set<UUID> recordIdsForDocument(UUID documentId) {
         if (documentRowsLookup == null) throw new IllegalStateException("Document row lookup not registered for " + scope);
+        lockedDocument(documentId);
+        @SuppressWarnings("unchecked") List<UUID> rows = em.createNativeQuery(documentRowsLookup)
+                .setParameter("document", documentId).getResultList();
+        return new LinkedHashSet<>(rows);
+    }
+
+    @Override public void requireDocumentFieldWrite(UUID documentId) {
         requireDocumentSaveAccess(false);
+        if (!writable.test(documentId, lockedDocument(documentId)))
+            throw new ApiException(ErrorCode.CONFLICT, "当前单据不允许修改扩展字段");
+    }
+
+    private JsonNode lockedDocument(UUID documentId) {
+        requireDefinitionAccess(false);
         em.flush();
         Object entity = em.find(headerEntity, documentId, LockModeType.PESSIMISTIC_WRITE);
         if (entity == null) throw missing();
         em.refresh(entity, LockModeType.PESSIMISTIC_WRITE);
-        JsonNode header = json.valueToTree(detail.apply(documentId));
-        if (!writable.test(documentId, header)) throw new ApiException(ErrorCode.CONFLICT, "当前单据不允许修改扩展字段");
-        @SuppressWarnings("unchecked") List<UUID> rows = em.createNativeQuery(documentRowsLookup)
-                .setParameter("document", documentId).getResultList();
-        return new LinkedHashSet<>(rows);
+        // Reading the old row identities must not veto a legal domain edit that revokes approval.
+        // Keep the parent lock and the domain detail loader's visibility check; actual field
+        // changes still go through authorize(..., true) before the business save.
+        Object detailResult = detail.apply(documentId);
+        if (detailResult == null) throw missing();
+        return json.valueToTree(detailResult);
     }
 
     private boolean hasAny(Set<String> authorities) {

@@ -14,5 +14,7 @@ public record RetainedPlatformColumnAdapter(PlatformColumnResourceAdapter delega
     public void requireDocumentSaveAccess(boolean create){delegate.requireDocumentSaveAccess(create);}
     public Map<UUID,RecordAccess> authorizeCreated(Set<UUID> ids){return delegate.authorizeCreated(ids);}
     public Set<UUID> recordIdsForDocument(UUID id){return delegate.recordIdsForDocument(id);}
+    public void lockDocumentSave(UUID id,Object request){delegate.lockDocumentSave(id,request);}
+    public void requireDocumentFieldWrite(UUID id){delegate.requireDocumentFieldWrite(id);}
     public Map<UUID,UUID> parentDocuments(Set<UUID> ids){return delegate.parentDocuments(ids);}
 }

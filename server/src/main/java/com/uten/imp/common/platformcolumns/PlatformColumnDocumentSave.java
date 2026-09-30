@@ -2,7 +2,7 @@ package com.uten.imp.common.platformcolumns;
 
 import java.lang.annotation.*;
 
-/** Only annotate draft saves with one-to-one, order-preserving request/response detail rows. */
+/** Atomic field preservation for authorized domain saves; field changes require pre-save write access. */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface PlatformColumnDocumentSave {

@@ -62,6 +62,7 @@ public class SalesPlatformColumnAdapters {
                 "SELECT id,shipment_id FROM sales_shipment_items WHERE id IN (:ids) AND NOT is_deleted",
                 shipmentService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false) && !header.path("rejected").asBoolean(false) && header.path("financeAudit").asInt(0)==0,LINE)
                 .documentRows("SELECT id FROM sales_shipment_items WHERE shipment_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest.class,shipmentService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("sales_shipment:create", "sales_other_shipment:create"));
     }
 

@@ -63,12 +63,26 @@ class DocumentPlatformColumnAdapterTest {
         }
     }
     @Test void emptyDocumentStillLocksAndAuthorizesParentBeforeFindingRows(){
-        permissions("test:view","test:edit");
-        var adapter=adapter(header(0,false)).documentRows("SELECT id FROM test_items WHERE parent_id=:document");
+        permissions("test:view");
+        var adapter=adapter(header(1,false)).documentRows("SELECT id FROM test_items WHERE parent_id=:document");
         Query query=mock(Query.class);when(em.createNativeQuery("SELECT id FROM test_items WHERE parent_id=:document")).thenReturn(query);
         when(query.setParameter("document",doc)).thenReturn(query);when(query.getResultList()).thenReturn(List.of());
         assertThat(adapter.recordIdsForDocument(doc)).isEmpty();
         var order=inOrder(em);order.verify(em).flush();order.verify(em).find(Object.class,doc,LockModeType.PESSIMISTIC_WRITE);
         order.verify(em).refresh(entity,LockModeType.PESSIMISTIC_WRITE);order.verify(em).createNativeQuery("SELECT id FROM test_items WHERE parent_id=:document");
+        assertThatThrownBy(()->adapter.requireDocumentFieldWrite(doc)).isInstanceOf(ApiException.class);
+    }
+    @Test void documentWriteGuardRejectsFrozenParentEvenWithoutAnyRows(){
+        permissions("test:view","test:edit");
+        var adapter=adapter(header(1,false));
+        assertThatThrownBy(()->adapter.requireDocumentFieldWrite(doc)).isInstanceOf(ApiException.class).hasMessageContaining("不允许修改");
+        verify(em).find(Object.class,doc,LockModeType.PESSIMISTIC_WRITE);
+        verify(em).refresh(entity,LockModeType.PESSIMISTIC_WRITE);
+    }
+    @Test void documentSnapshotStillRequiresReadScope(){
+        permissions("test:edit");
+        var adapter=adapter(header(0,false)).documentRows("SELECT id FROM test_items WHERE parent_id=:document");
+        assertThatThrownBy(()->adapter.recordIdsForDocument(doc)).isInstanceOf(ApiException.class);
+        verify(em,never()).find(any(),any(),any(LockModeType.class));
     }
 }

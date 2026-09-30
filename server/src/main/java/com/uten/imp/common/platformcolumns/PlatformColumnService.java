@@ -212,10 +212,10 @@ public class PlatformColumnService {
     }
 
     /** Package-private proof used only by the annotated atomic business-save bridge. */
-    record PreparedFields(String scope,UUID actor,UUID sourceId,long sourceVersion,List<CellInput> cells,boolean documentCreate,UUID documentId,Integer lineIndex) { }
+    record PreparedFields(String scope,UUID actor,UUID sourceId,long sourceVersion,List<CellInput> cells,boolean documentCreate,boolean unchanged,UUID documentId,Integer lineIndex) { }
 
     PreparedFields bindFields(PreparedFields fields,UUID documentId,int index) {
-        return new PreparedFields(fields.scope(),fields.actor(),fields.sourceId(),fields.sourceVersion(),fields.cells(),fields.documentCreate(),documentId,index);
+        return new PreparedFields(fields.scope(),fields.actor(),fields.sourceId(),fields.sourceVersion(),fields.cells(),fields.documentCreate(),fields.unchanged(),documentId,index);
     }
 
     List<UUID> replayTargets(PreparedFields fields,Set<UUID> resultIds) {
@@ -229,11 +229,12 @@ public class PlatformColumnService {
                 """,parameters,UUID.class);
     }
 
-    Set<UUID> documentRecords(String scope,UUID documentId) {
-        var adapter=resource(scope);adapter.requireDefinitionAccess(true);requireValues(adapter);
+    Set<UUID> documentRecords(String scope,UUID documentId,Object request) {
+        var adapter=resource(scope);adapter.requireDocumentSaveAccess(false);requireValues(adapter);
+        adapter.lockDocumentSave(documentId,request);
         Set<UUID> ids=adapter.recordIdsForDocument(documentId);
         if(ids==null)throw conflict("该单据不能安全解析扩展字段来源");
-        if(!ids.isEmpty())authorize(adapter,ids,true);
+        if(!ids.isEmpty())authorize(adapter,ids,false);
         return ids;
     }
 
@@ -243,18 +244,32 @@ public class PlatformColumnService {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM platform_record_fields WHERE scope=:scope AND record_id IN(:ids) AND jsonb_array_length(cells)>0)",parameters,Boolean.class));
     }
 
+    void requireDocumentFieldWrite(String scope,UUID documentId) {
+        resource(scope).requireDocumentFieldWrite(documentId);
+    }
+
     PreparedFields prepareFields(String scope,UUID sourceId,long expectedVersion,List<CellInput> cells,boolean preserve,boolean documentCreate) {
-        var adapter=resource(scope);adapter.requireDocumentSaveAccess(documentCreate);requireValues(adapter);
+        return prepareFields(scope,sourceId,expectedVersion,cells,preserve,documentCreate,false);
+    }
+
+    /** Only the atomic document bridge may carry unchanged values through a lawful domain edit. */
+    PreparedFields prepareDocumentFields(String scope,UUID sourceId,long expectedVersion,List<CellInput> cells,boolean preserve,boolean documentCreate) {
+        return prepareFields(scope,sourceId,expectedVersion,cells,preserve,documentCreate,!documentCreate);
+    }
+
+    private PreparedFields prepareFields(String scope,UUID sourceId,long expectedVersion,List<CellInput> cells,boolean preserve,boolean documentCreate,boolean allowUnchanged) {
+        var adapter=resource(scope);requireValues(adapter);
+        adapter.requireDocumentSaveAccess(documentCreate);
         if(adapter.personalDefinitions())throw forbidden("个人计算展示不允许写入业务记录");
         if(documentCreate&&sourceId!=null)throw invalid("新建单据不能借用既有记录的扩展字段");
         if(expectedVersion<0||(!preserve&&cells==null)||(cells!=null&&cells.size()>MAX_COLUMNS))throw invalid("请提供当前版本及最多32个扩展字段");
-        var access=sourceId==null?new PlatformColumnResourceAdapter.RecordAccess(true,adapter.canViewPrice()):authorize(adapter,Set.of(sourceId),true).get(sourceId);
+        var access=sourceId==null?new PlatformColumnResourceAdapter.RecordAccess(true,adapter.canViewPrice()):authorize(adapter,Set.of(sourceId),!allowUnchanged).get(sourceId);
         tx.bind();
         Map<String,Object> parameters=params(scope);parameters.put("record",sourceId);
         List<Stored> rows=sourceId==null?List.of():jdbc.query("SELECT version,cells::text FROM platform_record_fields WHERE scope=:scope AND record_id=:record FOR UPDATE",
                     parameters,(rs,n)->new Stored(rs.getLong("version"),parseCells(rs.getString("cells"))));
         Stored stored=rows.isEmpty()?new Stored(0,List.of()):rows.getFirst();
-        if(preserve)return new PreparedFields(scope,currentUser.requireId(),sourceId,stored.version(),stored.cells(),documentCreate,null,null);
+        if(preserve)return new PreparedFields(scope,currentUser.requireId(),sourceId,stored.version(),stored.cells(),documentCreate,allowUnchanged,null,null);
         if(stored.version()!=expectedVersion)throw conflict("扩展字段已被其他人修改，请刷新后重新保存");
         Set<UUID> requested=new LinkedHashSet<>();
         for(var cell:cells)if(cell==null||cell.columnId()==null||!requested.add(cell.columnId()))throw invalid("列编号不能为空或重复");
@@ -276,15 +291,34 @@ public class PlatformColumnService {
         }
         if(!access.priceVisible())for(var prior:stored.cells())if(protectedDefinition(definitions.get(prior.columnId()),definitions,adapter,new HashSet<>())&&!requested.contains(prior.columnId()))
             throw forbidden("没有价格权限，不能删除敏感字段");
-        return new PreparedFields(scope,currentUser.requireId(),sourceId,stored.version(),List.copyOf(normalized),documentCreate,null,null);
+        boolean unchanged=allowUnchanged&&stored.cells().equals(normalized);
+        if(allowUnchanged&&!unchanged) {
+            // Check before the domain can revoke approval or reopen a document.
+            adapter.requireDocumentSaveAccess(false);
+            if(sourceId!=null)authorize(adapter,Set.of(sourceId),true);
+        }
+        return new PreparedFields(scope,currentUser.requireId(),sourceId,stored.version(),List.copyOf(normalized),documentCreate,unchanged,null,null);
     }
 
     Row applyFields(UUID recordId,PreparedFields prepared) {
         if(!currentUser.requireId().equals(prepared.actor()))throw forbidden("扩展字段保存身份已变化");
-        String scope=prepared.scope();var adapter=resource(scope);adapter.requireDocumentSaveAccess(prepared.documentCreate());
+        String scope=prepared.scope();var adapter=resource(scope);
         if(adapter.personalDefinitions())throw forbidden("个人计算展示不允许写入业务记录");
         if(prepared.documentId()!=null&&!prepared.documentId().equals(adapter.parentDocuments(Set.of(recordId)).get(recordId)))
             throw conflict("扩展字段保存结果不属于本次真实单据");
+        if(prepared.unchanged()&&prepared.documentId()!=null&&recordId.equals(prepared.sourceId())) {
+            var access=authorize(adapter,Set.of(recordId),false).get(recordId);
+            var parameters=params(scope);parameters.put("record",recordId);
+            var records=jdbc.query("SELECT version,cells::text FROM platform_record_fields WHERE scope=:scope AND record_id=:record FOR UPDATE",parameters,
+                    (rs,n)->new Stored(rs.getLong("version"),parseCells(rs.getString("cells"))));
+            Stored stored=records.isEmpty()?new Stored(0,List.of()):records.getFirst();
+            if(stored.version()!=prepared.sourceVersion()||!stored.cells().equals(prepared.cells()))throw conflict("扩展字段已被其他人修改，请刷新后重新保存");
+            // No UPDATE, usage event, or version bump for an unchanged stable business row.
+            return row(recordId,stored,Set.of(),loadDefinitions(scope,stored.cells().stream().map(CellInput::columnId).collect(java.util.stream.Collectors.toSet())),access,adapter);
+        }
+        adapter.requireDocumentSaveAccess(prepared.documentCreate());
+        if(!prepared.documentCreate()&&prepared.documentId()!=null&&!recordId.equals(prepared.sourceId())&&!PlatformColumnSaveLineage.wasPersisted(recordId))
+            throw conflict("扩展字段只能映射到原始明细或本次新建的真实明细");
         if(prepared.documentCreate()&&!PlatformColumnSaveLineage.wasPersisted(recordId))return verifyCreateReplay(recordId,prepared,adapter);
         var grants=prepared.documentCreate()?adapter.authorizeCreated(Set.of(recordId)):authorize(adapter,Set.of(recordId),true);
         if(grants==null||!grants.keySet().equals(Set.of(recordId))||grants.get(recordId)==null)throw forbidden("新建记录的扩展字段授权不完整");

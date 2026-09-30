@@ -64,7 +64,6 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
         }
     }
 
-    @org.springframework.scheduling.annotation.Scheduled(fixedDelayString="${uten.sales.learning-receipt-cleanup-ms:3600000}")
     @Transactional
     public void purgeExpiredEvidence() {
         jdbc.update("""

@@ -7,10 +7,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CloudSchedulerIsolationContractTest {
+    private static final Pattern SCHEDULED_ANNOTATION = Pattern.compile(
+            "@(?:org\\.springframework\\.scheduling\\.annotation\\.)?Scheduled\\b");
 
     @Test
     void cloudProfileRunsOnlyThePrimaryHealthSchedule() throws IOException {
@@ -47,11 +50,23 @@ class CloudSchedulerIsolationContractTest {
             // 只认真正的注解使用：javadoc / 注释里提到 @Scheduled 的类（如
             // ScheduledTaskRunRegistry 这种「记录别人执行情况」的组件）不是调度组件，
             // 不该被要求挂 @Profile("!cloud")（2026-09-11）。
-            return stripComments(Files.readString(source, StandardCharsets.UTF_8))
-                    .contains("@Scheduled");
+            return SCHEDULED_ANNOTATION.matcher(stripComments(Files.readString(source, StandardCharsets.UTF_8))).find();
         } catch (IOException ex) {
             throw new IllegalStateException("Cannot read " + source, ex);
         }
+    }
+
+    @Test
+    void fullyQualifiedScheduledAnnotationsCannotEscapeCloudIsolation() {
+        assertTrue(SCHEDULED_ANNOTATION.matcher(stripComments("""
+                @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 1000)
+                public void cleanup() {}
+                """)).find());
+        org.junit.jupiter.api.Assertions.assertFalse(SCHEDULED_ANNOTATION.matcher(stripComments("""
+                /** @org.springframework.scheduling.annotation.Scheduled is documentation only. */
+                // @Scheduled(fixedDelay = 1000)
+                public void cleanup() {}
+                """)).find());
     }
 
     private Path sourceRoot() {

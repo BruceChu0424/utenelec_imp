@@ -27,7 +27,7 @@ class ScheduledTaskCatalogTest {
 
     /** 行首的 @Scheduled(...), 允许中间夹别的注解, 抓紧随后的方法名; 注释里的 {@code @Scheduled} 不在行首后直接接方法, 不会误抓。 */
     private static final Pattern SCHEDULED_METHOD = Pattern.compile(
-            "(?ms)^[ \\t]*@Scheduled\\s*(?:\\([^)]*\\))?\\s*(?:@\\w+(?:\\([^)]*\\))?\\s*)*"
+            "(?ms)^[ \\t]*@(?:org\\.springframework\\.scheduling\\.annotation\\.)?Scheduled\\s*(?:\\([^)]*\\))?\\s*(?:@[\\w.]+(?:\\([^)]*\\))?\\s*)*"
             + "(?:(?:public|protected|private|synchronized|final|static)\\s+)*[\\w<>\\[\\],.?]+\\s+(\\w+)\\s*\\(");
 
     static Set<String> scheduledMethodsInSource() throws IOException {
@@ -35,13 +35,25 @@ class ScheduledTaskCatalogTest {
         try (Stream<Path> files = Files.walk(MAIN_SOURCE)) {
             for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
                 String text = Files.readString(file);
-                if (!text.contains("@Scheduled")) continue;
+                text = text.replaceAll("(?s)/\\*.*?\\*/", " ").replaceAll("(?m)//.*$", " ");
                 String simpleClass = file.getFileName().toString().replace(".java", "");
                 Matcher matcher = SCHEDULED_METHOD.matcher(text);
                 while (matcher.find()) names.add(simpleClass + "." + matcher.group(1));
             }
         }
         return names;
+    }
+
+    @Test
+    void scannerIncludesQualifiedSchedulesWithTransactionalAnnotations() {
+        Matcher matcher = SCHEDULED_METHOD.matcher("""
+                @org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${cleanup.ms:1000}")
+                @org.springframework.transaction.annotation.Transactional
+                public void cleanup() {}
+                """);
+        assertThat(matcher.find()).isTrue();
+        assertThat(matcher.group(1)).isEqualTo("cleanup");
+        assertThat(matcher.find()).isFalse();
     }
 
     @Test

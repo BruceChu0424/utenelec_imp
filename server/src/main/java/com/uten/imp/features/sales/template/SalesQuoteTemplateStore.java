@@ -9,7 +9,6 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.sales.intake.SalesIntakeUsedEvent;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -197,7 +196,6 @@ public class SalesQuoteTemplateStore {
                 """,Map.of("job",event.jobId(),"client",event.clientId(),"type",event.docType(),"doc",event.docId()),Boolean.class));
     }
 
-    @Scheduled(fixedDelayString = "${uten.sales.quote-template-cleanup-ms:3600000}")
     @Transactional
     public void purgeExpired() {
         jdbc.update("""

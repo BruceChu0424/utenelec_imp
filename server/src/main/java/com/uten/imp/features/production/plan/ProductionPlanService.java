@@ -182,6 +182,13 @@ public class ProductionPlanService {
         return new CreatedDraft(p, items);
     }
 
+    /** Keep source/inventory locks ahead of the platform field snapshot's plan header lock. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockPlatformColumnSave(UUID id, PlanSaveRequest request) {
+        tx.bind();
+        requirePlanForUpdate(id, requestedFootprint(request));
+    }
+
     @Transactional
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_plan_item", requestArgument=1, documentIdArgument=0)
     public PlanDetail update(UUID id, PlanSaveRequest req) {

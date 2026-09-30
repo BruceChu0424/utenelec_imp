@@ -73,6 +73,7 @@ public class PurchasePlatformColumnAdapters {
                 "SELECT id,receipt_id FROM purchase_receipt_items WHERE id IN (:ids) AND NOT is_deleted",
                 receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
                 .documentRows("SELECT id FROM purchase_receipt_items WHERE receipt_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest.class,receiptService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("purchase_receipt:create"));
     }
 
@@ -93,6 +94,7 @@ public class PurchasePlatformColumnAdapters {
                 "SELECT id,return_id FROM purchase_return_items WHERE id IN (:ids) AND NOT is_deleted",
                 retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
                 .documentRows("SELECT id FROM purchase_return_items WHERE return_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest.class,retService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("purchase_return:create"));
     }
 }

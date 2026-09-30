@@ -163,6 +163,16 @@ public class PurchaseReturnService {
         return toDetail(r, items);
     }
 
+    /** Preserve the business prefix, header lock and source check before the field snapshot. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('purchase_return:edit')")
+    public void lockPlatformColumnSave(UUID id, ReturnSaveRequest request) {
+        tx.bind();
+        var guard = lockReturnRequest(id, request);
+        requireReturnForUpdate(id);
+        guard.verifyUnchanged();
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('purchase_return:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_return_item", requestArgument=1, documentIdArgument=0)

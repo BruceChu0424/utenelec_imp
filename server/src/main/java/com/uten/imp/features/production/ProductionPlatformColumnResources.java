@@ -32,7 +32,8 @@ public class ProductionPlatformColumnResources {
     @Bean PlatformColumnResourceAdapter productionPlanLineFields() {
         return resource("production_plan_item", "生产计划明细", ProductionPlan.class,
                 "SELECT id, plan_id FROM production_plan_items WHERE id IN (:ids)", plans::detail)
-                .documentRows("SELECT id FROM production_plan_items WHERE plan_id=:document");
+                .documentRows("SELECT id FROM production_plan_items WHERE plan_id=:document")
+                .documentSaveLocks(com.uten.imp.features.production.plan.dto.PlanSaveRequest.class,plans::lockPlatformColumnSave);
     }
     @Bean PlatformColumnResourceAdapter productionReportFields() {
         return resource("production_daily_report", "生产报工", ProductionDailyReport.class, null, reports::detail);

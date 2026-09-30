@@ -185,6 +185,16 @@ public class PurchaseReceiptService {
         return create(req);
     }
 
+    /** Preserve the business prefix, header lock and source check before the field snapshot. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('purchase_receipt:edit')")
+    public void lockPlatformColumnSave(UUID id, ReceiptSaveRequest request) {
+        tx.bind();
+        var guard = lockReceiptRequest(id, request);
+        requireReceiptForUpdate(id);
+        guard.verifyUnchanged();
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('purchase_receipt:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_receipt_item", requestArgument=1, documentIdArgument=0)

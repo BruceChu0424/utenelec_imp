@@ -203,6 +203,16 @@ public class SubcontractMaterialIssueService {
         return toDetail(r, items);
     }
 
+    /** Preserve the business prefix, header lock and source check before the field snapshot. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('subcontract_material_issue:edit')")
+    public void lockPlatformColumnSave(UUID id, MaterialIssueSaveRequest request) {
+        tx.bind();
+        var guard = lockIssueRequest(id, request);
+        requireIssueForUpdate(id);
+        guard.verifyUnchanged();
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_material_issue:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_material_issue_item", requestArgument=1, documentIdArgument=0)

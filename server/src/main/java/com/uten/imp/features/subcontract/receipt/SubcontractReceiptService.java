@@ -199,6 +199,16 @@ public class SubcontractReceiptService {
         return create(req);
     }
 
+    /** Preserve the business prefix, header lock and source check before the field snapshot. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
+    public void lockPlatformColumnSave(UUID id, ReceiptSaveRequest request) {
+        tx.bind();
+        var guard = lockReceiptRequest(id, request);
+        requireReceiptForUpdate(id);
+        guard.verifyUnchanged();
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_receipt_item", requestArgument=1, documentIdArgument=0)

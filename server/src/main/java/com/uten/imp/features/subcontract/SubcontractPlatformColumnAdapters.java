@@ -97,6 +97,7 @@ public class SubcontractPlatformColumnAdapters {
                 "SELECT id,receipt_id FROM subcontract_receipt_items WHERE id IN (:ids) AND NOT is_deleted",
                 receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
                 .documentRows("SELECT id FROM subcontract_receipt_items WHERE receipt_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest.class,receiptService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_receipt:create"));
     }
 
@@ -117,6 +118,7 @@ public class SubcontractPlatformColumnAdapters {
                 "SELECT id,return_id FROM subcontract_return_items WHERE id IN (:ids) AND NOT is_deleted",
                 retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
                 .documentRows("SELECT id FROM subcontract_return_items WHERE return_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.subcontract.ret.dto.ReturnSaveRequest.class,retService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_return:create"));
     }
 
@@ -137,6 +139,7 @@ public class SubcontractPlatformColumnAdapters {
                 "SELECT id,issue_id FROM subcontract_material_issue_items WHERE id IN (:ids) AND NOT is_deleted",
                 materialissueService::detail,(id,header)->materialissueService.platformFieldsWritable(id),LINE)
                 .documentRows("SELECT id FROM subcontract_material_issue_items WHERE issue_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest.class,materialissueService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of());
     }
 
@@ -157,6 +160,7 @@ public class SubcontractPlatformColumnAdapters {
                 "SELECT id,material_return_id FROM subcontract_material_return_items WHERE id IN (:ids) AND NOT is_deleted",
                 materialreturnService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
                 .documentRows("SELECT id FROM subcontract_material_return_items WHERE material_return_id=:document AND NOT is_deleted")
+                .documentSaveLocks(com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest.class,materialreturnService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_material_return:create"));
     }
 

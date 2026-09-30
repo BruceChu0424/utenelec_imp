@@ -7593,6 +7593,7 @@ class FullChainEndToEndTest {
     }
 
     @Autowired private com.uten.imp.application.concurrency.FulfillmentMutationLocks fulfillmentMutationLocks;
+    @Autowired private com.uten.imp.common.concurrency.ProcurementMutationLocks procurementMutationLocks;
     @Autowired private com.uten.imp.application.port.ProductionMutationFootprintPort productionMutationFootprint;
     @Autowired private com.uten.imp.features.sales.SalesMutationFootprintService salesMutationFootprint;
     @Autowired private com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService planMutationFootprint;
@@ -11625,6 +11626,115 @@ class FullChainEndToEndTest {
         UUID reviewer=createApprover(w);
         financeApproval.submit("SUBCONTRACT",orderId);
         return new ProcurementCase(orderId,reviewer);
+    }
+
+    @Test
+    void subcontractFieldBridgesRunAllFourUpdatesWithoutChangingSourceOrLockOrder() throws Exception {
+        World w=seedWorld("sc-all-field-bridges");receiveOpeningInputsForA(w,"20");
+        var submitted=submitLeafSubcontractForFinance(w,BigDecimal.TEN);
+        loginAs(submitted.reviewerUserId());approvePendingFinance("SUBCONTRACT",submitted.orderId());loginAs(w.superAdminUserId());
+        UUID orderItem=jdbc.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,submitted.orderId());
+        UUID issue=jdbc.queryForObject("SELECT h.id FROM subcontract_material_issues h JOIN subcontract_material_issue_items i ON i.issue_id=h.id WHERE i.order_item_id=? AND h.status=0 AND NOT h.is_deleted",UUID.class,orderItem);
+        var initialIssue=subcontractMaterialIssueService.detail(issue);
+        var issueRequest=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest();
+        issueRequest.setBillDate(BusinessTime.today());issueRequest.setSupplierId(w.supplierId());issueRequest.setWarehouseId(w.warehouseId());
+        var issueLine=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine();
+        issueLine.setPlanItemId(initialIssue.getItems().getFirst().getPlanItemId());issueLine.setQty(new BigDecimal("8"));
+        issueRequest.setItems(List.of(issueLine));
+        assertNullItemsLeaveSubcontractDocumentUnchanged("subcontract_material_issues",issue,issueRequest,()->subcontractMaterialIssueService.update(issue,issueRequest));
+        UUID realPlan=issueLine.getPlanItemId();issueLine.setPlanItemId(UUID.randomUUID());
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->subcontractMaterialIssueService.update(issue,issueRequest)).getCode());
+        assertEquals(initialIssue.getItems().getFirst().getId(),jdbc.queryForObject("SELECT id FROM subcontract_material_issue_items WHERE issue_id=?",UUID.class,issue));
+        issueLine.setPlanItemId(realPlan);
+        var editedIssue=subcontractMaterialIssueService.update(issue,issueRequest);
+        assertEquals(w.goodsE(),editedIssue.getItems().getFirst().getGoodsId(),"omitted request dimensions must come from the already-locked plan snapshot");
+        assertEquals(orderItem,editedIssue.getItems().getFirst().getOrderItemId());
+        var issued=subcontractMaterialIssueService.approve(issue).getItems().getFirst();
+        assertEquals(0,stockBalance(w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("12")));
+
+        var materialReturn=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest();
+        materialReturn.setBillDate(BusinessTime.today());materialReturn.setSupplierId(w.supplierId());materialReturn.setWarehouseId(w.warehouseId());
+        var materialLine=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine();
+        materialLine.setGoodsId(w.goodsE());materialLine.setUnitId(w.unitId());materialLine.setUnitRate(BigDecimal.ONE);materialLine.setQty(new BigDecimal("2"));
+        materialLine.setMaterialIssueItemId(issued.getId());materialLine.setOrderItemId(orderItem);materialLine.setParentGoodsId(w.goodsE());materialReturn.setItems(List.of(materialLine));
+        UUID materialReturnId=subcontractMaterialReturnService.create(materialReturn).getId();
+        assertNullItemsLeaveSubcontractDocumentUnchanged("subcontract_material_returns",materialReturnId,materialReturn,()->subcontractMaterialReturnService.update(materialReturnId,materialReturn));
+        materialLine.setQty(BigDecimal.ONE);subcontractMaterialReturnService.update(materialReturnId,materialReturn);subcontractMaterialReturnService.approve(materialReturnId);
+        assertEquals(0,bigDecimalFor("SELECT returned_qty FROM subcontract_material_issue_items WHERE id=?",issued.getId()).compareTo(BigDecimal.ONE));
+        assertEquals(0,stockBalance(w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("13")));
+
+        var receipt=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
+        receipt.setBillDate(BusinessTime.today());receipt.setSupplierId(w.supplierId());receipt.setWarehouseId(w.warehouseId());
+        receipt.setCurrencyId(w.currencyId());receipt.setExchangeRate(BigDecimal.ONE);receipt.setTaxRate(BigDecimal.ZERO);receipt.setSettlementMethodId(subcontractOrderSettlementMethodOf(orderItem));
+        var receiptLine=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
+        receiptLine.setGoodsId(w.goodsE());receiptLine.setOrderItemId(orderItem);receiptLine.setUnitId(w.unitId());receiptLine.setUnitRate(BigDecimal.ONE);receiptLine.setQty(new BigDecimal("3"));receiptLine.setPrice(new BigDecimal("50"));receipt.setItems(List.of(receiptLine));
+        UUID receiptId=subcontractReceiptService.create(receipt).getId();
+        assertNullItemsLeaveSubcontractDocumentUnchanged("subcontract_receipts",receiptId,receipt,()->subcontractReceiptService.update(receiptId,receipt));
+        receiptLine.setQty(new BigDecimal("4"));subcontractReceiptService.update(receiptId,receipt);
+        receiptLine.setQty(new BigDecimal("5"));
+        assertSubcontractReceiptEditWaitsBehindApprovalPrefix(w,receiptId,receipt);
+        assertEquals(0,bigDecimalFor("SELECT qty FROM subcontract_receipt_items WHERE receipt_id=?",receiptId).compareTo(new BigDecimal("4")));
+        assertEquals(0,bigDecimalFor("SELECT received_qty FROM subcontract_order_items WHERE id=?",orderItem).compareTo(new BigDecimal("4")));
+        assertEquals(0,bigDecimalFor("SELECT consumed_qty FROM subcontract_material_issue_items WHERE id=?",issued.getId()).compareTo(new BigDecimal("4")));
+        UUID inspection=jdbc.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,receiptId);
+        inspectionService.dispose("SUBCONTRACT",receiptId,inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest("PASS",null,"真实委外回厂","sc-fields-pass-"+receiptId));
+        loginAs(createIqcWarehouseConfirmer(w,"sc-fields-stock-"+receiptId));
+        iqcStockInService.confirm("SUBCONTRACT",receiptId,latestIqcStockInRequest("SUBCONTRACT",receiptId,inspection,new BigDecimal("4"),"sc-fields-stock-"+receiptId,"SC-FIELDS"));
+        drainCosts(w);loginAs(w.superAdminUserId());
+
+        var productReturn=new com.uten.imp.features.subcontract.ret.dto.ReturnSaveRequest();
+        productReturn.setBillDate(BusinessTime.today());productReturn.setSupplierId(w.supplierId());productReturn.setWarehouseId(w.warehouseId());
+        productReturn.setCurrencyId(w.currencyId());productReturn.setExchangeRate(BigDecimal.ONE);productReturn.setTaxRate(BigDecimal.ZERO);productReturn.setSettlementMethodId(subcontractOrderSettlementMethodOf(orderItem));
+        var productLine=new com.uten.imp.features.subcontract.ret.dto.ReturnItemLine();
+        productLine.setGoodsId(w.goodsE());productLine.setUnitId(w.unitId());productLine.setUnitRate(BigDecimal.ONE);productLine.setQty(BigDecimal.ONE);productLine.setPrice(new BigDecimal("50"));
+        productLine.setOrderItemId(orderItem);productLine.setReceiptItemId(subcontractReceiptService.detail(receiptId).getItems().getFirst().getId());productReturn.setItems(List.of(productLine));
+        UUID productReturnId=supplierSubcontractReturnService.create(productReturn).getId();
+        assertNullItemsLeaveSubcontractDocumentUnchanged("subcontract_returns",productReturnId,productReturn,()->supplierSubcontractReturnService.update(productReturnId,productReturn));
+        productLine.setQty(new BigDecimal("2"));supplierSubcontractReturnService.update(productReturnId,productReturn);supplierSubcontractReturnService.approve(productReturnId);
+        assertEquals(0,bigDecimalFor("SELECT returned_qty FROM subcontract_order_items WHERE id=?",orderItem).compareTo(new BigDecimal("2")));
+        assertEquals(0,bigDecimalFor("SELECT returned_qty FROM subcontract_receipt_items WHERE receipt_id=?",receiptId).compareTo(new BigDecimal("2")));
+        assertEquals(0,stockBalance(w.warehouseId(),w.goodsE()).compareTo(new BigDecimal("15")),"20 opening - 8 issue + 1 material return + 4 actual receipt - 2 supplier return");
+    }
+
+    private void assertNullItemsLeaveSubcontractDocumentUnchanged(String table,UUID id,Object request,Runnable update) {
+        String before=jdbc.queryForObject("SELECT row_to_json(h)::text FROM "+table+" h WHERE id=?",String.class,id);
+        var input=new org.springframework.beans.BeanWrapperImpl(request);Object items=input.getPropertyValue("items");
+        input.setPropertyValue("items",null);
+        try {assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,update::run).getCode());}
+        finally {input.setPropertyValue("items",items);}
+        assertEquals(before,jdbc.queryForObject("SELECT row_to_json(h)::text FROM "+table+" h WHERE id=?",String.class,id));
+    }
+
+    private void assertSubcontractReceiptEditWaitsBehindApprovalPrefix(World w,UUID receipt,
+            com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest replacement) throws Exception {
+        var held=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);var waiterPid=new java.util.concurrent.atomic.AtomicInteger();
+        var workers=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var approving=workers.submit(()->{loginAs(w.superAdminUserId());try {
+                new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->{
+                    procurementMutationLocks.receipt("SUBCONTRACT",receipt);held.countDown();
+                    try {if(!release.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new AssertionError("subcontract receipt prefix timeout");}
+                    catch(InterruptedException failure){Thread.currentThread().interrupt();throw new AssertionError(failure);}
+                    subcontractReceiptService.approve(receipt);
+                });
+            }finally{SecurityContextHolder.clearContext();}});
+            assertTrue(held.await(20,java.util.concurrent.TimeUnit.SECONDS));
+            var editing=workers.submit(()->{loginAs(w.superAdminUserId());try {
+                return assertThrows(ApiException.class,()->new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->{
+                    waiterPid.set(jdbc.queryForObject("SELECT pg_backend_pid()",Integer.class));subcontractReceiptService.update(receipt,replacement);
+                }));
+            }finally{SecurityContextHolder.clearContext();}});
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(12);boolean waiting=false;
+            while(System.nanoTime()<deadline&&!waiting) {
+                if(waiterPid.get()!=0)waiting=Boolean.TRUE.equals(jdbc.queryForObject("SELECT wait_event_type='Lock' FROM pg_stat_activity WHERE pid=?",Boolean.class,waiterPid.get()));
+                if(!waiting)Thread.sleep(20);
+            }
+            assertTrue(waiting,"the proxied update must wait on the existing commercial/inventory prefix");
+            new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->
+                    assertEquals(receipt,jdbc.queryForObject("SELECT id FROM subcontract_receipts WHERE id=? FOR UPDATE NOWAIT",UUID.class,receipt)));
+            release.countDown();approving.get(20,java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(ErrorCode.CONFLICT,editing.get(20,java.util.concurrent.TimeUnit.SECONDS).getCode());
+        }finally{release.countDown();workers.shutdownNow();assertTrue(workers.awaitTermination(25,java.util.concurrent.TimeUnit.SECONDS));}
     }
 
     @Test

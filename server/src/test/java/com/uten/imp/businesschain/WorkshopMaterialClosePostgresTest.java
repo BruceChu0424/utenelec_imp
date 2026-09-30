@@ -46,6 +46,7 @@ import com.uten.imp.features.warehouse.materialbin.report.WorkshopMaterialReport
 import com.uten.imp.features.warehouse.materialbin.report.WorkshopMaterialReportQueryService;
 import com.uten.imp.security.RequiresStepUp;
 import com.uten.imp.support.DailyReportApproveRequests;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -55,8 +56,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Method;
@@ -101,14 +107,33 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners = WorkshopMaterialClosePostgresTest.Cleanup.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class WorkshopMaterialClosePostgresTest {
 
     private static final TypeReference<List<Map<String, Object>>> BLOCKERS = new TypeReference<>() {};
     private static final LocalDate REPORT_DATE = LocalDate.of(2026, 1, 25);
+    private static MigratedSchemaBaseline.ScopedDatabase database;
 
     @DynamicPropertySource
-    static void database(DynamicPropertyRegistry registry) {
-        FullChainEndToEndTest.registerDataSource(registry);
+    static void database(DynamicPropertyRegistry registry) throws Exception {
+        // Pool FINAL includes the database-wide durable valuation fence. Other FullChain
+        // worlds intentionally retain unfinished cost scopes; the close/value assertions
+        // need their own database while preserving that production publication rule.
+        database = MigratedSchemaBaseline.openDatabase("workshop_material_close");
+        registry.add("spring.datasource.url", database::getJdbcUrl);
+        registry.add("spring.datasource.username", database::getUsername);
+        registry.add("spring.datasource.password", database::getPassword);
+        var attachments = java.nio.file.Files.createTempDirectory("workshop-close-attachments-");
+        registry.add("uten.storage.local-dir", attachments::toString);
+    }
+
+    public static class Cleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder() - 1; }
+        @Override public void afterTestClass(TestContext ignored) throws Exception {
+            if (database != null) database.close();
+        }
     }
 
     @Autowired AutowireCapableBeanFactory beans;

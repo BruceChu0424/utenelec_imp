@@ -1018,8 +1018,10 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(sent.lines().getFirst().intakeLineKey()).isEqualTo("S1R9");
         assertThat(sent.lines().getFirst().userConfirmed()).isTrue();
         assertThat(sent.lines().getFirst().setNameEn()).isTrue();
+        assertThat(sent.learningReceiptId()).isNotNull();
         assertThat(events.stream(SalesIntakeUsedEvent.class))
-                .containsExactly(new SalesIntakeUsedEvent(jobId, f.sales(), "quote", created.getId(), f.client()));
+                .containsExactly(new SalesIntakeUsedEvent(jobId, f.sales(), "quote", created.getId(), f.client(),
+                        List.of("S1R9"), sent.learningReceiptId()));
 
         // 订货单没有文件原文、也没有识别任务: 不打扰学习出口。
         clearInvocations(learning);

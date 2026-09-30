@@ -620,12 +620,15 @@ class FinancePaymentSettlementPostgresTest {
                 VALUES (?,?,?,'argon2-test-not-used',false,false,'active')
                 """, userId, employeeId, actualLogin);
         // hasAuthority 不看 superAdmin 标志：permissions 直接携带所需按钮权限
-        // （含 GL 重生成用的 finance_post:execute），roles 留空。
+        // （含 GL 重生成用的 finance_post:execute）。
+        // 此处手拼有效权限快照，绕过了生产 PermissionResolver 的超管全目录展开；
+        // DEPT_FIN 的正式配置也同时授予付款 view/edit。仅补本类编辑时读取单据
+        // 扩展字段快照所需的付款 view，让并发用例实际到达表头锁与状态复核。
         AuthUser user = new AuthUser(
                 userId, employeeId, actualLogin,
                 Set.of("finance_post:execute", "finance:view:all",
                         "customer_prepayment:view",
-                        "finance_payment:create", "finance_payment:edit",
+                        "finance_payment:view", "finance_payment:create", "finance_payment:edit",
                         "finance_payment:delete", "finance_payment:approve",
                         "finance_payment:reverse",
                         "finance_receipt:create", "finance_receipt:edit",

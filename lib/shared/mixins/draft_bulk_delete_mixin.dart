@@ -68,22 +68,32 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
     required Future<void> Function(String) delete,
     required Future<void> Function() reload,
     bool enabled = true,
+    Set<String>? selectedIds,
   }) => UtenButton(
     type: UtenButtonType.danger,
     size: UtenButtonSize.large,
-    onPressed: !enabled || _draftDeleteBusy || _draftIds.isEmpty
+    onPressed:
+        !enabled || _draftDeleteBusy || (selectedIds ?? _draftIds).isEmpty
         ? null
-        : () => _deleteDrafts(documentLabel, delete, reload),
-    child: Text(_draftDeleteBusy ? '正在处理…' : '删除所选草稿 (${_draftIds.length})'),
+        : () => _deleteDrafts(documentLabel, delete, reload, selectedIds),
+    child: Text(
+      _draftDeleteBusy
+          ? '正在处理…'
+          : '删除所选草稿 (${(selectedIds ?? _draftIds).length})',
+    ),
   );
 
   Future<void> _deleteDrafts(
     String label,
     Future<void> Function(String) delete,
     Future<void> Function() reload,
+    Set<String>? selectedIds,
   ) async {
     if (_draftDeleteBusy || _draftIds.isEmpty) return;
-    final ids = _draftIds.toList(growable: false);
+    final ids = _draftIds
+        .intersection(selectedIds ?? _draftIds)
+        .toList(growable: false);
+    if (ids.isEmpty) return;
     final generation = _draftSelectionGeneration;
     final container = ProviderScope.containerOf(context, listen: false);
     final scope = container.read(authenticatedScopeProvider);

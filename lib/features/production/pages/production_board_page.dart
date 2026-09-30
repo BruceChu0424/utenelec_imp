@@ -39,6 +39,8 @@ import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -53,6 +55,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -66,8 +69,11 @@ import '../widgets/production_fqc_replenishment_banner.dart';
 import '../widgets/production_execution_group_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
-import 'production_daily_report_list_page.dart';
-import 'production_plan_list_page.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/drafts/draft_workspace_table.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../models/production_plan.dart';
 
 class ProductionBoardPage extends ConsumerStatefulWidget {
   const ProductionBoardPage({super.key, this.initialTab});
@@ -82,7 +88,7 @@ class ProductionBoardPage extends ConsumerStatefulWidget {
 
 class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   /// 顶栏刷新按钮 → 待排产面板整页重拉（列表回第 1 页 + 进行中计数失效）。
-  final ValueNotifier<int> _pendingRefreshTick = ValueNotifier<int>(0);
+  int _refreshRevision = 0;
 
   /// 当前大类分段：pending/progress/history；null = 未选择引导态（不发请求）。
   String? _segment;
@@ -95,12 +101,6 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
-
-  @override
-  void dispose() {
-    _pendingRefreshTick.dispose();
-    super.dispose();
-  }
 
   @override
   void initState() {
@@ -122,7 +122,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
     // popOrBackTo 栈空分支收尾，push 的 Future 会丢——登记后期间写过数据就
     // 走与顶栏刷新按钮同一条路（驱动待排产面板重拉；进行中/历史面板各自有
     // 自己的刷新信号注册）。
-    ref.onPageResume(_myLocation!, () => _pendingRefreshTick.value++);
+    ref.onPageResume(_myLocation!, () => setState(() => _refreshRevision++));
     final segment = _segment;
     final historyReady = _historyTime.range != null || _historyTime.all;
     // 大类行计数: 待排产=红色通知徽章(调度员待办); 进行中=黄色进行中徽章
@@ -145,7 +145,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
             key: const Key('production-pending-refresh'),
             label: '刷新',
             icon: Icons.refresh_rounded,
-            onPressed: () => _pendingRefreshTick.value++,
+            onPressed: () => setState(() => _refreshRevision++),
           ),
         ],
       ),
@@ -228,13 +228,20 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
               ),
               Expanded(
                 child: switch (segment) {
-                  'drafts' => const _BoardDraftsPanel(
-                    key: Key('production-board-drafts'),
+                  'drafts' => Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12,
+                    ),
+                    child: _BoardDraftsPanel(
+                      key: const Key('production-board-drafts'),
+                      search: _keyword,
+                      refreshRevision: _refreshRevision,
+                    ),
                   ),
                   'pending' => _PendingPanel(
                     key: const Key('production-board-pending'),
                     keyword: _keyword,
-                    refreshTick: _pendingRefreshTick.value,
+                    refreshTick: _refreshRevision,
                   ),
                   // ADR-088：已被分析承接的订单行只在本段出现，所以「看不见进行中」
                   // 就等于「那批量从这个账号的世界里消失」。缺 production_execution:overview
@@ -292,31 +299,149 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
 
 // ═════════════════════════ 草稿段（生产计划 + 生产日报） ═════════════════════════
 
-/// 生产任务中心「草稿」段（2026-09-26 全站草稿口径）：生产计划草稿（status=draft）
-/// + 生产日报草稿（status=0），按单据类型分两段，各自**内嵌对应列表页**的草稿段
-/// （与采购 hub 嵌入 PurchaseDocListPage 同款）：状态分段、计数、本地表单草稿合并
-/// （FormDraftCategoryTable）与行点击进详情/编辑全部复用列表页口径，本面板不另造
-/// 一套。此前本段是 module=production 的本地草稿列表——该 module 没有任何登记的
-/// 表单来源，恒空恒 0（死段）。
+/// 计划与日报合并为一张草稿表，类别在首列表头筛选，复用页级搜索。
 class _BoardDraftsPanel extends ConsumerStatefulWidget {
-  const _BoardDraftsPanel({super.key});
+  const _BoardDraftsPanel({
+    super.key,
+    required this.search,
+    required this.refreshRevision,
+  });
+
+  final String search;
+  final int refreshRevision;
 
   @override
   ConsumerState<_BoardDraftsPanel> createState() => _BoardDraftsPanelState();
 }
 
 class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
-  /// plan=生产计划草稿 / report=生产日报草稿。
-  String _kind = 'plan';
+  bool _batching = false;
+  Set<String> _selectedPlanIds = {};
 
-  static const _planViewPerm = Perm.productionPlanView;
-  static const _reportViewPerm = Perm.productionDailyReportView;
+  Future<void> _runPlanBatch(
+    List<DraftWorkspaceRow> rows, {
+    required bool approve,
+    required Future<void> Function() reload,
+    required VoidCallback clearSelection,
+  }) async {
+    final plans = rows
+        .where((row) => row.kind == DraftDocKind.productionPlan)
+        .toList();
+    final ids = plans.map((row) => row.id).toList();
+    if (_batching || ids.isEmpty) return;
+    final verb = approve ? '审核' : '删除';
+    if (ids.length > ProductionPlanRepository.batchLimit) {
+      context.appWarning(
+        '一次最多批量$verb ${ProductionPlanRepository.batchLimit} 张生产计划，请分批选择',
+      );
+      return;
+    }
+    final scope = ref.read(authenticatedScopeProvider);
+    final permission = approve
+        ? Perm.productionPlanApprove
+        : Perm.productionPlanDelete;
+    bool stillCurrent() =>
+        mounted &&
+        scope != null &&
+        !scope.readOnly &&
+        ref.read(authenticatedScopeProvider) == scope &&
+        ref.read(currentPermissionsProvider).contains(permission) &&
+        _selectedPlanIds.length == ids.length &&
+        ids.every(_selectedPlanIds.contains);
+    if (!stillCurrent()) return;
+    final store = ref.read(formDraftsProvider.notifier);
+    final owner = store.ownerKey;
+    final message =
+        '将$verb选中的 ${ids.length} 张生产计划草稿；其它类别不会处理。'
+        '${approve ? '' : '删除后无法恢复。'}';
+    final confirmed = approve
+        ? await showUtenReviewerConfirmDialog(
+            context,
+            title: '批量审核生产计划',
+            message: message,
+            confirmLabel: '确认批量审核',
+            actionLabel: '批量审核',
+          )
+        : await UtenDialog.show(
+            context,
+            title: '批量删除生产计划',
+            content: Text(message),
+            confirmLabel: '确认批量删除',
+            danger: true,
+          );
+    if (confirmed != true || !stillCurrent()) return;
+    setState(() => _batching = true);
+    ProductionPlanBatchResult result;
+    try {
+      final repo = ref.read(productionPlanRepositoryProvider);
+      // 保留原计划列表的单请求、单事务语义，由服务端逐张核验状态与归属。
+      result = approve
+          ? await repo.batchApprove(ids)
+          : await repo.batchDelete(ids);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _batching = false);
+      if (ref.read(authenticatedScopeProvider) != scope) return;
+      final uncertain =
+          error is NetworkException ||
+          error is NetworkTimeoutException ||
+          (error is ApiException && (error.httpStatus ?? 0) >= 500);
+      if (uncertain) {
+        clearSelection();
+        await reload();
+        if (mounted) context.appWarning('批量$verb结果尚未确认，已刷新列表，请核对后再操作');
+      } else {
+        context.appApiError(error, fallback: '批量$verb未完成，本次没有任何计划被$verb');
+      }
+      return;
+    }
+    if (!mounted) return;
+    if (ref.read(authenticatedScopeProvider) != scope) {
+      setState(() => _batching = false);
+      return;
+    }
+    var checkpointFailed = false;
+    if (!approve) {
+      final deleted = result.done.map((row) => row.id).toSet();
+      for (final row in plans) {
+        if (row.local == null || !deleted.contains(row.id)) continue;
+        try {
+          if (store.ownerKey != owner) throw StateError('草稿身份已变化');
+          await store.delete(
+            row.local!.id,
+            expectedRevision: row.local!.revision,
+          );
+        } catch (_) {
+          checkpointFailed = true;
+        }
+      }
+    }
+    if (!mounted) return;
+    clearSelection();
+    await reload();
+    if (!mounted) return;
+    setState(() => _batching = false);
+    if (ref.read(authenticatedScopeProvider) != scope) return;
+    refreshBadges(ref);
+    final skipped = result.skipped
+        .take(3)
+        .map((row) => '${row.billNo ?? '计划'}：${row.reason}')
+        .join('；');
+    final summary =
+        '批量$verb完成：成功 ${result.done.length}，跳过 ${result.skipped.length}'
+        '${skipped.isEmpty ? '' : '（$skipped）'}';
+    if (checkpointFailed) {
+      context.appWarning('$summary；部分填写草稿已更新，请核对后清理');
+    } else {
+      context.appSuccess(summary);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final permissions = ref.watch(currentPermissionsProvider);
-    final canPlan = permissions.contains(_planViewPerm);
-    final canReport = permissions.contains(_reportViewPerm);
+    final canPlan = permissions.contains(Perm.productionPlanView);
+    final canReport = permissions.contains(Perm.productionDailyReportView);
     if (!canPlan && !canReport) {
       return const UtenFilterPlaceholder(
         key: Key('production-board-drafts-no-permission'),
@@ -326,48 +451,90 @@ class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
             'production_daily_report:view。',
       );
     }
-    final kind = canPlan ? _kind : 'report';
-    final drafts = ref.watch(draftCountsProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UtenFilterToolbar<String>(
-          segmentsKey: const Key('production-board-draft-kinds'),
-          segments: [
-            if (canPlan)
-              UtenFilterSegment(
-                value: 'plan',
-                label: '生产计划草稿',
-                count: drafts.of(DraftDocKind.productionPlan),
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-            if (canReport)
-              UtenFilterSegment(
-                value: 'report',
-                label: '生产日报草稿',
-                count: drafts.of(DraftDocKind.productionDailyReport),
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-          ],
-          selected: {kind},
-          onSelectionChanged: (value) => setState(() => _kind = value),
-        ),
-        Expanded(
-          child: switch (kind) {
-            // 内嵌列表页自带搜索/状态分段/分页；深链落在草稿段并合并本地草稿。
-            'plan' => const ProductionPlanListPage(
-              key: Key('production-board-draft-plan-list'),
-              initialStatus: 'draft',
-              embedded: true,
-            ),
-            _ => const ProductionDailyReportListPage(
-              key: Key('production-board-draft-report-list'),
-              initialStatus: 'draft',
-              embedded: true,
-            ),
-          },
-        ),
+    return DraftWorkspaceTable(
+      kinds: [
+        if (canPlan) DraftDocKind.productionPlan,
+        if (canReport) DraftDocKind.productionDailyReport,
       ],
+      // 日报填写草稿属于 workshop 模块，使用路由范围避免被模块筛选漏掉。
+      localScope: FormDraftCategoryScope(
+        routePrefixes: {
+          if (canPlan) '/production/plans',
+          if (canReport) '/production/daily-reports',
+        },
+      ),
+      search: widget.search,
+      showSearch: false,
+      refreshRevision: widget.refreshRevision,
+      selectionLocked: _batching,
+      tableKey: 'production-board-drafts',
+      toolbarActions: [
+        if (permissions.contains(Perm.productionPlanApprove) ||
+            ref.watch(isSuperAdminProvider))
+          UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.fact_check_outlined,
+            onPressed: () =>
+                context.push(RouteName.productionOverproductionRateRequests),
+            child: const Text('超产比例审批'),
+          ),
+        if (permissions.contains(Perm.productionMaterialAnalysisCreate))
+          UtenButton(
+            type: UtenButtonType.tonal,
+            icon: Icons.add_rounded,
+            onPressed: () => context.push('/production/plans/new'),
+            child: const Text('新建计划'),
+          ),
+        if (permissions.contains(Perm.productionDailyReportCreate))
+          UtenButton(
+            type: UtenButtonType.tonal,
+            icon: Icons.add_rounded,
+            onPressed: () => context.push('/production/daily-reports/new'),
+            child: const Text('新建日报'),
+          ),
+      ],
+      canSelectRow: (row) =>
+          row.kind == DraftDocKind.productionPlan &&
+          row.deletable &&
+          (permissions.contains(Perm.productionPlanApprove) ||
+              permissions.contains(Perm.productionPlanDelete)),
+      handlesDeleteRow: (row) => row.kind == DraftDocKind.productionPlan,
+      extraBatchActions: (context, selected, reload, clearSelection) {
+        final plans = selected
+            .where((row) => row.kind == DraftDocKind.productionPlan)
+            .toList();
+        _selectedPlanIds = plans.map((row) => row.id).toSet();
+        return [
+          if (permissions.contains(Perm.productionPlanApprove))
+            UtenButton(
+              type: UtenButtonType.tonal,
+              size: UtenButtonSize.large,
+              onPressed: _batching || plans.isEmpty
+                  ? null
+                  : () => _runPlanBatch(
+                      plans,
+                      approve: true,
+                      reload: reload,
+                      clearSelection: clearSelection,
+                    ),
+              child: Text('批量审核计划 (${plans.length})'),
+            ),
+          if (permissions.contains(Perm.productionPlanDelete))
+            UtenButton(
+              type: UtenButtonType.danger,
+              size: UtenButtonSize.large,
+              onPressed: _batching || plans.isEmpty
+                  ? null
+                  : () => _runPlanBatch(
+                      plans,
+                      approve: false,
+                      reload: reload,
+                      clearSelection: clearSelection,
+                    ),
+              child: Text('批量删除计划 (${plans.length})'),
+            ),
+        ];
+      },
     );
   }
 }

@@ -16,6 +16,7 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_page_factory.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -62,7 +63,35 @@ typedef _TableProbe = ({
   void Function(String, String?) filter,
 });
 
+_TableProbe _decoratedProbe<T>(WidgetTester tester) {
+  final table = tester.widget<MasterDataTableView<FormDraftCategoryRow<T>>>(
+    find.byWidgetPredicate(
+      (w) => w is MasterDataTableView<FormDraftCategoryRow<T>>,
+    ),
+  );
+  return (
+    selectable: table.selectable,
+    selected: table.selectedIds,
+    eligible: [
+      ...table.unpagedItems,
+      ...table.items,
+    ].map((row) => table.idOf?.call(row)).whereType<String>().toList(),
+    select: table.onSelectedIdsChanged,
+    filter: table.onFilterChanged,
+  );
+}
+
 _TableProbe _probe(WidgetTester tester, _ListCase spec) {
+  if (find
+      .byWidgetPredicate(
+        (w) => w is MasterDataTableView<FormDraftCategoryRow<Object>>,
+      )
+      .evaluate()
+      .isNotEmpty) {
+    return spec.purchase != null
+        ? _decoratedProbe<PurchaseDocListItem>(tester)
+        : _decoratedProbe<SubcontractDocListItem>(tester);
+  }
   if (spec.purchase != null) {
     final table = tester.widget<MasterDataTableView<PurchaseDocListItem>>(
       find.byWidgetPredicate(

@@ -1003,6 +1003,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                       ],
                       // 可发货置顶（订货单工作台小项）：有预留单排前 + 交货日升序。
                       if (_isOrder &&
+                          !_isDraftStage &&
                           !_isHistory &&
                           _stage != null &&
                           seg != null &&

@@ -8,7 +8,6 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/config/sales_doc_config.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
-import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/pages/sales_order_progress_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -185,8 +184,8 @@ void main() {
     );
     await tester.tap(find.byType(Checkbox).first);
     await tester.pumpAndSettle();
-    final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
-      find.byWidgetPredicate((w) => w is MasterDataTableView<SalesDocListItem>),
+    final table = tester.widget<MasterDataTableView<Object>>(
+      find.byWidgetPredicate((w) => w is MasterDataTableView<Object>),
     );
     expect(table.selectedIds, {'draft-a', 'draft-b'});
     await deleteSelected(tester);
@@ -219,9 +218,9 @@ void main() {
     await tester.pumpAndSettle();
     await deleteSelected(tester);
     expect(api.deleted, ['draft-a']);
-    final table = tester.widget<MasterDataTableView<SalesOrderProgressRow>>(
+    final table = tester.widget<MasterDataTableView<Object>>(
       find.byWidgetPredicate(
-        (w) => w is MasterDataTableView<SalesOrderProgressRow>,
+        (w) => w is MasterDataTableView<Object>,
       ),
     );
     expect(table.selectedIds, {'draft-b'});

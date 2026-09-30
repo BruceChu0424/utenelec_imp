@@ -17,6 +17,8 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/document_status_counts_provider.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 
@@ -55,13 +57,18 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
 
-  Widget app(Widget page, Set<String> permissions) {
+  Widget app(
+    Widget page,
+    Set<String> permissions, {
+    DraftCounts draftCounts = DraftCounts.empty,
+  }) {
     return ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(_FakeApi()),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
+        draftCountsProvider.overrideWithValue(draftCounts),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(_FakeApi()),
         ),
@@ -126,12 +133,56 @@ void main() {
     await tester.pump();
     await tester.pump();
     for (final label in ['草稿', '财务退回', '待财务核价', '已核价', '作废', '历史记录']) {
-      expect(find.text(label), findsOneWidget, reason: label);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is UtenSegmentBadgeLabel && w.label == label,
+        ),
+        findsOneWidget,
+        reason: label,
+      );
     }
     expect(find.text('已审'), findsNothing);
     expect(find.text('红冲'), findsNothing);
     // 状态默认不选：列表引导占位，不发请求。
     expect(find.text('在上方选择状态或历史记录后开始浏览'), findsOneWidget);
+  });
+
+  testWidgets('全部销售草稿统一到右上角红数入口，不再单列资料草稿胶囊', (tester) async {
+    await tester.pumpWidget(
+      app(
+        const SalesTaskCenterPage(),
+        const {
+          Perm.salesOrderView,
+          Perm.salesShipmentView,
+          Perm.salesReturnView,
+          Perm.salesQuoteView,
+          Perm.clientView,
+        },
+        draftCounts: const DraftCounts(
+          salesOrder: 1,
+          salesShipment: 2,
+          salesReturn: 3,
+          salesQuote: 4,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final draftsButton = find.byKey(const ValueKey('form-drafts-button-sales'));
+    expect(draftsButton, findsOneWidget);
+    expect(
+      find.ancestor(of: draftsButton, matching: find.byType(AppBar)),
+      findsOneWidget,
+    );
+    final badge = tester.widget<UtenNotificationBadge>(
+      find.descendant(
+        of: draftsButton,
+        matching: find.byType(UtenNotificationBadge),
+      ),
+    );
+    expect(badge.count, 10);
+    expect(find.text('资料草稿'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('报价大类红数 = 草稿 + 财务退回 + 已核价待转订货；黄数 = 待财务核价', (tester) async {

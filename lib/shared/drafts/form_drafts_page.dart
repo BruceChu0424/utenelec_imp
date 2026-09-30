@@ -22,6 +22,9 @@ import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
 import '../../core/router/nav_helpers.dart';
 import '../../core/router/route_names.dart';
+import '../../core/theme/uten_tokens.dart';
+import '../providers/draft_counts_provider.dart';
+import 'draft_workspace_table.dart';
 import 'form_draft_category.dart';
 
 /// 一个宿主页在独立草稿页上的登记项。
@@ -30,6 +33,7 @@ class FormDraftsPageCategory {
     required this.id,
     required this.hubTitle,
     required this.scope,
+    this.kinds = const [],
   });
 
   /// 路由段（`/form-drafts/:categoryId` 的动态段取值）。
@@ -40,6 +44,9 @@ class FormDraftsPageCategory {
 
   /// 该宿主页的草稿筛选范围。
   final FormDraftCategoryScope scope;
+
+  /// 与本机填写草稿共同展示的业务草稿类型。
+  final List<DraftDocKind> kinds;
 }
 
 /// 独立草稿页的落点注册表；新宿主页接入时加一条，同时挂顶栏按钮即可。
@@ -64,7 +71,54 @@ const formDraftsPageCategories = <String, FormDraftsPageCategory>{
     hubTitle: '品质任务中心',
     scope: FormDraftCategoryScope(module: BadgeModule.quality),
   ),
+  'finance': FormDraftsPageCategory(
+    id: 'finance',
+    hubTitle: '钱流管理',
+    scope: FormDraftCategoryScope(
+      module: BadgeModule.finance,
+      excludeRoutes: {'/finance/assets/new', '/finance/assets'},
+    ),
+    kinds: [
+      DraftDocKind.financeReceipt,
+      DraftDocKind.financePayment,
+      DraftDocKind.financeExpense,
+      DraftDocKind.financeOtherIncome,
+      DraftDocKind.financeBankTransfer,
+    ],
+  ),
+  'sales': FormDraftsPageCategory(
+    id: 'sales',
+    hubTitle: '销售任务中心',
+    scope: FormDraftCategoryScope(module: BadgeModule.sales),
+    kinds: [
+      DraftDocKind.salesOrder,
+      DraftDocKind.salesShipment,
+      DraftDocKind.salesReturn,
+      DraftDocKind.salesQuote,
+    ],
+  ),
+  'warehouse-master': FormDraftsPageCategory(
+    id: 'warehouse-master',
+    hubTitle: '仓库资料',
+    scope: FormDraftCategoryScope(
+      module: BadgeModule.warehouse,
+      routePrefix: '/basicinfo/warehouse',
+    ),
+  ),
 };
+
+/// 业务计数已包含尚未提交的本机草稿，只补入不属于这些业务类型的资料草稿。
+final formDraftsPageCountProvider = Provider.family<int, String>((ref, id) {
+  final category = formDraftsPageCategories[id];
+  if (category == null) return 0;
+  final local = ref.watch(formDraftCategoryProvider(category.scope));
+  if (category.kinds.isEmpty) return local.length;
+  final kinds = category.kinds.map((kind) => kind.name).toSet();
+  return ref.watch(draftCountsProvider).sumOf(category.kinds) +
+      local
+          .where((draft) => !kinds.contains(formDraftBusinessKind(draft)))
+          .length;
+});
 
 /// 顶栏「草稿」按钮：计数徽章与宿主分段栏同口径（含已生成单据仍待补附件的
 /// 收尾草稿）；n=0 只显文案不显徽章。放 `UtenAppBar(actions: [...])` 里。
@@ -84,9 +138,7 @@ class FormDraftsAppBarButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final category = formDraftsPageCategories[categoryId];
     if (category == null) return const SizedBox.shrink();
-    final count = ref.watch(
-      formDraftCategoryVisibleCountProvider(category.scope),
-    );
+    final count = ref.watch(formDraftsPageCountProvider(categoryId));
     return UtenAppBarActionButton(
       key: ValueKey('form-drafts-button-$categoryId'),
       icon: Icons.drafts_outlined,
@@ -109,14 +161,24 @@ class FormDraftsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final category = formDraftsPageCategories[categoryId];
     return Scaffold(
-      appBar: const UtenAppBar(title: '草稿', showBackButton: true),
+      appBar: UtenAppBar(
+        title: category == null ? '草稿' : '${category.hubTitle} · 草稿',
+        showBackButton: true,
+      ),
       body: category == null
           ? const SafeArea(
               child: UtenEmpty(icon: Icons.drafts_outlined, message: '未知的草稿类别'),
             )
           : SafeArea(
               child: UtenContentContainer(
-                child: FormDraftCategoryList(scope: category.scope),
+                padding: const EdgeInsets.only(top: UtenSpacing.s12),
+                child: category.kinds.isEmpty
+                    ? FormDraftCategoryList(scope: category.scope)
+                    : DraftWorkspaceTable(
+                        kinds: category.kinds,
+                        localScope: category.scope,
+                        tableKey: 'form-drafts.$categoryId',
+                      ),
               ),
             ),
     );

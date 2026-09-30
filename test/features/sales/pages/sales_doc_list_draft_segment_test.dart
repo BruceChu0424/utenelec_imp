@@ -15,7 +15,6 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -118,6 +117,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('已审'), findsNothing);
     expect(find.text('历史记录'), findsNothing);
+    expect(find.text('可发货置顶'), findsNothing);
   });
 
   testWidgets('?status=draft 深链直接落在草稿段并加载', (tester) async {
@@ -128,12 +128,8 @@ void main() {
     expect(api.listQueries.last.containsKey('chainGroup'), isFalse);
 
     // 列表已渲染（不是「选择分类」引导占位）。
-    final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
-      find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<SalesDocListItem>,
-      ),
-    );
-    expect(table.items.single.billNo, 'XD202609110001');
+    expect(find.text('XD202609110001'), findsOneWidget);
+    expect(find.textContaining('选择分类'), findsNothing);
   });
 
   testWidgets('无 ?status 时仍是引导占位，不误发请求', (tester) async {

@@ -20,6 +20,7 @@ import 'package:uten_imp/features/warehouse/pages/stock_doc_list_page.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_stock_doc_segment.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -91,9 +92,30 @@ void main() {
     return router;
   }
 
-  MasterDataTableView<T> table<T>(WidgetTester tester) => tester.widget(
-    find.byWidgetPredicate((widget) => widget is MasterDataTableView<T>),
+  // Draft pagination keeps a stable union table even before local drafts load.
+  // Exercise its live selection/delete callbacks in either list state.
+  MasterDataTableView<dynamic> table<T>(WidgetTester tester) => tester.widget(
+    find.byWidgetPredicate(
+      (widget) =>
+          widget is MasterDataTableView<T> ||
+          widget is MasterDataTableView<FormDraftCategoryRow<T>>,
+    ),
   );
+
+  String? rowIdentity<T>(
+    WidgetTester tester, {
+    bool last = false,
+    bool stableKey = false,
+  }) {
+    final grid = table<T>(tester);
+    if (grid is MasterDataTableView<FormDraftCategoryRow<T>>) {
+      final row = last ? grid.items.last : grid.items.first;
+      return (stableKey ? grid.rowKeyOf : grid.idOf)?.call(row);
+    }
+    final records = grid as MasterDataTableView<T>;
+    final row = last ? records.items.last : records.items.first;
+    return (stableKey ? records.rowKeyOf : records.idOf)?.call(row);
+  }
 
   Future<void> deleteSelection(
     WidgetTester tester,
@@ -123,8 +145,11 @@ void main() {
       );
       var grid = table<FinanceDocListItem>(tester);
       expect(grid.selectable, isTrue);
-      expect(grid.idOf!(grid.items.last), isNull);
-      expect(grid.rowKeyOf!(grid.items.last), 'legacy');
+      expect(rowIdentity<FinanceDocListItem>(tester, last: true), isNull);
+      expect(
+        rowIdentity<FinanceDocListItem>(tester, last: true, stableKey: true),
+        'legacy',
+      );
       expect(api.detailReads, isEmpty);
       grid.onSelectedIdsChanged!({'a', 'b'});
       await tester.pumpAndSettle();
@@ -132,7 +157,14 @@ void main() {
       expect(api.events, ['GET a', 'DELETE a', 'GET b', 'DELETE b']);
       grid = table<FinanceDocListItem>(tester);
       expect(grid.selectedIds, isEmpty);
-      expect(grid.items.map((item) => item.id), ['legacy']);
+      expect(
+        grid.items.map(
+          (item) => item is FormDraftCategoryRow<FinanceDocListItem>
+              ? item.record!.id
+              : (item as FinanceDocListItem).id,
+        ),
+        ['legacy'],
+      );
       expect(api.listReads, greaterThanOrEqualTo(2));
     });
   }
@@ -206,7 +238,7 @@ void main() {
     expect(api.detailReads, isEmpty);
     final grid = table<StockDocListItem>(tester);
     expect(grid.selectable, isTrue);
-    expect(grid.rowKeyOf!(grid.items.first), 'manual');
+    expect(rowIdentity<StockDocListItem>(tester, stableKey: true), 'manual');
     grid.onSelectedIdsChanged!({
       'manual',
       'production',
@@ -547,9 +579,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('模拟出库详情'), findsOneWidget);
-    final parentTable = tester.widget<MasterDataTableView<StockDocListItem>>(
+    final parentTable = tester.widget<MasterDataTableView<dynamic>>(
       find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<StockDocListItem>,
+        (widget) =>
+            widget is MasterDataTableView<StockDocListItem> ||
+            widget
+                is MasterDataTableView<FormDraftCategoryRow<StockDocListItem>>,
         skipOffstage: false,
       ),
     );

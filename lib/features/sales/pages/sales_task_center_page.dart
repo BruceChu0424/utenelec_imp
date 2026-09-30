@@ -40,6 +40,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/sales_doc.dart';
@@ -136,14 +137,6 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
     final orderDraftCount = ref.watch(
       draftCountsProvider.select((d) => d.salesOrder),
     );
-    const masterScope = FormDraftCategoryScope(
-      module: BadgeModule.sales,
-      routePrefix: '/basicinfo/',
-    );
-    final masterDraftCount = ref.watch(
-      formDraftCategoryVisibleCountProvider(masterScope),
-    );
-
     final groups = <_GroupSpec>[
       if (canOpen(RouteName.salesOrderProgress))
         _GroupSpec(
@@ -186,12 +179,6 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
                     ])! +
                     quoteToConvert,
           inProgressCount: quoteCounts?[SalesQuoteStage.pendingFinance],
-        ),
-      if (masterDraftCount > 0 || canOpen('/basicinfo/client'))
-        _GroupSpec(
-          value: 'masterDrafts',
-          label: '资料草稿',
-          count: masterDraftCount,
         ),
       if (canOpen(SalesRoutePath.list('other-shipments')))
         const _GroupSpec(value: 'otherShipments', label: '历史其它出货'),
@@ -236,6 +223,7 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.sales),
         ),
+        actions: const [FormDraftsAppBarButton(categoryId: 'sales')],
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -264,7 +252,7 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
   /// 由嵌入页挂进自己的折叠头一起随页滚走。
   Widget _buildGroupBody(String group, {Widget? externalHeader}) =>
       switch (group) {
-        // 资料草稿组：大类行透传给草稿列表自己的折叠头一起随上滑收走。
+        // 兼容旧 ?group=masterDrafts 深链；常规入口已统一到右上角草稿按钮。
         'masterDrafts' => FormDraftCategoryList(
           scope: const FormDraftCategoryScope(
             module: BadgeModule.sales,

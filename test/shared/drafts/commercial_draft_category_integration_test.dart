@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -23,8 +24,10 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_page_factory.dar
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
+import 'package:uten_imp/shared/drafts/draft_workspace_table.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/document_status_counts_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
@@ -94,6 +97,15 @@ void main() {
           updatedAt: DateTime.now(),
           data: const {'billDate': '2026-09-26'},
         );
+        final master = FormDraft(
+          id: 'supplier-draft',
+          title: '待补供应商资料',
+          module: local.module,
+          route: '/basicinfo/supplier/new',
+          permission: '',
+          updatedAt: DateTime.now(),
+          data: const {},
+        );
         final router = GoRouter(
           routes: [
             GoRoute(
@@ -102,8 +114,12 @@ void main() {
                   ? const SubcontractDecompositionPage()
                   : OperationsWorkbenchPage(
                       department: OperationsWorkbenchDepartment.purchase,
-                      draftCategoryBuilder: (_) =>
-                          const PurchaseDraftTaskCategory(),
+                      draftCategoryBuilder:
+                          (_, {required search, required externalHeader}) =>
+                              PurchaseDraftTaskCategory(
+                                search: search,
+                                externalHeader: externalHeader,
+                              ),
                     ),
             ),
           ],
@@ -113,6 +129,9 @@ void main() {
           ProviderScope(
             overrides: [
               apiClientProvider.overrideWithValue(_Api(queueOffline: true)),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'draft-reviewer'),
+              ),
               sharedPreferencesProvider.overrideWithValue(prefs),
               currentPermissionsProvider.overrideWithValue({
                 subcontract
@@ -120,7 +139,7 @@ void main() {
                     : Perm.purchaseOrderView,
               }),
               isSuperAdminProvider.overrideWithValue(false),
-              formDraftsProvider.overrideWith(() => _Drafts([local])),
+              formDraftsProvider.overrideWith(() => _Drafts([local, master])),
               documentStatusCountsProvider.overrideWith(
                 (ref, scope) async => {'DRAFT': 2},
               ),
@@ -136,18 +155,77 @@ void main() {
         expect(find.text('未提交草稿'), findsNothing);
         await tester.tap(find.text('草稿'));
         await tester.pumpAndSettle();
-        final table = tester
-            .widget<MasterDataTableView<FormDraftCategoryRow<Object>>>(
+        final table = tester.widget<MasterDataTableView<DraftWorkspaceRow>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<DraftWorkspaceRow>,
+          ),
+        );
+        expect(table.items, hasLength(4));
+        expect(
+          table.items
+              .where((row) => row.local != null)
+              .map((row) => row.local!.id),
+          unorderedEquals(['local-center', 'supplier-draft']),
+        );
+        expect(table.columns.first.key, 'category');
+        expect(table.facets['category'], hasLength(2));
+        expect(find.byType(TextField), findsOneWidget);
+        final searchToolbar = tester.widget<UtenFilterToolbar<dynamic>>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenFilterToolbar<dynamic> &&
+                widget.onSearchChanged != null,
+          ),
+        );
+        expect(find.text('资料草稿'), findsNothing);
+        expect(find.text('草稿'), findsOneWidget);
+        expect(
+          find.byKey(
+            Key(
+              '${subcontract ? 'subcontract' : 'purchase'}-draft-document-types',
+            ),
+          ),
+          findsNothing,
+        );
+
+        table.onSelectedIdsChanged!({'local:local-center'});
+        await tester.pumpAndSettle();
+        final selectedTable = tester
+            .widget<MasterDataTableView<DraftWorkspaceRow>>(
               find.byWidgetPredicate(
-                (widget) =>
-                    widget is MasterDataTableView<FormDraftCategoryRow<Object>>,
+                (w) => w is MasterDataTableView<DraftWorkspaceRow>,
               ),
             );
-        expect(table.items, hasLength(3));
-        expect(
-          table.items.where((row) => row.isLocal).single.draft!.id,
-          'local-center',
+        expect(selectedTable.selectedIds, isNotEmpty);
+        selectedTable.onFilterChanged(
+          'category',
+          selectedTable.items
+              .firstWhere((row) => row.id == 'local-center')
+              .category,
         );
+        await tester.pumpAndSettle();
+        final filteredTable = tester
+            .widget<MasterDataTableView<DraftWorkspaceRow>>(
+              find.byWidgetPredicate(
+                (w) => w is MasterDataTableView<DraftWorkspaceRow>,
+              ),
+            );
+        expect(filteredTable.items, hasLength(3));
+        expect(filteredTable.selectedIds, isEmpty);
+        filteredTable.onFilterChanged('category', null);
+        await tester.pumpAndSettle();
+
+        // The host search must rebuild the draft table even when its task
+        // repository is offline; a second embedded search used to mask this.
+        searchToolbar.onSearchChanged!('FORMAL-1');
+        await tester.pumpAndSettle(const Duration(milliseconds: 400));
+        final searchedTable = tester
+            .widget<MasterDataTableView<DraftWorkspaceRow>>(
+              find.byWidgetPredicate(
+                (w) => w is MasterDataTableView<DraftWorkspaceRow>,
+              ),
+            );
+        expect(searchedTable.items.single.billNo, 'FORMAL-1');
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },
@@ -286,12 +364,13 @@ void main() {
                     widget is MasterDataTableView<FormDraftCategoryRow<Object>>,
               ),
             );
-        expect(table.items, hasLength(3));
+        final visibleRows = [...table.unpagedItems, ...table.items];
+        expect(visibleRows, hasLength(3));
         expect(
-          table.items.where((row) => row.isLocal).single.draft!.id,
+          visibleRows.where((row) => row.isLocal).single.draft!.id,
           'local-1',
         );
-        expect(table.items.where((row) => !row.isLocal), hasLength(2));
+        expect(visibleRows.where((row) => !row.isLocal), hasLength(2));
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       },

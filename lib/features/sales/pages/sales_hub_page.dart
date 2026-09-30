@@ -31,6 +31,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -108,7 +109,10 @@ class SalesHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: const [UtenModuleBadges(module: BadgeModule.sales)],
+        actions: const [
+          FormDraftsAppBarButton(categoryId: 'sales'),
+          UtenModuleBadges(module: BadgeModule.sales),
+        ],
       ),
       body: SafeArea(
         child: UtenContentContainer(

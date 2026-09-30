@@ -77,19 +77,35 @@ void main() {
       required bool isLastChild,
       double height = 56,
       double connectorY = 28,
+      bool hasExpandedChildren = false,
+      int maxVisualDepth = UtenTreeTableCell.defaultMaxVisualDepth,
     }) => utenTreeGuideSegments(
       depth: depth,
       ancestorContinuations: continuations,
       isLastChild: isLastChild,
       height: height,
-      width: depth * 16.0 + 24,
+      width: depth.clamp(0, maxVisualDepth) * 16.0 + 24,
       connectorY: connectorY,
+      hasExpandedChildren: hasExpandedChildren,
+      maxVisualDepth: maxVisualDepth,
     );
 
-    test('depth 0 不画任何线', () {
+    test('未展开的 depth 0 不画任何线', () {
       expect(
         segments(depth: 0, continuations: const [], isLastChild: true),
         isEmpty,
+      );
+    });
+
+    test('展开的根节点从箭头圆心向下接到行底', () {
+      expect(
+        segments(
+          depth: 0,
+          continuations: const [],
+          isLastChild: true,
+          hasExpandedChildren: true,
+        ),
+        [(x1: 24.0, y1: 28.0, x2: 24.0, y2: 56.0)],
       );
     });
 
@@ -100,7 +116,7 @@ void main() {
         isLastChild: true,
       );
       final branch = lines.firstWhere((line) => line.x1 == line.x2);
-      expect(branch.x1, 8);
+      expect(branch.x1, 24, reason: '与 depth 0 父节点的箭头圆心对齐');
       expect(branch.y1, 0);
       expect(branch.y2, 28, reason: '收在肘线（展开位圆心），不是 size.height');
     });
@@ -128,9 +144,9 @@ void main() {
           .map((line) => line.x1)
           .toList();
       expect(verticals, [
-        24,
         40,
-      ], reason: '槽 1(x=24) 祖先线 + 本行分支线 x=(3-1)*16+8=40');
+        56,
+      ], reason: '祖先线在 depth 1 的箭头中心 x=40，本行分支在 depth 2 的箭头中心 x=56');
     });
 
     test('肘线横段一路伸到展开位圆心', () {
@@ -140,7 +156,7 @@ void main() {
         isLastChild: true,
       );
       final elbow = lines.firstWhere((line) => line.y1 == line.y2);
-      expect(elbow.x1, 24);
+      expect(elbow.x1, 40, reason: '从父节点圆心起笔');
       expect(elbow.x2, 2 * 16.0 + 24);
       expect(elbow.y1, 28);
     });
@@ -155,7 +171,145 @@ void main() {
           .where((line) => line.x1 == line.x2)
           .map((line) => line.x1)
           .toList();
-      expect(verticals, [8, 24, 40]);
+      expect(verticals, [24, 40, 56]);
+    });
+
+    test('末位父件展开时入线收口，下级连线从自身圆心继续', () {
+      final expandedLines = segments(
+        depth: 1,
+        continuations: const [false],
+        isLastChild: true,
+        hasExpandedChildren: true,
+      );
+      expect(
+        expandedLines,
+        containsAll([
+          (x1: 24.0, y1: 0.0, x2: 24.0, y2: 28.0),
+          (x1: 40.0, y1: 28.0, x2: 40.0, y2: 56.0),
+        ]),
+      );
+      final collapsedLines = segments(
+        depth: 1,
+        continuations: const [false],
+        isLastChild: true,
+      );
+      expect(
+        collapsedLines.any((line) => line.x1 == 40 && line.y2 > 28),
+        isFalse,
+        reason: '折叠后不得留下悬空的下级连线',
+      );
+    });
+
+    test('父子行高不同时连接线跨过 8px 内边距仍在边界重合', () {
+      const bleed = 8.0;
+      const parentContentHeight = 48.0;
+      const childContentHeight = 80.0;
+      const parentRowTop = 100.0;
+      const parentRowHeight = parentContentHeight + 2 * bleed;
+      const childRowTop = parentRowTop + parentRowHeight;
+      const childRowHeight = childContentHeight + 2 * bleed;
+      final parentLines = segments(
+        depth: 0,
+        continuations: const [],
+        isLastChild: true,
+        height: parentRowHeight,
+        connectorY: bleed + parentContentHeight / 2,
+        hasExpandedChildren: true,
+      );
+      final childLines = segments(
+        depth: 1,
+        continuations: const [false],
+        isLastChild: true,
+        height: childRowHeight,
+        connectorY: bleed + childContentHeight / 2,
+      );
+      final parentStem = parentLines.single;
+      final childBranch = childLines.singleWhere((line) => line.x1 == line.x2);
+      expect(parentStem.x2, childBranch.x1);
+      expect(parentRowTop + parentStem.y2, childRowTop + childBranch.y1);
+      expect(parentStem.y1, parentRowHeight / 2);
+      expect(childBranch.y2, childRowHeight / 2);
+    });
+
+    test('末位孙件收口时仍保留通往父件后续兄弟的祖先竖线', () {
+      // 根 → A → A1 → B。A1 是 A 的末子，但根下还有 B。
+      final depths = [0, 1, 2, 1];
+      final tree = utenTreeProjection<int>(depths, depthOf: (row) => row);
+      final grandchildLines = segments(
+        depth: depths[2],
+        continuations: tree[2].ancestorContinuations,
+        isLastChild: tree[2].isLastChild,
+      );
+      expect(
+        grandchildLines,
+        containsAll([
+          (x1: 24.0, y1: 0.0, x2: 24.0, y2: 56.0),
+          (x1: 40.0, y1: 0.0, x2: 40.0, y2: 28.0),
+        ]),
+      );
+      final nextSiblingLines = segments(
+        depth: depths[3],
+        continuations: tree[3].ancestorContinuations,
+        isLastChild: tree[3].isLastChild,
+      );
+      expect(
+        nextSiblingLines,
+        contains((x1: 24.0, y1: 0.0, x2: 24.0, y2: 28.0)),
+      );
+    });
+
+    test('缩进封顶后的子件仍接到真实父层箭头圆心', () {
+      for (final depth in [3, 4]) {
+        final lines = segments(
+          depth: depth,
+          continuations: List.filled(depth, false),
+          isLastChild: true,
+          maxVisualDepth: 2,
+        );
+        expect(
+          lines,
+          contains((x1: 56.0, y1: 0.0, x2: 56.0, y2: 28.0)),
+          reason: '真实 depth=$depth 的父级也已封顶到 x=56',
+        );
+        expect(lines.every((line) => line.x1 == 56 && line.x2 == 56), isTrue);
+      }
+    });
+
+    test('封顶重合的祖先仍有兄弟时末子不得截断其竖线', () {
+      final lines = segments(
+        depth: 4,
+        continuations: const [false, false, false, true],
+        isLastChild: true,
+        maxVisualDepth: 2,
+      );
+      final verticals = lines.where(
+        (line) => line.x1 == line.x2 && line.y1 != line.y2,
+      );
+      expect(verticals, [
+        (x1: 56.0, y1: 0.0, x2: 56.0, y2: 56.0),
+      ], reason: '同 x 的祖先续线与末子入线合并，祖先仍需延伸到行底');
+    });
+
+    test('封顶后展开父件不重复描画已通到底部的祖先或兄弟竖线', () {
+      for (final scenario in [
+        (depth: 3, continuations: [false, false, false], isLastChild: false),
+        (
+          depth: 4,
+          continuations: [false, false, false, true],
+          isLastChild: true,
+        ),
+      ]) {
+        final lines = segments(
+          depth: scenario.depth,
+          continuations: scenario.continuations,
+          isLastChild: scenario.isLastChild,
+          maxVisualDepth: 2,
+          hasExpandedChildren: true,
+        );
+        expect(lines, [
+          (x1: 56.0, y1: 0.0, x2: 56.0, y2: 56.0),
+        ], reason: 'depth=${scenario.depth} 的入线已经到底，展开连线不得重画半透明轨道');
+      }
     });
   });
 

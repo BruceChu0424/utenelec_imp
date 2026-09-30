@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 
+const double _treeIndent = 16;
+const double _treeToggleExtent = 48;
+const double _treeToggleCenter = _treeToggleExtent / 2;
+
 /// Reusable tree identity cell for data tables.
 ///
 /// Hierarchy is deliberately redundant: indentation + continuous guide rails +
@@ -35,12 +39,6 @@ class UtenTreeTableCell extends StatelessWidget {
   /// （物料分析级联页 10 层）对齐。原来组件默认 8、级联页显式传 10，同一颗
   /// 第 9/10 层的料在两个页面缩进深浅不同。确有更浅需求的宿主再显式覆盖。
   static const int defaultMaxVisualDepth = 10;
-
-  /// 连接线横段（肘线）与展开位圆心的纵向位置：内容行顶端往下半个展开位。
-  /// 展开按钮固定 48×48 且在 Stack 里**顶端对齐**，所以它恒在这里，
-  /// 与单元格实际有多高无关（有副标题的行格子会更高，取 size.height/2 就会
-  /// 让肘线掉到圆心下方）。
-  static const double _connectorCenterY = 24;
 
   /// 连接线向单元格上下各溢出多少像素。
   ///
@@ -140,28 +138,32 @@ class UtenTreeTableCell extends StatelessWidget {
       ),
     );
 
-    final guideWidth = visualDepth * 16.0;
+    final guideWidth = visualDepth * _treeIndent;
+    final hasExpandedChildren = hasChildren && expanded;
     // 连接线独立成一层浮在内容背后，高度跟着**整个单元格**（外加宿主的纵向
     // 内边距 [guideBleed]）——原来它被钉死在 48 高的 SizedBox 里，行一旦更高
     // （标题换行 / 有副标题 / 邻列两行文本）竖线就缩在中间，上下各露一截空白。
     // IgnorePointer：这层压住展开按钮左半边，不让它吃掉点击。
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 48),
+      constraints: const BoxConstraints(minHeight: _treeToggleExtent),
       child: Stack(
         clipBehavior: Clip.none,
+        // 内容与连接线共用整格中线；邻列撑高或文字放大时仍对齐箭头圆心。
+        alignment: Alignment.centerLeft,
         children: [
-          if (visualDepth > 0)
+          if (depth > 0 || hasExpandedChildren)
             Positioned(
               left: 0,
               top: -guideBleed,
               bottom: -guideBleed,
               // 多画半个展开位：肘线的横段一直伸到展开按钮/叶子位的圆心，
               // 行才真的「挂」在树上（原来横段停在缩进区边缘，离标题还有 52px）。
-              width: guideWidth + 24,
+              width: guideWidth + _treeToggleCenter,
               child: IgnorePointer(
                 child: CustomPaint(
                   painter: _TreeGuidePainter(
-                    depth: visualDepth,
+                    depth: depth,
+                    maxVisualDepth: maxVisualDepth,
                     // 2026-09-14 用户口径「浅色时候看不清，颜色深点；深色模式下
                     // 浅点」：原来两种明暗都取 outlineVariant——白底上它几乎与
                     // 表格网格线同色。改成按明暗两档对称调：浅色用
@@ -176,7 +178,7 @@ class UtenTreeTableCell extends StatelessWidget {
                         ),
                     ancestorContinuations: ancestorContinuations,
                     isLastChild: isLastChild,
-                    connectorY: guideBleed + _connectorCenterY,
+                    hasExpandedChildren: hasExpandedChildren,
                   ),
                 ),
               ),
@@ -185,8 +187,8 @@ class UtenTreeTableCell extends StatelessWidget {
             children: [
               SizedBox(width: guideWidth),
               SizedBox(
-                width: 48,
-                height: 48,
+                width: _treeToggleExtent,
+                height: _treeToggleExtent,
                 child: hasChildren
                     ? Semantics(
                         button: true,
@@ -198,8 +200,8 @@ class UtenTreeTableCell extends StatelessWidget {
                         child: IconButton(
                           key: toggleKey,
                           constraints: const BoxConstraints.tightFor(
-                            width: 48,
-                            height: 48,
+                            width: _treeToggleExtent,
+                            height: _treeToggleExtent,
                           ),
                           padding: EdgeInsets.zero,
                           tooltip: expanded
@@ -467,43 +469,60 @@ List<({double x1, double y1, double x2, double y2})> utenTreeGuideSegments({
   required double height,
   required double width,
   required double connectorY,
+  bool hasExpandedChildren = false,
+  int maxVisualDepth = UtenTreeTableCell.defaultMaxVisualDepth,
 }) {
-  if (depth <= 0) return const [];
   final result = <({double x1, double y1, double x2, double y2})>[];
-  // 缩进槽 k（x = k*16+8）承载的是**深度 k+1** 那一层的竖线：本行深度 d
-  // 的自身竖线就落在槽 d-1。所以祖先槽 level 要看「深度 level+1 的祖先
-  // 后面还有没有兄弟」——与 utenTreeProjection 的绝对深度口径逐字对应。
-  for (var level = 0; level < depth - 1; level++) {
-    final index = level + 1;
-    final continues =
-        index >= ancestorContinuations.length || ancestorContinuations[index];
-    if (!continues) continue;
-    final x = level * 16.0 + 8;
-    result.add((x1: x, y1: 0, x2: x, y2: height));
+  double centerX(int level) =>
+      level.clamp(0, maxVisualDepth) * _treeIndent + _treeToggleCenter;
+
+  if (depth > 0) {
+    // 每条竖线与对应父行的箭头圆心同轴。槽 level 承载深度 level+1
+    // 节点的兄弟连接，仍按投影的绝对祖先深度读取续线标记。
+    // 超过视觉深度上限后多层共用一条轨道，任一祖先仍有兄弟就续到行底。
+    final verticalEnds = <double, double>{};
+    for (var level = 0; level < depth - 1; level++) {
+      final index = level + 1;
+      final continues =
+          index >= ancestorContinuations.length || ancestorContinuations[index];
+      if (continues) verticalEnds[centerX(level)] = height;
+    }
+    final branchX = centerX(depth - 1);
+    verticalEnds.putIfAbsent(branchX, () => isLastChild ? connectorY : height);
+    for (final line in verticalEnds.entries) {
+      result.add((x1: line.key, y1: 0, x2: line.key, y2: line.value));
+    }
+    if (branchX < width) {
+      result.add((x1: branchX, y1: connectorY, x2: width, y2: connectorY));
+    }
   }
-  final branchX = (depth - 1) * 16.0 + 8;
-  result.add((
-    x1: branchX,
-    y1: 0,
-    // 末位子件的竖线收在肘线处（肘形收尾）；还有兄弟就一路画到底，与下一行
-    // 顶端接上——guideBleed 保证这一笔跨过表格单元格的纵向内边距。
-    x2: branchX,
-    y2: isLastChild ? connectorY : height,
-  ));
-  result.add((x1: branchX, y1: connectorY, x2: width, y2: connectorY));
+  // 父行先从箭头圆心向下引出，再由下一行顶端接续；根行也必须画这一段。
+  // 折叠时子行不显示，对应的向下连接也一起收起。
+  final childStemAlreadyDrawn = result.any(
+    (line) =>
+        line.x1 == width &&
+        line.x2 == width &&
+        line.y1 <= connectorY &&
+        line.y2 == height,
+  );
+  if (hasExpandedChildren && !childStemAlreadyDrawn) {
+    result.add((x1: width, y1: connectorY, x2: width, y2: height));
+  }
   return result;
 }
 
 class _TreeGuidePainter extends CustomPainter {
   const _TreeGuidePainter({
     required this.depth,
+    required this.maxVisualDepth,
     required this.color,
     required this.ancestorContinuations,
     required this.isLastChild,
-    required this.connectorY,
+    required this.hasExpandedChildren,
   });
 
   final int depth;
+  final int maxVisualDepth;
   final Color color;
 
   /// `[i]` = 深度 i 的祖先后面还有没有兄弟。长度 = 本行深度
@@ -511,10 +530,7 @@ class _TreeGuidePainter extends CustomPainter {
   final List<bool> ancestorContinuations;
   final bool isLastChild;
 
-  /// 肘线横段（也是末位子件竖线的收尾点）在画布上的 y。
-  /// 由宿主内边距 + 展开位半高算得，**不是** size.height/2——单元格被
-  /// 副标题或邻列撑高时，展开按钮仍固定在顶端 48px 内，取中线会让肘线脱节。
-  final double connectorY;
+  final bool hasExpandedChildren;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -528,7 +544,10 @@ class _TreeGuidePainter extends CustomPainter {
       isLastChild: isLastChild,
       height: size.height,
       width: size.width,
-      connectorY: connectorY,
+      // Stack 和 Row 都垂直居中，画布上下 bleed 对称，故中线即箭头圆心。
+      connectorY: size.height / 2,
+      hasExpandedChildren: hasExpandedChildren,
+      maxVisualDepth: maxVisualDepth,
     )) {
       canvas.drawLine(
         Offset(line.x1, line.y1),
@@ -541,8 +560,9 @@ class _TreeGuidePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TreeGuidePainter oldDelegate) =>
       oldDelegate.depth != depth ||
+      oldDelegate.maxVisualDepth != maxVisualDepth ||
       oldDelegate.color != color ||
       oldDelegate.isLastChild != isLastChild ||
-      oldDelegate.connectorY != connectorY ||
+      oldDelegate.hasExpandedChildren != hasExpandedChildren ||
       !listEquals(oldDelegate.ancestorContinuations, ancestorContinuations);
 }

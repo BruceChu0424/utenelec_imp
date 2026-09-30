@@ -10,6 +10,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -255,9 +256,31 @@ void main() {
       final action = find.byKey(
         const Key('subcontract-decomposition-create-order'),
       );
+      // Table interaction can collapse the host toolbar. Keep the public
+      // segment callback so this test verifies each stage independently of
+      // whether its label is currently mounted above the scrolling table.
+      final stageToolbar = tester.widget<UtenFilterToolbar<Object>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFilterToolbar<dynamic> &&
+              widget.segmentsKey ==
+                  const Key('subcontract-decomposition-stages'),
+        ),
+      );
+      // The stage value is private to the page; preserve its exact callback
+      // type instead of widening the callback's input to Object.
+      // ignore: avoid_dynamic_calls
+      final select = (stageToolbar as dynamic).onSelectionChanged as Function;
+      void selectStage(String label) {
+        final segment = stageToolbar.segments.singleWhere(
+          (item) => item.label == label,
+        );
+        Function.apply(select, [segment.value]);
+      }
+
       // ADR-098：等待财务审核 / 财务已通过 / 财务驳回三段合并为「进行中」。
       for (final category in ['待处理', '进行中', '历史记录']) {
-        await tester.tap(find.text(category));
+        selectStage(category);
         await tester.pumpAndSettle();
         if (category == '历史记录') {
           expect(action, findsNothing);
@@ -279,7 +302,7 @@ void main() {
           findsOneWidget,
         );
       }
-      await tester.tap(find.text('待处理'));
+      selectStage('待处理');
       await tester.pumpAndSettle();
       await tester.tap(find.text('FG-task-1'));
       await tester.pumpAndSettle();

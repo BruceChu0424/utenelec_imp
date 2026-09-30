@@ -72,7 +72,11 @@ class OperationsWorkbenchPage extends ConsumerStatefulWidget {
 
   /// The application router composes department-owned draft content here.
   /// The shared workbench does not depend on the purchase feature's UI.
-  final WidgetBuilder? draftCategoryBuilder;
+  final Widget Function(
+    BuildContext context, {
+    required String search,
+    required Widget externalHeader,
+  })? draftCategoryBuilder;
 
   @override
   ConsumerState<OperationsWorkbenchPage> createState() =>
@@ -284,7 +288,7 @@ class _OperationsWorkbenchPageState
   void _applyKeyword(String value) {
     final normalized = value.trim();
     if (normalized == _keyword) return;
-    _keyword = normalized;
+    setState(() => _keyword = normalized);
     _load(page: 1);
   }
 
@@ -551,7 +555,9 @@ class _OperationsWorkbenchPageState
       ],
       selected: seg == null ? const {} : {seg},
       onSelectionChanged: _selectSeg,
-      searchHint: '搜索任务号、来源单号、货品或往来单位',
+      searchHint: seg?.code == _draftStage
+          ? '搜索草稿类别、单据号、往来单位或备注'
+          : '搜索任务号、来源单号、货品或往来单位',
       initialSearchValue: _keyword,
       onSearchInputChanged: (_) => _requestId++,
       onSearchChanged: _applyKeyword,
@@ -563,12 +569,12 @@ class _OperationsWorkbenchPageState
     _SelectionPrimaryAction? selectionAction,
   ) {
     if (_seg?.code == _draftStage) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
-          Expanded(child: widget.draftCategoryBuilder!(context)),
-        ],
+      return widget.draftCategoryBuilder!(
+        context,
+        search: _keyword,
+        externalHeader: _buildStageToolbar(
+          _data?.summary.statusCounts ?? const {},
+        ),
       );
     }
     if (_data == null && _loading) {

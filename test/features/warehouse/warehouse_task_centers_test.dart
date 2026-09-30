@@ -17,6 +17,9 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center
 import 'package:uten_imp/features/warehouse/providers/procurement_inbound_count_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_drafts_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
@@ -48,6 +51,30 @@ class _FakeApi extends ApiClient {
 
 late SharedPreferences _preferences;
 
+class _Drafts extends FormDraftsNotifier {
+  @override
+  List<FormDraft> build() => [
+    FormDraft(
+      id: 'warehouse-draft',
+      title: '新建仓库',
+      module: BadgeModule.warehouse,
+      route: '/basicinfo/warehouse',
+      permission: Perm.warehouseView,
+      updatedAt: DateTime(2026, 9, 30),
+      data: const {},
+    ),
+    FormDraft(
+      id: 'arrival-draft',
+      title: '采购到货登记',
+      module: BadgeModule.warehouse,
+      route: RouteName.warehouseArrivalReceiptNew,
+      permission: Perm.warehouseInboundView,
+      updatedAt: DateTime(2026, 9, 30),
+      data: const {},
+    ),
+  ];
+}
+
 void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
@@ -57,6 +84,7 @@ void main() {
   Widget app(
     Widget page,
     Set<String> permissions, {
+    bool withDrafts = false,
     ({int count, int waitingComponent}) subcontractCounts = (
       count: 2,
       waitingComponent: 0,
@@ -64,6 +92,7 @@ void main() {
   }) {
     return ProviderScope(
       overrides: [
+        if (withDrafts) formDraftsProvider.overrideWith(_Drafts.new),
         apiClientProvider.overrideWithValue(_FakeApi()),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
@@ -147,6 +176,39 @@ void main() {
   });
 
   group('merged warehouse task center (2026-09-24)', () {
+    testWidgets('资料草稿放顶栏，红数只计仓库资料范围', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        app(const WarehouseTaskCenterPage(), const {
+          Perm.stockDocView,
+          Perm.warehouseView,
+        }, withDrafts: true),
+      );
+      await tester.pumpAndSettle();
+      final button = find.byWidgetPredicate(
+        (widget) =>
+            widget is FormDraftsAppBarButton &&
+            widget.categoryId == 'warehouse-master',
+      );
+      expect(button, findsOneWidget);
+      expect(find.text('资料草稿'), findsNothing);
+      expect(
+        tester
+            .widget<UtenNotificationBadge>(
+              find.descendant(
+                of: button,
+                matching: find.byType(UtenNotificationBadge),
+              ),
+            )
+            .count,
+        1,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
     testWidgets('大类按权限显隐，嵌入态复用子任务中心', (tester) async {
       await tester.pumpWidget(
         app(const WarehouseTaskCenterPage(), const {

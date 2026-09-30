@@ -5,6 +5,7 @@ import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/draft_workspace_sources.dart';
 import '../models/production_daily_report.dart';
 
 /// 我的车间任务「草稿」分段正文（2026-09-26 全站草稿口径）：本地表单草稿与
@@ -41,6 +42,13 @@ class WorkshopDraftSegment extends StatelessWidget {
 
   List<MasterColumnDef<ProductionDailyReportListItem>> get _columns => [
     MasterColumnDef(
+      key: 'draftCategory',
+      label: '类别',
+      width: 160,
+      filterFromRows: true,
+      value: (_) => '生产日报',
+    ),
+    MasterColumnDef(
       key: 'billNo',
       label: '单据号',
       width: 140,
@@ -76,12 +84,22 @@ class WorkshopDraftSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final keyword = search.trim().toLowerCase();
+    final visibleDrafts = keyword.isEmpty
+        ? serverDrafts
+        : serverDrafts.where((draft) {
+            return _columns
+                .map((column) => column.value(draft) ?? '')
+                .join(' ')
+                .toLowerCase()
+                .contains(keyword);
+          }).toList();
     final table = MasterDataTableView<ProductionDailyReportListItem>(
       tableKey:
-          'features.production.widgets.workshop_draft_segment.WorkshopDraftSegment.build.1',
+          'features.production.widgets.workshop_draft_segment.WorkshopDraftSegment.build.1.v2',
       key: const Key('workshop-server-draft-table'),
       columns: _columns,
-      items: serverDrafts,
+      items: visibleDrafts,
       facets: const {},
       nullCounts: const {},
       filters: const {},
@@ -115,6 +133,8 @@ class WorkshopDraftSegment extends StatelessWidget {
             table: table,
             search: search,
             formalId: (it) => it.id,
+            localValue: (draft, key) =>
+                key == 'draftCategory' ? formDraftCategoryLabel(draft) : null,
             includeConfirmedWithoutRecord: true,
           ),
         ),

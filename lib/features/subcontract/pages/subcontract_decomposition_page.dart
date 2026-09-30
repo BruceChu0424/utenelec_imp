@@ -309,7 +309,7 @@ class _SubcontractDecompositionPageState
   void _applyKeyword(String value) {
     final normalized = value.trim();
     if (normalized == _keyword) return;
-    _keyword = normalized;
+    setState(() => _keyword = normalized);
     _load(page: 1);
   }
 
@@ -650,7 +650,9 @@ class _SubcontractDecompositionPageState
       ],
       selected: seg == null ? const {} : {seg},
       onSelectionChanged: _selectSeg,
-      searchHint: '搜索计划号、申请号、货品编码或名称',
+      searchHint: seg?.code == _draftStage
+          ? '搜索草稿类别、单据号、往来单位或备注'
+          : '搜索计划号、申请号、货品编码或名称',
       initialSearchValue: _keyword,
       onSearchInputChanged: (_) => _requestId++,
       onSearchChanged: _applyKeyword,
@@ -659,12 +661,11 @@ class _SubcontractDecompositionPageState
 
   Widget _buildBody() {
     if (_seg?.code == _draftStage) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
-          const Expanded(child: SubcontractDraftTaskCategory()),
-        ],
+      return SubcontractDraftTaskCategory(
+        search: _keyword,
+        externalHeader: _buildStageToolbar(
+          _data?.summary.statusCounts ?? const {},
+        ),
       );
     }
     if (_data == null && _loading) {

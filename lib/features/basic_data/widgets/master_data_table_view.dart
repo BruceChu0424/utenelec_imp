@@ -2709,11 +2709,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     child: Text(_fullscreen ? '退出全屏' : '全屏'),
   );
 
-  /// 成功空态仍保留调用方业务工具条(例如 BOM 的“添加组件”)。加载中/错误态不走
-  /// 本壳，避免基础数据尚未确认时开放依赖现状的写动作。
+  /// 成功空态仍保留调用方业务工具条(例如 BOM 的“添加组件”)；表头不渲染时
+  /// 不提供“添加列”。加载中/错误态不走本壳，避免基础数据尚未确认时开放写动作。
   Widget _emptyStateWithToolbarActions(Widget child) {
     final actions = <Widget>[
-      if (widget.showColumnChooser) _platformAddButton(),
       if (_platform.error != null)
         PlatformTableStatus(error: _platform.error, retry: _platform.reload),
       // 空表不给「进全屏」：一张没有行的表放大到整屏毫无意义，用户反而会以为
@@ -2908,6 +2907,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
       );
     }
+    // 卡片只呈现主列表，不能让仍可展开/重试的分组落成没有表体的工具条。
+    final useCompactCards = widget.compactCards && !hasGroupRows;
     _ensureWidths(context);
     final total = _totalWidth;
     // 行计划：前导分组（表头下第一区）+ 主数据行。分组折叠=仅一条跨满宽标题行；
@@ -2948,7 +2949,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         builder: (context, constraints) {
           final toolbarChildren = [
             if (widget.showColumnChooser &&
-                widget.compactCards &&
+                useCompactCards &&
                 constraints.maxWidth <
                     (widget.cardBelowWidth ?? UtenBreakpoints.mediumStart))
               _platformAddButton(),
@@ -3183,7 +3184,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 判定（与各页旧 LayoutBuilder 口径一致，而非屏幕宽度——分栏/容器内宽 ≠
     // 屏宽），低于阈值表体换卡片列表；工具条/空态/错误/加载/翻页/合计条壳
     // 不变，列定义同一份（cardRole 分派）。
-    if (widget.compactCards) {
+    if (useCompactCards) {
       final threshold = widget.cardBelowWidth ?? UtenBreakpoints.mediumStart;
       return LayoutBuilder(
         builder: (context, constraints) => constraints.maxWidth < threshold
@@ -3191,9 +3192,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   toolbar,
-                  Expanded(
-                    child: _maybeSelectionArea(_buildCompactCards(context)),
-                  ),
+                  if (constraints.hasBoundedHeight)
+                    Expanded(
+                      child: _maybeSelectionArea(_buildCompactCards(context)),
+                    )
+                  else
+                    _maybeSelectionArea(_buildCompactCards(context)),
                 ],
               )
             : buildStandardTable(),

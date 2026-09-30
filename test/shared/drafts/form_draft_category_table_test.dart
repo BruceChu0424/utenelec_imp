@@ -46,6 +46,29 @@ typedef _Union = FormDraftCategoryRow<_Record>;
 const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
+  testWidgets('local category filter clears selection and keeps categories in the first column', (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides: [formDraftsProvider.overrideWith(() => _Drafts([
+        _draft('order'), _draft('quote', kind: 'salesQuote'),
+      ]))],
+      child: const MaterialApp(home: Scaffold(body: FormDraftCategoryList(
+        scope: FormDraftCategoryScope(module: BadgeModule.sales),
+      ))),
+    ));
+    await tester.pumpAndSettle();
+    MasterDataTableView<FormDraftCategoryRow<Object>> table() => tester.widget(
+      find.byType(MasterDataTableView<FormDraftCategoryRow<Object>>));
+    expect(table().columns.first.key, 'category');
+    table().onSelectedIdsChanged!({'form-draft:order', 'form-draft:quote'});
+    await tester.pump();
+    expect(table().selectedIds.length, 2);
+    table().onFilterChanged('category', '销售报价单');
+    await tester.pumpAndSettle();
+    expect(table().items.map((row) => row.draft?.id), ['quote']);
+    expect(table().selectedIds, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'continuous pages keep typed business rows and live local drafts',
     (tester) async {

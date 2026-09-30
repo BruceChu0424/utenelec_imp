@@ -1,9 +1,4 @@
-// 财务 hub「资料草稿」面板的钱流草稿下钻入口：
-//  · 5 类单据各一枚（收款/付款/费用/收入/存取款），按 *:view 权限或计数>0 显示；
-//  · 计数与 UtenDraftsButton 同源（draftCountsProvider = 服务端事实 + 本地草稿）；
-//  · 点击深链 /finance/:seg?status=draft 预选列表草稿段；
-//  · 资产草稿不放本面板——落点在资产工作台（政策草稿 Tab + 台账草稿筛选），
-//    这里断言资料草稿表不含资产路由的本地草稿，保住「资料/业务」分区语义。
+// 钱流入口统一为右上角草稿按钮，数量包含业务草稿与资料草稿且不重复。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +10,9 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_drafts_page.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
@@ -82,14 +80,10 @@ void main() {
           routerConfig: GoRouter(
             routes: [
               GoRoute(path: '/', builder: (_, _) => const FinanceHubPage()),
-              // 深链落点桩：只回显 seg 与 status，验证 /finance/:seg?status=draft。
               GoRoute(
-                path: '/finance/:seg',
+                path: RouteName.formDrafts,
                 builder: (_, state) => Scaffold(
-                  body: Text(
-                    'list:${state.pathParameters['seg']}:'
-                    '${state.uri.queryParameters['status']}',
-                  ),
+                  body: Text('drafts:${state.pathParameters['categoryId']}'),
                 ),
               ),
             ],
@@ -104,13 +98,7 @@ void main() {
     expect(tester.takeException(), isNull);
   }
 
-  Future<void> openDraftsPanel(WidgetTester tester) async {
-    await tester.tap(find.text('资料草稿'));
-    await tester.pumpAndSettle();
-  }
-
-  testWidgets('资料草稿面板显示 5 类钱流草稿入口，计数走 draftCounts 口径', (tester) async {
-    // 服务端 2 张收款草稿 + 本地 1 张收款草稿（facts + local 同一来源合成 3）。
+  testWidgets('右上角草稿红数合并业务与资料草稿，不再显示分类胶囊', (tester) async {
     await pumpHub(
       tester,
       drafts: [
@@ -120,69 +108,91 @@ void main() {
           'financeReceipt',
           '/finance/receipts/new',
         ),
+        _draft('currency-1', BadgeModule.finance, null, '/basicinfo/currency'),
       ],
       facts: {'drafts.financeReceipt': 2},
     );
-    await openDraftsPanel(tester);
-
-    expect(find.text('钱流草稿'), findsOneWidget);
-    for (final label in ['收款草稿', '付款草稿', '费用草稿', '收入草稿', '存取款草稿']) {
-      expect(find.text(label), findsOneWidget, reason: '$label 入口应显示');
-    }
-    // 收款草稿 = 服务端 2 + 本地 1；其余类计数为 0 不带红徽。
+    final button = find.byKey(const ValueKey('form-drafts-button-finance'));
+    expect(button, findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('finance-hub-money-draft-receipts')),
-        matching: find.text('3'),
-      ),
+      find.descendant(of: find.byType(UtenAppBar), matching: button),
       findsOneWidget,
     );
-    // 钱流单据草稿不进「资料草稿」表本身（有自己的下钻入口）。
-    expect(find.text('草稿 r-1'), findsNothing);
+    // 两张服务端单据 + 一份本机收款 + 一份资料草稿。
+    expect(
+      find.descendant(of: button, matching: find.text('4')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('finance-hub-categories')), findsNothing);
+    expect(find.text('资料草稿'), findsNothing);
+    expect(find.text('业务入口'), findsNothing);
   });
 
-  testWidgets('点击入口深链到对应列表并预选草稿段', (tester) async {
+  testWidgets('草稿按钮进入钱流统一草稿页', (tester) async {
     await pumpHub(tester);
-    await openDraftsPanel(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('finance-hub-money-draft-bank-transfers')),
-    );
+    await tester.tap(find.byKey(const ValueKey('form-drafts-button-finance')));
     await tester.pumpAndSettle();
-
-    expect(find.text('list:bank-transfers:draft'), findsOneWidget);
+    expect(find.text('drafts:finance'), findsOneWidget);
   });
 
-  testWidgets('无权限且无计数时按类隐藏，有权限即显示', (tester) async {
-    await pumpHub(
-      tester,
-      superAdmin: false,
-      permissions: const {Perm.financePaymentView},
-    );
-    await openDraftsPanel(tester);
-
-    expect(find.text('付款草稿'), findsOneWidget);
-    expect(find.text('收款草稿'), findsNothing);
-    expect(find.text('存取款草稿'), findsNothing);
-  });
-
-  testWidgets('资产路由草稿不混入资料草稿面板的本地草稿表', (tester) async {
+  testWidgets('已创建业务单据的恢复检查点不重复计数，资产草稿保留原工作台归属', (tester) async {
     await pumpHub(
       tester,
       drafts: [
+        _draft(
+          'r-1',
+          BadgeModule.finance,
+          'financeReceipt',
+          '/finance/receipts/new',
+          data: {'createdDocId': 'receipt-created'},
+        ),
         _draft(
           'asset-1',
           BadgeModule.finance,
           null,
           '/finance/assets/new?ledger=fixedAsset',
         ),
+        _draft(
+          'policy-1',
+          BadgeModule.finance,
+          null,
+          '/finance/assets?draftForm=assetPolicy',
+        ),
         _draft('currency-1', BadgeModule.finance, null, '/basicinfo/currency'),
       ],
+      facts: {'drafts.financeReceipt': 2},
     );
-    await openDraftsPanel(tester);
+    final button = find.byKey(const ValueKey('form-drafts-button-finance'));
+    expect(
+      find.descendant(of: button, matching: find.text('3')),
+      findsOneWidget,
+    );
+    final scope = formDraftsPageCategories['finance']!.scope;
+    expect(
+      scope.matches(
+        _draft('asset', BadgeModule.finance, null, '/finance/assets/new'),
+      ),
+      isFalse,
+    );
+    expect(
+      scope.matches(
+        _draft('currency', BadgeModule.finance, null, '/basicinfo/currency'),
+      ),
+      isTrue,
+    );
+  });
 
-    // 资料草稿表只装资料类草稿；资产草稿去资产工作台（hub「资产」卡）。
-    expect(find.text('草稿 currency-1'), findsOneWidget);
-    expect(find.text('草稿 asset-1'), findsNothing);
+  testWidgets('草稿为零时保留入口，不显示红色零数字', (tester) async {
+    await pumpHub(
+      tester,
+      superAdmin: false,
+      permissions: const {Perm.financePaymentView},
+    );
+    final button = find.byKey(const ValueKey('form-drafts-button-finance'));
+    expect(
+      find.descendant(of: button, matching: find.text('草稿')),
+      findsOneWidget,
+    );
+    expect(find.descendant(of: button, matching: find.text('0')), findsNothing);
   });
 }

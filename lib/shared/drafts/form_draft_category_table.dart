@@ -16,6 +16,7 @@ import '../../features/basic_data/models/master_facet.dart';
 import 'form_draft_category.dart';
 import 'form_draft_store.dart';
 import 'form_draft_catalog.dart';
+import 'draft_workspace_sources.dart' show formDraftCategoryLabel;
 
 export 'form_draft_category.dart';
 
@@ -394,7 +395,10 @@ class _FormDraftCategoryTableState<T>
           ? ValueKey('form-draft-row-${row.draft!.id}')
           : table.rowWidgetKeyOf?.call(row.record as T),
       selectedIds: selected,
-      onSelectedIdsChanged: (next) {
+      onSelectedIdsChanged:
+          table.onSelectedIdsChanged == null && table.batchActionsBuilder != null
+          ? null
+          : (next) {
         setState(() {
           _localSelected
             ..clear()
@@ -585,46 +589,76 @@ class FormDraftCategoryList extends ConsumerStatefulWidget {
 }
 
 class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
-  String _group = 'all';
-  (String, String) _type(FormDraft draft) {
+  String _search = '';
+  final _filters = <String, String?>{};
+
+  String _category(FormDraft draft) {
     for (final entry in FormDraftCatalog.all.entries) {
       if (entry.value.groups(draft)) {
-        return (
-          entry.key,
-          entry.key == 'goodsCost'
-              ? Localizations.of<AppLocalizations>(
-                      context,
-                      AppLocalizations,
-                    )?.costWorkspaceTitle ??
-                    entry.value.title
-              : entry.value.title,
-        );
+        return entry.key == 'goodsCost'
+            ? Localizations.of<AppLocalizations>(
+                    context,
+                    AppLocalizations,
+                  )?.costWorkspaceTitle ??
+                  entry.value.title
+            : formDraftCategoryLabel(draft);
       }
     }
-    return (draft.draftKind ?? draft.permission, draft.title);
+    return formDraftCategoryLabel(draft);
   }
 
   @override
   Widget build(BuildContext context) {
+    final search = '${widget.search} $_search'.trim();
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
-    final groups = <String, (String, int)>{};
-    for (final draft in drafts) {
-      final (id, label) = _type(draft);
-      groups[id] = (label, (groups[id]?.$2 ?? 0) + 1);
+    String? value(FormDraft draft, String key) =>
+        key == 'category' ? _category(draft) : formDraftColumnValue(draft, key);
+    const filterKeys = {'category', 'title', 'billDate', 'remark', 'savedAt'};
+    final facets = <String, List<MasterFacetBucket>>{};
+    final nullCounts = <String, int>{};
+    for (final key in filterKeys) {
+      final counts = <String, int>{};
+      for (final draft in drafts) {
+        final text = value(draft, key);
+        if (text == null || text.isEmpty) {
+          nullCounts.update(key, (count) => count + 1, ifAbsent: () => 1);
+        } else {
+          counts.update(text, (count) => count + 1, ifAbsent: () => 1);
+        }
+      }
+      facets[key] = [
+        for (final entry in counts.entries)
+          MasterFacetBucket(value: entry.key, count: entry.value),
+      ];
     }
-    final group = groups.containsKey(_group) ? _group : 'all';
     final table = FormDraftCategoryTable<Object>(
       scope: widget.scope,
-      search: widget.search,
-      localPredicate: (draft) => group == 'all' || _type(draft).$1 == group,
+      search: search,
+      localPredicate: (draft) => _filters.entries.every((filter) {
+        final expected = filter.value;
+        if (expected == null || expected.isEmpty) return true;
+        final text = value(draft, filter.key);
+        return expected == kMasterFilterNullValue
+            ? text == null || text.isEmpty
+            : text == expected;
+      }),
+      localValue: (draft, key) => key == 'category' ? _category(draft) : null,
       includeConfirmedWithoutRecord: true,
       table: MasterDataTableView<Object>(
-        tableKey:
-            'shared.drafts.form_draft_category_table.FormDraftCategoryListState.build.1',
-        // primary:true → 表体拾取联动容器（自建或宿主注入）的控制器，
-        // 上滑先把分组行收完、表格置顶后再滚表内（2026-09-29 全站口径）。
+        // New columns have their own layout revision; old saved layouts must
+        // not hide the category column or reduce an empty table to its + menu.
+        tableKey: 'shared.drafts.category.v2',
+        paginationScope: Object.hashAll(
+          _filters.entries.map((e) => (e.key, e.value)),
+        ),
         primary: true,
         columns: [
+          MasterColumnDef(
+            key: 'category',
+            label: '类别',
+            width: 180,
+            value: (_) => null,
+          ),
           MasterColumnDef(
             key: 'title',
             label: '草稿',
@@ -652,66 +686,43 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
         ],
         items: const [],
         idOf: (_) => null,
-        facets: const {},
-        nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        facets: facets,
+        nullCounts: nullCounts,
+        filters: _filters,
+        externalFilterKeys: filterKeys,
+        onFilterChanged: (key, value) => setState(() => _filters[key] = value),
         emptyMessage: '暂无草稿',
         selectable: true,
       ),
     );
-    // 宿主自带联动容器：分组行钉住（宿主折叠头管不到这里），表体接外层控制器。
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        UtenFilterToolbar<String>(
+          searchHint: '搜索类别、草稿或备注',
+          onSearchChanged: (value) => setState(() => _search = value),
+        ),
+      ],
+    );
     if (!widget.linkedScroll) {
-      if (groups.length <= 1) return table;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _groupToolbar(drafts, groups, group),
+          header,
+          const SizedBox(height: UtenSpacing.s12),
           Expanded(child: table),
         ],
       );
     }
-    // 自建联动：分组行（+宿主前缀行）随上滑收走，body 只剩表格内滚。
     return UtenCollapsingHeaderScrollView(
-      collapsingHeader: (groups.length <= 1 && widget.externalHeader == null)
-          ? null
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (widget.externalHeader != null) ...[
-                  widget.externalHeader!,
-                  const SizedBox(height: UtenSpacing.s12),
-                ],
-                if (groups.length > 1) _groupToolbar(drafts, groups, group),
-              ],
-            ),
+      collapsingHeader: header,
       body: table,
     );
   }
-
-  Widget _groupToolbar(
-    List<FormDraft> drafts,
-    Map<String, (String, int)> groups,
-    String group,
-  ) => UtenFilterToolbar<String>(
-    segments: [
-      UtenFilterSegment(
-        value: 'all',
-        label: '全部',
-        count: drafts.length,
-        countForm: UtenSegmentCountForm.actionable,
-      ),
-      for (final entry in groups.entries)
-        UtenFilterSegment(
-          value: entry.key,
-          label: entry.value.$1,
-          count: entry.value.$2,
-          countForm: UtenSegmentCountForm.actionable,
-        ),
-    ],
-    selected: {group},
-    onSelectionChanged: (value) => setState(() => _group = value),
-  );
 }
 
 /// Hubs without a pre-existing draft segment put drafts in a normal category.

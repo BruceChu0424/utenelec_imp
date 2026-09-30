@@ -727,7 +727,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'operations-workbench-purchase',
             builder: (_, _) => OperationsWorkbenchPage(
               department: OperationsWorkbenchDepartment.purchase,
-              draftCategoryBuilder: (_) => const PurchaseDraftTaskCategory(),
+              draftCategoryBuilder:
+                  (_, {required search, required externalHeader}) =>
+                      PurchaseDraftTaskCategory(
+                        search: search,
+                        externalHeader: externalHeader,
+                      ),
             ),
           ),
           DraftAwareGoRoute(

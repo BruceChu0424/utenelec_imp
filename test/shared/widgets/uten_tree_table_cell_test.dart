@@ -3,6 +3,148 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 void main() {
+  Finder guideOf(Key cellKey) => find.descendant(
+    of: find.byKey(cellKey),
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is CustomPaint &&
+          widget.painter.runtimeType.toString() == '_TreeGuidePainter',
+    ),
+  );
+
+  testWidgets('parent and child guides join at the arrow across padded rows', (
+    tester,
+  ) async {
+    const parentKey = Key('parent-cell');
+    const childKey = Key('child-cell');
+    const toggleKey = Key('parent-toggle');
+    for (final bleed in [4.0, 8.0]) {
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MediaQuery(
+                data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                child: SizedBox(
+                  width: 420,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.symmetric(vertical: bleed),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 88),
+                          child: UtenTreeTableCell(
+                            key: parentKey,
+                            toggleKey: toggleKey,
+                            depth: 0,
+                            sequence: '1',
+                            title: '父组件',
+                            subtitle: '正在加载下级…',
+                            hasChildren: true,
+                            expanded: true,
+                            guideBleed: bleed,
+                            onToggle: () {},
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(vertical: bleed),
+                        child: UtenTreeTableCell(
+                          key: childKey,
+                          depth: 1,
+                          sequence: '',
+                          sequenceInline: true,
+                          title: '子组件',
+                          ancestorContinuations: const [false],
+                          isLastChild: true,
+                          showLeafMarker: false,
+                          guideBleed: bleed,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        final parentGuide = guideOf(parentKey);
+        final childGuide = guideOf(childKey);
+        final parentRect = tester.getRect(parentGuide);
+        final childRect = tester.getRect(childGuide);
+        final arrowCenter = tester.getCenter(find.byKey(toggleKey));
+        expect(arrowCenter, parentRect.centerRight);
+        expect(parentRect.bottom, childRect.top);
+        expect(childRect.left + 24, arrowCenter.dx);
+        expect(
+          tester.renderObject(parentGuide),
+          paints..line(
+            p1: Offset(24, parentRect.height / 2),
+            p2: Offset(24, parentRect.height),
+          ),
+        );
+        expect(
+          tester.renderObject(childGuide),
+          paints
+            ..line(
+              p1: Offset.zero.translate(24, 0),
+              p2: Offset(24, childRect.height / 2),
+            )
+            ..line(
+              p1: Offset(24, childRect.height / 2),
+              p2: Offset(40, childRect.height / 2),
+            ),
+        );
+        expect(tester.getSize(find.byKey(toggleKey)), const Size(48, 48));
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+
+  testWidgets(
+    'collapsing a branch removes only its downward child connection',
+    (tester) async {
+      const cellKey = Key('branch-cell');
+      Widget branch(bool expanded) => MaterialApp(
+        home: Scaffold(
+          body: UtenTreeTableCell(
+            key: cellKey,
+            depth: 1,
+            sequence: '',
+            sequenceInline: true,
+            title: '父组件',
+            ancestorContinuations: const [false],
+            isLastChild: true,
+            hasChildren: true,
+            expanded: expanded,
+            onToggle: () {},
+          ),
+        ),
+      );
+      await tester.pumpWidget(branch(true));
+      final expandedPainter = tester
+          .widget<CustomPaint>(guideOf(cellKey))
+          .painter!;
+      expect(
+        tester.renderObject(guideOf(cellKey)),
+        paints
+          ..line(p1: const Offset(24, 0), p2: const Offset(24, 24))
+          ..line(p1: const Offset(24, 24), p2: const Offset(40, 24))
+          ..line(p1: const Offset(40, 24), p2: const Offset(40, 48)),
+      );
+      await tester.pumpWidget(branch(false));
+      final collapsedPainter = tester
+          .widget<CustomPaint>(guideOf(cellKey))
+          .painter!;
+      expect(collapsedPainter.shouldRepaint(expandedPainter), isTrue);
+      expect(
+        tester.renderObject(guideOf(cellKey)),
+        paintsExactlyCountTimes(#drawLine, 2),
+      );
+    },
+  );
+
   testWidgets('shows redundant hierarchy cues', (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(

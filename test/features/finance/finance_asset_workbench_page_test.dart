@@ -67,11 +67,12 @@ void main() {
               MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>,
             ),
           );
-      expect(table.items.single.draft!.id, 'fixed-local');
+      // Local input rows stay outside server pagination.
+      expect(table.unpagedItems.single.draft!.id, 'fixed-local');
       expect(
         table.columns
             .singleWhere((column) => column.key == 'grossAmount')
-            .value(table.items.single),
+            .value(table.unpagedItems.single),
         '123.4500',
       );
       await tester.tap(find.text('长期待摊'));
@@ -88,7 +89,7 @@ void main() {
               MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>,
             ),
           );
-      expect(table.items.single.draft!.id, 'deferred-local');
+      expect(table.unpagedItems.single.draft!.id, 'deferred-local');
       await tester.tap(find.text('政策草稿'));
       await tester.pumpAndSettle();
       final policyTable = tester

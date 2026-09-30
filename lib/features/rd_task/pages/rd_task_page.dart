@@ -164,8 +164,10 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
             ),
             Expanded(
               child: _seg == _RdTaskSeg.draft
-                  ? const FormDraftCategoryList(
-                      scope: FormDraftCategoryScope(module: BadgeModule.rd),
+                  ? UtenContentContainer.wide(
+                      child: const FormDraftCategoryList(
+                        scope: FormDraftCategoryScope(module: BadgeModule.rd),
+                      ),
                     )
                   : _RdTaskListPanel(seg: _seg),
             ),

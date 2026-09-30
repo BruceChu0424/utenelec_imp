@@ -37,6 +37,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 import '../widgets/warehouse_form_draft_categories.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../config/warehouse_document_history_config.dart';
@@ -145,6 +146,7 @@ class _WarehouseTaskCenterPageState
       RouteName.warehouseSubcontractFinishedReturnHistory,
     );
     final canScWaste = canOpen(RouteName.warehouseSubcontractWasteHistory);
+    final canMasterDrafts = canOpen(RouteName.basicinfoWarehouse);
     // 车间内料仓 (ADR-131): 可见性 = 仓库发料页的路由守卫。
     final canWorkshopMaterial = canOpen(RouteName.workshopMaterialIssue);
     // 本页其余文案尚未接 arb (部分既有测试不挂本地化代理), 取不到时回落中文原文。
@@ -157,16 +159,6 @@ class _WarehouseTaskCenterPageState
 
     // 大类计数与原 hub 四张卡同源（徽章汇总一次带回；未到/无权为 null 不渲染）。
     final groups = <_GroupSpec>[
-      if (canOpen(RouteName.basicinfoWarehouse))
-        _GroupSpec(
-          value: 'drafts',
-          label: '资料草稿',
-          count: ref.watch(
-            formDraftCategoryVisibleCountProvider(
-              warehouseMasterFormDraftScope,
-            ),
-          ),
-        ),
       if (canOutbound)
         _GroupSpec(
           value: 'outbound',
@@ -258,7 +250,7 @@ class _WarehouseTaskCenterPageState
       ],
     );
 
-    if (groups.isEmpty) {
+    if (groups.isEmpty && !canMasterDrafts) {
       return Scaffold(
         appBar: AppBar(title: const Text('仓库任务中心')),
         body: Center(
@@ -277,6 +269,8 @@ class _WarehouseTaskCenterPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
+          if (canMasterDrafts)
+            const FormDraftsAppBarButton(categoryId: 'warehouse-master'),
           const WarehouseScopeSelector(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),

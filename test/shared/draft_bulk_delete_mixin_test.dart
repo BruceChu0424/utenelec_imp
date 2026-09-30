@@ -41,6 +41,7 @@ class _Host extends StatefulWidget {
 }
 
 class _HostState extends State<_Host> with DraftBulkDeleteMixin<_Host> {
+  Set<String>? deleteSubset;
   @override
   Widget build(BuildContext context) => Scaffold(
     body: Center(
@@ -48,6 +49,7 @@ class _HostState extends State<_Host> with DraftBulkDeleteMixin<_Host> {
         documentLabel: '测试单',
         delete: widget.operations.delete,
         reload: widget.operations.reload,
+        selectedIds: deleteSubset,
       ),
     ),
   );
@@ -114,6 +116,18 @@ Future<void> _confirm(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('类型专属批量动作的选择不会混入通用删除子集', (tester) async {
+    final fixture = await _mount(tester);
+    fixture.state.deleteSubset = {'b'};
+    fixture.state.selectDraftIds({'a', 'b', 'c'});
+    await tester.pump();
+    await tester.tap(find.text('删除所选草稿 (1)'));
+    await tester.pumpAndSettle();
+    await _confirm(tester);
+    expect(fixture.operations.deleted, ['b']);
+    expect(fixture.state.selectedDraftIds, {'a', 'c'});
+  });
+
   testWidgets('取消确认不删除、不刷新并保留选择', (tester) async {
     final fixture = await _mount(tester);
     await _openConfirmation(tester);

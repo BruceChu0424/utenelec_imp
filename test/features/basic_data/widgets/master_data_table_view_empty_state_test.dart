@@ -18,16 +18,22 @@ void main() {
     bool embedded = true,
     bool selectable = false,
     bool showSelectionSummary = true,
+    bool compactCards = false,
+    bool isLoading = false,
+    String? error,
+    VoidCallback? onRetry,
     Set<String> selectedIds = const {},
     Widget? floatingActionButton,
     Widget? scrollingHeader,
     List<Widget>? leading,
+    List<Widget>? actions,
+    List<MasterDataGroup<Map<String, String>>>? groups,
     List<Map<String, String>> items = const [],
   }) => MaterialApp(
     home: Scaffold(
       floatingActionButton: floatingActionButton,
       body: SizedBox(
-        width: 900,
+        width: compactCards ? 400 : 900,
         height: 500,
         child: MasterDataTableView<Map<String, String>>(
           columns: [
@@ -39,6 +45,10 @@ void main() {
             ),
           ],
           scrollingHeader: scrollingHeader,
+          compactCards: compactCards,
+          isLoading: isLoading,
+          error: error,
+          onRetry: onRetry,
           items: items,
           facets: const {
             'status': [MasterFacetBucket(value: 'x', count: 1, label: '甲')],
@@ -53,10 +63,112 @@ void main() {
           showSelectionSummary: showSelectionSummary,
           showFullscreenToggle: showFullscreenToggle,
           toolbarLeadingActions: leading,
+          toolbarActions: actions,
+          leadingGroups: groups,
           emptyMessage: '没有数据',
         ),
       ),
     ),
+  );
+
+  testWidgets(
+    'compact group placeholder keeps its real table instead of a lone add-column action',
+    (tester) async {
+      await tester.pumpWidget(
+        host(
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          compactCards: true,
+          groups: [
+            MasterDataGroup(
+              id: 'archived',
+              title: '历史分组',
+              items: const [],
+              onExpand: () {},
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('状态'), findsOneWidget);
+      expect(find.text('历史分组'), findsOneWidget);
+      expect(
+        find.byKey(const Key('platform-table-add-column')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final embedded in [false, true]) {
+    for (final compactCards in [false, true]) {
+      testWidgets(
+        'add-column follows visible rows while business actions survive empty state: embedded=$embedded cards=$compactCards',
+        (tester) async {
+          var created = 0;
+          Widget page(List<Map<String, String>> rows) => host(
+            filters: const {'status': 'x'},
+            onFilterChanged: (_, _) {},
+            embedded: embedded,
+            compactCards: compactCards,
+            items: rows,
+            leading: const [Text('分类筛选')],
+            actions: [
+              TextButton(onPressed: () => created++, child: const Text('新建')),
+            ],
+          );
+          final addColumn = find.byKey(const Key('platform-table-add-column'));
+          await tester.pumpWidget(page(const []));
+          await tester.pumpAndSettle();
+          expect(find.text('没有数据'), findsOneWidget);
+          expect(addColumn, findsNothing);
+          expect(find.byTooltip('添加列'), findsNothing);
+          expect(find.text('分类筛选'), findsOneWidget);
+          await tester.tap(find.text('新建'));
+          expect(created, 1);
+
+          await tester.pumpWidget(
+            page(const [
+              {'status': '甲'},
+            ]),
+          );
+          await tester.pumpAndSettle();
+          expect(addColumn, findsOneWidget);
+
+          await tester.pumpWidget(page(const []));
+          await tester.pumpAndSettle();
+          expect(addColumn, findsNothing);
+          expect(find.text('新建'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'loading and failed placeholders never offer add-column; retry remains usable',
+    (tester) async {
+      await tester.pumpWidget(
+        host(filters: const {}, onFilterChanged: (_, _) {}, isLoading: true),
+      );
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byTooltip('添加列'), findsNothing);
+      var retries = 0;
+      await tester.pumpWidget(
+        host(
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          error: '加载失败',
+          onRetry: () => retries++,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('添加列'), findsNothing);
+      await tester.tap(find.text('重试'));
+      expect(retries, 1);
+      expect(tester.takeException(), isNull);
+    },
   );
 
   testWidgets(
@@ -232,6 +344,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('退出全屏'), findsOneWidget);
+    expect(find.byTooltip('添加列'), findsNothing);
     expect(
       find.byKey(const ValueKey('master-table-clear-filters')),
       findsNothing,

@@ -90,13 +90,19 @@ void main() {
               MasterDataTableView<FormDraftCategoryRow<FinanceDocListItem>>,
             ),
           );
-      expect(table.items.length, 2);
+      expect([...table.unpagedItems, ...table.items].length, 2);
       expect(
-        table.items.where((row) => row.isLocal).single.draft!.id,
+        [
+          ...table.unpagedItems,
+          ...table.items,
+        ].where((row) => row.isLocal).single.draft!.id,
         'expense-local',
       );
       expect(
-        table.items.where((row) => !row.isLocal).single.draft!.id,
+        [
+          ...table.unpagedItems,
+          ...table.items,
+        ].where((row) => !row.isLocal).single.draft!.id,
         'created-local',
       );
       final filters = tester.widget<UtenFilterToolbar<int?>>(
@@ -147,14 +153,22 @@ void main() {
               MasterDataTableView<FormDraftCategoryRow<FinanceDocListItem>>,
             ),
           );
-      expect(table.items.single.draft!.id, 'offline-local');
+      expect(
+        [...table.unpagedItems, ...table.items].single.draft!.id,
+        'offline-local',
+      );
       expect(table.onRowTap, isNotNull);
       expect(table.isLoading, isFalse);
       expect(
         table.error,
-        isNull,
+        'offline',
+        reason: 'pagination must retain its failed request for retry',
+      );
+      expect(
+        find.byKey(const ValueKey('form-draft-row-offline-local')),
+        findsOneWidget,
         reason:
-            'offline server message must not replace the recoverable input rows',
+            'offline server errors must not replace the recoverable input row',
       );
       expect(find.byType(UtenFilterToolbar<int?>), findsOneWidget);
       expect(find.byType(FormDraftsPanel), findsNothing);
@@ -192,7 +206,10 @@ void main() {
               MasterDataTableView<FormDraftCategoryRow<ExpenseClaim>>,
             ),
           );
-      expect(table.items.map((row) => row.draft?.id), ['claim-local']);
+      expect(
+        [...table.unpagedItems, ...table.items].map((row) => row.draft?.id),
+        ['claim-local'],
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -234,7 +251,10 @@ void main() {
               MasterDataTableView<FormDraftCategoryRow<StockDocListItem>>,
             ),
           );
-      expect(table.items.map((row) => row.draft?.id), ['in-local']);
+      expect(
+        [...table.unpagedItems, ...table.items].map((row) => row.draft?.id),
+        ['in-local'],
+      );
       expect(find.byType(FormDraftsPanel), findsNothing);
       expect(tester.takeException(), isNull);
     },

@@ -33,22 +33,22 @@ public class SubcontractPlatformColumnAdapters {
 
     @Bean
     public PlatformColumnResourceAdapter subcontractapplicationHeaderPlatformColumns() {
+        // Plan-created applications remain read-only, even for administrators (V328/V455).
         return new DocumentPlatformColumnAdapter("subcontract_application","委外申请",current,em,json,
-                Set.of("subcontract_application:view"),Set.of("subcontract_application:edit"),Set.of("finance:view:all"),
+                Set.of("subcontract_application:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.application.SubcontractApplication.class,
                 null,
-                applicationService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false),HEADER);
+                applicationService::detail,(id,header)->false,HEADER);
     }
 
     @Bean
     public PlatformColumnResourceAdapter subcontractapplicationItemPlatformColumns() {
         return new DocumentPlatformColumnAdapter("subcontract_application_item","委外申请明细",current,em,json,
-                Set.of("subcontract_application:view"),Set.of("subcontract_application:edit"),Set.of("finance:view:all"),
+                Set.of("subcontract_application:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.application.SubcontractApplication.class,
                 "SELECT id,application_id FROM subcontract_application_items WHERE id IN (:ids) AND NOT is_deleted",
-                applicationService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false),LINE)
-                .documentRows("SELECT id FROM subcontract_application_items WHERE application_id=:document AND NOT is_deleted")
-                .documentCreateAuthorities(Set.of("subcontract_application:create"));
+                applicationService::detail,(id,header)->false,LINE)
+                .documentRows("SELECT id FROM subcontract_application_items WHERE application_id=:document AND NOT is_deleted");
     }
 
     @Bean

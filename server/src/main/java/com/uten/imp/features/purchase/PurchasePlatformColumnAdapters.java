@@ -29,22 +29,23 @@ public class PurchasePlatformColumnAdapters {
 
     @Bean
     public PlatformColumnResourceAdapter purchaserequestHeaderPlatformColumns() {
+        // Plan-created requests have no generic edit/create authority (V328/V455).
+        // V477's separately guarded quantity adjustment does not grant field editing.
         return new DocumentPlatformColumnAdapter("purchase_request","采购申请",current,em,json,
-                Set.of("purchase_request:view"),Set.of("purchase_request:edit"),Set.of("finance:view:all"),
+                Set.of("purchase_request:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.purchase.request.PurchaseRequest.class,
                 null,
-                requestService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false),HEADER);
+                requestService::detail,(id,header)->false,HEADER);
     }
 
     @Bean
     public PlatformColumnResourceAdapter purchaserequestItemPlatformColumns() {
         return new DocumentPlatformColumnAdapter("purchase_request_item","采购申请明细",current,em,json,
-                Set.of("purchase_request:view"),Set.of("purchase_request:edit"),Set.of("finance:view:all"),
+                Set.of("purchase_request:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.purchase.request.PurchaseRequest.class,
                 "SELECT id,request_id FROM purchase_request_items WHERE id IN (:ids) AND NOT is_deleted",
-                requestService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false),LINE)
-                .documentRows("SELECT id FROM purchase_request_items WHERE request_id=:document AND NOT is_deleted")
-                .documentCreateAuthorities(Set.of("purchase_request:create"));
+                requestService::detail,(id,header)->false,LINE)
+                .documentRows("SELECT id FROM purchase_request_items WHERE request_id=:document AND NOT is_deleted");
     }
 
     @Bean

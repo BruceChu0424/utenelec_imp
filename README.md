@@ -5,7 +5,7 @@
 | 项目 | 当前值 |
 |---|---|
 | 源码与运行版本 | 源码、隔离验证与已部署版本分别记录；本地检查不代表服务器已升级。见[本次验证记录](docs/99-项目治理/2026-09-29-全平台表格与AI学习本地验证.md)及[发布记录](docs/99-项目治理/当前版本验证.md) |
-| 数据库迁移头 | 当前整合源码 **V758 / 686** 个迁移文件；下一号先核对[迁移目录](server/src/main/resources/db/migration)和在途修改，避免撞号；说明见[迁移索引](docs/数据迁移/README.md)，[完整整合验收](docs/99-项目治理/2026-09-29-全量整合测试提速与发布验收.md) |
+| 数据库迁移头 | 当前整合源码 **V759 / 687** 个迁移文件；下一号先核对[迁移目录](server/src/main/resources/db/migration)和在途修改，避免撞号；说明见[迁移索引](docs/数据迁移/README.md)，[完整整合验收](docs/99-项目治理/2026-09-29-全量整合测试提速与发布验收.md) |
 | 前端 | Flutter 3.44.2 / Dart 3.12.2(Web、Windows、macOS、Linux、Android、iOS) |
 | 后端 | Java 21、Spring Boot 3.5.16、PostgreSQL 16、Flyway |
 | 发布方式 | GitHub Actions 签名构建 → 阿里云 OSS → 服务器更新器拉取激活([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)) |

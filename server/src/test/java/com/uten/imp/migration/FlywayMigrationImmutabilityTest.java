@@ -13,6 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class FlywayMigrationImmutabilityTest {
 
     @Test
+    void goodsCostPermissionsKeepV753BytesAndReceiveTheirPageMappingForward() {
+        assertAppliedChecksum("V753__goods_cost_sheets.sql", 1617160736);
+    }
+
+    @Test
     void sparseResetAndCandidateCleanupRemainImmutableBeforeTheV758BoundaryFix() {
         assertAppliedChecksum("V558__business_reset_sparse_truncate.sql", 316265841);
         assertAppliedChecksum("V757__sales_quote_template_candidate_truncate_cleanup.sql", -2102641023);

@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 // 采购订货单详情页的财务审批入口边界测试。
 //
 // 即使当前账号是合格财务审核员、详情投影意外带有 APPROVE/REJECT，业务详情页
@@ -130,6 +131,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         writeAllDocumentScope(DocumentDataScope.purchase),
         currentPermissionsProvider.overrideWithValue(permissions),
         purchaseRepositoryProvider(

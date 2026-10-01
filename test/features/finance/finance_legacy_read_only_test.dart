@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -256,6 +257,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         financeWriteAllDocumentScope(),
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(api),

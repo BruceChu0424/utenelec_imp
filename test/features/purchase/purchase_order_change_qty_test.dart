@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 // 采购订货单「批准后改量」测试（对齐销售 V482）：
 //  - 财务批准（status=1 且 financeApproval 无 PENDING）+ purchase_order:change_qty
 //    权限 → 动作区出现「改量」按钮；弹窗逐行改数量，提交 POST change-qty；
@@ -101,6 +102,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         writeAllDocumentScope(DocumentDataScope.purchase),
         currentPermissionsProvider.overrideWithValue(permissions),
         purchaseRepositoryProvider(

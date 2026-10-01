@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/models/user.dart';
+import '../../support/native_detail_reader_overrides.dart';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -412,6 +414,7 @@ Future<_PaymentApi> _pumpEditor(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(includeSession: false),
         financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
@@ -439,6 +442,7 @@ Future<void> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(includeSession: false),
         financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
@@ -554,7 +558,10 @@ List<Map<String, dynamic>> _apPickerItems() => <Map<String, dynamic>>[
 
 class _TestSessionNotifier extends SessionNotifier {
   @override
-  SessionState build() => const SessionState();
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'native-detail-reader', code: 'reader', name: '测试读者'),
+  );
 }
 
 class _PaymentApi extends ApiClient {

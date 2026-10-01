@@ -1,3 +1,4 @@
+import '../../../support/native_detail_reader_overrides.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -424,6 +425,7 @@ Future<_DetailApi> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

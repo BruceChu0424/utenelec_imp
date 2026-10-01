@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/models/user.dart';
+import '../../support/native_detail_reader_overrides.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -691,6 +693,7 @@ Future<_ReceiptApi> _pumpEditor(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(includeSession: false),
         financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
@@ -720,6 +723,7 @@ Future<void> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(includeSession: false),
         financeWriteAllDocumentScope(),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
@@ -801,7 +805,10 @@ Map<String, dynamic> _receiptDetail() => <String, dynamic>{
 
 class _TestSessionNotifier extends SessionNotifier {
   @override
-  SessionState build() => const SessionState();
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'native-detail-reader', code: 'reader', name: '测试读者'),
+  );
 }
 
 class _ReceiptApi extends ApiClient {

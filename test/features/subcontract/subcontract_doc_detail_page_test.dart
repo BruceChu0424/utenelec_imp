@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 // 委外订货详情页（财务待审）回归测试。
 //
 // 回归背景：底操作栏曾用 Center(Wrap(...)) 包裹按钮——Center/Align 在
@@ -96,6 +97,7 @@ Map<String, dynamic> _draftReceiptDetail() => {
 class _WarehouseReviewerSessionNotifier extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
     user: AppUser(id: 'warehouse-reviewer', code: 'WH001', name: '仓管王五'),
   );
 }
@@ -116,6 +118,7 @@ Future<void> _pumpPendingOrder(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         subcontractWriteAllDocumentScope(),
         currentPermissionsProvider.overrideWithValue(permissions),
         subcontractRepositoryProvider(
@@ -323,6 +326,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...nativeDetailReaderOverrides(includeSession: false),
           subcontractWriteAllDocumentScope(),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.subcontractReceiptApprove,

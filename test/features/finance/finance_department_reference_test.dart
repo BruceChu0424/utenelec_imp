@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -230,6 +231,7 @@ Future<_FinanceApi> _pumpFinance(
     ProviderScope(
       key: UniqueKey(),
       overrides: [
+        ...nativeDetailReaderOverrides(includeServer: false),
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(server),
         localServerReachableProvider.overrideWith(

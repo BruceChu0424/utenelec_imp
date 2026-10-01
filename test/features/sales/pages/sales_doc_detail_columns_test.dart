@@ -1,3 +1,4 @@
+import '../../../support/native_detail_reader_overrides.dart';
 // 销售订货单详情页（审核页面）明细列与编辑页对齐（2026-09-25 用户口径）：
 //  - 补齐编辑页列：折扣 / 机加价 / 围数 / 进仓数量；
 //  - 退役进度列：业务链 / 已发 / 已退 / 可发 / 已排 / 已产 / 优先级
@@ -47,6 +48,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...nativeDetailReaderOverrides(),
           apiClientProvider.overrideWithValue(api),
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),

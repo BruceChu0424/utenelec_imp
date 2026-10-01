@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 // 采购单据详情页明细合计条（UtenTotalsSummaryBar）契约：
 //  - 明细表下渲染合计条；「合计数量」按 unitId 分组，不同单位绝不相加；
 //  - 「合计金额(币种)」标红，币种取表头币种名（不硬编码 ¥）；
@@ -76,6 +77,7 @@ Future<void> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         writeAllDocumentScope(DocumentDataScope.purchase),
         currentPermissionsProvider.overrideWithValue(permissions),
         purchaseRepositoryProvider(

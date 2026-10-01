@@ -1,3 +1,4 @@
+import '../support/native_detail_reader_overrides.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -157,6 +158,7 @@ Future<ProviderContainer> _pump(
   final prefs = await SharedPreferences.getInstance();
   final container = ProviderContainer(
     overrides: [
+      ...nativeDetailReaderOverrides(),
       sharedPreferencesProvider.overrideWithValue(prefs),
       apiClientProvider.overrideWithValue(api),
       localServerReachableProvider.overrideWith(

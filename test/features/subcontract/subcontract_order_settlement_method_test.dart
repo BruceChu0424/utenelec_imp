@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,6 +89,7 @@ Widget _app({
   required Widget home,
 }) => ProviderScope(
   overrides: [
+    ...nativeDetailReaderOverrides(),
     subcontractWriteAllDocumentScope(),
     // Settlement terms are part of the commercial detail surface and are
     // intentionally protected by the existing price-view permission.

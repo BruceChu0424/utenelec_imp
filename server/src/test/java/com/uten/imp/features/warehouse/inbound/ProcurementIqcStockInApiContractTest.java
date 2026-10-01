@@ -127,10 +127,9 @@ class ProcurementIqcStockInApiContractTest {
         int orderClosure = source.indexOf("recalculateOrderClosure(type, receiptId)");
         assertThat(projection).isGreaterThanOrEqualTo(0);
         assertThat(orderClosure).isGreaterThan(projection);
-        assertThat(source)
-                .contains("ProcurementOrderClosurePolicy.recalculate(em, type, orderItemId)")
-                .contains("SELECT DISTINCT order_item_id")
-                .contains("ORDER BY order_item_id");
+        int shortDelivery = source.indexOf("shortDelivery.settleAfterStockIn(receiptId)");
+        assertThat(shortDelivery).isGreaterThan(projection);
+        assertThat(orderClosure).isGreaterThan(shortDelivery);
     }
 
     private boolean containsCommercialToken(String fieldName) {

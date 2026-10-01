@@ -433,15 +433,26 @@ class AiJobRepository {
                 """, new MapSqlParameterSource("hours", retentionHours));
     }
 
-    /** 删除超过保留期的已结束任务, 每批 1000 行。 */
+    /**
+     * 从实际结束时间计算任务保留期；缺少结束时间的历史行保留待核验。
+     * 结果及学习重试各有自己的期限，任务期限不能越过它们删除载体。
+     * 每批最多 1000 行，跳过正在使用/更新的任务，避免清理阻塞前台。
+     */
     int deleteFinishedOlderThan(int days) {
         return jdbc.update("""
-                DELETE FROM ai_jobs
-                WHERE id IN (SELECT id FROM ai_jobs
-                             WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
-                               AND (learning_retry_until IS NULL OR learning_retry_until < now())
-                               AND created_at < now() - make_interval(days => :days)
-                             LIMIT 1000)
+                WITH candidates AS (
+                    SELECT id FROM ai_jobs
+                    WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+                      AND finished_at < now() - make_interval(days => :days)
+                      AND finished_at >= created_at
+                      AND result IS NULL
+                      AND (learning_retry_until IS NULL OR learning_retry_until < now())
+                    ORDER BY finished_at, id
+                    LIMIT 1000
+                    FOR UPDATE SKIP LOCKED
+                )
+                DELETE FROM ai_jobs job USING candidates
+                WHERE job.id = candidates.id
                 """, new MapSqlParameterSource("days", days));
     }
 

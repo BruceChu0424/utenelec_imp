@@ -28,7 +28,7 @@ class AiJobRetentionPostgresTest {
     private static JdbcTemplate jdbc;
     private static AiJobRepository jobs;
 
-    @BeforeAll static void open() throws SQLException {
+    static void open() throws SQLException {
         database = MigratedSchemaBaseline.openDatabase("ai_job_retention");
         source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
         jdbc = new JdbcTemplate(source);
@@ -39,8 +39,8 @@ class AiJobRetentionPostgresTest {
         if (database != null) database.close();
     }
 
-    @BeforeEach void emptyPrivateFixture() {
-        jdbc.execute("TRUNCATE ai_jobs CASCADE");
+    @BeforeEach void emptyPrivateFixture() throws SQLException {
+        if(database!=null)database.close();open();
     }
 
     @ParameterizedTest
@@ -51,7 +51,8 @@ class AiJobRetentionPostgresTest {
 
         assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1);
         assertThat(exists(recent)).as("an old upload just reached its terminal state").isTrue();
-        assertThat(exists(expired)).isFalse();
+        assertThat(exists(expired)).isTrue();
+        assertThat(archived(expired)).isTrue();
     }
 
     @Test void aStaleQueueFailureIsRetainedForItsOwnFullFailureWindow() {
@@ -78,10 +79,11 @@ class AiJobRetentionPostgresTest {
         assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
         assertThat(exists(retained)).isTrue();
 
-        // The result policy, not the row policy, authorizes discarding the payload.
+        // Expiry records an archive; it never discards the recognized content.
         assertThat(jobs.purgeResults(48)).isEqualTo(1);
-        assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1);
-        assertThat(exists(retained)).isFalse();
+        assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
+        assertThat(exists(retained)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT result IS NOT NULL FROM ai_jobs WHERE id=?",Boolean.class,retained)).isTrue();
     }
 
     @Test void completionBeforeUploadIsRetainedForReviewRatherThanAgeGuessed() {
@@ -98,7 +100,8 @@ class AiJobRetentionPostgresTest {
         jdbc.update("UPDATE ai_jobs SET learning_retry_until=now()-interval '1 second' WHERE id=?", expired);
         assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1);
         assertThat(exists(reserved)).isTrue();
-        assertThat(exists(expired)).isFalse();
+        assertThat(exists(expired)).isTrue();
+        assertThat(archived(expired)).isTrue();
     }
 
     @Test void lockedRowsDoNotBlockCleanupOrLoseAnInFlightRetentionExtension() throws Exception {
@@ -124,7 +127,8 @@ class AiJobRetentionPostgresTest {
             }
         }
         assertThat(exists(reserved)).isTrue();
-        assertThat(exists(expired)).isFalse();
+        assertThat(exists(expired)).isTrue();
+        assertThat(archived(expired)).isTrue();
         assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
     }
 
@@ -191,6 +195,8 @@ class AiJobRetentionPostgresTest {
                 """.formatted(finishedAtSql), id, status, UUID.randomUUID(), result ? "{\"source\":\"test\"}" : null);
         return id;
     }
+
+    private boolean archived(UUID id) {return Boolean.TRUE.equals(jdbc.queryForObject("SELECT archived_at IS NOT NULL FROM ai_jobs WHERE id=?",Boolean.class,id));}
 
     private boolean exists(UUID id) {
         return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM ai_jobs WHERE id=?)", Boolean.class, id));

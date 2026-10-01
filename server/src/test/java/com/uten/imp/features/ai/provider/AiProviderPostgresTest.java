@@ -120,6 +120,14 @@ class AiProviderPostgresTest extends AiPlatformPostgresTestSupport {
                         .param("version", String.valueOf(currentVersion)), admin)
                 .header(STEP_UP_HEADER, stepUp(admin, ADMIN_PASSWORD))).andReturn();
         assertEquals(200, deleted.getResponse().getStatus(), body(deleted));
+        assertThat(jdbc.queryForObject("SELECT is_deleted FROM ai_providers WHERE id=?::uuid",Boolean.class,id)).isTrue();
+        MvcResult historical=mvc.perform(authed(get("/api/admin/ai/providers/"+id+"/history"),admin)).andReturn();
+        assertEquals(200,historical.getResponse().getStatus(),body(historical));
+        assertThat(json(historical).path("deleted").asBoolean()).isTrue();
+        assertThat(body(historical)).doesNotContain(PROVIDER_KEY,SECOND_KEY);
+        for(String ciphertext:ciphertexts)assertThat(body(historical)).doesNotContain(ciphertext);
+        Staff forbiddenReader=aiUser();
+        assertEquals(403,mvc.perform(authed(get("/api/admin/ai/providers/"+id+"/history"),forbiddenReader.token())).andReturn().getResponse().getStatus());
 
         for (String ciphertext : ciphertexts) {
             assertThat(auditRowsContaining(ciphertext)).as("ciphertext must never reach audit_log").isZero();

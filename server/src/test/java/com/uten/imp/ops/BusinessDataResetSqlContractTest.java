@@ -226,7 +226,16 @@ class BusinessDataResetSqlContractTest {
             Map.entry("goods_cost_templates", 753),
             Map.entry("inventory_cost_gl_policy", 754),
             Map.entry("goods_cost_imports", 755),
-            Map.entry("goods_cost_import_mappings", 755));
+            Map.entry("goods_cost_import_mappings", 755),
+            Map.entry("ai_input_originals",773),Map.entry("ai_input_original_bindings",773),
+            Map.entry("sales_quote_template_candidate_history",773),
+            Map.entry("business_record_history",775),Map.entry("business_record_retention_registry",775),
+            Map.entry("business_record_identities",775),
+            Map.entry("notice_blessing_history",778),Map.entry("ai_provider_history",778));
+
+    private static final java.util.Set<String> PERMANENT_POLICY_OVERRIDES=java.util.Set.of(
+        "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",
+        "notices","notice_user_states","notice_acknowledgments","notice_blessings","visitor_sms_codes");
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -284,52 +293,15 @@ class BusinessDataResetSqlContractTest {
     }
 
     @Test
-    void appTwinFunctionClassifiesExactlyTheOpsScriptTables() {
-        Map<String, String> opsPolicy = policy(opsScript);
-        Map<String, String> twinPolicy = policy(migrationSql);
-        // 废弃表按它在冻结 V464 基线里的归类分别扣减(V590/V677 删的都是 PRESERVE，V743 两类都有)。
-        // V464 冻结基线之后才建、又随迁移废弃的表(如 V711 的按颜色学习累计)在基线里没有归类,
-        // 按它当初登记进清库脚本的扩展归类(CLEAR=运行时扩展 / PRESERVE=保留扩展)。
-        java.util.function.UnaryOperator<String> classification = table -> {
-            String policy = twinPolicy.get(table);
-            if (policy != null) return policy;
-            if (PRESERVE_RESET_EXTENSIONS.containsKey(table)) return "PRESERVE";
-            if (RUNTIME_RESET_EXTENSIONS.containsKey(table)) return "CLEAR";
-            return null;
-        };
-        long removedClear = REMOVED_RESET_TABLES.keySet().stream()
-                .filter(table -> "CLEAR".equals(classification.apply(table))).count();
-        long removedPreserve = REMOVED_RESET_TABLES.keySet().stream()
-                .filter(table -> "PRESERVE".equals(classification.apply(table))).count();
-        assertThat(removedClear + removedPreserve)
-                .as("every retired table must be classified in the frozen V464 baseline")
-                .isEqualTo(REMOVED_RESET_TABLES.size());
-
-        assertThat(opsPolicy).hasSize(
-                320 + RUNTIME_RESET_EXTENSIONS.size() + PRESERVE_RESET_EXTENSIONS.size()
-                        - REMOVED_RESET_TABLES.size());
-        assertThat(opsPolicy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(224 + RUNTIME_RESET_EXTENSIONS.size() - removedClear);
-        assertThat(opsPolicy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(96 + PRESERVE_RESET_EXTENSIONS.size() - removedPreserve);
-
-        // V464 基础清单逐表一致：任何一侧漂移（新增/删除/改分类）都失败关闭。
-        // V590 起废弃表从两侧同时移除（twin 基线文件按历史字节保留，比较前扣除）。
-        Map<String, String> opsBase = new LinkedHashMap<>(opsPolicy);
-        RUNTIME_RESET_EXTENSIONS.keySet().forEach(opsBase::remove);
-        PRESERVE_RESET_EXTENSIONS.keySet().forEach(opsBase::remove);
-        Map<String, String> twinExpected = new LinkedHashMap<>(twinPolicy);
-        REMOVED_RESET_TABLES.keySet().forEach(twinExpected::remove);
-        assertThat(twinExpected).isEqualTo(opsBase);
-        // 扩展行必须全部 CLEAR：追加式运行时事件账随系统测试一并清空。
-        RUNTIME_RESET_EXTENSIONS.keySet().forEach(table ->
-                assertThat(opsPolicy.get(table))
-                        .as(table + " runtime reset extension must be CLEAR")
-                        .isEqualTo("CLEAR"));
-        // 废弃表必须真的不在两侧策略里。
-        REMOVED_RESET_TABLES.keySet().forEach(table ->
-                assertThat(opsPolicy).as(table + " was retired by V" + REMOVED_RESET_TABLES.get(table))
-                        .doesNotContainKey(table));
+    void appTwinFunctionClassifiesExactlyTheOpsScriptTables() throws IOException {
+        // The frozen V464 base and explicit reviewed migrations remain the independent source of truth.
+        assertThat(policy(opsScript)).isEqualTo(expectedCurrentPolicy());
+        assertThat(opsScript).startsWith("\\set ON_ERROR_STOP on");
+        int refusal = opsScript.indexOf("PERMANENT_RETAIN prohibits business reset");
+        int directory = opsScript.indexOf("CREATE TEMP TABLE reset_business_table_policy");
+        assertThat(refusal).isGreaterThanOrEqualTo(0);
+        assertThat(directory).isGreaterThan(refusal);
+        assertThat(serviceSource).contains("requirePermanentRecordsPreserved()","PERMANENT_RECORD_REFUSAL");
     }
 
     @Test
@@ -801,6 +773,11 @@ class BusinessDataResetSqlContractTest {
         });
         REMOVED_RESET_TABLES.forEach((table, version) ->
                 assertThat(expected.remove(table)).as(table + " must exist before retirement in V" + version).isNotNull());
+        PERMANENT_POLICY_OVERRIDES.forEach(table -> {
+            assertThat(expected).as(table + " must already be a registered table before its retention override")
+                    .containsKey(table);
+            expected.put(table,"PRESERVE");
+        });
         return expected;
     }
 

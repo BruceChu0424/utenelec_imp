@@ -127,9 +127,10 @@ public class AiCallLogService {
         int total = 0;
         for (int batch = 0; batch < 100; batch++) {
             Integer deleted = requiresNew.execute(status -> jdbc.update("""
-                    DELETE FROM ai_call_logs
+                    UPDATE ai_call_logs SET archived_at=now(),archived_by='system:ai-call-retention',archive_reason='TECHNICAL_LOG_RETENTION_WINDOW'
                     WHERE id IN (SELECT id FROM ai_call_logs
-                                 WHERE created_at < now() - make_interval(days => :days)
+                                 WHERE archived_at IS NULL AND created_at < now() - make_interval(days => :days)
+                                 ORDER BY created_at,id
                                  LIMIT 5000)
                     """, new MapSqlParameterSource("days", days)));
             int count = deleted == null ? 0 : deleted;

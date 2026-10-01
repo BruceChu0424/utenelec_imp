@@ -134,9 +134,11 @@ class InternalAttachmentLifecyclePostgresTest {
         json(HttpMethod.DELETE,"/api/attachments/"+id,null,HttpStatus.ACCEPTED);
         for(int i=0;i<5 && outbox.processNext();i++) { /* bounded real queue drain */ }
         assertThat(jdbc.queryForMap("SELECT lifecycle_state,sha256,storage_provider FROM attachments WHERE id=?",id))
-                .containsEntry("lifecycle_state","DELETED").containsEntry("sha256",sha(bytes)).containsEntry("storage_provider","internal");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE attachment_id=? AND storage_provider='internal' AND operation='DELETE_FINAL' AND status='SUCCEEDED'",Long.class,id)).isEqualTo(1L);
+                .containsEntry("lifecycle_state","RETAINED_HISTORY").containsEntry("sha256",sha(bytes)).containsEntry("storage_provider","internal");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE attachment_id=? AND storage_provider='internal' AND operation='DELETE_FINAL' AND status='RETAINED_HISTORY'",Long.class,id)).isEqualTo(1L);
         assertThat(http.exchange("/api/attachments/raw/"+upload.key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        var history=http.exchange("/api/attachments/"+id+"/history/download",HttpMethod.GET,new HttpEntity<>(headers()),byte[].class);
+        assertThat(history.getStatusCode()).isEqualTo(HttpStatus.OK);assertThat(history.getBody()).isEqualTo(bytes);
     }
 
     @Test void rejectedMalwareNeverBecomesAnAttachmentAndSelectedAvatarReturnsOriginalPng() throws Exception {
@@ -193,89 +195,18 @@ class InternalAttachmentLifecyclePostgresTest {
         assertThat(json(HttpMethod.POST,"/api/attachments/confirm",confirm,HttpStatus.OK).path("sizeBytes").asLong()).isEqualTo(bytes.length);
     }
 
-    @Test void softDeletedOrderFilesMustFinishNormalDeletionBeforeBusinessResetAndHumanFilesSurvive() throws Exception {
-        byte[] humanBytes="human file must survive a business reset".getBytes(StandardCharsets.UTF_8);
+    @Test void permanentPolicyRefusesResetAndKeepsBothBusinessAndHumanOriginalsReadable() throws Exception {
+        byte[] humanBytes="human original remains".getBytes(StandardCharsets.UTF_8);
         Upload human=upload("human-preserved.txt","text/plain",humanBytes);
         UUID client=UUID.randomUUID(),order=UUID.randomUUID();
-        jdbc.update("""
-                INSERT INTO clients(id,code,name,status,code_sequence)
-                VALUES(?,'RESET-FILES-CLIENT','reset evidence client','使用',100900)
-                """,client);
-        jdbc.update("""
-                INSERT INTO sales_orders(id,bill_no,bill_date,client_id,owner_employee_id,maker_id,status)
-                VALUES(?,'XD20260908009991',CURRENT_DATE,?,?,?,0)
-                """,order,client,UUID.fromString(employee),UUID.fromString(employee));
-        byte[] bytes="original sales contract bound to a test order".getBytes(StandardCharsets.UTF_8);
-        int oldExpiry=properties.getPresignedExpirySeconds();
-        JsonNode grant,attachment;
-        try {
-            properties.setPresignedExpirySeconds(8);
-            grant=json(HttpMethod.POST,"/api/attachments/presign",Map.of("ownerType","SALES_ORDER","ownerId",order,
-                    "fileName","contract.txt","contentType","text/plain","sizeBytes",bytes.length),HttpStatus.OK);
-            put(grant,bytes,"text/plain");
-            Map<String,Object> confirm=new HashMap<>(confirmation(grant,"contract.txt","text/plain",bytes));
-            confirm.put("ownerType","SALES_ORDER");confirm.put("ownerId",order);
-            attachment=json(HttpMethod.POST,"/api/attachments/confirm",confirm,HttpStatus.OK);
-        } finally { properties.setPresignedExpirySeconds(oldExpiry); }
-        UUID fileId=UUID.fromString(attachment.path("id").asText());
-        String key=grant.path("storageKey").asText();
-        json(HttpMethod.DELETE,"/api/sales/orders/"+order,null,HttpStatus.OK);
-        json(HttpMethod.DELETE,"/api/attachments/"+fileId,null,HttpStatus.NOT_FOUND);
-        assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,fileId)).isEqualTo("CLEAN");
-        JsonNode preview=json(HttpMethod.GET,"/api/system-test/business-data/attachments/preview",null,HttpStatus.OK);
-        assertThat(preview.path("blockingCount").asLong()).isGreaterThan(0);
-        assertThat(preview.path("items").toString()).doesNotContain("human-preserved.txt");
-        Map<String,Object> approval=new HashMap<>();
-        approval.put("confirm","清理测试业务附件");approval.put("database",preview.path("database").asText());
-        approval.put("fingerprint",preview.path("fingerprint").asText());
-        // 提前删附件与清空业务数据同一门槛(ADR-110 再认证)：不带一次性凭证 403 REAUTH_REQUIRED，
-        // 再认证密码不对 422 且留下再认证失败审计。
-        json(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",approval,HttpStatus.FORBIDDEN);
-        long failedChecks=jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='step_up_failed'",Long.class);
-        json(HttpMethod.POST,"/api/auth/step-up",Map.of("password","not-"+password),HttpStatus.UNPROCESSABLE_ENTITY);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='step_up_failed'",Long.class)).isEqualTo(failedChecks+1);
-        Map<String,Object> wrong=new HashMap<>(approval);wrong.put("database","wrong-target");
-        stepUpJson(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",wrong,HttpStatus.CONFLICT);
-        wrong=new HashMap<>(approval);wrong.put("fingerprint","not-current-preview");
-        stepUpJson(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",wrong,HttpStatus.CONFLICT);
-        assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,fileId)).isEqualTo("CLEAN");
-        stepUpJson(HttpMethod.POST,"/api/system-test/business-data/attachments/prepare",approval,HttpStatus.OK);
+        jdbc.update("INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,'RESET-PERMANENT-CLIENT','permanent evidence client','使用',100901)",client);
+        jdbc.update("INSERT INTO sales_orders(id,bill_no,bill_date,client_id,owner_employee_id,maker_id,status) VALUES(?,'XD20260908009991',CURRENT_DATE,?,?,?,0)",order,client,UUID.fromString(employee),UUID.fromString(employee));
+        long orders=jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class);
+        String before=jdbc.queryForObject("SELECT md5(to_jsonb(o)::text) FROM sales_orders o WHERE id=?",String.class,order);
         stepUpJson(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据"),HttpStatus.CONFLICT);
-        for(int i=0;i<20&&outbox.processNext();i++) { /* real deletion processor */ }
-        assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,fileId)).isEqualTo("DELETED");
-        assertThat(http.exchange("/api/attachments/raw/"+key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        // A DELETED flag alone is insufficient: failure/missing completion is still rejected.
-        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
-            connection.setAutoCommit(false);
-            try(var st=connection.createStatement()) {
-                st.executeUpdate("UPDATE attachment_object_outbox SET status='FAILED' WHERE attachment_id='"+fileId+"'");
-                try(var r=st.executeQuery("SELECT count(*) FROM fn_business_attachment_reset_blockers() WHERE entity_type='ATTACHMENT' AND entity_id='"+fileId+"'")){
-                    r.next();assertThat(r.getLong(1)).isEqualTo(1);
-                }
-            } finally { connection.rollback();connection.setAutoCommit(true); }
-            return null;
-        });
-        java.time.Instant expiry=java.time.Instant.parse(grant.path("expiresAt").asText());
-        org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(12))
-                .until(()->java.time.Instant.now().isAfter(expiry));
-        for(int i=0;i<20&&outbox.processNext();i++) { /* delayed staging deletion after signed grant expiry */ }
-        preview=json(HttpMethod.GET,"/api/system-test/business-data/attachments/preview",null,HttpStatus.OK);
-        assertThat(preview.path("blockingCount").asLong()).isZero();
-        long humans=jdbc.queryForObject("SELECT count(*) FROM employees",Long.class);
-        String humanDigest=jdbc.queryForObject("SELECT md5(to_jsonb(attachment)::text) FROM attachments attachment WHERE id=?",String.class,UUID.fromString(human.attachment.path("id").asText()));
-        Map<String, Integer> expectedPolicyCounts = reviewedResetPolicyCounts();
-        JsonNode result=stepUpJson(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据"),HttpStatus.OK);
-        assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class)
-                .getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-        // Reset revokes this shared session. Recover it before any further
-        // assertion, so a failed receipt assertion cannot poison later tests.
-        login();
-        assertThat(result.path("clearedTableCount").asInt()).isEqualTo(expectedPolicyCounts.get("CLEAR"));
-        assertThat(result.path("preservedTableCount").asInt()).isEqualTo(expectedPolicyCounts.get("PRESERVE"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM employees",Long.class)).isEqualTo(humans);
-        assertThat(jdbc.queryForObject("SELECT md5(to_jsonb(attachment)::text) FROM attachments attachment WHERE id=?",String.class,UUID.fromString(human.attachment.path("id").asText()))).isEqualTo(humanDigest);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='business_attachment_reset_prepare'",Long.class)).isPositive();
+        assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isEqualTo(orders);
+        assertThat(jdbc.queryForObject("SELECT md5(to_jsonb(o)::text) FROM sales_orders o WHERE id=?",String.class,order)).isEqualTo(before);
         var original=http.exchange("/api/attachments/raw/"+human.key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class);
         assertThat(original.getStatusCode()).isEqualTo(HttpStatus.OK);assertThat(original.getBody()).isEqualTo(humanBytes);
     }

@@ -35,6 +35,7 @@ public class VisitorSmsService {
             issuanceTransaction.reject(issuance.id());
             throw new ApiException(ErrorCode.BUSINESS);
         }
+        issuanceTransaction.complete(issuance.id(),result);
         // UNCERTAIN 保留已提交 OTP：供应商可能已收，自动重发/作废会制造不可用验证码。
         return code;
     }

@@ -53,17 +53,19 @@ public class AiJobService {
     private final ObjectMapper objectMapper;
     private final TransactionTemplate writeTx;
     private final TransactionTemplate readTx;
+    private final AiInputOriginalStore originals;
 
     public AiJobService(AiJobHandlerRegistry registry, AiJobRepository repository,
                         SubmitterPrincipalRestorer restorer, AiProperties properties,
                         ApplicationEventPublisher events, ObjectMapper objectMapper,
-                        PlatformTransactionManager transactionManager) {
+                        PlatformTransactionManager transactionManager,AiInputOriginalStore originals) {
         this.registry = registry;
         this.repository = repository;
         this.restorer = restorer;
         this.properties = properties;
         this.events = events;
         this.objectMapper = objectMapper;
+        this.originals=originals;
         this.writeTx = new TransactionTemplate(transactionManager);
         this.readTx = new TransactionTemplate(transactionManager);
         this.readTx.setReadOnly(true);
@@ -85,6 +87,7 @@ public class AiJobService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "没有这种识别任务"));
         Map<String, String> safeParams = validateParams(params);
         handler.authorizeSubmit(safeParams);
+        originals.requireCaptureAvailable(kind);
         readTx.executeWithoutResult(status -> requireWithinLimits(user.getId()));
 
         long limit = properties.getMaxInputBytes();
@@ -115,6 +118,7 @@ public class AiJobService {
             SubmitterPrincipalRestorer.AuthorizationStamps stamps = restorer.currentStamps(user.getId())
                     .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
             UUID id = UUID.randomUUID();
+            originals.capture(id,user.getId(),kind,input);
             repository.insert(new AiJobRepository.NewJob(id, kind, paramsJson, input.fileName(),
                     input.contentType(), inputKind, bytes.length, sha256, bytes, user.getId(), user.getEmployeeId(),
                     stamps.authVersion(), stamps.authorizationEpoch()));
@@ -131,6 +135,15 @@ public class AiJobService {
         AiJobRepository.JobRow row = repository.findOwned(id, user.getId()).orElseThrow(AiJobService::notFound);
         AiJobHandler handler = registry.find(row.kind()).orElse(null);
         return view(row, handler);
+    }
+    @Transactional(readOnly=true)
+    public Map<String,Object> history(UUID id,AuthUser user) {
+        requireStaff(user);var row=repository.findOwned(id,user.getId()).orElseThrow(AiJobService::notFound);
+        var handler=registry.find(row.kind()).orElse(null);AiJobView current=view(row,handler);
+        var out=new LinkedHashMap<String,Object>();out.put("task",current);out.put("historyReadOnly",true);
+        out.putAll(repository.historyMetadata(id,user.getId()));
+        if(handler!=null&&row.hasResult())repository.resultJson(id).ifPresent(raw->out.put("result",handler.filterResultForReader(parseResult(raw))));
+        return out;
     }
 
     /** 取消: 排队中直接取消; 处理中打上取消标记; 已结束不变。 */

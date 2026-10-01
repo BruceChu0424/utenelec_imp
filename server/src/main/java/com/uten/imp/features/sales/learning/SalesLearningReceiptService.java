@@ -70,14 +70,13 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
         jdbc.update("""
                 WITH candidates AS (
                     SELECT id FROM sales_document_learning_receipts receipt
-                    WHERE retry_until<now() AND (evidence<>'{}'::jsonb OR request_payload->'lines'<>'[]'::jsonb
+                    WHERE archived_at IS NULL AND retry_until<now() AND (evidence<>'{}'::jsonb OR request_payload->'lines'<>'[]'::jsonb
                         OR request_payload->'clientFields'<>'{}'::jsonb)
                       AND NOT EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING')
                     ORDER BY retry_until,id LIMIT 1000 FOR UPDATE SKIP LOCKED
                 )
-                UPDATE sales_document_learning_receipts receipt SET evidence='{}'::jsonb,
-                    request_payload=jsonb_set(jsonb_set(receipt.request_payload,'{lines}','[]'::jsonb),'{clientFields}','{}'::jsonb),
-                    updated_at=now()
+                UPDATE sales_document_learning_receipts receipt SET archived_at=now(),archived_by='system:learning-retention',
+                    archive_reason='RETRY_WINDOW_ENDED',updated_at=now()
                 FROM candidates WHERE receipt.id=candidates.id
                 """,Map.of());
     }

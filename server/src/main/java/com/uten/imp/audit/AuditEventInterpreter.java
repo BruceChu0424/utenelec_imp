@@ -60,6 +60,7 @@ public class AuditEventInterpreter {
             "summary", "export", "download", "heartbeat", "capability", "preview",
             "search", "tree", "subtree", "arrivals", "unread-count");
     private static final Map<String, String> DETAIL_VIEW_ACTION_LABELS = Map.ofEntries(
+            Map.entry("view_ai_provider_history_detail", "查看 AI 服务配置历史"),
             Map.entry("view_attachment_history_detail", "查看附件历史"),
             Map.entry("view_sales_quote_detail", "查看销售报价详情"),
             Map.entry("view_sales_order_detail", "查看销售订单详情"),
@@ -149,6 +150,7 @@ public class AuditEventInterpreter {
             Map.entry("download_ai_input_original", "下载识别来源原件"),
             Map.entry("attachment_history_download", "下载已保留附件原件"),
             Map.entry("attachment_logical_delete", "标记附件已删除并保留历史"),
+            Map.entry("view_notice_history", "查看通知历史"),
             Map.entry("ai_job.cancel", "取消 AI 识别"));
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
             "view_client_detail", "view_supplier_detail", "view_account_detail",

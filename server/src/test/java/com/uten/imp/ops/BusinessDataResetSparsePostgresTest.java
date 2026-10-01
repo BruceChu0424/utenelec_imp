@@ -19,7 +19,7 @@ import java.sql.Savepoint;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-/** Storage work is reduced without weakening the real PostgreSQL reset contract. */
+/** Historical V777 reset/storage contract. V778 permanent policy separately blocks current reset execution. */
 @Testcontainers(disabledWithoutDocker = true)
 class BusinessDataResetSparsePostgresTest {
     @Container
@@ -31,7 +31,7 @@ class BusinessDataResetSparsePostgresTest {
     @BeforeAll
     static void migrate() throws SQLException {
         Flyway.configure().dataSource(jdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").load().migrate();
+                .locations("classpath:db/migration").target("777").load().migrate();
         // V673 起 production_plan_costs 是普通单表, 清单里已没有分区的清空表; 分区路径仍是重置函数的合同。
         // 在这个一次性测试库里把这张 CLEAR 表换成同名的三列按年分区探针(提交后才有真实的分区文件,
         // 同一事务新建的表截断时 PostgreSQL 会原地清空、不换文件节点), 继续钉住分区叶子的行为。
@@ -62,7 +62,7 @@ class BusinessDataResetSparsePostgresTest {
     }
 
     @Test
-    void sparseRowsRetainEmptyFilesButTruncateTheTransitiveForeignKeyClosure() throws Exception {
+    void registeredRetentionTriggersRequireFullTruncateWhileKeepingForeignKeyClosure() throws Exception {
         connection.createStatement().execute("ALTER TABLE stock_balances ADD COLUMN reset_probe_outbox_id uuid REFERENCES business_outbox(id)");
         connection.createStatement().execute("ALTER TABLE stock_reservations ADD COLUMN reset_probe_balance_id uuid REFERENCES stock_balances(id)");
         connection.createStatement().execute("INSERT INTO business_outbox(id,event_type,aggregate_type,dedupe_key,status) VALUES (gen_random_uuid(),'RESET_TEST','RESET_TEST','sparse-reset',1)");
@@ -72,9 +72,9 @@ class BusinessDataResetSparsePostgresTest {
         assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isEqualTo(1);
         assertThat(scalar("SELECT count(*) FROM business_outbox")).isZero();
         assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE table_name IN ('business_outbox','stock_balances','stock_reservations') AND truncate_required")).isEqualTo(3);
-        assertThat(scalar("SELECT pg_relation_filenode('sales_quotes'::regclass)")).isEqualTo(untouchedFile);
+        assertThat(scalar("SELECT pg_relation_filenode('sales_quotes'::regclass)")).isNotEqualTo(untouchedFile);
         assertThat(scalar("SELECT pg_relation_filenode('stock_reservations'::regclass)")).isNotEqualTo(childFile);
-        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isGreaterThan(200);
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isZero();
 
         // An omitted empty table is still locked until the complete reset commits.
         try (Connection other = DriverManager.getConnection(jdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
@@ -88,13 +88,13 @@ class BusinessDataResetSparsePostgresTest {
     }
 
     @Test
-    void emptyAdvancedOwnedSequenceRestartsAtItsConfiguredStartWithoutRecreatingTable() throws Exception {
+    void emptySequenceRestartsWithConservativeFullFallbackForRetentionTriggers() throws Exception {
         connection.createStatement().execute("ALTER SEQUENCE finance_reconciliations_posting_seq_seq START WITH 17 RESTART WITH 17");
         assertThat(scalar("SELECT nextval('finance_reconciliations_posting_seq_seq')")).isEqualTo(17);
         assertThat(scalar("SELECT nextval('finance_reconciliations_posting_seq_seq')")).isEqualTo(18);
         long tableFile = scalar("SELECT pg_relation_filenode('finance_reconciliations'::regclass)");
         assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
-        assertThat(scalar("SELECT pg_relation_filenode('finance_reconciliations'::regclass)")).isEqualTo(tableFile);
+        assertThat(scalar("SELECT pg_relation_filenode('finance_reconciliations'::regclass)")).isNotEqualTo(tableFile);
         assertThat(scalar("SELECT nextval('finance_reconciliations_posting_seq_seq')")).isEqualTo(17);
     }
 
@@ -178,7 +178,7 @@ class BusinessDataResetSparsePostgresTest {
     }
 
     @Test
-    void restoredEquivalentArrayCastsAlsoKeepEmptyTablesSparse() throws Exception {
+    void restoredPureArrayCastsDoNotOverrideRegisteredRetentionTriggerFallback() throws Exception {
         // pg_dump/restore reparses the IN array coercion as per-element casts.
         // Both exact pure forms are allowed; arbitrary expression normalization is not.
         connection.createStatement().execute("ALTER TABLE attachment_object_outbox DROP CONSTRAINT attachment_object_outbox_operation_chk, ADD CONSTRAINT attachment_object_outbox_operation_chk CHECK ((operation)::text = ANY (ARRAY[('DELETE_STAGING'::varchar)::text,('DELETE_FINAL'::varchar)::text]))");
@@ -188,8 +188,8 @@ class BusinessDataResetSparsePostgresTest {
         connection.createStatement().execute("CREATE INDEX attachment_object_outbox_ready_idx ON attachment_object_outbox(available_at,created_at) WHERE (status)::text = ANY (ARRAY[('PENDING'::varchar)::text,('FAILED'::varchar)::text])");
         long originalFile = scalar("SELECT pg_relation_filenode('sales_quotes'::regclass)");
         assertThat(scalar("SELECT cleared_rows FROM business_data_reset()")).isZero();
-        assertThat(scalar("SELECT pg_relation_filenode('sales_quotes'::regclass)")).isEqualTo(originalFile);
-        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isGreaterThan(200);
+        assertThat(scalar("SELECT pg_relation_filenode('sales_quotes'::regclass)")).isNotEqualTo(originalFile);
+        assertThat(scalar("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required")).isZero();
     }
 
     @Test

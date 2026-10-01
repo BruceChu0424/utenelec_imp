@@ -1,5 +1,11 @@
+\set ON_ERROR_STOP on
+DO $permanent_record_policy$
+BEGIN
+    RAISE EXCEPTION 'PERMANENT_RETAIN prohibits business reset; use archive and authorized history management' USING ERRCODE='55000';
+END $permanent_record_policy$;
+-- Historical reset implementation is preserved below as evidence; execution stops above before maintenance or writes.
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V772；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(只读目录至 V778；执行已禁止；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -271,11 +277,11 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('inbound_expectation_items', 'CLEAR'),
 ('inbound_expectations', 'CLEAR'),
 ('mrp_generations', 'CLEAR'),
-('notice_acknowledgments', 'CLEAR'),
-('notice_blessings', 'CLEAR'),
+('notice_acknowledgments', 'PRESERVE'),
+('notice_blessings', 'PRESERVE'),
 ('notice_celebration_subjects', 'CLEAR'),
-('notice_user_states', 'CLEAR'),
-('notices', 'CLEAR'),
+('notice_user_states', 'PRESERVE'),
+('notices', 'PRESERVE'),
 ('payroll_batches', 'CLEAR'),
 ('payroll_items', 'CLEAR'),
 ('payroll_slips', 'CLEAR'),
@@ -408,14 +414,14 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('stock_count_request_events', 'CLEAR'),
 ('workshop_material_count_adjustment_postings', 'CLEAR'),
 ('business_column_definitions', 'PRESERVE'),
-('sales_quote_template_candidates', 'CLEAR'),
-('sales_quote_template_evidence', 'CLEAR'),
+('sales_quote_template_candidates', 'PRESERVE'),
+('sales_quote_template_evidence', 'PRESERVE'),
 ('sales_quote_customer_templates', 'PRESERVE'),
 ('sales_quote_template_versions', 'PRESERVE'),
 ('platform_column_definitions', 'PRESERVE'),
 ('platform_record_fields', 'PRESERVE'),
 ('platform_column_usage', 'PRESERVE'),
-('sales_document_learning_receipts', 'CLEAR'),
+('sales_document_learning_receipts', 'PRESERVE'),
 ('sales_intake_layout_learning_evidence', 'CLEAR'),
 ('sales_alias_document_evidence', 'PRESERVE'),
 ('goods_cost_sheets', 'PRESERVE'),
@@ -480,7 +486,7 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('visitor_applications', 'CLEAR'),
 ('visitor_approval_steps', 'CLEAR'),
 ('visitor_refresh_tokens', 'CLEAR'),
-('visitor_sms_codes', 'CLEAR'),
+('visitor_sms_codes', 'PRESERVE'),
 ('warehouse_arrival_registration_commands', 'CLEAR'),
 ('warehouse_arrival_exception_stock_in_batch_items', 'CLEAR'),
 ('warehouse_arrival_exception_stock_in_batches', 'CLEAR'),
@@ -634,8 +640,8 @@ SELECT optional.table_name, optional.disposition FROM (VALUES
 ('ai_providers', 'PRESERVE'),
 ('client_goods_aliases', 'PRESERVE'),
 ('sales_intake_layouts', 'PRESERVE'),
-('ai_jobs', 'CLEAR'),
-('ai_call_logs', 'CLEAR'),
+('ai_jobs', 'PRESERVE'),
+('ai_call_logs', 'PRESERVE'),
 ('sales_quote_revision_logs', 'CLEAR')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
@@ -810,7 +816,15 @@ FROM (VALUES
 ('procurement_iqc_quality_consideration_parts', 'CLEAR'),
 ('procurement_iqc_stock_consideration_parts', 'CLEAR'),
 ('procurement_receipt_consideration_parts', 'CLEAR'),
-('subcontract_receipt_material_consumptions', 'CLEAR')
+('subcontract_receipt_material_consumptions', 'CLEAR'),
+('ai_input_originals', 'PRESERVE'),
+('ai_input_original_bindings', 'PRESERVE'),
+('sales_quote_template_candidate_history', 'PRESERVE'),
+('business_record_history', 'PRESERVE'),
+('business_record_retention_registry', 'PRESERVE'),
+('business_record_identities', 'PRESERVE'),
+('notice_blessing_history', 'PRESERVE'),
+('ai_provider_history', 'PRESERVE')
 ) AS optional(table_name, disposition)
 WHERE to_regclass(format('public.%I', optional.table_name)) IS NOT NULL;
 
@@ -1386,10 +1400,11 @@ BEGIN
         -- V771 adds the immutable ordinary DRAW batch receipt ledger.
         (771, 697),
         -- V772 adds reviewed-version metadata without backfilling old command rows.
-        (772, 698)
+        (772, 698),
+        (773, 699), (774, 700), (775, 701), (776, 702), (777, 703), (778, 704)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V772完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V737、V761、V762 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V778完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V737、V761、V762 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 

@@ -45,7 +45,7 @@ class SalesLearningReceiptPostgresTest {
                 """,employee,"LE-"+employee);
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",actor,employee,"learning-"+actor);
         current=mock(SecurityContextCurrentUser.class);when(current.requireId()).thenReturn(actor);
-        jobs=new AiJobRepository(named);usage=new AiJobUsageAdapter(jobs,new ObjectMapper());
+        jobs=new AiJobRepository(named);usage=new AiJobUsageAdapter(jobs,new ObjectMapper(),mock(AiInputOriginalStore.class));
         ObjectProvider<AiJobUsagePort> provider=mock(ObjectProvider.class);when(provider.getIfAvailable()).thenReturn(usage);
         receipts=new SalesLearningReceiptService(named,new ObjectMapper(),current,provider,transactions);
     }
@@ -96,13 +96,13 @@ class SalesLearningReceiptPostgresTest {
         assertThatThrownBy(()->tx.executeWithoutResult(s->receipts.requireCurrentSource(first.learningReceiptId()))).hasMessageContaining("单据内容已变更");
         tx.executeWithoutResult(s->receipts.requireCurrentSource(second.learningReceiptId()));
     }
-    @Test void expiredReceiptsDropUnnecessaryPrivatePayloadAndCannotResume(){
+    @Test void expiredReceiptsRetainCompletePrivatePayloadButCannotResume(){
         UUID job=job();var request=request(UUID.randomUUID(),job);tx.executeWithoutResult(s->receipts.register(request));
         receipts.run(request.learningReceiptId(),"LAYOUT",job,StepResult::done);
         jdbc.update("UPDATE sales_document_learning_receipts SET retry_until=now()-interval '1 second' WHERE id=?",request.learningReceiptId());
         receipts.purgeExpiredEvidence();
-        assertThat(receipts.owned(request.learningReceiptId()).evidence()).isEmpty();
-        assertThat(receipts.owned(request.learningReceiptId()).request().lines()).isEmpty();
+        assertThat(receipts.owned(request.learningReceiptId()).evidence()).isNotEmpty();
+        assertThat(receipts.owned(request.learningReceiptId()).request().lines()).hasSize(1);
         AtomicInteger ran=new AtomicInteger();receipts.run(request.learningReceiptId(),"MASTER",null,()->{ran.incrementAndGet();return StepResult.done();});
         assertThat(ran.get()).isZero();
     }
@@ -133,7 +133,7 @@ class SalesLearningReceiptPostgresTest {
         });
         assertThat(receipts.owned(id).steps().get("MASTER").toString()).contains("SUCCEEDED");
         receipts.purgeExpiredEvidence();
-        assertThat(receipts.owned(id).request().lines()).isEmpty();
+        assertThat(receipts.owned(id).request().lines()).hasSize(1);
     }
 
     @Test void lateFailedAttemptCannotOverwriteANewerSuccessfulAttempt() {
@@ -173,7 +173,7 @@ class SalesLearningReceiptPostgresTest {
                 FROM generate_series(1,1001)
                 """,actor,payload);
         receipts.purgeExpiredEvidence();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_document_learning_receipts WHERE actor_user_id=? AND request_payload->'lines'<>'[]'::jsonb",Integer.class,actor)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_document_learning_receipts WHERE actor_user_id=? AND archived_at IS NULL",Integer.class,actor)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_document_learning_receipts WHERE actor_user_id=? AND steps->'MASTER'->>'status'='FAILED'",Integer.class,actor)).isEqualTo(1001);
     }
 
@@ -200,7 +200,7 @@ class SalesLearningReceiptPostgresTest {
             assertThat(usage.resultFor(job,actor)).isPresent();
             return StepResult.done();
         });
-        assertThat(jobs.purgeResults(1)).isEqualTo(1);assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1);
+        assertThat(jobs.purgeResults(1)).isEqualTo(1);assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
     }
 
     @Test void evidenceCleanupSkipsLockedReceiptsWithoutBlockingOtherCandidates() throws Exception {
@@ -213,7 +213,7 @@ class SalesLearningReceiptPostgresTest {
                 lock.setObject(1,held.learningReceiptId());lock.executeQuery().close();
                 tx.executeWithoutResult(s->{jdbc.execute("SET LOCAL statement_timeout='750ms'");receipts.purgeExpiredEvidence();});
                 assertThat(receipts.owned(held.learningReceiptId()).request().lines()).hasSize(1);
-                assertThat(receipts.owned(expired.learningReceiptId()).request().lines()).isEmpty();
+                assertThat(receipts.owned(expired.learningReceiptId()).request().lines()).hasSize(1);
             } finally {connection.rollback();}
         }
     }
@@ -235,10 +235,10 @@ class SalesLearningReceiptPostgresTest {
             assertThat(jdbc.queryForObject("SELECT used_doc_id IS NULL FROM ai_jobs WHERE id=?",Boolean.class,job)).isTrue();
             jobs.purgeResults(1);
             assertThat(jdbc.queryForObject("SELECT result IS NOT NULL FROM ai_jobs WHERE id=?",Boolean.class,job)).isTrue();
-            assertThat(jdbc.queryForObject("SELECT result IS NULL FROM ai_jobs WHERE id=?",Boolean.class,ordinaryExpired)).isTrue();
+            assertThat(jdbc.queryForObject("SELECT result IS NOT NULL AND archived_at IS NOT NULL FROM ai_jobs WHERE id=?",Boolean.class,ordinaryExpired)).isTrue();
             jobs.deleteFinishedOlderThan(7);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id=?",Integer.class,job)).isEqualTo(1);
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id=?",Integer.class,ordinaryExpired)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id=?",Integer.class,ordinaryExpired)).isEqualTo(1);
             return invocation.callRealMethod();
         }).when(usage).resultFor(job,actor);
         ObjectProvider<AiJobUsagePort> provider=mock(ObjectProvider.class);when(provider.getIfAvailable()).thenReturn(usage);

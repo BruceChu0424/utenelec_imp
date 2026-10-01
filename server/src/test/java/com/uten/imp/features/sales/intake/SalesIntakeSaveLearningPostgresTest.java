@@ -153,7 +153,7 @@ class SalesIntakeSaveLearningPostgresTest extends AiPlatformPostgresTestSupport 
                 FROM ai_jobs WHERE id = ?::uuid
                 """, jobId);
         assertThat(job).containsEntry("used_doc_type", "quote").containsEntry("used_doc_id", quoteId)
-                .containsEntry("purged", true).containsEntry("stamped", true);
+                .containsEntry("purged", false).containsEntry("stamped", false);
         assertThat(getJson("/api/ai/jobs/" + jobId, seller.token()).path("result").isNull()).isTrue();
 
         // ⑦ 审计: 保存请求自己的语义事件与「从客户文件补全资料」旁路事件都在, 同一个请求编号。

@@ -61,6 +61,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class BusinessDataResetService {
+    public static final String PERMANENT_RECORD_REFUSAL="当前永久保留策略禁止清空业务数据，请使用归档和历史管理；只读盘点及备份仍可使用";
 
     /** 排水等待上限：在途请求多为秒级；长导出等请求超时则放弃本次清空。 */
     static final long DRAIN_TIMEOUT_MILLIS = 45_000;
@@ -165,6 +166,7 @@ public class BusinessDataResetService {
         // 受理回执先于一切(ADR-067 §9)：写不进去就不清库——「没有受理回执」必须严格等价于「没执行」。
         recordAttemptReceived(operatorId, operatorAccount, attemptId);
         try {
+            requirePermanentRecordsPreserved();
             return resetAfterReceipt(operatorId, operatorAccount, attemptId);
         } catch (UncertainResetOutcome uncertain) {
             throw uncertain;
@@ -172,6 +174,10 @@ public class BusinessDataResetService {
             recordAttemptFailed(operatorId, operatorAccount, attemptId, failure);
             throw failure;
         }
+    }
+
+    private static void requirePermanentRecordsPreserved() {
+        throw new ApiException(ErrorCode.CONFLICT,PERMANENT_RECORD_REFUSAL);
     }
 
     private void recordAttemptReceived(UUID operatorId, String operatorAccount, UUID attemptId) {

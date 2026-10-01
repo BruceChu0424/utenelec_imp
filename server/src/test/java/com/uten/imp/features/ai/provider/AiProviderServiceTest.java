@@ -18,6 +18,7 @@ import org.mockito.InOrder;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -63,13 +64,13 @@ class AiProviderServiceTest {
                 Clock.fixed(Instant.parse("2026-09-27T08:00:00Z"), ZoneOffset.UTC));
         admin = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "admin", Set.of("authorization:manage"),
                 false, true, true);
-        when(repository.lockAll()).thenAnswer(invocation -> List.copyOf(rows));
-        when(repository.findAllOrdered()).thenAnswer(invocation -> List.copyOf(rows));
+        when(repository.lockAll()).thenAnswer(invocation -> rows.stream().filter(row->!row.isDeleted()).toList());
+        when(repository.findAllOrdered()).thenAnswer(invocation -> rows.stream().filter(row->!row.isDeleted()).toList());
         when(repository.findById(any())).thenAnswer(invocation ->
                 rows.stream().filter(row -> row.getId().equals(invocation.getArgument(0))).findFirst());
-        when(repository.findDefault()).thenAnswer(invocation -> rows.stream().filter(AiProvider::isDefault).findFirst());
+        when(repository.findDefault()).thenAnswer(invocation -> rows.stream().filter(row->!row.isDeleted()).filter(AiProvider::isDefault).findFirst());
         when(repository.existsByNameIgnoreCaseExcluding(anyString(), any())).thenAnswer(invocation ->
-                rows.stream().anyMatch(row -> row.getName().equalsIgnoreCase(invocation.getArgument(0))
+                rows.stream().anyMatch(row -> !row.isDeleted()&&row.getName().equalsIgnoreCase(invocation.getArgument(0))
                         && !row.getId().equals(invocation.getArgument(1))));
         when(repository.saveAndFlush(any())).thenAnswer(invocation -> {
             AiProvider row = invocation.getArgument(0);
@@ -306,10 +307,11 @@ class AiProviderServiceTest {
         assertValidation(() -> service.delete(first.getId(), null, admin), "默认");
         AiProvider second = rows.get(1);
         service.delete(second.getId(), second.getVersion(), admin);
-        verify(repository).delete(second);
-        rows.remove(second);
+        verify(repository).save(second);assertThat(second.isDeleted()).isTrue();assertThat(second.isEnabled()).isFalse();
+        assertThat(second.getDeletedBy()).isEqualTo(admin.getId());assertThat(second.getDeletedAt()).isEqualTo(OffsetDateTime.now(Clock.fixed(Instant.parse("2026-09-27T08:00:00Z"),ZoneOffset.UTC)));
         service.delete(first.getId(), null, admin);
-        verify(repository).delete(first);
+        verify(repository).save(first);assertThat(first.isDeleted()).isTrue();assertThat(rows).hasSize(2);
+        verify(repository,never()).delete(any());assertThat(service.list()).isEmpty();
         assertThat(String.valueOf(auditChange("ai_provider.delete", first.getId()).get("detail"))).contains("删除");
     }
 

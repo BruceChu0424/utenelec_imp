@@ -44,6 +44,7 @@ public class AiProviderService {
     private static final Pattern PRINTABLE_ASCII = Pattern.compile("^[\\x21-\\x7e]+$");
     private static final int MAX_KEY_LENGTH = 512;
     private static final int LAST4_MIN_KEY_LENGTH = 20;
+    private static final com.fasterxml.jackson.databind.ObjectMapper HISTORY_JSON=new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final AiProviderRepository repository;
     private final SecretCipher cipher;
@@ -70,6 +71,40 @@ public class AiProviderService {
         List<AiProvider> rows = repository.findAllOrdered();
         Map<UUID, String> names = actorNames(rows);
         return rows.stream().map(row -> view(row, names.get(row.getUpdatedBy()))).toList();
+    }
+
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public List<AiProviderDtos.ProviderHistoryView> listHistory(boolean onlyDeleted) {
+        return repository.findAllHistory(onlyDeleted).stream().map(row->historyView(row,List.of(),null)).toList();
+    }
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public AiProviderDtos.ProviderHistoryView history(UUID id,Long beforeId,int size) {
+        AiProvider row=repository.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
+        int limit=Math.max(1,Math.min(50,size));
+        List<AiProviderDtos.ProviderRevision> versions=jdbc.query("""
+                SELECT id,recorded_at,actor_id,operation,public_payload::text AS configuration
+                FROM ai_provider_history WHERE provider_id=:id AND (:beforeId IS NULL OR id<:beforeId)
+                ORDER BY id DESC LIMIT :limit
+                """,new MapSqlParameterSource("id",id).addValue("beforeId",beforeId,java.sql.Types.BIGINT).addValue("limit",limit),
+                (rs,index)->new AiProviderDtos.ProviderRevision(rs.getLong("id"),rs.getObject("recorded_at",OffsetDateTime.class),
+                    rs.getObject("actor_id",UUID.class),rs.getString("operation"),safeHistoryConfiguration(rs.getString("configuration")),true));
+        return historyView(row,versions,versions.size()==limit?versions.getLast().id():null);
+    }
+    private static Map<String,Object> safeHistoryConfiguration(String text) {
+        try{return HISTORY_JSON.readValue(text,new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});}
+        catch(java.io.IOException failure){throw new ApiException(ErrorCode.CONFLICT,"历史服务配置无法读取，请核对保留记录");}
+    }
+    private AiProviderDtos.ProviderHistoryView historyView(AiProvider row,List<AiProviderDtos.ProviderRevision> versions,Long cursor) {
+        String deletedByName=null;
+        if(row.getDeletedBy()!=null){
+            var names=jdbc.query("SELECT e.full_name FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id=:id",
+                new MapSqlParameterSource("id",row.getDeletedBy()),(rs,index)->rs.getString(1));
+            if(!names.isEmpty())deletedByName=names.getFirst();
+        }
+        return new AiProviderDtos.ProviderHistoryView(view(row,null),row.isDeleted(),row.getDeletedAt(),row.getDeletedBy(),deletedByName,
+            row.getDeletedReason(),true,versions,cursor);
     }
 
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
@@ -157,7 +192,7 @@ public class AiProviderService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public AiProviderRuntime storedRuntime(UUID id, AiProviderDtos.StoredProbeRequest check) {
-        AiProvider row = repository.findById(id)
+        AiProvider row = repository.findById(id).filter(provider->!provider.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "这个 AI 服务已被删除, 请刷新页面"));
         if (check != null) {
             if (check.protocol() != null && !check.protocol().isBlank()
@@ -261,7 +296,7 @@ public class AiProviderService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请刷新页面后再保存");
         }
         lockProviderWrites();
-        AiProvider row = repository.findById(id)
+        AiProvider row = repository.findById(id).filter(provider->!provider.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "这个 AI 服务已被删除, 请刷新页面"));
         requireVersion(row, request.version());
         Validated input = validate(request, row);
@@ -330,7 +365,9 @@ public class AiProviderService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "这是默认的 AI 服务, 请先把别的服务设为默认再删除");
         }
-        repository.delete(row);
+        row.setDeleted(true);row.setDeletedAt(OffsetDateTime.now(clock));row.setDeletedBy(actor.getId());
+        row.setUpdatedAt(OffsetDateTime.now(clock));row.setUpdatedBy(actor.getId());
+        row.setDeletedReason("USER_LOGICAL_DELETE");row.setEnabled(false);row.setDefault(false);repository.save(row);
         repository.flush();
         auditChange(actor, "ai_provider.delete", row,
                 "删除 AI 服务「" + row.getName() + "」(" + row.getPreset().label() + ")");
@@ -378,7 +415,7 @@ public class AiProviderService {
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public AiProviderDtos.ProviderView setEnabled(UUID id, boolean enabled, Long version, AuthUser actor) {
         lockProviderWrites();
-        AiProvider row = repository.findById(id)
+        AiProvider row = repository.findById(id).filter(provider->!provider.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "这个 AI 服务已被删除, 请刷新页面"));
         if (version != null) {
             requireVersion(row, version);
@@ -406,7 +443,7 @@ public class AiProviderService {
         jdbc.update("""
                 UPDATE ai_providers
                 SET last_test_at = :at, last_test_ok = :ok, last_test_message = :message
-                WHERE id = :id AND version = :version
+                WHERE id = :id AND version = :version AND NOT is_deleted
                 """, new MapSqlParameterSource()
                 .addValue("at", at)
                 .addValue("ok", ok)

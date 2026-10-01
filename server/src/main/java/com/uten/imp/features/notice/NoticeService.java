@@ -388,6 +388,35 @@ public class NoticeService {
         return toDto(n, st, userId);
     }
 
+    @Transactional(readOnly=true)
+    public com.uten.imp.features.notice.dto.NoticeHistoryDto getHistory(UUID id) {
+        UUID userId=requireStaffId();Notice n=noticeRepo.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
+        NoticeUserState state=stateRepo.findById(new NoticeUserStateId(id,userId)).orElse(null);
+        if(!visibleTo(n,userId,state))throw new ApiException(ErrorCode.NOT_FOUND);
+        var history=historyDto(n,state,userId,true);
+        auditExplicit("view_notice_history",n.getTitle());return history;
+    }
+    @Transactional(readOnly=true)
+    public List<com.uten.imp.features.notice.dto.NoticeHistoryDto> listHistory(boolean onlyUnread,boolean importantOnly,
+            boolean includeDeleted,boolean onlyDeleted) {
+        UUID userId=requireStaffId();var rows=noticeRepo.findVisibleHistory(userId,onlyUnread||importantOnly,includeDeleted||onlyDeleted,
+                onlyDeleted,reviewAudience.workshopScope(requireStaff()),PageRequest.of(0,MAX_LIST_ITEMS));
+        if(importantOnly){var hr=Set.copyOf(noticeRepo.findHrDepartmentUserIds());rows=rows.stream().filter(n->n.getCreatedBy()!=null&&hr.contains(n.getCreatedBy())).toList();}
+        var states=stateMap(userId,rows.stream().map(Notice::getId).toList());
+        var subjects=subjectsMap(rows);var reviewEvents=reviewEventsFor(rows);
+        return rows.stream().map(n->historyDto(toDto(n,states.get(n.getId()),userId,true,
+                subjects.getOrDefault(n.getId(),List.of()),reviewEvents),states.get(n.getId()),userId,false)).toList();
+    }
+    private com.uten.imp.features.notice.dto.NoticeHistoryDto historyDto(Notice n,NoticeUserState state,UUID userId,boolean detail) {
+        return historyDto(toDto(n,state,userId),state,userId,detail);
+    }
+    private com.uten.imp.features.notice.dto.NoticeHistoryDto historyDto(NoticeDto document,NoticeUserState state,UUID userId,boolean detail) {
+        boolean deleted=state!=null&&state.getDeletedAt()!=null;
+        return new com.uten.imp.features.notice.dto.NoticeHistoryDto(document,deleted,deleted?state.getDeletedAt():null,
+                deleted?(state.getDeletedBy()==null?userId:state.getDeletedBy()):null,deleted?state.getDeletedByName():null,
+                deleted?(state.getDeletedReason()==null?"LEGACY_PERSONAL_REMOVAL":state.getDeletedReason()):null,detail||deleted);
+    }
+
     // =========================== 发布 ===========================
 
     /** 发布通知（控制器层已校验 notice:publish）。发布人取当前员工姓名快照。 */
@@ -565,6 +594,7 @@ public class NoticeService {
             b.setSenderName(senderName); // 改名后随最近一次编辑回溯
             b.setContent(safe);
         }
+        b.setDeleted(false);b.setDeletedAt(null);b.setDeletedBy(null);b.setDeletedReason(null);
         NoticeBlessing saved = blessRepo.save(b);
         long count = blessRepo.countByNoticeId(id);
         auditExplicit("notice_bless", n.getTitle());
@@ -611,6 +641,19 @@ public class NoticeService {
                 .toList();
         return new BlessingPage(items, blessRepo.countByNoticeId(id));
     }
+
+    /** Historical versions keep each edit/withdraw/re-blessing; current audience/scope still applies. */
+    @Transactional(readOnly=true)
+    public List<BlessingHistoryDto> blessingHistory(UUID id,Long beforeId,int size) {
+        UUID userId=requireStaffId();Notice notice=noticeRepo.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
+        NoticeUserState state=stateRepo.findById(new NoticeUserStateId(id,userId)).orElse(null);
+        if(!visibleTo(notice,userId,state))throw new ApiException(ErrorCode.NOT_FOUND);
+        return blessRepo.findHistory(id,beforeId,Math.max(1,Math.min(50,size))).stream().map(row->new BlessingHistoryDto(
+            row.getId(),row.getBlessingId(),row.getSenderName(),row.getContent(),row.getRecordedAt(),row.getActorId(),row.getOperation(),
+            Boolean.parseBoolean(row.getDeleted()),row.getDeletedReason(),true)).toList();
+    }
+    public record BlessingHistoryDto(Long id,UUID blessingId,String senderName,String content,Instant recordedAt,UUID actorId,
+        String operation,boolean deleted,String deletedReason,boolean historyReadOnly){}
 
     /** 全部回执人（默认前 8，前端按需翻页/展开）。看不到这条通知的人一律 404。 */
     @Transactional(readOnly = true)
@@ -1019,6 +1062,7 @@ public class NoticeService {
                 .collect(Collectors.toMap(Notice::getId, notice -> notice));
         Instant now = Instant.now();
         int deleted = 0;
+        String deletedByName=currentEmployeeName();
         List<NoticeUserState> changed = new ArrayList<>();
         List<String> deletedTitles = new ArrayList<>();
         for (UUID id : notices.keySet()) {
@@ -1036,6 +1080,7 @@ public class NoticeService {
             }
             if (st.getDeletedAt() == null) {
                 st.setDeletedAt(now);
+                st.setDeletedBy(userId);st.setDeletedByName(deletedByName);st.setDeletedReason("USER_PERSONAL_REMOVAL");
                 changed.add(st);
                 deleted++;
                 if (deletedTitles.size() < 3) {
@@ -1594,6 +1639,7 @@ public class NoticeService {
         } else if (includeInteractions && "bless".equals(mode)) {
             blessingCount = blessRepo.countByNoticeId(n.getId());
             OptionalBlessing mine = blessRepo.findByNoticeIdAndUserId(n.getId(), userId)
+                    .filter(b->!b.isDeleted())
                     .map(b -> new OptionalBlessing(b.getContent(), b.getCreatedAt()))
                     .orElse(null);
             if (mine != null) {

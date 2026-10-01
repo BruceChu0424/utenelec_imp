@@ -138,7 +138,7 @@ class AiJobServiceTest {
         PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new AiJobService(new AiJobHandlerRegistry(List.of(handler)), repository, restorer, properties,
-                events, new ObjectMapper(), transactions);
+                events, new ObjectMapper(), transactions,mock(AiInputOriginalStore.class));
         user = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "13900000001", Set.of("ai:use"), false, true,
                 false);
         when(restorer.currentStamps(user.getId()))

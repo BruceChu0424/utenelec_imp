@@ -208,7 +208,7 @@ public class StepUpService {
     }
 
     private void clearFailures(UUID userId) {
-        jdbc.update("DELETE FROM auth_step_up_states WHERE user_id = :userId",
+        jdbc.update("UPDATE auth_step_up_states SET failed_attempts=0,locked_until=NULL,updated_at=now() WHERE user_id=:userId",
                 new MapSqlParameterSource("userId", userId));
     }
 

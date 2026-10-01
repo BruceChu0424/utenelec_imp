@@ -137,7 +137,7 @@ public class SalesQuoteTemplateStore {
                 VALUES(:job,:id,:client,:type,:doc)
                 """, p);
         // V747's cleanup trigger only releases objects not referenced by an immutable template version.
-        jdbc.update("DELETE FROM sales_quote_template_candidates WHERE job_id=:job", p);
+        jdbc.update("UPDATE sales_quote_template_candidates SET archived_at=COALESCE(archived_at,now()),archived_by=COALESCE(archived_by,CAST(:actor AS text)),archive_reason=COALESCE(archive_reason,'ADOPTED') WHERE job_id=:job",p);
         audit.logCommittedSideEffect(event.userId(), null, "learn_sales_quote_template", "sales_quote_customer_templates",
                 id.toString(), "保存客户报价样式 v" + version);
     }
@@ -201,7 +201,7 @@ public class SalesQuoteTemplateStore {
         jdbc.update("""
                 WITH candidates AS (
                     SELECT c.job_id FROM sales_quote_template_candidates c JOIN ai_jobs j ON j.id=c.job_id
-                    WHERE j.status IN ('SUCCEEDED','FAILED','CANCELLED')
+                    WHERE c.archived_at IS NULL AND j.status IN ('SUCCEEDED','FAILED','CANCELLED')
                       AND (j.learning_retry_until IS NULL OR j.learning_retry_until<now())
                       AND (c.expires_at<now() OR j.status IN ('FAILED','CANCELLED') OR j.used_at IS NOT NULL)
                       AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
@@ -212,7 +212,8 @@ public class SalesQuoteTemplateStore {
                             AND EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING'))
                     ORDER BY c.expires_at,c.job_id LIMIT 1000 FOR UPDATE OF c,j SKIP LOCKED
                 )
-                DELETE FROM sales_quote_template_candidates c USING candidates WHERE c.job_id=candidates.job_id
+                UPDATE sales_quote_template_candidates c SET archived_at=now(),archived_by='system:template-retention',archive_reason='CANDIDATE_RETENTION_WINDOW'
+                FROM candidates WHERE c.job_id=candidates.job_id
                 """, Map.of());
     }
     private void lockJob(Map<String, Object> parameters) {

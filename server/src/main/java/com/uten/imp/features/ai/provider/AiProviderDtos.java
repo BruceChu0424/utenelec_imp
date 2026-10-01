@@ -14,6 +14,12 @@ public final class AiProviderDtos {
 
     private AiProviderDtos() {
     }
+    public record ProviderHistoryView(@com.fasterxml.jackson.annotation.JsonUnwrapped ProviderView document,
+            boolean deleted,OffsetDateTime deletedAt,UUID deletedBy,String deletedByName,String deletedReason,
+            boolean historyReadOnly,List<ProviderRevision> revisions,Long nextCursor){}
+    /** Historical public config is a whitelist: never the encrypted secret or plaintext key. */
+    public record ProviderRevision(long id,OffsetDateTime recordedAt,UUID actorId,String operation,
+            java.util.Map<String,Object> configuration,boolean historyReadOnly){}
 
     /** 服务商列表项。 */
     public record ProviderView(

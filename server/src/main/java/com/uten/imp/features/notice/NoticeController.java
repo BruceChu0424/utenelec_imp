@@ -89,7 +89,9 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public Map<String, Object> list(
             @RequestParam(required = false) Boolean onlyUnread,
-            @RequestParam(name = "importantOnly", required = false) Boolean importantOnly) {
+            @RequestParam(name = "importantOnly", required = false) Boolean importantOnly,
+            @RequestParam(defaultValue="false") boolean includeDeleted,@RequestParam(defaultValue="false") boolean onlyDeleted) {
+        if(includeDeleted||onlyDeleted)return Map.of("items",service.listHistory(Boolean.TRUE.equals(onlyUnread),Boolean.TRUE.equals(importantOnly),includeDeleted,onlyDeleted));
         // importantOnly：人事序列部门发布且未读的「重要通知」（2026-09-28 用户口径），
         // 与 onlyUnread 互斥使用（语义已含未读）。
         if (Boolean.TRUE.equals(importantOnly)) {
@@ -97,6 +99,7 @@ public class NoticeController {
         }
         return Map.of("items", service.list(Boolean.TRUE.equals(onlyUnread)));
     }
+    public Map<String,Object> list(Boolean onlyUnread,Boolean importantOnly){return list(onlyUnread,importantOnly,false,false);}
 
     @GetMapping("/arrivals")
     @PreAuthorize("hasAuthority('notice:read')")
@@ -131,6 +134,15 @@ public class NoticeController {
     @PreAuthorize("hasAuthority('notice:read')")
     public NoticeDto detail(@PathVariable UUID id) {
         return service.getById(id);
+    }
+    @GetMapping("/{id}/history") @PreAuthorize("hasAuthority('notice:read')")
+    public com.uten.imp.features.notice.dto.NoticeHistoryDto history(@PathVariable UUID id){return service.getHistory(id);}
+
+    @GetMapping("/{id}/blessings/history")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public List<NoticeService.BlessingHistoryDto> blessingHistory(@PathVariable UUID id,
+            @RequestParam(required=false) Long beforeId,@RequestParam(defaultValue="50") int size) {
+        return service.blessingHistory(id,beforeId,size);
     }
 
     @PostMapping

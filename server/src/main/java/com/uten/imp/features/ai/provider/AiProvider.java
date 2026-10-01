@@ -78,6 +78,14 @@ public class AiProvider {
 
     @Column(name = "is_default", nullable = false)
     private boolean isDefault;
+    @Column(name="is_deleted",nullable=false)
+    private boolean deleted;
+    @Column(name="deleted_at")
+    private OffsetDateTime deletedAt;
+    @Column(name="deleted_by")
+    private UUID deletedBy;
+    @Column(name="deleted_reason")
+    private String deletedReason;
 
     @Column(name = "overseas_ack_by")
     private UUID overseasAckBy;

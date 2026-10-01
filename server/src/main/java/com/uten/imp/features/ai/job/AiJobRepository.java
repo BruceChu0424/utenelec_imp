@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -163,6 +164,14 @@ class AiJobRepository {
         return jdbc.queryForList("SELECT result::text FROM ai_jobs WHERE id = :id AND result IS NOT NULL",
                 new MapSqlParameterSource("id", id), String.class).stream().findFirst();
     }
+    Map<String,Object> historyMetadata(UUID id,UUID user) {
+        var rows=jdbc.queryForList("""
+                SELECT used_at AS "usedAt",used_doc_type AS "usedDocumentKind",used_doc_id AS "usedDocumentId",
+                    archived_at AS "archivedAt",archived_by AS "archivedBy",archive_reason AS "archiveReason"
+                FROM ai_jobs WHERE id=:id AND submitted_by_user=:user
+                """,new MapSqlParameterSource("id",id).addValue("user",user));
+        return rows.isEmpty()?Map.of():rows.getFirst();
+    }
 
     /** 排队中的任务直接取消(同一语句清空上传文件)。 */
     int cancelPending(UUID id, UUID userId) {
@@ -226,7 +235,7 @@ class AiJobRepository {
         return jdbc.update("""
                 UPDATE ai_jobs
                 SET used_at = COALESCE(used_at, now()), used_doc_type = :docType, used_doc_id = :docId,
-                    result = NULL, result_purged_at = COALESCE(result_purged_at, now()), learning_retry_until=NULL, updated_at = now()
+                    learning_retry_until=NULL, updated_at = now()
                 WHERE id = :id AND submitted_by_user = :user AND status = 'SUCCEEDED'
                   AND (used_doc_id IS NULL OR (used_doc_type=:docType AND used_doc_id=:docId))
                   AND (used_at IS NULL OR (used_doc_type = :docType AND used_doc_id = :docId))
@@ -428,7 +437,7 @@ class AiJobRepository {
         return jdbc.update("""
                 WITH candidates AS (
                     SELECT id FROM ai_jobs job
-                    WHERE status IN ('SUCCEEDED','FAILED','CANCELLED') AND finished_at>=created_at AND finished_at<=now()
+                    WHERE archived_at IS NULL AND status IN ('SUCCEEDED','FAILED','CANCELLED') AND finished_at>=created_at AND finished_at<=now()
                       AND result IS NOT NULL AND (learning_retry_until IS NULL OR learning_retry_until < now())
                       AND (used_at IS NOT NULL OR finished_at < now() - make_interval(hours => :hours))
                       AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
@@ -440,7 +449,7 @@ class AiJobRepository {
                     ORDER BY finished_at,id LIMIT 1000 FOR UPDATE SKIP LOCKED
                 )
                 UPDATE ai_jobs job
-                SET result = NULL, result_purged_at = now(), updated_at = now()
+                SET archived_at=now(),archived_by='system:ai-housekeeping',archive_reason='RESULT_RETENTION_WINDOW',updated_at=now()
                 FROM candidates WHERE job.id=candidates.id
                 """, new MapSqlParameterSource("hours", retentionHours));
     }
@@ -454,7 +463,7 @@ class AiJobRepository {
         return jdbc.update("""
                 WITH candidates AS (
                     SELECT id FROM ai_jobs job
-                    WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+                    WHERE archived_at IS NULL AND status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
                       AND finished_at < now() - make_interval(days => :days)
                       AND finished_at >= created_at
                       AND result IS NULL
@@ -471,7 +480,8 @@ class AiJobRepository {
                     LIMIT 1000
                     FOR UPDATE SKIP LOCKED
                 )
-                DELETE FROM ai_jobs job USING candidates
+                UPDATE ai_jobs job SET archived_at=now(),archived_by='system:ai-housekeeping',archive_reason='JOB_RETENTION_WINDOW',updated_at=now()
+                FROM candidates
                 WHERE job.id = candidates.id
                 """, new MapSqlParameterSource("days", days));
     }

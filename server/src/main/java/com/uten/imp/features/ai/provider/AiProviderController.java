@@ -40,19 +40,31 @@ public class AiProviderController {
     private final AiCallLogService callLogs;
     private final AiProperties properties;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.audit.AuditDetailViewRecorder detailViews;
 
     public AiProviderController(AiProviderService service, AiConnectionTester tester, AiCallLogService callLogs,
-                                AiProperties properties, SecurityContextCurrentUser currentUser) {
+                                AiProperties properties, SecurityContextCurrentUser currentUser,
+                                com.uten.imp.audit.AuditDetailViewRecorder detailViews) {
         this.service = service;
         this.tester = tester;
         this.callLogs = callLogs;
         this.properties = properties;
         this.currentUser = currentUser;
+        this.detailViews=detailViews;
     }
 
     @GetMapping("/providers")
-    public List<AiProviderDtos.ProviderView> list() {
-        return service.list();
+    public List<?> list(@RequestParam(defaultValue="false") boolean includeDeleted,@RequestParam(defaultValue="false") boolean onlyDeleted) {
+        return includeDeleted||onlyDeleted?service.listHistory(onlyDeleted):service.list();
+    }
+    public List<AiProviderDtos.ProviderView> list(){return service.list();}
+    @GetMapping("/providers/history")
+    public List<AiProviderDtos.ProviderHistoryView> listHistory(@RequestParam(defaultValue="false") boolean onlyDeleted){return service.listHistory(onlyDeleted);}
+    @GetMapping("/providers/{id}/history")
+    public AiProviderDtos.ProviderHistoryView history(@PathVariable UUID id,@RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size){
+        var result=service.history(id,beforeId,size);
+        detailViews.record("view_ai_provider_history_detail","ai_providers",id,null,null,"AI 服务配置历史");return result;
     }
 
     @GetMapping("/presets")

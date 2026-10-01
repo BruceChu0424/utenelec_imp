@@ -45,6 +45,9 @@ public class NoticeUserState {
 
     @Column(name = "deleted_at")
     private Instant deletedAt;
+    @Column(name="deleted_by") private java.util.UUID deletedBy;
+    @Column(name="deleted_by_name") private String deletedByName;
+    @Column(name="deleted_reason") private String deletedReason;
 
     @Column(name = "task_completed_at")
     private Instant taskCompletedAt;

@@ -31,10 +31,12 @@ public class AiJobUsageAdapter implements AiJobUsagePort {
 
     private final AiJobRepository repository;
     private final ObjectMapper objectMapper;
+    private final AiInputOriginalStore originals;
 
-    public AiJobUsageAdapter(AiJobRepository repository, ObjectMapper objectMapper) {
+    public AiJobUsageAdapter(AiJobRepository repository, ObjectMapper objectMapper,AiInputOriginalStore originals) {
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.originals=originals;
     }
 
     @Override
@@ -55,18 +57,22 @@ public class AiJobUsageAdapter implements AiJobUsagePort {
     @Override
     @Transactional
     public boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId, java.time.OffsetDateTime retryUntil) {
-        return jobId != null && userId != null && docId != null && docType != null && DOC_TYPE.matcher(docType).matches()
+        boolean reserved=jobId != null && userId != null && docId != null && docType != null && DOC_TYPE.matcher(docType).matches()
                 && retryUntil != null && retryUntil.isAfter(java.time.OffsetDateTime.now())
                 && !retryUntil.isAfter(java.time.OffsetDateTime.now().plusDays(30).plusMinutes(1))
                 && repository.reserveLearning(jobId,userId,docType,docId,retryUntil) > 0;
+        if(reserved)originals.bind(jobId,userId,docType,docId);
+        return reserved;
     }
 
     @Override
     @Transactional
     public boolean reserveLearningForSave(UUID job,UUID user,String type,UUID doc,java.time.OffsetDateTime until,
             java.util.Set<String> keys,boolean headerUsed) {
-        return job!=null&&user!=null&&doc!=null&&type!=null&&DOC_TYPE.matcher(type).matches()&&until!=null&&keys!=null
+        boolean reserved=job!=null&&user!=null&&doc!=null&&type!=null&&DOC_TYPE.matcher(type).matches()&&until!=null&&keys!=null
                 &&repository.reserveLearningForSave(job,user,type,doc,until,keys,headerUsed)>0;
+        if(reserved)originals.bind(job,user,type,doc);
+        return reserved;
     }
 
     @Override
@@ -75,7 +81,7 @@ public class AiJobUsageAdapter implements AiJobUsagePort {
         if (jobId == null || userId == null || docId == null || docType == null || !DOC_TYPE.matcher(docType).matches()) {
             return;
         }
-        repository.markUsed(jobId, userId, docType, docId);
+        if(repository.markUsed(jobId,userId,docType,docId)>0)originals.bind(jobId,userId,docType,docId);
     }
 
     private Optional<Map<String, Object>> parse(String json) {

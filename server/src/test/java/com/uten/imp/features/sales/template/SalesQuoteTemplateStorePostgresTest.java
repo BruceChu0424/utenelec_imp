@@ -120,7 +120,7 @@ class SalesQuoteTemplateStorePostgresTest {
         jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?", job);
         succeed(job);
         tx.executeWithoutResult(s -> store.purgeExpired());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key=?", Integer.class, key)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key=?", Integer.class, key)).isZero();
         for (int i = 0; i < 21; i++) {
             Set<String> different = new TreeSet<>(candidate.features()); different.add("extra:" + i + ":variant");
             UUID another = job(); stage(another, new QuoteTemplateWorkbook.Candidate(candidate.xlsx(), String.format("%064x", i + 1), candidate.mapping(), different)); succeed(another);
@@ -140,7 +140,7 @@ class SalesQuoteTemplateStorePostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
         jdbc.update("UPDATE ai_jobs SET learning_retry_until=now()-interval '1 second' WHERE id=?",job);
         tx.executeWithoutResult(s->store.purgeExpired());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isZero();
+        assertThat(jdbc.queryForObject("SELECT archived_at IS NOT NULL FROM sales_quote_template_candidates WHERE job_id=?",Boolean.class,job)).isTrue();
     }
 
     @ParameterizedTest @ValueSource(strings={"intakeJobId","additionalIntakeJobIds"})
@@ -157,7 +157,7 @@ class SalesQuoteTemplateStorePostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
         jdbc.update("UPDATE sales_document_learning_receipts SET steps='{\"TEMPLATE\":{\"status\":\"SUCCEEDED\",\"attempts\":1}}'::jsonb WHERE id=?",receipt);
         tx.executeWithoutResult(s->store.purgeExpired());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isZero();
+        assertThat(jdbc.queryForObject("SELECT archived_at IS NOT NULL FROM sales_quote_template_candidates WHERE job_id=?",Boolean.class,job)).isTrue();
     }
 
     @Test void onlyContributingServerSourceRowsCanTeachATemplateAndResetQueuesStagedObjects() {
@@ -171,8 +171,9 @@ class SalesQuoteTemplateStorePostgresTest {
         assertThat(store.list(client)).hasSize(1);
         UUID pending = job(); stage(pending, candidate);
         String key = jdbc.queryForObject("SELECT storage_key FROM sales_quote_template_candidates WHERE job_id=?", String.class, pending);
-        jdbc.execute("TRUNCATE sales_quote_template_candidates");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE storage_key=? AND operation='DELETE_FINAL'", Integer.class, key)).isEqualTo(1);
+        assertThatThrownBy(()->jdbc.execute("TRUNCATE sales_quote_template_candidates")).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE storage_key=? AND operation='DELETE_FINAL'", Integer.class, key)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,pending)).isEqualTo(1);
         assertThat(store.list(client)).hasSize(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key IN (SELECT storage_key FROM sales_quote_template_versions WHERE template_id=?)",
                 Integer.class, store.list(client).getFirst().id())).isZero();

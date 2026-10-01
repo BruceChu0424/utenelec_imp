@@ -53,8 +53,8 @@ public class AiJobHousekeeping {
         }
         int logs = callLogs.purgeOlderThanDays(Math.max(1, properties.getCallLogRetentionDays()));
         if (stale + purged + deleted + logs > 0) {
-            log.info("AI housekeeping: {} stale queued job(s) failed, {} result(s) cleared, {} job(s) deleted,"
-                    + " {} call log(s) deleted", stale, purged, deleted, logs);
+            log.info("AI history retention: {} stale queued job(s) failed, {} result-bearing job(s) archived, {} job(s) archived,"
+                    + " {} call log(s) archived; contents preserved", stale, purged, deleted, logs);
         }
     }
 

@@ -48,4 +48,22 @@ void main() {
     expect(documentOwnerCanWrite(loading, 'owner-self'), isFalse);
     expect(documentOwnerCanWrite(error, 'owner-self'), isFalse);
   });
+  test('a retained previous capability is closed during refresh and error', () {
+    const previous = AsyncData(
+      DocumentScopeCapability(
+        scope: 'finance',
+        writeAll: true,
+        writableOwnerIds: <String>{},
+      ),
+    );
+    final refreshing = const AsyncLoading<DocumentScopeCapability>()
+        .copyWithPrevious(previous);
+    final failed = AsyncError<DocumentScopeCapability>(
+      StateError('revoked'),
+      StackTrace.current,
+    ).copyWithPrevious(previous);
+    expect(refreshing.valueOrNull?.writeAll, isTrue);
+    expect(documentOwnerCanWrite(refreshing, 'owner'), isFalse);
+    expect(documentOwnerCanWrite(failed, 'owner'), isFalse);
+  });
 }

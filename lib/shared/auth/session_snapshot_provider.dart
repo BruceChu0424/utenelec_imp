@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/connection_recovery.dart';
+import '../../core/security/secure_storage.dart';
 import '../../features/auth/repositories/auth_repository.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/session_provider.dart';
@@ -90,6 +91,9 @@ final sessionSnapshotProvider =
       SessionSnapshotNotifier.new,
     );
 
+SessionSnapshot? confirmedSessionSnapshot(AsyncValue<SessionSnapshot?> value) =>
+    value.isLoading || value.hasError ? null : value.valueOrNull;
+
 class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
   /// 失败后自动重试的退避间隔(用完即止, 之后只等断网恢复或下次授权变化)。
   static const retryDelays = [
@@ -99,19 +103,31 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
   ];
 
   AuthenticatedScope? _scope;
+  ApiClient? _client;
+  int _lifecycle = 0;
+  int _refreshRevision = 0;
+  Future<SessionSnapshot>? _latestRead;
   int _failures = 0;
   Timer? _retry;
 
   @override
   Future<SessionSnapshot?> build() async {
     final scope = ref.watch(authenticatedScopeProvider);
+    // The client is rebuilt for a backend switch; snapshots never cross it.
+    final client = ref.watch(apiClientProvider);
+    final lifecycle = ++_lifecycle;
+    final revision = ++_refreshRevision;
+    _latestRead = null;
     _retry?.cancel();
     _retry = null;
-    if (scope != _scope) {
+    if (scope != _scope || !identical(client, _client)) {
       _scope = scope;
+      _client = client;
       _failures = 0;
     }
     ref.onDispose(() {
+      if (lifecycle != _lifecycle) return;
+      _lifecycle++;
       _retry?.cancel();
       _retry = null;
     });
@@ -132,30 +148,94 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
         }
       },
     );
-    final recent = RecentMeSnapshot.take(scope.userId);
+    Map<String, dynamic>? recent;
+    if (scope.actorId == null && RecentMeSnapshot.hasCandidate) {
+      try {
+        final tokens = await ref
+            .read(secureStorageProvider)
+            .getAuthTokenSnapshot();
+        if (!_active(lifecycle, scope, client)) return null;
+        recent = RecentMeSnapshot.take(scope.userId, client, tokens);
+      } catch (_) {
+        // A reuse optimization must never substitute unowned authorization.
+        RecentMeSnapshot.clear();
+      }
+    } else {
+      RecentMeSnapshot.clear();
+    }
+    if (!_active(lifecycle, scope, client)) return null;
+    if (revision != _refreshRevision) {
+      return _latestForBuild(lifecycle, scope, client);
+    }
     if (recent != null) return SessionSnapshot.fromJson(recent);
+    final pending = _fetch(client);
+    _latestRead = pending;
     try {
-      final snapshot = await _fetch();
-      _failures = 0;
+      final snapshot = await pending;
+      if (revision != _refreshRevision) {
+        return _latestForBuild(lifecycle, scope, client);
+      }
+      if (_active(lifecycle, scope, client)) _failures = 0;
       return snapshot;
     } catch (_) {
-      _scheduleRetry(scope);
+      if (revision != _refreshRevision) {
+        return _latestForBuild(lifecycle, scope, client);
+      }
+      _scheduleRetry(lifecycle, scope, client);
       rethrow;
     }
   }
 
-  void _scheduleRetry(AuthenticatedScope scope) {
+  /// A manual refresh may supersede an initial build without invalidating the
+  /// provider. That build must join the latest read rather than publish its old
+  /// authorization (or schedule an obsolete error retry) afterward.
+  Future<SessionSnapshot?> _latestForBuild(
+    int lifecycle,
+    AuthenticatedScope scope,
+    ApiClient client,
+  ) async {
+    while (_active(lifecycle, scope, client)) {
+      final revision = _refreshRevision;
+      final pending = _latestRead;
+      if (pending == null) return confirmedSessionSnapshot(state);
+      try {
+        final result = await pending;
+        if (!_active(lifecycle, scope, client)) return null;
+        if (revision == _refreshRevision) return result;
+      } catch (_) {
+        if (!_active(lifecycle, scope, client)) return null;
+        if (revision == _refreshRevision) rethrow;
+      }
+    }
+    return null;
+  }
+
+  bool _active(int lifecycle, AuthenticatedScope scope, ApiClient client) =>
+      lifecycle == _lifecycle &&
+      _scope == scope &&
+      identical(client, _client) &&
+      ref.read(authenticatedScopeProvider) == scope &&
+      identical(ref.read(apiClientProvider), client);
+
+  void _scheduleRetry(
+    int lifecycle,
+    AuthenticatedScope scope,
+    ApiClient client,
+  ) {
+    if (!_active(lifecycle, scope, client)) return;
     if (_failures >= retryDelays.length) return;
     final delay = retryDelays[_failures++];
     _retry?.cancel();
     _retry = Timer(delay, () {
       _retry = null;
-      if (_scope == scope && state.hasError) ref.invalidateSelf();
+      if (_active(lifecycle, scope, client) && state.hasError) {
+        ref.invalidateSelf();
+      }
     });
   }
 
-  Future<SessionSnapshot> _fetch() async {
-    final json = await ref.read(apiClientProvider).get(ApiEndpoints.authMe);
+  Future<SessionSnapshot> _fetch(ApiClient client) async {
+    final json = await client.get(ApiEndpoints.authMe);
     final session = json['session'];
     // 服务端本次没算出快照(/me 只回了资料): 按失败处理, 走退避重取, 不把「空快照」
     // 当成真实结果让整段会话只读。
@@ -169,13 +249,36 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
   Future<void> refresh() async {
     final scope = ref.read(authenticatedScopeProvider);
     if (scope == null) return;
-    state = await AsyncValue.guard(_fetch);
-    if (state.hasError) _scheduleRetry(scope);
+    final client = ref.read(apiClientProvider);
+    final lifecycle = _lifecycle;
+    if (!_active(lifecycle, scope, client)) return;
+    final revision = ++_refreshRevision;
+    _retry?.cancel();
+    _retry = null;
+    final pending = _fetch(client);
+    _latestRead = pending;
+    state = const AsyncLoading<SessionSnapshot?>().copyWithPrevious(state);
+    final result = await AsyncValue.guard(() => pending);
+    if (!_active(lifecycle, scope, client) || revision != _refreshRevision) {
+      return;
+    }
+    state = result;
+    if (result.hasError) {
+      _scheduleRetry(lifecycle, scope, client);
+    } else {
+      _failures = 0;
+    }
   }
 
   /// 本端写偏好成功(或乐观写入)后就地更新, 不为此重拉整份快照。
   void updatePreference(String key, Object? value) {
-    final current = state.valueOrNull;
+    final scope = _scope, client = _client;
+    if (scope == null ||
+        client == null ||
+        !_active(_lifecycle, scope, client)) {
+      return;
+    }
+    final current = confirmedSessionSnapshot(state);
     if (current == null) return;
     state = AsyncData(current.withPreference(key, value));
   }

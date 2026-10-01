@@ -336,7 +336,8 @@ class _MyDepartmentDetail extends ConsumerWidget {
     final isManaged = ref.watch(
       sessionSnapshotProvider.select(
         (snapshot) =>
-            snapshot.valueOrNull?.canDelegate('org.employee') ?? false,
+            confirmedSessionSnapshot(snapshot)?.canDelegate('org.employee') ??
+            false,
       ),
     );
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;

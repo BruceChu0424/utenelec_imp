@@ -26,6 +26,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/connection_recovery.dart';
 import '../../core/network/data_write_revision.dart';
+import '../auth/permissions.dart';
 import '../providers/app_visibility_provider.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../repositories/public_settings_repository.dart';
@@ -262,6 +263,8 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   @override
   BadgeSummary build() {
     final scope = ref.watch(authenticatedScopeProvider);
+    ref.watch(currentPermissionsProvider);
+    ref.watch(apiClientProvider);
     final generation = ++_generation;
     _timer?.cancel();
     _timer = null;

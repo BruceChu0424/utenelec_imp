@@ -16,9 +16,12 @@ class MasterLookupQueue {
   final int maxConcurrent;
   final _pending = <String, Future<void>>{};
   final _queue = Queue<(List<String>, Completer<void>)>();
+  final _running = <Completer<void>>{};
   int _active = 0;
+  bool _disposed = false;
 
   Future<void> load(Iterable<String> ids) {
+    if (_disposed) return Future.error(StateError('名称读取作用域已结束'));
     final waits = <Future<void>>{};
     final missing = <String>[];
     for (final id in ids.toSet()) {
@@ -47,9 +50,10 @@ class MasterLookupQueue {
   }
 
   void _drain() {
-    while (_active < maxConcurrent && _queue.isNotEmpty) {
+    while (!_disposed && _active < maxConcurrent && _queue.isNotEmpty) {
       final (batch, completion) = _queue.removeFirst();
       _active++;
+      _running.add(completion);
       unawaited(_run(batch, completion));
     }
   }
@@ -57,15 +61,29 @@ class MasterLookupQueue {
   Future<void> _run(List<String> batch, Completer<void> completion) async {
     try {
       await fetch(batch);
-      completion.complete();
+      if (!completion.isCompleted) completion.complete();
     } catch (error, stack) {
-      completion.completeError(error, stack);
+      if (!completion.isCompleted) completion.completeError(error, stack);
     } finally {
       for (final id in batch) {
         _pending.remove(id);
       }
       _active--;
+      _running.remove(completion);
       _drain();
+    }
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    final completions = {..._running, ..._queue.map((item) => item.$2)};
+    _queue.clear();
+    _pending.clear();
+    for (final completion in completions) {
+      if (!completion.isCompleted) {
+        completion.completeError(StateError('名称读取作用域已结束'));
+      }
     }
   }
 }

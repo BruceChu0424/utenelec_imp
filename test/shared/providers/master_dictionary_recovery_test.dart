@@ -128,7 +128,11 @@ void main() {
       await firstLoad;
       expect(second.warehouse('shared'), 'B');
       expect(second.supplier('shared'), 'B');
-      expect(first.warehouse('shared'), 'A');
+      expect(
+        first.warehouse('shared'),
+        '—',
+        reason: 'A disposed identity cannot repopulate its old dictionary',
+      );
     },
   );
 }

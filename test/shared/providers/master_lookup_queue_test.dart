@@ -1,10 +1,55 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/master_lookup_queue.dart';
 
 void main() {
+  test(
+    'disposed lookup queues stop old queued requests and resolve waiters',
+    () async {
+      final gate = Completer<void>();
+      final requested = <String>[];
+      final queue = MasterLookupQueue(
+        batchSize: 1,
+        maxConcurrent: 1,
+        fetch: (ids) async {
+          requested.addAll(ids);
+          await gate.future;
+        },
+      );
+      final pending = queue.load(['first', 'queued']);
+      final rejected = expectLater(pending, throwsStateError);
+      queue.dispose();
+      await rejected;
+      gate.complete();
+      await Future<void>.value();
+      expect(requested, ['first']);
+      await expectLater(queue.load(['new']), throwsStateError);
+    },
+  );
+
+  test(
+    'successful lookup cache stays bounded and evicted rows can be read again',
+    () async {
+      final api = _LookupApi();
+      final names = MasterDictionaryService(api);
+      addTearDown(names.dispose);
+      const count = MasterDictionaryService.maxCachedLookupRows + 101;
+      await names.loadGoodsDetails(
+        List.generate(count, (index) => 'goods-$index'),
+      );
+      expect(names.goodsInfo('goods-0'), isNull);
+      expect(names.goodsInfo('goods-${count - 1}'), isNotNull);
+      final calls = api.goodsBatches.length;
+      await names.loadGoodsDetails(['goods-0']);
+      expect(api.goodsBatches.length, calls + 1);
+      expect(names.goodsInfo('goods-0')?.code, 'goods-0');
+    },
+  );
+
   test(
     '501 goods use bounded requests and overlapping detail reads share work',
     () async {

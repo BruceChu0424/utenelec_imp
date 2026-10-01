@@ -172,6 +172,7 @@ class PurchaseDocItem {
     this.unitRateText,
     this.qty,
     this.qtyText,
+    this.rowVersion,
     this.price,
     this.priceText,
     this.totalAmountInputText,
@@ -209,6 +210,10 @@ class PurchaseDocItem {
   final String? unitRateText;
   final double? qty;
   final String? qtyText;
+
+  /// Persistent request-line CAS version. Missing/invalid versions stay unknown;
+  /// they must never become an invented zero when editing an older DTO.
+  final int? rowVersion;
   final double? price;
   final String? priceText;
 
@@ -256,6 +261,9 @@ class PurchaseDocItem {
         unitRateText: receiptRecordedDecimal(json, 'unitRate'),
         qty: (json['qty'] as num?)?.toDouble(),
         qtyText: receiptRecordedDecimal(json, 'qty'),
+        rowVersion: json['rowVersion'] is int && (json['rowVersion'] as int) >= 0
+            ? json['rowVersion'] as int
+            : null,
         price: (json['price'] as num?)?.toDouble(),
         priceText: receiptRecordedDecimal(json, 'price'),
         totalAmountInputText: receiptRecordedDecimal(json, 'totalAmountInput'),

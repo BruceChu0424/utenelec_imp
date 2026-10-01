@@ -113,10 +113,11 @@ class PurchaseRepository {
     required String requestId,
     required String itemId,
     required double qty,
+    required int expectedVersion,
   }) async {
     final json = await api.put(
       '${ApiEndpoints.purchaseBase('requests')}/$requestId/items/$itemId/qty',
-      body: {'qty': qty},
+      body: {'qty': qty, 'expectedVersion': expectedVersion},
     );
     return PurchaseDocDetail.fromJson(json);
   }

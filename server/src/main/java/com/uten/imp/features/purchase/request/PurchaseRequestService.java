@@ -62,12 +62,19 @@ public class PurchaseRequestService {
      * The correlated lookup uses the request-item index instead of aggregating every order source. */
     private static final String PENDING_ORDER_QUANTITY_JOIN = """
             LEFT JOIN LATERAL (
-                SELECT COALESCE(SUM(src.alloc_qty), 0) AS pending_qty
-                FROM purchase_order_item_sources src
-                JOIN purchase_order_items oi ON oi.id = src.order_item_id
-                JOIN purchase_orders o ON o.id = oi.order_id
-                WHERE src.request_item_id = i.id
-                  AND oi.is_deleted = FALSE AND o.status = 0 AND o.is_deleted = FALSE
+                SELECT COALESCE(SUM(part.qty), 0) AS pending_qty
+                FROM (
+                    SELECT src.alloc_qty AS qty, oi.order_id
+                    FROM purchase_order_item_sources src
+                    JOIN purchase_order_items oi ON oi.id=src.order_item_id AND NOT oi.is_deleted
+                    WHERE src.request_item_id=i.id
+                    UNION ALL
+                    SELECT oi.qty, oi.order_id FROM purchase_order_items oi
+                    WHERE oi.request_item_id=i.id AND NOT oi.is_deleted
+                      AND NOT EXISTS(SELECT 1 FROM purchase_order_item_sources src WHERE src.order_item_id=oi.id)
+                ) part
+                JOIN purchase_orders o ON o.id=part.order_id
+                WHERE o.status = 0 AND o.is_deleted = FALSE
                   AND EXISTS (
                       SELECT 1 FROM procurement_order_approval_cases approval
                       WHERE approval.order_type = 'PURCHASE' AND approval.order_id = o.id
@@ -93,6 +100,8 @@ public class PurchaseRequestService {
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final TaskClaimService taskClaim;
     private final OrganizationReferencePort organizationReferences;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     @Transactional(readOnly = true)
     public PageResponse<RequestListItem> list(RequestQueryFilter f, int page, int size, String sort, String order) {
@@ -135,25 +144,29 @@ public class PurchaseRequestService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public RequestDetail detail(UUID id) { return readDetail(id, false); }
 
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public RequestDetail detailHistory(UUID id) { return readDetail(id, true); }
 
     private RequestDetail readDetail(UUID id, boolean historyRead) {
         PurchaseRequest r = requireRequest(id, historyRead);
         Map<UUID, BigDecimal> pending = new LinkedHashMap<>();
+        Map<UUID, Long> versions = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT i.id, pending.pending_qty FROM purchase_request_items i
+                SELECT i.id, pending.pending_qty, i.row_version FROM purchase_request_items i
                 %s
                 WHERE i.request_id = :requestId AND i.is_deleted = FALSE
                 """.formatted(PENDING_ORDER_QUANTITY_JOIN)).setParameter("requestId", id))) {
             pending.put(uuid(row[0]), decimal(row[1]));
+            versions.put(uuid(row[0]), ((Number) row[2]).longValue());
         }
         List<RequestItemDto> items = itemRepo.findByRequestIdOrderByLineNoAsc(id).stream()
-                .map(item -> toItemDto(item, pending.getOrDefault(item.getId(), BigDecimal.ZERO))).toList();
+                .filter(item -> versions.containsKey(item.getId()))
+                .map(item -> toItemDto(item, pending.getOrDefault(item.getId(), BigDecimal.ZERO),
+                        versions.get(item.getId()))).toList();
         return finishHistory(toDetail(r, items), r, historyRead);
     }
 
@@ -166,25 +179,53 @@ public class PurchaseRequestService {
      * （否则订货行多来源 FIFO 分摊（ADR-069）的血缘会被破坏）。修正不重拍审批
      * 快照、不动来源锚定；分解任务台的剩余量随新数量自然重算。</p>
      */
-    @Transactional
+    /** Unsafe historical callers must refresh to obtain the persistent item version. */
+    @Deprecated
     public RequestDetail adjustItemQty(UUID requestId, UUID itemId, java.math.BigDecimal qty) {
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "数量修正必须携带当前明细版本，请刷新后重试");
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')")
+    public RequestDetail adjustItemQty(UUID requestId, UUID itemId, java.math.BigDecimal qty, Long expectedVersion) {
+        if (expectedVersion == null || expectedVersion < 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "数量修正必须携带当前明细版本，请刷新后重试");
+        }
+        if (qty == null || qty.signum() <= 0 || qty.stripTrailingZeros().scale() > 4
+                || qty.precision() - qty.scale() > 14) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "数量必须大于0且最多14位整数和4位小数");
+        }
         tx.bind();
         PurchaseRequest r = requestRepo.findById(requestId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购申请不存在"));
         if (r.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "采购申请不存在");
         }
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已下达的申请可修正数量");
-        }
         PurchaseRequestItem item = itemRepo.findById(itemId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在"));
-        if (!requestId.equals(item.getRequestId())) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "明细不属于该申请");
+        if (!requestId.equals(item.getRequestId()) || item.isDeleted()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在");
         }
-        if (qty == null || qty.signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "数量必须大于 0");
+        // Same canonical request-head/item/analysis/inventory lock prefix as
+        // decomposition/order creation. Refresh after waiting, never edit a
+        // persistence-context snapshot loaded before the lock was acquired.
+        var guard = mutationLocks.orderInputs("PURCHASE", null, List.of(itemId),
+                item.getGoodsId() == null ? List.of() : List.of(
+                        new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
+                                item.getGoodsId(), item.getColorId())), r.getWarehouseId());
+        em.refresh(r); em.refresh(item); guard.verifyUnchanged();
+        if (r.isDeleted() || item.isDeleted() || !requestId.equals(item.getRequestId())) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在");
         }
+        if (item.getRowVersion() != expectedVersion) {
+            throw new ApiException(ErrorCode.CONFLICT, "申请明细已变化，请保留原输入并刷新核对");
+        }
+        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED || r.isClosed()
+                || Boolean.TRUE.equals(r.getIsStopped()) || item.getUnitId() == null
+                || item.getUnitRate() == null || item.getUnitRate().signum() <= 0) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已下达且可分解的申请明细可修正数量");
+        }
+        taskClaim.requireNoActiveClaimByOther("PURCHASE_DECOMPOSE", requestId.toString());
         java.math.BigDecimal ordered = item.getOrderedQty();
         if (ordered != null && ordered.signum() > 0) {
             throw new ApiException(ErrorCode.BUSINESS,
@@ -197,25 +238,26 @@ public class PurchaseRequestService {
                     "该明细已有待财务审核的订货单（" + pending.stripTrailingZeros().toPlainString()
                             + "），不能修改数量");
         }
-        item.setQty(qty);
-        itemRepo.save(item);
+        List<?> changed = em.createNativeQuery("""
+                UPDATE purchase_request_items SET qty=:qty,updated_at=now(),updated_by=:actor
+                WHERE id=:item AND request_id=:request AND NOT is_deleted AND row_version=:version
+                RETURNING row_version
+                """).setParameter("qty", qty).setParameter("actor", currentUser.requireId())
+                .setParameter("item", itemId).setParameter("request", requestId)
+                .setParameter("version", expectedVersion).getResultList();
+        if (changed.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "申请明细已变化，请保留原输入并刷新核对");
+        }
+        em.refresh(item);
         return detail(requestId);
     }
 
     /** 待财务审核订货单对该申请明细的占用量（与工作台 V199 purchase_pending 同口径）。 */
     private java.math.BigDecimal pendingApprovalOrderQty(UUID requestItemId) {
         Object value = em.createNativeQuery("""
-                SELECT COALESCE(SUM(oi.qty), 0)
-                FROM procurement_order_approval_cases a
-                JOIN purchase_orders po
-                  ON a.order_type = 'PURCHASE' AND a.order_id = po.id
-                 AND a.status = 'PENDING'
-                JOIN purchase_order_items oi ON oi.order_id = po.id
-                WHERE po.status = 0
-                  AND po.is_deleted = FALSE
-                  AND oi.is_deleted = FALSE
-                  AND oi.request_item_id = :itemId
-                """)
+                SELECT pending.pending_qty FROM purchase_request_items i
+                %s WHERE i.id=:itemId AND NOT i.is_deleted
+                """.formatted(PENDING_ORDER_QUANTITY_JOIN))
                 .setParameter("itemId", requestItemId)
                 .getSingleResult();
         return value == null ? java.math.BigDecimal.ZERO
@@ -505,6 +547,10 @@ public class PurchaseRequestService {
     }
 
     private RequestItemDto toItemDto(PurchaseRequestItem it, BigDecimal pendingQty) {
+        return toItemDto(it, pendingQty, it.getRowVersion());
+    }
+
+    private RequestItemDto toItemDto(PurchaseRequestItem it, BigDecimal pendingQty, long rowVersion) {
         return new RequestItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
@@ -514,7 +560,7 @@ public class PurchaseRequestService {
                 it.getSalesOrderNo(), it.getRemark(), pendingQty,
                 (it.getQty() == null ? BigDecimal.ZERO : it.getQty())
                         .subtract(it.getOrderedQty() == null ? BigDecimal.ZERO : it.getOrderedQty())
-                        .subtract(pendingQty).max(BigDecimal.ZERO));
+                        .subtract(pendingQty).max(BigDecimal.ZERO), rowVersion);
     }
 
     private RequestDetail toDetail(PurchaseRequest r, List<RequestItemDto> items) {

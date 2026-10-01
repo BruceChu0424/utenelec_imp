@@ -123,6 +123,7 @@ class _Api extends ApiClient {
         {
           'id': 'line-1',
           'qty': 10,
+          'rowVersion': 7,
           'orderedQty': 0,
           'pendingQty': 0,
           'goodsNameSnapshot': '采购材料',
@@ -170,6 +171,7 @@ class _Api extends ApiClient {
           {
             'id': 'line-1',
             'qty': body['qty'],
+            'rowVersion': (body['expectedVersion'] as int) + 1,
             'orderedQty': 0,
             'pendingQty': 0,
           },
@@ -480,7 +482,10 @@ void main() {
       expect(api.puts.map((entry) => entry.path).toList(), [
         '/purchase/requests/record-1/items/line-1/qty',
       ]);
-      expect(api.puts.single.body, <String, dynamic>{'qty': 37.0});
+      expect(api.puts.single.body, <String, dynamic>{
+        'qty': 37.0,
+        'expectedVersion': 7,
+      });
       expect(api.writes, 1);
       expect(tester.widget<TextField>(field).controller!.text, '37');
       expect(tester.takeException(), isNull);
@@ -508,7 +513,13 @@ void main() {
       await tester.pumpAndSettle();
       api.extra = {
         'items': [
-          {'id': 'line-1', 'qty': 20, 'orderedQty': 0, 'pendingQty': 0},
+          {
+            'id': 'line-1',
+            'qty': 20,
+            'rowVersion': 8,
+            'orderedQty': 0,
+            'pendingQty': 0,
+          },
         ],
       };
       _confirmed(container);

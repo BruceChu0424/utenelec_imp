@@ -572,7 +572,7 @@ class ProductionDailyReportCommandTest {
         });
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{"CREATE", hash, reportId, null, null}));
+                        new Object[]{"CREATE", hash, reportId, null, null, null, null}));
         when(currentUser.requireId()).thenReturn(actorId);
         ProductionDailyReport existing = new ProductionDailyReport();
         existing.setId(reportId);
@@ -614,7 +614,7 @@ class ProductionDailyReportCommandTest {
         Query command = query(false);
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{"CREATE", legacyHash, reportId, null, null}));
+                        new Object[]{"CREATE", legacyHash, reportId, null, null, null, null}));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
@@ -667,7 +667,7 @@ class ProductionDailyReportCommandTest {
         });
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{"CREATE", "a".repeat(64), UUID.randomUUID(), null, null}));
+                        new Object[]{"CREATE", "a".repeat(64), UUID.randomUUID(), null, null, null, null}));
         when(currentUser.requireId()).thenReturn(actorId);
 
         ApiException error = assertThrows(
@@ -998,7 +998,7 @@ class ProductionDailyReportCommandTest {
         Query commandRead = query(false);
         when(commandRead.getResultList()).thenReturn(ledgerRow == null
                 ? List.of()
-                : java.util.Collections.singletonList(java.util.Arrays.copyOf(ledgerRow, 5)));
+                : java.util.Collections.singletonList(java.util.Arrays.copyOf(ledgerRow, 7)));
         // 只有回放路径会走到这几张表；拒绝路径在此之前就抛了，所以放宽严格桩检查。
         Query empty = org.mockito.Mockito.mock(Query.class);
         org.mockito.Mockito.lenient()

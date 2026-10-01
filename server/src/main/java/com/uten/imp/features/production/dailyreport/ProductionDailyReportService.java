@@ -21,6 +21,7 @@ import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApprovalReceipt;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApprovalResolution;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportCreateResolution;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
@@ -342,6 +343,9 @@ public class ProductionDailyReportService {
             }
             return commandDetail(replay.reportId());
         }
+        // Only new CREATE freezes the proof before any domain mutation. The
+        // existing accepted POST replay never receives new extension rules.
+        String fullPayloadHash = createFullPayloadHash(req);
         // ADR-131 §10 锁序：幂等顾问锁之后、写日报之前，锁住涉及的车间内料仓期间并核对日期。
         guardWorkshopMaterialPeriods(null, req.getBillDate(), requestSegmentIds(req.getItems()),
                 WorkshopMaterialReportGuardPort.Operation.SAVE);
@@ -358,7 +362,7 @@ public class ProductionDailyReportService {
         outputAllocation.requireMaterialDeclarations(r.getId());
         syncReportWorkers(r.getId(), workerIds);
         recordCommand(COMMAND_CREATE,
-                actorId, idempotencyKey, requestHash, r.getId());
+                actorId, idempotencyKey, requestHash, r.getId(), null, null, 1, fullPayloadHash);
         return detail(r.getId());
     }
 
@@ -604,6 +608,46 @@ public class ProductionDailyReportService {
         }
         chainNotice.notifyRemakeCreated(r.getId()); // UUID 真源：完结缺额已自动补产→销售（无补产时静默）
         return withApprovalReceipt(detail(id), idempotencyKey, commandVersion, reviewedVersion, false);
+    }
+
+    /**
+     * Pure observation of the frozen CREATE request. Neither an absent receipt
+     * nor a different actor proves that the original request failed.
+     */
+    @Transactional(readOnly = true,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW,
+            isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportCreateResolution createReceipt(DailyReportSaveRequest request) {
+        if (request == null || request.getItems() == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生产日报创建请求或明细不能为空");
+        }
+        UUID actorId = currentUser.requireId();
+        String key = normalizeCreateIdempotencyKey(request.getIdempotencyKey());
+        String requestHash = createRequestHash(request);
+        ReportCommand command = findCommand(actorId, key);
+        if (command == null) {
+            return new DailyReportCreateResolution("UNKNOWN", key, requestHash, null, null, null, null);
+        }
+        // The current object's scope is still required after create/edit rights
+        // are revoked. Deletion never reactivates the document or its actions.
+        DailyReportDetail current = history(command.reportId());
+        if (!COMMAND_CREATE.equals(command.commandKind())
+                || !requestHash.equals(command.requestHash())) {
+            throw new ApiException(ErrorCode.CONFLICT, "原提交标识不属于此生产日报创建请求");
+        }
+        if (command.createPayloadVersion() == null || command.createPayloadHash() == null) {
+            return new DailyReportCreateResolution(
+                    "LEGACY_UNCONFIRMED", key, command.requestHash(), null, null, command.reportId(), current);
+        }
+        String fullPayloadHash = createFullPayloadHash(request);
+        if (!Integer.valueOf(1).equals(command.createPayloadVersion())
+                || !fullPayloadHash.equals(command.createPayloadHash())) {
+            throw new ApiException(ErrorCode.CONFLICT, "原创建请求的完整字段证明不一致");
+        }
+        return new DailyReportCreateResolution(
+                "COMMITTED", key, command.requestHash(), command.createPayloadVersion(),
+                command.createPayloadHash(), command.reportId(), current);
     }
 
     /** Observe an actor-owned receipt without ever invoking approval or locking its fulfillment graph. */
@@ -1571,7 +1615,8 @@ public class ProductionDailyReportService {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT command_kind, request_hash, report_id,
-                               approval_protocol_version, reviewed_row_version
+                               approval_protocol_version, reviewed_row_version,
+                               create_payload_version, create_payload_hash
                         FROM production_daily_report_commands
                         WHERE actor_user_id = :actorId
                           AND idempotency_key = :idempotencyKey
@@ -1584,7 +1629,9 @@ public class ProductionDailyReportService {
                 Objects.toString(rows.getFirst()[1], ""),
                 (UUID) rows.getFirst()[2],
                 rows.getFirst()[3] == null ? null : ((Number) rows.getFirst()[3]).intValue(),
-                rows.getFirst()[4] == null ? null : ((Number) rows.getFirst()[4]).longValue());
+                rows.getFirst()[4] == null ? null : ((Number) rows.getFirst()[4]).longValue(),
+                rows.getFirst()[5] == null ? null : ((Number) rows.getFirst()[5]).intValue(),
+                rows.getFirst()[6] == null ? null : rows.getFirst()[6].toString());
     }
 
     private void recordCommand(
@@ -1598,15 +1645,24 @@ public class ProductionDailyReportService {
 
     private void recordCommand(String commandKind, UUID actorId, String idempotencyKey,
             String requestHash, UUID reportId, Integer approvalProtocolVersion, Long reviewedVersion) {
+        recordCommand(commandKind, actorId, idempotencyKey, requestHash, reportId,
+                approvalProtocolVersion, reviewedVersion, null, null);
+    }
+
+    private void recordCommand(String commandKind, UUID actorId, String idempotencyKey,
+            String requestHash, UUID reportId, Integer approvalProtocolVersion, Long reviewedVersion,
+            Integer createPayloadVersion, String createPayloadHash) {
         // 列默认值只用来回填历史行，应用写入永远显式给种类，
         // 否则将来新加的命令会静默落成 CREATE。
         em.createNativeQuery("""
                 INSERT INTO production_daily_report_commands(
                     id, actor_user_id, idempotency_key, request_hash,
-                    report_id, created_by, command_kind, approval_protocol_version, reviewed_row_version)
+                    report_id, created_by, command_kind, approval_protocol_version, reviewed_row_version,
+                    create_payload_version, create_payload_hash)
                 VALUES(
                     gen_random_uuid(), :actorId, :idempotencyKey, :requestHash,
-                    :reportId, :actorId, :commandKind, :approvalProtocolVersion, :reviewedVersion)
+                    :reportId, :actorId, :commandKind, :approvalProtocolVersion, :reviewedVersion,
+                    :createPayloadVersion, :createPayloadHash)
                 """)
                 .setParameter("commandKind", commandKind)
                 .setParameter("actorId", actorId)
@@ -1615,6 +1671,8 @@ public class ProductionDailyReportService {
                 .setParameter("reportId", reportId)
                 .setParameter("approvalProtocolVersion", approvalProtocolVersion)
                 .setParameter("reviewedVersion", reviewedVersion)
+                .setParameter("createPayloadVersion", createPayloadVersion)
+                .setParameter("createPayloadHash", createPayloadHash)
                 .executeUpdate();
     }
 
@@ -1714,6 +1772,41 @@ public class ProductionDailyReportService {
         if ((protocol == null || protocol == 1) && version == null) return 1;
         if (Integer.valueOf(2).equals(protocol) && version != null && version >= 0) return 2;
         throw new ApiException(ErrorCode.VALIDATION_FAILED, "新版审核必须同时提供 commandVersion=2 和有效 expectedVersion");
+    }
+
+    /**
+     * Pure original-body proof. Native fields retain their established V3
+     * normalization; extension cells are a set by column UUID. Values preserve
+     * their text identity (TEXT "001" is never inferred as NUMBER 1).
+     */
+    static String createFullPayloadHash(DailyReportSaveRequest request) {
+        List<String> parts = new ArrayList<>();
+        addCanonical(parts, "schema", "PRODUCTION-DAILY-REPORT-CREATE-FULL-V1");
+        addCanonical(parts, "nativeV3", createRequestHash(request));
+        List<DailyReportItemLine> lines = request.getItems() == null ? List.of() : request.getItems();
+        for (int index = 0; index < lines.size(); index++) {
+            var line = lines.get(index);
+            var fields = line == null ? null : line.getPlatformFields();
+            String path = "lines[" + index + "].platformFields";
+            addCanonical(parts, path + ".sourceRecordId", fields == null ? null : fields.sourceRecordId());
+            addCanonical(parts, path + ".expectedVersion", fields == null ? 0 : fields.expectedVersion());
+            var cells = fields == null ? List.<com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput>of() : fields.cells();
+            if (cells == null || cells.size() > 32 || (fields != null && fields.expectedVersion() < 0)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "完整创建证明须提供有效版本和最多32个扩展字段");
+            }
+            Set<UUID> unique = new LinkedHashSet<>();
+            for (var cell : cells) {
+                if (cell == null || cell.columnId() == null || !unique.add(cell.columnId())) {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED, "完整创建证明的列编号不能为空或重复");
+                }
+            }
+            addCanonical(parts, path + ".cells.count", cells.size());
+            for (var cell : cells.stream().sorted(java.util.Comparator.comparing(value -> value.columnId().toString())).toList()) {
+                String value = cell.value() == null || cell.value().isBlank() ? null : cell.value().strip();
+                addCanonical(parts, path + ".cells[" + cell.columnId() + "].value", value);
+            }
+        }
+        return CanonicalFingerprint.sha256(parts);
     }
 
     static String createRequestHash(DailyReportSaveRequest request) {
@@ -2585,7 +2678,8 @@ public class ProductionDailyReportService {
     /** 日报命令账本的一行：同一把 (操作者, 幂等键) 永久绑定一种命令和一张日报。 */
     private record ReportCommand(
             String commandKind, String requestHash, UUID reportId,
-            Integer approvalProtocolVersion, Long reviewedRowVersion) {
+            Integer approvalProtocolVersion, Long reviewedRowVersion,
+            Integer createPayloadVersion, String createPayloadHash) {
     }
 
     /**

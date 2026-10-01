@@ -105,11 +105,15 @@ public class PurchaseRequestController {
             @PathVariable UUID id,
             @PathVariable UUID itemId,
             @Valid @RequestBody ItemQtyAdjustRequest req) {
-        return service.adjustItemQty(id, itemId, req.qty());
+        return service.adjustItemQty(id, itemId, req.qty(), req.expectedVersion());
     }
 
     /** 数量修正请求体。 */
-    public record ItemQtyAdjustRequest(java.math.BigDecimal qty) {
+    public record ItemQtyAdjustRequest(
+            @jakarta.validation.constraints.NotNull
+            @jakarta.validation.constraints.Positive
+            @jakarta.validation.constraints.Digits(integer = 14, fraction = 4) java.math.BigDecimal qty,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Min(0) Long expectedVersion) {
     }
 
     @GetMapping("/{id}/history/rows")

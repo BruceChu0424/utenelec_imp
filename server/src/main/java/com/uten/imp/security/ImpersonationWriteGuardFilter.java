@@ -55,7 +55,8 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
         if (auth != null && auth.getPrincipal() instanceof AuthUser user && user.getImpersonatedBy() != null) {
             String method = request.getMethod() == null ? "" : request.getMethod().toUpperCase(Locale.ROOT);
             if (WRITE_METHODS.contains(method) && !WRITABLE_WHITELIST.contains(stripContextPath(request))
-                    && !readOnlyIqcReportReceipt(method, stripContextPath(request))) {
+                    && !readOnlyIqcReportReceipt(method, stripContextPath(request))
+                    && !readOnlyDailyCreateReceipt(method, stripContextPath(request))) {
                 blockWrite(request, response, user.getImpersonatedBy());
                 return;
             }
@@ -67,6 +68,12 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
     static boolean readOnlyIqcReportReceipt(String method, String path) {
         return "POST".equals(method) && path != null && path.matches(
                 "/api/procurement/inspection/(PURCHASE|SUBCONTRACT)/[0-9a-fA-F-]{36}/(decide-batch|pass-batch)/receipt");
+    }
+
+    /** Only the exact original-body CREATE resolver is a pure read. */
+    static boolean readOnlyDailyCreateReceipt(String method, String path) {
+        return "POST".equals(method)
+                && "/api/production/daily-reports/create-receipt".equals(path);
     }
 
     private void blockWrite(HttpServletRequest request, HttpServletResponse response, UUID adminId)

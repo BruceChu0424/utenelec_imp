@@ -141,10 +141,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   final Map<String, TextEditingController> _qtyControllers = {};
   final Map<
     String,
-    ({String qty, String ordered, String pending, String source})
+    ({String qty, String ordered, String pending, String source, int? version})
   >
   _qtyInputBases = {};
   final Set<String> _qtyInputConflicts = {};
+
+  // Set before dispatch. Neither a failed PUT nor a same-quantity GET proves
+  // which actor committed it; only explicit review can adopt a new baseline.
+  final Set<String> _qtyWriteReviewRequired = {};
 
   String get _qtyConflictSummary {
     final id = _qtyInputConflicts.first;
@@ -157,16 +161,18 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     }
     final values = current == null
         ? '当前明细已变化。'
-        : '原数量 ${_qtyInputBases[id]?.qty ?? '—'}，当前数量 ${_requestQtyText(current.qty)}，'
-              '未保存输入 ${_qtyControllers[id]?.text ?? '—'}。';
-    return '${_qtyInputConflicts.length} 行的原数量、来源或占用情况已变化。$values'
+        : '原数量 ${_qtyInputBases[id]?.qty ?? '—'}（版本 ${_qtyInputBases[id]?.version ?? '未知'}），'
+              '当前数量 ${_requestQtyText(current.qty)}（版本 ${current.rowVersion ?? '未知'}），'
+              '保留输入 ${_qtyControllers[id]?.text ?? '—'}。';
+    return '${_qtyInputConflicts.length} 行需要核对数量、版本、来源或占用情况。$values'
+        '${_qtyWriteReviewRequired.isEmpty ? '' : '先前提交尚未完成核对；当前数量相同也不能据此认定该次提交成功。'}'
         '已保留未保存的输入；核对完成前不能保存或生成订货单。';
   }
 
-  ({String qty, String ordered, String pending, String source}) _qtyInputBase(
-    PurchaseDocItem item,
-  ) => (
+  ({String qty, String ordered, String pending, String source, int? version})
+  _qtyInputBase(PurchaseDocItem item) => (
     qty: _requestQtyText(item.qty),
+    version: item.rowVersion,
     ordered: _requestQtyText(item.orderedQty),
     pending: _requestQtyText(item.pendingQty),
     source:
@@ -178,7 +184,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     for (final entry in _qtyControllers.entries) {
       final old = _qtyInputBases[entry.key];
       final current = items[entry.key];
-      if (old == null || current == null) {
+      if (old == null ||
+          current == null ||
+          _qtyWriteReviewRequired.contains(entry.key)) {
         _qtyInputConflicts.add(entry.key);
         continue;
       }
@@ -204,6 +212,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   bool _itemQtyEditable(PurchaseDocItem item) =>
       _canAdjustRequestQty &&
       !_qtyInputConflicts.contains(item.id) &&
+      item.rowVersion != null &&
+      item.rowVersion! >= 0 &&
       (item.orderedQty ?? 0) <= 0 &&
       (item.pendingQty ?? 0) <= 0 &&
       item.id != null;
@@ -239,23 +249,45 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     ];
   }
 
+  bool get _canReviewQtyInputs =>
+      nativeReadCanWrite &&
+      !_busy &&
+      _qtyInputConflicts.isNotEmpty &&
+      _qtyInputConflicts.every(
+        (id) => _detail!.items.any(
+          (item) => item.id == id && item.rowVersion != null,
+        ),
+      );
+
   Future<void> _adoptCurrentQtyInputs() async {
     final detail = _detail;
-    if (!nativeReadCanWrite || detail == null || _qtyInputConflicts.isEmpty) {
-      return;
-    }
+    if (detail == null || !_canReviewQtyInputs) return;
     final ownsNative = captureNativeOwnership();
-    final confirmed = await showDialog<bool>(
+    final choice = await showDialog<bool>(
       context: context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
         AlertDialog(
-          title: const Text('采用当前数量？'),
-          content: const Text('已保留的未保存输入将被当前单据数量替换。采用后可重新填写，不会提交任何修改。'),
+          title: const Text('核对数量与版本'),
+          content: SingleChildScrollView(
+            child: Text(
+              '${[for (final item in detail.items)
+                if (_qtyInputConflicts.contains(item.id)) '第 ${detail.items.indexOf(item) + 1} 行：原数量 ${_qtyInputBases[item.id]?.qty ?? '—'}'
+                      '（版本 ${_qtyInputBases[item.id]?.version ?? '未知'}），'
+                      '当前数量 ${_requestQtyText(item.qty)}（版本 ${item.rowVersion}），'
+                      '保留输入 ${_qtyControllers[item.id]?.text ?? '—'}。'].join('\n')}\n'
+              '请选择保留输入并采用当前版本，或采用当前数量。此操作只更新本页编辑基准，不会提交修改，也不会认定先前提交已成功。',
+            ),
+          ),
           actions: [
             TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('暂不处理'),
+            ),
+            TextButton(
+              key: const Key('purchase-request-qty-adopt-version'),
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('保留输入'),
+              child: const Text('保留输入并采用当前版本'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
@@ -265,10 +297,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         ),
       ),
     );
-    if (confirmed != true ||
+    if (choice == null ||
         !mounted ||
         !ownsNative() ||
-        !nativeReadCanWrite ||
+        !_canReviewQtyInputs ||
         !identical(_detail, detail)) {
       return;
     }
@@ -278,21 +310,22 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       if (controller == null) continue;
       final current = _qtyInputBase(item);
       _qtyInputBases[item.id!] = current;
-      controller.text = current.qty;
+      if (choice) controller.text = current.qty;
       _qtyInputConflicts.remove(item.id);
+      _qtyWriteReviewRequired.remove(item.id);
     }
     setState(() {});
   }
 
   Future<void> _saveQtyAdjustments() async {
-    if (!nativeReadCanWrite || _qtyInputConflicts.isNotEmpty) return;
+    if (_busy || !nativeReadCanWrite || _qtyInputConflicts.isNotEmpty) return;
     final ownsNative = captureNativeOwnership();
     final changes = _changedQtyItems;
     if (changes.isEmpty || !mounted || !ownsNative() || !nativeReadCanWrite) {
       return;
     }
     final invalid = changes
-        .where((change) => change.$2.isNaN || change.$2 <= 0)
+        .where((change) => !change.$2.isFinite || change.$2 <= 0)
         .toList();
     if (invalid.isNotEmpty) {
       context.appError('数量必须大于 0');
@@ -303,38 +336,62 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       _busyTitle = '正在保存数量修正，请稍候';
     });
     try {
-      var updated = _detail!;
       for (final (item, qty) in changes) {
         if (!mounted || !ownsNative() || !nativeReadCanWrite) return;
-        updated = await ref
+        final id = item.id!;
+        final base = _qtyInputBases[id];
+        final expectedVersion = base?.version;
+        if (expectedVersion == null) return;
+        final dispatchedDetail = _detail;
+        final submittedText = _qtyControllers[id]!.text;
+        _qtyWriteReviewRequired.add(id);
+        _qtyInputConflicts.add(id);
+        final updated = await ref
             .read(purchaseRepositoryProvider(widget.docType))
             .adjustRequestItemQty(
               requestId: widget.id,
-              itemId: item.id!,
+              itemId: id,
               qty: qty,
+              expectedVersion: expectedVersion,
             );
+        if (!mounted ||
+            !ownsNative() ||
+            !nativeReadCanWrite ||
+            !identical(_detail, dispatchedDetail)) {
+          return;
+        }
+        final acknowledged = updated.items
+            .where((row) => row.id == id)
+            .firstOrNull;
+        if (acknowledged == null ||
+            acknowledged.rowVersion == null ||
+            acknowledged.rowVersion! <= expectedVersion ||
+            acknowledged.qty != qty) {
+          throw const FormatException(
+            'Missing or mismatched quantity acknowledgement',
+          );
+        }
+        _qtyWriteReviewRequired.remove(id);
+        _qtyInputConflicts.remove(id);
+        final controller = _qtyControllers[id]!;
+        final nextBase = _qtyInputBase(acknowledged);
+        _qtyInputBases[id] = nextBase;
+        if (controller.text == submittedText) controller.text = nextBase.qty;
+        _reconcileQtyInputBases(updated);
+        setState(() => _detail = updated);
+        // Each accepted line is a completed command even if a later line fails.
+        bumpListRefresh(ref, _cfg.refreshKey);
+        if (_qtyInputConflicts.isNotEmpty) break;
       }
       if (!mounted || !ownsNative()) return;
-      final finishedControllers = _qtyControllers.values.toList();
-      _qtyControllers.clear();
-      _qtyInputBases.clear();
-      _qtyInputConflicts.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        for (final controller in finishedControllers) {
-          controller.dispose();
-        }
-      });
-      setState(() => _detail = updated);
-      context.appSuccess('数量已修正');
-      // 申请行的计划下达/待分解徽章随修正变化，bump 来源列表精准刷新。
-      bumpListRefresh(ref, _cfg.refreshKey);
+      if (_qtyInputConflicts.isEmpty) context.appSuccess('数量已修正');
     } on ApiException catch (error) {
       if (!mounted || !ownsNative()) return;
-      context.appError(error.message);
+      context.appError('${error.message}。输入已保留，请核对当前数量与版本后再操作。');
       await _load();
     } catch (_) {
       if (!mounted || !ownsNative()) return;
-      context.appError('数量修正失败，请重试');
+      context.appError('提交结果暂不确定，输入已保留；仅重新读取当前数量，请核对后再操作。');
       await _load();
     } finally {
       if (mounted && ownsNative()) setState(() => _busy = false);
@@ -430,6 +487,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     _selectedRequestItemIds.clear();
     _qtyInputBases.clear();
     _qtyInputConflicts.clear();
+    _qtyWriteReviewRequired.clear();
     _openingOrder = false;
     final controllers = _qtyControllers.values.toList();
     _qtyControllers.clear();
@@ -1150,8 +1208,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
             alignment: Alignment.centerRight,
             child: TextButton(
               key: const Key('purchase-request-qty-adopt-current'),
-              onPressed: _adoptCurrentQtyInputs,
+              onPressed: _canReviewQtyInputs ? _adoptCurrentQtyInputs : null,
               child: const Text('核对后采用当前数量'),
+            ),
+          ),
+        if (_canAdjustRequestQty &&
+            items.any((item) => item.rowVersion == null))
+          const Padding(
+            padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Text(
+              '部分明细缺少数量版本，请重新加载后再修改。',
+              key: Key('purchase-request-qty-missing-version'),
             ),
           ),
         // 2026-09-25 用户口径：纯计数标题「明细 (N)」退役；生成订货单提示与
@@ -1178,7 +1245,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 UtenButton(
                   key: const Key('purchase-request-qty-save'),
                   type: UtenButtonType.danger,
-                  onPressed: _busy ? null : _saveQtyAdjustments,
+                  onPressed: _busy || _qtyInputConflicts.isNotEmpty
+                      ? null
+                      : _saveQtyAdjustments,
                   child: const Text('保存修改'),
                 ),
               ],

@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApprovalResolution;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportCreateResolution;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportQueryFilter;
@@ -160,6 +161,17 @@ public class ProductionDailyReportController {
     @PreAuthorize("hasAuthority('production_daily_report:create')")
     public DailyReportDetail create(@Valid @RequestBody DailyReportSaveRequest req) {
         return service.create(req);
+    }
+
+    @PostMapping("/create-receipt")
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportCreateResolution createReceipt(@Valid @RequestBody DailyReportSaveRequest request) {
+        DailyReportCreateResolution result = service.createReceipt(request);
+        if (result.detail() != null) {
+            auditViews.record("view_production_daily_report_create_receipt", "production_daily_reports",
+                    result.reportId(), result.detail().getBillNo(), result.detail().getLegacyId(), "生产日报原创建回执");
+        }
+        return result;
     }
 
     @PutMapping("/{id}")

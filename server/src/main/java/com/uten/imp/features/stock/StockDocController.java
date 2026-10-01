@@ -218,6 +218,20 @@ public class StockDocController {
         return service.issueFullBatch(req);
     }
 
+    @GetMapping("/issue-batch/receipt")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution issueBatchReceipt(
+            @RequestParam String idempotencyKey) {
+        return service.issueBatchReceipt(idempotencyKey);
+    }
+
+    @GetMapping("/issue-batch/review")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Review issueBatchReview(
+            @RequestParam List<UUID> docIds) {
+        return service.issueBatchReview(docIds);
+    }
+
     /** DRAW 取消出库：兼容路径下对称回退已出库量（红冲前须全部取消）。 */
     @PostMapping("/{id}/issue/reverse")
     @PreAuthorize("hasAuthority('stock_doc:reverse_issue')")

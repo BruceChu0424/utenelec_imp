@@ -19,7 +19,7 @@ import java.util.List;
  *
  * <p>audit_log / audit_log_archive 按北京时间月分区。每天由数据库函数
  * {@code fn_audit_retention_run()} 以表所有者身份一次完成: 整月都早于在线截止点的分区
- * DETACH 后 ATTACH 到归档表, V767起超过原总留存期的混合归档分区只登记保全清单、不销毁,
+ * DETACH 后 ATTACH 到归档表, V770起超过原总留存期的混合归档分区只登记保全清单、不销毁,
  * 预建之后 3 个月的在线分区,
  * 并在同一事务里写一条 {@code audit_retention_completed} 系统事件(截止点、分区、行数)。
  * 保留期由函数直接读系统设置 audit_hot_retention_months / audit_archive_retention_months,

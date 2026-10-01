@@ -29,6 +29,9 @@ final class AttachmentUploadExpiryScheduler {
                 return;
             }
             try {
+                // An upload begun before signed expiry can finish after this first lookup.
+                // Persist a delayed staging-only check even if no object is visible yet.
+                outbox.enqueueExpiryVerification(session.id(),session.storageKey(),sessions.expiryVerificationAt(),session.storageProvider());
                 StoredObject object = storageProviders.require(session.storageProvider()).describe(session.storageKey());
                 if (object.exists()) {
                     outbox.enqueueStaging(

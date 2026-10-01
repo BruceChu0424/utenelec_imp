@@ -207,6 +207,10 @@ class AttachmentUploadSessionStore {
                 """, canonicalFailure(outcome), sessionId);
     }
 
+    Instant expiryVerificationAt() {
+        return Instant.now().plus(Duration.ofMinutes(Math.max(1,properties.getOutbox().getStaleProcessingMinutes())));
+    }
+
     private UploadSession findForUpdate(String storageKey) {
         return jdbc.query("""
                 SELECT id, storage_key, owner_type, owner_id, user_id, original_name,

@@ -128,6 +128,14 @@ public final class ProductionFqcContracts {
             boolean replay) {
     }
 
+    /** Only COMMITTED confirms this actor's command. UNKNOWN and LEGACY must retain the original request. */
+    public record DecisionResolution(String state, String idempotencyKey, DecisionResult result,
+                                     DecisionFacts decision) {}
+    public record DecisionFacts(String decision, BigDecimal passQty, BigDecimal failQty,
+                                String dispositionCode, String reason, String requestHash,
+                                OffsetDateTime decidedAt) {}
+    public record PassAllResolution(String state, String idempotencyKey, PassAllBatchResult result) {}
+
     public record PassAllBatchRequest(
             @NotNull
             @Size(min = 1, max = 100)

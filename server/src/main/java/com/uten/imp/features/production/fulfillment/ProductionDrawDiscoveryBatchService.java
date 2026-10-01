@@ -51,6 +51,30 @@ public class ProductionDrawDiscoveryBatchService {
     private final FulfillmentMutationLocks locks;
     private final ObjectMapper mapper;
 
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution receipt(String rawKey) {
+        String key = rawKey == null ? "" : rawKey.strip();
+        if (!key.matches("[A-Za-z0-9._:-]{8,128}")) throw validation("批量出库幂等键格式无效");
+        var rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT request_hash, response_snapshot::text, array_to_json(document_ids)::text
+                FROM production_draw_issue_batches WHERE actor_user_id=:actor AND idempotency_key=:key
+                """).setParameter("actor", currentUser.requireId()).setParameter("key", key));
+        if (rows.isEmpty()) return new com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution(
+                "UNKNOWN", key, null, List.of(), null);
+        var row = rows.getFirst();
+        try {
+            List<UUID> ids = new ArrayList<>();
+            for (var id : mapper.readTree((String) row[2])) ids.add(UUID.fromString(id.asText()));
+            stock.requireIssueBatchReceiptReadable(ids);
+            return new com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution(
+                    "COMMITTED", key, (String) row[0], ids, readResponse((String) row[1]));
+        } catch (JsonProcessingException | IllegalArgumentException failure) {
+            throw new IllegalStateException("材料明确批量出库回执无法读取", failure);
+        }
+    }
+
     @Transactional
     public StockDocIssueBatchResponse issue(Request raw) {
         requireWarehouse();

@@ -3,10 +3,12 @@ package com.uten.imp.features.attachment;
 import com.uten.imp.common.storage.StorageService;
 import com.uten.imp.common.storage.StorageProviderRegistry;
 import com.uten.imp.config.props.StorageProperties;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -16,33 +18,65 @@ import java.util.UUID;
 /** Idempotent external object deletion worker; the database intent always commits first. */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AttachmentObjectOutboxProcessor {
     private final JdbcTemplate jdbc;
     private final StorageProviderRegistry storageProviders;
     private final StorageProperties properties;
     /** 原件物理删除成功后清掉派生的 Office 预览缓存（缓存不是业务对象，删失败只记日志）。 */
     private final AttachmentPreviewEvictor previews;
+    private final TransactionTemplate receiptTransactions;
+
+    public AttachmentObjectOutboxProcessor(JdbcTemplate jdbc,StorageProviderRegistry storageProviders,
+            StorageProperties properties,AttachmentPreviewEvictor previews,PlatformTransactionManager transactions) {
+        this.jdbc=jdbc;this.storageProviders=storageProviders;this.properties=properties;this.previews=previews;
+        receiptTransactions=new TransactionTemplate(transactions);
+        receiptTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        receiptTransactions.setTimeout(30);
+    }
 
     public boolean processNext() {
-        OutboxItem item = claimNext();
+        OutboxItem item = receiptTransactions.execute(status->claimNext());
         if (item == null) {
             return false;
         }
         try {
             StorageService storage=storageProviders.require(item.storageProvider());
+            OutboxItem receiptItem=item;
             if ("DELETE_STAGING".equals(item.operation())) {
-                storage.deleteStaging(item.storageKey(), item.storageVersion());
+                receiptItem=deleteStaging(storage,item);
+                if(receiptItem==null)return true;
             } else if ("DELETE_FINAL".equals(item.operation())) {
                 storage.delete(item.storageKey(), item.storageVersion());
             } else {
                 throw new IllegalStateException("Unknown attachment outbox operation");
             }
-            markSucceeded(item);
+            OutboxItem completed=receiptItem;
+            receiptTransactions.executeWithoutResult(status->markSucceeded(completed));
         } catch (RuntimeException error) {
-            markFailed(item, error);
+            receiptTransactions.executeWithoutResult(status->markFailed(item,error));
         }
         return true;
+    }
+
+    private OutboxItem deleteStaging(StorageService storage,OutboxItem item) {
+        OutboxItem target=item;
+        if("internal".equals(item.storageProvider())&&item.storageVersion()==null) {
+            var observed=storage.describe(item.storageKey());
+            if(observed.exists()) {
+                String version=observed.versionId();
+                if(version==null||version.isBlank())throw new IllegalStateException("Staging object has no confirmed internal version");
+                target=receiptTransactions.execute(status->{
+                    int changed=jdbc.update("""
+                            UPDATE attachment_object_outbox SET storage_version=?,updated_at=now()
+                            WHERE id=? AND status='PROCESSING' AND attempts=? AND storage_version IS NULL
+                            """,version,item.id(),item.attempts());
+                    return changed==1?new OutboxItem(item.id(),item.attachmentId(),item.operation(),item.storageKey(),version,item.attempts(),item.storageProvider()):null;
+                });
+                if(target==null)return null;
+            }
+        }
+        storage.deleteStaging(target.storageKey(),target.storageVersion());
+        return target;
     }
 
     private OutboxItem claimNext() {
@@ -72,12 +106,13 @@ public class AttachmentObjectOutboxProcessor {
     }
 
     private void markSucceeded(OutboxItem item) {
-        jdbc.update("""
+        int changed=jdbc.update("""
                 UPDATE attachment_object_outbox
                 SET status = 'SUCCEEDED', completed_at = now(), locked_at = NULL,
                     updated_at = now(), last_error = NULL
-                WHERE id = ? AND status = 'PROCESSING'
-                """, item.id());
+                WHERE id = ? AND status = 'PROCESSING' AND attempts = ?
+                """, item.id(),item.attempts());
+        if(changed!=1)return;
         if (item.attachmentId() != null && "DELETE_FINAL".equals(item.operation())) {
             jdbc.update("""
                     UPDATE attachments
@@ -108,12 +143,13 @@ public class AttachmentObjectOutboxProcessor {
         if (errorCode.length() > 200) {
             errorCode = errorCode.substring(0, 200);
         }
-        jdbc.update("""
+        int changed=jdbc.update("""
                 UPDATE attachment_object_outbox
                 SET status = 'FAILED', available_at = now() + (? * interval '1 second'),
                     locked_at = NULL, updated_at = now(), last_error = ?
-                WHERE id = ? AND status = 'PROCESSING'
-                """, backoffSeconds, errorCode, item.id());
+                WHERE id = ? AND status = 'PROCESSING' AND attempts = ?
+                """, backoffSeconds, errorCode, item.id(),item.attempts());
+        if(changed!=1)return;
         if (item.attachmentId() != null && "DELETE_FINAL".equals(item.operation())) {
             jdbc.update("""
                     UPDATE attachments

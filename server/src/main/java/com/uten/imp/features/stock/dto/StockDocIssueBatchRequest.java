@@ -39,6 +39,16 @@ public class StockDocIssueBatchRequest {
     @Size(max = 200, message = "统一备注最多 200 字")
     private String reason;
 
+    /** Missing/1 preserves the original command. 2 freezes the complete review returned by issue-batch/review. */
+    private Integer protocolVersion;
+    @Valid
+    @Size(max = MAX_DOCUMENTS)
+    private List<DocumentReview> reviews;
+
+    public record DocumentReview(@NotNull UUID docId,
+                                @NotBlank @jakarta.validation.constraints.Pattern(regexp = "[0-9a-f]{64}")
+                                String reviewToken) {}
+
     /**
      * 逐行实称重量(选填, ADR-135): 领料行 id -> 本次出库的实称重量(千克)与「数量按称重推算」标记。
      * 行必须属于本批所选领料单; 本次没有剩余可出的行忽略其重量。

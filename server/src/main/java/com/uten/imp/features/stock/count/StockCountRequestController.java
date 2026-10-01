@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.count;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.PageResponse;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,7 +12,10 @@ import java.util.*;
 @PreAuthorize("hasAnyAuthority('stock:count:submit','stock:count:finance_review','stock:count:warehouse_review')")
 public class StockCountRequestController {
     private final StockCountRequestService service;
-    public StockCountRequestController(StockCountRequestService service) { this.service=service; }
+    private final AuditDetailViewRecorder auditViews;
+    public StockCountRequestController(StockCountRequestService service,AuditDetailViewRecorder auditViews) {
+        this.service=service;this.auditViews=auditViews;
+    }
     @GetMapping("/scope") public Map<String,Object> scope(@RequestParam(required=false) UUID warehouseId) {
         return service.scope(warehouseId);
     }
@@ -26,7 +30,12 @@ public class StockCountRequestController {
         return service.list(reviewRoute,status,warehouseId,page,size);
     }
     @GetMapping("/counts") public Map<String,Object> counts() { return service.counts(); }
-    @GetMapping("/{id}") public Map<String,Object> detail(@PathVariable UUID id) { return service.detail(id); }
+    @GetMapping("/{id}") public Map<String,Object> detail(@PathVariable UUID id) {
+        Map<String,Object> detail=service.detail(id);
+        auditViews.record("view_stock_count_request_detail","stock_count_requests",id,
+                Objects.toString(detail.get("requestNo"),null),null,"库存盘点申请");
+        return detail;
+    }
     @PostMapping @PreAuthorize("hasAuthority('stock:count:submit')")
     public Map<String,Object> submit(@Valid @RequestBody StockCountDtos.Submit request) { return service.submit(request); }
     @PostMapping("/{id}/approve") public Map<String,Object> approve(@PathVariable UUID id,@Valid @RequestBody StockCountDtos.Decision request) {

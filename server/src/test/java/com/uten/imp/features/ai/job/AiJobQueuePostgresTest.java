@@ -398,6 +398,7 @@ class AiJobQueuePostgresTest extends AiPlatformPostgresTestSupport {
         awaitNoActiveJobs();
         // 排队 1 小时(超过 30 分钟未开始, 但还没到 7 天删除期)。
         UUID stale = insertPending(owner, java.time.OffsetDateTime.now().minusHours(1).toString());
+        jdbc.update("UPDATE ai_jobs SET updated_at=created_at WHERE id=?",stale);
         UUID oldResult = UUID.randomUUID();
         UUID ancient = UUID.randomUUID();
         insertFinished(owner, oldResult, "now() - interval '3 days'", "now() - interval '3 days'");

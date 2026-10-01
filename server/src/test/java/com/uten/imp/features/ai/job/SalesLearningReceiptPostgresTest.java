@@ -10,6 +10,8 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -117,6 +119,134 @@ class SalesLearningReceiptPostgresTest {
         tx.executeWithoutResult(s->{receipts.register(request);s.setRollbackOnly();});
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_document_learning_receipts WHERE id=?",Integer.class,request.learningReceiptId())).isZero();
         assertThat(jdbc.queryForObject("SELECT used_doc_id IS NULL AND learning_retry_until IS NULL FROM ai_jobs WHERE id=?",Boolean.class,job)).isTrue();
+    }
+
+    @Test void expiryDoesNotStripEvidenceFromAnExecutingLearningCommand() {
+        UUID job=job();var request=request(UUID.randomUUID(),job);tx.executeWithoutResult(s->receipts.register(request));
+        UUID id=request.learningReceiptId();receipts.run(id,"LAYOUT",job,StepResult::done);
+        receipts.run(id,"MASTER",null,()->{
+            jdbc.update("UPDATE sales_document_learning_receipts SET retry_until=now()-interval '1 second' WHERE id=?",id);
+            receipts.purgeExpiredEvidence();
+            assertThat(receipts.owned(id).request().lines()).hasSize(1);
+            assertThat(receipts.evidence(id,job)).isPresent();
+            return StepResult.done();
+        });
+        assertThat(receipts.owned(id).steps().get("MASTER").toString()).contains("SUCCEEDED");
+        receipts.purgeExpiredEvidence();
+        assertThat(receipts.owned(id).request().lines()).isEmpty();
+    }
+
+    @Test void lateFailedAttemptCannotOverwriteANewerSuccessfulAttempt() {
+        var request=request(UUID.randomUUID(),null);tx.executeWithoutResult(s->receipts.register(request));
+        UUID id=request.learningReceiptId();
+        receipts.run(id,"MASTER",null,()->{
+            jdbc.update("""
+                    UPDATE sales_document_learning_receipts SET steps=jsonb_set(steps,'{MASTER,startedAt}',
+                        to_jsonb((now()-interval '6 minutes')::text)) WHERE id=?
+                    """,id);
+            receipts.run(id,"MASTER",null,StepResult::done);
+            throw new IllegalStateException("late attempt failure");
+        });
+        assertThat(receipts.owned(id).steps().get("MASTER").toString()).contains("SUCCEEDED").contains("attempts=2");
+        assertThat(receipts.owned(id).steps().get("MASTER").toString()).doesNotContain("errorClass");
+    }
+
+    @Test void anUnclaimedExpiredRetryCannotMarkTheCurrentWorkerFailed() {
+        var request=request(UUID.randomUUID(),null);tx.executeWithoutResult(s->receipts.register(request));
+        UUID id=request.learningReceiptId();
+        receipts.run(id,"MASTER",null,()->{
+            jdbc.update("UPDATE sales_document_learning_receipts SET retry_until=now()-interval '1 second' WHERE id=?",id);
+            receipts.run(id,"MASTER",null,()->{throw new AssertionError("expired retry ran");});
+            assertThat(receipts.owned(id).steps().get("MASTER").toString()).contains("RUNNING").contains("attempts=1");
+            return StepResult.done();
+        });
+        assertThat(receipts.owned(id).steps().get("MASTER").toString()).contains("SUCCEEDED");
+    }
+
+    @Test void eachEvidencePurgeIsBoundedAndLeavesTheReceiptIdentityAndOutcomes() throws Exception {
+        var request=request(UUID.randomUUID(),null);
+        String payload=new ObjectMapper().writeValueAsString(request);
+        jdbc.update("""
+                INSERT INTO sales_document_learning_receipts(id,doc_type,doc_id,actor_user_id,request_payload,steps,retry_until)
+                SELECT gen_random_uuid(),'quote',gen_random_uuid(),?,CAST(? AS jsonb),
+                    '{"MASTER":{"status":"FAILED","attempts":2}}'::jsonb,now()-interval '1 day'
+                FROM generate_series(1,1001)
+                """,actor,payload);
+        receipts.purgeExpiredEvidence();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_document_learning_receipts WHERE actor_user_id=? AND request_payload->'lines'<>'[]'::jsonb",Integer.class,actor)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_document_learning_receipts WHERE actor_user_id=? AND steps->'MASTER'->>'status'='FAILED'",Integer.class,actor)).isEqualTo(1001);
+    }
+
+    @Test void aLateSuccessCannotEraseTheNewAttemptsFailureOrRepopulateItsEvidence() {
+        UUID job=job();var request=request(UUID.randomUUID(),job);tx.executeWithoutResult(s->receipts.register(request));
+        UUID id=request.learningReceiptId();receipts.run(id,"LAYOUT",job,StepResult::done);
+        receipts.run(id,"MASTER",null,()->{
+            jdbc.update("UPDATE sales_document_learning_receipts SET steps=jsonb_set(steps,'{MASTER,startedAt}',to_jsonb((now()-interval '6 minutes')::text)) WHERE id=?",id);
+            receipts.run(id,"MASTER",null,()->{throw new IllegalStateException("current attempt failed");});
+            assertThatThrownBy(()->receipts.rememberEvidence(id,job,Map.of("lines",List.of(Map.of("key","S1R2","partNo","STALE")))))
+                    .hasMessageContaining("单据内容已变更");
+            return StepResult.done();
+        });
+        assertThat(receipts.owned(id).steps().get("MASTER").toString()).contains("FAILED").contains("attempts=2");
+        assertThat(receipts.evidence(id,job).orElseThrow().toString()).contains("MODEL").doesNotContain("STALE");
+    }
+
+    @Test void executingLearningKeepsItsAiResultAndRowAfterTheRetryDeadline() {
+        UUID job=job();var request=request(UUID.randomUUID(),job);tx.executeWithoutResult(s->receipts.register(request));
+        receipts.run(request.learningReceiptId(),"MASTER",null,()->{
+            jdbc.update("UPDATE sales_document_learning_receipts SET retry_until=now()-interval '1 second' WHERE id=?",request.learningReceiptId());
+            jdbc.update("UPDATE ai_jobs SET learning_retry_until=now()-interval '1 second' WHERE id=?",job);
+            assertThat(jobs.purgeResults(1)).isZero();assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
+            assertThat(usage.resultFor(job,actor)).isPresent();
+            return StepResult.done();
+        });
+        assertThat(jobs.purgeResults(1)).isEqualTo(1);assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1);
+    }
+
+    @Test void evidenceCleanupSkipsLockedReceiptsWithoutBlockingOtherCandidates() throws Exception {
+        var held=request(UUID.randomUUID(),null);var expired=request(UUID.randomUUID(),null);
+        tx.executeWithoutResult(s->{receipts.register(held);receipts.register(expired);});
+        jdbc.update("UPDATE sales_document_learning_receipts SET retry_until=now()-interval '1 second' WHERE id IN (?,?)",held.learningReceiptId(),expired.learningReceiptId());
+        try(var connection=Objects.requireNonNull(jdbc.getDataSource()).getConnection()) {
+            connection.setAutoCommit(false);
+            try(var lock=connection.prepareStatement("SELECT id FROM sales_document_learning_receipts WHERE id=? FOR UPDATE")) {
+                lock.setObject(1,held.learningReceiptId());lock.executeQuery().close();
+                tx.executeWithoutResult(s->{jdbc.execute("SET LOCAL statement_timeout='750ms'");receipts.purgeExpiredEvidence();});
+                assertThat(receipts.owned(held.learningReceiptId()).request().lines()).hasSize(1);
+                assertThat(receipts.owned(expired.learningReceiptId()).request().lines()).isEmpty();
+            } finally {connection.rollback();}
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    @SuppressWarnings("unchecked")
+    void claimedSourceIsProtectedBeforeReservationForPrimaryAndAdditionalJobs(boolean additional) {
+        UUID job=job(),doc=UUID.randomUUID();
+        var request=new SalesLearningRequest("quote",doc,null,actor,null,
+                List.of(new LearnedLine(UUID.randomUUID(),"MODEL",null,job+":S1R2",true,false)),Map.of(),
+                additional?null:job,additional?List.of(job):List.of(),UUID.randomUUID());
+        tx.executeWithoutResult(s->receipts.register(request));
+        // A legacy/unreserved receipt has committed its claim before prepareSource reserves the AI row.
+        jdbc.update("UPDATE ai_jobs SET used_doc_type=NULL,used_doc_id=NULL,learning_retry_until=NULL WHERE id=?",job);
+        UUID ordinaryExpired=job();
+        usage=spy(usage);
+        doAnswer(invocation->{
+            assertThat(jdbc.queryForObject("SELECT steps->?->>'status' FROM sales_document_learning_receipts WHERE id=?",String.class,"LAYOUT:"+job,request.learningReceiptId())).isEqualTo("RUNNING");
+            assertThat(jdbc.queryForObject("SELECT used_doc_id IS NULL FROM ai_jobs WHERE id=?",Boolean.class,job)).isTrue();
+            jobs.purgeResults(1);
+            assertThat(jdbc.queryForObject("SELECT result IS NOT NULL FROM ai_jobs WHERE id=?",Boolean.class,job)).isTrue();
+            assertThat(jdbc.queryForObject("SELECT result IS NULL FROM ai_jobs WHERE id=?",Boolean.class,ordinaryExpired)).isTrue();
+            jobs.deleteFinishedOlderThan(7);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id=?",Integer.class,job)).isEqualTo(1);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id=?",Integer.class,ordinaryExpired)).isZero();
+            return invocation.callRealMethod();
+        }).when(usage).resultFor(job,actor);
+        ObjectProvider<AiJobUsagePort> provider=mock(ObjectProvider.class);when(provider.getIfAvailable()).thenReturn(usage);
+        var dataSource=Objects.requireNonNull(jdbc.getDataSource());
+        receipts=new SalesLearningReceiptService(new NamedParameterJdbcTemplate(dataSource),new ObjectMapper(),current,provider,new DataSourceTransactionManager(dataSource));
+        receipts.run(request.learningReceiptId(),"LAYOUT",job,StepResult::done);
+        assertThat(receipts.owned(request.learningReceiptId()).steps().get("LAYOUT:"+job).toString()).contains("SUCCEEDED");
+        assertThat(jdbc.queryForObject("SELECT used_doc_id FROM ai_jobs WHERE id=?",UUID.class,job)).isEqualTo(doc);
     }
 
     private SalesLearningRequest request(UUID doc,UUID job){return new SalesLearningRequest("quote",doc,null,actor,null,

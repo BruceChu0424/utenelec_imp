@@ -199,8 +199,20 @@ public class SalesQuoteTemplateStore {
     @Transactional
     public void purgeExpired() {
         jdbc.update("""
-                DELETE FROM sales_quote_template_candidates c WHERE c.expires_at<now() OR EXISTS (
-                    SELECT 1 FROM ai_jobs j WHERE j.id=c.job_id AND (j.status IN ('FAILED','CANCELLED') OR j.used_at IS NOT NULL))
+                WITH candidates AS (
+                    SELECT c.job_id FROM sales_quote_template_candidates c JOIN ai_jobs j ON j.id=c.job_id
+                    WHERE j.status IN ('SUCCEEDED','FAILED','CANCELLED')
+                      AND (j.learning_retry_until IS NULL OR j.learning_retry_until<now())
+                      AND (c.expires_at<now() OR j.status IN ('FAILED','CANCELLED') OR j.used_at IS NOT NULL)
+                      AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
+                          WHERE ((receipt.doc_type=j.used_doc_type AND receipt.doc_id=j.used_doc_id)
+                              OR (receipt.actor_user_id=j.submitted_by_user
+                                  AND (receipt.request_payload->>'intakeJobId'=CAST(j.id AS text)
+                                      OR jsonb_exists(receipt.request_payload->'additionalIntakeJobIds',CAST(j.id AS text)))))
+                            AND EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING'))
+                    ORDER BY c.expires_at,c.job_id LIMIT 1000 FOR UPDATE OF c,j SKIP LOCKED
+                )
+                DELETE FROM sales_quote_template_candidates c USING candidates WHERE c.job_id=candidates.job_id
                 """, Map.of());
     }
     private void lockJob(Map<String, Object> parameters) {

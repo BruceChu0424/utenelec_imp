@@ -56,6 +56,7 @@ class AiJobRetentionPostgresTest {
 
     @Test void aStaleQueueFailureIsRetainedForItsOwnFullFailureWindow() {
         UUID queued = job("PENDING", "NULL", false);
+        jdbc.update("UPDATE ai_jobs SET updated_at=created_at WHERE id=?",queued);
         assertThat(jobs.failStalePending(30)).isEqualTo(1);
         assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
         assertThat(jdbc.queryForObject("SELECT status || ':' || error_code FROM ai_jobs WHERE id=?",
@@ -138,6 +139,46 @@ class AiJobRetentionPostgresTest {
         assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1000);
         assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1);
         assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
+    }
+
+    @Test void aRecoveredQueueGetsItsOwnWaitingWindowRatherThanTheOldUploadAge() {
+        UUID recovered=job("PENDING","NULL",false);
+        jdbc.update("UPDATE ai_jobs SET attempts=1,updated_at=now() WHERE id=?",recovered);
+        assertThat(jobs.failStalePending(30)).isZero();
+        assertThat(jdbc.queryForObject("SELECT status FROM ai_jobs WHERE id=?",String.class,recovered)).isEqualTo("PENDING");
+    }
+
+    @Test void resultExpiryCannotClearActiveOrContradictoryTerminalFacts() {
+        UUID active=job("RUNNING","now()-interval '9 days'",true);
+        UUID contradictory=job("SUCCEEDED","now()-interval '9 days'",true);
+        jdbc.update("UPDATE ai_jobs SET created_at=now() WHERE id=?",contradictory);
+        assertThat(jobs.purgeResults(48)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id IN (?,?) AND result IS NOT NULL",Integer.class,active,contradictory)).isEqualTo(2);
+    }
+
+    @Test void aLiveCandidateIsNotCascadeDeletedByTheShorterJobRowPolicy() {
+        UUID retained=job("SUCCEEDED","now()-interval '8 days'",false);
+        UUID employee=UUID.randomUUID(),actor=UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                SELECT ?,?,'清理回归','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
+                """,employee,"RE-"+employee);
+        jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",actor,employee,"retention-"+actor);
+        jdbc.update("""
+                INSERT INTO sales_quote_template_candidates(job_id,actor_user_id,source_name,fingerprint,workbook_bytes,mapping,features,expires_at)
+                VALUES(?,?,'sanitized.xlsx',repeat('b',64),decode('01','hex'),'{}','[]',now()+interval '1 day')
+                """,retained,actor);
+        assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
+        assertThat(exists(retained)).isTrue();
+        jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?",retained);
+        assertThat(jobs.deleteFinishedOlderThan(7)).isEqualTo(1);
+    }
+
+    @Test void futureCompletionWithUsageCannotAuthorizeResultPurge() {
+        UUID contradictory=job("SUCCEEDED","now()+interval '1 day'",true);
+        jdbc.update("UPDATE ai_jobs SET used_at=now() WHERE id=?",contradictory);
+        assertThat(jobs.purgeResults(48)).isZero();
+        assertThat(jdbc.queryForObject("SELECT result IS NOT NULL FROM ai_jobs WHERE id=?",Boolean.class,contradictory)).isTrue();
     }
 
     private UUID job(String status, String finishedAtSql, boolean result) {

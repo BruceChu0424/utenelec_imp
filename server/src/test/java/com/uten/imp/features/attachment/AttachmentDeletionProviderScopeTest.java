@@ -6,6 +6,7 @@ import com.uten.imp.config.props.StorageProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.ResultSetExtractor;
+import org.springframework.transaction.PlatformTransactionManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -19,7 +20,7 @@ class AttachmentDeletionProviderScopeTest {
     @Test void successfulDeletionResolvesOnlyTheSameProviderKeyAndVersion() throws Exception {
         var jdbc=new CapturingJdbc();var registry=mock(StorageProviderRegistry.class);var store=mock(StorageService.class);
         when(registry.require("internal")).thenReturn(store);
-        assertThat(new AttachmentObjectOutboxProcessor(jdbc,registry,new StorageProperties(),id->{}).processNext()).isTrue();
+        assertThat(new AttachmentObjectOutboxProcessor(jdbc,registry,new StorageProperties(),id->{},mock(PlatformTransactionManager.class)).processNext()).isTrue();
         verify(store).delete("same-key.pdf","exact-version");
         var resolution=jdbc.updates.stream().filter(u->u.sql.contains("UPDATE attachment_reconciliation_findings")).findFirst().orElseThrow();
         assertThat(resolution.sql).contains("WHERE storage_provider = ? AND object_location = ? AND storage_key = ?")
@@ -31,7 +32,7 @@ class AttachmentDeletionProviderScopeTest {
         var jdbc=new CapturingJdbc();var registry=mock(StorageProviderRegistry.class);var store=mock(StorageService.class);
         when(registry.require("internal")).thenReturn(store);
         doThrow(new IllegalStateException("unavailable object")).when(store).delete(anyString(),anyString());
-        new AttachmentObjectOutboxProcessor(jdbc,registry,new StorageProperties(),id->{}).processNext();
+        new AttachmentObjectOutboxProcessor(jdbc,registry,new StorageProperties(),id->{},mock(PlatformTransactionManager.class)).processNext();
         assertThat(jdbc.updates).noneMatch(update->update.sql.contains("'SUCCEEDED'")||update.sql.contains("'DELETED'")||update.sql.contains("'RESOLVED'"));
         assertThat(jdbc.updates).anyMatch(update->update.sql.contains("SET status = 'FAILED'"));
     }

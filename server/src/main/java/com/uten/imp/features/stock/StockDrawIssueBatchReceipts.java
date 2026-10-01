@@ -33,11 +33,45 @@ public class StockDrawIssueBatchReceipts {
     private final ObjectMapper mapper;
 
     record Command(String key, List<UUID> documents, String reason,
-                   Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights, String hash) {
+                   Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights, String hash,
+                   int protocolVersion, Map<UUID, String> reviews) {
         Command {
             documents = List.copyOf(documents);
             weights = Map.copyOf(weights);
+            reviews = Map.copyOf(reviews);
         }
+    }
+
+    record ReceiptRead(String key, String requestHash, List<UUID> documents, StockDocIssueBatchResponse result) {
+        ReceiptRead { documents = List.copyOf(documents); }
+    }
+
+    /** Read the original actor's committed snapshot without acquiring a write/production lock. */
+    public Optional<ReceiptRead> findForRead(UUID actor, String rawKey) {
+        String key = normalizeKey(rawKey);
+        var rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT request_hash, request_snapshot::text, response_snapshot::text
+                FROM stock_draw_issue_batches WHERE actor_user_id=:actor AND idempotency_key=:key
+                """).setParameter("actor", actor).setParameter("key", key));
+        if (rows.isEmpty()) return Optional.empty();
+        try {
+            var request = mapper.readTree((String) rows.getFirst()[1]);
+            List<UUID> documents = new ArrayList<>();
+            for (var id : request.path("documents")) documents.add(UUID.fromString(id.asText()));
+            if (documents.isEmpty() || documents.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS) {
+                throw new IllegalStateException("批量出库回执缺少完整原单据清单");
+            }
+            return Optional.of(new ReceiptRead(key, (String) rows.getFirst()[0], documents,
+                    mapper.readValue((String) rows.getFirst()[2], StockDocIssueBatchResponse.class)));
+        } catch (JsonProcessingException | IllegalArgumentException failure) {
+            throw new IllegalStateException("批量出库回执无法读取", failure);
+        }
+    }
+
+    static String normalizeKey(String rawKey) {
+        String key = rawKey == null ? "" : rawKey.strip();
+        if (!key.matches("[A-Za-z0-9._:-]{8,128}")) throw validation("批量出库幂等键格式无效");
+        return key;
     }
 
     static Command normalize(StockDocIssueBatchRequest request) {
@@ -63,13 +97,30 @@ public class StockDrawIssueBatchReceipts {
         }
         var weights = StockDocService.batchIssueWeights(request.getWeights());
         var documents = ids.stream().sorted(Comparator.comparing(UUID::toString)).toList();
+        int protocol = request.getProtocolVersion() == null ? 1 : request.getProtocolVersion();
+        if (protocol != 1 && protocol != 2) throw validation("批量出库协议版本无效");
+        Map<UUID, String> reviews = new java.util.TreeMap<>(Comparator.comparing(UUID::toString));
+        if (request.getReviews() != null) {
+            for (var review : request.getReviews()) {
+                if (review == null || review.docId() == null || review.reviewToken() == null
+                        || !review.reviewToken().matches("[0-9a-f]{64}")
+                        || reviews.putIfAbsent(review.docId(), review.reviewToken()) != null) {
+                    throw validation("批量出库所见版本含空值、重复或无效令牌");
+                }
+            }
+        }
+        if (protocol == 2 && !reviews.keySet().equals(ids)) {
+            throw validation("批量出库所见版本必须完整覆盖所选单据");
+        }
+        if (protocol == 1 && !reviews.isEmpty()) throw validation("所见版本必须使用批量出库协议2");
         List<String> parts = new ArrayList<>();
-        parts.add("STOCK-DRAW-ISSUE-PARENT-V1");
+        parts.add("STOCK-DRAW-ISSUE-PARENT-V" + protocol);
         parts.add("reason:" + (reason == null ? "" : reason));
         documents.forEach(id -> parts.add("document:" + id));
         weights.forEach((id, weight) -> parts.add("weight:" + id + ":"
                 + WeightInput.text(weight.weightKg()) + ":" + weight.qtyFromWeight()));
-        return new Command(key, documents, reason, weights, CanonicalFingerprint.sha256(parts));
+        reviews.forEach((id, token) -> parts.add("review:" + id + ":" + token));
+        return new Command(key, documents, reason, weights, CanonicalFingerprint.sha256(parts), protocol, reviews);
     }
 
     /** Ordinary entry locks its command before the graph; Discovery uses a fresh server-owned inner key. */

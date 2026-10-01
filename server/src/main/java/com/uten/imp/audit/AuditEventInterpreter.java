@@ -130,7 +130,8 @@ public class AuditEventInterpreter {
             Map.entry("view_production_material_increment_detail", "查看追加用料申请详情"),
             Map.entry("view_production_material_discovery_detail", "查看实际领料登记详情"),
             Map.entry("view_production_overproduction_rate_detail", "查看超产比例申请详情"),
-            Map.entry("view_stock_document_detail", "查看库存单据详情"));
+            Map.entry("view_stock_document_detail", "查看库存单据详情"),
+            Map.entry("view_stock_count_request_detail", "查看库存盘点申请详情"));
     /** 公共 AI 平台的语义/显式事件(ADR-133): 按「资源.方法」给出具体中文动作。 */
     private static final Map<String, String> AI_ACTION_LABELS = Map.ofEntries(
             Map.entry("ai_provider.create", "新增 AI 服务"),
@@ -1155,6 +1156,7 @@ public class AuditEventInterpreter {
         values.put("preplan_analysis_stock_exact_pegs", "预计划分析精确挂钩");
         // 仓库 / 库存
         values.put("stock_documents", "库存单据");
+        values.put("stock_count_requests", "库存盘点申请");
         values.put("stock_document_items", "库存单据明细");
         values.put("stock_balances", "即时库存");
         values.put("stock_movements", "库存流水");

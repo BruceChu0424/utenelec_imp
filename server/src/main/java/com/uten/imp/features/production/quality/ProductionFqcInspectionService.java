@@ -543,6 +543,48 @@ public class ProductionFqcInspectionService
         return view;
     }
 
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public ProductionFqcContracts.DecisionResolution decisionReceipt(UUID inspectionId, String rawKey) {
+        String key = normalizeDecisionKey(rawKey);
+        requireReadable(detailInternal(inspectionId).reportMakerId());
+        var rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, created_by, decision, pass_qty, fail_qty, disposition_code, reason,
+                       request_hash, decided_at
+                FROM production_fqc_decision_events WHERE inspection_id=:inspection AND idempotency_key=:key
+                """).setParameter("inspection", inspectionId).setParameter("key", key));
+        if (rows.isEmpty()) return new ProductionFqcContracts.DecisionResolution("UNKNOWN", key, null, null);
+        Object[] row = rows.getFirst();
+        if (row[1] == null) return new ProductionFqcContracts.DecisionResolution("LEGACY", key, null, null);
+        if (!currentUser.requireId().equals(row[1])) {
+            return new ProductionFqcContracts.DecisionResolution("UNKNOWN", key, null, null);
+        }
+        // Read current projection after observing the committed event, never a pre-commit stale detail.
+        InspectionView view = detailInternal(inspectionId);
+        requireReadable(view.reportMakerId());
+        return new ProductionFqcContracts.DecisionResolution("COMMITTED", key,
+                new DecisionResult((UUID) row[0], view, true),
+                new ProductionFqcContracts.DecisionFacts(string(row[2]), dec(row[3]), dec(row[4]),
+                        string(row[5]), string(row[6]), string(row[7]), NativeValueConverters.toOffsetDateTime(row[8])));
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public ProductionFqcContracts.PassAllResolution passAllReceipt(String rawKey) {
+        String key = normalizeDecisionKey(rawKey);
+        var rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, inspection_count FROM production_fqc_pass_all_batches
+                WHERE created_by=:actor AND idempotency_key=:key
+                """).setParameter("actor", currentUser.requireId()).setParameter("key", key));
+        if (rows.isEmpty()) return new ProductionFqcContracts.PassAllResolution("UNKNOWN", key, null);
+        Object[] row = rows.getFirst();
+        PassAllBatchResult result = loadPassAllBatch((UUID) row[0], true, ((Number) row[1]).intValue());
+        for (var item : result.items()) requireReadable(item.inspection().reportMakerId());
+        return new ProductionFqcContracts.PassAllResolution("COMMITTED", key, result);
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('production_quality_inspection:view')"
             + " and hasAuthority('production_quality_inspection:approve')")
@@ -768,7 +810,7 @@ public class ProductionFqcInspectionService
 
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT id, request_hash
+                                SELECT id, request_hash, created_by
                                 FROM production_fqc_decision_events
                                 WHERE inspection_id = :inspectionId
                                   AND idempotency_key = :key
@@ -776,6 +818,10 @@ public class ProductionFqcInspectionService
                         .setParameter("inspectionId", inspectionId)
                         .setParameter("key", normalized.idempotencyKey()));
         if (!replay.isEmpty()) {
+            if (replay.getFirst().length < 3 || replay.getFirst()[2] == null
+                    || !currentUser.requireId().equals(replay.getFirst()[2])) {
+                throw conflict("该质检幂等键缺少可核验的原操作人或属于其他操作人，请核查原结果，不能绑定新的提交");
+            }
             if (!Objects.equals(replay.getFirst()[1], normalized.requestHash())) {
                 throw conflict("该质检幂等键已用于不同决定，请刷新后重试");
             }

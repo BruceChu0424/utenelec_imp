@@ -103,7 +103,8 @@ public final class FulfillmentSourceConflictRetryInterceptor implements MethodIn
         Duration budget = attribute != null && attribute.getTimeout() >= 0
                 ? Duration.ofSeconds(attribute.getTimeout()) : defaultTimeout;
         long started = nanoClock.getAsLong();
-        try (var deadline = FulfillmentCommandDeadline.open(budget, nanoClock)) {
+        boolean completesHttp = attribute != null && !attribute.isReadOnly() && criticalBusinessClass(targetClass);
+        try (var deadline = FulfillmentCommandDeadline.openCommand(budget, nanoClock, completesHttp)) {
             FulfillmentSourceConflictException lastConflict = null;
             for (int attempt = 1; ; attempt++) {
                 // Backoff/scheduling may have used the remaining budget since
@@ -148,6 +149,12 @@ public final class FulfillmentSourceConflictRetryInterceptor implements MethodIn
     /** 20/40/60/80 ms 递增 + 0..40 ms 抖动: 同批并行命令按到达顺序错开, 不会一起再撞。 */
     static long backoffMillis(int attempt) {
         return 20L * attempt + ThreadLocalRandom.current().nextInt(41);
+    }
+
+    private static boolean criticalBusinessClass(Class<?> type) {
+        String name = type.getName();
+        return java.util.List.of("production", "stock", "warehouse", "purchase", "subcontract", "sales", "finance")
+                .stream().anyMatch(feature -> name.startsWith("com.uten.imp.features." + feature + "."));
     }
 
     /** 方法或其类上的 @Transactional 会在此处开启新事务(REQUIRED/REQUIRES_NEW/NESTED)才算命令边界。 */

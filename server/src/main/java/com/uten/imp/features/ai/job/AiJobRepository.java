@@ -416,7 +416,7 @@ class AiJobRepository {
                 SET status = 'FAILED', error_code = 'QUEUE_TIMEOUT',
                     error_message = '识别任务排队太久没有开始, 请稍后重新上传',
                     input_bytes = NULL, finished_at = now(), updated_at = now()
-                WHERE status = 'PENDING' AND created_at < now() - make_interval(mins => :minutes)
+                WHERE status = 'PENDING' AND updated_at < now() - make_interval(mins => :minutes)
                 """, new MapSqlParameterSource("minutes", minutes));
     }
 
@@ -426,10 +426,22 @@ class AiJobRepository {
      */
     int purgeResults(int retentionHours) {
         return jdbc.update("""
-                UPDATE ai_jobs
+                WITH candidates AS (
+                    SELECT id FROM ai_jobs job
+                    WHERE status IN ('SUCCEEDED','FAILED','CANCELLED') AND finished_at>=created_at AND finished_at<=now()
+                      AND result IS NOT NULL AND (learning_retry_until IS NULL OR learning_retry_until < now())
+                      AND (used_at IS NOT NULL OR finished_at < now() - make_interval(hours => :hours))
+                      AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
+                          WHERE ((receipt.doc_type=job.used_doc_type AND receipt.doc_id=job.used_doc_id)
+                              OR (receipt.actor_user_id=job.submitted_by_user
+                                  AND (receipt.request_payload->>'intakeJobId'=CAST(job.id AS text)
+                                      OR jsonb_exists(receipt.request_payload->'additionalIntakeJobIds',CAST(job.id AS text)))))
+                            AND EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING'))
+                    ORDER BY finished_at,id LIMIT 1000 FOR UPDATE SKIP LOCKED
+                )
+                UPDATE ai_jobs job
                 SET result = NULL, result_purged_at = now(), updated_at = now()
-                WHERE result IS NOT NULL AND (learning_retry_until IS NULL OR learning_retry_until < now())
-                  AND (used_at IS NOT NULL OR finished_at < now() - make_interval(hours => :hours))
+                FROM candidates WHERE job.id=candidates.id
                 """, new MapSqlParameterSource("hours", retentionHours));
     }
 
@@ -441,12 +453,20 @@ class AiJobRepository {
     int deleteFinishedOlderThan(int days) {
         return jdbc.update("""
                 WITH candidates AS (
-                    SELECT id FROM ai_jobs
+                    SELECT id FROM ai_jobs job
                     WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
                       AND finished_at < now() - make_interval(days => :days)
                       AND finished_at >= created_at
                       AND result IS NULL
                       AND (learning_retry_until IS NULL OR learning_retry_until < now())
+                      AND NOT EXISTS(SELECT 1 FROM sales_quote_template_candidates candidate
+                          WHERE candidate.job_id=job.id AND candidate.expires_at>now())
+                      AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
+                          WHERE ((receipt.doc_type=job.used_doc_type AND receipt.doc_id=job.used_doc_id)
+                              OR (receipt.actor_user_id=job.submitted_by_user
+                                  AND (receipt.request_payload->>'intakeJobId'=CAST(job.id AS text)
+                                      OR jsonb_exists(receipt.request_payload->'additionalIntakeJobIds',CAST(job.id AS text)))))
+                            AND EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING'))
                     ORDER BY finished_at, id
                     LIMIT 1000
                     FOR UPDATE SKIP LOCKED

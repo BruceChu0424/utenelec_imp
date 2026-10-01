@@ -64,6 +64,7 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -1487,6 +1488,14 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         // 之后的 acquire 只能是其子集（requireCovered）。批量必须先按固定锁序一次性
         // 预锁全部单据，再逐单取子集 Guard；逐单首次 acquire 会让第二张单越界报冲突。
         lockProductionDocuments(orderedIds);
+        if (command.protocolVersion() == 2) {
+            var currentReview = batchIssueReviewFacts(orderedIds);
+            for (var reviewed : currentReview) {
+                if (!reviewed.reviewToken().equals(command.reviews().get(reviewed.docId()))) {
+                    throw new ApiException(ErrorCode.CONFLICT, "领料单所见版本或已申请/已出库数量已变化，请重新核对后提交");
+                }
+            }
+        }
         requireBatchWeightsWithinDocuments(weights.keySet(), orderedIds);
         // 一次核查整批，必须在任何审核/扣库之前失败，不能给旧逐单事实补造完整父结果。
         drawIssueBatchReceipts.rejectLegacyChildren(actorUserId, command);
@@ -1545,6 +1554,103 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      * 批量出库逐行重量: 领料行 id -> 重量(千克规范化, 0 视为没称); 既没重量也没「按称重推算」的条目丢弃,
      * 同一行重复填报错。
      */
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution issueBatchReceipt(String key) {
+        String normalized = StockDrawIssueBatchReceipts.normalizeKey(key);
+        var receipt = drawIssueBatchReceipts.findForRead(currentUser.requireId(), normalized);
+        if (receipt.isEmpty()) {
+            return new com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution(
+                    "UNKNOWN", normalized, null, List.of(), null);
+        }
+        var saved = receipt.get();
+        requireIssueBatchReceiptReadable(saved.documents());
+        return new com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution(
+                "COMMITTED", normalized, saved.requestHash(), saved.documents(), saved.result());
+    }
+
+    /** Shared read boundary for frozen ordinary and material-discovery batches, never an issue action. */
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public void requireIssueBatchReceiptReadable(List<UUID> ids) {
+        if (ids == null || ids.isEmpty() || ids.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS || ids.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.CONFLICT, "批量出库历史结果缺少完整原单据清单");
+        }
+        if (readableIssueHeaders(ids).size() != new HashSet<>(ids).size()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+        }
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Review issueBatchReview(List<UUID> ids) {
+        if (ids == null || ids.isEmpty() || ids.stream().anyMatch(Objects::isNull) || ids.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "领料所见版本缺少单据清单");
+        }
+        var ordered = ids.stream().distinct().sorted(Comparator.comparing(UUID::toString)).toList();
+        if (ordered.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多核对50张领料单");
+        }
+        var headers = readableIssueHeaders(ordered);
+        if (headers.size() != ordered.size()) throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+        for (UUID id : ordered) {
+            if (!"DRAW".equals(headers.get(id))) {
+                throw new ApiException(ErrorCode.BUSINESS, "仅生产领料单支持批量出库核对");
+            }
+        }
+        return new com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Review(2, batchIssueReviewFacts(ordered));
+    }
+
+    /** Exact detail visibility, evaluated once for the whole request instead of per-document SQL. */
+    private Map<UUID, String> readableIssueHeaders(List<UUID> ids) {
+        var owner = access.nativeReadScope("d.maker_id", "reviewOwners");
+        boolean pool = productionStockTaskAccess.canAccessWarehouseTasks();
+        var query = em.createNativeQuery("SELECT d.id, d.doc_type FROM stock_documents d WHERE d.id IN (:ids)"
+                + " AND NOT d.is_deleted AND (d.doc_type <> 'DRAW' OR fn_production_draw_requested(d.id))"
+                + " AND ((" + owner.predicate() + ")"
+                + (pool ? " OR fn_is_production_linked_stock_document(d.id)" : "") + ")");
+        query.setParameter("ids", ids);
+        owner.bind(query);
+        Map<UUID, String> visible = new HashMap<>();
+        for (var row : NativeQueryResults.objectArrayRows(query)) visible.put((UUID) row[0], (String) row[1]);
+        return visible;
+    }
+
+    /** One authoritative row set for every selected document; no clock token and no copied quantity formula. */
+    private List<com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.ReviewedDocument> batchIssueReviewFacts(List<UUID> ids) {
+        var rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT d.id, d.bill_no, d.xmin::text, d.status, d.issue_status, d.warehouse_id,
+                       d.worker_id, d.department_id, i.id, i.xmin::text, i.goods_id, i.color_id,
+                       i.unit_id, i.unit_rate, i.qty, i.issued_qty,
+                       CASE WHEN i.id IS NULL THEN NULL ELSE fn_production_draw_item_requested_qty(i.id) END
+                FROM stock_documents d
+                LEFT JOIN stock_document_items i ON i.doc_id=d.id AND NOT i.is_deleted
+                WHERE d.id IN (:ids) AND NOT d.is_deleted ORDER BY d.id::text, i.id::text
+                """).setParameter("ids", ids));
+        Map<UUID, List<String>> facts = new LinkedHashMap<>();
+        Map<UUID, String> numbers = new LinkedHashMap<>();
+        Map<UUID, List<com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.ReviewedItem>> items = new LinkedHashMap<>();
+        for (var row : rows) {
+            UUID id = (UUID) row[0];
+            numbers.put(id, (String) row[1]);
+            var parts = facts.computeIfAbsent(id, ignored -> new ArrayList<>(List.of("DRAW-REVIEW-V2")));
+            for (int index = 0; index < row.length; index++) {
+                Object value = row[index];
+                parts.add(index + ":" + (value instanceof BigDecimal decimal
+                        ? decimal.stripTrailingZeros().toPlainString() : String.valueOf(value)));
+            }
+            var documentItems = items.computeIfAbsent(id, ignored -> new ArrayList<>());
+            if (row[8] != null) {
+                documentItems.add(new com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.ReviewedItem(
+                        (UUID) row[8], (BigDecimal) row[16], (BigDecimal) row[15]));
+            }
+        }
+        if (!facts.keySet().equals(new HashSet<>(ids))) throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+        return ids.stream().map(id -> new com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.ReviewedDocument(
+                id, numbers.get(id), com.uten.imp.common.util.CanonicalFingerprint.sha256(facts.get(id)), items.get(id))).toList();
+    }
+
     static Map<UUID, StockDocIssueBatchRequest.ItemWeight> batchIssueWeights(
             List<StockDocIssueBatchRequest.ItemWeight> raw) {
         Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights = new LinkedHashMap<>();

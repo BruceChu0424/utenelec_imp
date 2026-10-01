@@ -15,10 +15,18 @@ public final class FulfillmentCommandDeadline implements AutoCloseable {
     private long deadlineNanos;
     private boolean rootTransactionActive;
     private boolean committed;
+    private final boolean httpRequest;
+    private final boolean completeHttpOnCommit;
 
     private FulfillmentCommandDeadline(Duration budget, LongSupplier clock) {
+        this(budget, clock, false, false);
+    }
+
+    private FulfillmentCommandDeadline(Duration budget, LongSupplier clock, boolean httpRequest, boolean completeHttpOnCommit) {
         this.previous = CURRENT.get();
         this.clock = clock;
+        this.httpRequest = httpRequest;
+        this.completeHttpOnCommit = completeHttpOnCommit;
         long remaining = budget.toNanos();
         if (previous != null && !previous.committed) remaining = Math.min(remaining, previous.remainingNanos());
         this.deadlineNanos = clock.getAsLong() + remaining;
@@ -27,6 +35,19 @@ public final class FulfillmentCommandDeadline implements AutoCloseable {
 
     static FulfillmentCommandDeadline open(Duration budget, LongSupplier clock) {
         return new FulfillmentCommandDeadline(budget, clock);
+    }
+
+    static FulfillmentCommandDeadline openCommand(Duration budget, LongSupplier clock, boolean completeHttpOnCommit) {
+        return new FulfillmentCommandDeadline(budget, clock, false, completeHttpOnCommit);
+    }
+
+    /** Starts before authentication/HTTP handling; read or authentication transactions cannot complete it. */
+    public static FulfillmentCommandDeadline openHttpRequest(Duration budget) {
+        return new FulfillmentCommandDeadline(budget, System::nanoTime, true, false);
+    }
+
+    static FulfillmentCommandDeadline openHttpRequest(Duration budget, LongSupplier clock) {
+        return new FulfillmentCommandDeadline(budget, clock, true, false);
     }
 
     static FulfillmentCommandDeadline current() {
@@ -42,6 +63,7 @@ public final class FulfillmentCommandDeadline implements AutoCloseable {
 
     void rootCommitted() {
         committed = true;
+        if (completeHttpOnCommit && previous != null && previous.httpRequest) previous.committed = true;
     }
 
     boolean hasCommitted() {

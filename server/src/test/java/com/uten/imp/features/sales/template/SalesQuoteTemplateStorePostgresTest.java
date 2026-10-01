@@ -12,6 +12,8 @@ import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -116,6 +118,7 @@ class SalesQuoteTemplateStorePostgresTest {
         var candidate = QuoteTemplateWorkbook.defaultTemplate(); UUID job = job(); stage(job, candidate);
         String key = jdbc.queryForObject("SELECT storage_key FROM sales_quote_template_candidates WHERE job_id=?", String.class, job);
         jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?", job);
+        succeed(job);
         tx.executeWithoutResult(s -> store.purgeExpired());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key=?", Integer.class, key)).isEqualTo(1);
         for (int i = 0; i < 21; i++) {
@@ -124,6 +127,37 @@ class SalesQuoteTemplateStorePostgresTest {
             tx.executeWithoutResult(s -> store.adopt(event(another, client)));
         }
         assertThat(store.list(client)).hasSize(21);
+    }
+
+    @Test void expiredCandidateRemainsWhileItsAiWorkerOrLearningRetryStillOwnsIt() {
+        UUID job=job();stage(job,QuoteTemplateWorkbook.defaultTemplate());
+        jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?",job);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
+        succeed(job);
+        jdbc.update("UPDATE ai_jobs SET learning_retry_until=now()+interval '1 day' WHERE id=?",job);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
+        jdbc.update("UPDATE ai_jobs SET learning_retry_until=now()-interval '1 second' WHERE id=?",job);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isZero();
+    }
+
+    @ParameterizedTest @ValueSource(strings={"intakeJobId","additionalIntakeJobIds"})
+    void claimedReceiptKeepsItsTemplateCandidateBeforeAiReservation(String field) throws Exception {
+        UUID job=job();stage(job,QuoteTemplateWorkbook.defaultTemplate());succeed(job);
+        jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?",job);
+        UUID receipt=UUID.randomUUID();String payload=new ObjectMapper().writeValueAsString(Map.of(field,
+                "intakeJobId".equals(field)?job.toString():List.of(job.toString())));
+        jdbc.update("""
+                INSERT INTO sales_document_learning_receipts(id,doc_type,doc_id,actor_user_id,request_payload,steps,retry_until)
+                VALUES(?,'quote',?,?,CAST(? AS jsonb),'{"TEMPLATE":{"status":"RUNNING","attempts":1}}'::jsonb,now()-interval '1 second')
+                """,receipt,UUID.randomUUID(),actor,payload);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
+        jdbc.update("UPDATE sales_document_learning_receipts SET steps='{\"TEMPLATE\":{\"status\":\"SUCCEEDED\",\"attempts\":1}}'::jsonb WHERE id=?",receipt);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isZero();
     }
 
     @Test void onlyContributingServerSourceRowsCanTeachATemplateAndResetQueuesStagedObjects() {

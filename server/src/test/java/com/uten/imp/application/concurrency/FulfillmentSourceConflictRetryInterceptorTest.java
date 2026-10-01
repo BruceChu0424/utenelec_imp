@@ -171,6 +171,37 @@ class FulfillmentSourceConflictRetryInterceptorTest {
     }
 
     @Test
+    void schedulingDelayDuringBackoffCannotStartAnExpiredRetry() throws Throwable {
+        long[] now = {0};
+        var budgeted = new FulfillmentSourceConflictRetryInterceptor(
+                millis -> now[0] += 11_000_000_000L, () -> now[0]);
+        FakeInvocation invocation = new FakeInvocation(new Target(), method(Target.class, "command"), () -> {
+            throw new FulfillmentSourceConflictException("来源集合在预读后变化", true);
+        });
+        assertThrows(FulfillmentSourceConflictException.class, () -> budgeted.invoke(invocation));
+        assertEquals(1, invocation.proceeds, "机器繁忙导致退避后才恢复调度时也不能越过期限新开事务");
+        org.junit.jupiter.api.Assertions.assertNull(FulfillmentCommandDeadline.current());
+    }
+
+    @Test
+    void interruptionStopsRetryAndRestoresTheThreadInterruptFlag() throws Throwable {
+        var interrupted = new FulfillmentSourceConflictRetryInterceptor(millis -> {
+            throw new InterruptedException("cancelled");
+        });
+        FakeInvocation invocation = new FakeInvocation(new Target(), method(Target.class, "command"), () -> {
+            throw new FulfillmentSourceConflictException("来源集合在预读后变化", true);
+        });
+        try {
+            assertThrows(InterruptedException.class, () -> interrupted.invoke(invocation));
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertEquals(1, invocation.proceeds);
+            org.junit.jupiter.api.Assertions.assertNull(FulfillmentCommandDeadline.current());
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
     void nestedCallInsideAnActiveTransactionIsNeverReRun() throws Throwable {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         FakeInvocation invocation = new FakeInvocation(new Target(), method(Target.class, "command"), () -> {

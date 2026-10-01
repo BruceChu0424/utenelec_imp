@@ -2,6 +2,8 @@ package com.uten.imp.features.warehouse.materialbin;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialBinSupport.Period;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialBinSupport.Settings;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.BadgeCounts;
@@ -129,6 +131,63 @@ public class WorkshopMaterialPositionQueryService {
             """;
 
     private record MaterialKey(UUID goodsId, UUID colorId) {}
+
+    /**
+     * 新建补料申请的候选：可选尚未接入整批方式的重量物料，申请阶段不转换货品或库存。
+     * 逐材料/颜色分页，goodsIds 在库存查询前精确过滤；普通叶仓供货量不包含任何车间内料仓。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<MaterialStockOption> requestMaterials(UUID workshopDepartmentId, String keyword,
+            List<UUID> goodsIds, int page, int size) {
+        if (workshopDepartmentId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择车间");
+        scope.requireWorkshop(workshopDepartmentId);
+        Settings settings = bins.settings(workshopDepartmentId);
+        UUID bin = settings == null ? null : settings.binWarehouseId();
+        var paging = Pageables.of(page, size);
+        List<UUID> ids = goodsIds == null ? List.of() : goodsIds.stream().filter(Objects::nonNull).distinct().toList();
+        MapSqlParameterSource params = new MapSqlParameterSource("bin", bin == null ? null : bin.toString())
+                .addValue("keyword", keyword == null || keyword.isBlank() ? null : keyword.strip())
+                .addValue("limit", paging.getPageSize()).addValue("offset", paging.getOffset());
+        if (!ids.isEmpty()) params.addValue("goodsIds", ids);
+        String candidates = WorkshopMaterialRequestCandidateSql.candidates(!ids.isEmpty());
+        Long count = db.queryForObject(candidates + " SELECT count(*) FROM candidates", params, Long.class);
+        long total = count == null ? 0 : count;
+        int pages = (int) Math.ceil((double) total / paging.getPageSize());
+        if (total == 0) return new PageResponse<>(List.of(), paging.getPageNumber() + 1, paging.getPageSize(), total, pages);
+
+        Map<MaterialKey, Map<String, Object>> heads = new LinkedHashMap<>();
+        for (Map<String, Object> row : db.queryForList(candidates + WorkshopMaterialRequestCandidateSql.HEADS, params)) {
+            heads.put(new MaterialKey((UUID) row.get("goods_id"), (UUID) row.get("color_id")), row);
+        }
+        if (heads.isEmpty()) return new PageResponse<>(List.of(), paging.getPageNumber() + 1, paging.getPageSize(), total, pages);
+        // 只读本页材料的各普通叶仓，不为一个小页再扫全部候选的余额。
+        Map<MaterialKey, List<LeafStockView>> leaves = new LinkedHashMap<>();
+        MapSqlParameterSource leafParams = new MapSqlParameterSource("goodsIds",
+                heads.keySet().stream().map(MaterialKey::goodsId).distinct().toList());
+        for (Map<String, Object> row : db.queryForList(WorkshopMaterialRequestCandidateSql.stock(true)
+                + WorkshopMaterialRequestCandidateSql.LEAVES, leafParams)) {
+            MaterialKey key = new MaterialKey((UUID) row.get("goods_id"), (UUID) row.get("color_id"));
+            if (!heads.containsKey(key)) continue;
+            leaves.computeIfAbsent(key, ignored -> new ArrayList<>()).add(new LeafStockView(
+                    (UUID) row.get("warehouse_id"), (String) row.get("warehouse_name"),
+                    WorkshopMaterialBinSupport.zero(row.get("available"))));
+        }
+        List<MaterialStockOption> options = new ArrayList<>();
+        for (Map.Entry<MaterialKey, Map<String, Object>> entry : heads.entrySet()) {
+            Map<String, Object> row = entry.getValue();
+            UUID defaultLeaf = (UUID) row.get("owning_warehouse_id");
+            List<LeafStockView> stock = new ArrayList<>(leaves.getOrDefault(entry.getKey(), List.of()));
+            if (defaultLeaf != null && stock.stream().noneMatch(leaf -> defaultLeaf.equals(leaf.warehouseId()))) {
+                stock.add(0, new LeafStockView(defaultLeaf, (String) row.get("owning_name"), BigDecimal.ZERO));
+            }
+            options.add(new MaterialStockOption(entry.getKey().goodsId(), (String) row.get("code"),
+                    (String) row.get("name"), entry.getKey().colorId(), (String) row.get("color_name"),
+                    (String) row.get("unit_name"), WorkshopMaterialBinSupport.decimal(row.get("bulk_package_qty")),
+                    (String) row.get("periodic_cost_basis"), defaultLeaf, (String) row.get("owning_name"),
+                    WorkshopMaterialBinSupport.zero(row.get("available")), List.copyOf(stock)));
+        }
+        return new PageResponse<>(List.copyOf(options), paging.getPageNumber() + 1, paging.getPageSize(), total, pages);
+    }
 
     /**
      * 可发到某车间内料仓的料: 全部整批领料的料 (按货品资料的颜色), 加上记账叶仓里有货的颜色、这个内料仓进出过的颜色;

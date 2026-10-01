@@ -21,7 +21,6 @@ import '../providers/authenticated_scope_provider.dart';
 import '../providers/draft_counts_provider.dart';
 import '../providers/master_name_provider.dart';
 import 'draft_workspace_sources.dart';
-import 'draft_workspace_create_actions.dart';
 import 'form_draft_category.dart';
 import 'form_draft_store.dart';
 
@@ -110,7 +109,7 @@ List<DraftWorkspaceRow> mergeDraftWorkspaceRows(
           billDate: formDraftColumnValue(draft, 'billDate'),
           party: _localParty(draft) ?? resolveLocalParty?.call(draft),
           // Incomplete editor amounts are not authoritative financial totals.
-          deletable: true,
+          deletable: !draft.hasUnknownSubmission,
           local: draft,
         ),
     ...rows,
@@ -213,13 +212,26 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     }
   }
 
-  bool _canDelete(DraftWorkspaceRow row) {
+  bool _canDelete(DraftWorkspaceRow row, {bool localRemoved = false}) {
     final scope = ref.read(authenticatedScopeProvider);
     if (scope == null ||
         scope.readOnly ||
         !row.deletable ||
         widget.handlesDeleteRow?.call(row) == true) {
       return false;
+    }
+    if (row.local case final local?) {
+      final latest = ref
+          .read(formDraftsProvider)
+          .where((draft) => draft.id == local.id)
+          .firstOrNull;
+      if (localRemoved) {
+        if (latest != null) return false;
+      } else if (latest == null ||
+          latest.revision != local.revision ||
+          latest.hasUnknownSubmission) {
+        return false;
+      }
     }
     if (row.kind == null) return true;
     return ref
@@ -229,7 +241,8 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
 
   bool _canSelect(DraftWorkspaceRow row) {
     final scope = ref.read(authenticatedScopeProvider);
-    return scope != null &&
+    return row.local?.hasUnknownSubmission != true &&
+        scope != null &&
         !scope.readOnly &&
         (_canDelete(row) || widget.canSelectRow?.call(row) == true);
   }
@@ -240,28 +253,60 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     }
     final store = ref.read(formDraftsProvider.notifier);
     final ownerKey = store.ownerKey;
+    var localRemoved = false;
     bool current() =>
         mounted &&
         selectedDraftIds.contains(key) &&
         store.ownerKey == ownerKey &&
-        _canDelete(row);
-    if (row.kind != null) {
-      await deleteDraftWorkspaceRow(ref, row, stillCurrent: current);
-    }
-    if (row.local != null) {
-      // A confirmed server delete can refresh away its formal row. Local
-      // cleanup remains protected by its namespace and expected revision.
-      if (!mounted || store.ownerKey != ownerKey) {
-        throw ApiException('CONFLICT', '草稿所属身份已变化');
-      }
+        _canDelete(row, localRemoved: localRemoved);
+    Future<void> discardLocalBeforeDelete() async {
+      if (!current()) throw ApiException('CONFLICT', '草稿或删除权限已变化，请刷新后重试');
+      if (row.local == null || localRemoved) return;
+      // CAS closes this exact local revision before the formal DELETE. Another
+      // tab cannot persist a pending command against that removed revision.
+      // This is an explicit local discard, not a cross-system atomic delete.
       try {
         await store.delete(
           row.local!.id,
           expectedRevision: row.local!.revision,
         );
+        localRemoved = true;
+      } on FormDraftUnknownSubmission {
+        throw ApiException('CONFLICT', formDraftUnknownSubmissionMessage);
       } on FormDraftConflict {
         throw ApiException('CONFLICT', '填写内容已在其它页面更新，请刷新核对');
+      } catch (_) {
+        throw ApiException('LOCAL_DRAFT_DELETE_FAILED', '本机填写尚未删除，未发送正式删除，请重试');
       }
+    }
+
+    if (row.kind != null) {
+      try {
+        await deleteDraftWorkspaceRow(
+          ref,
+          row,
+          stillCurrent: current,
+          beforeDelete: discardLocalBeforeDelete,
+        );
+      } catch (error) {
+        if (!localRemoved) rethrow;
+        const localOutcome = '本机填写已按确认清除，不会自动恢复';
+        if (error is ApiException &&
+            error is! NetworkException &&
+            error is! NetworkTimeoutException) {
+          throw ApiException(
+            error.code,
+            '${error.message}；$localOutcome',
+            fieldErrors: error.fieldErrors,
+            httpStatus: error.httpStatus,
+          );
+        }
+        // Preserve unknown transport semantics and the already completed local
+        // step. No receipt exists here to safely reconstruct a discarded edit.
+        throw NetworkException('$localOutcome；正式删除结果需要刷新核对');
+      }
+    } else {
+      await discardLocalBeforeDelete();
     }
   }
 
@@ -433,10 +478,7 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         widget.kinds.join(','),
       ),
       primary: true,
-      toolbarActions: [
-        DraftWorkspaceCreateButton(kinds: _kinds),
-        ...widget.toolbarActions,
-      ],
+      toolbarActions: widget.toolbarActions,
       columns: columns,
       items: rows,
       facets: facets,
@@ -469,7 +511,11 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
             },
       rowMenuBuilder: (row) => [
         UtenMenuItem(
-          label: row.local == null ? '查看草稿' : '继续填写',
+          label: row.local?.hasUnknownSubmission == true
+              ? '先核对提交'
+              : row.local == null
+              ? '查看草稿'
+              : '继续填写',
           icon: Icons.edit_outlined,
           onTap: () => _open(row),
         ),
@@ -483,6 +529,12 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         ),
         buildDraftDeleteButton(
           documentLabel: '',
+          additionalConfirmation:
+              selectedRows.values.any(
+                (row) => row.kind != null && row.local != null,
+              )
+              ? '本机填写会先按原修订清除，再删除正式单据。即使正式删除失败或结果待确认，本机输入也不会自动恢复；未知提交不能删除。'
+              : null,
           delete: (key) => _delete(key, selectedRows[key]),
           reload: () => _refresh(reportFailure: true),
           selectedIds: selected

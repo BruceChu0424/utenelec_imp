@@ -35,8 +35,19 @@ import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
+import 'package:uten_imp/platform_table_registry.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+
+part 'production_daily_report_draft_identity_cases.dart';
 
 void main() {
+  registerDailyReportDraftIdentityTests();
   for (final attachmentMode in ['none', 'upload', 'retry']) {
     testWidgets(
       'workshop save returns saved draft for review, never approves: attachments=$attachmentMode',

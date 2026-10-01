@@ -58,6 +58,7 @@ public class StockService {
     // ADR-131 车间内料仓盘点过账: 必须带 WorkshopMaterialBin 来源引用(本事务登记的盘点过账行)。
     public static final short TYPE_WORKSHOP_MATERIAL_CONSUME = 21;   // 内料仓盘点耗用(出; 更正时原路入)
     public static final short TYPE_WORKSHOP_MATERIAL_GAIN = 22;      // 内料仓盘盈(入; 更正时原路出)
+    public static final short TYPE_WORKSHOP_APPROVED_COUNT = 23;     // 已审核内料仓期初或账面修正
 
     /** direction 字典。 */
     public static final short DIR_IN = 1;
@@ -363,7 +364,8 @@ public class StockService {
      */
     private static InventoryMovementCostReference.WorkshopMaterialBin workshopMaterialBin(MovementRequest req) {
         boolean countMovement = req.movementType() == TYPE_WORKSHOP_MATERIAL_CONSUME
-                || req.movementType() == TYPE_WORKSHOP_MATERIAL_GAIN;
+                || req.movementType() == TYPE_WORKSHOP_MATERIAL_GAIN
+                || req.movementType() == TYPE_WORKSHOP_APPROVED_COUNT;
         if (!(req.costReference() instanceof InventoryMovementCostReference.WorkshopMaterialBin bin)) {
             if (countMovement) {
                 throw new IllegalArgumentException(
@@ -384,6 +386,10 @@ public class StockService {
             case CONSUME_REVERSE -> countPosting && req.movementType() == TYPE_WORKSHOP_MATERIAL_CONSUME && req.direction() == DIR_IN;
             case GAIN -> countPosting && req.movementType() == TYPE_WORKSHOP_MATERIAL_GAIN && req.direction() == DIR_IN;
             case GAIN_REVERSE -> countPosting && req.movementType() == TYPE_WORKSHOP_MATERIAL_GAIN && req.direction() == DIR_OUT;
+            case COUNT_OPENING, COUNT_ADJUSTMENT_IN -> "STOCK_COUNT_REQUEST".equals(req.sourceDocType())
+                    && req.movementType() == TYPE_WORKSHOP_APPROVED_COUNT && req.direction() == DIR_IN;
+            case COUNT_ADJUSTMENT_OUT -> "STOCK_COUNT_REQUEST".equals(req.sourceDocType())
+                    && req.movementType() == TYPE_WORKSHOP_APPROVED_COUNT && req.direction() == DIR_OUT;
         };
         if (!matches) {
             throw new IllegalArgumentException(

@@ -19,6 +19,8 @@ import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportApprovalReceipt;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportApprovalResolution;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
@@ -383,17 +385,30 @@ public class ProductionDailyReportService {
         UUID actorId = currentUser.requireId();
         String idempotencyKey = normalizeApproveIdempotencyKey(
                 req == null ? null : req.getIdempotencyKey());
-        String requestHash = approveRequestHash(id);
+        int commandVersion = approvalCommandVersion(req);
+        Long reviewedVersion = commandVersion == 2 ? req.getExpectedVersion() : null;
+        String requestHash = approveRequestHash(id, reviewedVersion);
         lockCommand(COMMAND_APPROVE, actorId, idempotencyKey);
         ReportCommand replay = findCommand(actorId, idempotencyKey);
         if (replay != null) {
             if (!COMMAND_APPROVE.equals(replay.commandKind())
-                    || !id.equals(replay.reportId())
-                    || !requestHash.equals(replay.requestHash())) {
+                    || !id.equals(replay.reportId())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报审核请求");
             }
-            return detail(id);
+            if (commandVersion == 2 && !Integer.valueOf(2).equals(replay.approvalProtocolVersion())) {
+                // Do not reinterpret a successful unversioned command as reviewed V2.
+                // The read-only resolver exposes its actual legacy provenance.
+                detail(id); // Retain the current object-read permission check.
+                throw new ApiException(ErrorCode.DAILY_REPORT_LEGACY_APPROVAL_RECEIPT);
+            }
+            if (!requestHash.equals(replay.requestHash())
+                    || (commandVersion == 2 && !Objects.equals(reviewedVersion, replay.reviewedRowVersion()))
+                    || (commandVersion == 1 && Integer.valueOf(2).equals(replay.approvalProtocolVersion()))) {
+                throw new ApiException(ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报审核请求");
+            }
+            return withApprovalReceipt(detail(id), idempotencyKey,
+                    replay.approvalProtocolVersion(), replay.reviewedRowVersion(), true);
         }
         // ADR-131 §10 锁序：幂等顾问锁 → 预读本单日期与明细段 → 车间内料仓期间共享锁 → 原有足迹。
         ReportPeriodFacts periodFacts = reportPeriodFacts(id);
@@ -410,8 +425,12 @@ public class ProductionDailyReportService {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "生产日报已不是草稿状态，不能重复审核；请刷新后查看当前状态");
+        if (reviewedVersion != null && reviewedVersion.longValue() != r.getRowVersion()) {
+            throw new ApiException(ErrorCode.DAILY_REPORT_REVIEW_VERSION_CONFLICT);
+        }
         // 过了闸门就落命令账本：同事务，失败一起回滚；重发时上面的回放分支直接命中。
-        recordCommand(COMMAND_APPROVE, actorId, idempotencyKey, requestHash, id);
+        recordCommand(COMMAND_APPROVE, actorId, idempotencyKey, requestHash, id,
+                commandVersion, reviewedVersion);
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
         requireSamePeriodFacts(periodFacts, r, items);
         if (items.isEmpty())
@@ -544,7 +563,40 @@ public class ProductionDailyReportService {
             chainNotice.notifyProductionFinishedArrivalPending(r.getId());
         }
         chainNotice.notifyRemakeCreated(r.getId()); // UUID 真源：完结缺额已自动补产→销售（无补产时静默）
-        return detail(id);
+        return withApprovalReceipt(detail(id), idempotencyKey, commandVersion, reviewedVersion, false);
+    }
+
+    /** Observe an actor-owned receipt without ever invoking approval or locking its fulfillment graph. */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportApprovalResolution approvalReceipt(UUID id, String rawKey) {
+        UUID actorId = currentUser.requireId();
+        String key = normalizeApproveIdempotencyKey(rawKey);
+        Boolean acquired = (Boolean) em.createNativeQuery("""
+                SELECT pg_try_advisory_xact_lock(hashtextextended(:lockKey, CAST(409 AS bigint)))
+                """).setParameter("lockKey", "PRODUCTION-DAILY-REPORT-" + COMMAND_APPROVE + ":" + actorId + ":" + key)
+                .getSingleResult();
+        // Read after the command lock observation, so an approval committed just
+        // before that lock was released is not paired with a pre-commit detail.
+        DailyReportDetail current = detail(id); // Current object visibility still applies after permission withdrawal.
+        if (!Boolean.TRUE.equals(acquired)) {
+            return new DailyReportApprovalResolution("PENDING", null, current);
+        }
+        ReportCommand command = findCommand(actorId, key);
+        if (command == null) return new DailyReportApprovalResolution("UNCONFIRMED", null, current);
+        if (!COMMAND_APPROVE.equals(command.commandKind()) || !id.equals(command.reportId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "原提交标识不属于此生产日报审核");
+        }
+        DailyReportApprovalReceipt receipt = new DailyReportApprovalReceipt(id, key,
+                command.approvalProtocolVersion(), command.reviewedRowVersion(), true);
+        current.setApprovalReceipt(receipt);
+        return new DailyReportApprovalResolution("CONFIRMED", receipt, current);
+    }
+
+    private static DailyReportDetail withApprovalReceipt(DailyReportDetail detail, String key,
+            Integer protocolVersion, Long reviewedVersion, boolean replay) {
+        detail.setApprovalReceipt(new DailyReportApprovalReceipt(detail.getId(), key, protocolVersion, reviewedVersion, replay));
+        return detail;
     }
 
     /** 红冲（status 1→-1）：对称回退（见类注释）。 */
@@ -1478,7 +1530,8 @@ public class ProductionDailyReportService {
     private ReportCommand findCommand(UUID actorId, String idempotencyKey) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                        SELECT command_kind, request_hash, report_id
+                        SELECT command_kind, request_hash, report_id,
+                               approval_protocol_version, reviewed_row_version
                         FROM production_daily_report_commands
                         WHERE actor_user_id = :actorId
                           AND idempotency_key = :idempotencyKey
@@ -1489,7 +1542,9 @@ public class ProductionDailyReportService {
         return new ReportCommand(
                 Objects.toString(rows.getFirst()[0], ""),
                 Objects.toString(rows.getFirst()[1], ""),
-                (UUID) rows.getFirst()[2]);
+                (UUID) rows.getFirst()[2],
+                rows.getFirst()[3] == null ? null : ((Number) rows.getFirst()[3]).intValue(),
+                rows.getFirst()[4] == null ? null : ((Number) rows.getFirst()[4]).longValue());
     }
 
     private void recordCommand(
@@ -1498,21 +1553,28 @@ public class ProductionDailyReportService {
             String idempotencyKey,
             String requestHash,
             UUID reportId) {
+        recordCommand(commandKind, actorId, idempotencyKey, requestHash, reportId, null, null);
+    }
+
+    private void recordCommand(String commandKind, UUID actorId, String idempotencyKey,
+            String requestHash, UUID reportId, Integer approvalProtocolVersion, Long reviewedVersion) {
         // 列默认值只用来回填历史行，应用写入永远显式给种类，
         // 否则将来新加的命令会静默落成 CREATE。
         em.createNativeQuery("""
                 INSERT INTO production_daily_report_commands(
                     id, actor_user_id, idempotency_key, request_hash,
-                    report_id, created_by, command_kind)
+                    report_id, created_by, command_kind, approval_protocol_version, reviewed_row_version)
                 VALUES(
                     gen_random_uuid(), :actorId, :idempotencyKey, :requestHash,
-                    :reportId, :actorId, :commandKind)
+                    :reportId, :actorId, :commandKind, :approvalProtocolVersion, :reviewedVersion)
                 """)
                 .setParameter("commandKind", commandKind)
                 .setParameter("actorId", actorId)
                 .setParameter("idempotencyKey", idempotencyKey)
                 .setParameter("requestHash", requestHash)
                 .setParameter("reportId", reportId)
+                .setParameter("approvalProtocolVersion", approvalProtocolVersion)
+                .setParameter("reviewedVersion", reviewedVersion)
                 .executeUpdate();
     }
 
@@ -1595,6 +1657,23 @@ public class ProductionDailyReportService {
         return CanonicalFingerprint.sha256(List.of(
                 "PRODUCTION-DAILY-REPORT-APPROVE-V1",
                 "report:" + reportId));
+    }
+
+    static String approveRequestHash(UUID reportId, Long reviewedVersion) {
+        if (reviewedVersion == null) return approveRequestHash(reportId);
+        return CanonicalFingerprint.sha256(List.of(
+                "PRODUCTION-DAILY-REPORT-APPROVE-V2",
+                "report:" + reportId,
+                "reviewedVersion:" + reviewedVersion));
+    }
+
+    static int approvalCommandVersion(DailyReportApproveRequest request) {
+        if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "审核请求不能为空");
+        Integer protocol = request.getCommandVersion();
+        Long version = request.getExpectedVersion();
+        if ((protocol == null || protocol == 1) && version == null) return 1;
+        if (Integer.valueOf(2).equals(protocol) && version != null && version >= 0) return 2;
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "新版审核必须同时提供 commandVersion=2 和有效 expectedVersion");
     }
 
     static String createRequestHash(DailyReportSaveRequest request) {
@@ -2444,7 +2523,7 @@ public class ProductionDailyReportService {
                 // (那个接口要 employee:view 且会落人事查看审计)。
                 departmentNameResolver.nameOf(r.getDepartmentId()),
                 workerIds.stream().map(nameResolver::nameOf).toList(),
-                allowedActions);
+                allowedActions, 2, null);
     }
 
     private ProductionDailyReport requireReport(UUID id) {
@@ -2465,7 +2544,8 @@ public class ProductionDailyReportService {
 
     /** 日报命令账本的一行：同一把 (操作者, 幂等键) 永久绑定一种命令和一张日报。 */
     private record ReportCommand(
-            String commandKind, String requestHash, UUID reportId) {
+            String commandKind, String requestHash, UUID reportId,
+            Integer approvalProtocolVersion, Long reviewedRowVersion) {
     }
 
     /**

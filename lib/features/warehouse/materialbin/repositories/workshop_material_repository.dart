@@ -163,6 +163,27 @@ class WorkshopMaterialRepository {
     return list.map(WmMaterialOption.fromJson).toList(growable: false);
   }
 
+  /// 申请只表达需要哪些料，不要求提前将货品配置为期间领料。
+  Future<PagedResult<WmMaterialOption>> requestMaterials(
+    String workshopId, {
+    String keyword = '',
+    List<String> goodsIds = const [],
+    int page = 1,
+    int size = 50,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.workshopMaterialRequestMaterials,
+      query: {
+        'workshopId': workshopId,
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
+      },
+    );
+    return PagedResult.fromJson(json, WmMaterialOption.fromJson);
+  }
+
   /// 内料仓页: 现存 + 顶部盘点 / 结算状态。
   Future<WmPosition> position(String binId) async {
     final json = await api.get(ApiEndpoints.workshopMaterialBinPosition(binId));
@@ -230,6 +251,7 @@ class WorkshopMaterialRepository {
     required int expectedVersion,
     required List<Map<String, dynamic>> lines,
     WmSupplement? supplement,
+    List<Map<String, dynamic>> materialSetup = const [],
     required String idempotencyKey,
   }) async {
     final json = await api.post(
@@ -238,6 +260,7 @@ class WorkshopMaterialRepository {
         'expectedVersion': expectedVersion,
         'lines': lines,
         if (supplement != null) 'supplement': supplement.toJson(),
+        if (materialSetup.isNotEmpty) 'materialSetup': materialSetup,
         'idempotencyKey': idempotencyKey,
       },
     );

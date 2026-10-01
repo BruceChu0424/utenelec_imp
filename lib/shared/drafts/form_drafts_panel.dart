@@ -28,6 +28,12 @@ class _FormDraftsPanelState extends ConsumerState<FormDraftsPanel> {
   final Set<String> _deleting = {};
 
   Future<void> _delete(FormDraft draft) async {
+    final store = ref.read(formDraftsProvider.notifier);
+    final owner = store.ownerKey;
+    if (draft.hasUnknownSubmission) {
+      context.appWarning(formDraftUnknownSubmissionMessage);
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -46,11 +52,26 @@ class _FormDraftsPanelState extends ConsumerState<FormDraftsPanel> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    final latest = ref
+        .read(formDraftsProvider)
+        .where((item) => item.id == draft.id)
+        .firstOrNull;
+    if (store.ownerKey != owner ||
+        latest == null ||
+        latest.revision != draft.revision ||
+        latest.hasUnknownSubmission) {
+      context.appWarning(
+        latest?.hasUnknownSubmission == true
+            ? formDraftUnknownSubmissionMessage
+            : '填写内容已变化，请刷新核对',
+      );
+      return;
+    }
     setState(() => _deleting.add(draft.id));
     try {
-      await ref
-          .read(formDraftsProvider.notifier)
-          .delete(draft.id, expectedRevision: draft.revision);
+      await store.delete(draft.id, expectedRevision: draft.revision);
+    } on FormDraftUnknownSubmission {
+      if (mounted) context.appWarning(formDraftUnknownSubmissionMessage);
     } catch (_) {
       if (mounted) context.appError('草稿删除失败，请重试');
     } finally {
@@ -143,8 +164,12 @@ class _FormDraftsPanelState extends ConsumerState<FormDraftsPanel> {
                           ),
                           IconButton(
                             key: ValueKey('delete-form-draft-${draft.id}'),
-                            tooltip: '删除草稿',
-                            onPressed: deleting ? null : () => _delete(draft),
+                            tooltip: draft.hasUnknownSubmission
+                                ? '先核对提交'
+                                : '删除草稿',
+                            onPressed: deleting || draft.hasUnknownSubmission
+                                ? null
+                                : () => _delete(draft),
                             icon: const Icon(Icons.delete_outline_rounded),
                           ),
                         ],

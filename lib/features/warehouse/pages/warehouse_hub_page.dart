@@ -84,6 +84,16 @@ class WarehouseHubPage extends ConsumerWidget {
                   location: RouteName.warehouseTasks,
                   badgeScope: const BadgeScope.module(BadgeModule.warehouse),
                 ),
+              if (canOpen(RouteName.warehouseStockCountReview))
+                (
+                  icon: Icons.fact_check_outlined,
+                  label: '车间内料仓盘点审核',
+                  description: '核对车间盘点目标数量与重量，审核后更新内料仓',
+                  location: RouteName.warehouseStockCountReview,
+                  badgeScope: const BadgeScope.entry(
+                    BadgeEntry.warehouseStockCountReview,
+                  ),
+                ),
             ]
             .toList();
 

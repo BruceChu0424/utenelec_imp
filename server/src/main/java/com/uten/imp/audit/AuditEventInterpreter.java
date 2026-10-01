@@ -122,6 +122,7 @@ public class AuditEventInterpreter {
             Map.entry("view_subcontract_short_delivery_detail", "查看委外回厂短交案件详情"),
             Map.entry("view_production_plan_detail", "查看生产计划详情"),
             Map.entry("view_production_daily_report_detail", "查看生产日报详情"),
+            Map.entry("view_production_daily_report_approval_receipt", "核对生产日报原审核记录"),
             Map.entry("view_procurement_inspection_record_detail", "查看IQC检测决定记录"),
             Map.entry("view_production_fqc_decision_record_detail", "查看FQC检测决定记录"),
             Map.entry("view_production_fqc_inspection_detail", "查看成品检验详情"),

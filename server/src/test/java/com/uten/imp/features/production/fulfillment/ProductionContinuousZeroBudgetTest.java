@@ -40,6 +40,12 @@ class ProductionContinuousZeroBudgetTest {
         assertTrue(result.receiptQueries()>0);
     }
 
+    @Test void privateReturnedCustodyIsNotReclaimedWithoutExplicitIntent() throws Exception {
+        var result=run("0","20","100","0",false);
+        assertTrue(result.increments().isEmpty());
+        assertTrue(result.receiptQueries()>0);
+    }
+
     private record Result(List<?> increments,int receiptQueries) {}
     private Result run(String qualified,String custody,String safety,String future,boolean reclaim) throws Exception {
         EntityManager em=mock(EntityManager.class);
@@ -65,8 +71,9 @@ class ProductionContinuousZeroBudgetTest {
             } else when(query.getResultList()).thenReturn(List.of());
             return query;
         });
-        List<?> increments=ReflectionTestUtils.invokeMethod(service,"continuousIncrement",warehouse,List.of(row),UUID.randomUUID(),UUID.randomUUID(),
+        Object snapshot=ReflectionTestUtils.invokeMethod(service,"continuousIncrement",warehouse,List.of(row),UUID.randomUUID(),UUID.randomUUID(),
                 null,ProductionExecutionReadinessService.ReceiptKind.PLAN_GROWTH,reclaim);
+        List<?> increments=ReflectionTestUtils.invokeMethod(snapshot,"demands");
         return new Result(increments,(int)statements.stream().filter(sql->sql.contains("JOIN purchase_receipt_items")
                 ||sql.contains("JOIN subcontract_receipt_items")||sql.contains("JOIN stock_document_items receipt_item")).count());
     }

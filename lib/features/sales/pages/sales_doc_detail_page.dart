@@ -33,6 +33,8 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -435,6 +437,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     if (widget.docType == SalesDocType.quote ||
         widget.docType == SalesDocType.order) {
       ref.invalidate(
@@ -1007,11 +1010,19 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             // 改默认容器对齐新建销售订货单页。
             UtenContentContainer(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ? Semantics(
+                      label: AppLocalizations.of(context).commonLoading,
+                      liveRegion: true,
+                      child: const UtenSkeletonList(),
                     )
                   : _error != null
-                  ? Center(child: Text(_error!))
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: AppLocalizations.of(context).commonRetry,
+                      onAction: () async {
+                        if (!_loading) await _load();
+                      },
+                    )
                   : _detail == null
                   ? const SizedBox.shrink()
                   // 2026-09-11 折叠头+表内滚：头部（表头卡/预收汇总/出货卡/附件/
@@ -1156,7 +1167,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       // 不再做固定吸底操作条；重要/危险动作仍为红色按钮。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _busy ? null : _actions(theme),
+      floatingActionButton:
+          _detail == null || _busy || _loading || _error != null
+          ? null
+          : _actions(theme),
     );
   }
 

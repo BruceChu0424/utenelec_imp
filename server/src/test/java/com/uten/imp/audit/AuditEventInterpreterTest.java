@@ -13,6 +13,16 @@ class AuditEventInterpreterTest {
 
     private final AuditEventInterpreter interpreter = new AuditEventInterpreter();
 
+    @Test
+    void dailyReportApprovalReceiptViewHasRegisteredBusinessWording() {
+        AuditLog log = new AuditLog();
+        log.setAction("view_production_daily_report_approval_receipt");
+        log.setTargetType("production_daily_reports");
+        log.setEventSource("business");
+        log.setResult("success");
+        assertEquals("核对生产日报原审核记录", interpretStored(log).actionLabel());
+    }
+
     /** 与写入时一致: 风险等级与事件类型由 AuditClassifier 算好存进行里, 解释器只读存储列。 */
     private AuditEventInterpreter.InterpretedEvent interpretStored(AuditLog log) {
         AuditClassifier.Classification classification = AuditClassifier.classify(

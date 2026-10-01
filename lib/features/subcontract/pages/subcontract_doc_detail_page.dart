@@ -22,6 +22,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -40,6 +42,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/models/subcontract_short_delivery.dart'
     show formatSubcontractQty;
 import '../../../shared/widgets/source_doc_link.dart';
@@ -156,6 +159,7 @@ class _SubcontractDocDetailPageState
   );
 
   Future<void> _load() async {
+    if (!mounted) return;
     if (widget.docType != SubcontractDocType.application) {}
     setState(() {
       _loading = true;
@@ -537,11 +541,19 @@ class _SubcontractDocDetailPageState
           children: [
             UtenContentContainer(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ? Semantics(
+                      label: AppLocalizations.of(context).commonLoading,
+                      liveRegion: true,
+                      child: const UtenSkeletonList(),
                     )
                   : _error != null
-                  ? Center(child: Text(_error!))
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: AppLocalizations.of(context).commonRetry,
+                      onAction: () async {
+                        if (!_loading) await _load();
+                      },
+                    )
                   : _detail == null
                   ? const SizedBox.shrink()
                   // 2026-09-11 折叠头+表内滚：头部（只读提示/表头卡/横幅/进度/附件）
@@ -662,7 +674,12 @@ class _SubcontractDocDetailPageState
       // 与全站一致。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _busy || widget.forceReadOnly
+      floatingActionButton:
+          _detail == null ||
+              _busy ||
+              _loading ||
+              _error != null ||
+              widget.forceReadOnly
           ? null
           : _actions(theme),
     );
@@ -951,19 +968,42 @@ class _SubcontractDocDetailPageState
                 MasterColumnDef(
                   key: 'price',
                   label: '单价',
-                  width: 90,
+                  width:
+                      widget.docType == SubcontractDocType.order &&
+                          _detail!.items.any(
+                            (it) => it.totalAmountInputText != null,
+                          )
+                      ? 190
+                      : 90,
                   type: 'money',
-                  value: (it) => _historicalReceipt
+                  info: widget.docType == SubcontractDocType.order
+                      ? '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。'
+                      : null,
+                  value: (it) =>
+                      widget.docType == SubcontractDocType.order &&
+                          it.totalAmountInputText != null
+                      ? '${financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? '—'}（参考）'
+                      : _historicalReceipt
                       ? historicalReceiptAmount(it.priceText)
                       : it.price?.toStringAsFixed(2),
                 ),
                 MasterColumnDef(
                   key: 'amount',
-                  label: _historicalReceipt ? '原币对应值（已核验）' : '金额',
+                  label: _historicalReceipt
+                      ? '原币对应值（已核验）'
+                      : widget.docType == SubcontractDocType.order
+                      ? '总金额'
+                      : '金额',
                   width: 100,
                   type: 'money',
-                  // 优先服务端权威金额（含舍入口径）；仅历史缺失时本地乘算兜底。
-                  value: (it) => _historicalReceipt
+                  // 总金额计价保留服务端原文；记录缺失时不能回乘参考单价补造金额。
+                  value: (it) =>
+                      widget.docType == SubcontractDocType.order &&
+                          it.totalAmountInputText != null
+                      ? financeExactMoneyDisplay(
+                          it.amountOriginalText ?? it.amountLocalText,
+                        )
+                      : _historicalReceipt
                       ? historicalReceiptAmount(it.amountOriginalText)
                       : (it.amountOriginal ?? it.amountLocal) != null
                       ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(

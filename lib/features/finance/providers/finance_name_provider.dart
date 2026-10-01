@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/models/payment_style_node.dart';
@@ -18,6 +19,11 @@ import '../../../shared/providers/master_dictionary_repository.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/repositories/payment_style_repository.dart';
+import '../../department/models/department_node.dart';
+import '../models/finance_doc.dart' show financeDepartmentReferenceLabel;
+
+const financeDepartmentPickerEndpoint =
+    '/org/departments/finance-allocation-picker-tree';
 
 /// 分摊项目选项（费用/收入）。
 class FinanceStyleOption {
@@ -90,6 +96,14 @@ class FinanceNameService extends ChangeNotifier {
   String? _accountLoadError;
   Map<String, String> _currencies = {};
   Future<void>? _load;
+  Future<void>? _counterpartyLoad;
+  bool _counterpartiesRequested = false;
+  Future<void>? _departmentLoad;
+  int _departmentRequestId = 0;
+  bool _departmentsRequested = false;
+  List<DepartmentNode>? departmentTree;
+  String? departmentLoadError;
+  Map<String, String> _departments = {};
 
   // 收付款类别：按 category 缓存（EXPENSE/INCOME）。
   // 可选项与历史名称分开缓存：禁用或已变成上级的类别不能再被新单据选中，
@@ -100,15 +114,23 @@ class FinanceNameService extends ChangeNotifier {
   final Set<String> _requestedStyleCategories = {};
   bool _disposed = false;
 
-  Future<void> ensureLoaded({bool refreshAccounts = false}) async {
+  Future<void> ensureLoaded({
+    bool refreshAccounts = false,
+    bool includeCounterparties = true,
+  }) async {
     final alreadyLoaded = _load != null;
-    await (_load ??= _ensureLoaded());
+    _counterpartiesRequested |= includeCounterparties;
+    await Future.wait([
+      _load ??= _ensureLoaded(),
+      if (includeCounterparties)
+        _counterpartyLoad ??= _ensureCounterpartiesLoaded(),
+    ]);
     if (refreshAccounts && alreadyLoaded) {
       await _refreshAccounts();
     }
   }
 
-  Future<void> _ensureLoaded() async {
+  Future<void> _ensureCounterpartiesLoaded() async {
     // 各 dict 独立加载、独立容错：单个端点失败不影响其它。
     Future<Map<String, String>> loadDict(String dictUrl) async {
       try {
@@ -122,16 +144,19 @@ class FinanceNameService extends ChangeNotifier {
       }
     }
 
-    final accountsFuture = _loadAccounts();
-    final currencyRefsFuture = _loadCurrencyReferences();
     final results = await Future.wait<Map<String, String>>([
       loadDict(ApiEndpoints.clientsDict),
       loadDict(ApiEndpoints.suppliersDict),
     ]);
-    final accounts = await accountsFuture;
-    final currencyRefs = await currencyRefsFuture;
     _clients = results[0];
     _suppliers = results[1];
+  }
+
+  Future<void> _ensureLoaded() async {
+    final accountsFuture = _loadAccounts();
+    final currencyRefsFuture = _loadCurrencyReferences();
+    final accounts = await accountsFuture;
+    final currencyRefs = await currencyRefsFuture;
     _currencies = {
       for (final ref in currencyRefs.values) ref.id: ref.name ?? '',
     };
@@ -143,6 +168,45 @@ class FinanceNameService extends ChangeNotifier {
     _accountReferences = accounts.references;
     _accountLoadError = accounts.error;
   }
+
+  Future<void> ensureDepartmentsLoaded() {
+    _departmentsRequested = true;
+    return _departmentLoad ??= _loadDepartmentReferences(
+      ++_departmentRequestId,
+    );
+  }
+
+  Future<void> _loadDepartmentReferences(int requestId) async {
+    try {
+      final rows = await _dictionaries.load(financeDepartmentPickerEndpoint);
+      final tree = rows.map(DepartmentNode.fromJson).toList();
+      final names = <String, String>{};
+      void collect(List<DepartmentNode> nodes) {
+        for (final node in nodes) {
+          names[node.id] = node.name;
+          collect(node.children);
+        }
+      }
+
+      collect(tree);
+      if (_disposed || requestId != _departmentRequestId) return;
+      departmentTree = tree;
+      _departments = names;
+      departmentLoadError = null;
+    } catch (error) {
+      if (_disposed || requestId != _departmentRequestId) return;
+      departmentTree = null;
+      _departments = {};
+      departmentLoadError = error is ApiException && error.httpStatus == 403
+          ? '没有选择分摊部门的权限，已填部门保留。'
+          : '部门资料暂时无法读取，已填部门保留。';
+      _departmentLoad = null;
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  String department(String? id, {String? referencedName}) =>
+      financeDepartmentReferenceLabel(id, _departments[id] ?? referencedName);
 
   /// 币种字典：名称之外还留参考汇率与本位币标记(V632 收款单按币种预填「本批汇率报价」)。
   /// 端点失败时返回空表，与其它 dict 一样独立容错。
@@ -360,17 +424,34 @@ class FinanceNameService extends ChangeNotifier {
 
   /// 本端改了客户/供应商/币种/账户: 已加载过就整体重取并通知页面重建。
   void _onInvalidated(String key) {
+    if (_disposed) return;
+    if (key == ApiEndpoints.departmentsTree && _departmentsRequested) {
+      _dictionaries.invalidate(financeDepartmentPickerEndpoint);
+      return;
+    }
+    if (key == financeDepartmentPickerEndpoint && _departmentsRequested) {
+      _departmentRequestId++;
+      _departmentLoad = null;
+      departmentTree = null;
+      _departments = {};
+      unawaited(ensureDepartmentsLoaded());
+      return;
+    }
     const watched = {
       ApiEndpoints.clientsDict,
       ApiEndpoints.suppliersDict,
       ApiEndpoints.currenciesDict,
       AccountEndpoints.dict,
     };
-    if (_disposed || _load == null || !watched.contains(key)) return;
+    if (_load == null || !watched.contains(key)) return;
+    if (key == ApiEndpoints.clientsDict || key == ApiEndpoints.suppliersDict) {
+      if (!_counterpartiesRequested) return;
+      _counterpartyLoad = null;
+    }
     if (_refreshingAccounts && key == AccountEndpoints.dict) return;
     _load = null;
     unawaited(
-      ensureLoaded().then((_) {
+      ensureLoaded(includeCounterparties: _counterpartiesRequested).then((_) {
         if (!_disposed) notifyListeners();
       }),
     );

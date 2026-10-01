@@ -22,6 +22,7 @@
 // 参数原样透传给出库小类。进页面不预选大类（未选显示引导空态，不发请求）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -147,6 +148,7 @@ class _WarehouseTaskCenterPageState
     );
     final canScWaste = canOpen(RouteName.warehouseSubcontractWasteHistory);
     final canMasterDrafts = canOpen(RouteName.basicinfoWarehouse);
+    final canReviewCounts = canOpen(RouteName.warehouseStockCountReview);
     // 车间内料仓 (ADR-131): 可见性 = 仓库发料页的路由守卫。
     final canWorkshopMaterial = canOpen(RouteName.workshopMaterialIssue);
     // 本页其余文案尚未接 arb (部分既有测试不挂本地化代理), 取不到时回落中文原文。
@@ -269,6 +271,14 @@ class _WarehouseTaskCenterPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
+          if (canReviewCounts)
+            TextButton.icon(
+              key: const Key('warehouse-count-review-entry'),
+              onPressed: () =>
+                  context.push(RouteName.warehouseStockCountReview),
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('盘点审核'),
+            ),
           if (canMasterDrafts)
             const FormDraftsAppBarButton(categoryId: 'warehouse-master'),
           const WarehouseScopeSelector(),

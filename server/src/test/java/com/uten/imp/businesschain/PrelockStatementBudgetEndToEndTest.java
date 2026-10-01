@@ -55,8 +55,8 @@ class PrelockStatementBudgetEndToEndTest {
 
     /** 委外发料草稿改一行的语句上限: 改前 69 条(其中整行哈希 28 条), ADR-107 实测 46 条, 取 +10%。 */
     static final int MATERIAL_ISSUE_UPDATE_BUDGET = 51;
-    /** 三张领料单批量出库的语句上限: 改前 708 条(整行哈希 156 条), ADR-107 实测 544 条, 取 +10%。 */
-    static final int ISSUE_BATCH_BUDGET = 598;
+    /** 2026-09-30 同夹具572→474条；去重复锁/详情后收紧到525，防止冗余工作回流。 */
+    static final int ISSUE_BATCH_BUDGET = 525;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
@@ -175,6 +175,14 @@ class PrelockStatementBudgetEndToEndTest {
         assertEquals("off", db.queryForObject("SHOW jit", String.class));
         assertEquals(40, ((org.springframework.transaction.support.AbstractPlatformTransactionManager)
                 transactionManager).getDefaultTimeout());
+        assertTrue(((org.springframework.transaction.support.AbstractPlatformTransactionManager)
+                transactionManager).getTransactionExecutionListeners().stream().anyMatch(
+                com.uten.imp.application.concurrency.FulfillmentCommandDeadlineTransactions.class::isInstance),
+                "完整应用的事务管理器必须接入命令截止时间监听器");
+        assertTrue(beans.getBean(org.springframework.transaction.interceptor.TransactionInterceptor.class)
+                .getTransactionAttributeSource() instanceof
+                com.uten.imp.application.concurrency.FulfillmentDeadlineTransactionAttributeSource,
+                "完整应用的声明式事务必须使用剩余命令时限");
 
         UUID row = db.queryForObject("SELECT id FROM users ORDER BY created_at LIMIT 1", UUID.class);
         try (var holder = java.util.Objects.requireNonNull(db.getDataSource()).getConnection()) {

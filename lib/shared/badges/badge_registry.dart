@@ -53,6 +53,7 @@ enum BadgeEntry {
   /// 报价核价(ADR-134): 销售提交、等财务定价确认的报价(财务部门树在职且持
   /// sales_quote_finance:confirm 的人才有数)。
   financeQuoteReview(BadgeModule.finance),
+  financeStockCountReview(BadgeModule.finance),
 
   /// 财务报销: 待审批 + 待付款。
   expenseFinance(BadgeModule.finance),
@@ -95,6 +96,7 @@ enum BadgeEntry {
 
   /// 车间内料仓 (ADR-131): 红 = 待发料 + 待收退回; 黄 = 盘点中。
   warehouseWorkshopMaterial(BadgeModule.warehouse),
+  warehouseStockCountReview(BadgeModule.warehouse),
 
   /// 品质部检查结果: 红 = 轮到仓库动手; 黄 = 等待检查结果。
   warehouseQualityResult(BadgeModule.warehouse),

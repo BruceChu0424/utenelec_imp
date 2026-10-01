@@ -19,11 +19,13 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -33,6 +35,7 @@ import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../models/outbound_weight_entry.dart';
 import '../models/production_draw_discovery_row.dart';
 import '../models/stock_doc.dart';
+import '../models/warehouse_draw_task.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/production_draw_task_repository.dart';
 import '../repositories/stock_doc_repository.dart';
@@ -51,6 +54,35 @@ class ProductionDrawBatchIssuePage extends ConsumerStatefulWidget {
   });
   final List<String> documentIds;
   final List<String> discoveryRequestIds;
+
+  static List<String> _ids(Iterable<String> values) =>
+      values
+          .map((id) => id.trim())
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList()
+        ..sort();
+
+  static Widget route(BuildContext context, GoRouterState state) {
+    final documents = _ids(
+      (state.uri.queryParameters['documentIds'] ?? '').split(','),
+    );
+    final discoveries = _ids(
+      (state.uri.queryParameters['discoveryRequestIds'] ?? '').split(','),
+    );
+    return ProductionDrawBatchIssuePage(
+      key: ValueKey(
+        jsonEncode([
+          'draw-batch',
+          documents,
+          discoveries,
+          state.uri.queryParameters['draftId'],
+        ]),
+      ),
+      documentIds: documents,
+      discoveryRequestIds: discoveries,
+    );
+  }
 
   @override
   ConsumerState<ProductionDrawBatchIssuePage> createState() =>
@@ -82,10 +114,77 @@ class _ProductionDrawBatchIssuePageState
   List<String> _submittedDocIds = [];
   String? _submittedReason;
   int _nextDiscoveryRow = 0;
+  int _loadGeneration = 0;
+  bool Function()? _loadedIdentity;
+  WarehouseDrawBatchIssueResult? _confirmedResult;
+
+  bool _receiptConfirmsBatch(WarehouseDrawBatchIssueResult result) {
+    if (result.issuedCount < 0 ||
+        result.skippedCount < 0 ||
+        result.replayedCount < 0) {
+      return false;
+    }
+    final count =
+        result.issuedCount + result.skippedCount + result.replayedCount;
+    // Discovery may create several warehouse documents from one request. For an
+    // ordinary batch the receipt must cover every selected document exactly.
+    return count > 0 &&
+        (_submittedDiscoveries.isNotEmpty || count == _submittedDocIds.length);
+  }
+
+  String get _selection => jsonEncode([
+    ProductionDrawBatchIssuePage._ids(widget.documentIds),
+    ProductionDrawBatchIssuePage._ids(widget.discoveryRequestIds),
+  ]);
+
+  bool Function() _captureIdentity() {
+    final scope = ref.read(authenticatedScopeProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final selection = _selection;
+    return () =>
+        formDraftIdentityIsCurrent &&
+        _selection == selection &&
+        ref.read(authenticatedScopeProvider) == scope &&
+        ref.read(apiBaseUrlProvider) == server;
+  }
+
+  bool Function() _captureSubmissionView() {
+    final identity = _captureIdentity();
+    final route = ModalRoute.of(context);
+    return () =>
+        identity() &&
+        (_loadedIdentity?.call() ?? false) &&
+        (route == null || route.isCurrent);
+  }
 
   bool _submissionPending = false;
   @override
-  bool get formDraftBusy => _saving || _uncertain;
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftHasUnknownSubmission => _uncertain || _submissionPending;
+  @override
+  bool get formDraftCanReplaySubmission =>
+      _requestKey?.trim().isNotEmpty == true;
+  @override
+  Future<void> Function()? get formDraftReloadSource => _reloadLatestForDraft;
+
+  Future<void> _reloadLatestForDraft() async {
+    _remark.clear();
+    _requestFingerprint = null;
+    _requestKey = null;
+    _submittedDiscoveries = [];
+    _submittedWeights = [];
+    _submittedDocIds = [];
+    _submittedReason = null;
+    _submitError = null;
+    _nextDiscoveryRow = 0;
+    _showValidation = false;
+    await _load();
+    if (_error != null || _documents == null) {
+      throw StateError(_error ?? '最新领料单据未能读取');
+    }
+  }
+
   @override
   FormDraftSpec get formDraftSpec => FormDraftCatalog.warehouseDraw.spec(
     title: '批量领料出库填写',
@@ -110,18 +209,11 @@ class _ProductionDrawBatchIssuePageState
   ];
 
   /// 草稿里的一行重量: 千克 + 是否按称重改数量。
-  static Map<String, dynamic> _weightDraft(OutboundWeightEntry entry) => {
-    'kg': entry.kg,
-    'qtyFromWeight': entry.qtyFromWeight,
-  };
+  static Map<String, dynamic> _weightDraft(OutboundWeightEntry entry) =>
+      weightEntryDraft(entry.weight, qty: entry.qtyController);
 
   static void _restoreWeight(OutboundWeightEntry entry, Object? raw) {
-    if (raw is! Map) return;
-    final kg = (raw['kg'] as num?)?.toDouble();
-    entry.weight.setKg(
-      kg,
-      qtyFromWeight: kg != null && raw['qtyFromWeight'] == true,
-    );
+    restoreWeightEntryDraft(entry.weight, raw, qty: entry.qtyController);
   }
 
   /// 按最新明细重建现有领料单的本次重量 (只建待出库 > 0 的行)。
@@ -135,7 +227,11 @@ class _ProductionDrawBatchIssuePageState
       for (final item in document.items) {
         final id = item.id;
         if (id == null || item.remainingQty <= 0) continue;
-        _issueWeights[id] = drawRemainingWeightEntry(item, unit: unit);
+        _issueWeights[id] = drawRemainingWeightEntry(
+          item,
+          unit: unit,
+          warehouseId: document.warehouseId,
+        );
       }
     }
   }
@@ -174,6 +270,14 @@ class _ProductionDrawBatchIssuePageState
     'submittedWeights': _submittedWeights,
     'submittedDocIds': _submittedDocIds,
     'submittedReason': _submittedReason,
+    if (_confirmedResult case final result?)
+      'confirmedResult': {
+        'issuedCount': result.issuedCount,
+        'skippedCount': result.skippedCount,
+        'replayedCount': result.replayedCount,
+        'replayed': result.replayed,
+        'issuedDocNos': result.issuedDocNos,
+      },
     'nextRow': _nextDiscoveryRow,
     'documents': _documents?.map(stockDocumentDraftFacts).toList(),
     'discoveries': _discoveries.map(discoveryDraftFacts).toList(),
@@ -190,7 +294,7 @@ class _ProductionDrawBatchIssuePageState
     ],
     'weights': {
       for (final entry in _issueWeights.entries)
-        if (entry.value.kg != null) entry.key: _weightDraft(entry.value),
+        if (entry.value.weight.userEdited) entry.key: _weightDraft(entry.value),
     },
   };
   @override
@@ -198,16 +302,44 @@ class _ProductionDrawBatchIssuePageState
     _remark.text = draftText(data, 'remark');
     _requestFingerprint = data['requestFingerprint'] as String?;
     _requestKey = data['requestKey'] as String?;
-    _uncertain = data['uncertain'] == true;
+    _uncertain = hasUnknownFormDraftSubmission(
+      data,
+      route: formDraftSpec.route,
+    );
     _submittedDiscoveries = draftMaps(data['submittedDiscoveries']);
     _submittedWeights = draftMaps(data['submittedWeights']);
     _submittedDocIds = draftStrings(data['submittedDocIds']);
     _submittedReason = data['submittedReason'] as String?;
+    WarehouseDrawBatchIssueResult? restoredResult;
+    if (data['confirmedResult'] case final Map<Object?, Object?> value
+        when !_uncertain) {
+      restoredResult = WarehouseDrawBatchIssueResult.fromJson(
+        Map<String, dynamic>.from(value),
+      );
+      if (!_receiptConfirmsBatch(restoredResult)) {
+        throw const FormatException('旧草稿回执不完整，请保留原提交并核对');
+      }
+      _uncertain = false;
+    }
+    if (_uncertain || restoredResult != null) {
+      final submittedSelection = jsonEncode([
+        ProductionDrawBatchIssuePage._ids(_submittedDocIds),
+        ProductionDrawBatchIssuePage._ids(
+          _submittedDiscoveries.map(
+            (value) => value['requestId'] as String? ?? '',
+          ),
+        ),
+      ]);
+      if (_requestKey?.trim().isNotEmpty != true ||
+          submittedSelection != _selection) {
+        throw const FormatException('旧草稿缺少原提交标识或批次不一致，请保留草稿并核对原提交');
+      }
+    }
     _nextDiscoveryRow = (data['nextRow'] as num?)?.toInt() ?? 0;
     final original = draftMaps(
       data['discoveries'],
     ).map(ProductionMaterialDiscoveryDetail.fromJson).toList();
-    if (_uncertain) {
+    if (_uncertain || restoredResult != null) {
       // Retain exact reviewed facts for same-key replay; the server decides whether it already committed.
       _documents = draftMaps(
         data['documents'],
@@ -239,12 +371,12 @@ class _ProductionDrawBatchIssuePageState
         index: (item['index'] as num).toInt(),
         initial: draftMap(item['values']),
       );
-      _restoreWeight(row.weight, item['weight']);
       if (item['qtyAutofilled'] == true) {
         row.quantity.setAutomaticText(draftText(item, 'qty'));
       } else {
         row.quantity.text = draftText(item, 'qty');
       }
+      _restoreWeight(row.weight, item['weight']);
       _discoveryRows.add(row);
     }
     final weights = data['weights'];
@@ -253,6 +385,7 @@ class _ProductionDrawBatchIssuePageState
         _restoreWeight(entry.value, weights[entry.key]);
       }
     }
+    _confirmedResult = restoredResult;
     if (mounted) setState(() {});
     _ensureWeightParams();
   }
@@ -260,6 +393,7 @@ class _ProductionDrawBatchIssuePageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -276,7 +410,10 @@ class _ProductionDrawBatchIssuePageState
   }
 
   Future<void> _load() async {
-    if (_saving || _uncertain) return;
+    if (!mounted || _saving || _uncertain || _confirmedResult != null) return;
+    final current = _captureIdentity();
+    final generation = ++_loadGeneration;
+    bool accepts() => current() && generation == _loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -299,6 +436,7 @@ class _ProductionDrawBatchIssuePageState
       }
       final names = ref.read(masterNameServiceProvider);
       await names.ensureLoaded();
+      if (!accepts()) return;
       final repository = ref.read(
         stockDocRepositoryProvider(StockDocType.draw),
       );
@@ -308,6 +446,7 @@ class _ProductionDrawBatchIssuePageState
         documents.addAll(
           await Future.wait(ids.skip(offset).take(5).map(repository.detail)),
         );
+        if (!accepts()) return;
       }
       if (documents.any(
         (document) => document.docType != StockDocType.draw.code,
@@ -324,6 +463,7 @@ class _ProductionDrawBatchIssuePageState
             discoveryIds.skip(offset).take(5).map(discoveryRepository.detail),
           ),
         );
+        if (!accepts()) return;
       }
       for (final request in discoveries) {
         if (!request.canConfigure) {
@@ -341,7 +481,8 @@ class _ProductionDrawBatchIssuePageState
           for (final item in request.suggestedItems)
             if (item['goodsId'] != null) item['goodsId'] as String,
       });
-      if (mounted) {
+      if (accepts()) {
+        _loadedIdentity = current;
         setState(() {
           _documents = documents;
           _rebuildIssueWeights(documents);
@@ -368,27 +509,50 @@ class _ProductionDrawBatchIssuePageState
         });
       }
     } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (accepts()) setState(() => _error = error.message);
     } on FormatException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (accepts()) setState(() => _error = error.message);
     } catch (_) {
-      if (mounted) setState(() => _error = '领料详情加载失败，请重试');
+      if (accepts()) setState(() => _error = '领料详情加载失败，请重试');
     } finally {
-      if (mounted) {
+      if (accepts()) {
+        // A failed GET must still allow restoration of the exact pending command.
+        _loadedIdentity = current;
         setState(() => _loading = false);
         _ensureWeightParams();
         await initializeFormDraft();
+        if (accepts() &&
+            !formDraftRestorationBlocked &&
+            _confirmedResult != null) {
+          // A recovered receipt is terminal, but the route may still be entering.
+          // Keep its result visible and let the user return normally.
+          await _finishConfirmed(
+            _confirmedResult!,
+            _captureSubmissionView(),
+            leave: false,
+          );
+        }
       }
     }
   }
 
   String? _blocked(Set<String> permissions) {
+    if (formDraftRestorationBlocked) return '旧草稿未能完整恢复，请保留原提交并核对';
+    if (_confirmedResult != null) return '本批已核对，未重复出库';
+    if (!(_loadedIdentity?.call() ?? false) || _loading || _error != null) {
+      return '请先加载领料明细';
+    }
     if (_documents == null || (_documents!.isEmpty && _discoveryRows.isEmpty)) {
       return '请先加载领料明细';
     }
     final admin = ref.read(isSuperAdminProvider);
     if (!admin && !permissions.contains(Perm.stockDocIssue)) {
       return '当前账号没有出库权限';
+    }
+    // The server's actor/key receipt is authoritative. Old detail status and a
+    // later GET cannot prove this original batch committed or still needs approve.
+    if (_uncertain) {
+      return formDraftCanReplaySubmission ? null : '旧草稿缺少原提交标识，请保留草稿并核对原提交';
     }
     if (_documents!.any((document) => document.status == -1)) {
       return '所选单据已红冲，请返回刷新后重新选择';
@@ -440,6 +604,7 @@ class _ProductionDrawBatchIssuePageState
           'warehouseName': selected.label,
         }),
       );
+      _ensureWeightParams();
     } catch (error) {
       if (mounted) context.appApiError(error);
     }
@@ -503,6 +668,27 @@ class _ProductionDrawBatchIssuePageState
     if (_saving || _blocked(ref.read(currentPermissionsProvider)) != null) {
       return;
     }
+    final wasUnknown = _uncertain;
+    final canPublish = _captureSubmissionView();
+    final repository = ref.read(productionDrawTaskRepositoryProvider);
+    var dispatched = false;
+    ApiException? definiteRejection;
+    bool rejects(ApiException error) {
+      final rejected =
+          !wasUnknown &&
+          switch ((error.httpStatus, error.code)) {
+            (400, 'MALFORMED_REQUEST' || 'BUSINESS' || 'VALIDATION_FAILED') ||
+            (422, 'VALIDATION_FAILED') ||
+            (409, 'CONFLICT' || 'SHORTAGE') ||
+            (401, 'UNAUTHORIZED') ||
+            (403, 'FORBIDDEN') ||
+            (404, 'NOT_FOUND') => true,
+            _ => false,
+          };
+      if (rejected) definiteRejection = error;
+      return rejected;
+    }
+
     if (!_uncertain) {
       for (final document in _documents!) {
         for (final item in document.items) {
@@ -586,55 +772,54 @@ class _ProductionDrawBatchIssuePageState
     });
     try {
       _submissionPending = true;
-      await saveFormDraftNow();
-      final repository = ref.read(productionDrawTaskRepositoryProvider);
-      final result = _submittedDiscoveries.isEmpty
-          ? await repository.issueFullBatch(
-              idempotencyKey: _requestKey!,
-              docIds: _submittedDocIds,
-              weights: _submittedWeights,
-              reason: _submittedReason,
-            )
-          : await repository.issueDiscoveryBatch(
-              idempotencyKey: _requestKey!,
-              docIds: _submittedDocIds,
-              discoveries: _submittedDiscoveries,
-              weights: _submittedWeights,
-              reason: _submittedReason,
-            );
-      await completeFormDraft();
-      if (!mounted) return;
-      if (result.replayed) {
-        context.appInfo('本批此前已完成(${result.replayedCount} 张领料单)，未重复出库');
-      } else {
-        context.appSuccess(
-          result.skippedCount > 0
-              ? '已出库 ${result.issuedCount} 张领料单(${result.skippedCount} 张已出完自动跳过)'
-              : '已出库 ${result.issuedCount} 张领料单',
-        );
+      final result = await runFormDraftSubmission(() {
+        if (!canPublish() ||
+            _blocked(ref.read(currentPermissionsProvider)) != null) {
+          throw StateError('页面或登录身份已变化，本次未提交新单据');
+        }
+        dispatched = true;
+        return _submittedDiscoveries.isEmpty
+            ? repository.issueFullBatch(
+                idempotencyKey: _requestKey!,
+                docIds: _submittedDocIds,
+                weights: _submittedWeights,
+                reason: _submittedReason,
+              )
+            : repository.issueDiscoveryBatch(
+                idempotencyKey: _requestKey!,
+                docIds: _submittedDocIds,
+                discoveries: _submittedDiscoveries,
+                weights: _submittedWeights,
+                reason: _submittedReason,
+              );
+      }, isDefiniteRejection: rejects);
+      if (!_receiptConfirmsBatch(result)) throw StateError('服务器回执不完整');
+      // Freeze business success before any local checkpoint, notification or
+      // navigation. Those later failures must never turn into another POST.
+      _confirmedResult = result;
+      _uncertain = false;
+      _submissionPending = false;
+      await _finishConfirmed(result, canPublish);
+    } catch (error) {
+      if (_confirmedResult != null) return;
+      if (error is ApiException) rejects(error);
+      _uncertain = wasUnknown || (dispatched && definiteRejection == null);
+      _submissionPending = false;
+      if (mounted) setState(() {});
+      try {
+        await saveFormDraftNow();
+      } catch (_) {
+        // The durable pre-send marker remains conservative if this write fails.
       }
-      invalidateWarehouseTaskCounts(ref);
-      bumpListRefresh(ref, StockDocType.draw.refreshKey);
-      if (context.canPop()) {
-        context.pop(true);
-      } else {
-        popOrBackTo(context, defaultPath: RouteName.warehouseDrawTasks);
-      }
-    } on ApiException catch (error) {
-      if (mounted) {
-        final rejected =
-            error.httpStatus != null &&
-            error.httpStatus! >= 400 &&
-            error.httpStatus! < 500;
-        setState(() => _uncertain = !rejected);
+      if (mounted && canPublish()) {
         context.appError(
-          error.fieldErrors?.firstOrNull?.message ?? error.message,
+          definiteRejection?.message ??
+              (error is ApiException
+                  ? error.fieldErrors?.firstOrNull?.message ?? error.message
+                  : _uncertain
+                  ? '批量出库结果待确认，请原样重试；已填写的信息已保留'
+                  : '本次尚未发送，请保留页面后重试'),
         );
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _uncertain = true);
-        context.appError('批量出库结果待确认，请原样重试；已填写的信息已保留');
       }
     } finally {
       _submissionPending = false;
@@ -642,8 +827,49 @@ class _ProductionDrawBatchIssuePageState
     }
   }
 
+  Future<void> _finishConfirmed(
+    WarehouseDrawBatchIssueResult result,
+    bool Function() canPublish, {
+    bool leave = true,
+  }) async {
+    await checkpointFormDraftAfterCreation();
+    await completeFormDraft();
+    if (!mounted || !canPublish()) return;
+    if (result.replayed) {
+      if (result.skippedCount > 0) {
+        final previouslyIssued = result.replayedCount > 0
+            ? '此前已出库 ${result.replayedCount} 张，另有 '
+            : '';
+        context.appInfo(
+          '本批已核对：$previouslyIssued${result.skippedCount} 张领料单此前已出完，未重复出库',
+        );
+      } else {
+        context.appInfo('本批此前已完成(${result.replayedCount} 张领料单)，未重复出库');
+      }
+    } else {
+      context.appSuccess(
+        result.skippedCount > 0
+            ? '已出库 ${result.issuedCount} 张领料单(${result.skippedCount} 张已出完自动跳过)'
+            : '已出库 ${result.issuedCount} 张领料单',
+      );
+    }
+    invalidateWarehouseTaskCounts(ref);
+    bumpListRefresh(ref, StockDocType.draw.refreshKey);
+    if (!leave) return;
+    setState(() => _saving = false);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !canPublish()) return;
+    if (context.canPop()) {
+      context.pop(true);
+    } else {
+      popOrBackTo(context, defaultPath: RouteName.warehouseDrawTasks);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.watch(authenticatedScopeProvider);
+    ref.watch(apiBaseUrlProvider);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
     final blocked = _blocked(permissions);
@@ -655,12 +881,12 @@ class _ProductionDrawBatchIssuePageState
         : null;
     return withFormDraft(
       PopScope(
-        canPop: !_saving && !_uncertain,
+        canPop: !_saving,
         child: Scaffold(
           appBar: UtenAppBar(
             title: '批量出库详情',
             leading: UtenBackButton(
-              onPressed: _saving || _uncertain
+              onPressed: _saving
                   ? null
                   : () => popOrBackTo(
                       context,
@@ -681,7 +907,8 @@ class _ProductionDrawBatchIssuePageState
                   : Stack(
                       children: [
                         AbsorbPointer(
-                          absorbing: _saving || _uncertain,
+                          absorbing:
+                              _saving || _uncertain || _confirmedResult != null,
                           child: UtenCollapsingHeaderScrollView(
                             collapsingHeader: Padding(
                               padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -723,7 +950,10 @@ class _ProductionDrawBatchIssuePageState
                                       'warehouse-draw-batch-remark',
                                     ),
                                     controller: _remark,
-                                    readOnly: _saving || _uncertain,
+                                    readOnly:
+                                        _saving ||
+                                        _uncertain ||
+                                        _confirmedResult != null,
                                     maxLength: 200,
                                     decoration: const UtenInputDecoration(
                                       InputDecoration(
@@ -783,13 +1013,15 @@ class _ProductionDrawBatchIssuePageState
                     UtenButton(
                       type: UtenButtonType.secondary,
                       size: UtenButtonSize.large,
-                      onPressed: _saving || _uncertain
+                      onPressed: _saving
                           ? null
                           : () => popOrBackTo(
                               context,
                               defaultPath: RouteName.warehouseDrawTasks,
                             ),
-                      child: const Text('取消'),
+                      child: Text(
+                        _confirmedResult != null || _uncertain ? '返回' : '取消',
+                      ),
                     ),
                     if (superAdmin || permissions.contains(Perm.stockDocIssue))
                       UtenButton(

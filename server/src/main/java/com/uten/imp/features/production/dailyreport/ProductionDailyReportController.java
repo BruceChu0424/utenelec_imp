@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportApproveRequest;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportApprovalResolution;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportQueryFilter;
@@ -162,6 +163,16 @@ public class ProductionDailyReportController {
             @PathVariable UUID id,
             @Valid @RequestBody DailyReportApproveRequest req) {
         return service.approve(id, req);
+    }
+
+    @GetMapping("/{id}/approval-receipt")
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportApprovalResolution approvalReceipt(
+            @PathVariable UUID id, @RequestParam String idempotencyKey) {
+        DailyReportApprovalResolution result = service.approvalReceipt(id, idempotencyKey);
+        auditViews.record("view_production_daily_report_approval_receipt", "production_daily_reports",
+                id, result.detail().getBillNo(), result.detail().getLegacyId(), "生产日报");
+        return result;
     }
 
     @PostMapping("/{id}/reverse")

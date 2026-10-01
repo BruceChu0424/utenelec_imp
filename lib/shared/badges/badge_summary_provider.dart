@@ -4,7 +4,7 @@
 // 取代此前约 40 个各自 60s 轮询的计数 provider(回一次工作台打出约 40 个请求)。
 //
 // 节奏:
-//   · 登录后立即拉一次, 之后每 60s 一次;
+//   · 登录后立即拉一次, 之后按公共设置轮询(默认60s，合法范围15至600s);
 //   · 页面隐藏/切后台时暂停, 回到前台立即拉一次;
 //   · 写操作成功、返回工作台、新通知到达时调 [BadgeSummaryNotifier.refresh];
 //   · 兜底(2026-09-24 用户反馈「车间任务点批量开工后分类徽章出不来, 得手动刷新」):
@@ -28,6 +28,7 @@ import '../../core/network/connection_recovery.dart';
 import '../../core/network/data_write_revision.dart';
 import '../providers/app_visibility_provider.dart';
 import '../providers/authenticated_scope_provider.dart';
+import '../repositories/public_settings_repository.dart';
 import 'badge_module.dart';
 import 'badge_registry.dart' show BadgeEntry;
 
@@ -220,8 +221,9 @@ final badgeSummaryProvider =
     );
 
 class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
-  /// 轮询周期(可见时)。
+  /// 公共设置尚未成功读取时的默认周期(可见时)。
   static const pollInterval = Duration(seconds: 60);
+  Duration _pollInterval = pollInterval;
 
   /// 本端业务写之后等这么久没有新的写再补拉(合并逐单提交的一串写)。
   static const writeSettle = Duration(milliseconds: 400);
@@ -268,6 +270,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     _running = null;
     _dirty = false;
     _refreshHolds = 0;
+    _pollInterval = pollInterval;
     _active = scope != null;
     ref.onDispose(() {
       if (_generation == generation) {
@@ -282,6 +285,19 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
     if (!_active) return BadgeSummary.empty;
 
     _visible = ref.read(appVisibilityProvider);
+    ref.listen<PublicSettings?>(publicSettingsSnapshotProvider, (
+      previous,
+      next,
+    ) {
+      final seconds = next?.badgePollSeconds;
+      if (seconds != null && (seconds < 15 || seconds > 600)) return;
+      final interval = seconds == null
+          ? pollInterval
+          : Duration(seconds: seconds);
+      if (interval == _pollInterval) return;
+      _pollInterval = interval;
+      _schedulePoll();
+    }, fireImmediately: true);
     ref.listen<bool>(appVisibilityProvider, (previous, visible) {
       _visible = visible;
       if (visible) {
@@ -320,6 +336,10 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   /// 立即重拉一次(单飞合并)。页面隐藏时只记下「有变化」, 回到前台再拉。
   Future<void> refresh() {
     if (!_active) return Future<void>.value();
+    // The next interval starts after this request. A pre-existing timer must
+    // not mark a slow in-flight request dirty and cause a redundant tail read.
+    _timer?.cancel();
+    _timer = null;
     // 这次取数发生在此前所有写之后, 等写静默的补拉不必再发。
     _writeTimer?.cancel();
     _writeTimer = null;
@@ -367,7 +387,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   void _schedulePoll() {
     _timer?.cancel();
     _timer = null;
-    if (!_active || !_visible || _refreshHolds > 0) return;
-    _timer = Timer(pollInterval, () => unawaited(refresh()));
+    if (!_active || !_visible || _refreshHolds > 0 || _running != null) return;
+    _timer = Timer(_pollInterval, () => unawaited(refresh()));
   }
 }

@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin.systemsetting;
 
+import com.uten.imp.audit.AuditRetentionModeReader;
 import com.uten.imp.config.props.StorageProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +20,7 @@ public class PublicSettingsController {
 
     private final SystemSettingsService settings;
     private final StorageProperties storage;
+    private final AuditRetentionModeReader auditRetention;
 
     @GetMapping("/public")
     public PublicSettings publicSettings() {
@@ -27,7 +29,8 @@ public class PublicSettingsController {
                 settings.readInt(SystemSettingKey.AUDIT_HOT_RETENTION_MONTHS)
                         + settings.readInt(SystemSettingKey.AUDIT_ARCHIVE_RETENTION_MONTHS),
                 storage.getMaxBytes(),
-                settings.readInt(SystemSettingKey.BADGE_POLL_SECONDS));
+                settings.readInt(SystemSettingKey.BADGE_POLL_SECONDS),
+                auditRetention.currentMode());
     }
 
     /** 前端运行时需要的公共设置 (非敏感)。 */
@@ -35,5 +38,6 @@ public class PublicSettingsController {
             int idleTimeoutMinutes,
             int auditReceiptRetentionMonths,
             long attachmentMaxBytes,
-            int badgePollSeconds) {}
+            int badgePollSeconds,
+            AuditRetentionModeReader.PurgeMode auditArchivePurgeMode) {}
 }

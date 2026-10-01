@@ -36,6 +36,7 @@ import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/platform_tables/platform_table_row.dart';
+import '../../../shared/drafts/identified_platform_drafts.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -200,6 +201,25 @@ class _ProductionDailyReportEditPageState
     ],
     for (final input in _materialInputs.values) input.used,
   ];
+
+  Iterable<IdentifiedPlatformDraftRow> get _platformProductDrafts => [
+    for (final row in _productRows)
+      IdentifiedPlatformDraftRow(row.localRowId, row.platformFields),
+  ];
+
+  @override
+  Object? captureFormDraftPlatformFields() => _createdReportId == null
+      ? captureIdentifiedPlatformDrafts(_platformProductDrafts)
+      : null;
+
+  @override
+  Future<void> restoreFormDraftPlatformFields(Object? snapshot) async {
+    // Accepted input is already saved by the business transaction. Its current
+    // values are read under actual server item IDs, never replayed from local rows.
+    if (_createdReportId != null) return;
+    restoreIdentifiedPlatformDrafts(snapshot, _platformProductDrafts);
+  }
+
   @override
   Map<String, dynamic> captureFormDraft() => {
     'remark': _remark.text,
@@ -214,6 +234,7 @@ class _ProductionDailyReportEditPageState
     'rows': [
       for (final row in _productRows)
         {
+          'localRowId': row.localRowId,
           'goods': draftGoods(row.goods),
           'selected': _grid.isSelected(row),
           // V736 去向分配：只存工人亲手定过的条目，其余建议恢复后按当时余量重新给出。
@@ -302,6 +323,17 @@ class _ProductionDailyReportEditPageState
     _createIdempotencyKey =
         data['idempotencyKey'] as String? ?? _createIdempotencyKey;
     _pendingFiles.restoreDraft(draftMap(data['attachments']));
+    if (_createdReportId case final createdId?) {
+      final accepted = await ref
+          .read(productionDailyReportRepositoryProvider)
+          .detail(createdId);
+      if (!mounted) return;
+      if (accepted.id != createdId) {
+        throw StateError('已保存日报的身份无法核对，原草稿保留');
+      }
+      _adoptAcceptedReport(accepted);
+      return;
+    }
     _savedMaterialUsage.clear();
     for (final value in draftMaps(data['savedMaterialUsage'])) {
       final usage = ProductionDailyReportMaterialUsage.fromJson(value);
@@ -311,7 +343,8 @@ class _ProductionDailyReportEditPageState
     final values = draftMaps(data['rows']);
     final rows = <DailyGridRow>[];
     for (final item in values) {
-      final row = DailyGridRow()..goods = restoreDraftGoods(item['goods']);
+      final row = DailyGridRow(localRowId: item['localRowId'] as String?)
+        ..goods = restoreDraftGoods(item['goods']);
       row.planItemId = item['planItemId'] as String?;
       row.planId = item['planId'] as String?;
       row.executionSegmentId = item['executionSegmentId'] as String?;
@@ -354,14 +387,6 @@ class _ProductionDailyReportEditPageState
     _grid.clearSelection();
     _grid.replaceAll(rows);
     _grid.setSelected(selected, true);
-    if (_createdReportId != null) {
-      // The server already accepted this report. Resume attachment completion;
-      // current custody or exhausted report quotas cannot invalidate that fact.
-      _resumeBlocked = false;
-      _resumeNotice = null;
-      if (mounted) setState(() {});
-      return;
-    }
     // Reload current custody and permissions. Stored quantities never recreate quota.
     _usageSourceCache.clear();
     _clearanceCache.clear();
@@ -398,6 +423,74 @@ class _ProductionDailyReportEditPageState
       _resumeNotice = '已填写的部分实际用料来源未能恢复，填写草稿保留；请核对原材料台账后再保存，避免遗漏实耗。';
     }
     setState(() {});
+  }
+
+  /// An accepted report can contain several output items for one input. Display
+  /// those actual items separately while completing attachments; do not infer an
+  /// input-to-item mapping from positions or identical goods/source attributes.
+  void _adoptAcceptedReport(ProductionDailyReportDetail detail) {
+    final ids = <String>{};
+    for (final item in detail.items) {
+      if (item.id.isEmpty || !ids.add(item.id)) {
+        throw StateError('已保存日报的产品行身份缺失或重复，原草稿保留');
+      }
+    }
+    _billNo.text = detail.billNo ?? '';
+    _remark.text = detail.remark ?? '';
+    _billDate = DateTime.tryParse(detail.billDate ?? '') ?? _billDate;
+    _rowVersion = detail.rowVersion;
+    _makerName = detail.makerName;
+    _createdAt = detail.createdAt;
+    _departmentId = detail.departmentId;
+    _workshopName = detail.workshopName;
+    _workers = [
+      for (final id in detail.workerIds)
+        _empCache[id] ?? UtenEmployeePickerItem(id: id, name: '已选生产工'),
+    ];
+    _surplusReturnRequested = detail.surplusReturnRequested;
+    _savedMaterialUsage
+      ..clear()
+      ..addEntries(
+        detail.materialUsages.map((line) => MapEntry(line.demandId, line)),
+      );
+    _grid.clearSelection();
+    _grid.replaceAll([
+      for (final item in detail.items)
+        DailyGridRow(localRowId: 'accepted:${item.id}')
+          ..platformFields.sourceRecordId = item.id
+          ..acceptedDestinationLabel = item.isDirectTransfer
+              ? '转下一道工序 · ${item.directTransferTargetLabel ?? '上层工单'}'
+              : '送入仓库'
+          ..goods = item.goodsId == null
+              ? null
+              : GoodsOption(
+                  id: item.goodsId!,
+                  code: item.goodsCode,
+                  name: item.goodsName,
+                )
+          ..qty.text = item.qty?.toString() ?? ''
+          ..defectQty.text = item.defectQty > 0
+              ? _quantityText(item.defectQty)
+              : ''
+          ..weight.text = item.weight?.toString() ?? ''
+          ..remark.text = item.remark ?? ''
+          ..planNo.text = item.planNo ?? ''
+          ..planItemId = item.planItemId
+          ..planId = item.planId
+          ..executionSegmentId = item.executionSegmentId
+          ..executionSegmentSalesAllocationId =
+              item.executionSegmentSalesAllocationId
+          ..salesOrderItemId = item.salesOrderItemId
+          ..salesOrderNo = item.salesOrderNo
+          ..clientName = item.clientName
+          ..colorId = item.colorId
+          ..unitId = item.unitId
+          ..unitRate = item.unitRate
+          ..isFinal = item.isFinal,
+    ]);
+    _resumeBlocked = false;
+    _resumeNotice = null;
+    if (mounted) setState(() {});
   }
 
   @override
@@ -1694,11 +1787,12 @@ class _ProductionDailyReportEditPageState
           .toSet();
 
   void _scheduleMaterialOwnershipRefresh() {
+    if (_createdReportId != null) return;
     if (_materialOwnershipRefreshQueued) return;
     _materialOwnershipRefreshQueued = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _materialOwnershipRefreshQueued = false;
-      if (!mounted) return;
+      if (!mounted || _createdReportId != null) return;
       final products = _productRows;
       final productsChanged = !listEquals(products, _materialProductRows);
       final selected = _isCreate
@@ -2261,6 +2355,7 @@ class _ProductionDailyReportEditPageState
       refreshBadges(ref);
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdReportId = d.id);
+        _adoptAcceptedReport(d);
         await checkpointFormDraftAfterCreation();
         await _finishCreatedReport(d.id);
         return;

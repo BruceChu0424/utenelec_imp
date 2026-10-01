@@ -31,6 +31,12 @@ class FormDraftConflict implements Exception {
   String toString() => '这份草稿已在其他页面修改或删除。当前输入仍在页面中，请保留页面并另存草稿。';
 }
 
+class FormDraftUnknownSubmission implements Exception {
+  const FormDraftUnknownSubmission();
+  @override
+  String toString() => formDraftUnknownSubmissionMessage;
+}
+
 class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   int _generation = 0;
   String? _prefix;
@@ -163,6 +169,10 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (generation != _generation) throw StateError('登录身份已变化');
       if (existing != null) {
         final current = jsonDecode(existing) as Map<String, dynamic>;
+        if (current['completed'] != true &&
+            FormDraft.fromJson(current).hasUnknownSubmission) {
+          throw const FormDraftUnknownSubmission();
+        }
         if (current['completed'] == true || current['revision'] != revision) {
           throw const FormDraftConflict();
         }

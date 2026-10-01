@@ -96,8 +96,17 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.workshopMaterialIssue) {
     return const [Perm.workshopMaterialIssue];
   }
+  if (location == RouteName.stockCountRequests) {
+    return const [Perm.stockCountSubmit];
+  }
+  if (location == RouteName.financeStockCountReview) {
+    return const [Perm.stockCountFinanceReview];
+  }
+  if (location == RouteName.warehouseStockCountReview) {
+    return const [Perm.stockCountWarehouseReview];
+  }
   if (location == RouteName.workshopMaterialCount) {
-    return const [Perm.workshopMaterialCount];
+    return const [Perm.workshopMaterialCount, Perm.stockCountWarehouseReview];
   }
   if (location == RouteName.workshopMaterialSetup) {
     return const [Perm.workshopMaterialSetup];
@@ -724,7 +733,7 @@ List<String> requiredAllPermsFor(String rawLocation) {
     return const [Perm.workshopMaterialIssue];
   }
   if (location == RouteName.workshopMaterialCount) {
-    return const [Perm.workshopMaterialCount];
+    return const [];
   }
   if (location == RouteName.workshopMaterialSetup) {
     return const [Perm.workshopMaterialSetup];

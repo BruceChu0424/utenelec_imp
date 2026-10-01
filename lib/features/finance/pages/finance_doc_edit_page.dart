@@ -239,6 +239,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       for (final row in _grid.rows)
         {
           'department': row.department.text,
+          'departmentName': row.departmentReferenceName,
           'qty': row.qty.text,
           'price': row.price.text,
           'amount': row.amount.text,
@@ -347,7 +348,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           row.balanceOriginal = (item['balanceOriginal'] as num?)?.toDouble();
           row.salesOrderIds = draftStrings(item['salesOrderIds']);
           row.salesOrderNos = draftStrings(item['salesOrderNos']);
-          row.department.text = draftText(item, 'department');
+          row.setDepartment(
+            draftText(item, 'department'),
+            item['departmentName'] as String?,
+          );
           row.qty.text = draftText(item, 'qty');
           row.price.text = draftText(item, 'price');
           row.amount.text = draftText(item, 'amount');
@@ -397,7 +401,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     });
     try {
       final names = ref.read(financeNameServiceProvider);
-      await names.ensureLoaded(refreshAccounts: true);
+      await names.ensureLoaded(
+        refreshAccounts: true,
+        includeCounterparties: !_cfg.isAllocate,
+      );
+      if (_cfg.isAllocate) await names.ensureDepartmentsLoaded();
       if (_cfg.isAllocate || _cfg.type == FinanceDocType.receipt) {
         await ref
             .read(financeNameServiceProvider)
@@ -514,7 +522,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             ..styleId = it.expenseStyleId ?? it.incomeStyleId
             ..inAccountId = it.inAccountId
             ..occurDate = it.occurDate;
-          row.department.text = it.departmentId ?? '';
+          row.setDepartment(it.departmentId, it.departmentName);
           row.qty.text = it.qtyText ?? it.qty?.toString() ?? '';
           row.price.text = it.priceText ?? it.price?.toString() ?? '';
           row.amount.text = _cfg.isSettle

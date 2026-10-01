@@ -15,6 +15,8 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
@@ -24,6 +26,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
@@ -102,6 +105,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   };
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -109,7 +113,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     try {
       await ref
           .read(financeNameServiceProvider)
-          .ensureLoaded(refreshAccounts: true);
+          .ensureLoaded(
+            refreshAccounts: true,
+            includeCounterparties: !_cfg.isAllocate,
+          );
       // 费用/收入单及销售收款的其它费用项目：预载类别名称。
       if (_cfg.isAllocate || _cfg.type == FinanceDocType.receipt) {
         await ref
@@ -317,11 +324,19 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           children: [
             UtenContentContainer(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ? Semantics(
+                      label: AppLocalizations.of(context).commonLoading,
+                      liveRegion: true,
+                      child: const UtenSkeletonList(),
                     )
                   : _error != null
-                  ? Center(child: Text(_error!))
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: AppLocalizations.of(context).commonRetry,
+                      onAction: () async {
+                        if (!_loading) await _load();
+                      },
+                    )
                   : _detail == null
                   ? const SizedBox.shrink()
                   : _body(theme, names, scopeCapability, canViewFiles),
@@ -336,7 +351,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，大小/高度/禁用态全站统一。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _busy ? null : _actions(theme),
+      floatingActionButton:
+          _detail == null || _busy || _loading || _error != null
+          ? null
+          : _actions(theme),
     );
   }
 
@@ -929,12 +947,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
               names.styleName(it.expenseStyleId ?? it.incomeStyleId, styleCat),
         ),
         MasterColumnDef(
-          key: 'dept',
+          key: 'department',
           label: '部门',
           width: 140,
-          value: (it) => names
-              .client(it.departmentId)
-              .replaceAll('—', it.departmentId ?? '—'),
+          value: (it) => it.departmentLabel,
         ),
         MasterColumnDef(
           key: 'qty',

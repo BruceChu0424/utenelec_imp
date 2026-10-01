@@ -675,6 +675,7 @@ class AggregateMaterialOrderEndToEndTest {
 
     Case create(boolean manufacture,boolean fixed,String quantity){return create(manufacture,fixed,quantity,false);}
     Case createWithChild(String quantity){return create(true,false,quantity,true);}
+    Case createWithChild(String quantity,int sourceCount){return create(true,false,quantity,true,sourceCount);}
     Case createForkedFixed() {
         Case seed=create(true,true,"1");var world=seed.world();
         UUID root=UUID.randomUUID(),left=UUID.randomUUID(),right=UUID.randomUUID();
@@ -726,6 +727,9 @@ class AggregateMaterialOrderEndToEndTest {
         });
     }
     Case create(boolean manufacture,boolean fixed,String quantity,boolean nested) {
+        return create(manufacture,fixed,quantity,nested,3);
+    }
+    private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount) {
         String tag="aggregate-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
         UUID common=manufacture?UUID.randomUUID():world.goodsD(),child=nested?UUID.randomUUID():null;
@@ -733,7 +737,7 @@ class AggregateMaterialOrderEndToEndTest {
         if(nested){fixture.insertGoods(child,"AG-C-"+child,"先下达制造子件","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,child,"1");fixture.insertBom(child,world.goodsD(),"2");}
         else if(manufacture){fixture.insertBom(common,world.goodsD(),"1");if(fixed)db.update("UPDATE goods_bom_items SET consumption_basis='FIXED_BATCH',basis_output_qty=5 WHERE goods_id=?",common);}
         List<PreviewItem> sources=new ArrayList<>();
-        for(int index=0;index<3;index++){UUID root=UUID.randomUUID();fixture.insertGoods(root,"AG-R-"+root,"不同顶层"+index,"自制",world.unitId(),world.unitLegacy());fixture.insertBom(root,common,manufacture?"1":"2");
+        for(int index=0;index<sourceCount;index++){UUID root=UUID.randomUUID();fixture.insertGoods(root,"AG-R-"+root,"不同顶层"+index,"自制",world.unitId(),world.unitLegacy());fixture.insertBom(root,common,manufacture?"1":"2");
             UUID order=fixture.createApprovedOrder(world,root,quantity,"100");UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
             sources.add(new PreviewItem("SALES_ORDER_ITEM",orderItem,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal(quantity)));}
         var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"analysis-"+UUID.randomUUID(),sources));

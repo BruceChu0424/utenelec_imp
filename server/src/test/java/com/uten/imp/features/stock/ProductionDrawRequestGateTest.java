@@ -48,6 +48,7 @@ class ProductionDrawRequestGateTest {
     @Mock StockDocAccessPolicy access;
     @Mock SecurityContextCurrentUser currentUser;
     @Mock ProductionStockTaskAccessPolicy productionStockTaskAccess;
+    @Mock StockDrawIssueBatchReceipts drawIssueBatchReceipts;
     @InjectMocks StockDocService service;
 
     @Test
@@ -111,6 +112,9 @@ class ProductionDrawRequestGateTest {
 
     @Test
     void batchIssueRejectsUnrequestedDocumentBeforeReadingItsMaterialRows() {
+        // Mockito constructor injection does not populate this Spring field dependency.
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                service, "drawIssueBatchReceipts", drawIssueBatchReceipts);
         emptyExecutionGraph();
         StockDocument draw = unrequestedDraw();
         draw.setBillNo("LL-REQUEST-GATE");
@@ -120,10 +124,10 @@ class ProductionDrawRequestGateTest {
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         when(access.hasAuthority("stock_doc:approve")).thenReturn(true);
         Query header = mock(Query.class);
-        doReturn(header).when(em).createNativeQuery(contains("SELECT bill_no, doc_type, status"));
-        when(header.setParameter("id", draw.getId())).thenReturn(header);
+        doReturn(header).when(em).createNativeQuery(contains("SELECT id, bill_no, doc_type, status"));
+        when(header.setParameter("ids", List.of(draw.getId()))).thenReturn(header);
         when(header.getResultList()).thenReturn(java.util.Collections.singletonList(
-                new Object[]{draw.getBillNo(), "DRAW", (short) 0}));
+                new Object[]{draw.getId(), draw.getBillNo(), "DRAW", (short) 0}));
         StockDocIssueBatchRequest request = new StockDocIssueBatchRequest();
         request.setIdempotencyKey("unrequested-batch-001");
         request.setDocIds(List.of(draw.getId()));

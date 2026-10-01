@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.application.port.InventoryMovementCostReference;
 import com.uten.imp.application.port.ProductionCompletionReversePort;
+import com.uten.imp.application.port.ProductionPreStockedInboundPort;
 import com.uten.imp.application.port.ProductionMutationFootprintPort;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.common.time.BusinessTime;
@@ -83,7 +84,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class StockDocService {
+public class StockDocService implements ProductionPreStockedInboundPort {
 
     private static final String BALANCE_ADJUSTMENT_PERMISSION = "stock:balance:adjust";
 
@@ -138,6 +139,8 @@ public class StockDocService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final com.uten.imp.features.notice.ChainNoticeService chainNotice;
     private final ProductionMaterialStockLedgerService productionMaterialLedger;
+    @org.springframework.beans.factory.annotation.Autowired
+    private StockDrawIssueBatchReceipts drawIssueBatchReceipts;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.stock.allocation.ProductionMaterialReturnReceiptService> materialReturnReceipts;
     @org.springframework.beans.factory.annotation.Autowired
@@ -253,6 +256,17 @@ public class StockDocService {
     @Transactional(readOnly = true)
     public StockDocDetail detail(UUID id) {
         StockDocument d = requireDoc(id);
+        requireDetailReadable(d);
+        List<StockDocumentItem> entities = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        Map<UUID, IssuedWeight> issuedWeights = issuedWeights(d, entities);
+        List<StockDocItemDto> items = entities.stream()
+                .map(item -> toItemDto(item, issuedWeights.get(item.getId()))).toList();
+        return toDetail(d, items);
+    }
+
+    /** Batch receipts keep the same read boundary without building discarded detail projections. */
+    private void requireDetailReadable(StockDocument d) {
+        UUID id = d.getId();
         if ("DRAW".equals(d.getDocType()) && !productionDrawRequested(id)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
         }
@@ -266,11 +280,6 @@ public class StockDocService {
         if (!productionTaskReadable) {
             access.requireReadable(d.getMakerId(), "仓库单据不存在");
         }
-        List<StockDocumentItem> entities = itemRepo.findByDocIdOrderByLineNoAsc(id);
-        Map<UUID, IssuedWeight> issuedWeights = issuedWeights(d, entities);
-        List<StockDocItemDto> items = entities.stream()
-                .map(item -> toItemDto(item, issuedWeights.get(item.getId()))).toList();
-        return toDetail(d, items);
     }
 
     /**
@@ -340,6 +349,89 @@ public class StockDocService {
             StockDocSaveRequest req,
             String idempotencyKey) {
         return createInternal(req, idempotencyKey);
+    }
+
+    /** Posts a finance-approved count; the request and event are the authority, never a client-supplied balance. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('stock:count:finance_review')")
+    public StockDocDetail applyApprovedStockCount(UUID requestId, UUID approvalEventId) {
+        tx.bind();
+        List<Object[]> heads = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT request.warehouse_id,request.reason,request.request_no,request.stock_document_id
+                FROM stock_count_requests request JOIN stock_count_request_events event
+                  ON event.id=request.approval_event_id AND event.request_id=request.id
+                WHERE request.id=:request AND request.status='APPROVED' AND request.review_route='FINANCE'
+                  AND event.id=:event AND event.action='APPROVE' AND event.actor_id=:actor
+                  AND request.reviewed_by=event.actor_id AND request.row_version=event.request_version
+                """).setParameter("request",requestId).setParameter("event",approvalEventId).setParameter("actor",currentUser.requireId()));
+        if(heads.size()!=1)throw new ApiException(ErrorCode.FORBIDDEN,"缺少本次财务盘点审核通过的证明");
+        Object[] head=heads.getFirst();
+        if(head[3]!=null)throw new ApiException(ErrorCode.CONFLICT,"此盘点申请已经过账，请查看原审核结果");
+        UUID warehouse=(UUID)head[0];
+        if(warehouseScopes!=null)warehouseScopes.requireActiveLeafWarehouse(warehouse,"盘点仓库");
+        List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,goods_id,color_id,unit_id,expected_qty,expected_weight_kg,expected_weight_estimated,
+                       target_qty,target_weight_kg,weight_changed,kg_per_base_unit
+                FROM stock_count_request_lines WHERE request_id=:id ORDER BY line_no
+                """).setParameter("id",requestId));
+        if(rows.isEmpty())throw new ApiException(ErrorCode.CONFLICT,"盘点申请缺少物料明细");
+        mutationLocks.acquire(() -> mutationFootprints.forInventoryChange(rows.stream()
+                .map(row -> new ProductionMutationFootprintPort.WarehouseDimension(warehouse,(UUID)row[1],(UUID)row[2]))
+                .toList(),List.of()));
+        // Source/inventory prefix precedes creating stock lines (whose foreign keys also lock goods).
+        // Use the same order as inbound posting, including distinct colors of the same material.
+        em.createNativeQuery("SELECT id FROM goods WHERE id IN (:ids) ORDER BY id FOR UPDATE")
+                .setParameter("ids",rows.stream().map(row->(UUID)row[1]).distinct().toList()).getResultList();
+        List<StockDocItemLine> lines=new java.util.ArrayList<>();
+        for(Object[] row:rows) {
+            StockDocItemLine line=new StockDocItemLine();
+            line.setLineNo(lines.size()+1);line.setGoodsId((UUID)row[1]);line.setColorId((UUID)row[2]);
+            line.setUnitId((UUID)row[3]);line.setUnitRate(BigDecimal.ONE);
+            line.setQty((BigDecimal)row[4]);line.setCountQty((BigDecimal)row[7]);
+            if(Boolean.TRUE.equals(row[9])&&row[10]==null&&((BigDecimal)row[7]).signum()>0)
+                line.setCountWeight((BigDecimal)row[8]);
+            line.setRemark("财务批准盘点 "+head[2]);lines.add(line);
+        }
+        StockDocSaveRequest input=new StockDocSaveRequest();input.setDocType("CHECK");input.setWarehouseId(warehouse);
+        input.setBillDate(BusinessTime.today());input.setRemark("[审核盘点] "+head[2]+" "+head[1]);input.setItems(lines);
+        StockDocDetail document=createInternal(input,"approved-stock-count:"+requestId);
+        em.createNativeQuery("UPDATE stock_count_requests SET stock_document_id=:document WHERE id=:request AND stock_document_id IS NULL")
+                .setParameter("document",document.getId()).setParameter("request",requestId).executeUpdate();
+        prelockProductionDocument(document.getId());
+        // The normal stock-document prelude holds all affected inventory dimensions before comparing snapshots.
+        for(Object[] line:rows) {
+            List<Object[]> current=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT COALESCE(balance.qty,0),balance.weight,COALESCE(balance.weight_estimated,false),
+                           goods.unit_id,CASE WHEN profile.measurement_dimension='MASS'
+                            THEN fn_weight_unit_kg_factor(profile.mass_unit_code) END
+                    FROM goods JOIN units unit ON unit.id=goods.unit_id
+                    LEFT JOIN unit_measurement_profiles profile ON profile.unit_id=unit.id
+                    LEFT JOIN stock_balances balance ON balance.warehouse_id=:warehouse AND balance.goods_id=goods.id
+                      AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                    WHERE goods.id=:goods AND NOT goods.is_deleted AND goods.status='使用'
+                      AND NOT unit.is_deleted AND unit.status='使用'
+                    """).setParameter("warehouse",warehouse).setParameter("goods",line[1]).setParameter("color",line[2]));
+            if(current.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"盘点物料或单位已停用，请驳回后重新核对");
+            Object[] now=current.getFirst();
+            if(!sameCountNumber(line[4],now[0])||!sameCountNumber(line[5],now[1])||!Objects.equals(line[6],now[2])
+                    ||!Objects.equals(line[3],now[3])||!sameCountNumber(line[10],now[4]))
+                throw new ApiException(ErrorCode.CONFLICT,"等待审核期间库存数量、重量或计量规则已变化；本次未入账，请重新盘点");
+        }
+        return approveInternal(document.getId(),false,false);
+    }
+
+    private static boolean sameCountNumber(Object expected,Object actual) {
+        return expected==null?actual==null:actual!=null&&new BigDecimal(expected.toString()).compareTo(new BigDecimal(actual.toString()))==0;
+    }
+
+    private boolean approvedCountDocument(UUID documentId) {
+        return documentId!=null&&Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM stock_count_requests request JOIN stock_count_request_events event
+                    ON event.id=request.approval_event_id AND event.request_id=request.id
+                    WHERE request.stock_document_id=:document AND request.status='APPROVED'
+                      AND request.review_route='FINANCE' AND event.action='APPROVE'
+                      AND event.actor_id=request.reviewed_by AND event.request_version=request.row_version)
+                """).setParameter("document",documentId).getSingleResult());
     }
 
     @Transactional(readOnly = true)
@@ -562,6 +654,21 @@ public class StockDocService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void confirmPreStockedFinishedInbound(UUID id, String idempotencyKey) {
+        confirmPreStockedFinishedInbound(id, idempotencyKey, null);
+    }
+
+    @Override
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void withBatch(java.util.function.Consumer<ProductionPreStockedInboundPort.Batch> work) {
+        FinishedInboundBatchContext context = new FinishedInboundBatchContext();
+        var owner = org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus();
+        PreStockedInboundBatchScope.run(context.postedDocumentIds, context.validatedWarehouseIds,
+                (id, key) -> confirmPreStockedFinishedInbound(id, key, context),
+                productionCompletionReverse::afterFinishedInboundBatchApproved, owner::setRollbackOnly, work);
+    }
+
+    private void confirmPreStockedFinishedInbound(UUID id, String idempotencyKey,
+            FinishedInboundBatchContext batchContext) {
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "先入库后质检的成品入库任务没有明细");
@@ -579,7 +686,7 @@ public class StockDocService {
         String requestHash = finishedInboundConfirmationHash(id, accepted, null);
         confirmFinishedInboundAfterPrelock(
                 id, request, accepted, null, requestHash,
-                lockProductionDocuments(List.of(id)), null,
+                lockProductionDocuments(List.of(id)), batchContext,
                 FinishedInLane.PRE_STOCKED_AUTO);
     }
 
@@ -1053,6 +1160,9 @@ public class StockDocService {
                     d, "stock_doc:approve", "无权审核此仓库单据");
         }
         requireBalanceAdjustmentPermission(d);
+        if ("CHECK".equals(d.getDocType()) && !access.hasAuthority("stock:count:finance_review")) {
+            throw new ApiException(ErrorCode.FORBIDDEN,"普通仓库盘点须由获授权的财务审核人员批准");
+        }
         if (!warehouseQuantityConfirmed
                 && "FINISHED_IN".equals(d.getDocType())
                 && isProductionLinked(d.getId())) {
@@ -1194,6 +1304,9 @@ public class StockDocService {
         if (Set.of("TRANSFER", "OTHER_OUT").contains(d.getDocType())) {
             rejectWorkshopMaterialDocumentReverse(id);
         }
+        if (approvedCountDocument(id)) {
+            throw new ApiException(ErrorCode.CONFLICT,"该库存变化来自已批准的盘点，不能直接红冲；请重新盘点并提交对应部门审核");
+        }
         requireOperationWritable(
                 d, "stock_doc:reverse", "无权红冲此仓库单据");
         requireBalanceAdjustmentPermission(d);
@@ -1317,12 +1430,12 @@ public class StockDocService {
      * <li>草稿单（生产链 DRAW 全部以草稿生成）走与 {@link #approveAndIssue} 相同的
      *     「审核并出库」路径：要求当前账号同时持 stock_doc:approve，否则 FORBIDDEN
      *     并列出草稿单号；已审单直接出库。</li>
-     * <li>逐单独立锁定（共享 Guard 会在第二单 verifyUnchanged 撞上第一单刚写的出库
-     *     事实）；剩余量在拿到单据行锁之后再计算，不用提交前的快照。</li>
+     * <li>按固定顺序一次锁定整批生产图和单据，逐单保留来源守卫；剩余量在拿到单据
+     *     行锁之后再计算，不用提交前的快照。</li>
      * <li>子幂等键 = SHA-256(操作人 + 批量键 + 单据 UUID)（见
      *     {@link #batchChildIdempotencyKey}），不同操作人复用同一批量键不会撞
-     *     「相同幂等键对应不同领退料请求」；同人同键重放时，已出完的单按子键识别为
-     *     replayed，整批无新增出库即 {@code replayed=true}。</li>
+     *     「相同幂等键对应不同领退料请求」。父回执冻结完整单据集合、备注、重量及结果；
+     *     同人同键核对内容后只读回放，取消出库或新增申请不会让旧键再次实发。</li>
      * <li>逐单 ApiException 统一包成「领料单 {单号}：{原因}」，错误码不变；
      *     不存在的单据 NOT_FOUND「仓库单据不存在」。</li>
      * <li>统一备注（reason）随每张单的出库追加到单据备注（{@link #appendIssueRemark}）。</li>
@@ -1332,45 +1445,36 @@ public class StockDocService {
     @PreAuthorize("hasAuthority('stock_doc:issue')")
     public StockDocIssueBatchResponse issueFullBatch(StockDocIssueBatchRequest request) {
         tx.bind();
-        if (request == null || request.getIdempotencyKey() == null
-                || request.getIdempotencyKey().isBlank()
-                || request.getDocIds() == null || request.getDocIds().isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量出库请求缺少幂等键或单据清单");
-        }
-        String batchKey = request.getIdempotencyKey().strip();
-        if (batchKey.length() < 8 || batchKey.length() > 128
-                || !batchKey.matches("[A-Za-z0-9._:-]+")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量出库幂等键格式无效");
-        }
-        java.util.LinkedHashSet<UUID> ids = new java.util.LinkedHashSet<>(request.getDocIds());
-        if (ids.contains(null)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量出库单据清单含空值");
-        }
-        if (ids.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "一次最多批量出库 " + StockDocIssueBatchRequest.MAX_DOCUMENTS + " 张领料单");
-        }
-        String reason = request.getReason() == null || request.getReason().isBlank()
-                ? null : request.getReason().strip();
-        // 逐行实称重量(ADR-135 §3.6): 只收本批所选领料单的明细, 挂到各单本次剩余出库行上。
-        Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights = batchIssueWeights(request.getWeights());
+        var command = StockDrawIssueBatchReceipts.normalize(request);
+        String batchKey = command.key();
+        String reason = command.reason();
+        Map<UUID, StockDocIssueBatchRequest.ItemWeight> weights = command.weights();
         UUID actorUserId = currentUser.requireId();
-        boolean canApprove = access.hasAuthority("stock_doc:approve");
         // 固定锁序（UUID 文本升序，与 lockProductionDocuments 同序）防死锁。
-        List<UUID> orderedIds = ids.stream()
-                .sorted(java.util.Comparator.comparing(UUID::toString)).toList();
+        List<UUID> orderedIds = command.documents();
+        var previous = drawIssueBatchReceipts.lockAndFind(actorUserId, command);
+        if (previous.isPresent()) {
+            // 当前出库入口权限和对象可读权限仍生效；不重新审批、锁生产图或计算剩余量。
+            for (UUID id : orderedIds) requireDetailReadable(requireDoc(id));
+            return previous.get();
+        }
+        boolean canApprove = access.hasAuthority("stock_doc:approve");
 
         // 预检（不加锁、不装载实体）：存在性 / 类型 / 草稿审核权限一次性报清；
         // 权威状态在逐单锁定后再读一次。
         List<String> draftBillNos = new ArrayList<>();
+        Map<UUID, BatchDocumentHeader> headers = batchDocumentHeaders(orderedIds);
         for (UUID id : orderedIds) {
-            Object[] header = batchDocumentHeader(id);
-            String billNo = (String) header[0];
-            if (!"DRAW".equals(header[1])) {
+            BatchDocumentHeader header = headers.get(id);
+            if (header == null) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+            }
+            String billNo = header.billNo();
+            if (!"DRAW".equals(header.docType())) {
                 throw new ApiException(ErrorCode.BUSINESS,
                         "领料单 " + billNo + "：仅生产领料单支持出库操作");
             }
-            Short status = header[2] == null ? null : ((Number) header[2]).shortValue();
+            Short status = header.status();
             if (status != null && status == STATUS_DRAFT) draftBillNos.add(billNo);
         }
         if (!draftBillNos.isEmpty() && !canApprove) {
@@ -1384,13 +1488,14 @@ public class StockDocService {
         // 预锁全部单据，再逐单取子集 Guard；逐单首次 acquire 会让第二张单越界报冲突。
         lockProductionDocuments(orderedIds);
         requireBatchWeightsWithinDocuments(weights.keySet(), orderedIds);
+        // 一次核查整批，必须在任何审核/扣库之前失败，不能给旧逐单事实补造完整父结果。
+        drawIssueBatchReceipts.rejectLegacyChildren(actorUserId, command);
 
         int issued = 0;
         int skipped = 0;
-        int replayed = 0;
         List<String> issuedDocNos = new ArrayList<>();
         for (UUID id : orderedIds) {
-            var mutationGuard = lockProductionDocuments(List.of(id));
+            var mutationGuard = guardAlreadyLockedProductionDocument(id);
             StockDocument document = requireDocForUpdate(id);
             String billNo = document.getBillNo();
             try {
@@ -1401,8 +1506,8 @@ public class StockDocService {
                 attachBatchWeights(lines, weights);
                 String childKey = batchChildIdempotencyKey(actorUserId, batchKey, id);
                 if (lines.isEmpty()) {
-                    if (issueEventExists(id, childKey)) replayed++;
-                    else skipped++;   // 提交前已出完的单：跳过不报错
+                    requireDetailReadable(document);
+                    skipped++; // 提交前已出完的单；该结果也由父回执冻结。
                     continue;
                 }
                 if (document.getStatus() == null || document.getStatus() == STATUS_REVERSED) {
@@ -1415,22 +1520,25 @@ public class StockDocService {
                     }
                     // 与 approveAndIssue 同序：审核写入后重新取 Guard，再进入出库。
                     mutationGuard.verifyUnchanged();
-                    approveInternal(id, false, true);
-                    mutationGuard = lockProductionDocuments(List.of(id));
+                    StockDocument approved = approveDocumentAfterPrelock(id, false, true, null);
+                    requireDetailReadable(approved);
+                    mutationGuard = guardAlreadyLockedProductionDocument(id);
                 }
                 var req = new StockDocIssueRequest();
                 req.setIdempotencyKey(childKey);
                 req.setLines(lines);
                 req.setReason(reason);
-                StockDocDetail detail = issueAfterPrelock(id, req, mutationGuard);
+                issueLocked(id, req, mutationGuard, false);
+                requireDetailReadable(document);
                 issued++;
-                issuedDocNos.add(detail.getBillNo());
+                issuedDocNos.add(document.getBillNo());
             } catch (ApiException failure) {
                 throw batchDocumentFailure(billNo, failure);
             }
         }
-        return new StockDocIssueBatchResponse(
-                issued, skipped, replayed, issued == 0 && replayed > 0, issuedDocNos);
+        var response = new StockDocIssueBatchResponse(issued, skipped, 0, false, issuedDocNos);
+        drawIssueBatchReceipts.record(actorUserId, currentUser.employeeId().orElse(null), command, response);
+        return response;
     }
 
     /**
@@ -1548,34 +1656,24 @@ public class StockDocService {
         return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
     }
 
-    /** 不装载实体的单据头读取（bill_no, doc_type, status）；不存在/已删 → NOT_FOUND。 */
-    private Object[] batchDocumentHeader(UUID id) {
+    private record BatchDocumentHeader(String billNo, String docType, Short status) {}
+
+    /** Read the whole preflight once; authoritative state is read again under the batch locks. */
+    private Map<UUID, BatchDocumentHeader> batchDocumentHeaders(List<UUID> ids) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT bill_no, doc_type, status
+                                SELECT id, bill_no, doc_type, status
                                 FROM stock_documents
-                                WHERE id = :id AND is_deleted = FALSE
+                                WHERE id IN (:ids) AND is_deleted = FALSE
                                 """)
-                        .setParameter("id", id));
-        if (rows.size() != 1) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+                        .setParameter("ids", ids));
+        Map<UUID, BatchDocumentHeader> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], new BatchDocumentHeader(
+                    (String) row[1], (String) row[2],
+                    row[3] == null ? null : ((Number) row[3]).shortValue()));
         }
-        return rows.getFirst();
-    }
-
-    /** 本批子键是否已在领料台账留下 ISSUE 事件（已出完的单据据此区分 replayed 与 skipped）。 */
-    private boolean issueEventExists(UUID documentId, String idempotencyKey) {
-        Number count = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM production_material_stock_events
-                        WHERE stock_document_id = :documentId
-                          AND event_type = 'ISSUE'
-                          AND idempotency_key = :key
-                        """)
-                .setParameter("documentId", documentId)
-                .setParameter("key", idempotencyKey)
-                .getSingleResult();
-        return count != null && count.longValue() > 0;
+        return result;
     }
 
     private StockDocDetail issueAfterPrelock(UUID id,StockDocIssueRequest req,
@@ -3134,6 +3232,17 @@ public class StockDocService {
         lockFinishedInboundBatchAllocationGraph(orderedIds);
         lockFinishedInboundBatchDocuments(orderedIds);
         return guard;
+    }
+
+    /**
+     * Only used by issueFullBatch after its complete ordered document set has
+     * acquired all physical graph/document locks. Those locks survive each
+     * child approval and issue until the atomic batch commits or rolls back.
+     * Keep the nested source guard and its diagnostic coverage verification;
+     * repeating SELECT FOR UPDATE for the same graph adds no protection.
+     */
+    private FulfillmentMutationLocks.Guard guardAlreadyLockedProductionDocument(UUID id) {
+        return mutationLocks.acquire(() -> mutationFootprints.forStockDocuments(List.of(id)));
     }
 
     private void lockProductionDocumentGraphs(List<UUID> documentIds) {
@@ -4762,6 +4871,7 @@ public class StockDocService {
 
     private void requireBalanceAdjustmentPermission(StockDocument document) {
         if (!isAuthorizedBalanceAdjustment(document)) return;
+        if (approvedCountDocument(document.getId()) && access.hasAuthority("stock:count:finance_review")) return;
         boolean allowed = currentUser.get()
                 .map(user -> user.isSuperAdmin()
                         || user.getPermissions().contains(BALANCE_ADJUSTMENT_PERMISSION))

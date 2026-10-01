@@ -19,6 +19,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/app_visibility_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
 
 late SharedPreferences _prefs;
 
@@ -92,6 +93,97 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _prefs = await SharedPreferences.getInstance();
+  });
+  testWidgets('首次慢请求期间已有短周期设置不会触发尾随多余请求', (tester) async {
+    final (container, api) = _container();
+    api.gate = Completer<void>();
+    container.read(publicSettingsSnapshotProvider.notifier).state =
+        const PublicSettings(badgePollSeconds: 15);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.calls, 1);
+    api.gate!.complete();
+    await _settle(tester);
+    final callsAfterResponse = api.calls;
+    api.gate = null;
+    container.dispose();
+    expect(callsAfterResponse, 1);
+  });
+  testWidgets('公共设置更改轮询周期但保留计数且不额外请求', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    container.read(publicSettingsSnapshotProvider.notifier).state =
+        const PublicSettings(badgePollSeconds: 90);
+    await tester.pump(const Duration(seconds: 60));
+    expect(api.calls, 1);
+    expect(container.read(badgeTotalTodoProvider), 1);
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.calls, 2);
+    container.read(publicSettingsSnapshotProvider.notifier).state =
+        const PublicSettings(badgePollSeconds: 15);
+    await tester.pump(const Duration(seconds: 14));
+    expect(api.calls, 2);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.calls, 3);
+    container.dispose();
+  });
+
+  testWidgets('非法周期不产生密集请求且隐藏及批处理仍暂停轮询', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    container.read(publicSettingsSnapshotProvider.notifier).state =
+        const PublicSettings(badgePollSeconds: 0);
+    await tester.pump(const Duration(seconds: 59));
+    expect(api.calls, 1);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.calls, 2);
+    container.read(appVisibilityProvider.notifier).debugSet(false);
+    container.read(publicSettingsSnapshotProvider.notifier).state =
+        const PublicSettings(badgePollSeconds: 15);
+    await tester.pump(const Duration(minutes: 3));
+    expect(api.calls, 2);
+    final release = container
+        .read(badgeSummaryProvider.notifier)
+        .holdRefreshes();
+    container.read(appVisibilityProvider.notifier).debugSet(true);
+    container.read(publicSettingsSnapshotProvider.notifier).state =
+        const PublicSettings(badgePollSeconds: 90);
+    await tester.pump(const Duration(minutes: 3));
+    expect(api.calls, 2);
+    release();
+    await _settle(tester);
+    expect(api.calls, 3);
+    container.dispose();
+  });
+
+  testWidgets('在途请求更新周期不排入多余刷新且换身份回到默认周期', (tester) async {
+    final (container, api) = _container();
+    await tester.pump();
+    api.gate = Completer<void>();
+    final pending = container.read(badgeSummaryProvider.notifier).refresh();
+    await tester.pump();
+    container.read(publicSettingsSnapshotProvider.notifier).state =
+        const PublicSettings(badgePollSeconds: 15);
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.calls, 2);
+    api.gate!.complete();
+    await pending;
+    api.gate = null;
+    await tester.pump(const Duration(seconds: 14));
+    expect(api.calls, 2);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.calls, 3);
+    container.read(_scope.notifier).state = const AuthenticatedScope(
+      userId: 'new-user',
+    );
+    await _settle(tester);
+    expect(api.calls, 4);
+    expect(container.read(publicSettingsSnapshotProvider), isNull);
+    await tester.pump(const Duration(seconds: 59));
+    expect(api.calls, 4);
+    await tester.pump(const Duration(seconds: 1));
+    expect(api.calls, 5);
+    container.dispose();
   });
   testWidgets('批量办理跨轮写入与显式刷新在最后一次释放后只读一次', (tester) async {
     final (container, api) = _container();

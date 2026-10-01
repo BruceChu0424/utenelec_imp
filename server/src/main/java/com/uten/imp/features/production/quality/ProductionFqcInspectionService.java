@@ -2,6 +2,7 @@ package com.uten.imp.features.production.quality;
 
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProductionFinishedInboundReleasePort;
+import com.uten.imp.application.port.ProductionPreStockedInboundPort;
 import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
@@ -52,10 +53,10 @@ import java.util.UUID;
 /**
  * Production FQC projection, append-only decisions, and PASS release gate.
  *
- * <p>This service never writes stock, {@code fqty}, {@code iqty}, or MAKE
- * readiness.  A PASS emits an outbox request and becomes consumable only through
- * {@link #allocateReleasedQuantity}; the caller owns FINISHED_IN construction in
- * the same transaction.</p>
+ * <p>This service owns quality decisions and exact release allocations. Physical
+ * inbound and MAKE handoffs belong to the stock port in the same transaction;
+ * ordinary PASS still leaves a warehouse draft, while proven pre-stocked lots
+ * are accepted immediately.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -87,7 +88,7 @@ public class ProductionFqcInspectionService
      * ProductionExecutionReadinessService 的既有做法用 ObjectProvider 取。
      */
     private final org.springframework.beans.factory.ObjectProvider<
-            com.uten.imp.features.stock.StockDocService> stockDocs;
+            ProductionPreStockedInboundPort> stockDocs;
 
     /**
      * Called by the warehouse-arrival registration transaction after the
@@ -585,31 +586,34 @@ public class ProductionFqcInspectionService
         if (batch.replay()) return loadPassAllBatch(batch.id(), true, normalized.inspectionIds().size());
 
         Map<UUID, UUID> decisions = new LinkedHashMap<>();
-        int lineNo = 0;
-        for (UUID inspectionId : normalized.inspectionIds()) {
-            NormalizedRequest child = normalizeRequest(new DecisionRequest(
-                    "PASS", null, null, null, null,
-                    passAllChildKey(batch.id(), inspectionId)));
-            DecisionWrite decision = recordDecisionLocked(
-                    inspectionId, child, locked.get(inspectionId), () -> { /* whole batch verified before its first write */ });
-            if (decision.replay()) {
-                throw conflict("批量全合格子结果已存在但缺少批次关联，请联系管理员核查");
+        stockDocs.getObject().withBatch(inboundBatch -> {
+            int lineNo = 0;
+            for (UUID inspectionId : normalized.inspectionIds()) {
+                NormalizedRequest child = normalizeRequest(new DecisionRequest(
+                        "PASS", null, null, null, null,
+                        passAllChildKey(batch.id(), inspectionId)));
+                DecisionWrite decision = recordDecisionLocked(
+                        inspectionId, child, locked.get(inspectionId),
+                        () -> { /* whole batch verified before its first write */ }, inboundBatch);
+                if (decision.replay()) {
+                    throw conflict("批量全合格子结果已存在但缺少批次关联，请联系管理员核查");
+                }
+                int nextLine = ++lineNo;
+                em.createNativeQuery("""
+                                INSERT INTO production_fqc_pass_all_batch_items(
+                                    batch_id, inspection_id, decision_event_id,
+                                    line_no)
+                                VALUES (:batchId, :inspectionId, :decisionEventId,
+                                        :lineNo)
+                                """)
+                        .setParameter("batchId", batch.id())
+                        .setParameter("inspectionId", inspectionId)
+                        .setParameter("decisionEventId", decision.decisionEventId())
+                        .setParameter("lineNo", nextLine)
+                        .executeUpdate();
+                decisions.put(inspectionId, decision.decisionEventId());
             }
-            int nextLine = ++lineNo;
-            em.createNativeQuery("""
-                            INSERT INTO production_fqc_pass_all_batch_items(
-                                batch_id, inspection_id, decision_event_id,
-                                line_no)
-                            VALUES (:batchId, :inspectionId, :decisionEventId,
-                                    :lineNo)
-                            """)
-                    .setParameter("batchId", batch.id())
-                    .setParameter("inspectionId", inspectionId)
-                    .setParameter("decisionEventId", decision.decisionEventId())
-                    .setParameter("lineNo", nextLine)
-                    .executeUpdate();
-            decisions.put(inspectionId, decision.decisionEventId());
-        }
+        });
         Map<UUID, InspectionView> views = detailViews(normalized.inspectionIds());
         List<PassAllBatchItem> items = new ArrayList<>(decisions.size());
         // Durable outbox rows become consumable only after commit. Each item's
@@ -752,6 +756,15 @@ public class ProductionFqcInspectionService
             NormalizedRequest normalized,
             Object[] inspection,
             Runnable verifyBeforeFirstWrite) {
+        return recordDecisionLocked(inspectionId, normalized, inspection, verifyBeforeFirstWrite, null);
+    }
+
+    private DecisionWrite recordDecisionLocked(
+            UUID inspectionId,
+            NormalizedRequest normalized,
+            Object[] inspection,
+            Runnable verifyBeforeFirstWrite,
+            ProductionPreStockedInboundPort.Batch inboundBatch) {
 
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -832,8 +845,12 @@ public class ProductionFqcInspectionService
             // 合格就在同一事务里按那个位置自动点收，仓库不再收到「待点收」任务。
             // 放行分配必须先落(放行命令守卫要求单据仍是草稿)，再自动点收推到已审核。
             if (preStockedForAutoConfirm((UUID) inspection[6])) {
-                stockDocs.getObject().confirmPreStockedFinishedInbound(
-                        draft.stockDocumentId(), "FQC-PRESTOCK:" + eventId);
+                if (inboundBatch == null) {
+                    stockDocs.getObject().confirmPreStockedFinishedInbound(
+                            draft.stockDocumentId(), "FQC-PRESTOCK:" + eventId);
+                } else {
+                    inboundBatch.confirm(draft.stockDocumentId(), "FQC-PRESTOCK:" + eventId);
+                }
             }
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("inspectionId", inspectionId);

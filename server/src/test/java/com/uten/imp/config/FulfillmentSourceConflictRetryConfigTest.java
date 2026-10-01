@@ -8,6 +8,10 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.Role;
 import org.springframework.core.Ordered;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import com.uten.imp.application.concurrency.FulfillmentDeadlineTransactionAttributeSource;
 
 import java.lang.reflect.Method;
 
@@ -40,7 +44,8 @@ class FulfillmentSourceConflictRetryConfigTest {
 
     @Test
     void advisorWrapsOnlyTransactionalMethodsOfThisApplication() throws Exception {
-        Advisor advisor = new FulfillmentSourceConflictRetryConfig().fulfillmentSourceConflictRetryAdvisor();
+        Advisor advisor = new FulfillmentSourceConflictRetryConfig().fulfillmentSourceConflictRetryAdvisor(
+                new AnnotationTransactionAttributeSource(), "40s");
         PointcutAdvisor pointcutAdvisor = assertInstanceOf(PointcutAdvisor.class, advisor);
         assertInstanceOf(FulfillmentSourceConflictRetryInterceptor.class, advisor.getAdvice());
         assertTrue(matches(pointcutAdvisor, Service.class, "command"), "方法级 @Transactional 命令进入重跑边界");
@@ -53,7 +58,8 @@ class FulfillmentSourceConflictRetryConfigTest {
 
     @Test
     void advisorRunsOutsideTheTransactionInterceptor() {
-        Advisor advisor = new FulfillmentSourceConflictRetryConfig().fulfillmentSourceConflictRetryAdvisor();
+        Advisor advisor = new FulfillmentSourceConflictRetryConfig().fulfillmentSourceConflictRetryAdvisor(
+                new AnnotationTransactionAttributeSource(), "40s");
         Ordered ordered = assertInstanceOf(Ordered.class, advisor);
         assertTrue(FulfillmentSourceConflictRetryConfig.wrapsTransactionInterceptor(ordered.getOrder()));
         assertTrue(ordered.getOrder() > 600, "位于方法安全拦截(100..600)之内, 重跑不重复鉴权");
@@ -70,8 +76,25 @@ class FulfillmentSourceConflictRetryConfigTest {
         assertEquals(BeanDefinition.ROLE_INFRASTRUCTURE, onClass.value(), "配置类是基础设施 bean");
 
         Role onBean = FulfillmentSourceConflictRetryConfig.class
-                .getMethod("fulfillmentSourceConflictRetryAdvisor").getAnnotation(Role.class);
+                .getMethod("fulfillmentSourceConflictRetryAdvisor", TransactionAttributeSource.class, String.class)
+                .getAnnotation(Role.class);
         assertNotNull(onBean, "Advisor 也要标 @Role");
         assertEquals(BeanDefinition.ROLE_INFRASTRUCTURE, onBean.value(), "Advisor 是基础设施 bean");
+    }
+
+    @Test
+    void earlyInfrastructureInterceptorAlreadyReceivesTheDynamicAttributeWrapper() {
+        var factory = new org.springframework.beans.factory.support.DefaultListableBeanFactory();
+        factory.registerSingleton("transactionAttributeSource", new AnnotationTransactionAttributeSource());
+        var definition = new org.springframework.beans.factory.support.RootBeanDefinition(TransactionInterceptor.class);
+        definition.getPropertyValues().add("transactionAttributeSource",
+                new org.springframework.beans.factory.config.RuntimeBeanReference("transactionAttributeSource"));
+        factory.registerBeanDefinition("transactionInterceptor", definition);
+        var postProcessor = FulfillmentSourceConflictRetryConfig.fulfillmentDeadlineTransactionAttributes();
+        postProcessor.postProcessBeanFactory(factory);
+        var transaction = factory.getBean("transactionInterceptor", TransactionInterceptor.class);
+        assertInstanceOf(FulfillmentDeadlineTransactionAttributeSource.class, transaction.getTransactionAttributeSource());
+        assertEquals(1, factory.getBeansOfType(TransactionAttributeSource.class).size(),
+                "The contained wrapper must not make injection of the original source ambiguous");
     }
 }

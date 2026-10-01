@@ -43,6 +43,7 @@ class WorkshopMaterialPeriodViews {
 
     private List<PeriodView> views(String where, Map<String, Object> params) {
         boolean canCount = permissions.has(WorkshopMaterialPermissions.COUNT);
+        boolean canReviewCount = permissions.has(WorkshopMaterialPermissions.COUNT_REVIEW);
         boolean canReopen = permissions.has(WorkshopMaterialPermissions.REOPEN);
         List<PeriodView> out = new ArrayList<>();
         for (Map<String, Object> row : db.queryForList("""
@@ -77,7 +78,6 @@ class WorkshopMaterialPeriodViews {
                         || "CLOSED".equals(previous))) actions.add("START_COUNT");
                 if (draft != null) {
                     actions.add("EDIT_COUNT");
-                    actions.add("SUBMIT_COUNT");
                 }
                 if ("COUNTING".equals(status) && "OPEN".equals(next)) actions.add("WITHDRAW_COUNT");
                 if ("COUNTED".equals(status) && draft == null
@@ -86,6 +86,7 @@ class WorkshopMaterialPeriodViews {
                 }
                 if ("COUNTED".equals(status)) actions.add("CLOSE_RETRY");
             }
+            if (canReviewCount && draft != null) actions.add("SUBMIT_COUNT");
             if (canReopen && "CLOSED".equals(status) && Boolean.TRUE.equals(row.get("latest_closed_candidate"))
                     && ("OPEN".equals(next) || "COUNTING".equals(next))) {
                 actions.add("REOPEN");

@@ -577,6 +577,8 @@ abstract final class ApiEndpoints {
 
   /// 整批领料的料清单 (申请/发料下拉、出库仓下拉、上线准备颗粒下拉), ?workshopId=。
   static const workshopMaterialMaterials = '$workshopMaterialBase/materials';
+  static const workshopMaterialRequestMaterials =
+      '$workshopMaterialBase/request-materials';
   static const workshopMaterialChoicesPending =
       '$workshopMaterialBase/choices/pending';
   static const workshopMaterialChoices = '$workshopMaterialBase/choices';

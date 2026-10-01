@@ -174,6 +174,7 @@ class PurchaseDocItem {
     this.qtyText,
     this.price,
     this.priceText,
+    this.totalAmountInputText,
     this.amountOriginal,
     this.amountOriginalText,
     this.amountLocal,
@@ -210,6 +211,9 @@ class PurchaseDocItem {
   final String? qtyText;
   final double? price;
   final String? priceText;
+
+  /// Recorded base total before additional columns; unit price may be a reference.
+  final String? totalAmountInputText;
   final double? amountOriginal;
   final String? amountOriginalText;
   final double? amountLocal;
@@ -254,6 +258,7 @@ class PurchaseDocItem {
         qtyText: receiptRecordedDecimal(json, 'qty'),
         price: (json['price'] as num?)?.toDouble(),
         priceText: receiptRecordedDecimal(json, 'price'),
+        totalAmountInputText: receiptRecordedDecimal(json, 'totalAmountInput'),
         amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
         amountOriginalText: receiptRecordedDecimal(json, 'amountOriginal'),
         amountLocal: (json['amountLocal'] as num?)?.toDouble(),

@@ -21,6 +21,7 @@ import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
+import '../../department/widgets/uten_department_picker.dart';
 
 /// 钱流明细行（3 模式超集）。控制器/通知器在行内持有，跨重建存活。
 class FinanceGridRow extends EditableGridRow with AmountRowMixin {
@@ -63,8 +64,17 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   String? get styleId => styleIdNotifier.value;
   set styleId(String? v) => styleIdNotifier.value = v;
 
-  /// 部门 UUID 文本（可空；TODO 升级为部门 picker，目前保持 UUID 文本录入）。
+  /// Optional UUID remains the persistence authority; labels never replace it.
   final TextEditingController department = TextEditingController();
+  String? _departmentNameId;
+  String? _departmentName;
+  String? get departmentReferenceName =>
+      _departmentNameId == department.text ? _departmentName : null;
+  void setDepartment(String? id, String? name) {
+    _departmentNameId = id ?? '';
+    _departmentName = name;
+    department.text = id ?? '';
+  }
 
   // ---- transfer（转入 bankTransfer）----
   /// 转入账户。同 [styleId]：通知器承载，选完即时刷新 + 列宽自适应。
@@ -157,7 +167,7 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
       ..styleId = styleId
       ..inAccountId = inAccountId
       ..occurDate = occurDate;
-    c.department.text = department.text;
+    c.setDepartment(department.text, departmentReferenceName);
     c.qty.text = qty.text;
     c.price.text = price.text;
     c.amount.text = amount.text;
@@ -514,11 +524,52 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'department',
-      label: '部门ID',
-      width: 160,
-      cellBuilder: (context, row) => TextField(
-        controller: row.department,
-        decoration: const InputDecoration(isDense: true, hintText: '可空'),
+      label: '部门',
+      width: 200,
+      textOf: (row) => names.department(
+        row.department.text,
+        referencedName: row.departmentReferenceName,
+      ),
+      listenableOf: (row) => row.department,
+      chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
+      cellBuilder: (context, row) => ValueListenableBuilder<TextEditingValue>(
+        valueListenable: row.department,
+        builder: (context, value, _) => Row(
+          children: [
+            Expanded(
+              child: UtenDepartmentPicker(
+                mode: UtenDepartmentPickerMode.single,
+                hint: '请选择部门(可空)',
+                enabled: names.departmentTree != null,
+                treeOverride: names.departmentTree ?? const [],
+                allowClear: true,
+                initialSelection: value.text.isEmpty
+                    ? const []
+                    : [
+                        DeptSelection(
+                          id: value.text,
+                          name: names.department(
+                            value.text,
+                            referencedName: row.departmentReferenceName,
+                          ),
+                          fullPath: '',
+                          level: '',
+                        ),
+                      ],
+                onChanged: (selection) => row.setDepartment(
+                  selection.firstOrNull?.id,
+                  selection.firstOrNull?.name,
+                ),
+              ),
+            ),
+            if (names.departmentLoadError != null)
+              IconButton(
+                tooltip: '${names.departmentLoadError} 点击重试',
+                onPressed: () => names.ensureDepartmentsLoaded(),
+                icon: const Icon(Icons.refresh),
+              ),
+          ],
+        ),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(

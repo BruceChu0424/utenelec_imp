@@ -10,16 +10,87 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/draft_workspace_table.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 
 void main() {
+  testWidgets(
+    'confirmed plan deletion retains newly unknown local checkpoint and reports both facts',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      await tester.binding.setSurfaceSize(const Size(1500, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gate = Completer<Map<String, dynamic>>();
+      final api = _BoardDraftsApi()..deletionResult = gate;
+      final drafts = _UnknownCheckpointDrafts();
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'planner-1'),
+          ),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.productionPlanView,
+            Perm.productionPlanCreate,
+            Perm.productionPlanDelete,
+          }),
+          formDraftsProvider.overrideWith(() => drafts),
+          fixedBadgeSummaryOverride(),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: ProductionBoardPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('草稿'));
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<DraftWorkspaceRow>>(
+        find.byType(MasterDataTableView<DraftWorkspaceRow>),
+      );
+      table.onSelectedIdsChanged!({'productionPlan:plan-1'});
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('批量删除计划 (1)'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认批量删除'));
+      await tester.pump();
+      expect(api.batchDeleteRequests, 1);
+      drafts.markUnknown();
+      await tester.pump();
+      gate.complete({
+        'done': [
+          {'id': 'plan-1'},
+        ],
+        'skipped': <Object?>[],
+      });
+      await tester.pumpAndSettle();
+      expect(
+        container.read(formDraftsProvider).single.hasUnknownSubmission,
+        isTrue,
+      );
+      final message = container.read(appNotificationProvider).last.message;
+      expect(message, contains('批量删除完成：成功 1'));
+      expect(message, contains('原提交待核对，已保留'));
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('drafts segment shows plan and daily report drafts', (
     tester,
   ) async {
@@ -101,8 +172,8 @@ void main() {
     expect(find.text('生产计划草稿'), findsNothing);
     expect(find.text('生产日报草稿'), findsNothing);
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.text('新建计划'), findsOneWidget);
-    expect(find.text('新建日报'), findsOneWidget);
+    expect(find.text('新建计划'), findsNothing);
+    expect(find.text('新建日报'), findsNothing);
     expect(find.text('超产比例审批'), findsOneWidget);
     expect(find.text('批量审核计划 (0)'), findsOneWidget);
     expect(api.lastPlansQuery?['status'], 0);
@@ -243,7 +314,7 @@ void main() {
         'done': [
           {'id': 'plan-1'},
         ],
-        'skipped': [],
+        'skipped': <Map<String, dynamic>>[],
       });
       await tester.pumpAndSettle();
       expect(table().selectedIds, isEmpty);
@@ -307,6 +378,7 @@ class _BoardDraftsApi extends ApiClient {
   int batchApproveRequests = 0;
   List<String> batchApprovedIds = const [];
   Completer<Map<String, dynamic>>? approvalResult;
+  Completer<Map<String, dynamic>>? deletionResult;
 
   @override
   Future<Map<String, dynamic>> post(
@@ -323,11 +395,12 @@ class _BoardDraftsApi extends ApiClient {
     if (path == '/production/plans/batch-delete') {
       batchDeleteRequests++;
       batchDeletedIds = List<String>.from((body! as Map)['ids'] as List);
+      if (deletionResult != null) return deletionResult!.future;
       return {
         'done': [
           for (final id in batchDeletedIds) {'id': id},
         ],
-        'skipped': [],
+        'skipped': <Map<String, dynamic>>[],
       };
     }
     return const {};
@@ -389,4 +462,28 @@ class _BoardDraftsApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async => const [];
+}
+
+class _UnknownCheckpointDrafts extends FormDraftsNotifier {
+  FormDraft draft(bool unknown) => FormDraft(
+    id: 'local-plan',
+    title: '生产计划',
+    module: BadgeModule.production,
+    draftKind: 'productionPlan',
+    route: '/production/plans/new',
+    permission: Perm.productionPlanCreate,
+    updatedAt: DateTime(2026, 9, 30),
+    revision: unknown ? 'two' : 'one',
+    data: {'createdDocId': 'plan-1', '_formDraftHasUnknownSubmission': unknown},
+  );
+  @override
+  List<FormDraft> build() => [draft(false)];
+  void markUnknown() => state = [draft(true)];
+  @override
+  Future<void> delete(String id, {String? expectedRevision}) async {
+    if (state.single.hasUnknownSubmission) {
+      throw const FormDraftUnknownSubmission();
+    }
+    state = [];
+  }
 }

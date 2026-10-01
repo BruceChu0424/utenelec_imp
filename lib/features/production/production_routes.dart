@@ -260,11 +260,7 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: '/production/daily-reports/:id',
     name: 'production-daily-report-detail',
-    builder: (_, state) => ProductionDailyReportDetailPage(
-      id: state.pathParameters['id']!,
-      returnToWorkshopTasks:
-          state.uri.queryParameters['from'] == 'workshop-tasks',
-    ),
+    builder: ProductionDailyReportDetailPage.route,
   ),
   DraftAwareGoRoute(
     path: RouteName.productionDailyReportList,

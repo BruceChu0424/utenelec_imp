@@ -43,6 +43,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
@@ -60,6 +61,9 @@ import '../models/stock_query.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../providers/instant_inventory_prefs_provider.dart';
 import '../repositories/stock_query_repository.dart';
+import '../counts/models/stock_count_request.dart';
+import '../counts/repositories/stock_count_request_repository.dart';
+import '../counts/widgets/stock_count_inline_editor.dart';
 
 class InstantInventoryPage extends ConsumerStatefulWidget {
   const InstantInventoryPage({super.key});
@@ -70,6 +74,39 @@ class InstantInventoryPage extends ConsumerStatefulWidget {
 }
 
 class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
+  late final StockCountInlineController _countEditor;
+  void _countChanged() {
+    if (mounted) setState(() {});
+  }
+
+  String _countKey(InstantInventoryRow row) =>
+      stockCountRowKey(row.goodsId ?? '', row.colorId);
+  List<InstantInventoryRow> get _inventoryRows {
+    final rows = [...?_page?.items];
+    final keys = rows.map(_countKey).toSet();
+    if (_countEditor.active) {
+      for (final snapshot in _countEditor.addedRows.values) {
+        if (keys.add(snapshot.key)) {
+          rows.add(
+            InstantInventoryRow(
+              goodsId: snapshot.goodsId,
+              goodsCode: snapshot.goodsCode,
+              name: snapshot.goodsName,
+              colorId: snapshot.colorId,
+              colorName: snapshot.colorName,
+              unitName: snapshot.unitName,
+              qty: double.tryParse(snapshot.qty),
+              weight: double.tryParse(snapshot.weightKg ?? ''),
+              weightUnknown: snapshot.weightKg == null,
+              weightEstimated: snapshot.weightEstimated,
+            ),
+          );
+        }
+      }
+    }
+    return rows;
+  }
+
   // 分类面板数据源（同一 tree 端点带货品计数；零货品分类在面板里整支隐藏）。
   List<ProductCategoryNode>? _tree;
   List<ProductCategoryNode> _categoryNodes = const [];
@@ -113,6 +150,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   @override
   void initState() {
     super.initState();
+    _countEditor = StockCountInlineController(
+      ref.read(stockCountRequestRepositoryProvider),
+    )..addListener(_countChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
@@ -130,6 +170,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _countEditor.removeListener(_countChanged);
+    _countEditor.dispose();
     super.dispose();
   }
 
@@ -182,7 +224,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       // 「所属仓库」列的名字来自货品字典，先补齐再落表，免得整页先空一拍再跳字。
       await _loadOwningWarehouseNames(r.items);
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
-      setState(() => _page = r);
+      setState(() {
+        _page = r;
+      });
+      if (_countEditor.active && _countEditor.warehouse?.id == _warehouseId) {
+        await _countEditor.ensureRows(r.items.map((row) => row.goodsId ?? ''));
+      }
     } on ApiException catch (e) {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() => _error = e.message);
@@ -423,7 +470,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         width: 110,
         type: 'number',
         sortable: true,
-        value: (r) => _num(r.qty),
+        value: (r) => _countEditor.addedRows[_countKey(r)]?.qty ?? _num(r.qty),
       ),
       // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算，估算「≈」、没称「未称」。
       MasterColumnDef(
@@ -445,6 +492,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           unknownText: _unknownWeightText(r),
         ),
       ),
+      if (_countEditor.active)
+        ..._countEditor.columns<InstantInventoryRow>(_countKey),
       MasterColumnDef(
         key: 'pendingQty',
         label: '待检量',
@@ -679,6 +728,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   /// 仓库筛选 = 同一侧滑面板的查询口径（includeAll + allowParent）：
   /// 「全部」= 参与核算仓库聚合（_warehouseId=null）；选主仓 = 自身 + 全部子仓聚合。
   Future<void> _pickWarehouse() async {
+    if (_countEditor.active) {
+      context.appInfo('盘点已固定当前仓库，请先送审或退出盘点再切换仓库');
+      return;
+    }
     final result = await showUtenWarehousePickerPanel(
       context,
       hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
@@ -790,8 +843,28 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         columns: _columns(),
-        items: _page?.items ?? const [],
+        items: _inventoryRows,
+        rowKeyOf: _countKey,
         toolbarActions: [
+          StockCountModeToolbar(
+            controller: _countEditor,
+            allowed: ref
+                .watch(currentPermissionsProvider)
+                .contains(stockCountSubmitPermission),
+            warehouseId: _warehouseId,
+            goodsIds: () =>
+                _page?.items.map((row) => row.goodsId ?? '') ?? const [],
+            onStart: (warehouse) async {
+              setState(() {
+                if (_warehouseId != warehouse.id) _page = null;
+                _warehouseId = warehouse.id;
+                // 内料仓是独立盘点目标；选为叶仓后开关不可点，须随目标纳入原表查询。
+                if (warehouse.isWorkshop) _includeLineSide = true;
+              });
+              await _load(1);
+            },
+            onSubmitted: () => _load(_page?.page ?? 1),
+          ),
           // 「重量单位: 自动▾」: 用户级显示偏好 (与库存详情/分析页共用), 只改显示。
           const WeightDisplayUnitButton(),
           // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
@@ -828,6 +901,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         onSortChange: _onSortChange,
         // 行点击 → 库存详情页（该货品各仓余额 + 出入库流水；push 保活本页筛选）
         onRowTap: (r) {
+          if (_countEditor.active) return;
           final gid = r.goodsId;
           if (gid == null || gid.isEmpty) return;
           context.push(RouteName.stockItemDetail(gid));
@@ -861,6 +935,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(currentPermissionsProvider, (previous, next) {
+      if (_countEditor.active && !next.contains(stockCountSubmitPermission)) {
+        _countEditor.clear();
+      }
+    });
     final compact = context.breakpoint == UtenBreakpoint.compact;
     // 「含不良品仓」偏好变化（点开关 / 服务端同步到达）→ 回第 1 页重查。
     ref.listen(instantInventoryPrefsProvider, (prev, next) {

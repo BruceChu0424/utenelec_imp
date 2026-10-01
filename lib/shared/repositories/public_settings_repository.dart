@@ -9,6 +9,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../attachments/attachment_file_rules.dart';
+import '../providers/authenticated_scope_provider.dart';
+
+/// Reported by the installed database capability, never inferred from month settings.
+enum AuditArchivePurgeMode { preserveUnclassified, legacyPurge, unknown }
+
+AuditArchivePurgeMode _auditArchivePurgeMode(Object? value) => switch (value) {
+  'PRESERVE_UNCLASSIFIED' => AuditArchivePurgeMode.preserveUnclassified,
+  'LEGACY_PURGE' => AuditArchivePurgeMode.legacyPurge,
+  _ => AuditArchivePurgeMode.unknown,
+};
 
 class PublicSettings {
   const PublicSettings({
@@ -16,10 +26,14 @@ class PublicSettings {
     this.auditReceiptRetentionMonths = 36,
     this.attachmentMaxBytes = kAttachmentMaxFileBytes,
     this.badgePollSeconds = 60,
+    this.auditArchivePurgeMode = AuditArchivePurgeMode.unknown,
   });
 
   final int idleTimeoutMinutes;
   final int auditReceiptRetentionMonths;
+
+  /// Last reported central archive behavior. Missing/failed reads are unverified.
+  final AuditArchivePurgeMode auditArchivePurgeMode;
 
   /// 附件单文件上限字节数 (服务端部署配置)。
   final int attachmentMaxBytes;
@@ -34,6 +48,14 @@ class PublicSettings {
     attachmentMaxBytes:
         (j['attachmentMaxBytes'] as num?)?.toInt() ?? kAttachmentMaxFileBytes,
     badgePollSeconds: (j['badgePollSeconds'] as num?)?.toInt() ?? 60,
+    auditArchivePurgeMode: _auditArchivePurgeMode(j['auditArchivePurgeMode']),
+  );
+
+  PublicSettings withoutVerifiedAuditMode() => PublicSettings(
+    idleTimeoutMinutes: idleTimeoutMinutes,
+    auditReceiptRetentionMonths: auditReceiptRetentionMonths,
+    attachmentMaxBytes: attachmentMaxBytes,
+    badgePollSeconds: badgePollSeconds,
   );
 }
 
@@ -42,22 +64,96 @@ abstract interface class PublicSettingsRepository {
 }
 
 class DioPublicSettingsRepository implements PublicSettingsRepository {
-  DioPublicSettingsRepository(this.api);
+  DioPublicSettingsRepository(this.api, {this.onFetched, this.onFetchFailed});
   final ApiClient api;
+  final void Function(PublicSettings)? onFetched;
+  final void Function()? onFetchFailed;
+  Future<PublicSettings>? _running;
 
   @override
-  Future<PublicSettings> fetch() async {
-    final json = await api.get(ApiEndpoints.publicSettings);
-    final settings = PublicSettings.fromJson(json);
-    // 附件上限要在没有 ref 的地方 (新建单据的暂存控制器) 生效：每次拉到就同步一次。
-    AttachmentLimits.apply(settings.attachmentMaxBytes);
-    return settings;
+  Future<PublicSettings> fetch() {
+    final running = _running;
+    if (running != null) return running;
+    late final Future<PublicSettings> next;
+    next = _fetch().whenComplete(() {
+      if (identical(_running, next)) _running = null;
+    });
+    _running = next;
+    return next;
+  }
+
+  Future<PublicSettings> _fetch() async {
+    try {
+      final json = await api.get(ApiEndpoints.publicSettings);
+      final settings = PublicSettings.fromJson(json);
+      final publish = onFetched;
+      if (publish != null) {
+        publish(settings);
+      } else {
+        // Standalone callers keep the existing attachment-limit contract.
+        AttachmentLimits.apply(settings.attachmentMaxBytes);
+      }
+      return settings;
+    } catch (_) {
+      onFetchFailed?.call();
+      rethrow;
+    }
   }
 }
 
-final publicSettingsRepositoryProvider = Provider<PublicSettingsRepository>(
-  (ref) => DioPublicSettingsRepository(ref.watch(apiClientProvider)),
-);
+/// The existing idle-settings refresh also updates other runtime consumers.
+/// Identity/server changes clear the snapshot; no second polling timer is added.
+final publicSettingsSnapshotProvider = StateProvider<PublicSettings?>((ref) {
+  ref.watch(authenticatedScopeProvider);
+  ref.watch(apiClientProvider);
+  return null;
+});
+
+/// The settings view must remain explicit and usable when its source snapshot
+/// cannot be read (for example while an identity/server is being restored).
+final auditArchivePurgeModeProvider = Provider<AuditArchivePurgeMode>((ref) {
+  try {
+    return ref.watch(publicSettingsSnapshotProvider)?.auditArchivePurgeMode ??
+        AuditArchivePurgeMode.unknown;
+  } catch (_) {
+    return AuditArchivePurgeMode.unknown;
+  }
+});
+
+final publicSettingsRepositoryProvider = Provider<PublicSettingsRepository>((
+  ref,
+) {
+  final scope = ref.watch(authenticatedScopeProvider);
+  final api = ref.watch(apiClientProvider);
+  var alive = true;
+  ref.onDispose(() => alive = false);
+  return DioPublicSettingsRepository(
+    api,
+    onFetched: (settings) {
+      if (!alive ||
+          ref.read(authenticatedScopeProvider) != scope ||
+          !identical(ref.read(apiClientProvider), api)) {
+        return;
+      }
+      AttachmentLimits.apply(settings.attachmentMaxBytes);
+      ref.read(publicSettingsSnapshotProvider.notifier).state = settings;
+    },
+    onFetchFailed: () {
+      if (!alive ||
+          ref.read(authenticatedScopeProvider) != scope ||
+          !identical(ref.read(apiClientProvider), api)) {
+        return;
+      }
+      final previous = ref.read(publicSettingsSnapshotProvider);
+      if (previous != null) {
+        // Keep known runtime limits, but a failed fresh read cannot continue
+        // presenting central archive preservation as a verified capability.
+        ref.read(publicSettingsSnapshotProvider.notifier).state = previous
+            .withoutVerifiedAuditMode();
+      }
+    },
+  );
+});
 
 /// 页面级读取；拉取失败时回退到兜底默认值，不阻塞页面。
 final publicSettingsProvider = FutureProvider.autoDispose<PublicSettings>((

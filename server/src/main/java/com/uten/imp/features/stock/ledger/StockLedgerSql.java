@@ -133,7 +133,7 @@ final class StockLedgerSql {
     static String summary(StockLedgerQuery q) {
         String period = q.toExclusive() == null ? "" : " AND r.transaction_date < :toExcl";
         String flow = flow(q);
-        String natIn = "r.movement_type IN (:inTypes)";
+        String natIn = "(r.movement_type IN (:inTypes) OR (r.movement_type = 23 AND r.direction = 1))";
         String internal = internal(q);
         String inFlow = flow + " AND " + natIn + " AND NOT " + internal;
         String outFlow = flow + " AND NOT " + natIn + " AND NOT " + internal;

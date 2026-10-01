@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.materialbin;
 
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.MaterialStockOption;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.PositionView;
+import com.uten.imp.common.web.PageResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,5 +35,16 @@ public class WorkshopMaterialPositionController {
     @PreAuthorize("hasAuthority('workshop_material:view')")
     public List<MaterialStockOption> materials(@RequestParam UUID workshopId) {
         return positions.materials(workshopId);
+    }
+
+    /** 申请专用的重量物料候选；不会修改发料方式、BOM 或库存。 */
+    @GetMapping("/request-materials")
+    @PreAuthorize("hasAuthority('workshop_material:view')")
+    public PageResponse<MaterialStockOption> requestMaterials(@RequestParam UUID workshopId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) List<UUID> goodsIds,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return positions.requestMaterials(workshopId, keyword, goodsIds, page, size);
     }
 }

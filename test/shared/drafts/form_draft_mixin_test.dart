@@ -68,8 +68,17 @@ class MemoryDraftStorage implements FormDraftStorage {
 class _DraftGridRow extends EditableGridRow {}
 
 class TestEditor extends ConsumerStatefulWidget {
-  const TestEditor({super.key, this.withGrid = false});
+  const TestEditor({
+    super.key,
+    this.withGrid = false,
+    this.failRestore = false,
+    this.failReload = false,
+    this.reloadGate,
+  });
   final bool withGrid;
+  final bool failRestore;
+  final bool failReload;
+  final Future<void>? reloadGate;
   @override
   ConsumerState<TestEditor> createState() => TestEditorState();
 }
@@ -80,6 +89,9 @@ class TestEditorState extends ConsumerState<TestEditor>
   final grid = UtenEditableGridController<_DraftGridRow>();
   String choice = 'default';
   bool busy = false;
+  bool canReplay = false;
+  @override
+  bool get formDraftCanReplaySubmission => canReplay;
   @override
   bool get formDraftBusy => busy;
   @override
@@ -103,6 +115,7 @@ class TestEditorState extends ConsumerState<TestEditor>
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     text.text = data['text'] as String;
+    if (widget.failRestore) throw StateError('服务器来源已变化');
     choice = data['choice'] as String;
     if (widget.withGrid) {
       grid.replaceAll(
@@ -110,6 +123,14 @@ class TestEditorState extends ConsumerState<TestEditor>
       );
     }
   }
+
+  @override
+  Future<void> Function()? get formDraftReloadSource => () async {
+    text.text = '服务器最新单据';
+    choice = 'default';
+    await widget.reloadGate;
+    if (widget.failReload) throw StateError('服务器不可用');
+  };
 
   @override
   void initState() {
@@ -158,6 +179,9 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
   String initial = '/new',
   bool settle = true,
   bool withGrid = false,
+  bool failRestore = false,
+  bool failReload = false,
+  Future<void>? reloadGate,
 }) async {
   final container = ProviderContainer(
     overrides: [
@@ -172,8 +196,13 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
     routes: [
       DraftAwareGoRoute(
         path: '/new',
-        builder: (_, state) =>
-            TestEditor(key: state.pageKey, withGrid: withGrid),
+        builder: (_, state) => TestEditor(
+          key: state.pageKey,
+          withGrid: withGrid,
+          failRestore: failRestore,
+          failReload: failReload,
+          reloadGate: reloadGate,
+        ),
       ),
       DraftAwareGoRoute(
         path: '/home',
@@ -196,6 +225,354 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  for (final change in ['account', 'server']) {
+    testWidgets(
+      'ABA $change during initial draft storage read cannot bind old state again',
+      (tester) async {
+        final gate = Completer<void>();
+        final storage = MemoryDraftStorage()..readGate = gate.future;
+        final env = await pumpEditor(tester, storage, settle: false);
+        await tester.pump();
+        final owner = env.container.read(_testScope);
+        final server = env.container.read(_testServer);
+        if (change == 'account') {
+          env.container.read(_testScope.notifier).state =
+              const AuthenticatedScope(userId: 'other');
+        } else {
+          env.container.read(_testServer.notifier).state =
+              'https://other.example/api';
+        }
+        await tester.pump();
+        if (change == 'account') {
+          env.container.read(_testScope.notifier).state = owner;
+        } else {
+          env.container.read(_testServer.notifier).state = server;
+        }
+        await tester.pump();
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(find.textContaining('登录身份或服务器已变化'), findsOneWidget);
+        expect(storage.records, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+    testWidgets(
+      'ABA $change during partial draft reset cannot rearm the previous page',
+      (tester) async {
+        final env = await pumpEditor(tester, MemoryDraftStorage());
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+        editor.text.text = '已完成前段';
+        await editor.saveFormDraftNow();
+        final gate = Completer<void>();
+        final resetting = editor.resetFormDraftAfterSubmission(
+          prepare: () => gate.future,
+        );
+        await tester.pump();
+        final owner = env.container.read(_testScope);
+        final server = env.container.read(_testServer);
+        if (change == 'account') {
+          env.container.read(_testScope.notifier).state =
+              const AuthenticatedScope(userId: 'other');
+        } else {
+          env.container.read(_testServer.notifier).state =
+              'https://other.example/api';
+        }
+        await tester.pump();
+        if (change == 'account') {
+          env.container.read(_testScope.notifier).state = owner;
+        } else {
+          env.container.read(_testServer.notifier).state = server;
+        }
+        await tester.pump();
+        gate.complete();
+        await resetting;
+        await tester.pumpAndSettle();
+        expect(find.textContaining('登录身份或服务器已变化'), findsOneWidget);
+        var sends = 0;
+        await expectLater(
+          editor.runFormDraftSubmission(() async {
+            sends++;
+          }),
+          throwsStateError,
+        );
+        expect(sends, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets(
+    'unknown exit keeps evidence and offers only save original or continue',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor))
+        ..canReplay = true;
+      editor.text.text = '原提交';
+      await expectLater(
+        editor.runFormDraftSubmission(() async {
+          throw NetworkTimeoutException();
+        }),
+        throwsA(isA<NetworkTimeoutException>()),
+      );
+      env.router.go('/home');
+      await tester.pumpAndSettle();
+      expect(find.text('不保存'), findsNothing);
+      expect(find.text('继续核对'), findsOneWidget);
+      await tester.tap(find.text('保存原提交后离开'));
+      await tester.pumpAndSettle();
+      expect(find.text('任务中心'), findsOneWidget);
+      expect(
+        env.container
+            .read(formDraftsProvider)
+            .single
+            .data['_formDraftSubmissionPending'],
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+  for (final late in [false, true]) {
+    testWidgets(
+      'unknown exit rejects forced discard including late outcome=$late',
+      (tester) async {
+        final storage = MemoryDraftStorage();
+        final env = await pumpEditor(tester, storage);
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor))
+          ..canReplay = true;
+        editor.text.text = '不可丢弃的原提交';
+        await editor.saveFormDraftNow();
+        Future<void> unknown() async => expectLater(
+          editor.runFormDraftSubmission(() async {
+            throw NetworkTimeoutException();
+          }),
+          throwsA(isA<NetworkTimeoutException>()),
+        );
+        if (!late) await unknown();
+        env.router.go('/home');
+        await tester.pumpAndSettle();
+        if (late) await unknown();
+        final dialog = tester.element(find.byType(AlertDialog));
+        Navigator.of(dialog).pop('discard');
+        await tester.pumpAndSettle();
+        expect(find.byType(TestEditor), findsOneWidget);
+        expect(
+          env.container
+              .read(formDraftsProvider)
+              .single
+              .data['_formDraftSubmissionPending'],
+          isTrue,
+        );
+        expect(storage.records, hasLength(1));
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+  }
+  for (final status in [400, 422]) {
+    testWidgets(
+      'default $status rejection keeps original editable draft behavior',
+      (tester) async {
+        final env = await pumpEditor(tester, MemoryDraftStorage());
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+        editor.text.text = '原始输入';
+        await expectLater(
+          editor.runFormDraftSubmission(() async {
+            throw ApiException('VALIDATION_FAILED', '校验失败', httpStatus: status);
+          }),
+          throwsA(isA<ApiException>()),
+        );
+        expect(
+          env.container
+              .read(formDraftsProvider)
+              .single
+              .data['_formDraftSubmissionPending'],
+          isNull,
+        );
+        var calls = 0;
+        await editor.runFormDraftSubmission(() async {
+          calls++;
+        });
+        expect(calls, 1);
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+    testWidgets('replay caller may retain unknown marker after later $status', (
+      tester,
+    ) async {
+      final env = await pumpEditor(tester, MemoryDraftStorage());
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor))
+        ..canReplay = true;
+      editor.text.text = '冻结的原命令';
+      await expectLater(
+        editor.runFormDraftSubmission(() async {
+          throw NetworkTimeoutException();
+        }),
+        throwsA(isA<NetworkTimeoutException>()),
+      );
+      await expectLater(
+        editor.runFormDraftSubmission(() async {
+          throw ApiException('VALIDATION_FAILED', '校验失败', httpStatus: status);
+        }, isDefiniteRejection: (_) => false),
+        throwsA(isA<ApiException>()),
+      );
+      expect(
+        env.container
+            .read(formDraftsProvider)
+            .single
+            .data['_formDraftSubmissionPending'],
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    });
+  }
+  testWidgets(
+    'source reload preserves failed local draft and starts a new identity',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      var env = await pumpEditor(tester, storage);
+      await tester.enterText(find.byKey(const Key('input')), '原本机填写');
+      await tester.pumpAndSettle();
+      final oldDraft = env.container.read(formDraftsProvider).single;
+      final oldRecords = Map<String, String>.from(storage.records);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+      env = await pumpEditor(
+        tester,
+        storage,
+        initial: oldDraft.resumeLocation,
+        failRestore: true,
+      );
+      expect(find.text('这份草稿暂时无法恢复，原草稿已保留。'), findsOneWidget);
+      expect(storage.records, oldRecords);
+      await tester.tap(find.text('保留本机草稿，加载最新单据'));
+      await tester.pumpAndSettle();
+      expect(find.text('这份草稿暂时无法恢复，原草稿已保留。'), findsNothing);
+      expect(find.text('服务器最新单据'), findsOneWidget);
+      expect(storage.records, oldRecords);
+      await tester.enterText(find.byKey(const Key('input')), '基于最新单据继续审核');
+      await tester.pumpAndSettle();
+      final drafts = env.container.read(formDraftsProvider);
+      expect(drafts, hasLength(2));
+      expect(
+        drafts.singleWhere((draft) => draft.id == oldDraft.id).toJson(),
+        oldDraft.toJson(),
+      );
+      expect(
+        drafts.singleWhere((draft) => draft.id != oldDraft.id).data['text'],
+        '基于最新单据继续审核',
+      );
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'failed reload remains blocked and never checkpoints partial state',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      var env = await pumpEditor(tester, storage);
+      await tester.enterText(find.byKey(const Key('input')), '原本机填写');
+      await tester.pumpAndSettle();
+      final draft = env.container.read(formDraftsProvider).single;
+      final oldRecords = Map<String, String>.from(storage.records);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+      env = await pumpEditor(
+        tester,
+        storage,
+        initial: draft.resumeLocation,
+        failRestore: true,
+        failReload: true,
+      );
+      await tester.tap(find.text('保留本机草稿，加载最新单据'));
+      await tester.pumpAndSettle();
+      expect(find.text('这份草稿暂时无法恢复，原草稿已保留。'), findsOneWidget);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      await expectLater(editor.saveFormDraftNow(), throwsStateError);
+      expect(storage.records, oldRecords);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'identity change during source reload cannot unlock a different account',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      var env = await pumpEditor(tester, storage);
+      await tester.enterText(find.byKey(const Key('input')), '原账号填写');
+      await tester.pumpAndSettle();
+      final draft = env.container.read(formDraftsProvider).single;
+      final oldRecords = Map<String, String>.from(storage.records);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+      final gate = Completer<void>();
+      env = await pumpEditor(
+        tester,
+        storage,
+        initial: draft.resumeLocation,
+        failRestore: true,
+        reloadGate: gate.future,
+      );
+      await tester.tap(find.text('保留本机草稿，加载最新单据'));
+      await tester.pump();
+      env.container.read(_testScope.notifier).state = const AuthenticatedScope(
+        userId: 'user-2',
+      );
+      await tester.pump();
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('原草稿保留在原账号下'), findsOneWidget);
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      expect(storage.records, oldRecords);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'unresolved submission cannot use source reload after restore failure',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      var env = await pumpEditor(tester, storage);
+      await tester.enterText(find.byKey(const Key('input')), '已发出提交');
+      await tester.pumpAndSettle();
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      await expectLater(
+        editor.runFormDraftSubmission(() async => throw StateError('丢失响应')),
+        throwsStateError,
+      );
+      final draft = env.container.read(formDraftsProvider).single;
+      expect(draft.data['_formDraftSubmissionPending'], isTrue);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+      env = await pumpEditor(
+        tester,
+        storage,
+        initial: draft.resumeLocation,
+        failRestore: true,
+      );
+      expect(find.text('保留本机草稿，加载最新单据'), findsNothing);
+      expect(find.text('这份草稿暂时无法恢复，原草稿已保留。'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
   testWidgets(
     'metadata-only grid edits survive local draft recovery with their source version',
     (tester) async {
@@ -450,7 +827,11 @@ void main() {
       await tester.tap(find.text('default'));
       await tester.pumpAndSettle();
       final draft = env.container.read(formDraftsProvider).single;
-      expect(draft.data, {'text': '1. 未完成', 'choice': 'chosen'});
+      expect(draft.data, {
+        'text': '1. 未完成',
+        'choice': 'chosen',
+        '_formDraftHasUnknownSubmission': false,
+      });
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
       env.container.dispose();

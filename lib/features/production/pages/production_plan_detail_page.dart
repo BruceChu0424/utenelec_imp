@@ -22,6 +22,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -32,6 +34,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -1131,11 +1134,19 @@ class _ProductionPlanDetailPageState
           child: Stack(
             children: [
               _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ? Semantics(
+                      label: AppLocalizations.of(context).commonLoading,
+                      liveRegion: true,
+                      child: const UtenSkeletonList(),
                     )
                   : _error != null
-                  ? Center(child: Text(_error!))
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: AppLocalizations.of(context).commonRetry,
+                      onAction: () async {
+                        if (!_loading) await _load();
+                      },
+                    )
                   : _detail == null
                   ? const SizedBox.shrink()
                   : ListView(
@@ -1196,7 +1207,9 @@ class _ProductionPlanDetailPageState
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null ? null : _actions(theme),
+      floatingActionButton: _detail == null || _loading || _error != null
+          ? null
+          : _actions(theme),
     );
   }
 

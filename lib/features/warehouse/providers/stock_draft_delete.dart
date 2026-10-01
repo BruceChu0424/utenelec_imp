@@ -24,6 +24,7 @@ Future<void> deleteStockDraft(
   required String id,
   required bool Function() isMounted,
   required bool Function() stillCurrent,
+  Future<void> Function()? beforeDelete,
 }) async {
   final scope = ref.read(authenticatedScopeProvider);
   bool hasDeletePermission() =>
@@ -50,6 +51,13 @@ Future<void> deleteStockDraft(
       )) {
     throw ApiException('FORBIDDEN', documentScopeReadOnlyMessage);
   }
+  if (!isMounted() ||
+      ref.read(authenticatedScopeProvider) != scope ||
+      !stillCurrent() ||
+      !hasDeletePermission()) {
+    throw ApiException('FORBIDDEN', '当前身份、选择范围或仓库单据删除权限已变化');
+  }
+  await beforeDelete?.call();
   if (!isMounted() ||
       ref.read(authenticatedScopeProvider) != scope ||
       !stillCurrent() ||

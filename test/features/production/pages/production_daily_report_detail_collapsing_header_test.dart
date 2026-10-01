@@ -7,17 +7,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/models/production_daily_report.dart';
 import 'package:uten_imp/features/production/pages/production_daily_report_detail_page.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../support/collapsing_header_harness.dart';
 import '../../../support/document_scope_capability_overrides.dart';
+import '../../../support/memory_cas_storage.dart';
 
 class _DailyReportApi extends ApiClient {
   _DailyReportApi() : super(Dio());
@@ -66,6 +71,13 @@ Future<void> _pump(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(api),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'daily-report-tester'),
+        ),
+        apiBaseUrlProvider.overrideWithValue(
+          'https://daily-report.example/api',
+        ),
+        formDraftStorageProvider.overrideWithValue(MemoryCasStorage()),
         productionWriteAllDocumentScope(),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         currentPermissionsProvider.overrideWithValue(const <String>{
@@ -78,6 +90,9 @@ Future<void> _pump(
         ),
       ],
       child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         builder: utenTextScaleBuilder(textScale),
         home: const ProductionDailyReportDetailPage(id: 'dr-1'),
       ),

@@ -8,10 +8,17 @@ class MasterDataTableRowsController<T> {
   MasterDataTableRowsController._(this._onChanged);
 
   void Function(List<T>)? _onChanged;
-  void Function(Object, Future<void> Function(), bool)? _onBind;
+  void Function(
+    Object,
+    Future<void> Function(),
+    bool, {
+    Future<void> Function()? loadPrevious,
+  })?
+  _onBind;
   void Function(Object)? _onDetach;
   Object? _owner;
   Future<void> Function()? _loadNextPage;
+  Future<void> Function()? _loadPreviousPage;
   bool _isAppending = false;
   List<T> _items = const [];
 
@@ -19,18 +26,26 @@ class MasterDataTableRowsController<T> {
   bool get isAppending => _isAppending;
 
   Future<void> loadNextPage() async => _loadNextPage?.call();
+  Future<void> loadPreviousPage() async => _loadPreviousPage?.call();
 
-  void bindPagination(Object owner, Future<void> Function() load, bool busy) {
+  void bindPagination(
+    Object owner,
+    Future<void> Function() load,
+    bool busy, {
+    Future<void> Function()? loadPrevious,
+  }) {
     _owner = owner;
     _loadNextPage = load;
+    _loadPreviousPage = loadPrevious;
     _isAppending = busy;
-    _onBind?.call(owner, load, busy);
+    _onBind?.call(owner, load, busy, loadPrevious: loadPrevious);
   }
 
   void detachPagination(Object owner) {
     if (!identical(_owner, owner)) return;
     _owner = null;
     _loadNextPage = null;
+    _loadPreviousPage = null;
     _isAppending = false;
     _onDetach?.call(owner);
   }

@@ -22,6 +22,9 @@ public class FinanceOtherIncomeItemDto {
     private BigDecimal amountLocal;
     private String summary;
     private String remark;
+    /** Current name of this persisted reference; not an historical name snapshot. */
+    @lombok.Setter
+    private String departmentName;
 
     // Additive exact text never passes through a binary floating-point value.
     public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }

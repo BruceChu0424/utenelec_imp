@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/idle_timeout_controller.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/public_settings_repository.dart';
@@ -54,8 +55,12 @@ class _IdleTimeoutGuardState extends ConsumerState<IdleTimeoutGuard> {
 
   Future<void> _loadThreshold() async {
     try {
-      final s = await ref.read(publicSettingsRepositoryProvider).fetch();
-      if (mounted) {
+      final scope = ref.read(authenticatedScopeProvider);
+      final repository = ref.read(publicSettingsRepositoryProvider);
+      final s = await repository.fetch();
+      if (mounted &&
+          ref.read(authenticatedScopeProvider) == scope &&
+          identical(ref.read(publicSettingsRepositoryProvider), repository)) {
         ref
             .read(idleTimeoutProvider.notifier)
             .setThreshold(s.idleTimeoutMinutes);
@@ -74,7 +79,12 @@ class _IdleTimeoutGuardState extends ConsumerState<IdleTimeoutGuard> {
     });
     // 超管在本机「系统设置」保存阈值后自增此信号 → 立即重拉（当前会话即时生效，不必重登）。
     ref.listen<int>(idleThresholdVersionProvider, (previous, next) {
-      if (mounted) _loadThreshold();
+      if (mounted) {
+        // A GET begun before the save may still be in flight. Retire it before
+        // reading again; its late result cannot publish or apply an old value.
+        ref.invalidate(publicSettingsRepositoryProvider);
+        _loadThreshold();
+      }
     });
     return Focus(
       canRequestFocus: false,

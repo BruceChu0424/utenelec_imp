@@ -1,5 +1,5 @@
 -- =====================================================================
--- 本地/测试库业务数据一键清空(支持至 V759；保留主档、人事、权限与治理证据)
+-- 本地/测试库业务数据一键清空(支持至 V772；保留主档、人事、权限与治理证据)
 -- =====================================================================
 -- 用途：把数据库重置为“基础资料和系统治理数据保留、业务流程、库存、账户金额、
 --       遗留期初往来/库存快照、货品安全库存及成本预算归零”的
@@ -402,6 +402,11 @@ INSERT INTO reset_business_table_policy(table_name, disposition) VALUES
 ('stock_document_items', 'CLEAR'),
 ('stock_documents', 'CLEAR'),
 ('stock_movements', 'CLEAR'),
+('stock_draw_issue_batches', 'CLEAR'),
+('stock_count_requests', 'CLEAR'),
+('stock_count_request_lines', 'CLEAR'),
+('stock_count_request_events', 'CLEAR'),
+('workshop_material_count_adjustment_postings', 'CLEAR'),
 ('business_column_definitions', 'PRESERVE'),
 ('sales_quote_template_candidates', 'CLEAR'),
 ('sales_quote_template_evidence', 'CLEAR'),
@@ -1362,10 +1367,29 @@ BEGIN
         -- V758 bounds the known candidate cleanup; table policy is unchanged.
         (758, 686),
         -- V759 only repairs cost permission surface links; table policy is unchanged.
-        (759, 687)
+        (759, 687),
+        -- V760 only adds procurement amount-input columns; V761/V762 are not in this source manifest.
+        (760, 688),
+        -- V763 widens weight observation metadata; no table policy changes.
+        (763, 689),
+        -- V764 repairs periodic-material weight conversion functions; no table policy changes.
+        (764, 690),
+        -- V765 permits pending workshop requests before first-use setup; no new tables.
+        (765, 691),
+        (766, 692),
+        (767, 693),
+        (768, 694),
+        -- V769 indexes dead-letter business events; table policy is unchanged.
+        (769, 695),
+        -- V770 preserves mixed audit archives; table policy is unchanged.
+        (770, 696),
+        -- V771 adds the immutable ordinary DRAW batch receipt ledger.
+        (771, 697),
+        -- V772 adds reviewed-version metadata without backfilling old command rows.
+        (772, 698)
     ) THEN
         RAISE EXCEPTION
-            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V759完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V737 跳号)，当前 V%/%',
+            '仅允许 V443/405、V446/408、V447/409、V448/410、V449/411、V450/412、V451/413、V452/414、V453/415、V454/416、V455/417、V456/418、V457/419、V458/420、V459/421、V460/422、V461/423、V462/424、V463/425、V464/426、V465/427、V466/428、V467/429、V468/430、V469/431、V470/432、V471/433、V472/434、V473/435、V474/436、V475/437 、V476/438、V477/439、V478/440、V479/441、V480/442、V481/443、V482/444、V483/445、V484/446、V485/447、V486/448、V487/449、V488/450、V489/451、V490/452、V491/453、V492/454、V493/455、V494/456、V495/457、V496/458、V497/459、V498/460、V499/461、V500/462、V501/463、V502/464、V503/465、V504/466、V505/467、V506/468、V507/469、V508/470及V511至V772完整目录(V544、V576、V604、V633、V635、V637、V639、V643、V648至V669、V737、V761、V762 跳号)，当前 V%/%',
             applied_max_version, applied_migration_count;
     END IF;
 
@@ -1550,6 +1574,7 @@ BEGIN
             ('production_planning_urges', 703),
             ('production_material_discovery_requests', 710),
             ('production_draw_issue_batches', 727),
+            ('stock_draw_issue_batches', 771),
             ('production_material_discovery_lines', 710),
             ('goods_bom_learning_profiles', 711),
             ('goods_bom_actual_usages', 739),
@@ -1615,7 +1640,11 @@ BEGIN
             ('inventory_cost_gl_period_choices', 754),
             ('inventory_cost_gl_links', 754),
             ('goods_cost_imports', 755),
-            ('goods_cost_import_mappings', 755)
+            ('goods_cost_import_mappings', 755),
+            ('stock_count_requests', 766),
+            ('stock_count_request_lines', 766),
+            ('stock_count_request_events', 766),
+            ('workshop_material_count_adjustment_postings', 768)
     )
     SELECT string_agg(required.table_name, ', ' ORDER BY required.table_name) FILTER (
                WHERE (to_regclass(format('public.%I', required.table_name)) IS NOT NULL)

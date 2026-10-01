@@ -385,7 +385,7 @@ public class FinanceOtherIncomeService {
         return new FinanceOtherIncomeItemDto(it.getId(), it.getLineNo(), it.getIncomeStyleId(),
                 it.getDepartmentId(), it.getCounterpartAccountId(), it.getCounterpartName(),
                 it.getQty(), it.getPrice(), it.getAmountOriginal(), it.getAmountLocal(),
-                it.getSummary(), it.getRemark());
+                it.getSummary(), it.getRemark(), null);
     }
 
     private FinanceOtherIncomeListItem toList(FinanceOtherIncome o) {
@@ -394,6 +394,10 @@ public class FinanceOtherIncomeService {
     }
 
     private FinanceOtherIncomeDetail toDetail(FinanceOtherIncome o, List<FinanceOtherIncomeItemDto> items) {
+        var departments = com.uten.imp.features.finance.FinanceDepartmentNames.referenced(
+                em, items.stream().map(FinanceOtherIncomeItemDto::getDepartmentId).toList());
+        items.forEach(item -> item.setDepartmentName(item.getDepartmentId() == null
+                ? null : departments.get(item.getDepartmentId())));
         return new FinanceOtherIncomeDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
                 o.getAccountId(), o.getCounterpartAccountId(), o.getCurrencyId(), o.getExchangeRate(),
                 o.getAmountOriginal(), o.getAmountLocal(), o.getReceiptMethodId(), o.getReceiptMethodLegacyId(),

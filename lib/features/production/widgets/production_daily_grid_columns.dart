@@ -5,6 +5,7 @@
 // DailyGridRow：货品(选择)/完工申报量/实际重量；颜色/单位选货品后自动回填（只读）；
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -44,6 +45,17 @@ class DailyMaterialInput {
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
 /// 完工量是生产声明；颜色/单位为来源任务冻结值。
 class DailyGridRow extends EditableGridRow {
+  DailyGridRow({String? localRowId})
+    : localRowId = localRowId ?? const Uuid().v4();
+
+  /// Local draft identity only. Copies get a fresh ID; this is never submitted
+  /// as a server item ID or inferred from goods/source/visible row position.
+  final String localRowId;
+
+  /// Read-only accepted item projection, supplied only by the saved report.
+  /// Never recompute its destination from today's transfer availability.
+  String? acceptedDestinationLabel;
+
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
   );
@@ -889,15 +901,20 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           '改任一条的去向或数量，下面会自动补一条接着分，直到分完。\n'
           '下拉里「已分满」表示本张报工其它行已把它分满；红字是不能收的原因(例如委外件要先送入仓库、'
           '上层工单在别的车间)。计划内公共备货与超出计划的产量一律送入仓库。',
-      textOf: (r) => r.isAllocationRow
-          ? _allocationOptionText(r)
-          : r.isMaterialRow
-          ? ''
-          : (r.directTransferBlockedText ?? outputAllocationSummary(r)),
+      textOf: (r) =>
+          r.acceptedDestinationLabel ??
+          (r.isAllocationRow
+              ? _allocationOptionText(r)
+              : r.isMaterialRow
+              ? ''
+              : (r.directTransferBlockedText ?? outputAllocationSummary(r))),
       listenableOf: (r) =>
           r.isAllocationRow ? r.allocationDemandNotifier : r.allocationRevision,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
+        if (row.acceptedDestinationLabel case final accepted?) {
+          return Text(accepted, maxLines: 1, overflow: TextOverflow.ellipsis);
+        }
         if (row.isMaterialRow) return const SizedBox.shrink();
         if (!row.isAllocationRow) {
           return ValueListenableBuilder<int>(

@@ -136,9 +136,11 @@ public class SalesOrderService {
                 shippableFirst ? Sort.unsorted()
                         : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
+        Map<UUID, String> sellerNames = p.isEmpty() ? Map.of() : nameResolver.namesOf(
+                p.getContent().stream().map(SalesOrder::getSellerId).toList());
         boolean canEdit = hasObjectActionAuthority();
         return new PageResponse<>(p.map(o -> toList(o,
-                        nameResolver.nameOf(o.getSellerId()),
+                        o.getSellerId() == null ? null : sellerNames.get(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
                 p);
     }

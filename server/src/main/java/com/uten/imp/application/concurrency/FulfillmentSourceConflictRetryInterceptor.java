@@ -7,9 +7,13 @@ import org.springframework.aop.support.AopUtils;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionAttribute;
+import org.springframework.transaction.interceptor.TransactionAttributeSource;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.LongSupplier;
 
@@ -27,15 +31,18 @@ import java.util.function.LongSupplier;
  * 结构性冲突(预锁顺序/归属错误)不重跑, 原样 409。</p>
  *
  * <p>重跑上限 {@value #MAX_ATTEMPTS} 次, 间隔按次数递增并带随机抖动, 让同批并行命令错开。
- * 时长有两道预算(ADR-107):</p>
+ * 根命令沿用显式事务超时或应用默认值。所有尝试共用绝对截止时间,
+ * 每次事务只得到剩余时长, 不重新领取完整的默认时限。另保留两道重跑预算(ADR-107):</p>
  * <ul>
  *   <li>重跑预算 {@value #RETRY_BUDGET_MILLIS} ms <b>从第一次冲突开始</b>计: 第一次执行(含排队等锁)
  *       是命令本来就要花的时间, 恰恰是「等锁期间别人先提交、来源变了」这种要重跑的情形, 不能算进重跑的账;
- *       之后的重跑(含它们各自的等锁)累计超过预算就停, 慢命令不会被放大成几倍时长。</li>
+ *       后续事务的截止时间也收紧到这道预算, 不只是抛出下次冲突时才检查。</li>
  *   <li>命令从开始算已过 {@value #LATEST_RETRY_START_MILLIS} ms 不再发起新的一次: 客户端 45 秒放弃等待,
  *       再跑一遍大概率在它放弃之后才提交, 界面会误报失败而库里已成功。</li>
  * </ul>
- * <p>超过上限或预算返回原 409(带 Retry-After)。客户端不会自动重发业务写请求, 用户看到提示后自行重新提交。</p>
+ * <p>过期在事务开始前或提交前拒绝, 不在已经提交之后把成功改报失败。
+ * 当前边界从根服务命令开始, 不包括之前的 HTTP 接入/认证, 也不强行中断不可取消的提交确认。
+ * 客户端不会自动重发业务写请求, 结果未知仍须用原命令身份核对。</p>
  */
 public final class FulfillmentSourceConflictRetryInterceptor implements MethodInterceptor {
 
@@ -55,9 +62,16 @@ public final class FulfillmentSourceConflictRetryInterceptor implements MethodIn
 
     private final Sleeper sleeper;
     private final LongSupplier nanoClock;
+    private final Duration defaultTimeout;
+    private final TransactionAttributeSource transactionAttributes;
 
     public FulfillmentSourceConflictRetryInterceptor() {
         this(Thread::sleep);
+    }
+
+    public FulfillmentSourceConflictRetryInterceptor(
+            Duration defaultTimeout, TransactionAttributeSource transactionAttributes) {
+        this(Thread::sleep, System::nanoTime, defaultTimeout, transactionAttributes);
     }
 
     FulfillmentSourceConflictRetryInterceptor(Sleeper sleeper) {
@@ -65,8 +79,15 @@ public final class FulfillmentSourceConflictRetryInterceptor implements MethodIn
     }
 
     FulfillmentSourceConflictRetryInterceptor(Sleeper sleeper, LongSupplier nanoClock) {
+        this(sleeper, nanoClock, Duration.ofSeconds(40), new AnnotationTransactionAttributeSource());
+    }
+
+    FulfillmentSourceConflictRetryInterceptor(Sleeper sleeper, LongSupplier nanoClock,
+            Duration defaultTimeout, TransactionAttributeSource transactionAttributes) {
         this.sleeper = sleeper;
         this.nanoClock = nanoClock;
+        this.defaultTimeout = defaultTimeout;
+        this.transactionAttributes = transactionAttributes;
     }
 
     @Override
@@ -76,28 +97,50 @@ public final class FulfillmentSourceConflictRetryInterceptor implements MethodIn
                 || !startsOwnTransaction(invocation)) {
             return invocation.proceed();
         }
+        Class<?> targetClass = invocation.getThis() == null ? invocation.getMethod().getDeclaringClass()
+                : AopUtils.getTargetClass(invocation.getThis());
+        TransactionAttribute attribute = transactionAttributes.getTransactionAttribute(invocation.getMethod(), targetClass);
+        Duration budget = attribute != null && attribute.getTimeout() >= 0
+                ? Duration.ofSeconds(attribute.getTimeout()) : defaultTimeout;
         long started = nanoClock.getAsLong();
-        long firstConflict = 0;
-        for (int attempt = 1; ; attempt++) {
-            try {
-                return proxied.invocableClone().proceed();
-            } catch (FulfillmentSourceConflictException conflict) {
-                long now = nanoClock.getAsLong();
-                if (attempt == 1) firstConflict = now;
-                long elapsedMillis = (now - started) / 1_000_000L;
-                long retryingMillis = (now - firstConflict) / 1_000_000L;
-                if (!conflict.retryable() || attempt >= MAX_ATTEMPTS || retryingMillis >= RETRY_BUDGET_MILLIS
-                        || elapsedMillis >= LATEST_RETRY_START_MILLIS) {
-                    if (conflict.retryable()) {
-                        LOG.warn("Fulfillment source conflict not resolved after {} attempts / {} ms: {} ({})",
-                                attempt, elapsedMillis, describe(invocation), conflict.internalReason());
-                    }
-                    throw conflict;
+        try (var deadline = FulfillmentCommandDeadline.open(budget, nanoClock)) {
+            FulfillmentSourceConflictException lastConflict = null;
+            for (int attempt = 1; ; attempt++) {
+                // Backoff/scheduling may have used the remaining budget since
+                // the previous catch. Never open a fresh transaction afterwards.
+                if (lastConflict != null && (deadline.remainingNanos() <= 0
+                        || (nanoClock.getAsLong() - started) / 1_000_000L >= LATEST_RETRY_START_MILLIS)) {
+                    throw lastConflict;
                 }
-                long pause = backoffMillis(attempt);
-                LOG.debug("Fulfillment source conflict, re-running {} (attempt {} of {}, after {} ms): {}",
-                        describe(invocation), attempt + 1, MAX_ATTEMPTS, pause, conflict.internalReason());
-                sleeper.sleep(pause);
+                deadline.check();
+                try {
+                    // No post-return deadline exception: proceed includes COMMIT.
+                    return proxied.invocableClone().proceed();
+                } catch (FulfillmentSourceConflictException conflict) {
+                    if (deadline.hasCommitted()) {
+                        throw new IllegalStateException("履约事务已提交，提交后处理未完成，请按原命令查询结果", conflict);
+                    }
+                    long elapsedMillis = (nanoClock.getAsLong() - started) / 1_000_000L;
+                    if (attempt == 1) deadline.limitRemaining(Duration.ofMillis(RETRY_BUDGET_MILLIS));
+                    if (!conflict.retryable() || attempt >= MAX_ATTEMPTS || deadline.remainingNanos() <= 0
+                            || elapsedMillis >= LATEST_RETRY_START_MILLIS) {
+                        if (conflict.retryable()) {
+                            LOG.warn("Fulfillment source conflict not resolved after {} attempts / {} ms: {} ({})",
+                                    attempt, elapsedMillis, describe(invocation), conflict.internalReason());
+                        }
+                        throw conflict;
+                    }
+                    lastConflict = conflict;
+                    long pause = Math.min(backoffMillis(attempt), deadline.remainingMillis());
+                    LOG.debug("Fulfillment source conflict, re-running {} (attempt {} of {}, after {} ms): {}",
+                            describe(invocation), attempt + 1, MAX_ATTEMPTS, pause, conflict.internalReason());
+                    try {
+                        sleeper.sleep(pause);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw interrupted;
+                    }
+                }
             }
         }
     }

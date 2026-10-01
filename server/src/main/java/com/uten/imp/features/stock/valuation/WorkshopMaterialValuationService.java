@@ -36,6 +36,9 @@ public class WorkshopMaterialValuationService {
 
     public MovementValue value(UUID movement,MovementRequest request,PoolKey pool,BigDecimal before,
             EventContext context,WorkshopMaterialBin ref){
+        if (Set.of("COUNT_OPENING", "COUNT_ADJUSTMENT_IN", "COUNT_ADJUSTMENT_OUT").contains(ref.kind().name())) {
+            return approvedCountValue(movement, request, pool, before, context, ref);
+        }
         Map<String,Object> args=new HashMap<>();
         args.put("posting",ref.sourceId());args.put("count",request.sourceDocId());args.put("line",request.sourceItemId());
         args.put("bin",pool.warehouseId());args.put("goods",pool.goodsId());args.put("color",pool.colorId());
@@ -65,8 +68,35 @@ public class WorkshopMaterialValuationService {
                 requireReversed(row,"GAIN");
                 yield values.issue(new Issue(context,movement,pool,request.qty(),before,Destination.EXTERNAL,periodLine));
             }
-            case ISSUE_OUT,RETURN_OUT,OTHER_ISSUE_OUT -> throw conflict("内料仓的发料、退回和其它耗用按库存单据估价");
+            case ISSUE_OUT,RETURN_OUT,OTHER_ISSUE_OUT,COUNT_OPENING,COUNT_ADJUSTMENT_IN,COUNT_ADJUSTMENT_OUT ->
+                    throw conflict("内料仓来源不属于期间盘点过账");
         };
+    }
+
+    private MovementValue approvedCountValue(UUID movement, MovementRequest request, PoolKey pool,
+            BigDecimal before, EventContext context, WorkshopMaterialBin ref) {
+        var args = new HashMap<String,Object>();
+        args.put("posting", ref.sourceId()); args.put("request", request.sourceDocId());
+        args.put("line", request.sourceItemId()); args.put("bin", pool.warehouseId());
+        args.put("goods", pool.goodsId()); args.put("color", pool.colorId());
+        var rows = db.queryForList("""
+                SELECT posting.signed_qty, posting.before_qty
+                FROM workshop_material_count_adjustment_postings posting
+                JOIN stock_count_requests request ON request.id=posting.request_id
+                JOIN stock_count_request_events event ON event.id=posting.approval_event_id
+                WHERE posting.id=:posting AND posting.request_id=:request AND posting.line_id=:line
+                  AND posting.bin_warehouse_id=:bin AND posting.goods_id=:goods
+                  AND posting.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND request.status='APPROVED' AND request.approval_event_id=event.id
+                  AND event.action='APPROVE' AND event.request_id=request.id
+                """, args);
+        if (rows.size()!=1 || ((BigDecimal)rows.getFirst().get("signed_qty")).abs().compareTo(request.qty())!=0
+                || ((BigDecimal)rows.getFirst().get("before_qty")).compareTo(before)!=0) {
+            throw conflict("内料仓批准盘点的库存来源或数量不一致");
+        }
+        return request.direction() > 0
+                ? values.receive(new Receive(context, movement, pool, request.qty(), before, null, false))
+                : values.issue(new Issue(context, movement, pool, request.qty(), before, Destination.LOSS, request.sourceItemId()));
     }
 
     /** 被冲那笔盘点耗用出库时冻结的价值区间, 冲回只能原路退回它。 */

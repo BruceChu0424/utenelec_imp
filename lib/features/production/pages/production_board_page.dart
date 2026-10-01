@@ -401,6 +401,7 @@ class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
       return;
     }
     var checkpointFailed = false;
+    var unknownCheckpointRetained = false;
     if (!approve) {
       final deleted = result.done.map((row) => row.id).toSet();
       for (final row in plans) {
@@ -411,6 +412,8 @@ class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
             row.local!.id,
             expectedRevision: row.local!.revision,
           );
+        } on FormDraftUnknownSubmission {
+          unknownCheckpointRetained = true;
         } catch (_) {
           checkpointFailed = true;
         }
@@ -430,7 +433,12 @@ class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
     final summary =
         '批量$verb完成：成功 ${result.done.length}，跳过 ${result.skipped.length}'
         '${skipped.isEmpty ? '' : '（$skipped）'}';
-    if (checkpointFailed) {
+    if (unknownCheckpointRetained) {
+      context.appWarning(
+        '$summary；部分本机原提交待核对，已保留，请进入草稿核对后再处理'
+        '${checkpointFailed ? '；另有填写草稿清理未完成' : ''}',
+      );
+    } else if (checkpointFailed) {
       context.appWarning('$summary；部分填写草稿已更新，请核对后清理');
     } else {
       context.appSuccess(summary);
@@ -477,20 +485,6 @@ class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
             onPressed: () =>
                 context.push(RouteName.productionOverproductionRateRequests),
             child: const Text('超产比例审批'),
-          ),
-        if (permissions.contains(Perm.productionMaterialAnalysisCreate))
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.add_rounded,
-            onPressed: () => context.push('/production/plans/new'),
-            child: const Text('新建计划'),
-          ),
-        if (permissions.contains(Perm.productionDailyReportCreate))
-          UtenButton(
-            type: UtenButtonType.tonal,
-            icon: Icons.add_rounded,
-            onPressed: () => context.push('/production/daily-reports/new'),
-            child: const Text('新建日报'),
           ),
       ],
       canSelectRow: (row) =>

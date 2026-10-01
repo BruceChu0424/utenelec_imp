@@ -28,7 +28,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 车间内料仓用量报表 (ADR-131 §5.10): 内料仓用量表、产品用料表、浪费率趋势、缺单重清单、收发明细。
+ * 车间内料仓用量报表 (ADR-131 §5.10): 内料仓用量表、产品用料表、耗用差异率趋势、缺单重清单、收发明细。
  *
  * <p>只读结算结果与流水视图, 不在这里重算理论或分摊。按对象范围过滤: 车间成员只看本车间的内料仓。
  * 金额与单价只给持"查看货品成本"权限的人 (其余人收到空值)。按期查询时列出期末日落在所选日期范围里的各期。
@@ -56,21 +56,23 @@ public class WorkshopMaterialReportQueryService {
     public List<BinUsageRow> binUsage(UUID binId, LocalDate from, LocalDate to) {
         requireBin(binId);
         boolean amounts = permissions.has(COST_VIEW);
-        return db.query("""
+        return db.query(WorkshopMaterialCountBasisQuery.WITH + """
                 SELECT report.period_id, report.period_no, report.start_date, report.end_date, report.period_status,
                        report.period_line_id, report.goods_id, goods.code AS goods_code, goods.name AS goods_name,
                        report.color_id, color.name AS color_name, unit.name AS unit_name, report.cost_basis,
-                       report.opening_qty, report.transfer_in_qty, report.return_qty, report.other_issue_qty,
+                       report.opening_qty, report.transfer_in_qty, report.return_qty, report.other_issue_qty, report.adjustment_qty,
                        report.closing_qty, report.actual_qty, report.theory_qty, report.allocation_basis_qty,
                        report.diff_qty, report.waste_rate, report.outcome, report.flags, report.consumed_qty,
                        report.loss_qty, report.close_no, report.closed_at, report.current_value,
                        report.value_at_close,
                        CASE WHEN report.value_at_close IS NOT NULL AND abs(report.actual_qty) > 0
                             THEN round(report.value_at_close / abs(report.actual_qty), 4) END AS unit_cost
+                """ + WorkshopMaterialCountBasisQuery.columns("report") + """
                 FROM v_workshop_material_period_report report
                 JOIN goods ON goods.id = report.goods_id
                 LEFT JOIN colors color ON color.id = report.color_id
                 LEFT JOIN units unit ON unit.id = report.unit_id
+                """ + WorkshopMaterialCountBasisQuery.joins("report", "report.goods_id", "report.color_id") + """
                 WHERE report.bin_warehouse_id = :bin
                   AND (CAST(:from AS date) IS NULL OR report.end_date >= CAST(:from AS date))
                   AND (CAST(:to AS date) IS NULL OR report.end_date <= CAST(:to AS date))
@@ -88,7 +90,8 @@ public class WorkshopMaterialReportQueryService {
                 (Integer) rs.getObject("close_no"), rs.getObject("closed_at", OffsetDateTime.class),
                 amounts ? rs.getBigDecimal("current_value") : null,
                 amounts ? rs.getBigDecimal("value_at_close") : null,
-                amounts ? rs.getBigDecimal("unit_cost") : null));
+                amounts ? rs.getBigDecimal("unit_cost") : null,
+                rs.getString("opening_count_basis"), rs.getString("closing_count_basis"), rs.getBigDecimal("adjustment_qty")));
     }
 
     // ------------------------------------------------------------------ 产品用料表
@@ -97,10 +100,12 @@ public class WorkshopMaterialReportQueryService {
     public List<ProductUsageRow> productUsage(UUID binId, LocalDate from, LocalDate to) {
         requireBin(binId);
         boolean amounts = permissions.has(COST_VIEW);
-        return db.query("""
+        return db.query(WorkshopMaterialCountBasisQuery.WITH + """
                 SELECT report.period_id, report.period_no, report.start_date, report.end_date,
                        report.close_material_id, report.cost_basis, report.material_goods_id,
                        material.code AS material_code, material.name AS material_name, report.material_color_id,
+                       material_unit.name AS material_unit_name,
+                       fn_weight_unit_kg_factor(material_profile.mass_unit_code) AS material_unit_kg_factor,
                        color.name AS material_color_name, report.product_goods_id, product.code AS product_code,
                        product.name AS product_name, report.output_qty, report.theory_qty, report.allocated_qty,
                        report.current_value, report.exclusive_period,
@@ -110,10 +115,16 @@ public class WorkshopMaterialReportQueryService {
                             THEN round(report.current_value / report.output_qty, 4) END AS unit_material_cost,
                        CASE WHEN report.exclusive_period AND report.output_qty > 0
                             THEN round(report.allocated_qty / report.output_qty, 6) END AS actual_per_unit
+                """ + WorkshopMaterialCountBasisQuery.columns("report", "report.material_goods_id", "report.material_color_id") + """
                 FROM v_workshop_material_product_report report
                 JOIN goods material ON material.id = report.material_goods_id
+                LEFT JOIN units material_unit ON material_unit.id = report.material_unit_id
+                LEFT JOIN unit_measurement_profiles material_profile
+                  ON material_profile.unit_id = report.material_unit_id AND material_profile.measurement_dimension = 'MASS'
                 LEFT JOIN colors color ON color.id = report.material_color_id
                 LEFT JOIN goods product ON product.id = report.product_goods_id
+                """ + WorkshopMaterialCountBasisQuery.joins(
+                        "report", "report.material_goods_id", "report.material_color_id") + """
                 WHERE report.bin_warehouse_id = :bin
                   AND (CAST(:from AS date) IS NULL OR report.end_date >= CAST(:from AS date))
                   AND (CAST(:to AS date) IS NULL OR report.end_date <= CAST(:to AS date))
@@ -127,31 +138,36 @@ public class WorkshopMaterialReportQueryService {
                 rs.getBigDecimal("theory_qty"), rs.getBigDecimal("allocated_qty"),
                 amounts ? rs.getBigDecimal("current_value") : null,
                 amounts ? rs.getBigDecimal("unit_material_cost") : null,
-                rs.getBoolean("exclusive_period"), rs.getBigDecimal("actual_per_unit")));
+                rs.getBoolean("exclusive_period"), rs.getBigDecimal("actual_per_unit"),
+                rs.getString("opening_count_basis"), rs.getString("closing_count_basis"),
+                rs.getString("material_unit_name"), rs.getBigDecimal("material_unit_kg_factor")));
     }
 
-    // ------------------------------------------------------------------ 浪费率趋势
+    // ------------------------------------------------------------------ 耗用差异率趋势 (接口名保留兼容)
 
-    /** 按料、按期的浪费率 (只算主料); goodsId 为空 = 本仓全部主料。 */
+    /** 按料、按期的耗用差异率 (只算主料); goodsId 为空 = 本仓全部主料。 */
     @Transactional(readOnly = true)
     public List<WastePoint> wasteTrend(UUID binId, UUID goodsId) {
         requireBin(binId);
         MapSqlParameterSource params = new MapSqlParameterSource("bin", binId);
         params.addValue("goods", goodsId, Types.OTHER);
-        return db.query("""
+        return db.query(WorkshopMaterialCountBasisQuery.WITH + """
                 SELECT trend.period_id, trend.period_no, trend.start_date, trend.end_date, trend.goods_id,
                        goods.code AS goods_code, goods.name AS goods_name, trend.color_id, color.name AS color_name,
                        trend.waste_rate
+                """ + WorkshopMaterialCountBasisQuery.columns("trend") + """
                 FROM v_workshop_material_waste_trend trend
                 JOIN goods ON goods.id = trend.goods_id
                 LEFT JOIN colors color ON color.id = trend.color_id
+                """ + WorkshopMaterialCountBasisQuery.joins("trend", "trend.goods_id", "trend.color_id") + """
                 WHERE trend.bin_warehouse_id = :bin
                   AND (CAST(:goods AS uuid) IS NULL OR trend.goods_id = CAST(:goods AS uuid))
                 ORDER BY goods.code, color.name NULLS FIRST, trend.period_no
                 """, params, (rs, index) -> new WastePoint(uuid(rs, "period_id"), rs.getInt("period_no"),
                 date(rs, "start_date"), date(rs, "end_date"), uuid(rs, "goods_id"), rs.getString("goods_code"),
                 rs.getString("goods_name"), uuid(rs, "color_id"), rs.getString("color_name"),
-                rs.getBigDecimal("waste_rate")));
+                rs.getBigDecimal("waste_rate"), rs.getString("opening_count_basis"),
+                rs.getString("closing_count_basis")));
     }
 
     // ------------------------------------------------------------------ 缺单重清单
@@ -198,11 +214,14 @@ public class WorkshopMaterialReportQueryService {
                        period.period_no, ledger.goods_id, goods.code AS goods_code, goods.name AS goods_name,
                        ledger.color_id, color.name AS color_name, unit.name AS unit_name, ledger.signed_qty,
                        ledger.is_supplement,
-                       COALESCE(requisition_doc.bill_no, other_doc.bill_no) AS doc_no,
-                       requisition.request_no,
+                       COALESCE(requisition_doc.bill_no, other_doc.bill_no, approved_request.request_no) AS doc_no,
+                       COALESCE(requisition.request_no, approved_request.request_no) AS request_no,
                        COALESCE(operator_employee.full_name, operator.login_account) AS operator_name,
-                       COALESCE(posting.created_at, other.created_at, counted.created_at) AS created_at,
+                       COALESCE(posting.created_at, other.created_at, counted.created_at, adjustment.created_at) AS created_at,
                        CASE
+                           WHEN adjustment.id IS NOT NULL THEN
+                               CASE adjustment.kind WHEN 'OPENING' THEN '已审核上线期初: ' ELSE '已审核账面修正: ' END
+                               || COALESCE(approved_request.reason,'')
                            WHEN ledger.source_kind IN ('ISSUE', 'RETURN') AND posting.is_supplement
                                THEN '上一期漏录补录: ' || posting.supplement_reason
                            WHEN ledger.source_kind = 'OTHER_ISSUE'
@@ -234,8 +253,11 @@ public class WorkshopMaterialReportQueryService {
                   ON ledger.source_kind IN ('CONSUME', 'CONSUME_REVERSE', 'GAIN', 'GAIN_REVERSE')
                  AND counted.id = ledger.source_row_id
                 LEFT JOIN workshop_material_counts count_doc ON count_doc.id = counted.count_id
+                LEFT JOIN workshop_material_count_adjustment_postings adjustment
+                  ON ledger.source_kind IN ('OPENING','ADJUSTMENT') AND adjustment.id=ledger.source_row_id
+                LEFT JOIN stock_count_requests approved_request ON approved_request.id=adjustment.request_id
                 LEFT JOIN users operator
-                  ON operator.id = COALESCE(posting.created_by, other.created_by, counted.created_by)
+                  ON operator.id = COALESCE(posting.created_by, other.created_by, counted.created_by, adjustment.created_by)
                 LEFT JOIN employees operator_employee ON operator_employee.id = operator.employee_id
                 WHERE ledger.bin_warehouse_id = :bin
                   AND (CAST(:from AS date) IS NULL OR ledger.business_date >= CAST(:from AS date))

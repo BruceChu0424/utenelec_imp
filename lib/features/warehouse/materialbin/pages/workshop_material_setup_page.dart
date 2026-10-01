@@ -8,6 +8,7 @@
 // 按钮只看服务端下发的 allowedActions (开启 / 停用需 SETUP)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
@@ -15,6 +16,7 @@ import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/feedback/uten_empty.dart';
+import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
@@ -23,9 +25,11 @@ import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/nav_helpers.dart';
 import '../../../../core/router/page_resume_provider.dart';
+import '../../../../core/router/route_access_policy.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../shared/auth/permissions.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
@@ -35,10 +39,17 @@ import '../widgets/workshop_material_machines_tab.dart';
 import '../widgets/workshop_material_prep_tab.dart';
 
 class WorkshopMaterialSetupPage extends ConsumerStatefulWidget {
-  const WorkshopMaterialSetupPage({super.key, this.initialTab});
+  const WorkshopMaterialSetupPage({
+    super.key,
+    this.initialTab,
+    this.initialWorkshopId,
+  });
 
   /// `enable` / `machines` / `prep`; 为空时进"车间开启"。
   final String? initialTab;
+
+  /// 从工单或内料仓深链进入时保持目标车间；不可见时不自动改成其它车间。
+  final String? initialWorkshopId;
 
   @override
   ConsumerState<WorkshopMaterialSetupPage> createState() =>
@@ -76,6 +87,7 @@ class _WorkshopMaterialSetupPageState
   @override
   void initState() {
     super.initState();
+    _workshopId = widget.initialWorkshopId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -89,11 +101,9 @@ class _WorkshopMaterialSetupPageState
       if (!mounted) return;
       setState(() {
         _settings = settings;
-        if (!settings.any((s) => s.workshopDepartmentId == _workshopId)) {
-          _workshopId = settings.isEmpty
-              ? null
-              : settings.first.workshopDepartmentId;
-        }
+        _workshopId ??= settings.isEmpty
+            ? null
+            : settings.first.workshopDepartmentId;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -118,7 +128,10 @@ class _WorkshopMaterialSetupPageState
       context,
       setting: setting,
     );
-    if (saved != null && mounted) await _load();
+    if (saved != null && mounted) {
+      setState(() => _workshopId = saved.workshopDepartmentId);
+      await _load();
+    }
   }
 
   Future<void> _disable(WmSetting setting) async {
@@ -216,6 +229,14 @@ class _WorkshopMaterialSetupPageState
     }
     final settings = _settings ?? const <WmSetting>[];
     final current = _current;
+    if (_workshopId != null && current == null) {
+      return UtenEmpty(
+        message: '指定车间当前不可用或无权查看',
+        description: '请返回原任务核对车间，或刷新后重试。',
+        actionLabel: '重试',
+        onAction: _load,
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -236,6 +257,46 @@ class _WorkshopMaterialSetupPageState
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
+        if (_tab == tabEnable) ...[
+          const UtenInlineNotice(
+            key: Key('wm-setup-flow-guide'),
+            title: '首次认料即可开工，补料按车间办理',
+            message:
+                '开启对应车间后，申请直接选择原料和数量；首次使用的原料由仓库发料时在同页确认用途。'
+                '产品第一次只确认用哪种料，不必按工单领料；进行中的任务可随时申请整批补料。'
+                '上线前清点车间已有余料，核对原库存归属后登记，避免重复计入。',
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              if (locationAllowedFor(
+                ref.watch(currentPermissionsProvider),
+                ref.watch(isSuperAdminProvider),
+                RouteName.basicinfoGoods,
+              ))
+                UtenButton(
+                  key: const Key('wm-setup-material-settings'),
+                  type: UtenButtonType.ghost,
+                  size: UtenButtonSize.small,
+                  onPressed: () async {
+                    await context.push(RouteName.basicinfoGoods);
+                    if (mounted) await _load();
+                  },
+                  child: const Text('原材料发料方式'),
+                ),
+              UtenButton(
+                key: const Key('wm-setup-opening-guide'),
+                type: UtenButtonType.ghost,
+                size: UtenButtonSize.small,
+                onPressed: _showOpeningGuide,
+                child: const Text('上线余料怎么登记'),
+              ),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         if (_tab != tabEnable && settings.isNotEmpty) ...[
           Align(
             alignment: Alignment.centerLeft,
@@ -277,7 +338,12 @@ class _WorkshopMaterialSetupPageState
         description: '车间是生产部下面的部门; 请先在部门管理里建好车间',
       );
     }
-    if (_tab == tabEnable) return _enableTable(l10n, settings);
+    if (_tab == tabEnable) {
+      return _enableTable(
+        l10n,
+        widget.initialWorkshopId == null ? settings : [current!],
+      );
+    }
     if (current == null) return const UtenEmpty(message: '请先选车间');
     if (_tab == tabMachines) {
       return WmMachinesTab(
@@ -369,6 +435,23 @@ class _WorkshopMaterialSetupPageState
       rowKeyOf: (s) => s.workshopDepartmentId,
       isLoading: _loading && _settings == null,
       emptyMessage: '没有找到生产车间',
+    );
+  }
+
+  Future<void> _showOpeningGuide() async {
+    await UtenDialog.show(
+      context,
+      title: '上线前清点车间余料',
+      content: const Text(
+        '先记录料架整袋、开口袋、搅拌待用料和机台容器余料；称重与容器估算分别记录。\n\n'
+        '已有库存账的余料：核对原仓库和工单。已按工单发出的先按原流程退料清账；'
+        '仍在普通仓库账上的，由仓库整批调入车间内料仓。\n\n'
+        '从未入账的余料：经核定数量和金额后办理其它入库，再整批调入内料仓，'
+        '不要同时新增一份库存或把历史已用掉的料再记入。\n\n'
+        '这是上线库存衔接，不要求生产员工为每张工单重新领料。'
+        '后续按实际交接登记补料、退回，按需要盘点；机桶估算会影响耗用差异，不能当作精确实耗。',
+      ),
+      confirmLabel: '知道了',
     );
   }
 }

@@ -28,7 +28,7 @@ void main() {
         "reviewerActionLabel: '费用单总账确认'",
       ],
       'lib/features/production/pages/production_daily_report_detail_page.dart':
-          ['reviewerResponsibility: true'],
+          ['showUtenReviewerConfirmDialog('],
       'lib/features/production/pages/production_plan_detail_page.dart': [
         'reviewerResponsibility: true',
       ],

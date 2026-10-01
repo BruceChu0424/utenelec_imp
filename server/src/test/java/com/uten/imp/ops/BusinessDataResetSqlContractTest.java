@@ -130,6 +130,7 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_planning_urges", 703),
             Map.entry("production_material_discovery_requests", 710),
             Map.entry("production_draw_issue_batches", 727),
+            Map.entry("stock_draw_issue_batches", 771),
             Map.entry("production_material_discovery_lines", 710),
             Map.entry("production_bom_learning_samples", 711),
             Map.entry("production_bom_learning_refresh_queue", 711),
@@ -172,7 +173,11 @@ class BusinessDataResetSqlContractTest {
             Map.entry("sales_intake_layout_learning_evidence", 751),
             Map.entry("inventory_cost_gl_periods", 754),
             Map.entry("inventory_cost_gl_period_choices", 754),
-            Map.entry("inventory_cost_gl_links", 754));
+            Map.entry("inventory_cost_gl_links", 754),
+            Map.entry("stock_count_requests", 766),
+            Map.entry("stock_count_request_lines", 766),
+            Map.entry("stock_count_request_events", 766),
+            Map.entry("workshop_material_count_adjustment_postings", 768));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。

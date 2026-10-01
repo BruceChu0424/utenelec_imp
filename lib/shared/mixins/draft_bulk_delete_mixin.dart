@@ -69,13 +69,20 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
     required Future<void> Function() reload,
     bool enabled = true,
     Set<String>? selectedIds,
+    String? additionalConfirmation,
   }) => UtenButton(
     type: UtenButtonType.danger,
     size: UtenButtonSize.large,
     onPressed:
         !enabled || _draftDeleteBusy || (selectedIds ?? _draftIds).isEmpty
         ? null
-        : () => _deleteDrafts(documentLabel, delete, reload, selectedIds),
+        : () => _deleteDrafts(
+            documentLabel,
+            delete,
+            reload,
+            selectedIds,
+            additionalConfirmation,
+          ),
     child: Text(
       _draftDeleteBusy
           ? '正在处理…'
@@ -88,6 +95,7 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
     Future<void> Function(String) delete,
     Future<void> Function() reload,
     Set<String>? selectedIds,
+    String? additionalConfirmation,
   ) async {
     if (_draftDeleteBusy || _draftIds.isEmpty) return;
     final ids = _draftIds
@@ -111,7 +119,10 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
       final confirmed = await UtenDialog.show(
         context,
         title: '删除所选草稿',
-        content: Text('将删除选中的 ${ids.length} 张$label草稿，删除后无法恢复。确认继续？'),
+        content: Text(
+          '将删除选中的 ${ids.length} 张$label草稿，删除后无法恢复。确认继续？'
+          '${additionalConfirmation == null ? '' : '\n$additionalConfirmation'}',
+        ),
         confirmLabel: '确认删除',
         danger: true,
       );
@@ -120,6 +131,7 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
       final deleted = <String>{};
       final failures = <String>[];
       var uncertain = false;
+      String? uncertaintyReason;
       var interrupted = false;
       for (final id in ids) {
         if (!stillCurrent()) {
@@ -134,6 +146,7 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
               error is NetworkTimeoutException ||
               (error.httpStatus ?? 0) >= 500) {
             uncertain = true;
+            uncertaintyReason = error.message;
             break;
           }
           failures.add(error.message);
@@ -165,6 +178,7 @@ mixin DraftBulkDeleteMixin<T extends StatefulWidget> on State<T> {
       if (uncertain) {
         context.appWarning(
           '$summary；有删除结果尚未确认，已停止后续删除。'
+          '${uncertaintyReason == null ? '' : '$uncertaintyReason。'}'
           '${refreshed ? '请核对刷新后的列表再操作。' : '列表刷新未完成，请刷新核对后再操作。'}',
         );
       } else if (failures.isNotEmpty || interrupted || !refreshed) {

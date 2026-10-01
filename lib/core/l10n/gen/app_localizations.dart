@@ -100,6 +100,174 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @businessColumnAmountUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。'**
+  String get businessColumnAmountUnavailable;
+
+  /// No description provided for @businessColumnEditorSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'为单据补充信息，或让输入值参与每行正式金额计算。'**
+  String get businessColumnEditorSubtitle;
+
+  /// No description provided for @businessColumnBrowse.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择已有列'**
+  String get businessColumnBrowse;
+
+  /// No description provided for @businessColumnNew.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建列'**
+  String get businessColumnNew;
+
+  /// No description provided for @businessColumnManage.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单已添加'**
+  String get businessColumnManage;
+
+  /// No description provided for @businessColumnNoResults.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有匹配的列，可以切换到“新建列”。'**
+  String get businessColumnNoResults;
+
+  /// No description provided for @businessColumnNewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'先填写名称，再选择这列的用途。每行的实际数值在表格里填写。'**
+  String get businessColumnNewHint;
+
+  /// No description provided for @businessColumnOfficialAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'参与正式金额'**
+  String get businessColumnOfficialAmount;
+
+  /// No description provided for @businessColumnAmountTarget.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算目标'**
+  String get businessColumnAmountTarget;
+
+  /// No description provided for @businessColumnRowAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'本行金额'**
+  String get businessColumnRowAmount;
+
+  /// No description provided for @businessColumnRecordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'每行分别填写，保存为单据补充信息。'**
+  String get businessColumnRecordHint;
+
+  /// No description provided for @businessColumnOfficialHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入值会计入本行金额；保存、财务审核和后续业务沿用计算后的金额。'**
+  String get businessColumnOfficialHint;
+
+  /// No description provided for @businessColumnExampleTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'试算一下'**
+  String get businessColumnExampleTitle;
+
+  /// No description provided for @businessColumnExampleBase.
+  ///
+  /// In zh, this message translates to:
+  /// **'原金额（示例）'**
+  String get businessColumnExampleBase;
+
+  /// No description provided for @businessColumnExampleValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'本列输入值（示例）'**
+  String get businessColumnExampleValue;
+
+  /// No description provided for @businessColumnExampleHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'示例只帮助理解计算，不会填入单据。留空不参与计算，填写 0 则按 0 计算。'**
+  String get businessColumnExampleHint;
+
+  /// No description provided for @businessColumnExampleInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写有效数值；不能除以 0，结果须为非负的精确有限小数。'**
+  String get businessColumnExampleInvalid;
+
+  /// No description provided for @businessColumnFixedFeeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'此值按每行收取一次。例如本行金额 100，填 20 后加到 120。'**
+  String get businessColumnFixedFeeHint;
+
+  /// No description provided for @businessColumnFactorHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'乘除填写倍率，例如乘 0.9 表示按原金额的 90% 计算。'**
+  String get businessColumnFactorHint;
+
+  /// No description provided for @businessColumnRemove.
+  ///
+  /// In zh, this message translates to:
+  /// **'从本单移除'**
+  String get businessColumnRemove;
+
+  /// No description provided for @businessColumnRemoveHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除后，本单各行的该列内容会清除，金额会重新计算。保存单据后生效；其他单据和可复用列不受影响。'**
+  String get businessColumnRemoveHint;
+
+  /// No description provided for @businessColumnUseExisting.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用已有列'**
+  String get businessColumnUseExisting;
+
+  /// No description provided for @businessColumnAlreadyAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单已经添加了相同定义的列，可到“本单已添加”查看。'**
+  String get businessColumnAlreadyAdded;
+
+  /// No description provided for @businessColumnOrderHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额按列的添加顺序计算。拖动表头只改变显示顺序；有值的费用列保持可见。'**
+  String get businessColumnOrderHint;
+
+  /// No description provided for @businessColumnNoAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单还没有添加自定义列。'**
+  String get businessColumnNoAdded;
+
+  /// No description provided for @businessColumnNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入列名称'**
+  String get businessColumnNameRequired;
+
+  /// No description provided for @businessColumnAmountRule.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额运算'**
+  String get businessColumnAmountRule;
+
+  /// No description provided for @businessColumnSubtractHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写要从本行金额扣减的数值，例如 100 减 20 等于 80。'**
+  String get businessColumnSubtractHint;
+
   /// No description provided for @bomLearningTitle.
   ///
   /// In zh, this message translates to:
@@ -555,6 +723,54 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'确认领料申请'**
   String get materialDiscoveryRequestTitle;
+
+  /// No description provided for @productionDailyReportLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载详情失败，请重试'**
+  String get productionDailyReportLoadFailed;
+
+  /// No description provided for @productionDailyReportReverseConfirmation.
+  ///
+  /// In zh, this message translates to:
+  /// **'红冲将反向冲销，确认？'**
+  String get productionDailyReportReverseConfirmation;
+
+  /// No description provided for @productionDailyReportDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除日报'**
+  String get productionDailyReportDeleteTitle;
+
+  /// No description provided for @productionDailyReportDeleteConfirmation.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定删除该草稿日报吗？'**
+  String get productionDailyReportDeleteConfirmation;
+
+  /// No description provided for @productionDailyReportDeleteAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get productionDailyReportDeleteAction;
+
+  /// No description provided for @productionDailyReportApprovedStateVerified.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已审核，页面已刷新。'**
+  String get productionDailyReportApprovedStateVerified;
+
+  /// No description provided for @productionDailyReportReversedStateVerified.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已红冲，页面已刷新。'**
+  String get productionDailyReportReversedStateVerified;
+
+  /// No description provided for @productionDailyReportStateChangedReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'日报状态已变化，页面已刷新，请核对当前状态。'**
+  String get productionDailyReportStateChangedReview;
 
   /// 应用标题
   ///
@@ -8270,7 +8486,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmFillGuide.
   ///
   /// In zh, this message translates to:
-  /// **'超过四分之三算满, 四分之一到四分之三算半, 不到四分之一算空'**
+  /// **'满按容量、半按一半估算；空按 0 记录，仅用于确实无料。容器有余料时可称重后直接填公斤。满/半/空属于估盘，会影响本期和下期耗用。'**
   String get wmFillGuide;
 
   /// No description provided for @wmMachineIdle.
@@ -8294,7 +8510,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmSubmitCount.
   ///
   /// In zh, this message translates to:
-  /// **'提交盘点'**
+  /// **'审核盘点并过账'**
   String get wmSubmitCount;
 
   /// No description provided for @wmWithdrawCount.
@@ -8480,7 +8696,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmReportTrend.
   ///
   /// In zh, this message translates to:
-  /// **'浪费率趋势'**
+  /// **'耗用差异率趋势'**
   String get wmReportTrend;
 
   /// No description provided for @wmReportMissingWeight.
@@ -8498,7 +8714,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmTrueUnitUsage.
   ///
   /// In zh, this message translates to:
-  /// **'真实单耗'**
+  /// **'独占期平均耗用'**
   String get wmTrueUnitUsage;
 
   /// No description provided for @wmAllocatedByTheory.
@@ -8510,7 +8726,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmWasteRate.
   ///
   /// In zh, this message translates to:
-  /// **'浪费率'**
+  /// **'耗用差异率'**
   String get wmWasteRate;
 
   /// No description provided for @wmIncludeWorkshopStore.
@@ -8528,7 +8744,7 @@ abstract class AppLocalizations {
   /// No description provided for @workshopMaterialReportsHubDesc.
   ///
   /// In zh, this message translates to:
-  /// **'按期间看每种料用了多少、浪费率与结算状态'**
+  /// **'按期间看盘点推算耗用、耗用差异率与结算状态'**
   String get workshopMaterialReportsHubDesc;
 
   /// No description provided for @wmReceiveReturn.

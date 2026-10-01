@@ -208,6 +208,8 @@ abstract final class RouteName {
   static const String stockBalance = '/stock/balance';
   static const String stockMovement = '/stock/movement';
   static const String stockInstantInventory = '/stock/instant-inventory';
+  static const String stockInstantInventoryOverview =
+      '/stock/instant-inventory/overview';
 
   /// 库存详情 (即时库存双击进入)：该货品各仓余额 + 出入库流水 + 单重学习。
   /// balance/movement 两页已并入 (旧路由重定向保深链)。
@@ -389,6 +391,10 @@ abstract final class RouteName {
 
   /// 车间内料仓用量报表与结算页 (生产、钱流报表入口)。
   static const String workshopMaterialReports = '/reports/workshop-material';
+  static const String stockCountRequests = '/stock/count-requests';
+  static const String financeStockCountReview = '/finance/stock-count-review';
+  static const String warehouseStockCountReview =
+      '/warehouse/stock-count-review';
 
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';

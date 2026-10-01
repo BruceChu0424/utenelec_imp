@@ -9,6 +9,105 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get businessColumnAmountUnavailable =>
+      'This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.';
+
+  @override
+  String get businessColumnEditorSubtitle =>
+      'Add document information or apply entered values to each line\'s official amount.';
+
+  @override
+  String get businessColumnBrowse => 'Existing columns';
+
+  @override
+  String get businessColumnNew => 'New column';
+
+  @override
+  String get businessColumnManage => 'Added to this document';
+
+  @override
+  String get businessColumnNoResults =>
+      'No matching columns. Choose New column to create one.';
+
+  @override
+  String get businessColumnNewHint =>
+      'Enter a name, then choose its purpose. Enter actual values in each table row.';
+
+  @override
+  String get businessColumnOfficialAmount => 'Affects official amount';
+
+  @override
+  String get businessColumnAmountTarget => 'Calculation target';
+
+  @override
+  String get businessColumnRowAmount => 'This line\'s amount';
+
+  @override
+  String get businessColumnRecordHint =>
+      'Values are stored with each document line as additional information.';
+
+  @override
+  String get businessColumnOfficialHint =>
+      'Entered values affect this line\'s amount, including saving, finance review and downstream processing.';
+
+  @override
+  String get businessColumnExampleTitle => 'Try an example';
+
+  @override
+  String get businessColumnExampleBase => 'Base amount (example)';
+
+  @override
+  String get businessColumnExampleValue => 'Column value (example)';
+
+  @override
+  String get businessColumnExampleHint =>
+      'Examples are not copied into the document. Blank values are skipped; zero is applied as entered.';
+
+  @override
+  String get businessColumnExampleInvalid =>
+      'Use valid numbers. Division by zero, inexact division and negative results are not allowed.';
+
+  @override
+  String get businessColumnFixedFeeHint =>
+      'The value applies once per line. For example, adding 20 to 100 gives 120.';
+
+  @override
+  String get businessColumnFactorHint =>
+      'Enter a multiplier or divisor. Multiplying by 0.9 applies 90% of the original amount.';
+
+  @override
+  String get businessColumnRemove => 'Remove from document';
+
+  @override
+  String get businessColumnRemoveHint =>
+      'Removing clears this column\'s values from all lines and recalculates amounts. Save the document to persist the change. Other documents and reusable definitions are unaffected.';
+
+  @override
+  String get businessColumnUseExisting => 'Use existing column';
+
+  @override
+  String get businessColumnAlreadyAdded =>
+      'This definition is already added. Open Added to this document to review it.';
+
+  @override
+  String get businessColumnOrderHint =>
+      'Amounts follow the order columns were added. Dragging headers changes display order only; populated fee columns remain visible.';
+
+  @override
+  String get businessColumnNoAdded =>
+      'No custom columns have been added to this document.';
+
+  @override
+  String get businessColumnNameRequired => 'Enter a column name';
+
+  @override
+  String get businessColumnAmountRule => 'Amount operation';
+
+  @override
+  String get businessColumnSubtractHint =>
+      'Enter the value to deduct from this line, for example 100 minus 20 equals 80.';
+
+  @override
   String get bomLearningTitle => 'BOM learning';
 
   @override
@@ -279,6 +378,36 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestTitle => 'Review material request';
+
+  @override
+  String get productionDailyReportLoadFailed =>
+      'Could not load the details. Please retry.';
+
+  @override
+  String get productionDailyReportReverseConfirmation =>
+      'This will reverse the report. Continue?';
+
+  @override
+  String get productionDailyReportDeleteTitle => 'Delete daily report';
+
+  @override
+  String get productionDailyReportDeleteConfirmation =>
+      'Delete this draft daily report?';
+
+  @override
+  String get productionDailyReportDeleteAction => 'Delete';
+
+  @override
+  String get productionDailyReportApprovedStateVerified =>
+      'The report is currently approved. The page has been refreshed.';
+
+  @override
+  String get productionDailyReportReversedStateVerified =>
+      'The report is currently reversed. The page has been refreshed.';
+
+  @override
+  String get productionDailyReportStateChangedReview =>
+      'The report status has changed. The page has been refreshed; please check its current status.';
 
   @override
   String get appTitle => 'Uten Integrated Management Platform';
@@ -4631,7 +4760,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get wmFillGuide =>
-      'Over 3/4 is full, 1/4 to 3/4 is half, under 1/4 is empty';
+      'Full estimates capacity; half estimates half capacity. Empty records zero: use only when no material remains. Weigh residual material and enter kilograms when possible. Level estimates affect this period and the next.';
 
   @override
   String get wmMachineIdle => 'Machine idle, all empty';
@@ -4643,7 +4772,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmPrintBlank => 'Print blank count sheet';
 
   @override
-  String get wmSubmitCount => 'Submit count';
+  String get wmSubmitCount => 'Approve count and post';
 
   @override
   String get wmWithdrawCount => 'Withdraw count';
@@ -4750,7 +4879,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmReportProduct => 'By product';
 
   @override
-  String get wmReportTrend => 'Waste trend';
+  String get wmReportTrend => 'Consumption variance trend';
 
   @override
   String get wmReportMissingWeight => 'Missing unit weights';
@@ -4759,13 +4888,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmReportLedger => 'Movements';
 
   @override
-  String get wmTrueUnitUsage => 'Actual per-unit usage';
+  String get wmTrueUnitUsage => 'Exclusive-period average';
 
   @override
   String get wmAllocatedByTheory => 'Allocated by standard';
 
   @override
-  String get wmWasteRate => 'Waste rate';
+  String get wmWasteRate => 'Consumption variance rate';
 
   @override
   String get wmIncludeWorkshopStore => 'Include workshop stores';
@@ -4776,7 +4905,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workshopMaterialReportsHubDesc =>
-      'Usage, waste rate and settlement status by period';
+      'Count-derived consumption, variance and settlement status by period';
 
   @override
   String get wmReceiveReturn => 'Receive return';

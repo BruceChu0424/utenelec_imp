@@ -1,4 +1,5 @@
 import '../badges/badge_module.dart';
+import '../../core/router/route_names.dart';
 
 export '../badges/badge_module.dart';
 
@@ -52,6 +53,103 @@ bool formDraftRouteIsLocal(String route) {
       !uri.path.contains('\\');
 }
 
+const formDraftUnknownSubmissionKey = '_formDraftHasUnknownSubmission';
+const formDraftUnknownSubmissionMessage = '提交结果待核对，请先核对提交，原记录不能删除';
+
+bool _isFqcDraftRoute(String route) {
+  final path = Uri.tryParse(route)?.path ?? '';
+  return path.startsWith('${RouteName.productionFqcSheetHandlingBase}/') ||
+      path.startsWith('${RouteName.productionFqcInspectionHandlingBase}/');
+}
+
+List<Map<Object?, Object?>> _fqcRows(Map<String, dynamic> data) {
+  final rows = data['rows'];
+  return [
+    if (data['row'] case final Map<Object?, Object?> row) row,
+    if (rows is List) ...rows.whereType<Map<Object?, Object?>>(),
+  ];
+}
+
+bool _fqcRowUnknown(Map<Object?, Object?> row) =>
+    row['submissionState'] == 'unknown' ||
+    (row['completed'] != true && row['submission'] is Map);
+
+/// A persisted false marker is an editor's positive outcome distinction, not
+/// permission to ignore a still-frozen legacy batch/FQC command.
+bool hasUnknownFormDraftSubmission(
+  Map<String, dynamic> data, {
+  required String route,
+  bool pendingFallback = false,
+  bool honorMarker = true,
+}) {
+  final marker = honorMarker ? data[formDraftUnknownSubmissionKey] : null;
+  if (marker == true) return true;
+  if (Uri.tryParse(route)?.path ==
+      RouteName.warehouseProductionDrawBatchIssue) {
+    if (data['uncertain'] == true) return true;
+    if (data['confirmedResult'] case final Map<Object?, Object?> receipt) {
+      final counts = [
+        receipt['issuedCount'],
+        receipt['skippedCount'],
+        receipt['replayedCount'],
+      ];
+      if (counts.every((value) => value is num && value >= 0) &&
+          counts.cast<num>().fold<num>(0, (sum, value) => sum + value) > 0) {
+        return false;
+      }
+    }
+  }
+  if (_isFqcDraftRoute(route)) {
+    final rows = _fqcRows(data);
+    if (rows.any(_fqcRowUnknown)) return true;
+    // Completed commands and fresh unsent remainder rows are not forever held
+    // by the former submission's generic pending flag.
+    if (rows.isNotEmpty &&
+        rows.every(
+          (row) =>
+              row['inspectionId'] is String &&
+              (row['completed'] == true ||
+                  const [
+                    'notSent',
+                    'rejected',
+                    'confirmed',
+                  ].contains(row['submissionState'])),
+        )) {
+      return false;
+    }
+  }
+  if (marker == false) return false;
+  // A single acknowledged creation can finish attachments. A partial list of
+  // createdOrders/createdShipments does not prove every command was confirmed.
+  if (['createdDocId', 'createdReportId', 'createdId'].any(
+    (key) => data[key] is String && (data[key] as String).trim().isNotEmpty,
+  )) {
+    return false;
+  }
+  return pendingFallback || data['_formDraftSubmissionPending'] == true;
+}
+
+/// Known legacy protocols must retain their frozen identities even if GET
+/// failed and the editor could not reconstruct rows. No feature dependencies.
+Set<String> unknownFormDraftCommandIdentities(
+  Map<String, dynamic> data, {
+  required String route,
+}) {
+  if (_isFqcDraftRoute(route)) {
+    return {
+      for (final row in _fqcRows(data))
+        if (_fqcRowUnknown(row))
+          '${row['inspectionId']}:${row['idempotencyKey']}',
+    };
+  }
+  if (Uri.tryParse(route)?.path ==
+          RouteName.warehouseProductionDrawBatchIssue &&
+      hasUnknownFormDraftSubmission(data, route: route)) {
+    return {'batch:${data['requestKey']}'};
+  }
+  return {};
+}
+
 class FormDraft {
   const FormDraft({
     required this.id,
@@ -74,6 +172,9 @@ class FormDraft {
   final DateTime updatedAt;
   final Map<String, dynamic> data;
   final String revision;
+
+  bool get hasUnknownSubmission =>
+      hasUnknownFormDraftSubmission(data, route: route);
 
   String get resumeLocation {
     final uri = Uri.parse(route);

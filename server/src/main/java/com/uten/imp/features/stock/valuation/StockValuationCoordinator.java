@@ -49,7 +49,8 @@ public class StockValuationCoordinator {
         // 内料仓单据的调拨、其它出库仍走下面的通用估价(调出进在途、调入按原出库成本恢复、其它出库进外部)。
         if(request.costReference() instanceof InventoryMovementCostReference.WorkshopMaterialBin ref
                 &&(request.movementType()==StockService.TYPE_WORKSHOP_MATERIAL_CONSUME
-                    ||request.movementType()==StockService.TYPE_WORKSHOP_MATERIAL_GAIN)){
+                    ||request.movementType()==StockService.TYPE_WORKSHOP_MATERIAL_GAIN
+                    ||request.movementType()==StockService.TYPE_WORKSHOP_APPROVED_COUNT)){
             return workshopMaterials.value(movement,request,pool,before,context,ref);
         }
         if(request.direction()==StockService.DIR_OUT&&request.costReference() instanceof InventoryMovementCostReference.ProcurementStockIn ref){

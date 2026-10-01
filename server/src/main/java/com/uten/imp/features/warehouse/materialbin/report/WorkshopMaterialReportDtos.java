@@ -28,11 +28,12 @@ public final class WorkshopMaterialReportDtos {
                               BigDecimal theoryQty, BigDecimal allocationBasisQty, BigDecimal diffQty,
                               BigDecimal wasteRate, String outcome, List<String> flags, BigDecimal consumedQty,
                               BigDecimal lossQty, Integer closeNo, OffsetDateTime closedAt,
-                              BigDecimal currentValue, BigDecimal valueAtClose, BigDecimal unitCost) {}
+                              BigDecimal currentValue, BigDecimal valueAtClose, BigDecimal unitCost,
+                              String openingCountBasis, String closingCountBasis, BigDecimal adjustmentQty) {}
 
     /**
-     * 产品用料表的一行 (每期 × 料 × 产品)。unitWeight 与 actualPerUnit 为公斤/件; exclusivePeriod = 本期这种料
-     * 只有这一个产品用 ("真实单耗": actualPerUnit = 分摊实际 / 完工), 其它行按理论比例分摊。
+     * 产品用料表的一行 (每期 × 料 × 产品)。unitWeight 与 actualPerUnit 为材料基本单位/件，单位随行下发；exclusivePeriod = 本期这种料
+     * 只有这一个产品用 (独占期平均耗用 = 分摊耗用 / 完工)，仍受盘点和报工误差影响，非逐件实测。
      */
     public record ProductUsageRow(UUID periodId, int periodNo, LocalDate startDate, LocalDate endDate,
                                   UUID closeMaterialId, String costBasis, UUID materialGoodsId, String materialCode,
@@ -40,12 +41,17 @@ public final class WorkshopMaterialReportDtos {
                                   UUID productGoodsId, String productCode, String productName,
                                   BigDecimal outputQty, BigDecimal unitWeight, BigDecimal theoryQty,
                                   BigDecimal allocatedQty, BigDecimal currentValue, BigDecimal unitMaterialCost,
-                                  boolean exclusivePeriod, BigDecimal actualPerUnit) {}
+                                  boolean exclusivePeriod, BigDecimal actualPerUnit,
+                                  String openingCountBasis, String closingCountBasis, String materialUnitName,
+                                  BigDecimal materialUnitKgFactor) {
+        public String getCurrentValueExact() { return currentValue == null ? null : currentValue.toPlainString(); }
+        public String getUnitMaterialCostExact() { return unitMaterialCost == null ? null : unitMaterialCost.toPlainString(); }
+    }
 
-    /** 浪费率趋势的一个点 (只算主料; 横轴是期间起止日)。 */
+    /** 耗用差异率趋势的一个点 (只算主料; wasteRate 保留兼容字段名，不代表报废率)。 */
     public record WastePoint(UUID periodId, int periodNo, LocalDate startDate, LocalDate endDate, UUID goodsId,
                              String goodsCode, String goodsName, UUID colorId, String colorName,
-                             BigDecimal wasteRate) {}
+                             BigDecimal wasteRate, String openingCountBasis, String closingCountBasis) {}
 
     /** 缺单重清单的一行: 未结算期间里有产量、但 BOM 没填单个重量的 (期, 产品, 料)。 */
     public record MissingWeightRow(UUID periodId, int periodNo, LocalDate startDate, LocalDate endDate,

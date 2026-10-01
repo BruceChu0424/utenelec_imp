@@ -572,7 +572,7 @@ class ProductionDailyReportCommandTest {
         });
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{"CREATE", hash, reportId}));
+                        new Object[]{"CREATE", hash, reportId, null, null}));
         when(currentUser.requireId()).thenReturn(actorId);
         ProductionDailyReport existing = new ProductionDailyReport();
         existing.setId(reportId);
@@ -614,7 +614,7 @@ class ProductionDailyReportCommandTest {
         Query command = query(false);
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{"CREATE", legacyHash, reportId}));
+                        new Object[]{"CREATE", legacyHash, reportId, null, null}));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             if (sql.contains("pg_advisory_xact_lock")) return advisory;
@@ -667,7 +667,7 @@ class ProductionDailyReportCommandTest {
         });
         when(command.getResultList()).thenReturn(
                 java.util.Collections.singletonList(
-                        new Object[]{"CREATE", "a".repeat(64), UUID.randomUUID()}));
+                        new Object[]{"CREATE", "a".repeat(64), UUID.randomUUID(), null, null}));
         when(currentUser.requireId()).thenReturn(actorId);
 
         ApiException error = assertThrows(
@@ -809,6 +809,89 @@ class ProductionDailyReportCommandTest {
     // ====================== V644 审核幂等键 ======================
 
     @Test
+    void approvalV2VersionIsMandatoryAndLegacyHashBytesRemainUnchanged() {
+        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        assertEquals("170380f1201358a0cf3543c1e23c2f0455f1025487fb4f9532d64832d468fe1c",
+                ProductionDailyReportService.approveRequestHash(id));
+        assertEquals(ProductionDailyReportService.approveRequestHash(id), ProductionDailyReportService.approveRequestHash(id, null));
+        assertNotEquals(ProductionDailyReportService.approveRequestHash(id), ProductionDailyReportService.approveRequestHash(id, 0L));
+        assertNotEquals(ProductionDailyReportService.approveRequestHash(id, 0L), ProductionDailyReportService.approveRequestHash(id, 1L));
+        var request = approveRequest("protocol-test-key");
+        assertEquals(1, ProductionDailyReportService.approvalCommandVersion(request));
+        request.setCommandVersion(2);
+        assertThrows(ApiException.class, () -> ProductionDailyReportService.approvalCommandVersion(request));
+        request.setExpectedVersion(-1L);
+        assertThrows(ApiException.class, () -> ProductionDailyReportService.approvalCommandVersion(request));
+        request.setExpectedVersion(0L);
+        assertEquals(2, ProductionDailyReportService.approvalCommandVersion(request));
+        request.setCommandVersion(1);
+        assertThrows(ApiException.class, () -> ProductionDailyReportService.approvalCommandVersion(request));
+    }
+
+    @Test
+    void staleReviewedVersionRejectsBeforeCommandAndBusinessWrites() {
+        UUID reportId = UUID.randomUUID();
+        stubApproveLedger(null);
+        ProductionDailyReport report = approvedReport(reportId, UUID.randomUUID());
+        report.setStatus((short) 0);
+        report.setRowVersion(5L);
+        when(em.find(ProductionDailyReport.class, reportId, LockModeType.PESSIMISTIC_WRITE)).thenReturn(report);
+        var request = approveRequest("reviewed-version-stale");
+        request.setCommandVersion(2); request.setExpectedVersion(4L);
+        ApiException error = assertThrows(ApiException.class, () -> service.approve(reportId, request));
+        assertEquals(ErrorCode.DAILY_REPORT_REVIEW_VERSION_CONFLICT, error.getCode());
+        verify(em, never()).createNativeQuery(argThat(sql -> sql.contains("INSERT INTO production_daily_report_commands")));
+        verify(reportRepo, never()).saveAndFlush(any());
+        verify(executionSegments, never()).approve(any(), any());
+        verify(directTransfer, never()).executeForApprovedReport(any(), any());
+    }
+
+    @Test
+    void v2ReplayUsesPersistedReviewAndPrecedesCurrentVersionOrStatus() {
+        UUID reportId = UUID.randomUUID(); UUID maker = UUID.randomUUID();
+        stubApproveLedger(new Object[]{"APPROVE", ProductionDailyReportService.approveRequestHash(reportId, 0L), reportId, 2, 0L});
+        ProductionDailyReport report = approvedReport(reportId, maker);
+        report.setRowVersion(8L); report.setStatus((short) -1);
+        when(reportRepo.findById(reportId)).thenReturn(Optional.of(report));
+        when(itemRepo.findByReportIdOrderByLineNoAsc(reportId)).thenReturn(List.of());
+        when(nameResolver.nameOf(maker)).thenReturn("Planner");
+        var request = approveRequest("immutable-v2-review-key"); request.setCommandVersion(2); request.setExpectedVersion(0L);
+        DailyReportDetail result = service.approve(reportId, request);
+        assertEquals((short) -1, result.getStatus()); assertEquals(8L, result.getRowVersion());
+        assertEquals(2, result.getApprovalCommandVersion());
+        assertEquals(0L, result.getApprovalReceipt().reviewedVersion());
+        org.junit.jupiter.api.Assertions.assertTrue(result.getApprovalReceipt().replay());
+        assertEquals("REVIEWED_VERSION", result.getApprovalReceipt().getReviewProtection());
+        verify(em, never()).find(ProductionDailyReport.class, reportId, LockModeType.PESSIMISTIC_WRITE);
+        verify(executionSegments, never()).approve(any(), any());
+    }
+
+    @Test
+    void sameApprovalKeyWithAnotherReviewedVersionDoesNotReplay() {
+        UUID reportId = UUID.randomUUID();
+        stubApproveLedger(new Object[]{"APPROVE", ProductionDailyReportService.approveRequestHash(reportId, 0L), reportId, 2, 0L});
+        var request = approveRequest("different-version-key"); request.setCommandVersion(2); request.setExpectedVersion(1L);
+        ApiException error = assertThrows(ApiException.class, () -> service.approve(reportId, request));
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        verify(executionSegments, never()).approve(any(), any());
+    }
+
+    @Test
+    void v2NeverUpgradesANullLegacyReceiptToReviewedVersionZero() {
+        UUID reportId = UUID.randomUUID(); UUID maker = UUID.randomUUID();
+        stubApproveLedger(new Object[]{"APPROVE", ProductionDailyReportService.approveRequestHash(reportId), reportId, null, null});
+        when(reportRepo.findById(reportId)).thenReturn(Optional.of(approvedReport(reportId, maker)));
+        when(itemRepo.findByReportIdOrderByLineNoAsc(reportId)).thenReturn(List.of());
+        when(nameResolver.nameOf(maker)).thenReturn("Planner");
+        var request = approveRequest("legacy-same-key"); request.setCommandVersion(2); request.setExpectedVersion(0L);
+        ApiException error = assertThrows(ApiException.class, () -> service.approve(reportId, request));
+        assertEquals(ErrorCode.DAILY_REPORT_LEGACY_APPROVAL_RECEIPT, error.getCode());
+        verify(access).requireReadable(maker, "生产日报单不存在", "production_daily_report:approve", "production_daily_report:reverse");
+        verify(executionSegments, never()).approve(any(), any());
+        verify(em, never()).createNativeQuery(argThat(sql -> sql.startsWith("UPDATE production_daily_report_commands")));
+    }
+
+    @Test
     void approveWithoutAnIdempotencyKeyIsRejectedBeforeAnythingIsLocked() {
         ApiException error = assertThrows(ApiException.class,
                 () -> service.approve(UUID.randomUUID(), approveRequest("  ")));
@@ -915,7 +998,7 @@ class ProductionDailyReportCommandTest {
         Query commandRead = query(false);
         when(commandRead.getResultList()).thenReturn(ledgerRow == null
                 ? List.of()
-                : java.util.Collections.singletonList(ledgerRow));
+                : java.util.Collections.singletonList(java.util.Arrays.copyOf(ledgerRow, 5)));
         // 只有回放路径会走到这几张表；拒绝路径在此之前就抛了，所以放宽严格桩检查。
         Query empty = org.mockito.Mockito.mock(Query.class);
         org.mockito.Mockito.lenient()

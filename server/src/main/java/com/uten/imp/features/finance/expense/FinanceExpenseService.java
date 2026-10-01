@@ -479,7 +479,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         return new FinanceExpenseItemDto(it.getId(), it.getLineNo(), it.getExpenseStyleId(),
                 it.getDepartmentId(), it.getCounterpartAccountId(), it.getCounterpartName(),
                 it.getQty(), it.getPrice(), it.getAmountOriginal(), it.getAmountLocal(),
-                it.getSummary(), it.getRemark());
+                it.getSummary(), it.getRemark(), null);
     }
 
     private FinanceExpenseListItem toList(FinanceExpense e) {
@@ -488,6 +488,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     }
 
     private FinanceExpenseDetail toDetail(FinanceExpense e, List<FinanceExpenseItemDto> items) {
+        var departments = com.uten.imp.features.finance.FinanceDepartmentNames.referenced(
+                em, items.stream().map(FinanceExpenseItemDto::getDepartmentId).toList());
+        items.forEach(item -> item.setDepartmentName(item.getDepartmentId() == null
+                ? null : departments.get(item.getDepartmentId())));
         return new FinanceExpenseDetail(e.getId(), e.getLegacyId(), e.getBillNo(), e.getBillDate(),
                 e.getAccountId(), e.getCounterpartAccountId(), e.getCurrencyId(), e.getExchangeRate(),
                 e.getAmountOriginal(), e.getAmountLocal(), e.getPaymentMethodId(), e.getPaymentMethodLegacyId(),

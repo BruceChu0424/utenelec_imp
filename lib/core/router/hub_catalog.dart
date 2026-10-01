@@ -30,6 +30,7 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     // 2026-09-24 三段式：任务中心一张卡（合并页）+ 新建单据六卡（creator-only）。
     // 调拨/盘点列表卡与委外两张历史只读卡撤下（浏览并入任务中心大类）。
     RouteName.warehouseTasks,
+    RouteName.warehouseStockCountReview,
     RoutePath.stockDocNew('OTHER_OUT'),
     RoutePath.stockDocNew('FINISHED_OUT'),
     RoutePath.stockDocNew('OTHER_IN'),
@@ -49,6 +50,7 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
   RouteName.finance: [
     RouteName.financeAudits,
     RouteName.financeQuoteReview,
+    RouteName.financeStockCountReview,
     '/expense/approval',
     '/expense/settings',
     RoutePath.financeDocNew('receipts'),

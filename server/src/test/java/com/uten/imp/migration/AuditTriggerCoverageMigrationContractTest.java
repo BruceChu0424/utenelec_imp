@@ -168,7 +168,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     "库存单据、预留与调整申请: 人工录入并审核的业务单据",
                     Set.of(
                         "stock_balance_adjustment_requests", "stock_document_items",
-                        "stock_documents", "stock_reservations")),
+                        "stock_documents", "stock_reservations", "stock_draw_issue_batches")),
             new FullGroup("production_docs", "data_change", false,
                     "生产计划、日报、执行段、退料、点收、质检与直送单据: 人工录入并审核的业务单据",
                     Set.of(

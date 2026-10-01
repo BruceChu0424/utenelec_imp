@@ -9,6 +9,101 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get businessColumnAmountUnavailable =>
+      '현재 계정은 이 열을 금액 계산에 사용할 수 없습니다. 가격 권한을 복구하거나 문자 또는 숫자 기록을 명시적으로 선택하세요.';
+
+  @override
+  String get businessColumnEditorSubtitle =>
+      '문서 정보를 추가하거나 입력값을 각 행의 공식 금액에 반영합니다.';
+
+  @override
+  String get businessColumnBrowse => '기존 열 선택';
+
+  @override
+  String get businessColumnNew => '새 열';
+
+  @override
+  String get businessColumnManage => '이 문서에 추가됨';
+
+  @override
+  String get businessColumnNoResults => '일치하는 열이 없습니다. 새 열을 선택하여 만드세요.';
+
+  @override
+  String get businessColumnNewHint =>
+      '이름을 입력한 후 용도를 선택하세요. 실제 값은 표의 각 행에 입력합니다.';
+
+  @override
+  String get businessColumnOfficialAmount => '공식 금액에 반영';
+
+  @override
+  String get businessColumnAmountTarget => '계산 대상';
+
+  @override
+  String get businessColumnRowAmount => '현재 행 금액';
+
+  @override
+  String get businessColumnRecordHint => '각 행에 입력한 값은 문서의 추가 정보로 저장됩니다.';
+
+  @override
+  String get businessColumnOfficialHint =>
+      '입력값은 현재 행 금액과 저장, 재무 검토 및 후속 업무에 반영됩니다.';
+
+  @override
+  String get businessColumnExampleTitle => '계산 예시';
+
+  @override
+  String get businessColumnExampleBase => '기본 금액 (예시)';
+
+  @override
+  String get businessColumnExampleValue => '이 열의 입력값 (예시)';
+
+  @override
+  String get businessColumnExampleHint =>
+      '예시는 문서에 입력되지 않습니다. 빈 값은 제외되며 0은 그대로 계산됩니다.';
+
+  @override
+  String get businessColumnExampleInvalid =>
+      '유효한 숫자를 입력하세요. 0으로 나누기, 무한소수 및 음수 결과는 허용되지 않습니다.';
+
+  @override
+  String get businessColumnFixedFeeHint =>
+      '이 값은 행마다 한 번 적용됩니다. 예를 들어 100에 20을 더하면 120입니다.';
+
+  @override
+  String get businessColumnFactorHint =>
+      '곱셈과 나눗셈에는 배율을 입력합니다. 0.9를 곱하면 원래 금액의 90%가 됩니다.';
+
+  @override
+  String get businessColumnRemove => '이 문서에서 제거';
+
+  @override
+  String get businessColumnRemoveHint =>
+      '제거하면 모든 행에서 이 열의 값이 지워지고 금액이 다시 계산됩니다. 문서를 저장하면 적용되며 다른 문서와 재사용 열에는 영향이 없습니다.';
+
+  @override
+  String get businessColumnUseExisting => '기존 열 사용';
+
+  @override
+  String get businessColumnAlreadyAdded => '이미 추가된 열입니다. 이 문서에 추가됨에서 확인하세요.';
+
+  @override
+  String get businessColumnOrderHint =>
+      '금액은 열을 추가한 순서대로 계산됩니다. 머리글 이동은 표시 순서만 바꾸며 값이 있는 비용 열은 계속 표시됩니다.';
+
+  @override
+  String get businessColumnNoAdded => '이 문서에 추가된 사용자 정의 열이 없습니다.';
+
+  @override
+  String get businessColumnNameRequired => '열 이름을 입력하세요';
+
+  @override
+  String get businessColumnAmountRule => '금액 연산';
+
+  @override
+  String get businessColumnSubtractHint =>
+      '이 행에서 뺄 값을 입력하세요. 예를 들어 100에서 20을 빼면 80입니다.';
+
+  @override
   String get bomLearningTitle => 'BOM 학습 기록';
 
   @override
@@ -264,6 +359,35 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestTitle => '자재 요청 확인';
+
+  @override
+  String get productionDailyReportLoadFailed =>
+      '상세 정보를 불러오지 못했습니다. 다시 시도해 주세요.';
+
+  @override
+  String get productionDailyReportReverseConfirmation =>
+      '이 일보를 역분개합니다. 계속하시겠습니까?';
+
+  @override
+  String get productionDailyReportDeleteTitle => '생산 일보 삭제';
+
+  @override
+  String get productionDailyReportDeleteConfirmation => '이 생산 일보 초안을 삭제하시겠습니까?';
+
+  @override
+  String get productionDailyReportDeleteAction => '삭제';
+
+  @override
+  String get productionDailyReportApprovedStateVerified =>
+      '현재 승인된 상태이며 페이지를 새로 고쳤습니다.';
+
+  @override
+  String get productionDailyReportReversedStateVerified =>
+      '현재 역분개된 상태이며 페이지를 새로 고쳤습니다.';
+
+  @override
+  String get productionDailyReportStateChangedReview =>
+      '일보 상태가 변경되어 페이지를 새로 고쳤습니다. 현재 상태를 확인해 주세요.';
 
   @override
   String get appTitle => '우텅 통합 관리 플랫폼';
@@ -4514,7 +4638,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmWeighLoose => '산물 자재';
 
   @override
-  String get wmFillGuide => '3/4 이상은 가득, 1/4~3/4는 절반, 1/4 미만은 비어 있음';
+  String get wmFillGuide =>
+      '가득은 용량 전체, 절반은 용량의 절반으로 추정합니다. 비어 있음은 0으로 기록하므로 잔량이 없을 때만 선택하세요. 잔량은 가능하면 무게를 재어 kg으로 입력하세요. 수준 추정은 이번 기간과 다음 기간 사용량에 영향을 줍니다.';
 
   @override
   String get wmMachineIdle => '설비 정지, 전부 비어 있음';
@@ -4526,7 +4651,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmPrintBlank => '빈 재고 조사표 인쇄';
 
   @override
-  String get wmSubmitCount => '재고 조사 제출';
+  String get wmSubmitCount => '재고 조사 승인 및 반영';
 
   @override
   String get wmWithdrawCount => '재고 조사 철회';
@@ -4633,7 +4758,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmReportProduct => '제품별';
 
   @override
-  String get wmReportTrend => '손실률 추이';
+  String get wmReportTrend => '사용량 차이율 추이';
 
   @override
   String get wmReportMissingWeight => '개당 중량 누락';
@@ -4642,13 +4767,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmReportLedger => '입출고 내역';
 
   @override
-  String get wmTrueUnitUsage => '실제 개당 사용량';
+  String get wmTrueUnitUsage => '단독 사용 기간 평균';
 
   @override
   String get wmAllocatedByTheory => '표준 비율 배분';
 
   @override
-  String get wmWasteRate => '손실률';
+  String get wmWasteRate => '사용량 차이율';
 
   @override
   String get wmIncludeWorkshopStore => '작업장 자재창고 포함';
@@ -4657,7 +4782,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get workshopMaterialSetupHubDesc => '일괄 출고 사용, 설비·용기, 도입 준비';
 
   @override
-  String get workshopMaterialReportsHubDesc => '기간별 자재 사용량, 손실률, 결산 상태';
+  String get workshopMaterialReportsHubDesc => '기간별 실사 기반 추산 사용량, 차이율, 결산 상태';
 
   @override
   String get wmReceiveReturn => '반납 수령';

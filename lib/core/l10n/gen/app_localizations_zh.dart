@@ -9,6 +9,93 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get businessColumnAmountUnavailable =>
+      '当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。';
+
+  @override
+  String get businessColumnEditorSubtitle => '为单据补充信息，或让输入值参与每行正式金额计算。';
+
+  @override
+  String get businessColumnBrowse => '选择已有列';
+
+  @override
+  String get businessColumnNew => '新建列';
+
+  @override
+  String get businessColumnManage => '本单已添加';
+
+  @override
+  String get businessColumnNoResults => '没有匹配的列，可以切换到“新建列”。';
+
+  @override
+  String get businessColumnNewHint => '先填写名称，再选择这列的用途。每行的实际数值在表格里填写。';
+
+  @override
+  String get businessColumnOfficialAmount => '参与正式金额';
+
+  @override
+  String get businessColumnAmountTarget => '计算目标';
+
+  @override
+  String get businessColumnRowAmount => '本行金额';
+
+  @override
+  String get businessColumnRecordHint => '每行分别填写，保存为单据补充信息。';
+
+  @override
+  String get businessColumnOfficialHint => '输入值会计入本行金额；保存、财务审核和后续业务沿用计算后的金额。';
+
+  @override
+  String get businessColumnExampleTitle => '试算一下';
+
+  @override
+  String get businessColumnExampleBase => '原金额（示例）';
+
+  @override
+  String get businessColumnExampleValue => '本列输入值（示例）';
+
+  @override
+  String get businessColumnExampleHint =>
+      '示例只帮助理解计算，不会填入单据。留空不参与计算，填写 0 则按 0 计算。';
+
+  @override
+  String get businessColumnExampleInvalid => '请填写有效数值；不能除以 0，结果须为非负的精确有限小数。';
+
+  @override
+  String get businessColumnFixedFeeHint => '此值按每行收取一次。例如本行金额 100，填 20 后加到 120。';
+
+  @override
+  String get businessColumnFactorHint => '乘除填写倍率，例如乘 0.9 表示按原金额的 90% 计算。';
+
+  @override
+  String get businessColumnRemove => '从本单移除';
+
+  @override
+  String get businessColumnRemoveHint =>
+      '移除后，本单各行的该列内容会清除，金额会重新计算。保存单据后生效；其他单据和可复用列不受影响。';
+
+  @override
+  String get businessColumnUseExisting => '使用已有列';
+
+  @override
+  String get businessColumnAlreadyAdded => '本单已经添加了相同定义的列，可到“本单已添加”查看。';
+
+  @override
+  String get businessColumnOrderHint => '金额按列的添加顺序计算。拖动表头只改变显示顺序；有值的费用列保持可见。';
+
+  @override
+  String get businessColumnNoAdded => '本单还没有添加自定义列。';
+
+  @override
+  String get businessColumnNameRequired => '请输入列名称';
+
+  @override
+  String get businessColumnAmountRule => '金额运算';
+
+  @override
+  String get businessColumnSubtractHint => '填写要从本行金额扣减的数值，例如 100 减 20 等于 80。';
+
+  @override
   String get bomLearningTitle => 'BOM 学习记录';
 
   @override
@@ -257,6 +344,31 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestTitle => '确认领料申请';
+
+  @override
+  String get productionDailyReportLoadFailed => '加载详情失败，请重试';
+
+  @override
+  String get productionDailyReportReverseConfirmation => '红冲将反向冲销，确认？';
+
+  @override
+  String get productionDailyReportDeleteTitle => '删除日报';
+
+  @override
+  String get productionDailyReportDeleteConfirmation => '确定删除该草稿日报吗？';
+
+  @override
+  String get productionDailyReportDeleteAction => '删除';
+
+  @override
+  String get productionDailyReportApprovedStateVerified => '当前已审核，页面已刷新。';
+
+  @override
+  String get productionDailyReportReversedStateVerified => '当前已红冲，页面已刷新。';
+
+  @override
+  String get productionDailyReportStateChangedReview =>
+      '日报状态已变化，页面已刷新，请核对当前状态。';
 
   @override
   String get appTitle => '优腾·综合管理平台';
@@ -4413,7 +4525,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmWeighLoose => '散料';
 
   @override
-  String get wmFillGuide => '超过四分之三算满, 四分之一到四分之三算半, 不到四分之一算空';
+  String get wmFillGuide =>
+      '满按容量、半按一半估算；空按 0 记录，仅用于确实无料。容器有余料时可称重后直接填公斤。满/半/空属于估盘，会影响本期和下期耗用。';
 
   @override
   String get wmMachineIdle => '本机停机、全空';
@@ -4425,7 +4538,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmPrintBlank => '打印空白盘点表';
 
   @override
-  String get wmSubmitCount => '提交盘点';
+  String get wmSubmitCount => '审核盘点并过账';
 
   @override
   String get wmWithdrawCount => '撤回盘点';
@@ -4532,7 +4645,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmReportProduct => '产品用料';
 
   @override
-  String get wmReportTrend => '浪费率趋势';
+  String get wmReportTrend => '耗用差异率趋势';
 
   @override
   String get wmReportMissingWeight => '缺单重清单';
@@ -4541,13 +4654,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmReportLedger => '收发明细';
 
   @override
-  String get wmTrueUnitUsage => '真实单耗';
+  String get wmTrueUnitUsage => '独占期平均耗用';
 
   @override
   String get wmAllocatedByTheory => '按理论比例分摊';
 
   @override
-  String get wmWasteRate => '浪费率';
+  String get wmWasteRate => '耗用差异率';
 
   @override
   String get wmIncludeWorkshopStore => '含内料仓';
@@ -4556,7 +4669,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workshopMaterialSetupHubDesc => '开启车间整批领料、机台与容器、上线准备 (产品的颗粒与单个重量)';
 
   @override
-  String get workshopMaterialReportsHubDesc => '按期间看每种料用了多少、浪费率与结算状态';
+  String get workshopMaterialReportsHubDesc => '按期间看盘点推算耗用、耗用差异率与结算状态';
 
   @override
   String get wmReceiveReturn => '收退回';

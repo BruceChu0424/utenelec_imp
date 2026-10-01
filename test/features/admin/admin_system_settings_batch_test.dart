@@ -7,8 +7,39 @@ import 'package:uten_imp/features/admin/models/system_setting_entry.dart';
 import 'package:uten_imp/features/admin/models/system_updater_status.dart';
 import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/system_setting_repository.dart';
+import 'package:uten_imp/shared/providers/idle_timeout_controller.dart';
 
 void main() {
+  testWidgets('保存徽章轮询间隔后通知既有公共设置刷新入口', (tester) async {
+    final repo = _Repository();
+    repo.settings.add(
+      _Repository._entry(
+        'badge_poll_seconds',
+        '60',
+        'int',
+        'business',
+        min: 15,
+        max: 600,
+      ),
+    );
+    await _pump(tester, repo);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AdminSystemSettingsPage)),
+    );
+    final before = container.read(idleThresholdVersionProvider);
+    final field = find.byKey(
+      const ValueKey('system-setting-badge_poll_seconds'),
+    );
+    await tester.ensureVisible(field);
+    await tester.enterText(field, '90');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('system-settings-save')));
+    await tester.pumpAndSettle();
+    expect(repo.changes, [
+      (key: 'badge_poll_seconds', value: '90', expectedValue: '60'),
+    ]);
+    expect(container.read(idleThresholdVersionProvider), before + 1);
+  });
   testWidgets(
     'reverted input is clean and string settings use text keyboards',
     (tester) async {

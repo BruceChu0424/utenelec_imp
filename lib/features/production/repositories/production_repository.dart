@@ -2221,12 +2221,29 @@ class ProductionDailyReportRepository {
   Future<ProductionDailyReportDetail> approve(
     String id, {
     required String idempotencyKey,
+    int? commandVersion,
+    int? expectedVersion,
   }) async {
     final json = await api.post(
       '/production/daily-reports/$id/approve',
-      body: {'idempotencyKey': idempotencyKey},
+      body: {
+        'idempotencyKey': idempotencyKey,
+        'commandVersion': ?commandVersion,
+        'expectedVersion': ?expectedVersion,
+      },
     ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
+  }
+
+  Future<ProductionDailyReportApprovalResolution> approvalReceipt(
+    String id, {
+    required String idempotencyKey,
+  }) async {
+    final json = await api.get(
+      '/production/daily-reports/$id/approval-receipt',
+      query: {'idempotencyKey': idempotencyKey},
+    );
+    return ProductionDailyReportApprovalResolution.fromJson(json);
   }
 
   Future<ProductionDailyReportDetail> reverse(String id) async {

@@ -1,6 +1,8 @@
 package com.uten.imp.config;
 
 import com.uten.imp.application.concurrency.FulfillmentSourceConflictRetryInterceptor;
+import com.uten.imp.application.concurrency.FulfillmentCommandDeadlineTransactions;
+import com.uten.imp.application.concurrency.FulfillmentDeadlineTransactionAttributeSource;
 import org.springframework.aop.Advisor;
 import org.springframework.aop.ClassFilter;
 import org.springframework.aop.Pointcut;
@@ -9,11 +11,19 @@ import org.springframework.aop.support.DefaultPointcutAdvisor;
 import org.springframework.aop.support.Pointcuts;
 import org.springframework.aop.support.annotation.AnnotationMatchingPointcut;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.config.RuntimeBeanReference;
+import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.convert.DurationStyle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Role;
 import org.springframework.core.Ordered;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAttributeSource;
+
+import java.time.temporal.ChronoUnit;
 
 /**
  * 把 {@link FulfillmentSourceConflictRetryInterceptor} 挂到本应用所有 {@code @Transactional}
@@ -40,16 +50,41 @@ public class FulfillmentSourceConflictRetryConfig {
 
     @Bean
     @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
-    public Advisor fulfillmentSourceConflictRetryAdvisor() {
+    public Advisor fulfillmentSourceConflictRetryAdvisor(TransactionAttributeSource transactionAttributeSource,
+            @Value("${spring.transaction.default-timeout:40s}") String defaultTimeout) {
         Pointcut transactional = Pointcuts.union(
                 new AnnotationMatchingPointcut(Transactional.class, true),
                 AnnotationMatchingPointcut.forMethodAnnotation(Transactional.class));
         ClassFilter applicationOnly = clazz -> clazz.getName().startsWith(APPLICATION_PACKAGE_PREFIX);
         Pointcut pointcut = new ComposablePointcut(transactional).intersection(applicationOnly);
         DefaultPointcutAdvisor advisor = new DefaultPointcutAdvisor(
-                pointcut, new FulfillmentSourceConflictRetryInterceptor());
+                pointcut, new FulfillmentSourceConflictRetryInterceptor(
+                        DurationStyle.detectAndParse(defaultTimeout, ChronoUnit.SECONDS), transactionAttributeSource));
         advisor.setOrder(ORDER);
         return advisor;
+    }
+
+    @Bean
+    @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+    public FulfillmentCommandDeadlineTransactions fulfillmentCommandDeadlineTransactions() {
+        return new FulfillmentCommandDeadlineTransactions();
+    }
+
+    @Bean
+    @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
+    public static BeanFactoryPostProcessor fulfillmentDeadlineTransactionAttributes() {
+        return beanFactory -> {
+            if (!beanFactory.containsBeanDefinition("transactionInterceptor")) return;
+            var definition = beanFactory.getBeanDefinition("transactionInterceptor");
+            var wrapped = new RootBeanDefinition(FulfillmentDeadlineTransactionAttributeSource.class);
+            wrapped.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
+            wrapped.getConstructorArgumentValues().addIndexedArgumentValue(0,
+                    new RuntimeBeanReference("transactionAttributeSource"));
+            // Infrastructure advisors can instantiate the interceptor before
+            // ordinary BeanPostProcessors exist. Configure its definition first.
+            // The inner bean creates no second autowire candidate of this type.
+            definition.getPropertyValues().add("transactionAttributeSource", wrapped);
+        };
     }
 
     /** 让配置意图可测: 顺序必须位于事务拦截器之前(数值更小)。 */

@@ -20,6 +20,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -39,6 +41,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/widgets/source_doc_link.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -293,6 +296,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   );
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -680,11 +684,19 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
           children: [
             UtenContentContainer.wide(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ? Semantics(
+                      label: AppLocalizations.of(context).commonLoading,
+                      liveRegion: true,
+                      child: const UtenSkeletonList(),
                     )
                   : _error != null
-                  ? Center(child: Text(_error!))
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: AppLocalizations.of(context).commonRetry,
+                      onAction: () async {
+                        if (!_loading) await _load();
+                      },
+                    )
                   : _detail == null
                   ? const SizedBox.shrink()
                   // 2026-09-09 折叠头+表内滚（与货品资料页统一）：上滑先收头部
@@ -780,7 +792,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
       // 与全站一致。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _busy ? null : _actions(theme),
+      floatingActionButton:
+          _detail == null || _busy || _loading || _error != null
+          ? null
+          : _actions(theme),
     );
   }
 
@@ -927,6 +942,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
   /// 表头设置列显隐 + 网格线 + 横滚），不再是卡片式拼凑行。
   Widget _itemsCard(ThemeData theme, MasterNameService names) {
     final items = _detail!.items;
+    final hasTotalPricing =
+        widget.docType == PurchaseDocType.order &&
+        items.any((it) => it.totalAmountInputText != null);
     final canViewCommercialAmounts = _canViewCommercialAmounts;
     final changedCount = _changedQtyItems.length;
     return Column(
@@ -1082,19 +1100,36 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                 MasterColumnDef(
                   key: 'price',
                   label: '单价',
-                  width: 90,
+                  width: hasTotalPricing ? 190 : 90,
                   type: 'money',
-                  value: (it) => _historicalReceipt
+                  info: hasTotalPricing
+                      ? '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。'
+                      : null,
+                  value: (it) =>
+                      widget.docType == PurchaseDocType.order &&
+                          it.totalAmountInputText != null
+                      ? '${financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? '—'}（参考）'
+                      : _historicalReceipt
                       ? historicalReceiptAmount(it.priceText)
                       : it.price?.toStringAsFixed(2),
                 ),
                 MasterColumnDef(
                   key: 'amount',
-                  label: _historicalReceipt ? '原币金额' : '金额',
+                  label: _historicalReceipt
+                      ? '原币金额'
+                      : widget.docType == PurchaseDocType.order
+                      ? '总金额'
+                      : '金额',
                   width: 100,
                   type: 'money',
-                  // 优先服务端权威金额（含舍入口径）；仅历史缺失时才本地乘算兜底。
-                  value: (it) => _historicalReceipt
+                  // 总金额计价保留服务端原文；记录缺失时不能回乘参考单价补造金额。
+                  value: (it) =>
+                      widget.docType == PurchaseDocType.order &&
+                          it.totalAmountInputText != null
+                      ? financeExactMoneyDisplay(
+                          it.amountOriginalText ?? it.amountLocalText,
+                        )
+                      : _historicalReceipt
                       ? historicalReceiptAmount(it.amountOriginalText)
                       : (it.amountOriginal ?? it.amountLocal) != null
                       ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(

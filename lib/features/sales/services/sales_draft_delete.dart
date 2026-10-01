@@ -22,6 +22,7 @@ Future<void> deleteSalesDraft(
   SalesDocType type,
   String id, {
   bool Function()? stillCurrent,
+  Future<void> Function()? beforeDelete,
 }) async {
   final detail = await repository.detail(id);
   if (stillCurrent != null && !stillCurrent()) {
@@ -43,6 +44,10 @@ Future<void> deleteSalesDraft(
               workflow.financeRejected ||
               detail.financeAudit == 1))) {
     throw ApiException('DRAFT_DELETE_NOT_ALLOWED', '该单据已不是可删除草稿或无删除权限，请刷新核对');
+  }
+  await beforeDelete?.call();
+  if (stillCurrent != null && !stillCurrent()) {
+    throw ApiException('DRAFT_DELETE_CONTEXT_CHANGED', '当前身份或选择范围已变化，请重新选择草稿');
   }
   await repository.delete(id);
 }

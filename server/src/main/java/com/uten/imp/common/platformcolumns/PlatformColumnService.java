@@ -138,6 +138,46 @@ public class PlatformColumnService {
     @Transactional(readOnly=true)
     public List<Definition> definitionsByIds(String scope,List<UUID> requested) { return definitions(scope,requested); }
 
+    /** Bounded readonly versions under current native domain/definition ownership and strict price visibility. */
+    @Transactional(readOnly=true)
+    public List<HistoryRow> history(String scope,UUID recordId,Long beforeId,int size) {
+        var adapter=resource(scope);adapter.requireDefinitionAccess(false);requireValues(adapter);
+        if(adapter.personalDefinitions())throw forbidden("个人计算显示配置不是共享业务字段历史");
+        var grants=adapter.authorizeHistory(Set.of(recordId));
+        if(grants==null||!grants.keySet().equals(Set.of(recordId))||grants.get(recordId)==null)throw forbidden("记录不存在或不在当前历史查看范围");
+        var access=grants.get(recordId);int limit=Math.max(1,Math.min(20,size));
+        var parameters=new org.springframework.jdbc.core.namedparam.MapSqlParameterSource("scope",scope)
+                .addValue("record",recordId).addValue("before",beforeId,java.sql.Types.BIGINT).addValue("limit",limit);
+        var versions=jdbc.query("""
+                SELECT id,version,cells::text,recorded_at,actor_id,operation FROM platform_record_field_versions
+                WHERE scope=:scope AND record_id=:record AND (:before IS NULL OR id<:before)
+                ORDER BY id DESC LIMIT :limit
+                """,parameters,(rs,index)->new FieldVersion(rs.getLong("id"),rs.getLong("version"),parseCells(rs.getString("cells")),
+                    rs.getTimestamp("recorded_at").toInstant(),rs.getObject("actor_id",UUID.class),rs.getString("operation")));
+        Set<UUID> ids=new LinkedHashSet<>();versions.forEach(v->v.cells().forEach(c->ids.add(c.columnId())));
+        var definitions=loadDefinitions(scope,ids);List<HistoryRow> result=new ArrayList<>();
+        Set<UUID> actors=new LinkedHashSet<>();versions.stream().map(FieldVersion::actor).filter(Objects::nonNull).forEach(actors::add);
+        Map<UUID,String> names=new HashMap<>();
+        if(!actors.isEmpty())jdbc.query("SELECT u.id,e.full_name FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id IN(:ids)",
+            Map.of("ids",actors),rs->{names.put(rs.getObject("id",UUID.class),rs.getString("full_name"));});
+        for(var version:versions) {
+            List<Cell> cells=new ArrayList<>();
+            for(var stored:version.cells()) {
+                var definition=definitions.get(stored.columnId());
+                if(definition==null)throw forbidden("原扩展字段定义不可核对，不能暴露历史原值");
+                boolean sensitive=protectedDefinition(definition,definitions,adapter,new HashSet<>());
+                boolean masked=sensitive&&!access.priceVisible();String value=masked?null:stored.value();
+                String error=!masked&&"CALCULATED".equals(definition.type())&&value==null?"该版本未保存计算结果，不能用当前业务数值重算":null;
+                if(sensitive&&!definition.priceProtected())definition=new Definition(definition.id(),definition.scope(),definition.name(),definition.type(),true,definition.formula(),0,0);
+                cells.add(new Cell(stored.columnId(),value,visibleDefinition(definition,access.priceVisible()),masked,true,error));
+            }
+            result.add(new HistoryRow(version.id(),recordId,version.version(),version.at(),version.actor(),names.get(version.actor()),version.operation(),
+                    new Row(recordId,version.version(),false,List.copyOf(cells)),true));
+        }
+        return List.copyOf(result);
+    }
+    private record FieldVersion(long id,long version,List<CellInput> cells,java.time.Instant at,UUID actor,String operation){}
+
     /** Internal review capture. The domain supplies locked, authoritative native facts; no HTTP route exposes this method. */
     @Transactional(readOnly=true)
     public Map<UUID,Row> freezeForReview(String scope,UUID documentId,Map<UUID,Map<String,BigDecimal>> nativeFacts) {

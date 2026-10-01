@@ -62,6 +62,7 @@ public class AuditEventInterpreter {
     private static final Map<String, String> DETAIL_VIEW_ACTION_LABELS = Map.ofEntries(
             Map.entry("view_ai_provider_history_detail", "查看 AI 服务配置历史"),
             Map.entry("view_attachment_history_detail", "查看附件历史"),
+            Map.entry("view_platform_field_history_detail", "查看业务扩展字段历史"),
             Map.entry("view_sales_quote_detail", "查看销售报价详情"),
             Map.entry("view_sales_order_detail", "查看销售订单详情"),
             Map.entry("view_sales_shipment_detail", "查看销售出货详情"),
@@ -192,6 +193,7 @@ public class AuditEventInterpreter {
     private static final String REDACTED_CHANGES_KEY = "_redacted_changes";
 
     public InterpretedEvent interpret(AuditLog value) {
+        value = PlatformFieldAuditProjection.presentation(value);
         String action = normalized(value.getAction());
         String target = normalized(value.getTargetType());
         String path = normalized(firstNonBlank(value.getHttpPath(), value.getTargetId()));
@@ -1006,6 +1008,8 @@ public class AuditEventInterpreter {
         values.put("expense_claim_settings", "报销业务设置");
         // 公共 AI 平台与客户文件识别(ADR-133 / ADR-134)
         values.put("ai_providers", "AI 服务配置");
+        values.put("platform_record_fields", "业务扩展字段");
+        values.put("platform_record_field_versions", "业务扩展字段历史");
         values.put("ai_jobs", "AI 识别任务");
         values.put("ai_call_logs", "AI 调用记录");
         values.put("client_goods_aliases", "客户货品对照");

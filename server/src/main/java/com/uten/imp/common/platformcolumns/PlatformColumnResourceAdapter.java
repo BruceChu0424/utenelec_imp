@@ -42,6 +42,15 @@ public interface PlatformColumnResourceAdapter {
      */
     Map<UUID, RecordAccess> authorize(Set<UUID> recordIds, boolean write);
 
+    /** Historical values remain under the current domain read/data/price policy and are always readonly. */
+    default Map<UUID,RecordAccess> authorizeHistory(Set<UUID> recordIds) {
+        var access=authorize(recordIds,false);
+        if(access==null)return null;
+        var result=new java.util.LinkedHashMap<UUID,RecordAccess>();
+        access.forEach((id,grant)->result.put(id,grant==null?null:new RecordAccess(false,grant.priceVisible(),grant.facts())));
+        return result;
+    }
+
     /** Acquire the domain's complete request-aware lock prefix before the snapshot takes its header lock. */
     default void lockDocumentSave(UUID documentId,Object request) { }
 

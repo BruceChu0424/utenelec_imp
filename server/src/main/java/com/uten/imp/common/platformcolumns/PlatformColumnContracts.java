@@ -18,4 +18,6 @@ public final class PlatformColumnContracts {
     public record Write(long expectedVersion, List<CellInput> cells) { }
     public record Cell(UUID columnId, String value, Definition definition, boolean masked, boolean persisted, String error) { }
     public record Row(UUID recordId, long version, boolean canWrite, List<Cell> cells) { }
+    public record HistoryRow(long id,UUID recordId,long version,java.time.Instant changedAt,UUID changedBy,String changedByName,
+                             String operation,Row row,boolean historyReadOnly){}
 }

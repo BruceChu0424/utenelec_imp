@@ -33,6 +33,7 @@ public class ExpensePlatformColumnResources {
                         && current.employeeId().filter(employee -> employee.equals(
                             DocumentPlatformColumnAdapter.uuid(header, "applicantId"))).isPresent(),
                 List.of(new FactDefinition(lines ? "amount" : "totalAmount", "报销金额", true)))
+                .history(claims::detailHistory,lines ? "SELECT live.id,live.claim_id FROM expense_claim_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='expense_claim_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='expense_claim_items' AND parent_table='expense_claims' AND CAST(CASE WHEN source_table='expense_claim_items' AND parent_table='expense_claims' THEN source_id END AS uuid) IN (:ids)" : null)
                 .documentCreateAuthorities(Set.of("expense:apply"));
     }
 }

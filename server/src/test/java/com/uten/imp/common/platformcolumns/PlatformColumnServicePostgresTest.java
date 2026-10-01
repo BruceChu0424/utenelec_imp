@@ -59,7 +59,7 @@ class PlatformColumnServicePostgresTest {
         assertThatThrownBy(()->tx(()->service.write("goods",record,new Write(0,List.of())))).isInstanceOf(ApiException.class);
         assertThat(read("goods").cells().getFirst().value()).isEqualTo("双层");
         assertThat(sql.queryForObject("SELECT retain_on_reset FROM platform_record_fields WHERE scope='goods'",Boolean.class)).isTrue();
-        assertThat(sql.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='platform_record_fields'::regclass AND NOT tgisinternal AND tgname LIKE '%audit%'",Integer.class)).isPositive();
+        assertThat(sql.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='platform_record_field_versions' AND after->>'record_id'=?",Integer.class,record.toString())).isPositive();
         assertThat(service.search("goods","包装说").getFirst().personalUsageCount()).isEqualTo(1);
         assertThatThrownBy(()->sql.update("UPDATE platform_column_definitions SET name='改变历史' WHERE id=?",column.id())).isInstanceOf(Exception.class);
     }
@@ -148,19 +148,17 @@ class PlatformColumnServicePostgresTest {
         assertThat(declared).as("Display adapters must use real functional authorities").isEmpty();
     }
 
-    @Test void businessResetErasesCommercialAnnotationsButRetainsMasterAnnotationsAndDefinitions() {
-        String reset=sql.queryForObject("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)",String.class);
-        assertThat(reset.indexOf("LOCK TABLE public.platform_record_fields"))
-                .isGreaterThan(reset.indexOf("IN ACCESS EXCLUSIVE MODE"))
-                .isGreaterThan(reset.indexOf("UPDATE goods"));
-        assertThat(reset.indexOf("LOCK TABLE public.platform_record_fields"))
-                .isLessThan(reset.indexOf("CREATE TEMP TABLE reset_business_preserve_counts"));
+    @Test void permanentResetRefusalRetainsCommercialAndMasterAnnotationsAndDefinitions() {
         var masterColumn=define("goods","保留主档","TEXT",false,null);
-        var docColumn=define("sales_order","清理单据","TEXT",false,null);
+        var docColumn=define("sales_order","保留单据","TEXT",false,null);
         tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(masterColumn.id(),"主档备注")))));
-        tx(()->service.write("sales_order",record,new Write(0,List.of(new CellInput(docColumn.id(),"业务备注")))));
-        transaction.execute(status->sql.queryForList("SELECT * FROM business_data_reset()"));
-        assertThat(sql.queryForList("SELECT scope FROM platform_record_fields",String.class)).containsExactly("goods");
+        tx(()->service.write("sales_order",record,new Write(0,List.of(new CellInput(docColumn.id(),"业务原备注")))));
+        var before=sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields ORDER BY scope");
+        var historyBefore=sql.queryForList("SELECT id,scope,record_id,version,cells::text FROM platform_record_field_versions ORDER BY id");
+        assertThatThrownBy(()->transaction.execute(status->sql.queryForList("SELECT * FROM business_data_reset()")))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class).hasMessageContaining("PERMANENT_RETAIN");
+        assertThat(sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields ORDER BY scope")).isEqualTo(before);
+        assertThat(sql.queryForList("SELECT id,scope,record_id,version,cells::text FROM platform_record_field_versions ORDER BY id")).isEqualTo(historyBefore);
         assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definitions",Integer.class)).isEqualTo(2);
     }
 

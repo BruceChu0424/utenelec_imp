@@ -34,6 +34,18 @@ public class StockPlatformColumnResources {
                 List.of(new FactDefinition("qty", "数量 / 盘点账面数量", false), new FactDefinition("weight", "重量(kg)", false),
                         new FactDefinition("countQty", "实盘数量", false), new FactDefinition("countWeight", "实盘重量(kg)", false),
                         new FactDefinition("bookWeight", "账面重量(kg)", false)))
-                .documentCreateAuthorities(Set.of("stock_doc:create"));
+                .documentCreateAuthorities(Set.of("stock_doc:create"))
+                .history(documents::history, lines ? historicalParent() : null);
+    }
+
+    /** Old soft-deleted rows are not backfilled into identity storage, so current and permanent parents are both authoritative. */
+    private static String historicalParent() {
+        String uuid = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+        return "SELECT id,doc_id FROM stock_document_items WHERE id IN (:ids)"
+                + " UNION SELECT identity.record_id,identity.parent_record_id FROM ("
+                + " SELECT CASE WHEN source_id ~ '" + uuid + "' THEN source_id::uuid END AS record_id,"
+                + " CASE WHEN parent_id ~ '" + uuid + "' THEN parent_id::uuid END AS parent_record_id"
+                + " FROM business_record_identities WHERE source_table='stock_document_items' AND parent_table='stock_documents'"
+                + ") identity WHERE identity.record_id IN (:ids)";
     }
 }

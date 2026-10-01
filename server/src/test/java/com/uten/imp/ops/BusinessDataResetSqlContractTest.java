@@ -231,7 +231,7 @@ class BusinessDataResetSqlContractTest {
             Map.entry("sales_quote_template_candidate_history",773),
             Map.entry("business_record_history",775),Map.entry("business_record_retention_registry",775),
             Map.entry("business_record_identities",775),
-            Map.entry("notice_blessing_history",778),Map.entry("ai_provider_history",778));
+            Map.entry("notice_blessing_history",778),Map.entry("ai_provider_history",778),Map.entry("platform_record_field_versions",779));
 
     private static final java.util.Set<String> PERMANENT_POLICY_OVERRIDES=java.util.Set.of(
         "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",

@@ -40,8 +40,9 @@ public class PurchaseRequestController {
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.list(new RequestQueryFilter(keyword, warehouseId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new RequestQueryFilter(keyword, warehouseId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -54,8 +55,9 @@ public class PurchaseRequestController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.facets(new RequestQueryFilter(keyword, warehouseId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted));
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new RequestQueryFilter(keyword, warehouseId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")

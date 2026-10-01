@@ -23,6 +23,14 @@ public class OtherShipmentListItem extends com.uten.imp.common.history.DocumentH
     private Integer legacyId;
     /** Current caller may mutate this document (functional permission + owner scope). */
     private boolean writable;
+    @lombok.Setter
+    private UUID currencyId;
+
+    /** Existing Java callers retain the original constructor; currency is additional native list metadata. */
+    public OtherShipmentListItem(UUID id, String billNo, LocalDate billDate, UUID clientId, UUID warehouseId,
+            String outType, BigDecimal totalLocal, Short status, boolean closed, Integer legacyId, boolean writable) {
+        this(id, billNo, billDate, clientId, warehouseId, outType, totalLocal, status, closed, legacyId, writable, null);
+    }
 
     @Override public void disableHistoryActions() {
         writable = false;

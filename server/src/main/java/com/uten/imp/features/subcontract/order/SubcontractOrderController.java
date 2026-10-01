@@ -59,8 +59,9 @@ public class SubcontractOrderController {
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.list(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, closed, financeApproval, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, closed, financeApproval, billNo).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -76,8 +77,9 @@ public class SubcontractOrderController {
             @RequestParam(required = false) Boolean closed,
             @RequestParam(required = false) String financeApproval,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.facets(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, closed, financeApproval, null).withHistory(includeDeleted, onlyDeleted));
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, closed, financeApproval, null).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")

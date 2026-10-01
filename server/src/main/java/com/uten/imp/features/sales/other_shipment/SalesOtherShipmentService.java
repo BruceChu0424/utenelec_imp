@@ -120,6 +120,8 @@ public class SalesOtherShipmentService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
+            f.headerFilters().apply(root, cb, ps, "totalLocal", true, null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
@@ -259,7 +261,7 @@ public class SalesOtherShipmentService {
     private OtherShipmentListItem toList(SalesOtherShipment s, boolean writable) {
         return new OtherShipmentListItem(s.getId(), s.getBillNo(), s.getBillDate(), s.getClientId(),
                 s.getWarehouseId(), s.getOutType(), s.getTotalLocal(), s.getStatus(), s.isClosed(),
-                s.getLegacyId(), writable && s.getStatus()!=null && s.getStatus()==STATUS_APPROVED);
+                s.getLegacyId(), writable && s.getStatus()!=null && s.getStatus()==STATUS_APPROVED, s.getCurrencyId());
     }
 
     private OtherShipmentItemDto toItemDto(SalesOtherShipmentItem it, boolean sourceReadable) {

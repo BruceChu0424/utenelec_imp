@@ -223,6 +223,9 @@ public class SalesOrderService {
                         cb.desc(root.get("billDate")),
                         cb.desc(root.get("id")));
             }
+            f.headerFilters().requireAmountVisible(priceMasker != null && priceMasker.canView());
+            if (f.headerFilters().hasAmountRange() && f.currencyId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "原币订单金额筛选须先选择币种");
+            f.headerFilters().apply(root, cb, ps, "totalOriginal", priceMasker != null && priceMasker.canView(), "deliverDate", false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

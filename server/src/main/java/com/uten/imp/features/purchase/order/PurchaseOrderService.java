@@ -218,6 +218,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     }
                 }
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewPurchaseOrder(), null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

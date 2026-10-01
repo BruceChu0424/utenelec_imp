@@ -14,7 +14,26 @@ public record FinanceReceiptQueryFilter(
         LocalDate dateFrom,
         LocalDate dateTo,
         String billNo,
+        boolean includeDeleted, boolean onlyDeleted,
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+    public FinanceReceiptQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
+    }
+    public FinanceReceiptQueryFilter(String keyword,
+        UUID clientId,
+        UUID accountId,
+        Short status,
+        String receiptKind,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo,
         boolean includeDeleted, boolean onlyDeleted) {
+        this(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+    public FinanceReceiptQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new FinanceReceiptQueryFilter(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, headers);
+    }
+
     public FinanceReceiptQueryFilter(
         String keyword,
         UUID clientId,
@@ -25,7 +44,7 @@ public record FinanceReceiptQueryFilter(
         LocalDate dateTo,
         String billNo) { this(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, billNo, false, false); }
     public FinanceReceiptQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
-        return new FinanceReceiptQueryFilter(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+        return new FinanceReceiptQueryFilter(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters);
     }
 
 

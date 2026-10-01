@@ -203,6 +203,8 @@ public class SalesQuoteService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
+            f.headerFilters().apply(root, cb, ps, "totalLocal", priceMasker != null && priceMasker.canView(), "deliverDate", false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

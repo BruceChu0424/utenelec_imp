@@ -157,6 +157,7 @@ public class SubcontractReturnService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewSubcontractReturn(), null, true, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

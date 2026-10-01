@@ -55,8 +55,9 @@ public class SalesOrderController {
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -74,8 +75,9 @@ public class SalesOrderController {
             @RequestParam(required = false) String chainGroup,
             @RequestParam(required = false) UUID currencyId,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.facets(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, null).withHistory(includeDeleted, onlyDeleted));
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, null).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     /** 工作台统计卡：待生产 / 生产中 / 待发货 / 本月完成（同列表数据范围）。 */

@@ -122,6 +122,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "amountLocal", true, null, false, null, true);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

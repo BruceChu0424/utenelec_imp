@@ -151,6 +151,7 @@ public class SubcontractWasteService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, null, false, null, false, "totalWeight", false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

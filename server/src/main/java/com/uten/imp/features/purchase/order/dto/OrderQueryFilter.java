@@ -20,7 +20,27 @@ public record OrderQueryFilter(
         String financeApproval,
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
         String billNo,
+        boolean includeDeleted, boolean onlyDeleted,
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+    public OrderQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
+    }
+    public OrderQueryFilter(String keyword,
+        UUID supplierId,
+        UUID warehouseId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String financeApproval,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo,
         boolean includeDeleted, boolean onlyDeleted) {
+        this(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, billNo, includeDeleted, onlyDeleted, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+    public OrderQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, billNo, includeDeleted, onlyDeleted, headers);
+    }
+
     public OrderQueryFilter(
         String keyword,
         UUID supplierId,
@@ -32,7 +52,7 @@ public record OrderQueryFilter(
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
         String billNo) { this(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, billNo, false, false); }
     public OrderQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
-        return new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+        return new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters);
     }
 
 

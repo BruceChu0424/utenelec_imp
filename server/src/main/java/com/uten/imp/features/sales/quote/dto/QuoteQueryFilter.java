@@ -16,7 +16,29 @@ public record QuoteQueryFilter(
         LocalDate dateTo,
         String billNo,
         String bucket,
+        boolean includeDeleted, boolean onlyDeleted,
+        java.util.UUID currencyId,
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+    public QuoteQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
+    }
+    public QuoteQueryFilter(String keyword,
+        UUID clientId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo,
+        String bucket,
         boolean includeDeleted, boolean onlyDeleted) {
+        this(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, includeDeleted, onlyDeleted, null, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+    public QuoteQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, includeDeleted, onlyDeleted, currencyId, headers);
+    }
+    public QuoteQueryFilter withCurrency(java.util.UUID value) {
+        return new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, includeDeleted, onlyDeleted, value, headerFilters);
+    }
+
     public QuoteQueryFilter(
         String keyword,
         UUID clientId,
@@ -26,7 +48,7 @@ public record QuoteQueryFilter(
         String billNo,
         String bucket) { this(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, false, false); }
     public QuoteQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
-        return new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, includeDeleted || onlyDeleted, onlyDeleted);
+        return new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, includeDeleted || onlyDeleted, onlyDeleted, currencyId, headerFilters);
     }
 
 

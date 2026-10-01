@@ -153,6 +153,7 @@ public class PurchaseReceiptService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", priceMasker != null && priceMasker.canViewPurchaseReceipt(), null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

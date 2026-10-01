@@ -64,8 +64,10 @@ public class SalesQuoteController {
             @RequestParam(required = false) String billNo,
             @RequestParam(required = false) String bucket,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.list(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket).withHistory(includeDeleted, onlyDeleted),
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket).withHistory(includeDeleted, onlyDeleted).withCurrency(currencyId).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)),
                 page, size, sort, order);
     }
 
@@ -87,8 +89,10 @@ public class SalesQuoteController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String bucket,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.facets(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, null, bucket).withHistory(includeDeleted, onlyDeleted));
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, null, bucket).withHistory(includeDeleted, onlyDeleted).withCurrency(currencyId).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")

@@ -244,6 +244,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     }
                 }
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewSubcontractOrder(), null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

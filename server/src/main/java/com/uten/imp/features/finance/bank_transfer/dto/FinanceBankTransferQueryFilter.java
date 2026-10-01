@@ -11,7 +11,24 @@ public record FinanceBankTransferQueryFilter(
         LocalDate dateFrom,
         LocalDate dateTo,
         String billNo,
+        boolean includeDeleted, boolean onlyDeleted,
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+    public FinanceBankTransferQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
+    }
+    public FinanceBankTransferQueryFilter(String keyword,
+        UUID outAccountId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo,
         boolean includeDeleted, boolean onlyDeleted) {
+        this(keyword, outAccountId, status, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+    public FinanceBankTransferQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, headers);
+    }
+
     public FinanceBankTransferQueryFilter(
         String keyword,
         UUID outAccountId,
@@ -20,7 +37,7 @@ public record FinanceBankTransferQueryFilter(
         LocalDate dateTo,
         String billNo) { this(keyword, outAccountId, status, dateFrom, dateTo, billNo, false, false); }
     public FinanceBankTransferQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
-        return new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+        return new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters);
     }
 
 

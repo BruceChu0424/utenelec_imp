@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 其它出货列表项。 */
 @Getter
 @AllArgsConstructor
-public class OtherShipmentListItem {
+public class OtherShipmentListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -23,4 +23,8 @@ public class OtherShipmentListItem {
     private Integer legacyId;
     /** Current caller may mutate this document (functional permission + owner scope). */
     private boolean writable;
+
+    @Override public void disableHistoryActions() {
+        writable = false;
+    }
 }

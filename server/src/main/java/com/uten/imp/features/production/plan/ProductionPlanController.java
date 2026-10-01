@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.List;
 
 /**
  * 生产计划 API（生产管理）。
@@ -61,8 +62,11 @@ public class ProductionPlanController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo), page, size, sort, order);
+            @RequestParam(required = false) String order,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo), page, size, sort, order,
+                includeDeleted, onlyDeleted);
     }
 
     /**
@@ -116,6 +120,21 @@ public class ProductionPlanController {
                 result.getLegacyId(),
                 "生产计划单");
         return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public PlanDetail history(@PathVariable UUID id) {
+        PlanDetail result = service.history(id);
+        auditViews.record("view_production_plan_detail", "production_plans", id, result.getBillNo(), result.getLegacyId(), "生产计划历史");
+        return result;
+    }
+
+    @GetMapping("/{id}/history-records")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRecords(@PathVariable UUID id,
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size) {
+        return service.historyRecords(id, beforeId, size);
     }
 
     @PostMapping

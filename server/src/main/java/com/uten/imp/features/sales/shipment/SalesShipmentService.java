@@ -83,6 +83,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesShipmentService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -206,7 +210,7 @@ public class SalesShipmentService {
         var rejectScope = hasRejectAuthority ? accessPolicy.scope(REJECT_AUTHORITY) : null;
         var warehouseScope = hasWarehouseAuthority
                 ? accessPolicy.scope(WAREHOUSE_WORK_AUTHORITY) : null;
-        return new PageResponse<>(p.map(s -> toList(
+        PageResponse<ShipmentListItem> result = new PageResponse<>(p.map(s -> toList(
                         s,
                         canEdit && accessPolicy.canWrite(s.getOwnerEmployeeId(), writeScope),
                         hasRejectAuthority && isRejectableState(s)
@@ -216,6 +220,8 @@ public class SalesShipmentService {
                                 && accessPolicy.canWrite(
                                         s.getOwnerEmployeeId(), warehouseScope))).getContent(),
                 p);
+        return p.stream().noneMatch(SalesShipment::isDeleted) ? result
+                : retainedRecords.page(result, "sales_shipments", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -233,7 +239,8 @@ public class SalesShipmentService {
         return (Root<SalesShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             if (f.shipmentKind()!=null && !f.shipmentKind().isBlank()) {
                 String kind=f.shipmentKind().trim().toUpperCase(java.util.Locale.ROOT);
                 customerShipmentPolicy.requireRead(kind);
@@ -387,8 +394,15 @@ public class SalesShipmentService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
-    public ShipmentDetail detail(UUID id) {
-        SalesShipment s = requireReadableShipment(id);
+    public ShipmentDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public ShipmentDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private ShipmentDetail readDetail(UUID id, boolean historyRead) {
+        SalesShipment s = requireReadableShipment(id, historyRead);
         List<SalesShipmentItem> entities = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         Set<UUID> readableOrderItems = readableOrderItemIds(entities.stream()
                 .map(SalesShipmentItem::getOrderItemId).filter(Objects::nonNull).toList());
@@ -398,7 +412,7 @@ public class SalesShipmentService {
                                 || readableOrderItems.contains(item.getOrderItemId())))
                 .toList();
         boolean headerSourceReadable = isOrderSourceReadable(s.getSourceOrderId());
-        return toDetail(s, items, headerSourceReadable);
+        return finishHistory(toDetail(s, items, headerSourceReadable), s, historyRead);
     }
 
     @Transactional
@@ -3495,13 +3509,17 @@ public class SalesShipmentService {
                 ||customerShipmentPolicy.can(kind,"approve")||customerShipmentPolicy.can(kind,"reverse");
     }
 
-    private SalesShipment requireShipment(UUID id) {
-        return shipmentRepo.findById(id).filter(s -> !s.isDeleted())
+    private SalesShipment requireShipment(UUID id) { return requireShipment(id, false); }
+
+    private SalesShipment requireShipment(UUID id, boolean includeDeleted) {
+        return shipmentRepo.findById(id).filter(s -> includeDeleted || !s.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售出货单不存在"));
     }
 
-    private SalesShipment requireReadableShipment(UUID id) {
-        SalesShipment shipment = requireShipment(id);
+    private SalesShipment requireReadableShipment(UUID id) { return requireReadableShipment(id, false); }
+
+    private SalesShipment requireReadableShipment(UUID id, boolean includeDeleted) {
+        SalesShipment shipment = requireShipment(id, includeDeleted);
         customerShipmentPolicy.requireRead(shipment.getShipmentKind());
         accessPolicy.requireReadable(shipment.getOwnerEmployeeId(), "销售出货单不存在",
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY,
@@ -3635,5 +3653,18 @@ public class SalesShipmentService {
             this.policy = policy;
             this.partial = partial;
         }
+    }
+
+    private ShipmentDetail finishHistory(ShipmentDetail view, SalesShipment entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "sales_shipments", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("sales_shipments",id,beforeId,size);
     }
 }

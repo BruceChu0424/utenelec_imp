@@ -74,6 +74,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ExpenseClaimService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final Set<String> STATUSES =
             Set.of("DRAFT", "SUBMITTED", "REVIEWING", "APPROVED", "REJECTED", "PAID");
@@ -132,7 +136,20 @@ public class ExpenseClaimService {
             int size,
             String sort,
             String order,
-            String claimNo) {
+            String claimNo) { return listMine(rawStatuses, year, month, departmentId, rawCategory, page, size, sort, order, claimNo, false, false); }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ExpenseClaimDto> listMine(
+            String rawStatuses,
+            Integer year,
+            Integer month,
+            UUID departmentId,
+            String rawCategory,
+            int page,
+            int size,
+            String sort,
+            String order,
+            String claimNo, boolean includeDeleted, boolean onlyDeleted) {
         AuthUser user = requireStaff();
         require(user, "expense:apply");
         return listClaims(
@@ -148,7 +165,7 @@ public class ExpenseClaimService {
                 false,
                 sort,
                 order,
-                claimNo);
+                claimNo, includeDeleted || onlyDeleted, onlyDeleted);
     }
 
     @Transactional(readOnly = true)
@@ -276,10 +293,16 @@ public class ExpenseClaimService {
     }
     private PageResponse<ExpenseClaimDto> listClaims(UUID applicantId,Set<String> statuses,Integer year,Integer month,
             UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history,
-            String sort,String order,String claimNo) {
+            String sort,String order,String claimNo) { return listClaims(applicantId,statuses,year,month,departmentId,category,page,size,newestFirst,history,sort,order,claimNo,false,false); }
+
+    private PageResponse<ExpenseClaimDto> listClaims(UUID applicantId,Set<String> statuses,Integer year,Integer month,
+            UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history,
+            String sort,String order,String claimNo,boolean includeDeleted,boolean onlyDeleted) {
         DateRange dateRange = createdAtRange(year, month);
         Specification<ExpenseClaim> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (onlyDeleted) predicates.add(cb.isTrue(root.get("deleted")));
+            else if (!includeDeleted) predicates.add(cb.isFalse(root.get("deleted")));
             if(history) {
                 AuthUser user=requireStaff();UUID actor=user.getEmployeeId();
                 List<Predicate> visible=new ArrayList<>();
@@ -349,22 +372,39 @@ public class ExpenseClaimService {
     }
 
     @Transactional(readOnly = true)
-    public ExpenseClaimDto detail(UUID id) {
-        ExpenseClaim claim = requireClaim(id);
+    public ExpenseClaimDto detail(UUID id) { return readDetail(id, false); }
+
+    @Transactional(readOnly = true)
+    public ExpenseClaimDto detailHistory(UUID id) { return readDetail(id, true); }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id,Long beforeId,int size) {
+        detailHistory(id);
+        return retainedRecords.children("expense_claims",id,beforeId,size);
+    }
+
+    private ExpenseClaimDto readDetail(UUID id, boolean historyRead) {
+        ExpenseClaim claim = requireClaim(id, historyRead);
         assertCanRead(claim);
         AuthUser user = requireStaff();
         List<AttachmentDto> attachments = has(user, "attachment:view")
-                ? attachmentService.list("EXPENSE_CLAIM", id)
+                ? attachmentService.list("EXPENSE_CLAIM", id, historyRead, false)
                 : List.of();
-        Mapping context = detailContext(claim, attachments);
+        Mapping context = detailContext(claim, attachments, historyRead);
         List<ExpenseClaimItem> items =
                 itemsFor(List.of(claim)).getOrDefault(id, List.of());
-        return mapClaim(
+        ExpenseClaimDto result = mapClaim(
                 claim,
                 items,
                 context,
                 context.invoices().stream().map(ExpenseClaimService::toInvoiceDto).toList(),
                 context.events().stream().map(ExpenseClaimService::toEventDto).toList());
+        if (historyRead || claim.isDeleted()) {
+            result.history().copyHistoryFrom(retainedRecords.metadata("expense_claims",
+                    List.of(new com.uten.imp.common.history.RetainedRecordReader.DocumentRef(claim.getId(),claim.isDeleted(),claim.getDeletedAt())),
+                    historyRead).get(claim.getId()));
+        }
+        return result;
     }
 
     private static ExpenseClaimInvoiceDto toInvoiceDto(ExpenseClaimInvoice invoice) {
@@ -396,7 +436,7 @@ public class ExpenseClaimService {
     }
 
     /** 详情形态映射上下文：部门名 + 操作人名 + 付款账户/费别名 + 发票 + 事件。 */
-    private Mapping detailContext(ExpenseClaim claim, List<AttachmentDto> attachments) {
+    private Mapping detailContext(ExpenseClaim claim, List<AttachmentDto> attachments, boolean historyRead) {
         List<ExpenseClaimInvoice> invoices =
                 invoiceRepository.findByClaimIdOrderByLineNoAsc(claim.getId());
         List<ExpenseClaimEvent> events =
@@ -414,7 +454,8 @@ public class ExpenseClaimService {
                 attachments,
                 invoices,
                 events,
-                has(requireStaff(),"attachment:view") ? attachmentService.list(ExpensePaymentProofAttachmentAccessPolicy.OWNER_TYPE,claim.getId()) : List.of());
+                has(requireStaff(),"attachment:view") ? attachmentService.list(
+                        ExpensePaymentProofAttachmentAccessPolicy.OWNER_TYPE,claim.getId(),historyRead,false) : List.of());
     }
 
     /**
@@ -422,7 +463,10 @@ public class ExpenseClaimService {
      * 权限口径与对应列表一致：pending=expense:approve，payable=expense:pay。
      */
     @Transactional(readOnly = true)
-    public ExpenseClaimFacetsDto facets(String queue) {
+    public ExpenseClaimFacetsDto facets(String queue) { return facets(queue,false,false); }
+
+    @Transactional(readOnly = true)
+    public ExpenseClaimFacetsDto facets(String queue, boolean includeDeleted, boolean onlyDeleted) {
         AuthUser user = requireStaff();
         Set<String> statuses;
         switch (queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT)) {
@@ -443,7 +487,7 @@ public class ExpenseClaimService {
             case "mine" -> {
                 require(user, "expense:apply");
                 return new ExpenseClaimFacetsDto(List.of(), List.of(), List.of(),
-                        toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId())));
+                        toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId(), includeDeleted || onlyDeleted, onlyDeleted)));
             }
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报销队列");
         }
@@ -685,15 +729,11 @@ public class ExpenseClaimService {
         ExpenseClaim claim = requireClaimForUpdate(id);
         assertOwner(claim, user);
         assertStatus(claim, "DRAFT");
-        if (attachmentRepository.existsByOwnerTypeAndOwnerIdAndLifecycleStateNot(
-                "EXPENSE_CLAIM", id, AttachmentLifecycleState.DELETED)) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "报销单仍有附件，请先逐一删除附件后再删除报销单");
-        }
-        itemRepository.deleteByClaimId(id);
-        itemRepository.flush();
-        claimRepository.delete(claim);
+        claim.setDeleted(true);
+        claim.setDeletedAt(java.time.OffsetDateTime.now());
+        claimRepository.save(claim);
+        em.createNativeQuery("UPDATE expense_claim_invoices SET is_archived=true WHERE claim_id=:id AND NOT is_archived")
+                .setParameter("id",id).executeUpdate();
     }
 
     /**
@@ -951,11 +991,12 @@ public class ExpenseClaimService {
         }
         AuthUser user=requireStaffAndApply();
         if(excludeClaimId!=null) assertOwner(requireClaim(excludeClaimId),user);
-        return invoiceRepository.findDuplicateHolder(invoiceNo, invoiceCode, excludeClaimId,issuer(invoiceType,sellerName,invoiceNo,invoiceCode))
-                .<ExpenseClaimInvoiceCheckDto>map(row -> new ExpenseClaimInvoiceCheckDto(
-                        true,
-                        null, null, null))
-                .orElse(ExpenseClaimInvoiceCheckDto.CLEAN);
+        // An Optional<Object[]> native result can become a present empty array in
+        // Spring Data's collection conversion. A bounded row list has an explicit
+        // zero-row meaning and cannot falsely reserve an archived invoice.
+        boolean duplicated = !invoiceRepository.findDuplicateHolder(invoiceNo, invoiceCode, excludeClaimId,
+                issuer(invoiceType,sellerName,invoiceNo,invoiceCode)).isEmpty();
+        return duplicated ? new ExpenseClaimInvoiceCheckDto(true,null,null,null) : ExpenseClaimInvoiceCheckDto.CLEAN;
     }
 
     @Transactional
@@ -1264,12 +1305,18 @@ public class ExpenseClaimService {
                 List.of(),
                 List.of(),
                 List.of(),List.of());
-        return claims.stream()
+        List<ExpenseClaimDto> mapped = claims.stream()
                 .map(claim -> mapClaim(
                         claim,
                         items.getOrDefault(claim.getId(), List.of()),
                         context))
                 .toList();
+        if (claims.stream().anyMatch(ExpenseClaim::isDeleted)) {
+            var metadata = retainedRecords.metadata("expense_claims",claims.stream()
+                    .map(claim -> new com.uten.imp.common.history.RetainedRecordReader.DocumentRef(claim.getId(),claim.isDeleted(),claim.getDeletedAt())).toList(),false);
+            for (ExpenseClaimDto view : mapped) view.history().copyHistoryFrom(metadata.get(view.id()));
+        }
+        return mapped;
     }
 
     /** 一页报销单的申请人部门名一次查齐（列表「部门」列，避免逐单查部门）。 */
@@ -1400,13 +1447,15 @@ public class ExpenseClaimService {
         return id == null ? null : names.get(id);
     }
 
-    private ExpenseClaim requireClaim(UUID id) {
-        return claimRepository.findById(id)
+    private ExpenseClaim requireClaim(UUID id) { return requireClaim(id, false); }
+
+    private ExpenseClaim requireClaim(UUID id, boolean includeDeleted) {
+        return claimRepository.findById(id).filter(claim -> includeDeleted || !claim.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "报销单不存在"));
     }
 
     private ExpenseClaim requireClaimForUpdate(UUID id) {
-        return claimRepository.findByIdForUpdate(id)
+        return claimRepository.findByIdForUpdate(id).filter(claim -> !claim.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "报销单不存在"));
     }
 

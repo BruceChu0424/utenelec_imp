@@ -51,20 +51,24 @@ public class SalesOrderAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         claims.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM", ownerId.toString());
     }
 
-    private SalesOrder order(UUID id) {
+    private SalesOrder order(UUID id) { return order(id, false); }
+
+    private SalesOrder order(UUID id, boolean includeDeleted) {
         if (id == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定销售订货单");
         SalesOrder order = em.find(SalesOrder.class, id);
-        if (order == null || order.isDeleted()) throw missing();
+        if (order == null || (!includeDeleted && order.isDeleted())) throw missing();
         return order;
     }
 
-    private void readable(SalesOrder order, AuthUser user) {
+    private void readable(SalesOrder order, AuthUser user) { readable(order,user,false); }
+
+    private void readable(SalesOrder order, AuthUser user, boolean includeDeleted) {
         // 财务确认视角（2026-09-09，2026-09-10 收紧）：持 sales_order_finance:view 的财务
         // 只对「已进入财务流程」的订单（已提交待确认 / 已退回 / 已确认）读附件，不要求
         // 销售文档权限与对象归属——财务确认队列本身即全量可读口径，审核页已展示同等的
         // 金额事实。销售草稿尚未提交，财务不得借页面权限提前读取。
         boolean financeView = has(user, "sales_order_finance:view") && enteredFinanceFlow(order);
-        if (order.isDeleted()
+        if ((!includeDeleted && order.isDeleted())
                 || (!financeView && !has(user, "sales_order:view"))) {
             throw missing();
         }
@@ -97,4 +101,11 @@ public class SalesOrderAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         return user != null && (user.isSuperAdmin() || user.getPermissions().contains(authority));
     }
     private static ApiException missing() { return new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在"); }
+
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        readable(order(ownerId,true),user,true);
+    }
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        requireCanViewHistory(ownerId,user);
+    }
 }

@@ -56,8 +56,10 @@ public class SubcontractMaterialIssueController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new MaterialIssueQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new MaterialIssueQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -69,8 +71,10 @@ public class SubcontractMaterialIssueController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new MaterialIssueQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.facets(new MaterialIssueQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -78,6 +82,20 @@ public class SubcontractMaterialIssueController {
     public MaterialIssueDetail detail(@PathVariable UUID id) {
         MaterialIssueDetail result = service.detail(id);
         auditViews.record(
+                "view_subcontract_material_issue_detail",
+                "subcontract_material_issues",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外材料出仓单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('subcontract_material_issue:view')")
+    public MaterialIssueDetail history(@PathVariable UUID id) {
+        MaterialIssueDetail result = service.detailHistory(id);
+        auditViews.recordHistory(
                 "view_subcontract_material_issue_detail",
                 "subcontract_material_issues",
                 id,
@@ -109,5 +127,15 @@ public class SubcontractMaterialIssueController {
     @PreAuthorize("hasAuthority('subcontract_material_issue:reverse')")
     public MaterialIssueDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('subcontract_material_issue:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        auditViews.recordHistory("view_subcontract_material_issue_detail", "subcontract_material_issues", id, null, null, "单据历史明细");
+        return rows;
     }
 }

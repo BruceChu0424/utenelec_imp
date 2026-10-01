@@ -13,6 +13,9 @@ public interface StandardDocumentLifecycleCapabilities {
 
     Short getStatus();
 
+    /** Historical reads keep business status while disabling all lifecycle actions. */
+    default boolean isHistoryReadOnly() { return false; }
+
     static boolean isDraft(Short status) {
         return status != null && status == 0;
     }
@@ -31,16 +34,16 @@ public interface StandardDocumentLifecycleCapabilities {
 
     @JsonProperty("canEdit")
     default boolean isCanEdit() {
-        return isDraft(getStatus());
+        return !isHistoryReadOnly() && isDraft(getStatus());
     }
 
     @JsonProperty("canDelete")
     default boolean isCanDelete() {
-        return isDraft(getStatus());
+        return !isHistoryReadOnly() && isDraft(getStatus());
     }
 
     @JsonProperty("canReverse")
     default boolean isCanReverse() {
-        return isApproved(getStatus());
+        return !isHistoryReadOnly() && isApproved(getStatus());
     }
 }

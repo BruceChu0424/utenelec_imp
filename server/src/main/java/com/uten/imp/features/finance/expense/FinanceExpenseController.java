@@ -61,8 +61,10 @@ public class FinanceExpenseController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -74,8 +76,10 @@ public class FinanceExpenseController {
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.facets(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -83,6 +87,20 @@ public class FinanceExpenseController {
     public FinanceExpenseDetail detail(@PathVariable UUID id) {
         FinanceExpenseDetail result = service.detail(id);
         detailViewAudit.record(
+                "view_finance_expense_detail",
+                "finance_expenses",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "一般费用单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('finance_expense:view')")
+    public FinanceExpenseDetail history(@PathVariable UUID id) {
+        FinanceExpenseDetail result = service.detailHistory(id);
+        detailViewAudit.recordHistory(
                 "view_finance_expense_detail",
                 "finance_expenses",
                 id,
@@ -139,5 +157,15 @@ public class FinanceExpenseController {
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "finance_expense_gl_confirm", "finance_expense", String.valueOf(id), "success"));
         return result;
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('finance_expense:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        detailViewAudit.recordHistory("view_finance_expense_detail", "finance_expenses", id, null, null, "单据历史明细");
+        return rows;
     }
 }

@@ -76,6 +76,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class SubcontractOrderService implements ProcurementOrderApprovalPort {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -155,8 +159,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         List<OrderListItem> items = p.getContent().stream()
                 .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
                 .toList();
-        return new PageResponse<>(
+        PageResponse<OrderListItem> result = new PageResponse<>(
                 items, p);
+        return p.stream().noneMatch(SubcontractOrder::isDeleted) ? result
+                : retainedRecords.page(result, "subcontract_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -183,7 +189,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(SubcontractGoodsKeyword.predicate(
@@ -242,13 +249,19 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional(readOnly = true)
-    public OrderDetail detail(UUID id) {
-        SubcontractOrder r = requireOrder(id);
+    public OrderDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public OrderDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private OrderDetail readDetail(UUID id, boolean historyRead) {
+        SubcontractOrder r = requireOrder(id, historyRead);
         if (!access.canRead(r.getMakerId())
                 && !approvalProjection.canCurrentActorReviewPending(orderType(), id)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在");
         }
-        return assembleDetail(r);
+        return finishHistory(assembleDetail(r), r, historyRead);
     }
 
     private OrderDetail assembleDetail(SubcontractOrder r) {
@@ -1986,9 +1999,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
     }
 
-    private SubcontractOrder requireOrder(UUID id) {
+    private SubcontractOrder requireOrder(UUID id) { return requireOrder(id, false); }
+
+    private SubcontractOrder requireOrder(UUID id, boolean includeDeleted) {
         return orderRepo.findById(id)
-                .filter(r -> !r.isDeleted())
+                .filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在"));
     }
     private SubcontractOrder requireOrderForUpdate(UUID id) {
@@ -1997,5 +2012,17 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return order == null || order.isDeleted()
                 ? requireOrder(id)
                 : order;
+    }
+
+    private OrderDetail finishHistory(OrderDetail view, SubcontractOrder entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "subcontract_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("subcontract_orders",id,beforeId,size);
     }
 }

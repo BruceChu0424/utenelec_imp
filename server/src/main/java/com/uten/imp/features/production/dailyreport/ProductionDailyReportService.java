@@ -140,9 +140,17 @@ public class ProductionDailyReportService {
      */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private WorkshopMaterialReportGuardPort reportGuard;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
 
     @Transactional(readOnly = true)
     public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order) {
+        return list(f, page, size, sort, order, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<DailyReportListItem> list(DailyReportQueryFilter f, int page, int size, String sort, String order,
+                                                boolean includeDeleted, boolean onlyDeleted) {
         var readScope = access.scope(
                 "production_daily_report:approve",
                 "production_daily_report:reverse");
@@ -150,7 +158,8 @@ public class ProductionDailyReportService {
                                                      jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -166,12 +175,34 @@ public class ProductionDailyReportService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<ProductionDailyReport> p = reportRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<DailyReportListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_daily_reports", p.getContent()) : result;
     }
 
     @Transactional(readOnly = true)
     public DailyReportDetail detail(UUID id) {
         ProductionDailyReport r = requireReport(id);
+        return detailView(r, false);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportDetail history(UUID id) {
+        return detailView(historyReport(id), true);
+    }
+
+    private ProductionDailyReport historyReport(UUID id) {
+        if (id == null) throw new ApiException(ErrorCode.NOT_FOUND, "生产日报单不存在");
+        return reportRepo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "生产日报单不存在"));
+    }
+
+    private DailyReportDetail commandDetail(UUID id) {
+        ProductionDailyReport report = historyReport(id);
+        return detailView(report, report.isDeleted());
+    }
+
+    private DailyReportDetail detailView(ProductionDailyReport r, boolean history) {
+        UUID id = r.getId();
         access.requireReadable(
                 r.getMakerId(), "生产日报单不存在",
                 "production_daily_report:approve",
@@ -182,7 +213,16 @@ public class ProductionDailyReportService {
         List<DailyReportItemDto> items = rows.stream()
                 .map(item -> toItemDto(item, transferLabels, identities)).toList();
         populateExecutionContext(r, items);
-        return toDetail(r, items, allowedActions(r, rows));
+        DailyReportDetail result = toDetail(r, items, history ? List.of() : allowedActions(r, rows));
+        return history ? retainedRecords.detail(result, "production_daily_reports", id, r.isDeleted(), r.getDeletedAt(), true) : result;
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRecords(UUID id, Long beforeId, int size) {
+        ProductionDailyReport report = historyReport(id);
+        access.requireReadable(report.getMakerId(), "生产日报单不存在", "production_daily_report:approve", "production_daily_report:reverse");
+        return retainedRecords.children("production_daily_reports", id, beforeId, size);
     }
 
     /**
@@ -300,7 +340,7 @@ public class ProductionDailyReportService {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报创建请求");
             }
-            return detail(replay.reportId());
+            return commandDetail(replay.reportId());
         }
         // ADR-131 §10 锁序：幂等顾问锁之后、写日报之前，锁住涉及的车间内料仓期间并核对日期。
         guardWorkshopMaterialPeriods(null, req.getBillDate(), requestSegmentIds(req.getItems()),
@@ -399,7 +439,7 @@ public class ProductionDailyReportService {
             if (commandVersion == 2 && !Integer.valueOf(2).equals(replay.approvalProtocolVersion())) {
                 // Do not reinterpret a successful unversioned command as reviewed V2.
                 // The read-only resolver exposes its actual legacy provenance.
-                detail(id); // Retain the current object-read permission check.
+                commandDetail(id); // Retain current history object-read permission.
                 throw new ApiException(ErrorCode.DAILY_REPORT_LEGACY_APPROVAL_RECEIPT);
             }
             if (!requestHash.equals(replay.requestHash())
@@ -407,7 +447,7 @@ public class ProductionDailyReportService {
                     || (commandVersion == 1 && Integer.valueOf(2).equals(replay.approvalProtocolVersion()))) {
                 throw new ApiException(ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报审核请求");
             }
-            return withApprovalReceipt(detail(id), idempotencyKey,
+            return withApprovalReceipt(commandDetail(id), idempotencyKey,
                     replay.approvalProtocolVersion(), replay.reviewedRowVersion(), true);
         }
         // ADR-131 §10 锁序：幂等顾问锁 → 预读本单日期与明细段 → 车间内料仓期间共享锁 → 原有足迹。
@@ -578,7 +618,7 @@ public class ProductionDailyReportService {
                 .getSingleResult();
         // Read after the command lock observation, so an approval committed just
         // before that lock was released is not paired with a pre-commit detail.
-        DailyReportDetail current = detail(id); // Current object visibility still applies after permission withdrawal.
+        DailyReportDetail current = commandDetail(id); // Deletion cannot erase a known original submission.
         if (!Boolean.TRUE.equals(acquired)) {
             return new DailyReportApprovalResolution("PENDING", null, current);
         }

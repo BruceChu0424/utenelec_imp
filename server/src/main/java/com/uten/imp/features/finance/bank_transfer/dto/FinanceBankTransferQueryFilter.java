@@ -10,7 +10,19 @@ public record FinanceBankTransferQueryFilter(
         Short status,
         LocalDate dateFrom,
         LocalDate dateTo,
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+    public FinanceBankTransferQueryFilter(
+        String keyword,
+        UUID outAccountId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo) { this(keyword, outAccountId, status, dateFrom, dateTo, billNo, false, false); }
+    public FinanceBankTransferQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public FinanceBankTransferQueryFilter(

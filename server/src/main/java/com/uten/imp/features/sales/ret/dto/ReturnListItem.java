@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 销售退货列表项。 */
 @Getter
 @AllArgsConstructor
-public class ReturnListItem {
+public class ReturnListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -29,4 +29,8 @@ public class ReturnListItem {
     private UUID sellerId;
     /** 业务员姓名（列表补全，服务端解析）。 */
     private String sellerName;
+
+    @Override public void disableHistoryActions() {
+        writable = false;
+    }
 }

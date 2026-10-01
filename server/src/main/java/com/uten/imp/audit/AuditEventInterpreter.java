@@ -60,6 +60,7 @@ public class AuditEventInterpreter {
             "summary", "export", "download", "heartbeat", "capability", "preview",
             "search", "tree", "subtree", "arrivals", "unread-count");
     private static final Map<String, String> DETAIL_VIEW_ACTION_LABELS = Map.ofEntries(
+            Map.entry("view_attachment_history_detail", "查看附件历史"),
             Map.entry("view_sales_quote_detail", "查看销售报价详情"),
             Map.entry("view_sales_order_detail", "查看销售订单详情"),
             Map.entry("view_sales_shipment_detail", "查看销售出货详情"),
@@ -144,6 +145,10 @@ public class AuditEventInterpreter {
             Map.entry("ai_provider.test_stored", "用已保存密钥测试 AI 服务连接"),
             Map.entry("ai_provider.models_stored", "用已保存密钥获取 AI 模型列表"),
             Map.entry("ai_job.submit", "提交 AI 识别"),
+            Map.entry("bind_ai_input_original", "保全单据识别来源"),
+            Map.entry("download_ai_input_original", "下载识别来源原件"),
+            Map.entry("attachment_history_download", "下载已保留附件原件"),
+            Map.entry("attachment_logical_delete", "标记附件已删除并保留历史"),
             Map.entry("ai_job.cancel", "取消 AI 识别"));
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
             "view_client_detail", "view_supplier_detail", "view_account_detail",
@@ -304,7 +309,7 @@ public class AuditEventInterpreter {
         if ("task_renew".equals(action)) return "续租任务认领(自动协调)";
         if ("task_force_release".equals(action)) return "强制释放任务";
         if ("audit_retention_failed".equals(action)) return "审计留存任务失败";
-        if ("audit_retention_completed".equals(action)) return "审计日志按期归档与清理";
+        if ("audit_retention_completed".equals(action)) return "审计日志按期归档与保全";
         if ("legacy_migration_run".equals(action)) return "导入老系统历史数据";
         String pathLabel = pathActionLabel(action, path);
         if (pathLabel != null) return pathLabel;
@@ -1157,6 +1162,8 @@ public class AuditEventInterpreter {
         // 仓库 / 库存
         values.put("stock_documents", "库存单据");
         values.put("stock_count_requests", "库存盘点申请");
+        values.put("ai_input_originals", "识别来源原件");
+        values.put("ai_input_original_bindings", "单据原件来源关系");
         values.put("stock_document_items", "库存单据明细");
         values.put("stock_balances", "即时库存");
         values.put("stock_movements", "库存流水");

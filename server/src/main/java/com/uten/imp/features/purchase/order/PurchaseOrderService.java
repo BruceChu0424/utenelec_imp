@@ -74,6 +74,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class PurchaseOrderService implements ProcurementOrderApprovalPort {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -144,8 +148,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         List<OrderListItem> items = p.getContent().stream()
                 .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
                 .toList();
-        return new PageResponse<>(
+        PageResponse<OrderListItem> result = new PageResponse<>(
                 items, p);
+        return p.stream().noneMatch(PurchaseOrder::isDeleted) ? result
+                : retainedRecords.page(result, "purchase_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -172,7 +178,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -216,13 +223,19 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     @Transactional(readOnly = true)
-    public OrderDetail detail(UUID id) {
-        PurchaseOrder o = requireOrder(id);
+    public OrderDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public OrderDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private OrderDetail readDetail(UUID id, boolean historyRead) {
+        PurchaseOrder o = requireOrder(id, historyRead);
         if (!access.canRead(o.getMakerId())
                 && !approvalProjection.canCurrentActorReviewPending(orderType(), id)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在");
         }
-        return assembleDetail(o);
+        return finishHistory(assembleDetail(o), o, historyRead);
     }
 
     private OrderDetail assembleDetail(PurchaseOrder o) {
@@ -1539,8 +1552,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return null;
     }
 
-    private PurchaseOrder requireOrder(UUID id) {
-        return orderRepo.findById(id).filter(o -> !o.isDeleted())
+    private PurchaseOrder requireOrder(UUID id) { return requireOrder(id, false); }
+
+    private PurchaseOrder requireOrder(UUID id, boolean includeDeleted) {
+        return orderRepo.findById(id).filter(o -> includeDeleted || !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在"));
     }
     private PurchaseOrder requireOrderForUpdate(UUID id) {
@@ -1549,5 +1564,17 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return order == null || order.isDeleted()
                 ? requireOrder(id)
                 : order;
+    }
+
+    private OrderDetail finishHistory(OrderDetail view, PurchaseOrder entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "purchase_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("purchase_orders",id,beforeId,size);
     }
 }

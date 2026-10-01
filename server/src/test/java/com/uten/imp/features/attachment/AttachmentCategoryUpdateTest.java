@@ -45,7 +45,7 @@ class AttachmentCategoryUpdateTest {
             mock(AttachmentConfirmTransaction.class), mock(AttachmentUploadSafetyGate.class),
             mock(AttachmentUploadSessionStore.class), mock(AttachmentMalwareScanner.class),
             mock(AttachmentObjectOutboxStore.class), mock(StorageProviderRegistry.class),
-            mock(AttachmentDownloadVerifier.class));
+            mock(AttachmentDownloadVerifier.class),mock(com.uten.imp.audit.AuditActorDirectory.class));
 
     @Test
     void categoryCannotBeSetWithoutTheAttachmentUploadPermission() {

@@ -10,7 +10,7 @@ import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
-public class OrderListItem {
+public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -22,4 +22,8 @@ public class OrderListItem {
     private FinanceApproval financeApproval;
     /** 当前用户无采购商业金额权限时为 true，合计金额同时由服务端置 null。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+        if(financeApproval!=null)financeApproval=financeApproval.readOnly();
+    }
 }

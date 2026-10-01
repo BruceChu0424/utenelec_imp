@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 委外申请单详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class ApplicationDetail {
+public class ApplicationDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -38,4 +38,10 @@ public class ApplicationDetail {
     private boolean canDelete;
     private boolean canReverse;
     private String restrictionReason;
+
+    @Override public void disableHistoryActions() {
+        canEdit = false;
+        canDelete = false;
+        canReverse = false;
+    }
 }

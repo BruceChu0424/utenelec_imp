@@ -65,6 +65,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesQuoteService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     static final short STATUS_DRAFT = 0;
     static final short STATUS_CONFIRMED = 1;
@@ -127,10 +131,12 @@ public class SalesQuoteService {
         boolean masked = pricesMasked();
         Map<UUID, ConvertedOrder> converted = convertedOrders(p.getContent().stream().map(SalesQuote::getId).toList());
         var readScope = accessPolicy.scope();
-        return new PageResponse<>(p.map(q -> toList(q,
+        PageResponse<QuoteListItem> result = new PageResponse<>(p.map(q -> toList(q,
                         canEdit && accessPolicy.canWrite(q.getMakerId(), readScope), masked,
                         converted.get(q.getId()), readScope)).getContent(),
                 p);
+        return p.stream().noneMatch(SalesQuote::isDeleted) ? result
+                : retainedRecords.page(result, "sales_quotes", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -173,7 +179,8 @@ public class SalesQuoteService {
         return (Root<SalesQuote> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             // 报价表没有独立 owner 列，maker_id 是其有效归属人。
             ps.add(accessPolicy.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
@@ -240,9 +247,16 @@ public class SalesQuoteService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
-    public QuoteDetail detail(UUID id) {
-        SalesQuote q = requireReadableQuote(id);
-        return toDetail(q, itemRepo.findByQuoteIdOrderByLineNoAsc(id), true);
+    public QuoteDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public QuoteDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private QuoteDetail readDetail(UUID id, boolean historyRead) {
+        SalesQuote q = requireReadableQuote(id, historyRead);
+        return finishHistory(toDetail(q, itemRepo.findByQuoteIdOrderByLineNoAsc(id), true), q, historyRead);
     }
 
     // ------------------------------------------------------------------ 草稿写
@@ -860,8 +874,10 @@ public class SalesQuoteService {
      * 财务读范围: 待核价、财务确认过的已核价(旧流程销售自审、没有财务确认时间的不算), 以及本轮被财务退回的草稿
      * (退回时间不早于最近一次提交)。销售提交后又撤回的草稿财务看不到。
      */
-    static boolean financeVisible(SalesQuote q) {
-        if (q == null || q.isDeleted() || q.getStatus() == null) return false;
+    static boolean financeVisible(SalesQuote q) { return financeVisible(q,false); }
+
+    static boolean financeVisible(SalesQuote q, boolean includeDeleted) {
+        if (q == null || (!includeDeleted && q.isDeleted()) || q.getStatus() == null) return false;
         short status = q.getStatus();
         if (status == STATUS_PENDING_FINANCE) return true;
         if (status == STATUS_CONFIRMED) return q.getFinanceConfirmedAt() != null;
@@ -928,15 +944,19 @@ public class SalesQuoteService {
                 || accessPolicy.hasAuthority("sales_quote:convert");
     }
 
-    private SalesQuote requireQuote(UUID id) {
-        return quoteRepo.findById(id).filter(q -> !q.isDeleted())
+    private SalesQuote requireQuote(UUID id) { return requireQuote(id, false); }
+
+    private SalesQuote requireQuote(UUID id, boolean includeDeleted) {
+        return quoteRepo.findById(id).filter(q -> includeDeleted || !q.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在"));
     }
 
-    private SalesQuote requireReadableQuote(UUID id) {
-        SalesQuote quote = requireQuote(id);
+    private SalesQuote requireReadableQuote(UUID id) { return requireReadableQuote(id, false); }
+
+    private SalesQuote requireReadableQuote(UUID id, boolean includeDeleted) {
+        SalesQuote quote = requireQuote(id, includeDeleted);
         if (accessPolicy.canRead(quote.getMakerId())) return quote;
-        if (accessPolicy.hasAuthority(FINANCE_VIEW) && financeVisible(quote)) return quote;
+        if (accessPolicy.hasAuthority(FINANCE_VIEW) && financeVisible(quote,includeDeleted)) return quote;
         throw new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在");
     }
 
@@ -953,5 +973,18 @@ public class SalesQuoteService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private QuoteDetail finishHistory(QuoteDetail view, SalesQuote entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "sales_quotes", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("sales_quotes",id,beforeId,size);
     }
 }

@@ -12,7 +12,21 @@ public record WasteQueryFilter(
         LocalDate dateFrom,
         LocalDate dateTo,
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。 */
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+    public WasteQueryFilter(
+        String keyword,
+        UUID supplierId,
+        UUID warehouseId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配。 */
+        String billNo) { this(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo, false, false); }
+    public WasteQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new WasteQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public WasteQueryFilter(

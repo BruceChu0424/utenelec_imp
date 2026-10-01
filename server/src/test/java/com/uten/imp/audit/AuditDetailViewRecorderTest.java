@@ -71,6 +71,19 @@ class AuditDetailViewRecorderTest {
     }
 
     @Test
+    void explicitHistoryUsesOneRegisteredSuffixEvenForImportedDocuments() {
+        AuditService audit=mock(AuditService.class);
+        SecurityContextCurrentUser currentUser=mock(SecurityContextCurrentUser.class);
+        AuthUser actor=mock(AuthUser.class);UUID actorId=UUID.randomUUID(),documentId=UUID.randomUUID();
+        when(actor.getId()).thenReturn(actorId);when(actor.getLoginAccount()).thenReturn("history-reader");
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        new AuditDetailViewRecorder(audit,currentUser).recordHistory(
+                "view_sales_order_detail","sales_orders",documentId,"SO-HISTORY",88,"销售订货单");
+        verify(audit).logSuccessfulDetailView(actorId,"history-reader","view_sales_order_detail_history",
+                "sales_orders",documentId,"销售订货单","SO-HISTORY","88");
+    }
+
+    @Test
     void verifiedRealActorWinsOverImpersonatedCurrentUser() {
         AuditService audit = mock(AuditService.class);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);

@@ -54,6 +54,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PurchaseRequestService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
     /** Same pending financial commitment on the detail and order-generation paths.
      * The correlated lookup uses the request-item index instead of aggregating every order source. */
     private static final String PENDING_ORDER_QUANTITY_JOIN = """
@@ -98,7 +102,9 @@ public class PurchaseRequestService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
         Page<PurchaseRequest> p = requestRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<RequestListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(PurchaseRequest::isDeleted) ? result
+                : retainedRecords.page(result, "purchase_requests", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -112,7 +118,8 @@ public class PurchaseRequestService {
         return (Root<PurchaseRequest> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
             }
@@ -128,8 +135,14 @@ public class PurchaseRequestService {
     }
 
     @Transactional(readOnly = true)
-    public RequestDetail detail(UUID id) {
-        PurchaseRequest r = requireRequest(id);
+    public RequestDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public RequestDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private RequestDetail readDetail(UUID id, boolean historyRead) {
+        PurchaseRequest r = requireRequest(id, historyRead);
         Map<UUID, BigDecimal> pending = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT i.id, pending.pending_qty FROM purchase_request_items i
@@ -140,7 +153,7 @@ public class PurchaseRequestService {
         }
         List<RequestItemDto> items = itemRepo.findByRequestIdOrderByLineNoAsc(id).stream()
                 .map(item -> toItemDto(item, pending.getOrDefault(item.getId(), BigDecimal.ZERO))).toList();
-        return toDetail(r, items);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     /**
@@ -574,8 +587,10 @@ public class PurchaseRequestService {
         return value == null ? null : value.toString();
     }
 
-    private PurchaseRequest requireRequest(UUID id) {
-        return requestRepo.findById(id).filter(r -> !r.isDeleted())
+    private PurchaseRequest requireRequest(UUID id) { return requireRequest(id, false); }
+
+    private PurchaseRequest requireRequest(UUID id, boolean includeDeleted) {
+        return requestRepo.findById(id).filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购申请单不存在"));
     }
     private PurchaseRequest requireRequestForUpdate(UUID id) {
@@ -584,5 +599,17 @@ public class PurchaseRequestService {
         return request == null || request.isDeleted()
                 ? requireRequest(id)
                 : request;
+    }
+
+    private RequestDetail finishHistory(RequestDetail view, PurchaseRequest entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "purchase_requests", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(false);
+        return retainedRecords.children("purchase_requests",id,beforeId,size);
     }
 }

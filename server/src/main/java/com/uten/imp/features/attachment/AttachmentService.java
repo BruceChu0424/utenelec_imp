@@ -65,6 +65,7 @@ public class AttachmentService implements AttachmentAccessPort {
     private final AttachmentObjectOutboxStore objectOutbox;
     private final StorageProviderRegistry storageProviders;
     private final AttachmentDownloadVerifier downloadVerifier;
+    private final com.uten.imp.audit.AuditActorDirectory actors;
 
     @Override
     @Transactional(readOnly = true)
@@ -226,6 +227,38 @@ public class AttachmentService implements AttachmentAccessPort {
                 .toList();
     }
 
+    @Transactional(readOnly=true)
+    public List<AttachmentDto> list(String rawOwnerType,UUID ownerId,boolean includeDeleted,boolean onlyDeleted) {
+        if(!includeDeleted&&!onlyDeleted)return list(rawOwnerType,ownerId);
+        AuthUser user=requireStaff();require(user,"attachment:view");String ownerType=normalizeOwnerType(rawOwnerType);
+        policy(ownerType).requireCanViewHistory(ownerId,user);
+        var rows=repository.findByOwnerTypeAndOwnerIdOrderByCreatedAtAsc(ownerType,ownerId).stream()
+                .filter(row->!onlyDeleted||isDeletedHistory(row)).toList();
+        var names=actors.resolve(rows.stream().map(Attachment::getDeleteRequestedBy).filter(Objects::nonNull).distinct().toList(),List.of());
+        return rows.stream().map(row->toDto(row,true,names)).toList();
+    }
+
+    @Transactional(readOnly=true)
+    public AttachmentDto history(UUID id) {
+        AuthUser user=requireStaff();require(user,"attachment:view");
+        Attachment row=repository.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
+        policy(row.getOwnerType()).requireCanViewHistory(row.getOwnerId(),user);
+        return toDto(row,true);
+    }
+
+    @Transactional(readOnly=true)
+    public RawDownload openHistory(UUID id) {
+        AuthUser user=requireStaff();require(user,"attachment:download");
+        if(user.getImpersonatedBy()!=null)throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);
+        Attachment row=repository.findById(id).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
+        policy(row.getOwnerType()).requireCanViewSensitiveOriginalHistory(row.getOwnerId(),user);
+        if(row.getLifecycleState()!=AttachmentLifecycleState.CLEAN&&row.getLifecycleState()!=AttachmentLifecycleState.RETAINED_HISTORY)
+            throw new ApiException(ErrorCode.CONFLICT,"历史附件原件不可用，不能伪造恢复文件");
+        InputStream input=downloadVerifier.open(row);
+        auditDownloadOrClose(input,user,"attachment_history_download",id);
+        return new RawDownload(input,normalizeContentType(row.getContentType()),row.getOriginalName(),row.getSizeBytes());
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<AttachmentView> listVisible(String rawOwnerType, UUID ownerId) {
@@ -235,8 +268,18 @@ public class AttachmentService implements AttachmentAccessPort {
                         attachment.storageKey(), attachment.originalName(),
                         attachment.contentType(), attachment.sizeBytes(),
                         attachment.uploadedAt(), attachment.uploadedBy(),
-                        attachment.downloadUrl(), attachment.category(), attachment.avatar()))
+                        attachment.downloadUrl(), attachment.category(), attachment.avatar(),attachment.deleted(),attachment.deletedAt(),attachment.deletedBy(),attachment.deletedByName(),attachment.deletedReason(),
+                        attachment.historyReadOnly(),attachment.originalAvailability(),attachment.historyDownloadUrl()))
                 .toList();
+    }
+
+    @Override @Transactional(readOnly=true)
+    public List<AttachmentView> listVisibleHistory(String ownerType,UUID ownerId) {
+        return list(ownerType,ownerId,true,false).stream().map(attachment->new AttachmentView(
+                attachment.id(),attachment.ownerType(),attachment.ownerId(),attachment.storageKey(),attachment.originalName(),attachment.contentType(),
+                attachment.sizeBytes(),attachment.uploadedAt(),attachment.uploadedBy(),attachment.downloadUrl(),attachment.category(),attachment.avatar(),
+                attachment.deleted(),attachment.deletedAt(),attachment.deletedBy(),attachment.deletedByName(),attachment.deletedReason(),true,
+                attachment.originalAvailability(),attachment.historyDownloadUrl())).toList();
     }
 
     @Override
@@ -365,18 +408,21 @@ public class AttachmentService implements AttachmentAccessPort {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
         policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
         if (attachment.getLifecycleState() == AttachmentLifecycleState.DELETED
+                || attachment.getLifecycleState()==AttachmentLifecycleState.RETAINED_HISTORY
                 || attachment.getLifecycleState() == AttachmentLifecycleState.DELETE_PENDING
                 || attachment.getLifecycleState() == AttachmentLifecycleState.DELETE_FAILED) {
             return;
         }
         requireClean(attachment);
-        attachment.setLifecycleState(AttachmentLifecycleState.DELETE_PENDING);
+        attachment.setLifecycleState(AttachmentLifecycleState.RETAINED_HISTORY);
         attachment.setDeleteRequestedAt(Instant.now());
         attachment.setDeleteRequestedBy(user.getId());
         attachment.setDeleteFailure(null);
+        attachment.setDeleteReason("USER_LOGICAL_DELETE");
         repository.saveAndFlush(attachment);
         objectOutbox.enqueueFinal(
                 attachment.getId(), attachment.getStorageKey(), attachment.getStorageVersion(), attachment.getStorageProvider());
+        audit.logCommitted(user.getId(),user.getLoginAccount(),"attachment_logical_delete","attachments",id.toString(),"USER_LOGICAL_DELETE");
     }
 
     /** Local-only raw upload, still bound to the signed reservation and hard length. */
@@ -460,12 +506,30 @@ public class AttachmentService implements AttachmentAccessPort {
     }
 
     private AttachmentDto toDto(Attachment attachment) {
+        return toDto(attachment,false);
+    }
+    private static boolean isDeletedHistory(Attachment row) {
+        return row.getLifecycleState()==AttachmentLifecycleState.RETAINED_HISTORY||row.getLifecycleState()==AttachmentLifecycleState.DELETED
+                ||row.getLifecycleState()==AttachmentLifecycleState.DELETE_PENDING||row.getLifecycleState()==AttachmentLifecycleState.DELETE_FAILED;
+    }
+    private AttachmentDto toDto(Attachment attachment,boolean history) {
+        var names=attachment.getDeleteRequestedBy()==null?null:actors.resolve(List.of(attachment.getDeleteRequestedBy()),List.of());
+        return toDto(attachment,history,names);
+    }
+    private AttachmentDto toDto(Attachment attachment,boolean history,com.uten.imp.audit.AuditActorDirectory.Resolution resolved) {
+        boolean deleted=isDeletedHistory(attachment);String name=null;
+        if(attachment.getDeleteRequestedBy()!=null) {
+            var profile=resolved==null?null:resolved.forActor(attachment.getDeleteRequestedBy(),null);
+            if(profile!=null)name=profile.displayName();
+        }
+        boolean available=attachment.getLifecycleState()==AttachmentLifecycleState.CLEAN||attachment.getLifecycleState()==AttachmentLifecycleState.RETAINED_HISTORY;
         return new AttachmentDto(
                 attachment.getId(), attachment.getOwnerType(), attachment.getOwnerId(),
                 attachment.getStorageKey(), attachment.getOriginalName(),
                 attachment.getContentType(), attachment.getSizeBytes(),
                 attachment.getCreatedAt(), attachment.getCreatedBy(), null,
-                attachment.getCategory(), attachment.isAvatar());
+                attachment.getCategory(), attachment.isAvatar(),deleted,attachment.getDeleteRequestedAt(),attachment.getDeleteRequestedBy(),name,
+                attachment.getDeleteReason(),history,available?"RETAINED":"LEGACY_UNAVAILABLE",available?"/api/attachments/"+attachment.getId()+"/history/download":null);
     }
 
     private AttachmentOwnerAccessPolicy policy(String rawOwnerType) {

@@ -74,7 +74,7 @@ public class AuditRetentionScheduler {
         } catch (SQLException | RuntimeException exception) {
             auditFailureSafely("error=" + truncate(exception.getMessage(), 400));
             log.error("Audit retention failed; partitions are moved only as whole months", exception);
-            throw new IllegalStateException("审计日志归档与清理失败", exception);
+            throw new IllegalStateException("审计日志归档与保全失败", exception);
         }
     }
 
@@ -84,7 +84,9 @@ public class AuditRetentionScheduler {
             if (!tryAcquireLock(connection)) {
                 return RetentionResult.skipped();
             }
-            try (PreparedStatement statement = connection.prepareStatement(RUN_SQL);
+            try {
+                requireNonDestructiveCapability(connection);
+                try (PreparedStatement statement = connection.prepareStatement(RUN_SQL);
                  ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) {
                     throw new SQLException("Audit retention returned no summary row");
@@ -99,9 +101,19 @@ public class AuditRetentionScheduler {
                         rows.getLong("dropped_rows"),
                         texts(rows.getArray("created_partitions")),
                         rows.getLong("completion_event_id"));
+                }
             } finally {
                 releaseLock(connection);
             }
+        }
+    }
+
+    private static void requireNonDestructiveCapability(Connection connection) throws SQLException {
+        try (PreparedStatement statement=connection.prepareStatement(AuditRetentionModeReader.READ_MODE_SQL);
+             ResultSet rows=statement.executeQuery()) {
+            String mode=rows.next()?rows.getString(1):null;
+            if(!"PERMANENT_RETAIN".equals(mode)&&!"PRESERVE_UNCLASSIFIED".equals(mode))
+                throw new SQLException("Audit retention capability cannot prove non-destructive preservation; automatic maintenance is blocked");
         }
     }
 

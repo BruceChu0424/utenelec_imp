@@ -15,6 +15,7 @@ public class AuditRetentionModeReader {
     private final JdbcTemplate jdbc;
 
     public enum PurgeMode {
+        PERMANENT_RETAIN,
         PRESERVE_UNCLASSIFIED,
         LEGACY_PURGE,
         UNKNOWN
@@ -24,6 +25,7 @@ public class AuditRetentionModeReader {
         try {
             String mode = jdbc.queryForObject(READ_MODE_SQL, String.class);
             return switch (mode == null ? "" : mode.trim()) {
+                case "PERMANENT_RETAIN" -> PurgeMode.PERMANENT_RETAIN;
                 case "PRESERVE_UNCLASSIFIED" -> PurgeMode.PRESERVE_UNCLASSIFIED;
                 case "LEGACY_PURGE" -> PurgeMode.LEGACY_PURGE;
                 default -> PurgeMode.UNKNOWN;

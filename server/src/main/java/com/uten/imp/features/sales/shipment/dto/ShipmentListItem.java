@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 销售出货列表项。 */
 @Getter
 @AllArgsConstructor
-public class ShipmentListItem {
+public class ShipmentListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     @com.fasterxml.jackson.annotation.JsonUnwrapped
     private final ShipmentWorkflowView workflow=new ShipmentWorkflowView();
     @com.fasterxml.jackson.annotation.JsonUnwrapped
@@ -42,4 +42,12 @@ public class ShipmentListItem {
         public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     }
     public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+    @Override public void disableHistoryActions() {
+        workflow.setCanConfirmSales(false);
+        workflow.setCanResubmitAfterFinanceReject(false);
+        writable = false;
+        canReject = false;
+        canManageWarehouseWork = false;
+    }
 }

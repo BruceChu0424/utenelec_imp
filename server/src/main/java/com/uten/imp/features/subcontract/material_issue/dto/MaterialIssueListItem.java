@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 委外材料出仓单列表项。 */
 @Getter
 @AllArgsConstructor
-public class MaterialIssueListItem {
+public class MaterialIssueListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -22,4 +22,7 @@ public class MaterialIssueListItem {
     private Integer legacyId;
     /** 当前用户无委外商业金额权限时为 true，合计金额同时置 null。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

@@ -76,6 +76,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesReturnService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -117,9 +121,11 @@ public class SalesReturnService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesReturn> p = returnRepo.findAll(spec, pageable);
         boolean canEdit = hasObjectActionAuthority();
-        return new PageResponse<>(p.map(r -> toList(r,
+        PageResponse<ReturnListItem> result = new PageResponse<>(p.map(r -> toList(r,
                         canEdit && accessPolicy.canWrite(r.getOwnerEmployeeId(), readScope))).getContent(),
                 p);
+        return p.stream().noneMatch(SalesReturn::isDeleted) ? result
+                : retainedRecords.page(result, "sales_returns", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -136,7 +142,8 @@ public class SalesReturnService {
         return (Root<SalesReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
@@ -165,8 +172,15 @@ public class SalesReturnService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_return:view')")
-    public ReturnDetail detail(UUID id) {
-        SalesReturn r = requireReadableReturn(id);
+    public ReturnDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_return:view')")
+    public ReturnDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private ReturnDetail readDetail(UUID id, boolean historyRead) {
+        SalesReturn r = requireReadableReturn(id, historyRead);
         List<SalesReturnItem> entities = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         Set<UUID> readableShipmentItems = readableShipmentItemIds(entities.stream()
                 .map(SalesReturnItem::getOutItemId).filter(Objects::nonNull).toList());
@@ -180,9 +194,9 @@ public class SalesReturnService {
             return toItemDto(item, shipmentReadable, orderReadable);
         }).toList();
         boolean headerSourceReadable = isShipmentSourceReadable(r.getSourceShipmentId());
-        return toDetail(r, items, headerSourceReadable,
+        return finishHistory(toDetail(r, items, headerSourceReadable,
                 hasObjectActionAuthority()
-                        && accessPolicy.canWrite(r.getOwnerEmployeeId()));
+                        && accessPolicy.canWrite(r.getOwnerEmployeeId())), r, historyRead);
     }
 
     @Transactional
@@ -1364,13 +1378,17 @@ public class SalesReturnService {
                 || accessPolicy.hasAuthority("sales_return:disposition");
     }
 
-    private SalesReturn requireReturn(UUID id) {
-        return returnRepo.findById(id).filter(r -> !r.isDeleted())
+    private SalesReturn requireReturn(UUID id) { return requireReturn(id, false); }
+
+    private SalesReturn requireReturn(UUID id, boolean includeDeleted) {
+        return returnRepo.findById(id).filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售退货单不存在"));
     }
 
-    private SalesReturn requireReadableReturn(UUID id) {
-        SalesReturn salesReturn = requireReturn(id);
+    private SalesReturn requireReadableReturn(UUID id) { return requireReadableReturn(id, false); }
+
+    private SalesReturn requireReadableReturn(UUID id, boolean includeDeleted) {
+        SalesReturn salesReturn = requireReturn(id, includeDeleted);
         accessPolicy.requireReadable(salesReturn.getOwnerEmployeeId(), "销售退货单不存在");
         return salesReturn;
     }
@@ -1408,4 +1426,17 @@ public class SalesReturnService {
             UUID sourceShipmentId,
             String sourceBillNo,
             UUID ownerEmployeeId) {}
+
+    private ReturnDetail finishHistory(ReturnDetail view, SalesReturn entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "sales_returns", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_return:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(false);
+        return retainedRecords.children("sales_returns",id,beforeId,size);
+    }
 }

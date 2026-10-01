@@ -40,13 +40,17 @@ public class AttachmentObjectOutboxProcessor {
             return false;
         }
         try {
+            if("DELETE_FINAL".equals(item.operation())) {
+                receiptTransactions.executeWithoutResult(status->retainHistory(item));return true;
+            }
             StorageService storage=storageProviders.require(item.storageProvider());
             OutboxItem receiptItem=item;
             if ("DELETE_STAGING".equals(item.operation())) {
                 receiptItem=deleteStaging(storage,item);
                 if(receiptItem==null)return true;
             } else if ("DELETE_FINAL".equals(item.operation())) {
-                storage.delete(item.storageKey(), item.storageVersion());
+                receiptTransactions.executeWithoutResult(status->retainHistory(item));
+                return true;
             } else {
                 throw new IllegalStateException("Unknown attachment outbox operation");
             }
@@ -56,6 +60,25 @@ public class AttachmentObjectOutboxProcessor {
             receiptTransactions.executeWithoutResult(status->markFailed(item,error));
         }
         return true;
+    }
+
+    private void retainHistory(OutboxItem item) {
+        int changed=jdbc.update("""
+                UPDATE attachment_object_outbox SET status='RETAINED_HISTORY',completed_at=now(),locked_at=NULL,
+                    updated_at=now(),last_error=NULL WHERE id=? AND status='PROCESSING' AND attempts=?
+                """,item.id(),item.attempts());
+        if(changed!=1)return;
+        if(item.attachmentId()!=null)jdbc.update("""
+                UPDATE attachments SET lifecycle_state='RETAINED_HISTORY',delete_failure=NULL,
+                    delete_reason=COALESCE(delete_reason,'LEGACY_DELETE_INTENT_RETAINED'),updated_at=now()
+                WHERE id=? AND lifecycle_state IN('DELETE_PENDING','DELETE_FAILED')
+                  AND scan_engine IS NOT NULL AND scanned_at IS NOT NULL AND promoted_at IS NOT NULL
+                """,item.attachmentId());
+        jdbc.update("""
+                UPDATE attachment_reconciliation_findings SET finding_state='IGNORED',resolved_at=now(),updated_at=now()
+                WHERE storage_provider=? AND object_location='FINAL' AND storage_key=?
+                  AND storage_version IS NOT DISTINCT FROM ? AND finding_state='QUEUED'
+                """,item.storageProvider(),item.storageKey(),item.storageVersion());
     }
 
     private OutboxItem deleteStaging(StorageService storage,OutboxItem item) {

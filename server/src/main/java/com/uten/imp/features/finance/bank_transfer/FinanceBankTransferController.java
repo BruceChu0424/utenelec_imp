@@ -60,8 +60,10 @@ public class FinanceBankTransferController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -72,8 +74,10 @@ public class FinanceBankTransferController {
             @RequestParam(required = false) UUID outAccountId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.facets(new FinanceBankTransferQueryFilter(keyword, outAccountId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -81,6 +85,20 @@ public class FinanceBankTransferController {
     public FinanceBankTransferDetail detail(@PathVariable UUID id) {
         FinanceBankTransferDetail result = service.detail(id);
         detailViewAudit.record(
+                "view_finance_bank_transfer_detail",
+                "finance_bank_transfers",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "银行存取款单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
+    public FinanceBankTransferDetail history(@PathVariable UUID id) {
+        FinanceBankTransferDetail result = service.detailHistory(id);
+        detailViewAudit.recordHistory(
                 "view_finance_bank_transfer_detail",
                 "finance_bank_transfers",
                 id,
@@ -126,5 +144,15 @@ public class FinanceBankTransferController {
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "finance_bank_transfer_reverse", "finance_bank_transfer", String.valueOf(id), "success"));
         return result;
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        detailViewAudit.recordHistory("view_finance_bank_transfer_detail", "finance_bank_transfers", id, null, null, "单据历史明细");
+        return rows;
     }
 }

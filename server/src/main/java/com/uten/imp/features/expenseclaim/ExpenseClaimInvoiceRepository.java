@@ -24,17 +24,17 @@ public interface ExpenseClaimInvoiceRepository
     @Query(value = """
             SELECT i.claim_id, c.claim_no, c.status, c.applicant_name_snapshot
             FROM expense_claim_invoices i JOIN expense_claims c ON c.id=i.claim_id
-            WHERE i.invoice_no=:invoiceNo AND coalesce(i.invoice_code,'')=coalesce(:invoiceCode,'')
+            WHERE NOT i.is_archived AND NOT c.is_deleted AND i.invoice_no=:invoiceNo AND coalesce(i.invoice_code,'')=coalesce(:invoiceCode,'')
               AND (CASE WHEN i.invoice_type='OTHER' AND NOT ((i.invoice_no ~ '^[0-9]{20}$' AND i.invoice_code IS NULL) OR (i.invoice_no ~ '^[0-9]{8}$' AND coalesce(i.invoice_code,'') ~ '^([0-9]{10}|[0-9]{12})$')) THEN upper(btrim(i.seller_name)) ELSE '' END)=:issuer
               AND (CAST(:excludeClaimId AS uuid) IS NULL OR i.claim_id<>:excludeClaimId)
             LIMIT 1
             """,nativeQuery=true)
-    Optional<Object[]> findDuplicateHolder(@Param("invoiceNo") String invoiceNo,
+    List<Object[]> findDuplicateHolder(@Param("invoiceNo") String invoiceNo,
         @Param("invoiceCode") String invoiceCode,@Param("excludeClaimId") UUID excludeClaimId,@Param("issuer") String issuer);
 
     @Query(value="""
             SELECT i.id FROM expense_claim_invoices i
-            WHERE i.invoice_no=:invoiceNo AND coalesce(i.invoice_code,'')=coalesce(:invoiceCode,'')
+            WHERE NOT i.is_archived AND i.invoice_no=:invoiceNo AND coalesce(i.invoice_code,'')=coalesce(:invoiceCode,'')
             AND (CASE WHEN i.invoice_type='OTHER' AND NOT ((i.invoice_no ~ '^[0-9]{20}$' AND i.invoice_code IS NULL) OR (i.invoice_no ~ '^[0-9]{8}$' AND coalesce(i.invoice_code,'') ~ '^([0-9]{10}|[0-9]{12})$')) THEN upper(btrim(i.seller_name)) ELSE '' END)=:issuer
             AND (CAST(:excludeInvoiceId AS uuid) IS NULL OR i.id<>:excludeInvoiceId)
             LIMIT 1

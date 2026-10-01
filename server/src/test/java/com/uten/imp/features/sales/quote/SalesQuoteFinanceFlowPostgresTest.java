@@ -1053,6 +1053,31 @@ class SalesQuoteFinanceFlowPostgresTest {
     // 夹具
     // =====================================================================
 
+    @Test void deletedQuoteRetainsNativeMaskedDetailAndScopedFiltersWithNoActions() {
+        Fixture f=fixture("retained-history");loginAs(f.masked());
+        UUID goods=goods("历史品名",new BigDecimal("25.00"));
+        QuoteDetail draft=quotes.create(quoteRequest(f.maskedClient(),line(goods,"2","25","100","25")));
+        quotes.delete(draft.getId());
+        assertNotFound(()->quotes.detail(draft.getId()));
+        QuoteDetail history=quotes.detailHistory(draft.getId());
+        assertThat(history.isDeleted()).isTrue();
+        assertThat(history.isHistoryReadOnly()).isTrue();
+        assertThat(history.isWritable()).isFalse();
+        assertThat(history.getStatus()).isEqualTo((short)0);
+        assertThat(history.isPriceMasked()).isTrue();
+        assertThat(history.getTotalLocal()).isNull();
+        assertThat(history.getItems()).hasSize(1);
+        assertThat(history.getItems().getFirst().getQty()).isEqualByComparingTo("2");
+        var filter=new QuoteQueryFilter(null,f.maskedClient(),null,null,null,draft.getBillNo(),null);
+        assertThat(quotes.list(filter,1,20,null,null).getItems()).isEmpty();
+        var page=quotes.list(filter.withHistory(false,true),1,20,null,null);
+        assertThat(page.getItems()).hasSize(1);
+        assertThat(page.getItems().getFirst().isDeleted()).isTrue();
+        assertThat(page.getItems().getFirst().isWritable()).isFalse();
+        assertThat(quotes.facets(filter.withHistory(false,true)).get("billNo")).isNotEmpty();
+        loginAs(f.outsider());assertNotFound(()->quotes.detailHistory(draft.getId()));
+    }
+
     private record Fixture(UUID sales, UUID masked, UUID finance, UUID outsider,
                            UUID client, UUID maskedClient) {
     }

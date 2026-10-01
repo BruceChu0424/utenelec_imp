@@ -54,6 +54,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinanceOtherIncomeService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -83,7 +87,9 @@ public class FinanceOtherIncomeService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceOtherIncome> p = incomeRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<FinanceOtherIncomeListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(FinanceOtherIncome::isDeleted) ? result
+                : retainedRecords.page(result, "finance_other_incomes", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -99,7 +105,8 @@ public class FinanceOtherIncomeService {
         return (Root<FinanceOtherIncome> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -118,12 +125,18 @@ public class FinanceOtherIncomeService {
     }
 
     @Transactional(readOnly = true)
-    public FinanceOtherIncomeDetail detail(UUID id) {
-        FinanceOtherIncome o = require(id);
+    public FinanceOtherIncomeDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public FinanceOtherIncomeDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private FinanceOtherIncomeDetail readDetail(UUID id, boolean historyRead) {
+        FinanceOtherIncome o = require(id, historyRead);
         access.requireReadable(o.getMakerId(), "其它收入单不存在");
         List<FinanceOtherIncomeItemDto> items = itemRepo.findByIncomeIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(o, items);
+        return finishHistory(toDetail(o, items), o, historyRead);
     }
 
     @Transactional
@@ -406,8 +419,10 @@ public class FinanceOtherIncomeService {
                 nameResolver.nameOf(o.getMakerId()), o.getCreatedAt());
     }
 
-    private FinanceOtherIncome require(UUID id) {
-        return incomeRepo.findById(id).filter(o -> !o.isDeleted())
+    private FinanceOtherIncome require(UUID id) { return require(id, false); }
+
+    private FinanceOtherIncome require(UUID id, boolean includeDeleted) {
+        return incomeRepo.findById(id).filter(o -> includeDeleted || !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "其它收入单不存在"));
     }
 
@@ -422,5 +437,16 @@ public class FinanceOtherIncomeService {
 
     private static BigDecimal nz(BigDecimal x) {
         return x == null ? BigDecimal.ZERO : x;
+    }
+
+    private FinanceOtherIncomeDetail finishHistory(FinanceOtherIncomeDetail view, FinanceOtherIncome entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "finance_other_incomes", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        return retainedRecords.children("finance_other_incomes",id,beforeId,size);
     }
 }

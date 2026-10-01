@@ -62,8 +62,10 @@ public class SalesReturnController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new ReturnQueryFilter(keyword, clientId, warehouseId, status, arPosted, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new ReturnQueryFilter(keyword, clientId, warehouseId, status, arPosted, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -76,8 +78,10 @@ public class SalesReturnController {
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) Boolean arPosted,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new ReturnQueryFilter(keyword, clientId, warehouseId, status, arPosted, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.facets(new ReturnQueryFilter(keyword, clientId, warehouseId, status, arPosted, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -85,6 +89,16 @@ public class SalesReturnController {
     public ReturnDetail detail(@PathVariable UUID id) {
         ReturnDetail detail = service.detail(id);
         viewAudit.record(
+                "view_sales_return_detail", "sales_returns", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售退货单");
+        return detail;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('sales_return:view')")
+    public ReturnDetail history(@PathVariable UUID id) {
+        ReturnDetail detail = service.detailHistory(id);
+        viewAudit.recordHistory(
                 "view_sales_return_detail", "sales_returns", id,
                 detail.getBillNo(), detail.getLegacyId(), "销售退货单");
         return detail;
@@ -158,5 +172,15 @@ public class SalesReturnController {
             @PathVariable UUID returnItemId,
             @Valid @RequestBody ReturnQualityDispositionRequest request) {
         return qualityService.dispose(id, returnItemId, request);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('sales_return:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        viewAudit.recordHistory("view_sales_return_detail", "sales_returns", id, null, null, "单据历史明细");
+        return rows;
     }
 }

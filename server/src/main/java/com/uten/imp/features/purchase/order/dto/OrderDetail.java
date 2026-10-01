@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
-public class OrderDetail {
+public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -49,4 +49,11 @@ public class OrderDetail {
     private String sourceRequestNo;
     /** 当前用户无采购商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+        if(financeApproval!=null)financeApproval=financeApproval.readOnly();
+        canEdit = false;
+        canDelete = false;
+        canReverse = false;
+    }
 }

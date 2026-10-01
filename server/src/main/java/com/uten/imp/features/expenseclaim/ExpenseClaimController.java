@@ -55,9 +55,11 @@ public class ExpenseClaimController {
             // 2026-09-25 单号列统一：报销单号表头排序 + 值筛选（精确匹配）。
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String claimNo) {
+            @RequestParam(required = false) String claimNo,
+            @RequestParam(defaultValue="false") boolean includeDeleted,
+            @RequestParam(defaultValue="false") boolean onlyDeleted) {
         return service.listMine(status, year, month, departmentId, category,
-                page, size, sort, order, claimNo);
+                page, size, sort, order, claimNo, includeDeleted, onlyDeleted);
     }
 
     @GetMapping("/pending")
@@ -101,8 +103,10 @@ public class ExpenseClaimController {
      */
     @GetMapping("/facets")
     @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay','expense:apply')")
-    public ExpenseClaimFacetsDto facets(@RequestParam String queue) {
-        return service.facets(queue);
+    public ExpenseClaimFacetsDto facets(@RequestParam String queue,
+            @RequestParam(defaultValue="false") boolean includeDeleted,
+            @RequestParam(defaultValue="false") boolean onlyDeleted) {
+        return service.facets(queue,includeDeleted,onlyDeleted);
     }
 
     /** 队列汇总（V608 审批页统计卡）：两队列单数/金额 + 本月提交 + 本月打款。 */
@@ -143,6 +147,25 @@ public class ExpenseClaimController {
                 null,
                 "费用报销单");
         return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
+    public ExpenseClaimDto history(@PathVariable UUID id) {
+        ExpenseClaimDto result = service.detailHistory(id);
+        detailViewAudit.recordHistory("view_expense_claim_detail", "expense_claims", id,
+                result.title(), null, "费用报销单历史");
+        return result;
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id,@RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        detailViewAudit.recordHistory("view_expense_claim_detail", "expense_claims", id, null, null, "单据历史明细");
+        return rows;
     }
 
     @PostMapping

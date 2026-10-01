@@ -9,7 +9,7 @@ import java.util.UUID;
 /** 生产计划列表行（前端解析车间/部门名称）。 */
 @Getter
 @AllArgsConstructor
-public class PlanListItem {
+public class PlanListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;

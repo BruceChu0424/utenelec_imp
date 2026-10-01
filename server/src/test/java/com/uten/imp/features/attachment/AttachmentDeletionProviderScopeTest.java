@@ -17,24 +17,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 class AttachmentDeletionProviderScopeTest {
-    @Test void successfulDeletionResolvesOnlyTheSameProviderKeyAndVersion() throws Exception {
+    @Test void finalDeletionIntentRetainsOriginalAndReportsItsRealNonDestructiveOutcome() throws Exception {
         var jdbc=new CapturingJdbc();var registry=mock(StorageProviderRegistry.class);var store=mock(StorageService.class);
         when(registry.require("internal")).thenReturn(store);
         assertThat(new AttachmentObjectOutboxProcessor(jdbc,registry,new StorageProperties(),id->{},mock(PlatformTransactionManager.class)).processNext()).isTrue();
-        verify(store).delete("same-key.pdf","exact-version");
-        var resolution=jdbc.updates.stream().filter(u->u.sql.contains("UPDATE attachment_reconciliation_findings")).findFirst().orElseThrow();
-        assertThat(resolution.sql).contains("WHERE storage_provider = ? AND object_location = ? AND storage_key = ?")
-                .contains("storage_version IS NOT DISTINCT FROM ?");
-        assertThat(resolution.args).containsExactly("internal","FINAL","same-key.pdf","exact-version");
+        verifyNoInteractions(registry,store);
+        assertThat(jdbc.updates).anyMatch(update->update.sql.contains("status='RETAINED_HISTORY'"));
+        assertThat(jdbc.updates).noneMatch(update->update.sql.contains("'SUCCEEDED'")||update.sql.contains("'DELETED'")||update.sql.contains("'RESOLVED'"));
+        var retention=jdbc.updates.stream().filter(u->u.sql.contains("UPDATE attachment_reconciliation_findings")).findFirst().orElseThrow();
+        assertThat(retention.sql).contains("finding_state='IGNORED'","storage_provider=?","storage_version IS NOT DISTINCT FROM ?");
+        assertThat(retention.args).containsExactly("internal","same-key.pdf","exact-version");
     }
 
-    @Test void physicalDeleteFailureCannotPublishACompletionProof() throws Exception {
-        var jdbc=new CapturingJdbc();var registry=mock(StorageProviderRegistry.class);var store=mock(StorageService.class);
-        when(registry.require("internal")).thenReturn(store);
-        doThrow(new IllegalStateException("unavailable object")).when(store).delete(anyString(),anyString());
+    @Test void staleFinalIntentCannotTouchTheNewerClaimOrItsAttachmentHistory() throws Exception {
+        var jdbc=new CapturingJdbc(){@Override public int update(String sql,Object...args){updates.add(new Update(sql,Arrays.asList(args)));return 0;}};
+        var registry=mock(StorageProviderRegistry.class);
         new AttachmentObjectOutboxProcessor(jdbc,registry,new StorageProperties(),id->{},mock(PlatformTransactionManager.class)).processNext();
-        assertThat(jdbc.updates).noneMatch(update->update.sql.contains("'SUCCEEDED'")||update.sql.contains("'DELETED'")||update.sql.contains("'RESOLVED'"));
-        assertThat(jdbc.updates).anyMatch(update->update.sql.contains("SET status = 'FAILED'"));
+        assertThat(jdbc.updates).hasSize(1);
+        assertThat(jdbc.updates.getFirst().sql).contains("attempts=?").contains("RETAINED_HISTORY");
+        verifyNoInteractions(registry);
     }
 
     private record Update(String sql,List<Object> args) {}

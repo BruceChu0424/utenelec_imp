@@ -55,8 +55,10 @@ public class SubcontractWasteController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new WasteQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new WasteQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -68,8 +70,10 @@ public class SubcontractWasteController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new WasteQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.facets(new WasteQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -77,6 +81,20 @@ public class SubcontractWasteController {
     public WasteDetail detail(@PathVariable UUID id) {
         WasteDetail result = service.detail(id);
         auditViews.record(
+                "view_subcontract_waste_detail",
+                "subcontract_wastes",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "委外材料损耗单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('subcontract_waste:view')")
+    public WasteDetail history(@PathVariable UUID id) {
+        WasteDetail result = service.detailHistory(id);
+        auditViews.recordHistory(
                 "view_subcontract_waste_detail",
                 "subcontract_wastes",
                 id,
@@ -114,5 +132,15 @@ public class SubcontractWasteController {
     @PreAuthorize("hasAuthority('subcontract_waste:reverse')")
     public WasteDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('subcontract_waste:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        auditViews.recordHistory("view_subcontract_waste_detail", "subcontract_wastes", id, null, null, "单据历史明细");
+        return rows;
     }
 }

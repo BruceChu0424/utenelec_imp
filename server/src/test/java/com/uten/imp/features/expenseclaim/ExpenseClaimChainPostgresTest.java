@@ -42,6 +42,7 @@ class ExpenseClaimChainPostgresTest {
     @Autowired ExpenseClaimSettingsService settings;
     @Autowired FinanceExpenseService expenses;
     @Autowired com.uten.imp.common.platformcolumns.PlatformColumnService platformColumns;
+    @Autowired com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
     @Test void submissionFreezesExtraColumnsAcrossRejectionAndRecreatedItemIds() throws Exception {
@@ -214,6 +215,103 @@ class ExpenseClaimChainPostgresTest {
         var updated=settings.update(new ExpenseClaimSettingsDto("测试公司",null,"请上传原件",false,configured.version()));
         assertThat(updated.version()).isEqualTo(configured.version()+1);
         assertThatThrownBy(()->settings.update(new ExpenseClaimSettingsDto("另一家公司",null,null,false,configured.version()))).isInstanceOf(ApiException.class).hasMessageContaining("已更新");
+    }
+
+    @Test void deletionPreservesOriginalsAndHistoryIsReadOnlyAndCurrentlyScoped() {
+        Actor applicant=actor("retained-owner"),foreign=actor("retained-other");login(applicant,"expense:apply");
+        var draft=claims.create(request("删除前原文",null));
+        UUID originalItem=draft.items().getFirst().id();
+        var changed=claims.editVersioned(draft.id(),request("修订后原文",draft.version()));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM business_record_history WHERE source_table='expense_claim_items' AND source_id=? AND payload->>'description'='客户拜访住宿一晚'",Integer.class,originalItem.toString())).isEqualTo(1);
+        assertThat(changed.totalAmount()).isEqualByComparingTo("100.00");
+        UUID retainedItem=changed.items().getFirst().id();
+        claims.delete(changed.id(),changed.version());
+        assertThat(jdbc.queryForObject("SELECT is_deleted FROM expense_claims WHERE id=?",Boolean.class,changed.id())).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM expense_claim_items WHERE id=?",Integer.class,retainedItem)).isEqualTo(1);
+        assertThatThrownBy(()->claims.detail(changed.id())).isInstanceOf(ApiException.class);
+        assertThat(claims.listMine(null,null,null,null,null,1,20,null,null,changed.claimNo()).getItems()).isEmpty();
+        var history=claims.detailHistory(changed.id());
+        var retained=claims.historyRows(changed.id(),null,1);
+        assertThat(retained).hasSize(1);
+        assertThat(retained.getFirst().sourceId()).isEqualTo(originalItem.toString());
+        assertThat(retained.getFirst().original().path("amount").decimalValue()).isEqualByComparingTo("100.00");
+        assertThat(retained.getFirst().originalJson()).contains("客户拜访住宿一晚");
+        assertThat(claims.historyRows(changed.id(),retained.getFirst().id(),1)).isEmpty();
+        assertThat(history.title()).isEqualTo("修订后原文");
+        assertThat(history.status()).isEqualTo("DRAFT");
+        assertThat(history.items().getFirst().id()).isEqualTo(retainedItem);
+        assertThat(history.history().isDeleted()).isTrue();
+        assertThat(history.history().isHistoryReadOnly()).isTrue();
+        assertThat(history.history().getDeletedAt()).isNotNull();
+        assertThat(history.history().getDeletedByName()).isEqualTo(applicant.login());
+        assertThat(claims.listMine(null,null,null,null,null,1,20,null,null,changed.claimNo(),false,true).getItems()).hasSize(1);
+        assertThat(claims.facets("mine",false,true).claimNos()).anySatisfy(bucket->assertThat(bucket.value()).isEqualTo(changed.claimNo()));
+        assertThatThrownBy(()->claims.submit(changed.id(),history.version())).isInstanceOf(ApiException.class);
+        login(foreign,"expense:apply");
+        assertThatThrownBy(()->claims.detailHistory(changed.id())).isInstanceOf(ApiException.class);
+        assertThat(claims.listMine(null,null,null,null,null,1,20,null,null,changed.claimNo(),true,false).getItems()).isEmpty();
+    }
+
+    @Test void deletedDraftKeepsInvoiceOriginalButReleasesItsLiveDeduplicationSlot() {
+        Actor applicant=actor("retained-invoice");login(applicant,"expense:apply");
+        var old=claims.create(request("未提交的旧申请",null));
+        String invoiceNo="HIST/"+UUID.randomUUID();
+        var withInvoice=claims.addInvoiceVersioned(old.id(),new ExpenseClaimInvoiceInput("OTHER",null,invoiceNo,
+                BusinessTime.today(),"测试出票单位",null,null,null,null,new BigDecimal("100.00"),null,"票据原文",old.version(),null));
+        claims.delete(old.id(),withInvoice.version());
+        assertThat(claims.detailHistory(old.id()).invoices()).hasSize(1);
+        assertThat(claims.detailHistory(old.id()).invoices().getFirst().remark()).isEqualTo("票据原文");
+        assertThat(claims.checkInvoiceDuplicate(invoiceNo,null,null,"OTHER","测试出票单位").duplicated()).isFalse();
+        var replacement=claims.create(request("重建的有效申请",null));
+        var saved=claims.addInvoiceVersioned(replacement.id(),new ExpenseClaimInvoiceInput("OTHER",null,invoiceNo,
+                BusinessTime.today(),"测试出票单位",null,null,null,null,new BigDecimal("100.00"),null,null,replacement.version(),null));
+        assertThat(claims.detail(saved.id()).invoices()).hasSize(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM expense_claim_invoices WHERE invoice_no=?",Integer.class,invoiceNo)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM expense_claim_invoices WHERE invoice_no=? AND NOT is_archived",Integer.class,invoiceNo)).isEqualTo(1);
+    }
+
+    @Test void retainedNestedRowsPreserveExactMoneyAcrossCursorPages() {
+        jdbc.execute("CREATE TABLE history_reader_root(id uuid PRIMARY KEY)");
+        jdbc.execute("CREATE TABLE history_reader_line(id uuid PRIMARY KEY,root_id uuid NOT NULL)");
+        jdbc.execute("CREATE TABLE history_reader_cost(id uuid PRIMARY KEY,line_id uuid NOT NULL,amount numeric(38,18))");
+        jdbc.execute("SELECT fn_register_record_retention('history_reader_line','history_reader_root','root_id')");
+        jdbc.execute("SELECT fn_register_record_retention('history_reader_cost','history_reader_line','line_id')");
+        UUID rootId=UUID.randomUUID(),lineId=UUID.randomUUID(),costId=UUID.randomUUID();
+        BigDecimal exact=new BigDecimal("12345678901234567890.123456789012345678");
+        jdbc.update("INSERT INTO history_reader_root VALUES(?)",rootId);
+        jdbc.update("INSERT INTO history_reader_line VALUES(?,?)",lineId,rootId);
+        jdbc.update("INSERT INTO history_reader_cost VALUES(?,?,?)",costId,lineId,exact);
+        jdbc.update("DELETE FROM history_reader_cost WHERE id=?",costId);
+        jdbc.update("DELETE FROM history_reader_line WHERE id=?",lineId);
+        var first=retainedRecords.children("history_reader_root",rootId,null,1);
+        assertThat(first).hasSize(1);assertThat(first.getFirst().sourceId()).isEqualTo(lineId.toString());
+        var second=retainedRecords.children("history_reader_root",rootId,first.getFirst().id(),1);
+        assertThat(second).hasSize(1);assertThat(second.getFirst().sourceId()).isEqualTo(costId.toString());
+        assertThat(second.getFirst().original().path("amount").decimalValue()).isEqualByComparingTo(exact);
+        assertThat(second.getFirst().originalJson()).contains(exact.toPlainString());
+        assertThat(retainedRecords.children("history_reader_root",rootId,second.getFirst().id(),1)).isEmpty();
+        assertThat(retainedRecords.children("history_reader_root",UUID.randomUUID(),null,100)).isEmpty();
+        assertThat(retainedRecords.children("history_reader_root",rootId,null,100,Set.of())).isEmpty();
+        assertThat(retainedRecords.children("history_reader_root",rootId,null,100,Set.of("history_reader_line")))
+                .hasSize(1).allSatisfy(row->assertThat(row.sourceTable()).isEqualTo("history_reader_line"));
+        assertThat(retainedRecords.children("history_reader_root",rootId,null,100,Set.of("history_reader_line","history_reader_cost")))
+                .hasSize(2);
+    }
+
+    @Test void deletedClaimHistoryUsesTheHistoryAttachmentPolicyForBothEvidenceKinds() {
+        Actor applicant=actor("retained-attachment"),foreign=actor("retained-attachment-other");
+        login(applicant,"expense:apply","attachment:view");
+        var draft=claims.create(request("保留有凭证的草稿",null));
+        // Metadata fixture only; real file-byte verification lives in AttachmentRetainedHistoryPostgresTest.
+        UUID evidence=attachment(draft.id()),proof=attachment(draft.id(),"EXPENSE_PAYMENT_PROOF");
+        claims.delete(draft.id(),draft.version());
+        var history=claims.detailHistory(draft.id());
+        assertThat(history.attachments()).extracting(com.uten.imp.features.attachment.dto.AttachmentDto::id).containsExactly(evidence);
+        assertThat(history.paymentProofs()).extracting(com.uten.imp.features.attachment.dto.AttachmentDto::id).containsExactly(proof);
+        assertThat(history.attachments()).allSatisfy(row->assertThat(row.historyReadOnly()).isTrue());
+        assertThat(history.paymentProofs()).allSatisfy(row->assertThat(row.historyReadOnly()).isTrue());
+        login(foreign,"expense:apply","attachment:view");
+        assertThatThrownBy(()->claims.detailHistory(draft.id())).isInstanceOf(ApiException.class);
     }
 
     private ExpenseClaimCreateRequest request(String title,Long version) {

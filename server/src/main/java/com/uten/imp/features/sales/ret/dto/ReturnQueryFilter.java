@@ -12,7 +12,21 @@ public record ReturnQueryFilter(
         Boolean arPosted,
         LocalDate dateFrom,
         LocalDate dateTo,
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+    public ReturnQueryFilter(
+        String keyword,
+        UUID clientId,
+        UUID warehouseId,
+        Short status,
+        Boolean arPosted,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo) { this(keyword, clientId, warehouseId, status, arPosted, dateFrom, dateTo, billNo, false, false); }
+    public ReturnQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new ReturnQueryFilter(keyword, clientId, warehouseId, status, arPosted, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public ReturnQueryFilter(

@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 生产日报详情（含明细行）。 */
 @Getter
 @AllArgsConstructor
-public class DailyReportDetail {
+public class DailyReportDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -57,4 +57,6 @@ public class DailyReportDetail {
     /** Only approval/receipt responses attach a command fact; ordinary detail is not a receipt. */
     @Setter
     private DailyReportApprovalReceipt approvalReceipt;
+
+    @Override public void disableHistoryActions() { allowedActions = List.of(); }
 }

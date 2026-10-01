@@ -1,6 +1,6 @@
 package com.uten.imp.features.expenseclaim;
 
-import com.uten.imp.common.domain.BaseEntity;
+import com.uten.imp.common.domain.SoftDeletableEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
@@ -19,7 +19,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "expense_claims")
-public class ExpenseClaim extends BaseEntity {
+public class ExpenseClaim extends SoftDeletableEntity {
 
     @Column(name = "applicant_id", nullable = false)
     private UUID applicantId;

@@ -40,14 +40,18 @@ public class SalesReturnAttachmentAccessPolicy implements AttachmentOwnerAccessP
         editable(locked, user);
     }
 
-    private SalesReturn document(UUID id) {
+    private SalesReturn document(UUID id) { return document(id, false); }
+
+    private SalesReturn document(UUID id, boolean includeDeleted) {
         if (id == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定销售退货单");
         SalesReturn document = em.find(SalesReturn.class, id);
-        if (document == null || document.isDeleted()) throw missing();
+        if (document == null || (!includeDeleted && document.isDeleted())) throw missing();
         return document;
     }
-    private void readable(SalesReturn document, AuthUser user) {
-        if (document.isDeleted() || !has(user, "sales_return:view")) throw missing();
+    private void readable(SalesReturn document, AuthUser user) { readable(document,user,false); }
+
+    private void readable(SalesReturn document, AuthUser user, boolean includeDeleted) {
+        if ((!includeDeleted && document.isDeleted()) || !has(user, "sales_return:view")) throw missing();
         access.requireReadable(document.getOwnerEmployeeId(), "销售退货单不存在");
     }
     private void editable(SalesReturn document, AuthUser user) {
@@ -62,4 +66,11 @@ public class SalesReturnAttachmentAccessPolicy implements AttachmentOwnerAccessP
         return user != null && (user.isSuperAdmin() || user.getPermissions().contains(permission));
     }
     private static ApiException missing() { return new ApiException(ErrorCode.NOT_FOUND, "销售退货单不存在"); }
+
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        readable(document(ownerId,true),user,true);
+    }
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        requireCanViewHistory(ownerId,user);
+    }
 }

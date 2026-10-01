@@ -89,6 +89,23 @@ class SalesDocumentAttachmentAccessPolicyTest {
         }
     }
 
+    @ParameterizedTest @EnumSource(Kind.class)
+    void deletedOwnerRetainsHistoryButNeverCurrentManagementOrRevokedView(Kind kind) {
+        var h=new Harness(kind);
+        ((com.uten.imp.common.domain.SoftDeletableEntity)h.entity()).setDeleted(true);
+        assertDoesNotThrow(()->h.policy.requireCanViewHistory(h.id,h.user()));
+        assertThrows(ApiException.class,()->h.policy.requireCanView(h.id,h.user()));
+        assertThrows(ApiException.class,()->h.policy.requireCanManage(h.id,h.user()));
+        h.permissions.remove(h.prefix+":view");
+        assertThrows(ApiException.class,()->h.policy.requireCanViewHistory(h.id,h.user()));
+    }
+
+    @Test void historyMetadataDoesNotGrantPriceSensitiveQuoteOriginal() {
+        var h=new Harness(Kind.QUOTE);h.quote.setDeleted(true);
+        assertDoesNotThrow(()->h.policy.requireCanViewHistory(h.id,h.user()));
+        assertThrows(ApiException.class,()->h.policy.requireCanViewSensitiveOriginalHistory(h.id,h.user()));
+    }
+
     @Test void directShipmentCannotBorrowOrderShipmentPermissions() {
         var h = new Harness(Kind.DIRECT_SHIPMENT);
         h.permissions.remove("sales_other_shipment:view");
@@ -146,7 +163,7 @@ class SalesDocumentAttachmentAccessPolicyTest {
                 quote = new SalesQuote(); quote.setId(id); quote.setMakerId(owner);
                 when(em.find(SalesQuote.class, id)).thenReturn(quote);
                 when(em.find(SalesQuote.class, id, LockModeType.PESSIMISTIC_WRITE)).thenReturn(quote);
-                policy = new SalesQuoteAttachmentAccessPolicy(em, access);
+                policy = new SalesQuoteAttachmentAccessPolicy(em, access,mock(com.uten.imp.features.sales.order.SalesPriceMasker.class));
             } else if (kind == Kind.RETURN) {
                 returned = new SalesReturn(); returned.setId(id); returned.setOwnerEmployeeId(owner);
                 when(em.find(SalesReturn.class, id)).thenReturn(returned);

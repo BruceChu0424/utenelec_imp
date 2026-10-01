@@ -70,6 +70,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractWasteService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -111,8 +115,10 @@ public class SubcontractWasteService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractWaste> p = wasteRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+        PageResponse<WasteListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
+        return p.stream().noneMatch(SubcontractWaste::isDeleted) ? result
+                : retainedRecords.page(result, "subcontract_wastes", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -130,7 +136,8 @@ public class SubcontractWasteService {
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(SubcontractGoodsKeyword.predicate(
@@ -149,12 +156,18 @@ public class SubcontractWasteService {
     }
 
     @Transactional(readOnly = true)
-    public WasteDetail detail(UUID id) {
-        SubcontractWaste r = requireWaste(id);
+    public WasteDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public WasteDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private WasteDetail readDetail(UUID id, boolean historyRead) {
+        SubcontractWaste r = requireWaste(id, historyRead);
         access.requireReadable(r.getMakerId(), "委外损耗单不存在");
         List<WasteItemDto> items = itemRepo.findByWasteIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(r, items);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     @Transactional
@@ -663,9 +676,11 @@ public class SubcontractWasteService {
                 it.getSourceDocNo(), it.getRemark());
     }
 
-    private SubcontractWaste requireWaste(UUID id) {
+    private SubcontractWaste requireWaste(UUID id) { return requireWaste(id, false); }
+
+    private SubcontractWaste requireWaste(UUID id, boolean includeDeleted) {
         return wasteRepo.findById(id)
-                .filter(r -> !r.isDeleted())
+                .filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外损耗单不存在"));
     }
     private SubcontractWaste requireWasteForUpdate(UUID id) {
@@ -674,5 +689,17 @@ public class SubcontractWasteService {
         return waste == null || waste.isDeleted()
                 ? requireWaste(id)
                 : waste;
+    }
+
+    private WasteDetail finishHistory(WasteDetail view, SubcontractWaste entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "subcontract_wastes", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("subcontract_wastes",id,beforeId,size);
     }
 }

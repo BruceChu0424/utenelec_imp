@@ -55,8 +55,10 @@ public class PurchaseOrderController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -69,8 +71,10 @@ public class PurchaseOrderController {
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @RequestParam(required = false) String financeApproval) {
-        return service.facets(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, null));
+            @RequestParam(required = false) String financeApproval,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.facets(new OrderQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, financeApproval, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -78,6 +82,20 @@ public class PurchaseOrderController {
     public OrderDetail detail(@PathVariable UUID id) {
         OrderDetail result = service.detail(id);
         auditViews.record(
+                "view_purchase_order_detail",
+                "purchase_orders",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购订货单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAnyAuthority('purchase_order:view','finance_order_approval:view')")
+    public OrderDetail history(@PathVariable UUID id) {
+        OrderDetail result = service.detailHistory(id);
+        auditViews.recordHistory(
                 "view_purchase_order_detail",
                 "purchase_orders",
                 id,
@@ -159,5 +177,15 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('purchase_order:reverse')")
     public OrderDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAnyAuthority('purchase_order:view','finance_order_approval:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        auditViews.recordHistory("view_purchase_order_detail", "purchase_orders", id, null, null, "单据历史明细");
+        return rows;
     }
 }

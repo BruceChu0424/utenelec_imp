@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Getter @AllArgsConstructor
-public class RequestDetail {
+public class RequestDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -38,4 +38,10 @@ public class RequestDetail {
     private String restrictionReason;
     /** Display only; applicantId remains the stable employee reference. */
     private String applicantName;
+
+    @Override public void disableHistoryActions() {
+        canEdit = false;
+        canDelete = false;
+        canReverse = false;
+    }
 }

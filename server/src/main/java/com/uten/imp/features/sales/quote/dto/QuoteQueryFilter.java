@@ -15,7 +15,20 @@ public record QuoteQueryFilter(
         LocalDate dateFrom,
         LocalDate dateTo,
         String billNo,
-        String bucket) {
+        String bucket,
+        boolean includeDeleted, boolean onlyDeleted) {
+    public QuoteQueryFilter(
+        String keyword,
+        UUID clientId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo,
+        String bucket) { this(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, false, false); }
+    public QuoteQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket, includeDeleted || onlyDeleted, onlyDeleted);
+    }
+
 
     /** 兼容旧签名(无分段)。 */
     public QuoteQueryFilter(

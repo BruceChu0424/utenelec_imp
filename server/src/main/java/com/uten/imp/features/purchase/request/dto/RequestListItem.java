@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 @Getter @AllArgsConstructor
-public class RequestListItem {
+public class RequestListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -17,4 +17,7 @@ public class RequestListItem {
     private Short status;
     private boolean closed;
     private Integer legacyId;
+
+    @Override public void disableHistoryActions() {
+    }
 }

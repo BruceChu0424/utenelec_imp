@@ -18,7 +18,8 @@ class AuditRetentionModeReaderTest {
     @Test
     void installedCapabilityReportsPreservationAndExplicitLegacyModeOnly() {
         when(jdbc.queryForObject(AuditRetentionModeReader.READ_MODE_SQL, String.class))
-                .thenReturn("PRESERVE_UNCLASSIFIED", "LEGACY_PURGE");
+                .thenReturn("PERMANENT_RETAIN", "PRESERVE_UNCLASSIFIED", "LEGACY_PURGE");
+        assertThat(reader.currentMode()).isEqualTo(AuditRetentionModeReader.PurgeMode.PERMANENT_RETAIN);
         assertThat(reader.currentMode()).isEqualTo(AuditRetentionModeReader.PurgeMode.PRESERVE_UNCLASSIFIED);
         assertThat(reader.currentMode()).isEqualTo(AuditRetentionModeReader.PurgeMode.LEGACY_PURGE);
     }

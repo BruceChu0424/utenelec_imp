@@ -12,7 +12,21 @@ public record OtherShipmentQueryFilter(
         Short status,
         LocalDate dateFrom,
         LocalDate dateTo,
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+    public OtherShipmentQueryFilter(
+        String keyword,
+        UUID clientId,
+        UUID warehouseId,
+        String outType,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo) { this(keyword, clientId, warehouseId, outType, status, dateFrom, dateTo, billNo, false, false); }
+    public OtherShipmentQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new OtherShipmentQueryFilter(keyword, clientId, warehouseId, outType, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public OtherShipmentQueryFilter(

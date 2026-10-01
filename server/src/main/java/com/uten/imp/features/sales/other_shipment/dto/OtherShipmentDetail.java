@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 其它出货详情（主表全字段 + 明细列表）。无 ar_posted（不立应收）。 */
 @Getter
 @AllArgsConstructor
-public class OtherShipmentDetail {
+public class OtherShipmentDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -54,4 +54,8 @@ public class OtherShipmentDetail {
     public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
     public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+    @Override public void disableHistoryActions() {
+        writable = false;
+    }
 }

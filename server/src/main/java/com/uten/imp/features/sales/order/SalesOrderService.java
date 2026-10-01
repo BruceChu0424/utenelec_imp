@@ -75,6 +75,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesOrderService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -139,10 +143,12 @@ public class SalesOrderService {
         Map<UUID, String> sellerNames = p.isEmpty() ? Map.of() : nameResolver.namesOf(
                 p.getContent().stream().map(SalesOrder::getSellerId).toList());
         boolean canEdit = hasObjectActionAuthority();
-        return new PageResponse<>(p.map(o -> toList(o,
+        PageResponse<OrderListItem> result = new PageResponse<>(p.map(o -> toList(o,
                         o.getSellerId() == null ? null : sellerNames.get(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
                 p);
+        return p.stream().noneMatch(SalesOrder::isDeleted) ? result
+                : retainedRecords.page(result, "sales_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -159,7 +165,8 @@ public class SalesOrderService {
         return (Root<SalesOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
@@ -213,7 +220,8 @@ public class SalesOrderService {
                         cb.desc(cb.selectCase()
                                 .when(cb.gt(sum, BigDecimal.ZERO), 1).otherwise(0).as(Integer.class)),
                         cb.asc(root.get("deliverDate")),
-                        cb.desc(root.get("billDate")));
+                        cb.desc(root.get("billDate")),
+                        cb.desc(root.get("id")));
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
@@ -747,8 +755,15 @@ public class SalesOrderService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
-    public OrderDetail detail(UUID id) {
-        SalesOrder o = requireReadableOrder(id);
+    public OrderDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public OrderDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private OrderDetail readDetail(UUID id, boolean historyRead) {
+        SalesOrder o = requireReadableOrder(id, historyRead);
         List<SalesOrderItem> items =
                 itemRepo.findByOrderIdAndDeletedFalseOrderByLineNoAsc(id);
         List<OrderItemDto> itemDtos = items.stream().map(this::toItemDto).toList();
@@ -759,7 +774,7 @@ public class SalesOrderService {
                 hasObjectActionAuthority()
                         && accessPolicy.canWrite(o.getOwnerEmployeeId()));
         fillQuoteTrace(o, d); // 报价转入回联：sourceQuoteId + 行级 quotePrice（价格留痕比对）
-        return d;
+        return finishHistory(d, o, historyRead);
     }
 
     /**
@@ -3121,13 +3136,17 @@ public class SalesOrderService {
                 || accessPolicy.hasAuthority("sales_order:reallocate");
     }
 
-    private SalesOrder requireOrder(UUID id) {
-        return orderRepo.findById(id).filter(o -> !o.isDeleted())
+    private SalesOrder requireOrder(UUID id) { return requireOrder(id, false); }
+
+    private SalesOrder requireOrder(UUID id, boolean includeDeleted) {
+        return orderRepo.findById(id).filter(o -> includeDeleted || !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在"));
     }
 
-    private SalesOrder requireReadableOrder(UUID id) {
-        SalesOrder order = requireOrder(id);
+    private SalesOrder requireReadableOrder(UUID id) { return requireReadableOrder(id, false); }
+
+    private SalesOrder requireReadableOrder(UUID id, boolean includeDeleted) {
+        SalesOrder order = requireOrder(id, includeDeleted);
         accessPolicy.requireReadable(order.getOwnerEmployeeId(), "销售订货单不存在");
         return order;
     }
@@ -3297,5 +3316,18 @@ public class SalesOrderService {
             return timestamp.toInstant().atOffset(java.time.ZoneOffset.UTC);
         }
         throw new IllegalArgumentException("Unsupported timestamp type: " + value.getClass());
+    }
+
+    private OrderDetail finishHistory(OrderDetail view, SalesOrder entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "sales_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("sales_orders",id,beforeId,size);
     }
 }

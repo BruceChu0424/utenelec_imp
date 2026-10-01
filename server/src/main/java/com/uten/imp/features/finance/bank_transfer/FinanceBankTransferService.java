@@ -63,6 +63,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinanceBankTransferService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -90,7 +94,9 @@ public class FinanceBankTransferService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceBankTransfer> p = transferRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<FinanceBankTransferListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(FinanceBankTransfer::isDeleted) ? result
+                : retainedRecords.page(result, "finance_bank_transfers", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -107,7 +113,8 @@ public class FinanceBankTransferService {
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -125,12 +132,18 @@ public class FinanceBankTransferService {
     }
 
     @Transactional(readOnly = true)
-    public FinanceBankTransferDetail detail(UUID id) {
-        FinanceBankTransfer t = require(id);
+    public FinanceBankTransferDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public FinanceBankTransferDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private FinanceBankTransferDetail readDetail(UUID id, boolean historyRead) {
+        FinanceBankTransfer t = require(id, historyRead);
         access.requireReadable(t.getMakerId(), "银行存取款单不存在");
         List<FinanceBankTransferLineDto> items = lineRepo.findByTransferIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
-        return toDetail(t, items);
+        return finishHistory(toDetail(t, items), t, historyRead);
     }
 
     @Transactional
@@ -504,8 +517,10 @@ public class FinanceBankTransferService {
                 nameResolver.nameOf(t.getMakerId()), t.getCreatedAt());
     }
 
-    private FinanceBankTransfer require(UUID id) {
-        return transferRepo.findById(id).filter(t -> !t.isDeleted())
+    private FinanceBankTransfer require(UUID id) { return require(id, false); }
+
+    private FinanceBankTransfer require(UUID id, boolean includeDeleted) {
+        return transferRepo.findById(id).filter(t -> includeDeleted || !t.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "银行存取款单不存在"));
     }
 
@@ -516,5 +531,16 @@ public class FinanceBankTransferService {
             throw new ApiException(ErrorCode.NOT_FOUND, "银行存取款单不存在");
         }
         return transfer;
+    }
+
+    private FinanceBankTransferDetail finishHistory(FinanceBankTransferDetail view, FinanceBankTransfer entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "finance_bank_transfers", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        return retainedRecords.children("finance_bank_transfers",id,beforeId,size);
     }
 }

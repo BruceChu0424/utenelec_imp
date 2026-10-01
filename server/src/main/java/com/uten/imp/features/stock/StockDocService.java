@@ -162,6 +162,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     private org.springframework.beans.factory.ObjectProvider<GoodsWeightObservationService> weightObservations;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<StockWeightAdjustmentService> weightAdjustments;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper retentionJson;
 
     /** 授权余额调整带重量时, 盘点定重行的原因(不进单重学习)。 */
     private static final String COUNT_REASON_AUTHORIZED = "授权调整";
@@ -171,30 +175,46 @@ public class StockDocService implements ProductionPreStockedInboundPort {
 
     @Transactional(readOnly = true)
     public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order) {
+        return list(f, page, size, sort, order, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<StockDocListItem> list(StockDocQueryFilter f, int page, int size, String sort, String order,
+                                            boolean includeDeleted, boolean onlyDeleted) {
         if ("total".equals(sort)) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
                     "仓库实物单据不提供成本排序，请在财务或库存价值报表中查看");
         }
-        Specification<StockDocument> spec = docSpec(f);
+        Specification<StockDocument> spec = docSpec(f, includeDeleted, onlyDeleted);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         // 2026-09-25 单号列统一：billNo 可排序（单据号不泄露成本）。
                         Map.of("billDate", "billDate", "billNo", "billNo")));
         Page<StockDocument> p = docRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), page, size,
+        PageResponse<StockDocListItem> result = new PageResponse<>(p.map(this::toList).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
+        return includeDeleted || onlyDeleted ? retainedRecords.page(result, "stock_documents", p.getContent()) : result;
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数（docType 维度）。 */
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter f) {
+        return facets(f, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter f, boolean includeDeleted, boolean onlyDeleted) {
         return java.util.Map.of("billNo",
-                com.uten.imp.common.web.TableFacets.groupCount(em, StockDocument.class, docSpec(f), "billNo"));
+                com.uten.imp.common.web.TableFacets.groupCount(em, StockDocument.class, docSpec(f, includeDeleted, onlyDeleted), "billNo"));
     }
 
     /** 列表/桶共用的谓词基座（2026-09-25 单号列统一抽出）：可见范围 + docType + 表头过滤。 */
     private Specification<StockDocument> docSpec(StockDocQueryFilter f) {
+        return docSpec(f, false, false);
+    }
+
+    private Specification<StockDocument> docSpec(StockDocQueryFilter f, boolean includeDeleted, boolean onlyDeleted) {
         var readScope = access.scope();
         boolean returnTaskReadable = access.hasAuthority("stock_doc:view")
                 && productionStockTaskAccess.canAccessWarehouseTasks();
@@ -202,15 +222,21 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             Predicate ownerReadable = access.readablePredicate(root, cb, "makerId", readScope);
-            ps.add(returnTaskReadable ? cb.or(ownerReadable,
+            Predicate readable = returnTaskReadable ? cb.or(ownerReadable,
                     cb.and(cb.equal(root.get("docType"), "WDRAW"),
                         cb.isTrue(cb.function("fn_is_production_material_return_request", Boolean.class, root.get("id")))))
-                    : ownerReadable);
+                    : ownerReadable;
+            if (returnTaskReadable && (includeDeleted || onlyDeleted)) {
+                readable = cb.or(readable, cb.and(cb.isTrue(root.get("deleted")),
+                        cb.isTrue(cb.function("fn_stock_document_has_history_provenance", Boolean.class, root.get("id")))));
+            }
+            ps.add(readable);
             ps.add(cb.or(cb.notEqual(root.get("docType"), "DRAW"),
-                    cb.isTrue(cb.function("fn_production_draw_requested",
-                            Boolean.class, root.get("id")))));
+                    cb.isTrue(cb.function("fn_production_draw_requested", Boolean.class, root.get("id"))),
+                    includeDeleted || onlyDeleted ? cb.isTrue(root.get("deleted")) : cb.disjunction()));
             if (f.docType() != null && !f.docType().isBlank()) {
                 ps.add(cb.equal(root.get("docType"), f.docType()));
             }
@@ -237,7 +263,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             if (f.issueStatus() != null) {
                 ps.add(cb.equal(root.get("issueStatus"), f.issueStatus()));
                 if ("DRAW".equals(f.docType()) && f.issueStatus() < 2) {
-                    ps.add(cb.isTrue(cb.function("fn_production_draw_pending", Boolean.class, root.get("id"))));
+                    ps.add(cb.or(cb.isTrue(cb.function("fn_production_draw_pending", Boolean.class, root.get("id"))),
+                            includeDeleted || onlyDeleted ? cb.isTrue(root.get("deleted")) : cb.disjunction()));
                 }
             }
             if (Boolean.TRUE.equals(f.productionReturnRequests())) {
@@ -263,6 +290,46 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         List<StockDocItemDto> items = entities.stream()
                 .map(item -> toItemDto(item, issuedWeights.get(item.getId()))).toList();
         return toDetail(d, items);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public StockDocDetail history(UUID id) {
+        StockDocument document = readableHistoryDocument(id);
+        List<StockDocumentItem> entities = itemRepo.findHistoryByDocIdOrderByLineNoAsc(id);
+        Map<UUID, IssuedWeight> weights = issuedWeights(document, entities);
+        List<StockDocItemDto> items = entities.stream().map(item -> toItemDto(item, weights.get(item.getId()))).toList();
+        return retainedRecords.detail(toDetail(document, items), "stock_documents", id,
+                document.isDeleted(), document.getDeletedAt(), true);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRecords(UUID id, Long beforeId, int size) {
+        readableHistoryDocument(id);
+        var rows = retainedRecords.children("stock_documents", id, beforeId, size,
+                Set.of("stock_document_items", "plan_draw_links"));
+        if (canViewCost()) return rows;
+        return rows.stream().map(row -> {
+            var original = row.original().deepCopy();
+            if (original instanceof com.fasterxml.jackson.databind.node.ObjectNode object) {
+                object.remove(List.of("price", "amount_original", "amount_local", "total_original", "total_local",
+                        "unit_cost_local", "amount_delta", "amount", "cost_price", "owned_value_local"));
+            }
+            try {
+                return new com.uten.imp.common.history.RetainedRecordReader.RetainedRow(row.id(), row.sourceTable(), row.sourceId(),
+                        row.operation(), row.recordedAt(), row.actorName(), original, retentionJson.writeValueAsString(original));
+            } catch (com.fasterxml.jackson.core.JsonProcessingException failure) {
+                throw new IllegalStateException("仓库历史明细遮价失败", failure);
+            }
+        }).toList();
+    }
+
+    private StockDocument readableHistoryDocument(UUID id) {
+        if (id == null) throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
+        StockDocument document = docRepo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在"));
+        requireIssueBatchReceiptReadable(List.of(id));
+        return document;
     }
 
     /** Batch receipts keep the same read boundary without building discarded detail projections. */
@@ -1614,7 +1681,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         var query = em.createNativeQuery("SELECT d.id, d.doc_type FROM stock_documents d WHERE d.id IN (:ids)"
                 + (history ? "" : " AND NOT d.is_deleted AND (d.doc_type <> 'DRAW' OR fn_production_draw_requested(d.id))")
                 + " AND ((" + owner.predicate() + ")"
-                + (pool ? " OR fn_is_production_linked_stock_document(d.id)" : "") + ")");
+                + (pool ? (history ? " OR fn_stock_document_has_history_provenance(d.id)" : " OR fn_is_production_linked_stock_document(d.id)") : "") + ")");
         query.setParameter("ids", ids);
         owner.bind(query);
         Map<UUID, String> visible = new HashMap<>();

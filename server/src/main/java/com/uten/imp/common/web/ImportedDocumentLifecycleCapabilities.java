@@ -17,7 +17,7 @@ public interface ImportedDocumentLifecycleCapabilities extends StandardDocumentL
     @Override default boolean isCanDelete(){return !isLegacyImported()&&StandardDocumentLifecycleCapabilities.super.isCanDelete();}
     @Override default boolean isCanReverse(){return !isLegacyImported()&&StandardDocumentLifecycleCapabilities.super.isCanReverse();}
     @JsonProperty("canApprove")
-    default boolean isCanApprove(){return !isLegacyImported()&&StandardDocumentLifecycleCapabilities.isDraft(getStatus());}
+    default boolean isCanApprove(){return !isHistoryReadOnly()&&!isLegacyImported()&&StandardDocumentLifecycleCapabilities.isDraft(getStatus());}
     @JsonProperty("restrictionReason")
     default String getRestrictionReason(){return isLegacyImported()?READ_ONLY_REASON:null;}
 }

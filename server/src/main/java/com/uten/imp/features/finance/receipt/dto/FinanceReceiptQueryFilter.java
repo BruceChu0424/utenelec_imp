@@ -13,7 +13,21 @@ public record FinanceReceiptQueryFilter(
         String receiptKind,
         LocalDate dateFrom,
         LocalDate dateTo,
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+    public FinanceReceiptQueryFilter(
+        String keyword,
+        UUID clientId,
+        UUID accountId,
+        Short status,
+        String receiptKind,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo) { this(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, billNo, false, false); }
+    public FinanceReceiptQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new FinanceReceiptQueryFilter(keyword, clientId, accountId, status, receiptKind, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public FinanceReceiptQueryFilter(

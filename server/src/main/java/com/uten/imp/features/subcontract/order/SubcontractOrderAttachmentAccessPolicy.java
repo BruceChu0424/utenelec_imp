@@ -51,15 +51,19 @@ public class SubcontractOrderAttachmentAccessPolicy implements AttachmentOwnerAc
         guard.verifyUnchanged();
     }
 
-    private SubcontractOrder order(UUID id) {
+    private SubcontractOrder order(UUID id) { return order(id, false); }
+
+    private SubcontractOrder order(UUID id, boolean includeDeleted) {
         if (id == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定委外订货单");
         SubcontractOrder order = em.find(SubcontractOrder.class, id);
-        if (order == null || order.isDeleted()) throw missing();
+        if (order == null || (!includeDeleted && order.isDeleted())) throw missing();
         return order;
     }
 
-    private void readable(SubcontractOrder order, AuthUser user) {
-        if (order.isDeleted()) throw missing();
+    private void readable(SubcontractOrder order, AuthUser user) { readable(order,user,false); }
+
+    private void readable(SubcontractOrder order, AuthUser user, boolean includeDeleted) {
+        if ((!includeDeleted && order.isDeleted())) throw missing();
         boolean visibleOrder = has(user, "subcontract_order:view") && access.canRead(order.getMakerId());
         boolean pendingReview = !visibleOrder && has(user, "finance_order_approval:view")
                 && approvals.canCurrentActorReviewPending("SUBCONTRACT", order.getId());
@@ -83,4 +87,11 @@ public class SubcontractOrderAttachmentAccessPolicy implements AttachmentOwnerAc
         return user != null && (user.isSuperAdmin() || user.getPermissions().contains(authority));
     }
     private static ApiException missing() { return new ApiException(ErrorCode.NOT_FOUND, "委外订货单不存在"); }
+
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        readable(order(ownerId,true),user,true);
+    }
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        requireCanViewHistory(ownerId,user);
+    }
 }

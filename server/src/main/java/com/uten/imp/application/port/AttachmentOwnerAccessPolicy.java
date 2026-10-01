@@ -18,6 +18,15 @@ public interface AttachmentOwnerAccessPolicy {
 
     void requireCanView(UUID ownerId, AuthUser user);
 
+    /** Unredacted recognition inputs may contain prices; owning feature supplies its sensitive-read policy. */
+    default void requireCanViewSensitiveOriginal(UUID ownerId,AuthUser user) {requireCanView(ownerId,user);}
+
+    /** History uses current owner/data scope; unaudited owners remain conservative. */
+    default void requireCanViewHistory(UUID ownerId,AuthUser user) {requireCanView(ownerId,user);}
+
+    /** Never let generic history visibility bypass unredacted-original sensitivity. */
+    default void requireCanViewSensitiveOriginalHistory(UUID ownerId,AuthUser user) {requireCanViewSensitiveOriginal(ownerId,user);}
+
     /** Separate selected-avatar visibility; it never authorizes listing private documents. */
     default void requireCanViewAvatar(UUID ownerId, AuthUser user) {
         requireCanView(ownerId, user);

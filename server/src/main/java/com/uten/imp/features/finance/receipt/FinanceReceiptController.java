@@ -62,9 +62,11 @@ public class FinanceReceiptController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         return service.list(new FinanceReceiptQueryFilter(keyword, clientId, accountId, status,
-                receiptKind, dateFrom, dateTo, billNo), page, size, sort, order);
+                receiptKind, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -77,9 +79,11 @@ public class FinanceReceiptController {
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) String receiptKind,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         return service.facets(new FinanceReceiptQueryFilter(keyword, clientId, accountId, status,
-                receiptKind, dateFrom, dateTo, null));
+                receiptKind, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -87,6 +91,20 @@ public class FinanceReceiptController {
     public FinanceReceiptDetail detail(@PathVariable UUID id) {
         FinanceReceiptDetail result = service.detail(id);
         detailViewAudit.record(
+                "view_finance_receipt_detail",
+                "finance_receipts",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "销售收款单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('finance_receipt:view')")
+    public FinanceReceiptDetail history(@PathVariable UUID id) {
+        FinanceReceiptDetail result = service.detailHistory(id);
+        detailViewAudit.recordHistory(
                 "view_finance_receipt_detail",
                 "finance_receipts",
                 id,
@@ -132,5 +150,15 @@ public class FinanceReceiptController {
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "finance_receipt_reverse", "finance_receipt", String.valueOf(id), "success"));
         return result;
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('finance_receipt:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        detailViewAudit.recordHistory("view_finance_receipt_detail", "finance_receipts", id, null, null, "单据历史明细");
+        return rows;
     }
 }

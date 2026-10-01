@@ -67,12 +67,14 @@ public class SalesShipmentController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         return service.list(new ShipmentQueryFilter(
                 keyword, clientId, warehouseId, status, arPosted, financeAudit,
                 financeRejected, warehouseWorkStatus,
                 dateFrom, dateTo,shipmentKind,currencyId,stage,
-                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL, billNo), page, size, sort, order);
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL, billNo).withHistory(includeDeleted, onlyDeleted), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -91,12 +93,14 @@ public class SalesShipmentController {
             @RequestParam(required = false) UUID currencyId,
             @RequestParam(required = false) String stage,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         return service.facets(new ShipmentQueryFilter(
                 keyword, clientId, warehouseId, status, arPosted, financeAudit,
                 financeRejected, warehouseWorkStatus,
                 dateFrom, dateTo,shipmentKind,currencyId,stage,
-                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL, null));
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL, null).withHistory(includeDeleted, onlyDeleted));
     }
 
     @GetMapping("/{id}")
@@ -104,6 +108,16 @@ public class SalesShipmentController {
     public ShipmentDetail detail(@PathVariable UUID id) {
         ShipmentDetail detail = service.detail(id);
         viewAudit.record(
+                "view_sales_shipment_detail", "sales_shipments", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售出货单");
+        return detail;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public ShipmentDetail history(@PathVariable UUID id) {
+        ShipmentDetail detail = service.detailHistory(id);
+        viewAudit.recordHistory(
                 "view_sales_shipment_detail", "sales_shipments", id,
                 detail.getBillNo(), detail.getLegacyId(), "销售出货单");
         return detail;
@@ -209,5 +223,15 @@ public class SalesShipmentController {
     public java.util.List<java.util.Map<String, Object>> financeAuditRejectBatch(
             @Valid @RequestBody com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
         return service.financeAuditRejectBatch(request);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        viewAudit.recordHistory("view_sales_shipment_detail", "sales_shipments", id, null, null, "单据历史明细");
+        return rows;
     }
 }

@@ -120,9 +120,11 @@ public class ProductionDailyReportController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         return service.list(new DailyReportQueryFilter(keyword, warehouseId, departmentId, workerId,
-                status, dateFrom, dateTo), page, size, sort, order);
+                status, dateFrom, dateTo), page, size, sort, order, includeDeleted, onlyDeleted);
     }
 
     @GetMapping("/{id}")
@@ -137,6 +139,21 @@ public class ProductionDailyReportController {
                 result.getLegacyId(),
                 "生产日报");
         return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportDetail history(@PathVariable UUID id) {
+        DailyReportDetail result = service.history(id);
+        auditViews.record("view_production_daily_report_detail", "production_daily_reports", id, result.getBillNo(), result.getLegacyId(), "生产日报历史");
+        return result;
+    }
+
+    @GetMapping("/{id}/history-records")
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRecords(@PathVariable UUID id,
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size) {
+        return service.historyRecords(id, beforeId, size);
     }
 
     @PostMapping

@@ -11,7 +11,20 @@ public record FinancePaymentQueryFilter(
         Short status,
         LocalDate dateFrom,
         LocalDate dateTo,
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+    public FinancePaymentQueryFilter(
+        String keyword,
+        UUID supplierId,
+        UUID accountId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo) { this(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo, false, false); }
+    public FinancePaymentQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new FinancePaymentQueryFilter(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public FinancePaymentQueryFilter(

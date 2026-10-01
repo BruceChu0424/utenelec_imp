@@ -106,6 +106,45 @@ public class ProductionExecutionReadinessService
                          AND demand.is_deleted = FALSE
                         WHERE origin.id = :originEventId
                           AND origin.event_type IN ('ORIGIN_IQC', 'ORIGIN_MAKE')
+                          -- A proven workshop-self transfer has its own exact
+                          -- handover after the inbound status is flushed. This
+                          -- generic origin hook runs earlier, while that inbound
+                          -- is still a draft. Keep other origins and all other
+                          -- entitlement priority hooks unchanged.
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM stock_documents direct_document
+                              JOIN stock_document_items direct_stock
+                                ON direct_stock.doc_id=direct_document.id
+                               AND direct_stock.id=origin.source_stock_document_item_id
+                               AND direct_stock.bill_type='FINISHED_IN'
+                               AND NOT direct_stock.is_deleted
+                              JOIN warehouses direct_place
+                                ON direct_place.id=direct_document.warehouse_id
+                               AND direct_place.id=source_reservation.warehouse_id
+                               AND direct_place.is_line_side AND NOT direct_place.is_deleted
+                              JOIN production_fqc_release_commands self_release
+                                ON self_release.stock_document_item_id=direct_stock.id
+                               AND self_release.source_report_item_id=direct_stock.source_daily_report_item_id
+                              JOIN production_fqc_inspections self_inspection
+                                ON self_inspection.id=self_release.inspection_id
+                               AND self_inspection.inspection_kind='WORKSHOP_SELF'
+                               AND self_inspection.source_report_item_id=direct_stock.source_daily_report_item_id
+                               AND self_inspection.warehouse_id=direct_document.warehouse_id
+                              JOIN production_workshop_direct_transfer_items direct_item
+                                ON direct_item.source_report_item_id=self_inspection.source_report_item_id
+                               AND direct_item.to_execution_segment_id=segment.id
+                               AND direct_item.reversal_id IS NULL
+                              JOIN production_workshop_direct_transfers direct_header
+                                ON direct_header.id=direct_item.transfer_id
+                               AND direct_header.source_report_id=direct_document.source_daily_report_id
+                               AND self_inspection.source_report_id=direct_header.source_report_id
+                               AND direct_header.line_side_warehouse_id=direct_document.warehouse_id
+                              WHERE origin.event_type='ORIGIN_MAKE'
+                                AND direct_document.id=origin.source_stock_document_id
+                                AND direct_document.doc_type='FINISHED_IN'
+                                AND NOT direct_document.is_deleted
+                          )
                         ORDER BY segment.id
                         """).setParameter("originEventId", originEventId));
         for (Object[] row : segments) {

@@ -53,6 +53,41 @@ class WorkshopDirectTransferAvailabilityEndToEndTest {
     @Test void threeReceiversReadFreshSnapshotsWithoutRecheckingEachOne() { verifyReceivers(3); }
     @Test void elevenReceiversKeepImmediatePrivateHandoverAndLinearReads() { verifyReceivers(11); }
 
+    @Test void partialCoverageStillAcceptsALaterExactDelivery() {
+        var helper = new AggregateMaterialDirectTransferEndToEndTest();
+        beans.autowireBean(helper); helper.before();
+        var flow = helper.flow;
+        var c = flow.createWithChild("2", 1);
+        var shared = flow.writer.submit(c.analysis(), flow.command(c, List.of(
+                flow.input(c, c.child(), "MAKE", "2", false)))).batches().getFirst();
+        UUID parent = helper.issue(c, c.common(), "2").getFirst();
+        UUID source = helper.segment(shared.planId());
+        flow.receive(c, c.material(), "4"); helper.start(c, source);
+        flow.fixture.loginAs(helper.worker(c));
+        UUID target = helper.demand(helper.segment(parent));
+        UUID first = helper.transfer(c, source, target, "1", "2");
+        assertEquals(0, BigDecimal.ONE.compareTo(netIssued(target)));
+        UUID second = helper.transfer(c, source, target, "1", "2");
+        assertNotEquals(first, second);
+        assertEquals(0, new BigDecimal("2").compareTo(netIssued(target)));
+        assertEquals(0, new BigDecimal("4").compareTo(netIssued(helper.demand(source))));
+        assertEquals(2, db.queryForObject("""
+                SELECT count(*) FROM production_workshop_direct_transfer_items transfer
+                JOIN production_daily_report_items item ON item.id=transfer.source_report_item_id
+                WHERE item.report_id IN (?,?) AND transfer.reversal_id IS NULL
+                """, Integer.class, first, second));
+        assertEquals(0, BigDecimal.ZERO.compareTo(db.queryForObject(
+                "SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",BigDecimal.class,c.child())));
+    }
+
+    private BigDecimal netIssued(UUID demand) {
+        return db.queryForObject("""
+                SELECT COALESCE(SUM(CASE posting_type WHEN 'ISSUE' THEN qty_base
+                    WHEN 'ISSUE_REVERSE' THEN -qty_base ELSE 0 END),0)
+                FROM production_material_stock_postings WHERE demand_id=?
+                """,BigDecimal.class,demand);
+    }
+
     private void verifyReceivers(int receivers) {
         var helper = new AggregateMaterialDirectTransferEndToEndTest();
         beans.autowireBean(helper);
@@ -140,14 +175,15 @@ class WorkshopDirectTransferAvailabilityEndToEndTest {
         assertEquals(receivers, db.queryForObject("SELECT count(*) FROM production_workshop_direct_transfer_items transfer JOIN production_daily_report_items item ON item.id=transfer.source_report_item_id WHERE item.report_id=?",
                 Integer.class, reportId), "replay must not manufacture another transfer");
 
-        // Origins still run immediately. Only the second read in the SAME top-up
-        // is removed: one origin attempt plus one top-up per receiver.
+        // Exact source rights still post immediately. Proven workshop-self
+        // origins do not start a generic pre-approval readiness attempt; the
+        // explicit direct handover reads once after its inbound is approved.
         long availabilityReads = originReads(sample, "stock_balances");
         long anomalyReads = originReads(sample, "production_workshop_direct_legacy_anomalies");
         System.out.println("READINESS-SNAPSHOT receivers=" + receivers + " availability=" + availabilityReads
                 + " anomalies=" + anomalyReads + " totalStatements=" + sample.logicalStatements);
-        assertEquals(receivers * 2L, availabilityReads);
-        assertEquals(receivers * 2L, anomalyReads);
+        assertEquals((long) receivers, availabilityReads);
+        assertEquals((long) receivers, anomalyReads);
     }
 
     private static long originReads(ProductionJdbcMeasurement.Sample sample, String table) {

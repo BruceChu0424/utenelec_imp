@@ -140,24 +140,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('errors and explicit descriptions survive wrapping and defaults', () {
-    final theme = buildLightTheme();
-    final decorated =
-        applyAutofillHint(
-              const UtenInputDecoration(
-                InputDecoration(),
-                info: 'Field context',
+  testWidgets(
+    'errors and explicit descriptions survive wrapping and defaults',
+    (tester) async {
+      final theme = buildLightTheme();
+      final decorated =
+          applyAutofillHint(
+                const UtenInputDecoration(
+                  InputDecoration(),
+                  info: 'Field context',
+                ),
+                theme,
+                autofilled: true,
+              )
+              .copyWith(errorText: 'Invalid value')
+              .applyDefaults(theme.inputDecorationTheme);
+      expect(decorated, isA<UtenInputDecoration>());
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 360,
+                child: TextField(decoration: decorated),
               ),
-              theme,
-              autofilled: true,
-            )
-            .copyWith(errorText: 'Invalid value')
-            .applyDefaults(theme.inputDecorationTheme);
-    expect(decorated, isA<UtenInputDecoration>());
-    expect(decorated.enabledBorder!.borderSide.color, theme.colorScheme.error);
-    final hint = decorated.suffixIcon! as UtenFieldHintIcon;
-    expect(hint.autofilled, isTrue);
-    expect(hint.info, 'Field context');
-    expect(hint.errorMessage, 'Invalid value');
-  });
+            ),
+          ),
+        ),
+      );
+      final renderedDecoration = tester
+          .widget<InputDecorator>(find.byType(InputDecorator))
+          .decoration;
+      expect(
+        renderedDecoration.enabledBorder!.borderSide.color,
+        theme.colorScheme.error,
+      );
+      final hint = find.byType(UtenFieldHintIcon);
+      expect(hint, findsOneWidget);
+      expect(tester.widget<UtenFieldHintIcon>(hint).autofilled, isTrue);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      const tooltipMessage = 'Invalid value\n\n$message\n\nField context';
+      final tooltip = find.descendant(of: hint, matching: find.byType(Tooltip));
+      expect(tester.widget<Tooltip>(tooltip).message, tooltipMessage);
+      await tester.tap(hint);
+      await tester.pump();
+      expect(find.text(tooltipMessage), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

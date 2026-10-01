@@ -12,21 +12,24 @@ import '../../../shared/platform_tables/table_column_projection.dart';
 // 搜索框由调用方放在标题行，不在本组件内。
 
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/master_data_table_rows_controller.dart';
+import '../../../components/layout/uten_prepend_scroll_anchor.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_hints.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -2354,7 +2357,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         style: textStyle,
         child: IconTheme.merge(
           data: IconThemeData(color: textStyle.color),
-          child: Builder(builder: (cellContext) => builder(cellContext, item)),
+          child: UtenTableCellHints(
+            child: Builder(
+              builder: (cellContext) => builder(cellContext, item),
+            ),
+          ),
         ),
       ),
     );

@@ -1191,6 +1191,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage> {
                   type: 'number',
                   value: (it) => it.returnedQty?.toStringAsFixed(2),
                 ),
+              MasterColumnDef(
+                key: 'remark',
+                label: '备注',
+                width: 220,
+                value: (it) => it.remark,
+              ),
               ...businessReadOnlyColumns<PurchaseDocItem>(
                 items,
                 columnsOf: (line) => line.extraColumns,

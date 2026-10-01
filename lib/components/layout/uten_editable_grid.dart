@@ -42,6 +42,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../inputs/uten_table_cell_hints.dart';
 import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_dialog.dart';
 import 'uten_grid_header_filter_cell.dart';
@@ -197,15 +198,8 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 未固定/未横滚时单元仍是原汁原味的可编辑控件，本字段不影响。
   final String Function(T row)? frozenTextOf;
 
-  /// 单元内部后缀装饰占宽（2026-09-09）：格内 ⓘ（UtenFieldHintIcon 44）或
-  /// 下拉箭头（20）这类排在文本之后的固定装饰宽度。自动加宽量宽时叠加在
-  /// [_cellChromeX] 上，否则装饰会吃掉文本宽度——110px 的币种列曾被 44px ⓘ
-  /// 挤到看不见默认值。无后缀装饰的列保持 0。
-  ///
-  /// 2026-09-10 口径：凡单元可能出现「预填黄标/必填红标」状态图标的列（学习
-  /// 预填的币种/汇率/税率/结账/供应商等），必须把 [UtenEditableGridCellSpec.hintIconWidth]
-  /// （44）计入——状态图标由 UtenInputDecoration 在预填态动态塞进 suffix，
-  /// 新单默认就是预填态，只按箭头 20 计会让默认值被裁成省略号。
+  /// 单元内部业务装饰占宽，如下拉箭头（20）。自动量宽时叠加到文本宽度；
+  /// 说明统一放在表头，单元格提示不再占用图标位。
   final double chromeWidth;
 }
 
@@ -224,9 +218,8 @@ abstract final class UtenEditableGridCellSpec {
     vertical: 12,
   );
 
-  /// 格内状态/说明图标（UtenFieldHintIcon）占宽，供 [EditableGridColumn.chromeWidth]
-  /// 叠加：`chromeWidth: 20 + UtenEditableGridCellSpec.hintIconWidth`。
-  static const double hintIconWidth = 44;
+  /// 兼容既有列宽定义。单元格说明/预填/错误提示已无图标，不再额外占宽。
+  static const double hintIconWidth = 0;
 
   /// 下拉/选择格的右侧展开箭头占宽。
   static const double dropdownChevronWidth = 20;
@@ -3517,7 +3510,11 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                     ? const [FontFeature.tabularFigures()]
                     : null,
               ),
-              child: column.cellBuilder(context, row),
+              child: UtenTableCellHints(
+                child: Builder(
+                  builder: (cellContext) => column.cellBuilder(cellContext, row),
+                ),
+              ),
             ),
           ),
         ),

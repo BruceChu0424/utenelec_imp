@@ -987,6 +987,26 @@ class _SubcontractDocDetailPageState
                   width: 180,
                   value: (it) => historicalReceiptRate(it.unitRateText),
                 ),
+              if (_cfg.itemHasGirth)
+                MasterColumnDef(
+                  key: 'girth',
+                  label: '围数',
+                  width: 96,
+                  type: 'number',
+                  value: (it) => it.girthQty == null
+                      ? null
+                      : formatSubcontractQty(it.girthQty!),
+                ),
+              if (_cfg.itemHasBoxQty)
+                MasterColumnDef(
+                  key: 'boxQty',
+                  label: '胶箱数',
+                  width: 96,
+                  type: 'number',
+                  value: (it) => it.boxQty == null
+                      ? null
+                      : formatSubcontractQty(it.boxQty!),
+                ),
               // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
               if (_cfg.showReceived)
                 MasterColumnDef(
@@ -1073,6 +1093,12 @@ class _SubcontractDocDetailPageState
                     if (it.cause?.isNotEmpty == true) it.cause,
                   ].join(' · '),
                 ),
+              MasterColumnDef(
+                key: 'remark',
+                label: '备注',
+                width: 220,
+                value: (it) => it.remark,
+              ),
               ...businessReadOnlyColumns<SubcontractDocItem>(
                 items,
                 columnsOf: (line) => line.extraColumns,

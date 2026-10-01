@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import 'uten_table_cell_hints.dart';
 
 /// A compact message that discloses its full text only when it really overflows.
 ///
@@ -114,6 +115,12 @@ class _UtenOverflowMessageState extends State<UtenOverflowMessage> {
           style: style,
         );
         if (!overflow) return _messageText(style, ellipsize: false);
+        if (UtenTableCellHints.contains(context)) {
+          return Tooltip(
+            message: widget.message,
+            child: _messageText(style, ellipsize: true),
+          );
+        }
 
         final iconColor =
             widget.iconColor ??

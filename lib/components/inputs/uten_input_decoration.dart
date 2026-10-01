@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'uten_field_hint_icon.dart';
 import 'uten_field_label.dart';
 import 'uten_field_message.dart';
+import 'uten_table_cell_hints.dart';
 
 /// Moves field guidance and validation messages into one in-field disclosure.
 ///
@@ -115,32 +116,38 @@ class UtenInputDecoration extends InputDecoration {
       autofilled: autofilled,
     );
     final original = _businessAdornment(base.suffixIcon);
-    if (original == null) return hint;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        hint,
-        ConstrainedBox(
-          constraints:
-              base.suffixIconConstraints ??
-              const BoxConstraints(minWidth: 48, minHeight: 48),
-          child: original,
-        ),
-      ],
+    return Builder(
+      builder: (context) {
+        final inCell = UtenTableCellHints.contains(context);
+        final content = original == null
+            ? hint
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  hint,
+                  ConstrainedBox(
+                    constraints:
+                        base.suffixIconConstraints ??
+                        const BoxConstraints(minWidth: 48, minHeight: 48),
+                    child: original,
+                  ),
+                ],
+              );
+        return inCell
+            ? content
+            : ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                child: content,
+              );
+      },
     );
   }
 
   @override
   BoxConstraints? get suffixIconConstraints {
-    final original = base.suffixIconConstraints;
-    if (!_hasMessage || original == null || !original.hasBoundedWidth) {
-      return original;
-    }
-    // A fixed suffix width must also make room for the disclosure button.
-    return original.copyWith(
-      minWidth: original.minWidth + 44,
-      maxWidth: original.maxWidth + 44,
-    );
+    // Each visible adornment owns its constraints. A table hint builds to zero
+    // size, so its absence must not leave the default 48px suffix slot behind.
+    return _hasMessage ? const BoxConstraints() : base.suffixIconConstraints;
   }
 
   @override

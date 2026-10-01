@@ -54,12 +54,19 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof AuthUser user && user.getImpersonatedBy() != null) {
             String method = request.getMethod() == null ? "" : request.getMethod().toUpperCase(Locale.ROOT);
-            if (WRITE_METHODS.contains(method) && !WRITABLE_WHITELIST.contains(stripContextPath(request))) {
+            if (WRITE_METHODS.contains(method) && !WRITABLE_WHITELIST.contains(stripContextPath(request))
+                    && !readOnlyIqcReportReceipt(method, stripContextPath(request))) {
                 blockWrite(request, response, user.getImpersonatedBy());
                 return;
             }
         }
         chain.doFilter(request, response);
+    }
+
+    /** Only these two original-body queries are pure reads; quality writes and other receipt routes stay blocked. */
+    static boolean readOnlyIqcReportReceipt(String method, String path) {
+        return "POST".equals(method) && path != null && path.matches(
+                "/api/procurement/inspection/(PURCHASE|SUBCONTRACT)/[0-9a-fA-F-]{36}/(decide-batch|pass-batch)/receipt");
     }
 
     private void blockWrite(HttpServletRequest request, HttpServletResponse response, UUID adminId)

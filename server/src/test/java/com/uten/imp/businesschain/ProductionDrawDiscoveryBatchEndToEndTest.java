@@ -48,6 +48,39 @@ class ProductionDrawDiscoveryBatchEndToEndTest {
     @Autowired ProductionDrawDiscoveryBatchService batches;
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
+    @Test void committedMixedReceiptRequiresOriginalActorAndEveryCurrentDocumentScopeWithoutReconfiguring() {
+        var discovered=task();var pending=suggest(discovered);discovered.receive(discovered.world.goodsD(),"4");
+        var ordinary=task();ordinary.receive(ordinary.world.goodsD(),"6");ordinary.receive(ordinary.world.goodsC(),"3");
+        UUID ordinaryDraw=legacyDraw(ordinary);
+        UUID user=discovered.fixture.createUserWithPerms(discovered.world,"discovery-receipt-"+UUID.randomUUID(),
+                "stock_doc:view","stock_doc:approve","stock_doc:issue");
+        UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,user);
+        UUID warehouseDepartment=db.queryForObject("SELECT id FROM departments WHERE code='SUB_WH' AND NOT is_deleted",UUID.class);
+        db.update("UPDATE employees SET department_id=? WHERE id=?",warehouseDepartment,employee);
+        discovered.fixture.loginAs(user);
+        var command=new Request("discovery-original-result-"+UUID.randomUUID(),List.of(ordinaryDraw),
+                List.of(new Discovery(pending.requestId(),pending.version(),List.of(material(discovered,discovered.world.warehouseId(),"2")))),null);
+        var first=batches.issue(command);assertEquals(2,first.issuedCount());
+        var frozen=batches.receipt(command.idempotencyKey());assertEquals("COMMITTED",frozen.state());
+        assertEquals(first,frozen.result());assertEquals(2,frozen.docIds().size());
+        String quantities=db.queryForObject("SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id)::text FROM stock_document_items i WHERE doc_id=ANY(string_to_array(?,',')::uuid[])",String.class,
+                String.join(",",frozen.docIds().stream().map(UUID::toString).toList()));
+        assertTrue(batches.issue(command).replayed());
+        var reader=new AuthUser(user,employee,"discovery-original-reader",Set.of("stock_doc:view"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(reader,null,reader.getAuthorities()));
+        assertEquals(first,batches.receipt(command.idempotencyKey()).result());
+        discovered.fixture.loginAs(discovered.world.superAdminUserId());
+        assertEquals("UNKNOWN",batches.receipt(command.idempotencyKey()).state());
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(reader,null,reader.getAuthorities()));
+        db.update("UPDATE employees SET department_id=? WHERE id=?",discovered.world.departmentId(),employee);
+        // The configured child is owned by this actor, but the ordinary child is not;
+        // no partial receipt or warehouse-scope shortcut may expose the frozen whole batch.
+        assertEquals(com.uten.imp.common.web.ErrorCode.NOT_FOUND,
+                assertThrows(ApiException.class,()->batches.receipt(command.idempotencyKey())).getCode());
+        assertEquals(quantities,db.queryForObject("SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id)::text FROM stock_document_items i WHERE doc_id=ANY(string_to_array(?,',')::uuid[])",String.class,
+                String.join(",",frozen.docIds().stream().map(UUID::toString).toList())));
+    }
+
     @Test void mixedBatchConfirmsSplitWarehousesAndOrdinaryDrawOnceAndNeverReissuesAfterCancellation(){
         var first=task();var pendingFirst=suggest(first);UUID leafA=leaf(first),leafB=leaf(first);
         first.receive(first.world.goodsD(),"5",leafA);first.receive(first.world.goodsD(),"5",leafB);

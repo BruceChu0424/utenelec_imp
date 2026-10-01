@@ -1456,7 +1456,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         var previous = drawIssueBatchReceipts.lockAndFind(actorUserId, command);
         if (previous.isPresent()) {
             // 当前出库入口权限和对象可读权限仍生效；不重新审批、锁生产图或计算剩余量。
-            for (UUID id : orderedIds) requireDetailReadable(requireDoc(id));
+            requireIssueBatchReceiptReadable(orderedIds);
             return previous.get();
         }
         boolean canApprove = access.hasAuthority("stock_doc:approve");
@@ -1577,7 +1577,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         if (ids == null || ids.isEmpty() || ids.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS || ids.stream().anyMatch(Objects::isNull)) {
             throw new ApiException(ErrorCode.CONFLICT, "批量出库历史结果缺少完整原单据清单");
         }
-        if (readableIssueHeaders(ids).size() != new HashSet<>(ids).size()) {
+        if (readableIssueHeaders(ids, true).size() != new HashSet<>(ids).size()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "仓库单据不存在");
         }
     }
@@ -1604,10 +1604,15 @@ public class StockDocService implements ProductionPreStockedInboundPort {
 
     /** Exact detail visibility, evaluated once for the whole request instead of per-document SQL. */
     private Map<UUID, String> readableIssueHeaders(List<UUID> ids) {
+        return readableIssueHeaders(ids, false);
+    }
+
+    /** History retains the same owner or proven production-task scope; deletion is never a new issue. */
+    private Map<UUID, String> readableIssueHeaders(List<UUID> ids, boolean history) {
         var owner = access.nativeReadScope("d.maker_id", "reviewOwners");
         boolean pool = productionStockTaskAccess.canAccessWarehouseTasks();
         var query = em.createNativeQuery("SELECT d.id, d.doc_type FROM stock_documents d WHERE d.id IN (:ids)"
-                + " AND NOT d.is_deleted AND (d.doc_type <> 'DRAW' OR fn_production_draw_requested(d.id))"
+                + (history ? "" : " AND NOT d.is_deleted AND (d.doc_type <> 'DRAW' OR fn_production_draw_requested(d.id))")
                 + " AND ((" + owner.predicate() + ")"
                 + (pool ? " OR fn_is_production_linked_stock_document(d.id)" : "") + ")");
         query.setParameter("ids", ids);

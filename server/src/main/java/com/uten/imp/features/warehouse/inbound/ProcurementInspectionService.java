@@ -171,7 +171,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         @SuppressWarnings("unchecked")
         List<Object[]> prior = em.createNativeQuery("""
                         SELECT id, inspection_item_id, action, base_qty, reason,
-                               requires_warehouse_stock_in, batch_request_hash
+                               requires_warehouse_stock_in, batch_request_hash, actor_user_id
                         FROM procurement_inspection_events WHERE id IN (:ids)
                         """)
                 .setParameter("ids", command.candidateEventIds()).getResultList();
@@ -179,15 +179,15 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         for (Object[] event : prior) history.put((UUID) event[0], event);
         boolean replay = !history.isEmpty();
         if (replay) {
-            // All children must be present, with the same full request hash.
-            // A historical pass-batch can still prove its original per-row
-            // full PASS quantity/reason; old decide batches lack that proof.
+            // All children must have the complete original hash and original user.
+            // Historical employee snapshots alone never assign an old report to a new account.
             boolean legacy = command.allowLegacyPassReplay()
                     && history.values().stream().allMatch(event -> event[6] == null);
             if (history.size() != command.events().size()) throw batchReplayConflict();
             for (var event : command.events()) {
                 Object[] stored = history.get(event.id());
                 if (stored == null || !Objects.equals(stored[1], event.inspectionItemId())
+                        || stored.length < 8 || stored[7] == null || !currentUser.requireId().equals(stored[7])
                         || !Objects.equals(stored[2], event.action())
                         || dec(stored[3]).compareTo(event.quantity()) != 0
                         || !Objects.equals(stored[4], event.reason())
@@ -222,6 +222,80 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
 
     private static ApiException batchReplayConflict() {
         return new ApiException(ErrorCode.CONFLICT, "批量检验报告与原请求不一致或历史记录不完整，请核对原报告；不能更换幂等键重复处置");
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution decideBatchReceipt(
+            String type, UUID receipt, BatchInspectionDecideRequest request) {
+        return batchReceipt(type,receipt,ProcurementInspectionBatchCommand.decide(type,receipt,request));
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution passBatchReceipt(
+            String type, UUID receipt, BatchInspectionPassRequest request) {
+        return batchReceipt(type,receipt,ProcurementInspectionBatchCommand.pass(type,receipt,request));
+    }
+
+    private com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution batchReceipt(
+            String type, UUID receipt, ProcurementInspectionBatchCommand command) {
+        requireReceiptInspectionIds(type,receipt,command.lines().stream().map(ProcurementInspectionBatchCommand.Line::inspectionItemId).toList());
+        var rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,inspection_item_id,action,base_qty,reason,occurred_at,batch_request_hash,actor_user_id
+                FROM procurement_inspection_events WHERE id IN(:ids)
+                """).setParameter("ids",command.candidateEventIds()));
+        if(rows.isEmpty())return inspectionResolution("UNKNOWN",command.requestHash(),List.of());
+        // A known foreign actor never becomes observable merely because the old parent hash is absent.
+        if(rows.stream().anyMatch(row->row[7]!=null&&!currentUser.requireId().equals(row[7])))return inspectionResolution("UNKNOWN",command.requestHash(),List.of());
+        if(rows.stream().anyMatch(row->row[7]==null||row[6]==null))return inspectionResolution("LEGACY",command.requestHash(),List.of());
+        if(rows.size()!=command.events().size())return inspectionResolution("INCOMPLETE",command.requestHash(),List.of());
+        Map<UUID,Object[]> stored=new java.util.HashMap<>();for(var row:rows)stored.put((UUID)row[0],row);
+        List<com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution.Event> events=new ArrayList<>();
+        for(var expected:command.events()){
+            var row=stored.get(expected.id());
+            if(row==null||!Objects.equals(row[1],expected.inspectionItemId())||!Objects.equals(row[2],expected.action())
+                    ||dec(row[3]).compareTo(expected.quantity())!=0||!Objects.equals(row[4],expected.reason())
+                    ||!Objects.equals(row[6],command.requestHash()))throw batchReplayConflict();
+            events.add(new com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution.Event(
+                    expected.id(),expected.inspectionItemId(),expected.action(),dec(row[3]),(String)row[4],
+                    com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(row[5])));
+        }
+        return inspectionResolution("COMMITTED",command.requestHash(),events);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution dispositionReceipt(
+            String type, UUID receipt, UUID item, String rawKey) {
+        if(item==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"检验明细不能为空");
+        requireReceiptInspectionIds(type,receipt,List.of(item));
+        UUID id=dispositionEventId(item,rawKey);
+        var rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT action,base_qty,reason,occurred_at,actor_user_id FROM procurement_inspection_events WHERE id=:id
+                """).setParameter("id",id));
+        if(rows.isEmpty())return inspectionResolution("UNKNOWN",null,List.of());
+        var row=rows.getFirst();
+        if(row[4]==null)return inspectionResolution("LEGACY",null,List.of());
+        if(!currentUser.requireId().equals(row[4]))return inspectionResolution("UNKNOWN",null,List.of());
+        return inspectionResolution("COMMITTED",null,List.of(new com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution.Event(
+                id,item,(String)row[0],dec(row[1]),(String)row[2],com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(row[3]))));
+    }
+
+    private void requireReceiptInspectionIds(String type,UUID receipt,List<UUID> ids){
+        if(type==null||!List.of(PURCHASE,SUBCONTRACT).contains(type)||receipt==null||ids==null||ids.isEmpty()||ids.size()>100
+                ||ids.stream().anyMatch(Objects::isNull))throw new ApiException(ErrorCode.VALIDATION_FAILED,"检验报告来源或明细无效");
+        long count=((Number)em.createNativeQuery("SELECT count(*) FROM procurement_inspection_items WHERE receipt_type=:type AND receipt_id=:receipt AND id IN(:ids)")
+                .setParameter("type",type).setParameter("receipt",receipt).setParameter("ids",ids).getSingleResult()).longValue();
+        if(count!=new java.util.HashSet<>(ids).size())throw new ApiException(ErrorCode.NOT_FOUND,"检验报告来源或明细不存在");
+    }
+
+    private static com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution inspectionResolution(
+            String state,String hash,List<com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution.Event> events){
+        return new com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution(state,hash,events);
     }
 
     /** 非负数量校验（0 合法：检验报告某行可以只有合格或只有不合格）。 */
@@ -754,13 +828,16 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         @SuppressWarnings("unchecked")
         List<Object[]> events = em.createNativeQuery("""
                         SELECT inspection_item_id, action, base_qty, reason,
-                               requires_warehouse_stock_in
+                               requires_warehouse_stock_in, actor_user_id
                         FROM procurement_inspection_events WHERE id = :id
                         """)
                 .setParameter("id", eventId)
                 .getResultList();
         if (events.isEmpty()) return null;
         Object[] ex = events.getFirst();
+        if (ex.length < 6 || ex[5] == null || !currentUser.requireId().equals(ex[5])) {
+            throw new ApiException(ErrorCode.CONFLICT, "该检验命令缺少可核验的原账号或属于其他账号，请核查原结果，不能绑定新的提交");
+        }
         if (Objects.equals(ex[0], inspectionItemId)
                 && Objects.equals(ex[1], action)
                 // requested == null means a full-quantity ("一键合格") disposition; the stored
@@ -802,7 +879,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                              BigDecimal releasedAmountLocal, BigDecimal releasedWeight,
                              String batchRequestHash) {
         ProcurementInspectionEvents.append(em, eventId, inspectionItemId, action, baseQty, reason, actor,
-                occurredAt, releasedAmountLocal, releasedWeight, batchRequestHash);
+                occurredAt, releasedAmountLocal, releasedWeight, batchRequestHash,
+                ("PASS".equals(action) || "FAIL".equals(action)) ? currentUser.requireId() : null);
         if("PASS".equals(action)||"FAIL".equals(action)){
             consideration.freezeQuality(inspectionItemId);
             procurementValue.qualityRecorded(eventId,currentUser.requireId());

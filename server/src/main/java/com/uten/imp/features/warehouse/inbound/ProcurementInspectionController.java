@@ -175,6 +175,29 @@ public class ProcurementInspectionController {
         service.decideBatch(receiptType, receiptId, request);
     }
 
+    /** Read-only query with the exact original report body, never a second quality write. */
+    @PostMapping("/{receiptType}/{receiptId}/decide-batch/receipt")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution decideBatchReceipt(
+            @PathVariable String receiptType,@PathVariable UUID receiptId,@Valid @RequestBody BatchInspectionDecideRequest request){
+        return service.decideBatchReceipt(receiptType,receiptId,request);
+    }
+
+    @PostMapping("/{receiptType}/{receiptId}/pass-batch/receipt")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution passBatchReceipt(
+            @PathVariable String receiptType,@PathVariable UUID receiptId,@Valid @RequestBody BatchInspectionPassRequest request){
+        return service.passBatchReceipt(receiptType,receiptId,request);
+    }
+
+    @GetMapping("/{receiptType}/{receiptId}/{inspectionItemId}/disposition-receipt")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public com.uten.imp.features.warehouse.inbound.dto.InspectionCommandResolution dispositionReceipt(
+            @PathVariable String receiptType,@PathVariable UUID receiptId,@PathVariable UUID inspectionItemId,
+            @RequestParam String idempotencyKey){
+        return service.dispositionReceipt(receiptType,receiptId,inspectionItemId,idempotencyKey);
+    }
+
     private static BigDecimal dec(Object value) {
         return value == null ? BigDecimal.ZERO : (BigDecimal) value;
     }

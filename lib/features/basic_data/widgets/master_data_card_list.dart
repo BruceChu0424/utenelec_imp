@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_table_cell_hints.dart';
@@ -328,7 +329,9 @@ class _Card<T> extends StatelessWidget {
     if (value.isEmpty && !c.cardRendersBuilder) {
       return const SizedBox.shrink();
     }
-    if (c.cardRendersBuilder && c.cellBuilder != null) {
+    if (c.cardRendersBuilder &&
+        c.cellBuilder != null &&
+        !utenIsStatusColumn(c.key, c.label)) {
       return DefaultTextStyle.merge(
         style: theme.textTheme.bodySmall!,
         child: MasterDataTableCellScope(
@@ -340,7 +343,15 @@ class _Card<T> extends StatelessWidget {
         ),
       );
     }
-    final cellColor = c.cellColor?.call(context, item);
+    final cellColor = isSelected
+        ? null
+        : c.cellColor?.call(context, item) ??
+              (utenIsStatusColumn(c.key, c.label)
+                  ? udenStatusBadgeCellColor(
+                      context,
+                      utenStatusLabelType(value),
+                    )
+                  : null);
     if (cellColor == null) {
       return Text.rich(
         TextSpan(
@@ -361,10 +372,7 @@ class _Card<T> extends StatelessWidget {
         ),
       );
     }
-    final onCell =
-        ThemeData.estimateBrightnessForColor(cellColor) == Brightness.dark
-        ? Colors.white
-        : Colors.black87;
+    final onCell = utenSemanticCellForeground(context, cellColor);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

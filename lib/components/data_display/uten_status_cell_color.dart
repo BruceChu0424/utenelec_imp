@@ -14,6 +14,65 @@ Color udenStatusBadgeCellColor(BuildContext context, UtenStatusBadgeType type) {
   return resolveStatusBadgeColors(type, isDark).$1;
 }
 
+/// Transparent semantic backgrounds render on the current theme surface. The
+/// raw RGB channels alone cannot choose a readable foreground in dark mode.
+Color utenSemanticCellForeground(BuildContext context, Color background) {
+  final rendered = Color.alphaBlend(
+    background,
+    Theme.of(context).colorScheme.surface,
+  );
+  return ThemeData.estimateBrightnessForColor(rendered) == Brightness.dark
+      ? Colors.white
+      : Colors.black87;
+}
+
+/// Status columns keep their caller's original label/state. This only selects
+/// a display token when that caller has not supplied an explicit semantic color.
+UtenStatusBadgeType utenStatusLabelType(String? label) {
+  final value = label?.trim() ?? '';
+  if (RegExp('拒|失败|驳回|异常|红冲|不合格|未通过|不通过').hasMatch(value)) {
+    return UtenStatusBadgeType.danger;
+  }
+  if (RegExp('待|处理中|在途|进行中|未完|未入库|未付款|未发布|未处理|未确认|部分').hasMatch(value)) {
+    return UtenStatusBadgeType.warning;
+  }
+  if (RegExp('已删除|已取消|草稿|未提交|停止|关闭').hasMatch(value)) {
+    return UtenStatusBadgeType.neutral;
+  }
+  if (RegExp('已审|完成|通过|已提交|已入库|已付款|已发布|已处理|已确认').hasMatch(value)) {
+    return UtenStatusBadgeType.success;
+  }
+  return UtenStatusBadgeType.neutral;
+}
+
+bool utenIsStatusColumn(String key, String label) {
+  final normalized = key.toLowerCase();
+  return normalized == 'status' ||
+      normalized == 'state' ||
+      normalized.endsWith('status') ||
+      normalized.endsWith('state') ||
+      normalized == 'stage' ||
+      normalized.endsWith('stage') ||
+      label.contains('状态');
+}
+
+class UtenStatusCellScope extends InheritedWidget {
+  const UtenStatusCellScope({
+    super.key,
+    required this.enabled,
+    required super.child,
+  });
+  final bool enabled;
+  static bool isCell(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<UtenStatusCellScope>()
+          ?.enabled ==
+      true;
+  @override
+  bool updateShouldNotify(UtenStatusCellScope oldWidget) =>
+      enabled != oldWidget.enabled;
+}
+
 /// 解析两色：背景色（柔和浅底）/ 文字与图标色（深档同色）
 ///
 /// 浅色模式：*Bg 浅底 + *Text 深字（对比度达标）；

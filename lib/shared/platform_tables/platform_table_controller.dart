@@ -9,6 +9,8 @@ import 'platform_table_binding.dart';
 import 'platform_table_layout.dart';
 import 'platform_table_models.dart';
 import 'platform_table_repository.dart';
+import '../providers/authenticated_scope_provider.dart';
+import '../../core/network/server_config.dart';
 
 /// Shared persistence lifecycle for master tables and editable grids. Row writes
 /// are explicit CAS operations and never mutate the host's business record.
@@ -33,6 +35,10 @@ class PlatformTableController<T> extends ChangeNotifier {
   final Set<String> _saving = {};
   ProviderSubscription<PlatformTableLayout>? _layoutSubscription;
   ProviderSubscription<PlatformTableRepository>? _repositorySubscription;
+  ProviderSubscription<AuthenticatedScope?>? _queryScopeSubscription;
+  ProviderSubscription<String>? _queryServerSubscription;
+  int _queryLifecycle = 0;
+  int get queryLifecycle => _queryLifecycle;
   ProviderContainer? _container;
   final Map<String, PlatformColumnDefinition> _definitions = {};
   final Set<String> _recordColumnIds = {};
@@ -120,6 +126,28 @@ class PlatformTableController<T> extends ChangeNotifier {
       layoutTouched = false;
       _layoutSubscription?.close();
       _repositorySubscription?.close();
+      _queryScopeSubscription?.close();
+      _queryServerSubscription?.close();
+      void ownerChanged() {
+        if (disposed) return;
+        _queryLifecycle++;
+        layoutTouched = false;
+        layout = const PlatformTableLayout();
+        _invalidateAccess();
+      }
+
+      _queryScopeSubscription = container?.listen(authenticatedScopeProvider, (
+        previous,
+        next,
+      ) {
+        if (previous != next) ownerChanged();
+      });
+      _queryServerSubscription = container?.listen(apiBaseUrlProvider, (
+        previous,
+        next,
+      ) {
+        if (previous != next) ownerChanged();
+      });
       _repositorySubscription = next == null || repo == null
           ? null
           : container?.listen(platformTableRepositoryProvider, (_, nextRepo) {
@@ -135,9 +163,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       _layoutSubscription = container?.listen(
         platformTableLayoutProvider(key),
         (_, next) {
-          if (disposed ||
-              next.sourceInstance == _instance ||
-              (layoutTouched && next.sourceInstance == null)) {
+          if (disposed || next.sourceInstance == _instance) {
             return;
           }
           final priorIds = layout.added.map((column) => column.id).join('|');
@@ -291,6 +317,17 @@ class PlatformTableController<T> extends ChangeNotifier {
               if (!savedOrder.contains(canonicalKey(key))) key,
           };
     return layout.copyWith(
+      filters: {
+        for (final entry in layout.filters.entries)
+          if (byCanonical.containsKey(canonicalKey(entry.key)))
+            byCanonical[canonicalKey(entry.key)]!: entry.value,
+      },
+      sortColumn: layout.sortColumn == null
+          ? null
+          : byCanonical[canonicalKey(layout.sortColumn!)],
+      clearSort:
+          layout.sortColumn != null &&
+          !byCanonical.containsKey(canonicalKey(layout.sortColumn!)),
       order: order,
       hidden: hidden,
       pinned: {
@@ -342,6 +379,25 @@ class PlatformTableController<T> extends ChangeNotifier {
     _signature = '';
     _emit();
     unawaited(reload());
+  }
+
+  void saveQuery({
+    required Map<String, String?> filters,
+    String? sortColumn,
+    bool sortAscending = true,
+  }) {
+    updateLayout(
+      layout.copyWith(
+        filters: {
+          for (final entry in filters.entries)
+            canonicalKey(entry.key): entry.value,
+        },
+        sortColumn: sortColumn == null ? null : canonicalKey(sortColumn),
+        clearSort: sortColumn == null,
+        sortAscending: sortAscending,
+        hasQueryPreferences: true,
+      ),
+    );
   }
 
   void select(PlatformColumnDefinition column) {
@@ -669,6 +725,8 @@ class PlatformTableController<T> extends ChangeNotifier {
     _generation++;
     _layoutSubscription?.close();
     _repositorySubscription?.close();
+    _queryScopeSubscription?.close();
+    _queryServerSubscription?.close();
     super.dispose();
   }
 }

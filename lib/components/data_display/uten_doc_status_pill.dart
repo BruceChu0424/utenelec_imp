@@ -8,6 +8,7 @@
 // 本组件按调用方给定的原始 Material 色渲染（域内 0/1/-1 状态机各自的
 // xStatusColor 映射驱动）。
 import 'package:flutter/material.dart';
+import 'uten_status_cell_color.dart';
 
 class UtenDocStatusPill extends StatelessWidget {
   const UtenDocStatusPill({
@@ -23,6 +24,9 @@ class UtenDocStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (UtenStatusCellScope.isCell(context)) {
+      return Text(label, maxLines: 2, overflow: TextOverflow.ellipsis);
+    }
     final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

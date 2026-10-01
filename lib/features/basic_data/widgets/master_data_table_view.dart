@@ -13,11 +13,13 @@ import '../../../shared/platform_tables/table_column_projection.dart';
 
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
@@ -45,6 +47,18 @@ import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
 
 export '../../../components/data_display/master_data_table_rows_controller.dart';
+
+class MasterDataTableHeaderAddition extends InheritedWidget {
+  const MasterDataTableHeaderAddition({
+    super.key,
+    required this.header,
+    required super.child,
+  });
+  final Widget header;
+  @override
+  bool updateShouldNotify(MasterDataTableHeaderAddition oldWidget) =>
+      header != oldWidget.header;
+}
 
 /// Actual table selection and foreground for custom cell builders.
 /// Single-row focus and checkbox selection share this visual contract.
@@ -287,6 +301,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.onPageChange,
     this.paginationScope,
     this.paginationRevision,
+    this.maxRetainedPages = 5,
+    this.maxRetainedRows = 1000,
     this.summaryBar,
     this.summaryBarInline = false,
     this.toolbarActions,
@@ -328,7 +344,9 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.listSeparatorBuilder,
     this.listPadding = EdgeInsets.zero,
     this.singleTapRows = false,
-  }) : assert(
+  }) : assert(maxRetainedPages >= 2),
+       assert(maxRetainedRows > 0),
+       assert(
          !embedded || !virtualized,
          'virtualized=true requires a bounded, non-embedded table',
        ),
@@ -362,6 +380,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 目标页加载后递增此令牌，请求在布局完成后滚到末行。0 不触发；同一令牌
   /// 的普通重建不重复滚动。和翻页同时变化时优先定位末尾，其余翻页仍回顶。
   final int scrollToEndRequest;
+
+  /// Automatic scrolling retains a contiguous window. A visible boundary page
+  /// and one incoming response may temporarily add at most two pages; selected
+  /// business rows are held separately and never discarded with a cache page.
+  final int maxRetainedPages;
+  final int maxRetainedRows;
 
   /// 卡片形态的宽度阈值：**表格可用宽度**低于该值切卡片（与各页旧
   /// LayoutBuilder 口径一致，分栏/容器内宽 ≠ 屏宽）。默认 compact 断点（600）；
@@ -646,7 +670,20 @@ class MasterDataTableView<T> extends StatefulWidget {
 
 class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     with UtenColumnHeaderDragHost<MasterDataTableView<T>> {
+  Widget? get _scrollingHeader {
+    final extra = context
+        .dependOnInheritedWidgetOfExactType<MasterDataTableHeaderAddition>()
+        ?.header;
+    if (extra == null) return widget.scrollingHeader;
+    if (widget.scrollingHeader == null) return extra;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [widget.scrollingHeader!, extra],
+    );
+  }
+
   final _pages = SplayTreeMap<int, List<T>>();
+  final _selectedRows = <String, T>{};
   late List<T> _items;
   int? _appendPage;
   int _acceptedPage = 1;
@@ -658,6 +695,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _prepending = false;
   final _prependAnchor = UtenPrependScrollAnchor();
   final _prependMeasureKey = GlobalKey();
+  final _removeMeasureKey = GlobalKey();
+  List<T> _removeMeasureItems = const [];
   List<T>? _prependMeasureItems;
   List<T>? _prependPageItems;
   bool _prependMeasureScheduled = false;
@@ -695,10 +734,82 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   void _acceptPage(int page, List<T> rows) {
-    final next = _withPage(page, rows);
+    _retainSelectedRows();
+    final next = _trimWindow(_withPage(page, rows));
     _pages
       ..clear()
       ..addAll(next);
+  }
+
+  Set<Object> _visibleRowIds() => {
+    for (final entry in _mountedPaginationRows.entries)
+      if (entry.value.box.attached &&
+          entry.value.box.hasSize &&
+          _rowIntersectsViewport(entry.value.box))
+        entry.key,
+  };
+
+  bool _rowIntersectsViewport(RenderBox box) {
+    final object = RenderAbstractViewport.maybeOf(box);
+    if (object is! RenderBox) return false;
+    final viewport = object as RenderBox;
+    if (!viewport.hasSize) return false;
+    final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+    return top + box.size.height > 0.5 && top < viewport.size.height;
+  }
+
+  bool _pageVisible(List<T> rows, Set<Object> visible) =>
+      rows.any((row) => visible.contains(('data', _paginationRowId(row))));
+
+  int get _pageWindowLimit {
+    final nonemptySizes = _pages.values
+        .map((rows) => rows.length)
+        .where((count) => count > 0);
+    final pageSize = nonemptySizes.isEmpty
+        ? math.max(1, widget.items.length)
+        : nonemptySizes.reduce(math.min);
+    // Both ordinary limits apply. Whole pages stay atomic: an oversized single
+    // response is retained once, never multiplied by the default page count.
+    final ordinary = math.max(
+      1,
+      math.min(widget.maxRetainedPages, widget.maxRetainedRows ~/ pageSize),
+    );
+    // Small pages may need more than the configured page count to fill a real
+    // viewport. This exception is tied to visible data rows plus one incoming
+    // page, rather than to the row budget divided by a tiny server page size.
+    final visible = _visibleRowIds()
+        .where((id) => id is (String, Object) && id.$1 == 'data')
+        .length;
+    final viewport =
+        (visible / pageSize).ceil() +
+        (pageSize > widget.maxRetainedRows ? 0 : 1);
+    return math.max(ordinary, viewport);
+  }
+
+  SplayTreeMap<int, List<T>> _trimWindow(SplayTreeMap<int, List<T>> source) {
+    final result = SplayTreeMap<int, List<T>>.of(source);
+    final visible = _visibleRowIds();
+    while (result.length > _pageWindowLimit) {
+      final edge = _prepending ? result.lastKey()! : result.firstKey()!;
+      if (_pageVisible(result[edge]!, visible)) break;
+      result.remove(edge);
+    }
+    return result;
+  }
+
+  void _retainSelectedRows() {
+    _selectedRows.removeWhere((id, _) => !widget.selectedIds.contains(id));
+    final identity = widget.idOf;
+    if (identity == null) {
+      _selectedRows.clear();
+      return;
+    }
+    for (final row in _pages.values.expand((rows) => rows)) {
+      final id = identity(row);
+      if (id != null && widget.selectedIds.contains(id)) {
+        _selectedRows[id] = row;
+      }
+    }
   }
 
   List<T> _collectRows(Map<int, List<T>> pages) {
@@ -727,7 +838,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   void _syncRows() {
     _items = _collectRows(_pages);
-    widget.rowsController?.update(_items);
+    _retainSelectedRows();
+    final liveIds = _items.map((row) => widget.idOf?.call(row)).toSet();
+    widget.rowsController?.update([
+      ..._items,
+      for (final entry in _selectedRows.entries)
+        if (!liveIds.contains(entry.key)) entry.value,
+    ]);
     _bindPagination();
   }
 
@@ -739,6 +856,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   );
 
   void _resetPages() {
+    if (_queryChanged) {
+      _selectedRows.clear();
+    } else {
+      _retainSelectedRows();
+    }
     _appendGeneration++;
     _appendPage = null;
     _appendError = null;
@@ -747,6 +869,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _prepending = false;
     _prependMeasureItems = null;
     _prependPageItems = null;
+    _removeMeasureItems = const [];
     _prependBottomSpace = 0;
     _prependAnchor.reset();
     _acceptedPage = widget.currentPage;
@@ -780,7 +903,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       } else if (!widget.loadingMore &&
           !widget.isLoading &&
           widget.currentPage == _appendPage) {
-        if (_prepending &&
+        if ((_prepending || _pages.length >= _pageWindowLimit) &&
             !widget.embedded &&
             widget.items.isNotEmpty &&
             _displayItems.isNotEmpty) {
@@ -857,6 +980,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         !_hasAdjacentPage(prepend) ||
         (widget.error != null && _appendError == null)) {
       return;
+    }
+    if (_pages.length > _pageWindowLimit) {
+      final edge = prepend ? _pages.lastKey()! : _pages.firstKey()!;
+      if (_pageVisible(_pages[edge]!, _visibleRowIds())) return;
     }
     final target = prepend ? _firstPage - 1 : _lastPage + 1;
     final generation = ++_appendGeneration;
@@ -977,6 +1104,24 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         .toList();
   }
 
+  List<T> _rowsRemovedBefore(Object? anchorId) {
+    if (_appendPage == null || _prependPageItems == null || anchorId == null) {
+      return const [];
+    }
+    final retained = _collectRows(
+      _trimWindow(_withPage(_appendPage!, _prependPageItems!)),
+    ).map(_paginationRowId).toSet();
+    final current = _applyRowView(_items);
+    final anchorIndex = current.indexWhere(
+      (row) => ('data', _paginationRowId(row)) == anchorId,
+    );
+    if (anchorIndex < 0) return const [];
+    return current
+        .take(anchorIndex)
+        .where((row) => !retained.contains(_paginationRowId(row)))
+        .toList();
+  }
+
   void _schedulePrependMeasurement() {
     if (_prependMeasureItems == null || _prependMeasureScheduled) return;
     _prependMeasureScheduled = true;
@@ -1012,12 +1157,25 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           : null;
       final anchor = _visiblePaginationAnchor();
       final needed = _rowsInsertedBefore(anchor?.id);
-      if (!listEquals(needed, _prependMeasureItems)) {
-        setState(() => _prependMeasureItems = needed);
+      final removed = _rowsRemovedBefore(anchor?.id);
+      if (!listEquals(needed, _prependMeasureItems) ||
+          !listEquals(removed, _removeMeasureItems)) {
+        setState(() {
+          _prependMeasureItems = needed;
+          _removeMeasureItems = removed;
+        });
+        return;
+      }
+      final removedBox = _removeMeasureKey.currentContext?.findRenderObject();
+      if (removed.isNotEmpty &&
+          (removedBox is! RenderBox || !removedBox.hasSize)) {
         return;
       }
       final insertedExtent = box.size.height;
-      _prependAnchor.prepare(insertedExtent);
+      final removedExtent = removedBox is RenderBox && removedBox.hasSize
+          ? removedBox.size.height
+          : 0.0;
+      _prependAnchor.prepareChange(insertedExtent - removedExtent);
       setState(() {
         if (position != null &&
             position.maxScrollExtent <= 0.5 &&
@@ -1097,6 +1255,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _appendError = null;
       _prependMeasureItems = null;
       _prependPageItems = null;
+      _removeMeasureItems = const [];
       _syncRows();
     });
     _pageCtrl.text = '$_currentPage';
@@ -1109,6 +1268,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _prependMeasureItems = _rowsInsertedBefore(
         _visiblePaginationAnchor()?.id,
       );
+      _removeMeasureItems = _rowsRemovedBefore(_visiblePaginationAnchor()?.id);
     }
     final measuring = _prependMeasureItems;
     if (measuring != null) _schedulePrependMeasurement();
@@ -1125,6 +1285,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 key: _prependMeasureKey,
                 mainAxisSize: MainAxisSize.min,
                 children: [for (final row in measuring) buildRow(row)],
+              ),
+            ),
+          ),
+        if (_removeMeasureItems.isNotEmpty)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: Offstage(
+              child: Column(
+                key: _removeMeasureKey,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final row in _removeMeasureItems) buildRow(row),
+                ],
               ),
             ),
           ),
@@ -1245,6 +1420,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           .where((c) => !c.defaultVisible)
           .map((c) => c.key)
           .toSet(),
+    );
+    _applyQueryPreferences(
+      saved.filters,
+      saved.sortColumn,
+      saved.sortAscending,
+      saved.hasQueryPreferences,
     );
     if (saved.order.isNotEmpty) {
       _columnOrder = [
@@ -1492,6 +1673,130 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   final Map<String, String?> _rowFilters = <String, String?>{};
   String? _localSortColumn;
   bool _localSortAscending = true;
+  String _queryPreferenceSignature = '';
+  int _queryRestoreRevision = 0;
+  bool get _serverPaged =>
+      widget.onPageChange != null ||
+      widget.onLoadMore != null ||
+      widget.totalPages > 1;
+  bool _ownsHeaderFilter(MasterColumnDef<T> column) =>
+      !widget.externalFilterKeys.contains(column.key) &&
+      ((!_serverPaged && column.filterFromRows) ||
+          widget.facets.containsKey(column.key));
+  String _querySignature(
+    Map<String, String?> filters,
+    String? sort,
+    bool ascending,
+    bool present,
+  ) => jsonEncode([
+    _platform.tableKey,
+    _platform.queryLifecycle,
+    filters,
+    sort,
+    ascending,
+    present,
+    _columns.where(_ownsHeaderFilter).map((column) => column.key).toList()
+      ..sort(),
+  ]);
+  void _applyQueryPreferences(
+    Map<String, String?> filters,
+    String? sort,
+    bool ascending,
+    bool present,
+  ) {
+    final signature = _querySignature(filters, sort, ascending, present);
+    if (signature == _queryPreferenceSignature) return;
+    final previouslyPresent = _queryPreferenceSignature.isNotEmpty;
+    _queryPreferenceSignature = signature;
+    final revision = ++_queryRestoreRevision;
+    final lifecycle = _platform.queryLifecycle;
+    if (!present && !previouslyPresent) return;
+    final local = <String, String?>{};
+    final server = <String, String?>{};
+    for (final column in _columns) {
+      if (!_ownsHeaderFilter(column)) continue;
+      final value = present ? filters[column.key] : null;
+      if (!_serverPaged &&
+          column.filterFromRows &&
+          !widget.facets.containsKey(column.key)) {
+        if (value != null) local[column.key] = value;
+      } else if (widget.filters[column.key] != value) {
+        server[column.key] = value;
+      }
+    }
+    _rowFilters
+      ..clear()
+      ..addAll(local);
+    final validSort = _columns.any(
+      (column) => column.key == sort && column.sortable,
+    );
+    final desiredSort = present && validSort ? sort : null;
+    if (widget.onSortChange == null) {
+      _localSortColumn = desiredSort;
+      _localSortAscending = desiredSort == null ? true : ascending;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          revision != _queryRestoreRevision ||
+          lifecycle != _platform.queryLifecycle) {
+        return;
+      }
+      for (final entry in server.entries) {
+        widget.onFilterChanged(entry.key, entry.value);
+      }
+      if (widget.onSortChange != null &&
+          (widget.sortColumn != desiredSort ||
+              widget.sortAscending != ascending)) {
+        widget.onSortChange!(
+          desiredSort,
+          desiredSort == null ? true : ascending,
+        );
+      }
+    });
+  }
+
+  void _persistQuery({
+    String? filterKey,
+    String? filterValue,
+    String? sort,
+    bool? ascending,
+    bool sortChanged = false,
+  }) {
+    final filters = <String, String?>{};
+    for (final column in _columns) {
+      if (!_ownsHeaderFilter(column)) continue;
+      final value = column.key == filterKey
+          ? filterValue
+          : (!_serverPaged &&
+                    column.filterFromRows &&
+                    !widget.facets.containsKey(column.key)
+                ? _rowFilters[column.key]
+                : widget.filters[column.key]);
+      if (value != null) filters[column.key] = value;
+    }
+    final chosenSort = sortChanged
+        ? sort
+        : widget.onSortChange == null
+        ? _localSortColumn
+        : widget.sortColumn;
+    final chosenAscending =
+        ascending ??
+        (widget.onSortChange == null
+            ? _localSortAscending
+            : widget.sortAscending);
+    _platform.saveQuery(
+      filters: filters,
+      sortColumn: chosenSort,
+      sortAscending: chosenAscending,
+    );
+    _queryPreferenceSignature = _querySignature(
+      filters,
+      chosenSort,
+      chosenAscending,
+      true,
+    );
+    _queryRestoreRevision++;
+  }
 
   // —— 横滚条覆盖层测量 ——
   /// 表体区 Stack / 末行 的测量键。
@@ -2492,7 +2797,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   ({List<MasterFacetBucket> buckets, int nullCount})? _rowFacetsFor(
     MasterColumnDef<T> def,
   ) {
-    if (!def.filterFromRows) return null;
+    if (!def.filterFromRows || _serverPaged) return null;
     if ((widget.facets[def.key] ?? const []).isNotEmpty) return null;
     final counts = <String, int>{};
     var nullCount = 0;
@@ -2677,9 +2982,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         style: textStyle,
         child: IconTheme.merge(
           data: IconThemeData(color: textStyle.color),
-          child: UtenTableCellHints(
-            child: Builder(
-              builder: (cellContext) => builder(cellContext, item),
+          child: UtenStatusCellScope(
+            enabled: utenIsStatusColumn(column.key, column.label),
+            child: UtenTableCellHints(
+              child: Builder(
+                builder: (cellContext) => builder(cellContext, item),
+              ),
             ),
           ),
         ),
@@ -3018,14 +3326,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 空表/错误区域仍可上滑收起外层 header（页面任意位置触发滚动），
   /// 矮视口下占位内容可滚不溢出；非 primary 保持原 Center 语义不变。
   Widget _stateShell(Widget child) {
-    if (widget.scrollingHeader != null) {
+    if (_scrollingHeader != null) {
       return ListView(
         controller: _usesPrimaryScroll ? null : _bodyV,
         primary: _usesPrimaryScroll,
         shrinkWrap: !widget.primary,
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          widget.scrollingHeader!,
+          _scrollingHeader!,
           Padding(padding: const EdgeInsets.all(UtenSpacing.s16), child: child),
         ],
       );
@@ -3110,7 +3418,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         children: actions,
       ),
     );
-    if (widget.scrollingHeader != null) {
+    if (_scrollingHeader != null) {
       return _stateShell(
         Column(
           mainAxisSize: MainAxisSize.min,
@@ -3151,7 +3459,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final visibleColumns = [for (final i in _visibleIndices) _columns[i]];
     return MasterDataCardList<T>(
       columns: visibleColumns,
-      header: widget.scrollingHeader,
+      header: _scrollingHeader,
       items: _displayItems,
       primary: _usesPrimaryScroll,
       loadingMore: _loadingMore,
@@ -3997,12 +4305,29 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           ? widget.sortAscending
           : (localSortActive ? _localSortAscending : true),
       onSort: serverSort
-          ? widget.onSortChange
+          ? (column, ascending) {
+              _persistQuery(
+                sort: column,
+                ascending: ascending,
+                sortChanged: true,
+              );
+              widget.onSortChange!(column, ascending);
+            }
           : (column, ascending) => setState(() {
               _localSortColumn = column;
               _localSortAscending = column == null ? true : ascending;
+              _persistQuery(
+                sort: column,
+                ascending: ascending,
+                sortChanged: true,
+              );
             }),
-      info: _columns[i].info,
+      info: _serverPaged && !serverSort && _columns[i].sortable
+          ? [
+              if (_columns[i].info != null) _columns[i].info!,
+              '排序仅影响当前已加载的数据；继续加载或更改查询会改变此范围。',
+            ].join('\n')
+          : _columns[i].info,
       leading: pinned
           ? Icon(
               Icons.push_pin_rounded,
@@ -4017,8 +4342,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           ? _rowFilters[_columns[i].key]
           : widget.filters[_columns[i].key],
       onChanged: rowFacets != null
-          ? (v) => setState(() => _rowFilters[_columns[i].key] = v)
-          : (v) => widget.onFilterChanged(_columns[i].key, v),
+          ? (v) => setState(() {
+              _rowFilters[_columns[i].key] = v;
+              _persistQuery();
+            })
+          : (v) {
+              _persistQuery(filterKey: _columns[i].key, filterValue: v);
+              widget.onFilterChanged(_columns[i].key, v);
+            },
     );
     // 右键菜单挂在内容外层：桌面右击弹「固定/移动/隐藏」菜单（表头专用 region：
     // 不挂长按——触屏长按/按下即拖已让给列换位/移除手势；并压制系统右键
@@ -4089,12 +4420,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 全站统一口径、2026-09-22 加深），文字保持常态深色——语义底色（cellColor）在
     // 选中行上让位给统一选中色，保证选中行读作一个整体。
     Widget buildCell() {
-      final cellColor = selected ? null : column.cellColor?.call(context, item);
+      final cellColor = selected
+          ? null
+          : column.cellColor?.call(context, item) ??
+                (utenIsStatusColumn(column.key, column.label)
+                    ? udenStatusBadgeCellColor(
+                        context,
+                        utenStatusLabelType(column.value(item)),
+                      )
+                    : null);
       final Color? onCellColor = cellColor == null
           ? null
-          : ThemeData.estimateBrightnessForColor(cellColor) == Brightness.dark
-          ? Colors.white
-          : Colors.black87;
+          : utenSemanticCellForeground(context, cellColor);
       final cellStyle = onCellColor != null
           ? textStyle.copyWith(color: onCellColor)
           : textStyle;

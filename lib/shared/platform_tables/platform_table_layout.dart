@@ -16,6 +16,10 @@ class PlatformTableLayout {
     this.widths = const {},
     this.added = const [],
     this.sourceInstance,
+    this.filters = const {},
+    this.sortColumn,
+    this.sortAscending = true,
+    this.hasQueryPreferences = false,
   });
   final List<String> order;
   final Set<String> hidden;
@@ -23,9 +27,30 @@ class PlatformTableLayout {
   final Map<String, double> widths;
   final List<PlatformColumnDefinition> added;
   final int? sourceInstance;
+  final Map<String, String?> filters;
+  final String? sortColumn;
+  final bool sortAscending;
+  final bool hasQueryPreferences;
   factory PlatformTableLayout.fromJson(Map<String, dynamic> json) =>
       PlatformTableLayout(
         order: (json['order'] as List? ?? []).whereType<String>().toList(),
+        filters: {
+          for (final entry
+              in (json['filters'] as Map? ?? const {}).entries.take(64))
+            if (entry.key is String &&
+                (entry.key as String).length <= 256 &&
+                (entry.value == null ||
+                    entry.value is String &&
+                        (entry.value as String).length <= 1000))
+              entry.key as String: entry.value as String?,
+        },
+        sortColumn:
+            json['sortColumn'] is String &&
+                (json['sortColumn'] as String).length <= 256
+            ? json['sortColumn'] as String
+            : null,
+        sortAscending: json['sortAscending'] != false,
+        hasQueryPreferences: json['hasQueryPreferences'] == true,
         hidden: (json['hidden'] as List? ?? []).whereType<String>().toSet(),
         pinned: (json['pinned'] as List? ?? []).whereType<String>().toSet(),
         widths: {
@@ -56,6 +81,10 @@ class PlatformTableLayout {
               : ({...d.toJson()}..remove('formula')),
         )
         .toList(),
+    'filters': filters,
+    'sortColumn': sortColumn,
+    'sortAscending': sortAscending,
+    'hasQueryPreferences': hasQueryPreferences,
   };
   PlatformTableLayout copyWith({
     List<String>? order,
@@ -64,6 +93,11 @@ class PlatformTableLayout {
     Map<String, double>? widths,
     List<PlatformColumnDefinition>? added,
     int? sourceInstance,
+    Map<String, String?>? filters,
+    String? sortColumn,
+    bool clearSort = false,
+    bool? sortAscending,
+    bool? hasQueryPreferences,
   }) => PlatformTableLayout(
     order: order ?? this.order,
     hidden: hidden ?? this.hidden,
@@ -71,6 +105,10 @@ class PlatformTableLayout {
     widths: widths ?? this.widths,
     added: added ?? this.added,
     sourceInstance: sourceInstance ?? this.sourceInstance,
+    filters: filters ?? this.filters,
+    sortColumn: clearSort ? null : sortColumn ?? this.sortColumn,
+    sortAscending: sortAscending ?? this.sortAscending,
+    hasQueryPreferences: hasQueryPreferences ?? this.hasQueryPreferences,
   );
 }
 

@@ -28,6 +28,15 @@ class UtenPrependScrollAnchor {
     _insertedExtent = insertedExtent == 0 ? null : insertedExtent;
   }
 
+  /// A bounded page window may insert new rows and remove expired rows before
+  /// the same visible anchor. Both extents have been measured at actual width.
+  void prepareChange(double extentChange) {
+    if (!extentChange.isFinite) {
+      throw ArgumentError.value(extentChange, 'extentChange');
+    }
+    _insertedExtent = extentChange == 0 ? null : extentChange;
+  }
+
   void reset() => _insertedExtent = null;
 
   /// Preserves the supplied physics for every operation except one pending
@@ -63,7 +72,10 @@ class _UtenPrependAnchorPhysics extends ScrollPhysics {
       // A lazy list's current maxScrollExtent is an estimate. Clamping against
       // it can lose the anchor before the newly inserted rows are laid out.
       // ScrollPosition applies this correction and repeats layout in this frame.
-      return newPosition.pixels + extent;
+      final corrected = newPosition.pixels + extent;
+      return corrected < newPosition.minScrollExtent
+          ? newPosition.minScrollExtent
+          : corrected;
     }
     return super.adjustPositionForNewDimensions(
       oldPosition: oldPosition,

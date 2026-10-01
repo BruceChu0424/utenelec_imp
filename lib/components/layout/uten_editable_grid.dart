@@ -40,6 +40,8 @@ import '../../shared/platform_tables/platform_row_draft.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import '../data_display/uten_status_cell_color.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../inputs/uten_table_cell_hints.dart';
@@ -1005,6 +1007,28 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
     final columns = _columns;
     final keys = columns.map((c) => c.key).toSet();
+    final querySignature = jsonEncode([
+      _platform.tableKey,
+      _platform.queryLifecycle,
+      saved.filters,
+      saved.hasQueryPreferences,
+      columns
+          .where((column) => column.filterValueOf != null)
+          .map((column) => column.key)
+          .toList(),
+    ]);
+    if (querySignature != _queryPreferenceSignature) {
+      _queryPreferenceSignature = querySignature;
+      _columnFilters
+        ..clear()
+        ..addAll({
+          for (final column in columns)
+            if (saved.hasQueryPreferences &&
+                column.filterValueOf != null &&
+                saved.filters[column.key] != null)
+              column.key: saved.filters[column.key],
+        });
+    }
     if (_platform.layout.order.isNotEmpty ||
         _platform.binding?.defaultColumnOrder != null ||
         _platform.binding?.defaultVisibleColumnKeys != null) {
@@ -2196,6 +2220,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// key=列 key，value=选中筛选值；null（或不在 map）=「所有」。纯视图级过滤：
   /// 行数据与选中集（按行身份持有）都不动，清除即全部恢复。
   final Map<String, String?> _columnFilters = {};
+  String _queryPreferenceSignature = '';
 
   bool get _hasColumnFilters => _columnFilters.values.any((v) => v != null);
 
@@ -3122,8 +3147,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ],
         nullCount: _filterNullCount(column),
         selected: _columnFilters[column.key],
-        onChanged: (value) =>
-            setState(() => _columnFilters[column.key] = value),
+        onChanged: (value) => setState(() {
+          _columnFilters[column.key] = value;
+          _platform.saveQuery(
+            filters: {
+              for (final entry in _columnFilters.entries)
+                if (entry.value != null) entry.key: entry.value,
+            },
+          );
+        }),
       );
     }
     final headerStyle = UtenTableHeader.textStyle(theme);
@@ -3483,12 +3515,20 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     Widget build() {
       final cellColor = isSelected
           ? null
-          : column.cellColor?.call(context, row);
+          : column.cellColor?.call(context, row) ??
+                (utenIsStatusColumn(column.key, column.label)
+                    ? udenStatusBadgeCellColor(
+                        context,
+                        utenStatusLabelType(
+                          column.textOf?.call(row) ??
+                              column.frozenTextOf?.call(row) ??
+                              column.filterValueOf?.call(row),
+                        ),
+                      )
+                    : null);
       final Color? onCellColor = cellColor == null
           ? null
-          : ThemeData.estimateBrightnessForColor(cellColor) == Brightness.dark
-          ? Colors.white
-          : Colors.black87;
+          : utenSemanticCellForeground(context, cellColor);
       return DecoratedBox(
         decoration: BoxDecoration(
           color: cellColor,
@@ -3512,7 +3552,13 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
               ),
               child: UtenTableCellHints(
                 child: Builder(
-                  builder: (cellContext) => column.cellBuilder(cellContext, row),
+                  builder: (cellContext) => UtenStatusCellScope(
+                    enabled: utenIsStatusColumn(column.key, column.label),
+                    child: Builder(
+                      builder: (statusContext) =>
+                          column.cellBuilder(statusContext, row),
+                    ),
+                  ),
                 ),
               ),
             ),

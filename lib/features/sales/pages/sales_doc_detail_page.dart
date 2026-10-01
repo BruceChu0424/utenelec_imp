@@ -1,3 +1,4 @@
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 // 销售单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
@@ -37,7 +38,6 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -92,7 +92,8 @@ class SalesDocDetailPage extends ConsumerStatefulWidget {
   ConsumerState<SalesDocDetailPage> createState() => _SalesDocDetailPageState();
 }
 
-class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
+class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
+    with NativeReadViewScopeMixin<SalesDocDetailPage> {
   SalesDocConfig get _cfg => _detail?.shipmentWorkflow.isDirect == true
       ? SalesDocConfig.customerShipment
       : SalesDocConfig.by(widget.docType);
@@ -112,6 +113,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   @override
   void initState() {
     super.initState();
+    initializeNativeReadScope();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -123,10 +125,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   /// 服务端已合并功能权限与负责人范围；不能仅凭前端权限常量开放对象写操作。
-  bool get _objectWritable => _detail?.writable ?? false;
+  bool get _objectWritable =>
+      nativeReadCanWrite && (_detail?.writable ?? false);
 
   bool _hasPermission(String? code) =>
-      code != null && ref.read(currentPermissionsProvider).contains(code);
+      code != null &&
+      nativeReadAccessConfirmed &&
+      ((code.endsWith(':view') ||
+              code.contains(':view:') ||
+              code.endsWith(':print') ||
+              code.endsWith(':download')) ||
+          nativeReadCanWrite) &&
+      ref.read(currentPermissionsProvider).contains(code);
 
   bool get _canEdit =>
       widget.docType != SalesDocType.otherShipment &&
@@ -154,7 +164,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   /// 报价的可执行动作(ADR-134)：服务端按权限码 + 负责人范围 + 状态 + 是否已转单
   /// 一次算好(转订货单同时要求 sales_quote:convert 与 sales_order:create)。
   bool _quoteAllows(SalesQuoteAction action) =>
-      _isQuote && (_detail?.quoteWorkflow.allows(action) ?? false);
+      _isQuote &&
+      nativeReadCanWrite &&
+      (_detail?.quoteWorkflow.allows(action) ?? false);
 
   bool get _canChangeQty =>
       _objectWritable && _hasPermission(Perm.salesOrderChangeQty);
@@ -205,7 +217,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   bool get _canManageWarehouseWork {
     final d = _detail;
-    return widget.docType.isShipment &&
+    return nativeReadCanWrite &&
+        widget.docType.isShipment &&
         d != null &&
         d.financeAudit == 1 &&
         d.canManageWarehouseWork &&
@@ -229,16 +242,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           .contains(Perm.salesReturnQualityView);
 
   bool get _canCorrectReturnQuality =>
-      ref.read(isSuperAdminProvider) ||
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.salesReturnQualityCorrect);
+      nativeReadCanWrite &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.salesReturnQualityCorrect));
 
   bool get _canDisposeReturnQuality =>
-      ref.read(isSuperAdminProvider) ||
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.salesReturnQualityDispose);
+      nativeReadCanWrite &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.salesReturnQualityDispose));
 
   String? get _returnQualityReversalBlockReason {
     if (widget.docType != SalesDocType.returnDoc ||
@@ -284,22 +299,35 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   /// 报价转订货：财务已核价的报价一键生成订货草稿(单价与财务核定折扣锁定带入，
   /// ADR-134)，转后跳订货编辑页补交货信息。
   Future<void> _convertToOrder() async {
+    if (!nativeReadCanWrite || !_quoteAllows(SalesQuoteAction.convert)) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) return;
     final l10n = AppLocalizations.of(context);
     final ok = await UtenDialog.show(
       context,
       title: l10n.salesQuoteStatusActionConvert,
-      content: Text(l10n.salesQuoteStatusConvertConfirmBody),
+      content: Builder(
+        builder: (ctx) => trackNativeReadDialog(
+          ctx,
+          Text(l10n.salesQuoteStatusConvertConfirmBody),
+        ),
+      ),
       confirmLabel: l10n.salesQuoteStatusActionConvert,
       cancelLabel: l10n.salesQuoteStatusCancel,
     );
-    if (ok != true || !mounted) return;
+    if (ok != true ||
+        !mounted ||
+        !ownsNative() ||
+        !nativeReadCanWrite ||
+        !_quoteAllows(SalesQuoteAction.convert)) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       final order = await ref
           .read(salesRepositoryProvider(SalesDocType.quote))
           .convertToOrder(widget.id);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess(l10n.salesQuoteStatusConvertDone(order.billNo ?? ''));
       // 跨单据类型：转单生成的是订货草稿，bump 订货列表 key（非本报价 key），
       // 用户后续进入订货列表/取消编辑后返回订货列表都能看到这张新草稿；
@@ -310,22 +338,25 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       setState(() => _busy = false);
       // 跑批遮罩先撤下再跳页(遮罩盖住后推路由的坑)。
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.push(
         SalesRoutePath.docEdit(SalesDocType.order.pathSegment, order.id),
       );
     } on ApiException catch (e) {
-      if (mounted) context.appApiError(e);
+      if (mounted && ownsNative()) context.appApiError(e);
     } catch (_) {
-      if (mounted) context.appError(l10n.salesQuoteStatusActionFailed);
+      if (mounted && ownsNative()) {
+        context.appError(l10n.salesQuoteStatusActionFailed);
+      }
     } finally {
-      if (mounted && _busy) setState(() => _busy = false);
+      if (mounted && ownsNative() && _busy) setState(() => _busy = false);
     }
   }
 
   /// 报价流转(提交财务核价 / 撤回 / 重新修改 / 作废 / 删除)：确认弹窗 → 遮罩 → 调用 →
   /// 成功后刷新徽章与列表并重读详情。所有报价写操作都带页面看到的 reviewRevision。
   Future<void> _runQuoteAction({
+    required SalesQuoteAction action,
     required String title,
     required String confirmBody,
     required String confirmLabel,
@@ -334,32 +365,42 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     bool danger = false,
     bool leaveAfter = false,
   }) async {
+    if (!nativeReadCanWrite || !_quoteAllows(action)) return;
+    final ownsNative = captureNativeOwnership();
     final detail = _detail;
     if (_busy || detail == null) return;
     final l10n = AppLocalizations.of(context);
     final ok = await UtenDialog.show(
       context,
       title: title,
-      content: Text(confirmBody),
+      content: Builder(
+        builder: (ctx) => trackNativeReadDialog(ctx, Text(confirmBody)),
+      ),
       confirmLabel: confirmLabel,
       cancelLabel: l10n.salesQuoteStatusCancel,
       danger: danger,
     );
-    if (ok != true || !mounted) return;
+    if (ok != true ||
+        !mounted ||
+        !ownsNative() ||
+        !nativeReadCanWrite ||
+        !_quoteAllows(action)) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await call(
         ref.read(salesRepositoryProvider(SalesDocType.quote)),
         detail.quoteWorkflow.reviewRevision,
       );
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess(success);
       bumpListRefresh(ref, _cfg.refreshKey);
       refreshBadges(ref);
       if (leaveAfter) {
         setState(() => _busy = false);
         await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
+        if (!mounted || !ownsNative()) return;
         backTo(
           context,
           defaultPath: SalesRoutePath.list(_cfg.type.pathSegment),
@@ -368,19 +409,22 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       }
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appApiError(e);
+      if (mounted && ownsNative()) context.appApiError(e);
       // 版本/状态冲突时重读，让用户看到最新状态再决定。
-      if (mounted) await _load();
+      if (mounted && ownsNative()) await _load();
     } catch (_) {
-      if (mounted) context.appError(l10n.salesQuoteStatusActionFailed);
+      if (mounted && ownsNative()) {
+        context.appError(l10n.salesQuoteStatusActionFailed);
+      }
     } finally {
-      if (mounted && _busy) setState(() => _busy = false);
+      if (mounted && ownsNative() && _busy) setState(() => _busy = false);
     }
   }
 
   Future<void> _submitQuote() {
     final l10n = AppLocalizations.of(context);
     return _runQuoteAction(
+      action: SalesQuoteAction.submit,
       title: l10n.salesQuoteStatusActionSubmit,
       confirmBody: l10n.salesQuoteStatusSubmitConfirmBody,
       confirmLabel: l10n.salesQuoteStatusActionSubmit,
@@ -392,6 +436,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Future<void> _withdrawQuote() {
     final l10n = AppLocalizations.of(context);
     return _runQuoteAction(
+      action: SalesQuoteAction.withdraw,
       title: l10n.salesQuoteStatusActionWithdraw,
       confirmBody: l10n.salesQuoteStatusWithdrawConfirmBody,
       confirmLabel: l10n.salesQuoteStatusActionWithdraw,
@@ -403,6 +448,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Future<void> _reopenQuote() {
     final l10n = AppLocalizations.of(context);
     return _runQuoteAction(
+      action: SalesQuoteAction.reopen,
       title: l10n.salesQuoteStatusActionReopen,
       confirmBody: l10n.salesQuoteStatusReopenConfirmBody,
       confirmLabel: l10n.salesQuoteStatusActionReopen,
@@ -414,6 +460,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Future<void> _reverseQuote() {
     final l10n = AppLocalizations.of(context);
     return _runQuoteAction(
+      action: SalesQuoteAction.reverse,
       title: l10n.salesQuoteStatusActionReverse,
       confirmBody: l10n.salesQuoteStatusReverseConfirmBody,
       confirmLabel: l10n.salesQuoteStatusActionReverse,
@@ -426,6 +473,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   Future<void> _deleteQuote() {
     final l10n = AppLocalizations.of(context);
     return _runQuoteAction(
+      action: SalesQuoteAction.delete,
       title: l10n.salesQuoteStatusActionDelete,
       confirmBody: l10n.salesQuoteStatusDeleteConfirmBody,
       confirmLabel: l10n.salesQuoteStatusActionDelete,
@@ -436,8 +484,28 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     );
   }
 
+  @override
+  void nativeReadOwnerChanged() => setState(() {
+    _detail = null;
+    _loading = false;
+    _busy = false;
+    _error = '登录身份或服务器已变化，原页面信息已隐藏，请重新加载';
+    _returnQualitySnapshot = null;
+    _approveClaim = null;
+  });
+  @override
+  void nativeReadPermissionChanged() => setState(() {
+    _busy = false;
+  });
+  @override
+  Future<void> nativeReadReload() => _load();
+
   Future<void> _load() async {
-    if (!mounted) return;
+    final acceptsRead = captureNativeRead(
+      '${widget.docType.name}/${widget.id}',
+      () => '${widget.docType.name}/${widget.id}',
+    );
+    if (!acceptsRead()) return;
     if (widget.docType == SalesDocType.quote ||
         widget.docType == SalesDocType.order) {
       ref.invalidate(
@@ -458,7 +526,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       final d = await ref
           .read(salesRepositoryProvider(widget.docType))
           .detail(widget.id);
-      if (!mounted) return;
+      if (!acceptsRead()) return;
+      acceptNativeRead();
       setState(() {
         _detail = d;
         _loading = false;
@@ -471,18 +540,19 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
           d.status == kSalesStatusDraft &&
           !d.rejected) {
         await _approveClaim?.releaseAll();
+        if (!acceptsRead()) return;
         _approveClaim = TaskClaimSession(ref.read(taskClaimRepositoryProvider));
         await _approveClaim!.claimAll('SALES_ORDER_APPROVE', [widget.id]);
-        if (mounted) setState(() {});
+        if (acceptsRead()) setState(() {});
       }
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!acceptsRead()) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!acceptsRead()) return;
       setState(() {
         _error = '加载详情失败';
         _loading = false;
@@ -541,6 +611,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 订单取消：仅无发货、无排产/在产/完工关联时开放，避免展示后端必然拒绝的操作。
   Future<void> _cancel() async {
+    if (!nativeReadCanWrite) return;
     if (!_canCancelOrder) {
       context.appWarning(_orderCancelBlockReason ?? '当前订单不能整单取消');
       return;
@@ -553,6 +624,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
   }
 
   Future<void> _performWarehouseAction(SalesWarehouseWorkAction action) async {
+    if (!nativeReadCanWrite) return;
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
       return;
@@ -574,6 +646,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
 
   /// 订单改量：弹窗逐行改数量（增量重走预留/减量释放，已排产行需生产部权限）。
   Future<void> _changeQty() async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
       return;
@@ -589,83 +663,88 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('订单改量'),
-        content: SizedBox(
-          width: 420,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              if (_detail!.financeConfirmed)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                  child: Text(
-                    '改量后需财务再次确认，修改前后明细会以红绿两行展示。',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              if (_orderHasPlanned && !_canChangePlanned)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                  child: Text(
-                    '已排产/已生产行仅生产确认人员可改，当前为只读。',
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
-              for (final it in _detail!.items)
-                if (it.id != null)
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        AlertDialog(
+          title: const Text('订单改量'),
+          content: SizedBox(
+            width: 420,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                if (_detail!.financeConfirmed)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${it.clientModel ?? ''} 现 ${it.qty?.toStringAsFixed(2) ?? '—'}'
-                            ' 已发 ${it.shippedQty?.toStringAsFixed(2) ?? '0'}',
-                            style: Theme.of(context).textTheme.labelMedium
-                                ?.copyWith(fontWeight: FontWeight.w400),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 100,
-                          child: TextField(
-                            controller: ctrls[it.id!],
-                            enabled: _canChangePlanned || !_touchesPlanned(it),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: const InputDecoration(
-                              isDense: true,
-                              labelText: '新数量',
-                            ),
-                          ),
-                        ),
-                      ],
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                    child: Text(
+                      '改量后需财务再次确认，修改前后明细会以红绿两行展示。',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-            ],
+                if (_orderHasPlanned && !_canChangePlanned)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                    child: Text(
+                      '已排产/已生产行仅生产确认人员可改，当前为只读。',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                for (final it in _detail!.items)
+                  if (it.id != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${it.clientModel ?? ''} 现 ${it.qty?.toStringAsFixed(2) ?? '—'}'
+                              ' 已发 ${it.shippedQty?.toStringAsFixed(2) ?? '0'}',
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(fontWeight: FontWeight.w400),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 100,
+                            child: TextField(
+                              controller: ctrls[it.id!],
+                              enabled:
+                                  _canChangePlanned || !_touchesPlanned(it),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: '新数量',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
+            ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认改量'),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认改量'),
-          ),
-        ],
       ),
     );
-    if (ok != true) {
+    if (ok != true || !mounted || !ownsNative() || !nativeReadCanWrite) {
       for (final c in ctrls.values) {
         c.dispose();
       }
@@ -677,33 +756,37 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       final v = double.tryParse(ctrls[it.id!]!.text);
       ctrls[it.id!]!.dispose();
       if (v == null) {
-        if (mounted) context.appError('存在无效数量，请检查');
+        if (mounted && ownsNative()) context.appError('存在无效数量，请检查');
         return;
       }
       if (v != it.qty) {
         changes.add({'orderItemId': it.id, 'newQty': v});
       }
     }
-    if (changes.isEmpty) return;
+    if (changes.isEmpty || !mounted || !ownsNative() || !nativeReadCanWrite) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await ref
           .read(salesRepositoryProvider(widget.docType))
           .changeQty(widget.id, changes);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess('已改量');
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('改量失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('改量失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
   Future<void> _confirmShipmentSales() async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     final workflow = _detail?.shipmentWorkflow;
     // V578：被财务退回后允许原样重新提交（无需先改单）。
     if (_busy ||
@@ -717,22 +800,24 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       await ref
           .read(salesRepositoryProvider(widget.docType))
           .confirmShipmentSales(widget.id, workflow.revision);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess('销售已确认，已提交财务审核');
       refreshBadges(ref);
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('提交失败，请刷新后重试');
+      if (mounted && ownsNative()) context.appError('提交失败，请刷新后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
   /// 仓库驳回：填原因 → 释放预留 + 订单行回退待排产。
   Future<void> _reject() async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
       return;
@@ -740,24 +825,27 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     final reasonCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('驳回出货单'),
-        content: TextField(
-          controller: reasonCtrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '驳回原因(如：预留货物损坏 / 找不到)'),
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        AlertDialog(
+          title: const Text('驳回出货单'),
+          content: TextField(
+            controller: reasonCtrl,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: '驳回原因(如：预留货物损坏 / 找不到)'),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认驳回'),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认驳回'),
-          ),
-        ],
       ),
     );
     final reason = reasonCtrl.text;
@@ -768,30 +856,33 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       await ref
           .read(salesRepositoryProvider(widget.docType))
           .reject(widget.id, reason: reason);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess('已驳回，对应订单行已回退待处理');
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('驳回失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('驳回失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
   // ======================= 行级预留管理（优先级 + 让单）=======================
 
   bool get _canSetPriority =>
+      nativeReadCanWrite &&
       ref.read(currentPermissionsProvider).contains(Perm.salesOrderPriority);
 
   bool get _canReallocate =>
+      nativeReadCanWrite &&
       ref.read(currentPermissionsProvider).contains(Perm.salesOrderReallocate);
 
   /// 点订单明细行 → 弹底部 sheet（设优先级 / 让单），按权限与行可发量显隐段。
   /// 仅订货单；草稿/已红冲/无可操作权限的行只维持表格自带的高亮。
   Future<void> _showLineActions(SalesDocItem item) async {
+    if (!nativeReadCanWrite) return;
     if (widget.docType != SalesDocType.order) return;
     if (_detail?.financeRejected ?? false) {
       context.appInfo('订单已被财务驳回，请先使用“修改订单”完成修订并重新审核');
@@ -809,41 +900,48 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       isScrollControlled: true,
       showDragHandle: true,
       constraints: const BoxConstraints(maxWidth: 560),
-      builder: (ctx) => _LineActionSheet(
-        item: item,
-        canSetPriority: _canSetPriority,
-        canYield: canYield,
-        goodsLabel:
-            '${names.goods(item.goodsId)}(${names.color(item.colorId)})',
-        qtyLabel:
-            '订货 ${item.qty?.toStringAsFixed(2) ?? '-'} · 已发 ${item.shippedQty?.toStringAsFixed(2) ?? '-'} · 可发 ${item.reservedQty?.toStringAsFixed(2) ?? '-'}',
-        onSetPriority: (p, reason) => _setLinePriority(item.id!, p, reason),
-        onYield: (qty, reason) => _yieldLine(item.id!, qty, reason),
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        _LineActionSheet(
+          item: item,
+          canSetPriority: _canSetPriority,
+          canYield: canYield,
+          goodsLabel:
+              '${names.goods(item.goodsId)}(${names.color(item.colorId)})',
+          qtyLabel:
+              '订货 ${item.qty?.toStringAsFixed(2) ?? '-'} · 已发 ${item.shippedQty?.toStringAsFixed(2) ?? '-'} · 可发 ${item.reservedQty?.toStringAsFixed(2) ?? '-'}',
+          onSetPriority: (p, reason) => _setLinePriority(item.id!, p, reason),
+          onYield: (qty, reason) => _yieldLine(item.id!, qty, reason),
+        ),
       ),
     );
   }
 
   Future<void> _setLinePriority(String itemId, int p, String? reason) async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) return;
     setState(() => _busy = true);
     try {
       final d = await ref
           .read(salesRepositoryProvider(widget.docType))
           .setLinePriority(itemId, p, reason: reason);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess('已设为 ${priorityLabel(p)}');
       bumpListRefresh(ref, _cfg.refreshKey);
       setState(() => _detail = d);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('设优先级失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('设优先级失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
   Future<void> _yieldLine(String itemId, double qty, String reason) async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) return;
     setState(() => _busy = true);
     try {
@@ -855,18 +953,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
             reason: reason,
             yielderOrderNo: _detail?.billNo,
           );
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess(
         '已让单 ${qty.toStringAsFixed(2)}，释放的库存已回可分配池，该订单行已回到计划需求池',
       );
       bumpListRefresh(ref, _cfg.refreshKey);
       setState(() => _detail = d);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('让单失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('让单失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
@@ -876,49 +974,56 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     String ok, {
     bool reviewerResponsibility = false,
   }) async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) {
       // 上一个操作仍在途（网络慢时最长 10~20s）：明确提示，不再静默吞点击。
       context.appInfo('正在处理，请稍候…');
       return;
     }
     final c = reviewerResponsibility
-        ? await showUtenReviewerConfirmDialog(context, message: confirm)
+        ? await showNativeReadReviewerConfirm(context, message: confirm)
         : await showDialog<bool>(
             context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('确认'),
-              content: Text(confirm),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('确认'),
-                ),
-              ],
+            builder: (ctx) => trackNativeReadDialog(
+              ctx,
+              AlertDialog(
+                title: const Text('确认'),
+                content: Text(confirm),
+                actionsAlignment: MainAxisAlignment.center,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('确认'),
+                  ),
+                ],
+              ),
             ),
           );
-    if (c != true) return;
+    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
     setState(() => _busy = true);
     try {
       await fn(ref.read(salesRepositoryProvider(widget.docType)));
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess(ok);
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('操作失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('操作失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
   Future<void> _delete() async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
       return;
@@ -926,42 +1031,45 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     final isShipment = _cfg.type.isShipment;
     final c = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(isShipment ? '取消出货单' : '删除单据'),
-        content: Text(
-          isShipment
-              ? '确定取消该出货草稿吗？取消后单据删除且不可恢复；已提交财务审核的需先由财务退回。'
-              : '确定删除该草稿单据吗？',
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        AlertDialog(
+          title: Text(isShipment ? '取消出货单' : '删除单据'),
+          content: Text(
+            isShipment
+                ? '确定取消该出货草稿吗？取消后单据删除且不可恢复；已提交财务审核的需先由财务退回。'
+                : '确定删除该草稿单据吗？',
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(isShipment ? '确认取消' : '删除'),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(isShipment ? '确认取消' : '删除'),
-          ),
-        ],
       ),
     );
-    if (c != true) return;
+    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
     setState(() => _busy = true);
     try {
       await ref.read(salesRepositoryProvider(widget.docType)).delete(widget.id);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess('已删除');
       // 删除也 bump：来源列表立即去掉这行，草稿计数/徽章即时重拉。
       bumpListRefresh(ref, _cfg.refreshKey);
       backTo(context, defaultPath: SalesRoutePath.list(_cfg.type.pathSegment));
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('删除失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('删除失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
@@ -978,6 +1086,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     ref.onPageResume(_myLocation!, _load);
     final permissions = ref.watch(currentPermissionsProvider);
     final canViewMoneySummary =
+        nativeReadAccessConfirmed &&
+        !(_detail?.priceMasked ?? true) &&
         permissions.contains(Perm.financeViewAll) &&
         permissions.contains(Perm.customerPrepaymentView);
     return Scaffold(
@@ -1023,6 +1133,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
                         if (!_loading) await _load();
                       },
                     )
+                  : !nativeReadAccessConfirmed
+                  ? nativeReadAccessNotice()
                   : _detail == null
                   ? const SizedBox.shrink()
                   // 2026-09-11 折叠头+表内滚：头部（表头卡/预收汇总/出货卡/附件/
@@ -1168,7 +1280,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton:
-          _detail == null || _busy || _loading || _error != null
+          !nativeReadAccessConfirmed ||
+              _detail == null ||
+              _busy ||
+              _loading ||
+              _error != null
           ? null
           : _actions(theme),
     );
@@ -2421,7 +2537,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
     return ListenableBuilder(
       listenable: _shipmentActions,
       builder: (context, _) {
-        final shipping = _shipmentActions.shippingEnabled;
+        final shipping = nativeReadCanWrite && _shipmentActions.shippingEnabled;
         final count = _shipmentActions.selectedCount;
         final busy = _shipmentActions.busy;
         final group = <Widget>[
@@ -2442,7 +2558,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage> {
               icon: Icons.local_shipping_outlined,
               isLoading: busy,
               onPressed: count > 0 && !busy
-                  ? () => _shipmentActions.createShipment()
+                  ? () {
+                      if (nativeReadCanWrite) _shipmentActions.createShipment();
+                    }
                   : null,
               onDisabledTap: count == 0
                   ? () => context.appWarning('请先勾选要发货的产品')

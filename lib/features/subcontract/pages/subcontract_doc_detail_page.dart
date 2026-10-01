@@ -1,3 +1,4 @@
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 // 委外单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
@@ -24,7 +25,6 @@ import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -80,7 +80,8 @@ class SubcontractDocDetailPage extends ConsumerStatefulWidget {
 }
 
 class _SubcontractDocDetailPageState
-    extends ConsumerState<SubcontractDocDetailPage> {
+    extends ConsumerState<SubcontractDocDetailPage>
+    with NativeReadViewScopeMixin<SubcontractDocDetailPage> {
   static const _financeApprovalTasksPath = '/finance/procurement-approvals';
 
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(widget.docType);
@@ -92,7 +93,8 @@ class _SubcontractDocDetailPageState
   String? _myLocation;
 
   bool get _canViewCommercialAmounts {
-    return _cfg.canViewCommercial(ref.read(currentPermissionsProvider)) &&
+    return nativeReadAccessConfirmed &&
+        _cfg.canViewCommercial(ref.read(currentPermissionsProvider)) &&
         !(_detail?.priceMasked ?? false);
   }
 
@@ -101,17 +103,26 @@ class _SubcontractDocDetailPageState
   @override
   void initState() {
     super.initState();
+    initializeNativeReadScope();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   bool _hasPermission(String? code) =>
-      code != null && ref.read(currentPermissionsProvider).contains(code);
+      code != null &&
+      nativeReadAccessConfirmed &&
+      ((code.endsWith(':view') ||
+              code.contains(':view:') ||
+              code.endsWith(':print') ||
+              code.endsWith(':download')) ||
+          nativeReadCanWrite) &&
+      ref.read(currentPermissionsProvider).contains(code);
 
   bool get _historicalReceipt =>
       widget.docType == SubcontractDocType.receipt &&
       (_detail?.legacyImported ?? false);
 
   bool get _ordinaryWritable =>
+      nativeReadCanWrite &&
       !_historicalReceipt &&
       !widget.forceReadOnly &&
       (widget.docType == SubcontractDocType.application ||
@@ -158,8 +169,26 @@ class _SubcontractDocDetailPageState
     _listPath,
   );
 
+  @override
+  void nativeReadOwnerChanged() => setState(() {
+    _detail = null;
+    _loading = false;
+    _busy = false;
+    _error = '登录身份或服务器已变化，原页面信息已隐藏，请重新加载';
+  });
+  @override
+  void nativeReadPermissionChanged() => setState(() {
+    _busy = false;
+  });
+  @override
+  Future<void> nativeReadReload() => _load();
+
   Future<void> _load() async {
-    if (!mounted) return;
+    final acceptsRead = captureNativeRead(
+      '${widget.docType.name}/${widget.id}',
+      () => '${widget.docType.name}/${widget.id}',
+    );
+    if (!acceptsRead()) return;
     if (widget.docType != SubcontractDocType.application) {}
     setState(() {
       _loading = true;
@@ -172,20 +201,21 @@ class _SubcontractDocDetailPageState
       final d = await ref
           .read(subcontractRepositoryProvider(widget.docType))
           .detail(widget.id);
-      if (!mounted) return;
+      if (!acceptsRead()) return;
       unawaited(_resolveDisplayNames(names, d, dictionaries));
+      acceptNativeRead();
       setState(() {
         _detail = d;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!acceptsRead()) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!acceptsRead()) return;
       setState(() {
         _error = '加载详情失败';
         _loading = false;
@@ -214,6 +244,7 @@ class _SubcontractDocDetailPageState
   }
 
   Future<void> _approve() async {
+    if (!nativeReadCanWrite) return;
     final blockedReason = _cfg.approvalBlockedReason;
     if (blockedReason != null) {
       context.appWarning(
@@ -263,6 +294,8 @@ class _SubcontractDocDetailPageState
   /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
   /// 重回财务复核；驳回不会自动还原数量。
   Future<void> _changeQty() async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
       return;
@@ -281,75 +314,79 @@ class _SubcontractDocDetailPageState
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        key: const Key('subcontract-order-change-qty-dialog'),
-        title: Text(l10n.orderChangeQtyTitle),
-        content: SizedBox(
-          width: 420,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: Text(
-                  l10n.orderChangeQtyWarning,
-                  style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(ctx).colorScheme.error,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              for (final it in detail.items)
-                if (it.id != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${names.goods(it.goodsId)}'
-                            '(${names.color(it.colorId)} · ${names.unit(it.unitId)}) '
-                            '${l10n.orderChangeQtyCurrent(it.qty?.toStringAsFixed(2) ?? '—')}',
-                            style: Theme.of(ctx).textTheme.labelMedium
-                                ?.copyWith(fontWeight: FontWeight.w400),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        SizedBox(
-                          width: 100,
-                          child: TextField(
-                            key: Key('subcontract-order-change-qty-${it.id}'),
-                            controller: ctrls[it.id!],
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              labelText: l10n.orderChangeQtyNewQty,
-                            ),
-                          ),
-                        ),
-                      ],
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        AlertDialog(
+          key: const Key('subcontract-order-change-qty-dialog'),
+          title: Text(l10n.orderChangeQtyTitle),
+          content: SizedBox(
+            width: 420,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                  child: Text(
+                    l10n.orderChangeQtyWarning,
+                    style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
+                      color: Theme.of(ctx).colorScheme.error,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-            ],
+                ),
+                for (final it in detail.items)
+                  if (it.id != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${names.goods(it.goodsId)}'
+                              '(${names.color(it.colorId)} · ${names.unit(it.unitId)}) '
+                              '${l10n.orderChangeQtyCurrent(it.qty?.toStringAsFixed(2) ?? '—')}',
+                              style: Theme.of(ctx).textTheme.labelMedium
+                                  ?.copyWith(fontWeight: FontWeight.w400),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 100,
+                            child: TextField(
+                              key: Key('subcontract-order-change-qty-${it.id}'),
+                              controller: ctrls[it.id!],
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                labelText: l10n.orderChangeQtyNewQty,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
+            ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.commonCancel),
+            ),
+            FilledButton(
+              key: const Key('subcontract-order-change-qty-submit'),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.orderChangeQtyConfirm),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            key: const Key('subcontract-order-change-qty-submit'),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.orderChangeQtyConfirm),
-          ),
-        ],
       ),
     );
-    if (ok != true) {
+    if (ok != true || !mounted || !ownsNative() || !nativeReadCanWrite) {
       _disposeChangeQtyControllers(ctrls.values);
       return;
     }
@@ -360,7 +397,9 @@ class _SubcontractDocDetailPageState
       // 行内校验：新数量必须解析成功且 > 0。
       if (v == null || v <= 0) {
         _disposeChangeQtyControllers(ctrls.values);
-        if (mounted) context.appError(l10n.orderChangeQtyInvalid);
+        if (mounted && ownsNative()) {
+          context.appError(l10n.orderChangeQtyInvalid);
+        }
         return;
       }
       if (v != it.qty) {
@@ -368,7 +407,9 @@ class _SubcontractDocDetailPageState
       }
     }
     _disposeChangeQtyControllers(ctrls.values);
-    if (changes.isEmpty) return;
+    if (changes.isEmpty || !mounted || !ownsNative() || !nativeReadCanWrite) {
+      return;
+    }
     setState(() {
       _busy = true;
       _busyTitle = '正在提交数量修改，请稍候';
@@ -377,16 +418,16 @@ class _SubcontractDocDetailPageState
       await ref
           .read(subcontractRepositoryProvider(widget.docType))
           .changeQty(widget.id, changes);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess(l10n.orderChangeQtySuccess);
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError(l10n.orderChangeQtyFailed);
+      if (mounted && ownsNative()) context.appError(l10n.orderChangeQtyFailed);
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
@@ -411,44 +452,49 @@ class _SubcontractDocDetailPageState
     String reviewerActionLabel = '审核',
     String? busyTitle,
   }) async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy || _historicalReceipt) return;
     final c = reviewerConfirmation
-        ? await showUtenReviewerConfirmDialog(
+        ? await showNativeReadReviewerConfirm(
             context,
             message: confirm,
             actionLabel: reviewerActionLabel,
           )
         : await showDialog<bool>(
             context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('确认'),
-              content: Text(confirm),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('确认'),
-                ),
-              ],
+            builder: (ctx) => trackNativeReadDialog(
+              ctx,
+              AlertDialog(
+                title: const Text('确认'),
+                content: Text(confirm),
+                actionsAlignment: MainAxisAlignment.center,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('确认'),
+                  ),
+                ],
+              ),
             ),
           );
-    if (c != true) return;
+    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
     setState(() {
       _busy = true;
       _busyTitle = busyTitle ?? '正在处理，请稍候';
     });
     try {
       await fn(ref.read(subcontractRepositoryProvider(widget.docType)));
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess(ok);
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) {
+      if (mounted && ownsNative()) {
         final handler = onApiError;
         if (handler != null) {
           handler(e);
@@ -457,34 +503,39 @@ class _SubcontractDocDetailPageState
         }
       }
     } catch (_) {
-      if (mounted) context.appError('操作失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('操作失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
   Future<void> _delete() async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy || _historicalReceipt) return;
     final c = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除单据'),
-        content: const Text('确定删除该草稿单据吗？'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        AlertDialog(
+          title: const Text('删除单据'),
+          content: const Text('确定删除该草稿单据吗？'),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
       ),
     );
-    if (c != true) return;
+    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
     setState(() {
       _busy = true;
       _busyTitle = '正在删除，请稍候';
@@ -493,18 +544,18 @@ class _SubcontractDocDetailPageState
       await ref
           .read(subcontractRepositoryProvider(widget.docType))
           .delete(widget.id);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess('已删除');
       // 删除也 bump：来源列表立即去掉这行，草稿计数/徽章即时重拉。
       bumpListRefresh(ref, _cfg.refreshKey);
       // 返回键契约（路由设计 §十一）：pop 回来源，栈空回 hub/任务中心。
       popOrBackTo(context, defaultPath: _defaultBackPath);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('删除失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('删除失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
@@ -554,6 +605,8 @@ class _SubcontractDocDetailPageState
                         if (!_loading) await _load();
                       },
                     )
+                  : !nativeReadAccessConfirmed
+                  ? nativeReadAccessNotice()
                   : _detail == null
                   ? const SizedBox.shrink()
                   // 2026-09-11 折叠头+表内滚：头部（只读提示/表头卡/横幅/进度/附件）
@@ -675,7 +728,8 @@ class _SubcontractDocDetailPageState
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton:
-          _detail == null ||
+          !nativeReadAccessConfirmed ||
+              _detail == null ||
               _busy ||
               _loading ||
               _error != null ||

@@ -9,12 +9,29 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
+
+class _AuthenticatedSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'reader', code: 'reader', name: '当前读者'),
+  );
+}
+
+class _ConfirmedSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
 
 Map<String, dynamic> _quote({
   required int status,
@@ -125,6 +142,9 @@ Future<_QuoteApi> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sessionProvider.overrideWith(_AuthenticatedSession.new),
+        sessionSnapshotProvider.overrideWith(_ConfirmedSnapshot.new),
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

@@ -70,6 +70,21 @@ public class InstantInventoryRow {
     private String weightTier;
     /** 当前用户无 goods:cost:view 时库存台账金额已由服务端置空。 */
     private boolean costMasked;
+    /** Master owning warehouse, not the warehouse scope of this stock query. */
+    private UUID owningWarehouseId;
+    private String owningWarehouseName;
+
+    /** Preserve the existing constructor used by stock clients and read-side tests. */
+    public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,
+                               String name, String spec, String colorName, String unitName, String remark,
+                               BigDecimal weight, BigDecimal qty, BigDecimal costAmount, BigDecimal moreQty,
+                               String goodsCode, String series, String stockPlace, BigDecimal pendingQty,
+                               BigDecimal pendingStockInQty, boolean weightEstimated, boolean weightUnknown,
+                               BigDecimal unitWeightKg, String weightTier, boolean costMasked) {
+        this(goodsId, colorId, categoryName, model, cNumber, name, spec, colorName, unitName, remark,
+                weight, qty, costAmount, moreQty, goodsCode, series, stockPlace, pendingQty, pendingStockInQty,
+                weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked, null, null);
+    }
 
     /** 字段名首字母后紧跟大写, Jackson 按 getter 推名会得到 cnumber; 固定为前端读的 cNumber。 */
     @JsonProperty("cNumber")

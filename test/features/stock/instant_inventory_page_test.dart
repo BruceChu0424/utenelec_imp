@@ -55,6 +55,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<void> tapInventoryHeader(WidgetTester tester, Key key) async {
+    // Picker close and table reload may collapse the linked header. Restore
+    // its visible position before the next real interaction with the filter.
+    await tester.ensureVisible(find.byKey(key, skipOffstage: false));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(key));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('opens unfiltered and loads the first page immediately', (
     tester,
   ) async {
@@ -127,24 +136,20 @@ void main() {
     expect(stock.lastIncludeDefective, isTrue);
 
     // 换仓库口径(主仓子树聚合)不得顺手把线边仓带回来。
-    await tester.tap(find.byKey(const ValueKey('instant-inventory-warehouse')));
-    await tester.pumpAndSettle();
+    await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
     await tester.pumpAndSettle();
     expect(stock.lastWarehouseId, 'w1');
     expect(stock.lastIncludeLineSide, isFalse);
 
     // 回到「全部」后点开关 → 显式要线边仓才带 true，再点一次收回。
-    await tester.tap(find.byKey(const ValueKey('instant-inventory-warehouse')));
-    await tester.pumpAndSettle();
+    await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-all')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('instant-inventory-line-side')));
-    await tester.pumpAndSettle();
+    await tapInventoryHeader(tester, const Key('instant-inventory-line-side'));
     expect(stock.lastIncludeLineSide, isTrue);
 
-    await tester.tap(find.byKey(const Key('instant-inventory-line-side')));
-    await tester.pumpAndSettle();
+    await tapInventoryHeader(tester, const Key('instant-inventory-line-side'));
     expect(stock.lastIncludeLineSide, isFalse);
   });
 
@@ -154,10 +159,10 @@ void main() {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock);
 
-      await tester.tap(
-        find.byKey(const ValueKey('instant-inventory-warehouse')),
+      await tapInventoryHeader(
+        tester,
+        const Key('instant-inventory-warehouse'),
       );
-      await tester.pumpAndSettle();
       expect(find.byKey(const Key('warehouse-picker-all')), findsOneWidget);
       // 查询口径不钻层：主仓与子仓同屏，主仓一点即选（= 子树聚合）。
       expect(
@@ -173,10 +178,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(stock.lastWarehouseId, 'w1');
 
-      await tester.tap(
-        find.byKey(const ValueKey('instant-inventory-warehouse')),
+      await tapInventoryHeader(
+        tester,
+        const Key('instant-inventory-warehouse'),
       );
-      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('warehouse-picker-all')));
       await tester.pumpAndSettle();
       expect(stock.lastWarehouseId, isNull);
@@ -609,8 +614,7 @@ void main() {
     expect(stock.lastUnitId, 'unit-1');
 
     // 左侧换分类只改变分类范围，不丢掉既有仓库和表头筛选。
-    await tester.tap(find.byKey(const Key('instant-inventory-warehouse')));
-    await tester.pumpAndSettle();
+    await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-w1')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('成品(FINISHED)'));
@@ -774,6 +778,7 @@ class _RecordingStockRepository extends StockQueryRepository {
     String? unitId,
     String? sort,
     String? order,
+    String? attention,
   }) {
     calls++;
     lastCategoryId = categoryId;

@@ -25,20 +25,18 @@ import '../../providers/master_name_provider.dart';
 import '../../widgets/warehouse_picker_panel.dart';
 import '../stock_ledger_models.dart';
 import '../stock_ledger_repository.dart';
+import '../../../features/stock/models/instant_inventory_scope.dart';
 
 /// 流水分段的起始范围 (余额行「查看流水」带过来的仓库 + 颜色)。
-class StockLedgerScope {
+class StockLedgerScope extends InstantInventoryScope {
   const StockLedgerScope({
-    this.warehouseId,
-    this.colorId,
-    this.colorNull = false,
+    super.warehouseId,
+    super.colorId,
+    super.colorNull,
+    super.inventoryOnly = false,
+    super.includeDefective,
+    super.includeLineSide = true,
   });
-
-  final String? warehouseId;
-  final String? colorId;
-
-  /// 只看无颜色维度 (余额行本身无颜色)。
-  final bool colorNull;
 }
 
 class GoodsStockLedgerView extends ConsumerStatefulWidget {
@@ -48,10 +46,12 @@ class GoodsStockLedgerView extends ConsumerStatefulWidget {
     this.scope = const StockLedgerScope(),
     this.unitName,
     this.reloadTick = 0,
+    this.onScopeChanged,
   });
 
   final String goodsId;
-  final StockLedgerScope scope;
+  final InstantInventoryScope scope;
+  final ValueChanged<InstantInventoryScope>? onScopeChanged;
 
   /// 基本单位名 (合计条用; 流水行自带单位名)。
   final String? unitName;
@@ -94,7 +94,8 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
   @override
   void didUpdateWidget(covariant GoodsStockLedgerView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.scope, widget.scope)) {
+    if (oldWidget.scope != widget.scope) {
+      _data = null;
       _applyScope(widget.scope);
       _load(1);
     } else if (oldWidget.reloadTick != widget.reloadTick) {
@@ -102,7 +103,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
     }
   }
 
-  void _applyScope(StockLedgerScope scope) {
+  void _applyScope(InstantInventoryScope scope) {
     _warehouseId = scope.warehouseId;
     _colorFilter = scope.colorNull
         ? kMasterFilterNullValue
@@ -116,6 +117,11 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
       warehouseId: _warehouseId,
       colorId: _colorFilter == kMasterFilterNullValue ? null : _colorFilter,
       colorNull: _colorFilter == kMasterFilterNullValue,
+      scope: widget.scope.withDimensions(
+        warehouseId: _warehouseId,
+        colorId: _colorFilter == kMasterFilterNullValue ? null : _colorFilter,
+        colorNull: _colorFilter == kMasterFilterNullValue,
+      ),
       dateFrom: _from,
       dateTo: _to,
       movementTypes: type == null ? const [] : [type],
@@ -159,6 +165,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
           _warehouseId = value == kMasterFilterNullValue ? null : value;
       }
     });
+    if (key == 'color' || key == 'warehouse') {
+      widget.onScopeChanged?.call(_query(1).scope!);
+    }
     _load(1);
   }
 
@@ -196,6 +205,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
     final next = result.isAll ? null : result.id;
     if (next == _warehouseId) return;
     setState(() => _warehouseId = next);
+    widget.onScopeChanged?.call(_query(1).scope!);
     _load(1);
   }
 
@@ -270,7 +280,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
       canOpenRow: (row) => stockLedgerSourcePath(row) != null,
       isLoading: _loading && data == null,
       loadingMore: _loading && data != null,
-      error: rows.isEmpty ? _error : null,
+      error: _error,
       onRetry: () => _load(1),
       emptyMessage: '所选范围内没有出入库流水',
       summaryBar: data == null

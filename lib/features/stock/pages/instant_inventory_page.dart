@@ -48,6 +48,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/instant_inventory_scope.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../basic_data/models/product_category_node.dart';
@@ -66,7 +67,8 @@ import '../counts/repositories/stock_count_request_repository.dart';
 import '../counts/widgets/stock_count_inline_editor.dart';
 
 class InstantInventoryPage extends ConsumerStatefulWidget {
-  const InstantInventoryPage({super.key});
+  const InstantInventoryPage({super.key, this.initialScope});
+  final InstantInventoryScope? initialScope;
 
   @override
   ConsumerState<InstantInventoryPage> createState() =>
@@ -139,6 +141,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   /// 「含线边仓」(V595)：线边仓是车间直送料架，默认不计入即时库存；仅本页会话内生效。
   bool _includeLineSide = false;
+  bool? _restoredIncludeDefective;
+  bool get _includeDefective =>
+      _restoredIncludeDefective ?? ref.read(instantInventoryPrefsProvider);
   // 列排序态：null=后端默认（库存数量 DESC）。
   String? _sortKey;
   bool _sortAsc = false;
@@ -150,6 +155,23 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   @override
   void initState() {
     super.initState();
+    final scope = widget.initialScope;
+    if (scope != null) {
+      _categoryId = scope.categoryId;
+      _warehouseId = scope.warehouseId;
+      _includeLineSide = scope.includeLineSide;
+      _restoredIncludeDefective = scope.includeDefective;
+      _searchQuery = scope.keyword ?? '';
+      _keyword = _searchQuery;
+      _filters = {
+        'owningWarehouse': scope.owningWarehouseNull
+            ? kMasterFilterNullValue
+            : scope.owningWarehouse,
+        'color': scope.colorId,
+        'series': scope.series,
+        'unit': scope.unitId,
+      };
+    }
     _countEditor = StockCountInlineController(
       ref.read(stockCountRequestRepositoryProvider),
     )..addListener(_countChanged);
@@ -160,7 +182,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     final generation = _searchRequests.begin();
     _searchDebounce?.cancel();
     _acceptPendingSearch = false;
-    await ref.read(masterNameServiceProvider).ensureLoaded();
+    await ref.read(masterNameServiceProvider).ensureCommonLoaded();
     if (!mounted || !_searchRequests.isCurrent(generation)) return;
     await _loadTree();
     if (!mounted || !_searchRequests.isCurrent(generation)) return;
@@ -209,7 +231,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             page: page,
             categoryId: _categoryId,
             warehouseId: _warehouseId,
-            includeDefective: ref.read(instantInventoryPrefsProvider),
+            includeDefective: _includeDefective,
             includeLineSide: _includeLineSide,
             keyword: _keyword.isEmpty ? null : _keyword,
             owningWarehouse: _owningFilterUuid,
@@ -222,7 +244,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           );
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       // 「所属仓库」列的名字来自货品字典，先补齐再落表，免得整页先空一拍再跳字。
-      await _loadOwningWarehouseNames(r.items);
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
@@ -286,7 +307,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
     if (_categoryId != null) 'categoryId': _categoryId,
     if (_warehouseId != null) 'warehouseId': _warehouseId,
-    'includeDefective': ref.read(instantInventoryPrefsProvider),
+    'includeDefective': _includeDefective,
     if (_includeLineSide) 'includeLineSide': true,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     'owningWarehouse': ?_owningFilterUuid,
@@ -324,7 +345,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           size: 2000,
           categoryId: _categoryId,
           warehouseId: _warehouseId,
-          includeDefective: ref.read(instantInventoryPrefsProvider),
+          includeDefective: _includeDefective,
           includeLineSide: _includeLineSide,
           keyword: _keyword.isEmpty ? null : _keyword,
           owningWarehouse: _owningFilterUuid,
@@ -336,7 +357,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           order: _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         );
     // 打印件与页面同列，「所属仓库」同样要先补齐货品字典才有名字可印。
-    await _loadOwningWarehouseNames(r.items);
     final cols = _columns();
     return UtenPrintTable(
       columnKeys: [for (final c in cols) c.key],
@@ -359,27 +379,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     );
   }
 
-  /// 「所属仓库」列取值 (V587)：行上自带的字段优先；后端尚未下发时回落货品字典
-  /// (lookup 已带 owningWarehouseName)。两边都没有=该货品还没登记归属，显空。
+  /// 主档归属由 stock:view 投影直接下发，不能把实物仓库或另一个字典当归属。
   String? _owningWarehouseName(InstantInventoryRow row) {
     final onRow = row.owningWarehouseName?.trim();
     if (onRow != null && onRow.isNotEmpty) return onRow;
-    return ref
-        .read(masterNameServiceProvider)
-        .goodsInfo(row.goodsId)
-        ?.owningWarehouseName;
-  }
-
-  /// 补一次本页货品的字典详情，让上面那列有名字可显 (只拉没缓存过的 id)。
-  Future<void> _loadOwningWarehouseNames(List<InstantInventoryRow> rows) async {
-    final ids = <String>{
-      for (final row in rows)
-        if ((row.owningWarehouseName ?? '').trim().isEmpty &&
-            (row.goodsId ?? '').isNotEmpty)
-          row.goodsId!,
-    };
-    if (ids.isEmpty) return;
-    await ref.read(masterNameServiceProvider).loadGoodsDetails(ids);
+    return null;
   }
 
   List<MasterColumnDef<InstantInventoryRow>> _columns() {
@@ -429,7 +433,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       // 另一回事 (那是本次看盘的范围仓)，两者绝不是同一个概念。
       MasterColumnDef(
         key: 'owningWarehouse',
-        label: '所属仓库',
+        label: '主档归属仓库',
         width: 120,
         info: '货品平时归哪个仓管的主档归属，不是这行库存所在的仓，也不是上面的仓库筛选值。',
         value: (r) => _owningWarehouseName(r) ?? '',
@@ -752,7 +756,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   Widget _buildTablePane() {
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
-    final includeDefective = ref.watch(instantInventoryPrefsProvider);
+    ref.watch(instantInventoryPrefsProvider);
+    final includeDefective = _includeDefective;
     final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final total = _page?.total ?? 0;
     // 「含不良品仓」只在聚合口径下生效：全部（null）或父仓（多仓聚合）；
@@ -799,9 +804,17 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 selected: includeDefective,
                 onSelected: !aggregateWarehouse
                     ? null
-                    : (v) => ref
-                          .read(instantInventoryPrefsProvider.notifier)
-                          .setIncludeDefective(v),
+                    : (v) {
+                        final preferenceChanged =
+                            ref.read(instantInventoryPrefsProvider) != v;
+                        setState(() => _restoredIncludeDefective = v);
+                        ref
+                            .read(instantInventoryPrefsProvider.notifier)
+                            .setIncludeDefective(v);
+                        if (!preferenceChanged) {
+                          _load(1);
+                        }
+                      },
               ),
               // V595：线边仓是车间内部直送的料架，不是现实里的仓库——默认不算进即时库存，
               // 要看车间料架上还有多少直送料时再打开。选定叶子仓时同样置灰。
@@ -904,7 +917,33 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           if (_countEditor.active) return;
           final gid = r.goodsId;
           if (gid == null || gid.isEmpty) return;
-          context.push(RouteName.stockItemDetail(gid));
+          context.push(
+            RouteName.stockItemDetail(
+              gid,
+              scope: InstantInventoryScope(
+                warehouseId: _warehouseId,
+                colorId: r.colorId,
+                colorNull: r.colorId == null,
+                includeDefective: _includeDefective,
+                includeLineSide: _includeLineSide,
+              ),
+              returnTo: Uri(
+                path: RouteName.stockInstantInventory,
+                queryParameters: InstantInventoryScope(
+                  categoryId: _categoryId,
+                  warehouseId: _warehouseId,
+                  includeDefective: _includeDefective,
+                  includeLineSide: _includeLineSide,
+                  keyword: _keyword.isEmpty ? null : _keyword,
+                  owningWarehouse: _owningFilterUuid,
+                  owningWarehouseNull: _owningFilterIsNull,
+                  colorId: _columnFilter('color'),
+                  series: _columnFilter('series'),
+                  unitId: _columnFilter('unit'),
+                ).toQuery(),
+              ).toString(),
+            ),
+          );
         },
         isLoading: _loading && _page == null,
         loadingMore: _loading && _page != null,
@@ -926,7 +965,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           _warehouseId,
           _includeLineSide,
           _keyword,
-          ref.read(instantInventoryPrefsProvider),
+          _includeDefective,
         ),
         onPageChange: (p) => _load(p),
       ),

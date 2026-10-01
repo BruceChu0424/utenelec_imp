@@ -6,6 +6,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/stock_query.dart';
+import '../models/instant_inventory_scope.dart';
 
 class StockQueryRepository {
   StockQueryRepository(this.api);
@@ -32,6 +33,7 @@ class StockQueryRepository {
     int size = 20,
     String? warehouseId,
     String? goodsId,
+    InstantInventoryScope? scope,
     String? sort,
     String? order,
   }) async {
@@ -40,13 +42,26 @@ class StockQueryRepository {
       query: {
         'page': page,
         'size': size,
-        'warehouseId': ?warehouseId,
+        if (scope == null) 'warehouseId': ?warehouseId,
         'goodsId': ?goodsId,
+        ...?scope?.toQueryParameters(),
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },
     );
     return PagedResult.fromJson(json, BalanceRow.fromJson);
+  }
+
+  /// stock:view projection; no goods:view lookup or local balance calculation.
+  Future<PagedResult<InstantInventoryRow>> goodsInventoryContext(
+    String goodsId,
+    InstantInventoryScope scope,
+  ) async {
+    final json = await api.get(
+      '/stock/goods/${Uri.encodeComponent(goodsId)}/inventory-context',
+      query: scope.toQueryParameters(),
+    );
+    return PagedResult.fromJson(json, InstantInventoryRow.fromJson);
   }
 
   /// 授权余额调整 (stock:balance:adjust, 自动生成已审核盘点单)。
@@ -80,6 +95,8 @@ class StockQueryRepository {
   /// includeDefective=「含不良品仓」开关（仅仓库=全部时生效，默认 true=老系统口径）。
   /// 2026-09-16 起表头筛选：owningWarehouse=归属仓库 UUID；colorId/series/unitId=颜色/
   /// 物料系列/单位列筛选（值为颜色 UUID / 系列文本 / 单位 UUID，桶由列表响应 facets 下发）。
+  /// attention 为服务器白名单行动规则；明细和 totals 包含规则筛选，facets 保持基础范围。
+  /// 行动清单使用专用路由，旧服务端必须明确失败，不能把忽略规则的全量数据当风险。
   Future<PagedResult<InstantInventoryRow>> instantInventory({
     int page = 1,
     int size = 20,
@@ -93,11 +110,14 @@ class StockQueryRepository {
     String? colorId,
     String? series,
     String? unitId,
+    String? attention,
     String? sort,
     String? order,
   }) async {
     final json = await api.get(
-      ApiEndpoints.stockInstantInventory,
+      attention == null
+          ? ApiEndpoints.stockInstantInventory
+          : '${ApiEndpoints.stockInstantInventory}/attention',
       query: {
         'page': page,
         'size': size,
@@ -114,6 +134,7 @@ class StockQueryRepository {
         'colorId': ?colorId,
         'series': ?series,
         'unitId': ?unitId,
+        'attention': ?attention,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },

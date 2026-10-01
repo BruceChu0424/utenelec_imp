@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/stock/models/instant_inventory_scope.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
@@ -899,7 +900,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: RouteName.stockInstantInventory,
             name: 'stock-instant-inventory',
-            builder: (_, _) => const InstantInventoryPage(),
+            builder: (_, state) => InstantInventoryPage(
+              initialScope: state.uri.queryParameters.isEmpty
+                  ? null
+                  : InstantInventoryScope.fromQuery(state.uri.queryParameters),
+            ),
           ),
           // 库存详情：即时库存双击货品行进入 (库存余额 / 出入库流水 / 单重学习三段)；
           // ?tab=balance|ledger|weight 原样交给页面解析 (ADR-135)。
@@ -909,6 +914,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => StockItemDetailPage(
               goodsId: state.pathParameters['goodsId']!,
               initialTab: state.uri.queryParameters['tab'],
+              initialScope: InstantInventoryScope.fromQuery(
+                state.uri.queryParameters,
+                inventoryDefault: false,
+              ),
+              returnTo: state.uri.queryParameters['returnTo'],
             ),
           ),
 

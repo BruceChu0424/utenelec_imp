@@ -1,5 +1,6 @@
 // 路由名称常量
 // 文档：docs/05-架构/路由设计.md
+import '../../features/stock/models/instant_inventory_scope.dart';
 
 /// Defines which portal may consume a preserved post-authentication route.
 enum ReturnToScope { any, employee, visitor }
@@ -215,12 +216,23 @@ abstract final class RouteName {
   /// balance/movement 两页已并入 (旧路由重定向保深链)。
   /// [tab]：balance=库存余额(默认) / ledger=出入库流水 / weight=单重学习 (ADR-135)。
   static const String stockItemBase = '/stock/item';
-  static String stockItemDetail(String goodsId, {String? tab}) {
+  static String stockItemDetail(
+    String goodsId, {
+    String? tab,
+    InstantInventoryScope? scope,
+    String? returnTo,
+  }) {
     final path = '$stockItemBase/${Uri.encodeComponent(goodsId.trim())}';
     final key = tab?.trim() ?? '';
-    return key.isEmpty
+    final query = {
+      if (key.isNotEmpty) 'tab': key,
+      ...?scope?.toQuery(),
+      if (scope != null) 'inventoryOnly': '${scope.inventoryOnly}',
+      'returnTo': ?returnTo,
+    };
+    return query.isEmpty
         ? path
-        : Uri(path: path, queryParameters: {'tab': key}).toString();
+        : Uri(path: path, queryParameters: query).toString();
   }
 
   // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。

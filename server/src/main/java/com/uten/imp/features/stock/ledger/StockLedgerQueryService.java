@@ -73,6 +73,17 @@ public class StockLedgerQueryService {
     public StockLedgerPage ledger(UUID goodsId, UUID warehouseId, UUID colorId, boolean colorNull,
                                   LocalDate dateFrom, LocalDate dateTo, String movementTypes, Short direction,
                                   boolean includeWeightAdjustments, int page, int size) {
+        return ledger(goodsId, warehouseId, colorId, colorNull, dateFrom, dateTo, movementTypes,
+                direction, includeWeightAdjustments, page, size, false, true, false);
+    }
+
+    @Transactional(readOnly = true)
+    public StockLedgerPage ledger(UUID goodsId, UUID warehouseId, UUID colorId, boolean colorNull,
+                                  LocalDate dateFrom, LocalDate dateTo, String movementTypes, Short direction,
+                                  boolean includeWeightAdjustments, int page, int size,
+                                  boolean inventoryOnly, boolean includeDefective, boolean includeLineSide) {
+        new com.uten.imp.features.stock.dto.StockInventoryScope(warehouseId, colorId, colorNull,
+                inventoryOnly, includeDefective, includeLineSide);
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "起始日期不能晚于截止日期");
         }
@@ -83,7 +94,7 @@ public class StockLedgerQueryService {
         GoodsHead goods = goods(goodsId);
         PageRequest paging = Pageables.of(page, size);
         StockLedgerQuery query = new StockLedgerQuery(goodsId,
-                StockWarehouseScope.subtreeOf(db, warehouseId),
+                StockWarehouseScope.queryScopeOf(db, warehouseId, inventoryOnly, includeDefective, includeLineSide),
                 colorId, colorId == null && colorNull,
                 dateFrom == null ? null : BusinessTime.startOfDay(dateFrom),
                 dateTo == null ? null : BusinessTime.startOfDay(dateTo.plusDays(1)),

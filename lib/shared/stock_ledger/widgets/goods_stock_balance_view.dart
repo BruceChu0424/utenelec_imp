@@ -1,13 +1,13 @@
 // 库存面板「库存余额」分段: 该货品各仓库 (x 颜色) 的余额。
 //
 // 列: 仓库 | 颜色 | 库存数量 | 单位 | 库存重量 (≈ 估算、未称 = 没称过, 绝不当 0) | 最后变动 | 操作。
-// 操作: 查看流水 (流水分段按这个仓库 + 颜色筛好) · 调整 (stock:balance:adjust, 余额详情弹层) ·
-// 核重 (stock:weight:manage, 只改重量)。行双击 = 打开余额详情弹层。
-// 按重量计的货品 (基本单位是重量单位) 重量随数量换算, 不出现核重。
+// 操作: 查看流水或打开只读余额详情；目标值调整统一到即时库存盘点送审。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/router/route_names.dart';
 import '../../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../../features/stock/models/stock_query.dart';
 import '../../../features/stock/repositories/stock_query_repository.dart';
@@ -18,6 +18,7 @@ import '../../measurement/weight_prefs.dart';
 import '../../measurement/widgets/weight_text.dart';
 import '../../models/paged_result.dart';
 import '../../providers/master_name_provider.dart';
+import '../../../features/stock/models/instant_inventory_scope.dart';
 
 class GoodsStockBalanceView extends ConsumerStatefulWidget {
   const GoodsStockBalanceView({
@@ -26,14 +27,20 @@ class GoodsStockBalanceView extends ConsumerStatefulWidget {
     required this.onViewLedger,
     this.onChanged,
     this.reloadTick = 0,
+    this.scope = const InstantInventoryScope.full(),
+    this.goodsName,
+    this.unitName,
   });
 
   final String goodsId;
+  final InstantInventoryScope scope;
+  final String? goodsName;
+  final String? unitName;
 
   /// 查看流水: 切到流水分段并筛到这个仓库 + 颜色 (colorId 为 null = 无颜色维度)。
   final void Function(String? warehouseId, String? colorId) onViewLedger;
 
-  /// 调整/核重成功后通知宿主 (刷新 KPI 等)。
+  /// 从盘点页面返回后通知宿主刷新。
   final VoidCallback? onChanged;
   final int reloadTick;
 
@@ -66,7 +73,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
   void didUpdateWidget(covariant GoodsStockBalanceView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.reloadTick != widget.reloadTick ||
-        oldWidget.goodsId != widget.goodsId) {
+        oldWidget.goodsId != widget.goodsId ||
+        oldWidget.scope != widget.scope) {
+      if (oldWidget.scope != widget.scope) _balances = null;
       _load(_balances?.page ?? 1);
     }
   }
@@ -80,7 +89,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
       if (!mounted || params == null) return;
       setState(() => _weightExact = params.isExact);
     } catch (_) {
-      // 取不到单重参数只影响「核重」按钮的隐藏判断, 服务端仍会拦按重量计的货品。
+      // 取不到参数只影响详情中的计量说明，余额仍正常显示。
     }
   }
 
@@ -93,7 +102,12 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
     try {
       final result = await ref
           .read(stockQueryRepositoryProvider)
-          .balances(page: page, size: _pageSize, goodsId: widget.goodsId);
+          .balances(
+            page: page,
+            size: _pageSize,
+            goodsId: widget.goodsId,
+            scope: widget.scope,
+          );
       if (!mounted || version != _version) return;
       setState(() {
         _balances = result;
@@ -112,62 +126,35 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).contains(permission);
 
-  bool get _canAdjust => _can(Perm.stockBalanceAdjust);
-
-  bool get _canSetWeight =>
-      !_weightExact &&
-      (ref.read(isSuperAdminProvider) || ref.read(weightManageAllowedProvider));
+  bool get _canCount => _can(Perm.stockCountSubmit);
 
   String _unitName() {
+    if (widget.unitName != null) return widget.unitName!;
     final names = ref.read(masterNameServiceProvider);
     return names.unit(names.goodsInfo(widget.goodsId)?.unitId);
   }
 
-  Future<void> _open(
-    BalanceRow balance, {
-    StockBalanceSheetMode mode = StockBalanceSheetMode.details,
-  }) async {
+  Future<void> _open(BalanceRow balance) async {
     final names = ref.read(masterNameServiceProvider);
     final goods = names.goodsInfo(widget.goodsId);
-    final changed = await showStockBalanceDetailSheet(
+    final openCount = await showStockBalanceDetailSheet(
       context: context,
       balance: balance,
-      goodsName: goods?.name ?? '货品',
+      goodsName: widget.goodsName ?? goods?.name ?? '货品',
       unitName: _unitName(),
       warehouseName: names.warehouse(balance.warehouseId),
       colorName: names.color(balance.colorId),
-      canAdjust: _canAdjust,
-      canSetWeight: _canSetWeight,
       weightExact: _weightExact,
-      initialMode: mode,
       onViewMovements: () =>
           widget.onViewLedger(balance.warehouseId, balance.colorId),
-      onAdjust: (targetQty, targetWeightKg, reason, key) => ref
-          .read(stockQueryRepositoryProvider)
-          .adjustBalance(
-            balance: balance,
-            targetQty: targetQty,
-            targetWeightKg: targetWeightKg,
-            reason: reason,
-            idempotencyKey: key,
-          ),
-      onSetWeight: (targetWeightKg, reason, key) async {
-        await ref
-            .read(weightRepositoryProvider)
-            .setBalanceWeight(
-              WeightBalanceSetRequest(
-                warehouseId: balance.warehouseId ?? '',
-                goodsId: widget.goodsId,
-                colorId: balance.colorId,
-                expectedWeightKg: balance.weight,
-                targetWeightKg: targetWeightKg,
-                reason: reason,
-                idempotencyKey: key,
-              ),
-            );
-      },
     );
-    if (changed != true || !mounted) return;
+    if (openCount == true && mounted && _canCount) await _openCount();
+  }
+
+  Future<void> _openCount() async {
+    if (!_canCount) return;
+    await context.push(RouteName.stockInstantInventory);
+    if (!mounted) return;
     await _load(_balances?.page ?? 1);
     widget.onChanged?.call();
   }
@@ -193,12 +180,12 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
       onRowTap: (row) => _open(row),
       isLoading: _loading && _balances == null,
       loadingMore: _loading && _balances != null,
-      error: rows.isEmpty ? _error : null,
+      error: _error,
       onRetry: () => _load(1),
       emptyMessage: '该货品暂无库存余额',
       currentPage: _balances?.page ?? 1,
       totalPages: _balances?.totalPages ?? 1,
-      paginationScope: widget.goodsId,
+      paginationScope: (widget.goodsId, widget.scope),
       onPageChange: _load,
     );
   }
@@ -210,7 +197,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
     return [
       MasterColumnDef(
         key: 'warehouse',
-        label: '仓库',
+        label: '实物仓库',
         width: 170,
         value: (row) => names.warehouse(row.warehouseId),
       ),
@@ -275,18 +262,8 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
               '查看流水',
               () => widget.onViewLedger(row.warehouseId, row.colorId),
             ),
-            if (_canAdjust)
-              _action(
-                'balance-adjust-${row.id}',
-                '调整',
-                () => _open(row, mode: StockBalanceSheetMode.adjust),
-              ),
-            if (_canSetWeight)
-              _action(
-                'balance-weigh-${row.id}',
-                '核重',
-                () => _open(row, mode: StockBalanceSheetMode.weigh),
-              ),
+            if (_canCount)
+              _action('balance-count-${row.id}', '盘点送审', _openCount),
           ],
         ),
       ),

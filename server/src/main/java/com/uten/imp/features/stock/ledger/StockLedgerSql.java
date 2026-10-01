@@ -20,7 +20,7 @@ final class StockLedgerSql {
 
     static MapSqlParameterSource params(StockLedgerQuery q) {
         MapSqlParameterSource p = new MapSqlParameterSource("goods", q.goodsId());
-        if (q.warehouseScope() != null) p.addValue("scope", q.warehouseScope());
+        if (q.warehouseScope() != null && !q.warehouseScope().isEmpty()) p.addValue("scope", q.warehouseScope());
         if (q.colorId() != null) p.addValue("color", q.colorId());
         if (q.from() != null) p.addValue("from", q.from());
         if (q.toExclusive() != null) p.addValue("toExcl", q.toExclusive());
@@ -43,7 +43,7 @@ final class StockLedgerSql {
                 LIMIT 1
             ) u ON true
             LEFT JOIN unit_measurement_profiles up ON up.unit_id = g.unit_id
-            WHERE g.id = :goods
+            WHERE g.id = :goods AND g.is_deleted = false
             """;
 
     /** 一页流水 (带结存、单号、往来方、名称)。 */
@@ -235,7 +235,8 @@ final class StockLedgerSql {
     static String scope(String alias, StockLedgerQuery q) {
         StringBuilder sql = new StringBuilder();
         if (q.warehouseScope() != null) {
-            sql.append(" AND ").append(alias).append(".warehouse_id IN (:scope)");
+            sql.append(q.warehouseScope().isEmpty() ? " AND FALSE"
+                    : " AND " + alias + ".warehouse_id IN (:scope)");
         }
         if (q.colorId() != null) {
             sql.append(" AND ").append(alias).append(".color_id = :color");
@@ -283,6 +284,7 @@ final class StockLedgerSql {
 
     /** 范围内部调拨: 不限仓库时所有调拨腿; 限定范围时对应腿也在范围内的调拨腿。 */
     static String internal(StockLedgerQuery q) {
+        if (q.warehouseScope() != null && q.warehouseScope().isEmpty()) return "FALSE";
         if (q.warehouseScope() == null) {
             return "(r.movement_type IN " + TRANSFER_TYPES + ")";
         }
@@ -294,7 +296,8 @@ final class StockLedgerSql {
     }
 
     private static String warehouseOk(String alias, StockLedgerQuery q) {
-        return q.warehouseScope() == null ? "TRUE" : "(" + alias + ".warehouse_id IN (:scope))";
+        return q.warehouseScope() == null ? "TRUE" : q.warehouseScope().isEmpty() ? "FALSE"
+                : "(" + alias + ".warehouse_id IN (:scope))";
     }
 
     private static String colorOk(String alias, StockLedgerQuery q) {

@@ -451,14 +451,15 @@ class AccountProvisionCandidate {
   /// 已登记手机号（登录账号=手机号，缺失时无法开通）。
   final bool hasPhone;
 
-  /// 已登记证件号（仅作资料提示；初始密码改为系统随机生成后不再是开通条件）。
+  /// 已登记证件号（用于生成新账号初始密码，后端另校验长度及身份证有效性）。
   final bool hasIdCard;
 
-  /// 满足开通条件：只需手机号 (登录账号)。缺少时后端会拒绝，前端提前置灰提示。
-  bool get provisionable => hasPhone;
+  /// 满足开通条件：手机号作登录账号，证件号末六位作初始密码。
+  bool get provisionable => hasPhone && hasIdCard;
 
   /// 不可开通的缺失资料说明（如「缺手机号」）。
-  String get missingHint => hasPhone ? '' : '缺手机号';
+  String get missingHint =>
+      [if (!hasPhone) '缺手机号', if (!hasIdCard) '缺证件号'].join('、');
 
   factory AccountProvisionCandidate.fromJson(Map<String, dynamic> json) =>
       AccountProvisionCandidate(

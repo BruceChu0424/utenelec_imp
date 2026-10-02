@@ -19,7 +19,6 @@ import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
-import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -59,12 +58,11 @@ public class EmployeeOnboardingService {
     private final TxSessionVars tx;
     private final EmployeeQueryService queryService;
     private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
-    private final TemporaryPasswordGenerator temporaryPasswordGenerator;
     private final SystemSettingsService settings;
     private final CredentialIssuancePolicy credentialIssuance;
 
     // ===== 入职（原子建号） =====
-    /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并以手机号开号 (初始密码为系统随机临时密码)。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
+    /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并以手机号开号 (初始密码为规范证件号后六位)。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
     @PreAuthorize("hasAuthority('employee:create')")
     @Transactional
     public EmployeeOnboardingResult onboard(OnboardingRequest req) {
@@ -103,6 +101,8 @@ public class EmployeeOnboardingService {
             birthDate = IdCardUtil.birthDate(normalizedIdNumber);
             gender = IdCardUtil.gender(normalizedIdNumber);
         }
+
+        String temporaryPassword = initialPassword(p.idType(), normalizedIdNumber);
 
         Department dept = deptRepo.findById(em.departmentId())
                 .filter(department -> !department.isDeleted())
@@ -243,15 +243,14 @@ public class EmployeeOnboardingService {
             }
         }
 
-        // 初始密码: 系统随机高熵临时密码, 只在本次响应出现一次 (不再由身份证号推导, ADR-110)。
-        String temporaryPassword = temporaryPasswordGenerator.generate();
+        // 新账号初始密码取规范证件号后六位；不更改已存在账号的密码。
         createAccount(e, loginAccount, temporaryPassword);
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
     // ===== 补开登录账号（批量导入等未自带账号的存量员工） =====
-    // 与入职建账号同口径：账号=手机号、初始密码=系统随机临时密码 (限时有效)、Argon2id 入库、首登强制改；
+    // 与入职建账号同口径：账号=手机号、初始密码=规范证件号后六位 (限时有效)、Argon2id 入库、首登强制改；
     // 权限只来自全员基础包与所在部门配置，入职接口不再接受任何角色/权限参数。
     // 与重置密码同一道闸 (ADR-110)：操作人会看到明文临时密码，按开号后的有效权限 (部门授权、委派) 判定，
     // 目标持有高危权限时只有超级管理员能开通；控制器入口另要求再认证。
@@ -278,7 +277,7 @@ public class EmployeeOnboardingService {
         if (isBlank(loginAccount)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号");
         }
-        String temporaryPassword = temporaryPasswordGenerator.generate();
+        String temporaryPassword = initialPassword(e.getIdType(), tx.decrypt(s.getIdCardEnc()));
         if (userRepo.existsByLoginAccount(loginAccount)) {
             throw new ApiException(ErrorCode.CONFLICT, "该手机号已被用作其他账号的登录名，请先修改员工手机号");
         }
@@ -288,6 +287,20 @@ public class EmployeeOnboardingService {
         credentialIssuance.requireCanIssueCredentials(account);
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
+    }
+
+    /** New accounts only: a short/missing identity cannot silently create another default credential. */
+    static String initialPassword(String idType, String idNumber) {
+        String normalized = "身份证".equals(idType)
+                ? IdCardUtil.normalize(idNumber)
+                : idNumber == null ? null : idNumber.trim();
+        if (normalized == null || normalized.length() < 6) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "证件号不足六位，无法生成初始密码，请先补全员工证件资料");
+        }
+        if ("身份证".equals(idType) && !IdCardUtil.isValid(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号校验未通过，无法开通账号");
+        }
+        return normalized.substring(normalized.length() - 6);
     }
 
     /** Creates a login account using the same credential rules for onboarding and later provisioning. */

@@ -157,10 +157,9 @@ class CriticalHttpContractEndToEndTest {
         assertStatus(created, 200);
         JsonNode credential = json(created);
         assertEquals(EMPLOYEE_LOGIN, credential.path("loginAccount").asText());
-        // ADR-110: 初始密码是系统随机高熵临时密码 (不再由身份证后 6 位推导), 只在本次响应出现一次。
+        // 初始密码取规范身份证末六位，首登改密及会话隔离仍沿真实 HTTP 链验证。
         String employeeInitialPassword = credential.path("temporaryPassword").asText();
-        assertTrue(employeeInitialPassword.length() >= 20);
-        assertFalse(employeeInitialPassword.contains("31002X"));
+        assertEquals("31002X", employeeInitialPassword);
 
         JsonNode initialEmployee = login(EMPLOYEE_LOGIN, employeeInitialPassword);
         assertTrue(initialEmployee.path("mustChangePassword").asBoolean());

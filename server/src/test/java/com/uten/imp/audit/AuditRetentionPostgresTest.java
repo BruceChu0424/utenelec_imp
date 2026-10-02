@@ -320,18 +320,37 @@ class AuditRetentionPostgresTest {
         try (Connection connection = runtimeConnection(); Statement statement = connection.createStatement()) {
             try (var rows = statement.executeQuery("SELECT fn_audit_retention_purge_mode()")) {
                 assertTrue(rows.next());
-                assertEquals("PRESERVE_UNCLASSIFIED", rows.getString(1));
+                assertEquals("PERMANENT_RETAIN", rows.getString(1));
             }
         }
         assertEquals(eventsBefore, count("SELECT count(*) FROM audit_log"), "capability read cannot execute retention");
         String original = owner.queryForObject("SELECT pg_get_functiondef('fn_audit_retention_run()'::regprocedure)", String.class);
         try {
-            owner.execute(original.replace("'PRESERVE_UNCLASSIFIED'", "'DRIFTED_TEST_POLICY'"));
+            assertTrue(original.contains("'PRESERVE_UNCLASSIFIED'"), "The installed runner must contain the exact protection marker checked by the permanent capability reader");
+            String drifted = original.replace("'PRESERVE_UNCLASSIFIED'", "'DRIFTED_TEST_POLICY'");
+            assertFalse(original.equals(drifted), "Drift probe must alter the actual installed function");
+            owner.execute(drifted);
             assertEquals("UNKNOWN", owner.queryForObject("SELECT fn_audit_retention_purge_mode()", String.class));
+            String forward;
+            try (var input=getClass().getResourceAsStream("/db/migration/V786__guard_permanent_audit_retention_capability.sql")) {
+                assertTrue(input!=null);forward=new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            }
+            var refused=assertThrows(org.springframework.dao.DataAccessException.class,()->owner.execute(forward));
+            assertTrue(refused.getMostSpecificCause() instanceof SQLException);
+            assertEquals("55000",((SQLException)refused.getMostSpecificCause()).getSQLState());
+            assertTrue(refused.getMostSpecificCause().getMessage().contains("verified V770 retention runner"));
+            assertEquals("UNKNOWN",owner.queryForObject("SELECT fn_audit_retention_purge_mode()",String.class));
         } finally {
             owner.execute(original);
         }
-        assertEquals("PRESERVE_UNCLASSIFIED", owner.queryForObject("SELECT fn_audit_retention_purge_mode()", String.class));
+        try {
+            owner.execute("ALTER FUNCTION fn_audit_retention_run() SET lock_timeout='6s'");
+            assertEquals("UNKNOWN",owner.queryForObject("SELECT fn_audit_retention_purge_mode()",String.class));
+            owner.execute(original);
+            owner.execute("ALTER FUNCTION fn_audit_retention_run() SECURITY INVOKER");
+            assertEquals("UNKNOWN",owner.queryForObject("SELECT fn_audit_retention_purge_mode()",String.class));
+        } finally { owner.execute(original); }
+        assertEquals("PERMANENT_RETAIN", owner.queryForObject("SELECT fn_audit_retention_purge_mode()", String.class));
     }
 
     private static String allSeededRows() {

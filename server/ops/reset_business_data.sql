@@ -53,7 +53,7 @@ BEGIN
     FROM flyway_schema_history WHERE success AND type='SQL' AND version ~ '^[0-9]+$';
     -- Historical catalog accounting remains independently recountable. Execution
     -- requires V782+ because earlier functions do not implement this exception.
-    -- V507/469、V508/470及V511至V782完整目录
+    -- V507/469、V508/470及V511至V783完整目录
     IF applied_max_version<782 OR (applied_max_version, applied_migration_count) NOT IN (
         (443, 405),
         (446, 408),
@@ -356,9 +356,10 @@ BEGIN
         (779, 705),
         (780, 706),
         (781, 707),
-        (782, 708)
+        (782, 708),
+        (783, 709)
     ) THEN
-        RAISE EXCEPTION '测试清空要求已核对的 V782/708 完整目录，实际 V%/%',applied_max_version,applied_migration_count;
+        RAISE EXCEPTION '测试清空要求已核对的 V782/708 或 V783/709 完整目录，实际 V%/%',applied_max_version,applied_migration_count;
     END IF;
     IF to_regprocedure('public.fn_business_test_reset_active()') IS NULL THEN
         RAISE EXCEPTION '显式测试清空能力未安装，拒绝执行';

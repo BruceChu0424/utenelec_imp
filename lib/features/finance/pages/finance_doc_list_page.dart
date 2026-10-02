@@ -33,6 +33,7 @@ import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
@@ -71,6 +72,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   String? _partyIdFilter;
   String? _accountIdFilter;
   String? _receiptKindFilter; // 收款类型（仅收款单；null=不过滤）
+  FinanceRecordOrigin? _recordOriginFilter;
 
   /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
   /// MasterServerColumnFilters）。
@@ -113,6 +115,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     _partyIdFilter = null;
     _accountIdFilter = null;
     _receiptKindFilter = null;
+    _recordOriginFilter = null;
     _columnFilters.reset();
     _list.page = null;
     _list.keyword = '';
@@ -188,6 +191,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         ? _receiptKindFilter
         : null,
     billNo: withBillNo ? _columnFilters['billNo'] : null,
+    recordOrigin: _recordOriginFilter,
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
@@ -228,9 +232,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
       if (!mounted || generation != _reloadGeneration) return;
       retainDraftSelection(
         _canSelectDrafts
-            ? _tableRows.items
-                  .where(_isDeletableDraft)
-                  .map((item) => item.id)
+            ? _tableRows.items.where(_isDeletableDraft).map((item) => item.id)
             : const <String>[],
       );
     });
@@ -261,6 +263,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         _statusFilterSelected = true;
       } else if (key == 'accountId') {
         _accountIdFilter = value;
+      } else if (key == 'recordOrigin') {
+        _recordOriginFilter = FinanceRecordOrigin.fromWire(value);
       } else if (key == 'receiptKind') {
         _receiptKindFilter = value;
       } else if (key == 'clientId' || key == 'supplierId') {
@@ -549,6 +553,18 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                           'accountId': financeDictionaryFacets(
                             names.accountEntries,
                           ),
+                          'recordOrigin': const [
+                            MasterFacetBucket(
+                              value: 'CURRENT',
+                              count: 0,
+                              label: '当前单据',
+                            ),
+                            MasterFacetBucket(
+                              value: 'LEGACY',
+                              count: 0,
+                              label: '历史记录（只读）',
+                            ),
+                          ],
                           'status': financeDocumentStatusFacets,
                         },
                         nullCounts: const {},
@@ -560,6 +576,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                             _cfg.isClient ? 'clientId' : 'supplierId':
                                 _partyIdFilter,
                           'accountId': _accountIdFilter,
+                          'recordOrigin': _recordOriginFilter?.wireValue,
                           'status': _statusFilter?.toString(),
                         },
                         onFilterChanged: _onColumnFilterChanged,
@@ -581,6 +598,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                           widget.docType,
                           _list.normalizedKeyword,
                           _statusFilter,
+                          _recordOriginFilter,
                         ),
                         onPageChange: (p) => _reload(p),
                       ),

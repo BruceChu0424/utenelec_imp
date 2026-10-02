@@ -75,6 +75,7 @@ public class AiGateway implements AiCompletionPort {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("AI 调用不能在数据库事务里进行(会长时间占住数据库连接)");
         }
+        Long resetGeneration = callLogs.captureResetGeneration();
         AiProviderService.Resolution resolution = providers.resolveDefault();
         if (!resolution.available()) {
             throw new AiCallException(AiErrorCategory.UNAVAILABLE, resolution.unavailableReason());
@@ -94,10 +95,10 @@ public class AiGateway implements AiCompletionPort {
         long started = System.nanoTime();
         acquirePermit();
         try {
-            AttemptResult first = attempt(runtime, chat, request.purpose(), request.jobId());
+            AttemptResult first = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration);
             AttemptResult result = first;
             if (first.failure() != null && retryable(first.failure().category())) {
-                result = attempt(runtime, chat, request.purpose(), request.jobId());
+                result = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration);
             }
             if (result.failure() != null) {
                 throw result.failure();
@@ -117,17 +118,18 @@ public class AiGateway implements AiCompletionPort {
      */
     AiProtocolClient.ChatResponse probeChat(AiProviderRuntime runtime, AiProtocolClient.ChatRequest chat,
                                             String purpose) {
+        Long resetGeneration = callLogs.captureResetGeneration();
         acquirePermit();
         try {
             long started = System.nanoTime();
             try {
                 AiProtocolClient.ChatResponse response = client(runtime).chat(runtime, chat);
                 logAttempt(runtime, purpose, null, true, null, response.httpStatus(), response.inputTokens(),
-                        response.outputTokens(), response.latencyMs());
+                        response.outputTokens(), response.latencyMs(), resetGeneration);
                 return response;
             } catch (AiCallException e) {
                 logAttempt(runtime, purpose, null, false, e.category().name(), e.httpStatus(), null, null,
-                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), resetGeneration);
                 throw e;
             }
         } finally {
@@ -149,7 +151,7 @@ public class AiGateway implements AiCompletionPort {
     }
 
     private AttemptResult attempt(AiProviderRuntime runtime, AiProtocolClient.ChatRequest chat, String purpose,
-                                  UUID jobId) {
+                                  UUID jobId, Long resetGeneration) {
         long started = System.nanoTime();
         AiProtocolClient.ChatResponse response = null;
         try {
@@ -165,14 +167,14 @@ public class AiGateway implements AiCompletionPort {
                 throw invalid;
             }
             logAttempt(runtime, purpose, jobId, true, null, response.httpStatus(), response.inputTokens(),
-                    response.outputTokens(), response.latencyMs());
+                    response.outputTokens(), response.latencyMs(), resetGeneration);
             return new AttemptResult(response, json, null);
         } catch (AiCallException e) {
             logAttempt(runtime, purpose, jobId, false, e.category().name(),
                     e.httpStatus() != null ? e.httpStatus() : response == null ? null : response.httpStatus(),
                     response == null ? null : response.inputTokens(),
                     response == null ? null : response.outputTokens(),
-                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), resetGeneration);
             log.info("AI call failed: purpose={}, provider={}, category={}, status={}",
                     purpose, runtime.id(), e.category(), e.httpStatus());
             return new AttemptResult(null, null, e);
@@ -242,9 +244,10 @@ public class AiGateway implements AiCompletionPort {
     }
 
     private void logAttempt(AiProviderRuntime runtime, String purpose, UUID jobId, boolean ok, String category,
-                            Integer httpStatus, Integer inputTokens, Integer outputTokens, long latencyMs) {
+                            Integer httpStatus, Integer inputTokens, Integer outputTokens, long latencyMs,
+                            Long resetGeneration) {
         callLogs.record(new AiCallLogService.CallRecord(purpose, runtime.id(), runtime.name(), runtime.model(),
                 runtime.protocol().name(), ok, category, httpStatus, inputTokens, outputTokens, latencyMs, jobId,
-                currentUser.id().orElse(null)));
+                currentUser.id().orElse(null), resetGeneration));
     }
 }

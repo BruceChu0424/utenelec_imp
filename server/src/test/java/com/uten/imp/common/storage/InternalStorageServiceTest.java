@@ -141,6 +141,43 @@ class InternalStorageServiceTest {
         assertThrows(IOException.class,store::init);
     }
 
+    @Test void absentObjectsHaveTypedMissingButDirectoriesAndBrokenEnvelopesDoNot() throws Exception {
+        var store=store();
+        var missingFinal=assertThrows(IllegalStateException.class,()->store.openFinal(KEY,"internal-v1:"+"a".repeat(64)));
+        assertInstanceOf(NoSuchFileException.class,missingFinal.getCause());
+        var missingStaging=assertThrows(IllegalStateException.class,()->store.openForValidation(KEY,null));
+        assertInstanceOf(NoSuchFileException.class,missingStaging.getCause());
+        Path invalid=directory.resolve("final").resolve(KEY);Files.createDirectory(invalid);
+        var nonRegular=assertThrows(IllegalStateException.class,()->store.openFinal(KEY,"internal-v1:"+"a".repeat(64)));
+        assertFalse(nonRegular.getCause() instanceof NoSuchFileException);
+        Files.delete(invalid);Files.write(invalid,new byte[]{1,2,3});
+        var corrupted=assertThrows(IllegalStateException.class,()->store.openFinal(KEY,"internal-v1:"+"a".repeat(64)));
+        assertFalse(corrupted.getCause() instanceof NoSuchFileException);
+        String partitioned=store.presignUpload(new StorageService.UploadRequest("SALES_QUOTE","absent.txt","text/plain",1)).storageKey();
+        assertFalse(store.describe(partitioned).exists());
+        assertInstanceOf(NoSuchFileException.class,assertThrows(IllegalStateException.class,()->store.openFinal(partitioned,"internal-v1:"+"a".repeat(64))).getCause());
+        store.delete(partitioned,"internal-v1:"+"a".repeat(64));
+        Path saved=directory.resolve("saved-final");Files.move(directory.resolve("final"),saved);
+        assertThrows(StorageResourceUnavailableException.class,()->store.openFinal(KEY,"internal-v1:"+"a".repeat(64)));
+        assertThrows(StorageResourceUnavailableException.class,()->store.describe(KEY));
+        assertThrows(StorageResourceUnavailableException.class,()->store.delete(KEY,"internal-v1:"+"a".repeat(64)));
+        Files.move(saved,directory.resolve("final"));
+        String category=partitioned.substring(3,partitioned.lastIndexOf('_',partitioned.lastIndexOf('_')-1));Files.createFile(directory.resolve("staging").resolve(category));
+        assertThrows(StorageResourceUnavailableException.class,()->store.describe(partitioned));
+    }
+
+    @EnabledOnOs(OS.LINUX)
+    @Test void realLinuxFsyncDeletionProducesTypedFinalAndStagingAbsenceWithoutFollowingSymlinks() throws Exception {
+        var store=new InternalStorageService(properties());store.init();var object=upload(store,KEY,new byte[]{10,20,30});
+        store.delete(KEY,object.versionId());store.deleteStaging(KEY,object.versionId());
+        assertInstanceOf(NoSuchFileException.class,assertThrows(IllegalStateException.class,()->store.openFinal(KEY,object.versionId())).getCause());
+        assertInstanceOf(NoSuchFileException.class,assertThrows(IllegalStateException.class,()->store.openForValidation(KEY,object.versionId())).getCause());
+        String linked=StorageService.generateStorageKey("linked.txt");Path link=directory.resolve("final").resolve(linked);
+        Files.createSymbolicLink(link,directory.resolve("missing-target"));
+        var symbolic=assertThrows(IllegalStateException.class,()->store.openFinal(linked,object.versionId()));
+        assertFalse(symbolic.getCause() instanceof NoSuchFileException);assertTrue(Files.isSymbolicLink(link));
+    }
+
     @EnabledOnOs(OS.LINUX)
     @Test void realLinuxDirectoryFsyncAndCreateOnlyPublicationRoundTrip() throws Exception {
         var store=new InternalStorageService(properties());store.init();var object=upload(store,KEY,new byte[]{10,20,30});

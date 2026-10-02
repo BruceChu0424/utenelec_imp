@@ -72,6 +72,7 @@ class AiGatewayTest {
         fake.reset();
         providers = mock(AiProviderService.class);
         callLogs = mock(AiCallLogService.class);
+        when(callLogs.captureResetGeneration()).thenReturn(12L);
         properties = new AiProperties();
         properties.setCallPermitWaitSeconds(1);
         runtime = AiTestRuntimes.openAi(fake, KEY);
@@ -116,6 +117,7 @@ class AiGatewayTest {
         assertThat(record.userId()).isEqualTo(userId);
         assertThat(record.providerId()).isEqualTo(runtime.id());
         assertThat(record.inputTokens()).isEqualTo(900);
+        assertThat(record.resetGeneration()).isEqualTo(12L);
         assertThat(record.toString()).doesNotContain(KEY).doesNotContain("customer file text");
     }
 
@@ -152,6 +154,7 @@ class AiGatewayTest {
 
     @Test
     void retriesOnceOnServerErrorAndLogsBothAttempts() {
+        when(callLogs.captureResetGeneration()).thenReturn(12L, 13L);
         fake.enqueue(FakeAiProviderServer.openAiError(502, "bad gateway"),
                 FakeAiProviderServer.openAiContent("{\"ok\":true}"));
 
@@ -163,6 +166,9 @@ class AiGatewayTest {
         assertThat(records.getAllValues()).extracting(AiCallLogService.CallRecord::ok).containsExactly(false, true);
         assertThat(records.getAllValues().get(0).errorCategory()).isEqualTo("SERVER");
         assertThat(records.getAllValues().get(0).httpStatus()).isEqualTo(502);
+        assertThat(records.getAllValues()).extracting(AiCallLogService.CallRecord::resetGeneration)
+                .containsExactly(12L, 12L);
+        verify(callLogs).captureResetGeneration();
     }
 
     @Test

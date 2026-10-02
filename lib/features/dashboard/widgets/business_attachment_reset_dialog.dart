@@ -8,7 +8,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../repositories/system_test_repository.dart';
 
-/// 可选的测试维护入口：提前分批把业务附件提交删除队列。未在此清理的文件将在
+/// 可选的测试维护入口：提前分批核对并清理业务附件。未在此清理的文件将在
 /// 「清空业务数据」时由服务端自动标删并物理删除（ADR-067 §7），不再是清空前置条件。
 class BusinessAttachmentResetDialog extends ConsumerStatefulWidget {
   const BusinessAttachmentResetDialog({super.key});
@@ -121,12 +121,12 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
                 // 提交清理任务网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
                 if (_applying)
                   const UtenBusyOverlay(
-                    title: '正在提交清理任务',
-                    description: '正在登记待删除文件清单，请勿重复提交或关闭弹窗。',
+                    title: '正在清理本批测试文件',
+                    description: '正在核对并删除原件，请勿重复提交或关闭弹窗。',
                   ),
                 const Text(
                   '仅用于重置测试数据。可选：提前分批清理；未清理的文件将在清空时自动删除。'
-                  '以下业务文件将提交删除任务；员工档案、劳动合同和货品图片/图纸保留。请先确认备份。',
+                  '将核对并删除以下测试业务原件（含已删除附件和旧版本原件）；员工档案、劳动合同、货品图片/图纸及保留主档共用的文件保留。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 if (_busy) const LinearProgressIndicator(),
@@ -146,7 +146,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
                         : '还有 ${preview.blockingCount} 项文件或删除任务未完成',
                   ),
                   if (preview.hasMore)
-                    const Text('本次最多准备 100 项。处理完成后刷新，继续核对下一批。'),
+                    const Text('每批最多核对 100 项。处理完成后刷新，继续核对下一批。'),
                   const SizedBox(height: UtenSpacing.s8),
                   for (final item in preview.items)
                     Padding(
@@ -191,7 +191,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
                       onChanged: (_) => setState(() {}),
                       decoration: const UtenInputDecoration(
                         InputDecoration(labelText: '请输入「清理测试业务附件」'),
-                        info: '只对当前预览中的数据库和文件提交删除任务。可选：提前分批清理；未清理的文件将在清空时自动删除。',
+                        info: '只清理当前已核对的目标数据库和测试文件；未清理的文件将在清空业务数据时继续处理。',
                       ),
                     ),
                   ],
@@ -215,7 +215,7 @@ class _State extends ConsumerState<BusinessAttachmentResetDialog> {
           FilledButton(
             key: const Key('business-attachment-prepare-submit'),
             onPressed: !_busy && _confirm.text == '清理测试业务附件' ? _prepare : null,
-            child: const Text('提交删除任务'),
+            child: const Text('清理本批文件'),
           ),
       ],
     );

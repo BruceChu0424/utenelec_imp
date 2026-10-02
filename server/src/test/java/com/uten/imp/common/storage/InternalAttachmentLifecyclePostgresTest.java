@@ -35,6 +35,7 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Actual HTTP/authorization/JPA/Flyway/queue flow; native fsync is proved separately on Linux. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
@@ -195,18 +196,41 @@ class InternalAttachmentLifecyclePostgresTest {
         assertThat(json(HttpMethod.POST,"/api/attachments/confirm",confirm,HttpStatus.OK).path("sizeBytes").asLong()).isEqualTo(bytes.length);
     }
 
-    @Test void permanentPolicyRefusesResetAndKeepsBothBusinessAndHumanOriginalsReadable() throws Exception {
+    @Test void explicitTestingResetClearsRetainedBusinessOriginalsButKeepsHumanFilesAndRequiresRelogin() throws Exception {
         byte[] humanBytes="human original remains".getBytes(StandardCharsets.UTF_8);
         Upload human=upload("human-preserved.txt","text/plain",humanBytes);
         UUID client=UUID.randomUUID(),order=UUID.randomUUID();
         jdbc.update("INSERT INTO clients(id,code,name,status,code_sequence) VALUES(?,'RESET-PERMANENT-CLIENT','permanent evidence client','使用',100901)",client);
-        jdbc.update("INSERT INTO sales_orders(id,bill_no,bill_date,client_id,owner_employee_id,maker_id,status) VALUES(?,'XD20260908009991',CURRENT_DATE,?,?,?,0)",order,client,UUID.fromString(employee),UUID.fromString(employee));
-        long orders=jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class);
-        String before=jdbc.queryForObject("SELECT md5(to_jsonb(o)::text) FROM sales_orders o WHERE id=?",String.class,order);
-        stepUpJson(HttpMethod.POST,"/api/system-test/business-data/reset",Map.of("confirm","清空业务数据"),HttpStatus.CONFLICT);
-        assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class).getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isEqualTo(orders);
-        assertThat(jdbc.queryForObject("SELECT md5(to_jsonb(o)::text) FROM sales_orders o WHERE id=?",String.class,order)).isEqualTo(before);
+        jdbc.update("INSERT INTO sales_orders(id,bill_no,bill_date,client_id,owner_employee_id,maker_id,status) VALUES(?,'XD'||to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai','YYYYMMDD')||'009991',(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date,?,?,?,0)",order,client,UUID.fromString(employee),UUID.fromString(employee));
+        byte[] businessBytes="original test order evidence\n".repeat(50).getBytes(StandardCharsets.UTF_8);
+        JsonNode grant=json(HttpMethod.POST,"/api/attachments/presign",Map.of("ownerType","SALES_ORDER","ownerId",order.toString(),
+                "fileName","test-order.txt","contentType","text/plain","sizeBytes",businessBytes.length),HttpStatus.OK);
+        put(grant,businessBytes,"text/plain");
+        JsonNode business=json(HttpMethod.POST,"/api/attachments/confirm",Map.of("storageKey",grant.path("storageKey").asText(),
+                "confirmToken",grant.path("confirmToken").asText(),"ownerType","SALES_ORDER","ownerId",order.toString(),
+                "originalName","test-order.txt","contentType","text/plain","sizeBytes",businessBytes.length,"category","OTHER"),HttpStatus.OK);
+        UUID attachment=UUID.fromString(business.path("id").asText());String businessKey=grant.path("storageKey").asText();
+        String version=jdbc.queryForObject("SELECT storage_version FROM attachments WHERE id=?",String.class,attachment);
+        json(HttpMethod.DELETE,"/api/attachments/"+attachment,null,HttpStatus.ACCEPTED);
+        for(int i=0;i<50 && outbox.processNext();i++) { /* ordinary deletion retains the original */ }
+        assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,attachment)).isEqualTo("RETAINED_HISTORY");
+        try(var retained=storage.openFinal(businessKey,version)){assertThat(retained.readAllBytes()).isEqualTo(businessBytes);}
+        // Advance only this owned fixture's upload grant; production code must
+        // still refuse a genuinely active upload token before file destruction.
+        jdbc.update("UPDATE attachment_upload_sessions SET expires_at=now()-interval '1 second' WHERE storage_key=?",businessKey);
+        UUID attempt=UUID.randomUUID();
+        JsonNode result=stepUpJson(HttpMethod.POST,"/api/system-test/business-data/reset",
+                Map.of("confirm","清空业务数据","attemptId",attempt.toString()),HttpStatus.OK);
+        assertThat(result.path("deletedAttachmentFiles").asLong()).isPositive();
+        assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachments WHERE id=?",Long.class,attachment)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_upload_sessions WHERE storage_key=?",Long.class,businessKey)).isZero();
+        assertThatThrownBy(()->{try(var ignored=storage.openFinal(businessKey,version)) {}})
+                .isInstanceOf(IllegalStateException.class).hasRootCauseInstanceOf(java.nio.file.NoSuchFileException.class);
+        login();
+        var receipt=json(HttpMethod.GET,"/api/system-test/business-data/last-result?attemptId="+attempt,null,HttpStatus.OK);
+        assertThat(receipt.path("available").asBoolean()).isTrue();assertThat(receipt.path("attemptId").asText()).isEqualTo(attempt.toString());
         var original=http.exchange("/api/attachments/raw/"+human.key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class);
         assertThat(original.getStatusCode()).isEqualTo(HttpStatus.OK);assertThat(original.getBody()).isEqualTo(humanBytes);
     }

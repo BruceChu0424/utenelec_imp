@@ -14,7 +14,7 @@ class AuditPlatformFieldProjectionTest {
             assertThat(dto.before()).contains("sales_order_item","079bd09e","version").doesNotContain("confidential","cells","formula","payload");
             assertThat(dto.after()).isEqualTo(dto.before());
             assertThat(dto.summary()+dto.changeSummary()+dto.targetName()).doesNotContain("confidential");
-            assertThat(dto.changeSummary()).contains("原单据历史","当前业务范围与价格权限");
+            assertThat(dto.changeSummary()).contains("受控读取","当前业务范围与价格权限").doesNotContain("原单据历史");
             assertThat(stored.getBefore()).isEqualTo(original);assertThat(stored.getAfter()).isEqualTo(original);
         }
     }

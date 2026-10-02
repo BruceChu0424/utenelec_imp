@@ -100,8 +100,7 @@ public record AuditLogDetail(
                 event.actionLabel(),
                 event.objectLabel(),
                 event.summary(),
-                PlatformFieldAuditProjection.applies(value.getTargetType())
-                        ? event.changeSummary()+"；原字段值请从原单据历史按当前业务范围与价格权限查看" : event.changeSummary(),
+                PlatformFieldAuditProjection.changeSummary(value.getTargetType(), event.changeSummary()),
                 event.riskLevel(),
                 event.riskReason(),
                 event.category(),

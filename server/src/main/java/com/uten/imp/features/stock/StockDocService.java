@@ -1212,8 +1212,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
         StockDocument d = requireDocForUpdate(id);
         if ("DRAW".equals(d.getDocType())
-                && isProductionLinked(id)
-                && !allowProductionDrawApproveAndIssue) {
+                && !allowProductionDrawApproveAndIssue
+                && isProductionLinked(id)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
                     "生产领料单不能单独审核；请使用“出库”一次完成审核与实物出库");

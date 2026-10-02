@@ -1,14 +1,157 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/models/reportable_plan_line.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/reportable_plan_line_picker.dart';
 
 void main() {
+  testWidgets('paged reportable tasks keep source identity and click order', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final requests = <int>[];
+    final first = _recovery(
+      id: 'rework-page-one',
+      disposition: 'REWORK',
+      maxReportQty: 2,
+      requiresMaterial: false,
+    );
+    final second = {
+      ..._recovery(
+        id: 'sales-page-two',
+        disposition: 'REWORK',
+        maxReportQty: 2,
+        requiresMaterial: false,
+      ),
+      'fqcRecoveryAuthorizationId': null,
+      'fqcRecoveryDispositionCode': null,
+      'orderItemId': 'order-page-two',
+      'executionSegmentSalesAllocationId': 'allocation-page-two',
+    };
+    final api = _pagedApi((request) async {
+      final page = request.queryParameters['page'] as int;
+      requests.add(page);
+      expectSync(request.queryParameters['size'], 100);
+      return {
+        'items': [page == 1 ? first : second],
+        'page': page,
+        'size': 100,
+        'total': 101,
+        'totalPages': 2,
+      };
+    });
+    List<ReportablePlanLine>? selected;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          productionDailyReportRepositoryProvider.overrideWithValue(
+            ProductionDailyReportRepository(api),
+          ),
+        ],
+        child: MaterialApp(
+          home: _PickerHost(onSelected: (value) => selected = value),
+        ),
+      ),
+    );
+    await tester.tap(find.text('选择来源'));
+    await tester.pumpAndSettle();
+    final rows = _reportableTable(tester).rowsController!;
+    final next = rows.loadNextPage();
+    await tester.pumpAndSettle();
+    await next;
+    await tester.pumpAndSettle();
+    expect(requests, [1, 2]);
+    expect(rows.items, hasLength(2));
+    for (final id in ['sales-page-two', 'rework-page-one']) {
+      final row = find.textContaining('SJ-$id');
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.pumpAndSettle();
+    expect(selected?.map((row) => row.planNo), [
+      'SJ-sales-page-two',
+      'SJ-rework-page-one',
+    ]);
+    expect(
+      selected?.first.executionSegmentSalesAllocationId,
+      'allocation-page-two',
+    );
+    expect(selected?.last.fqcRecoveryAuthorizationId, 'rework-page-one');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'new reportable search invalidates a pending previous query page',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final pendingPage = Completer<Map<String, dynamic>>();
+      final requests = <(int, String?)>[];
+      Map<String, dynamic> response(String id, int page) => {
+        'items': [
+          _recovery(
+            id: id,
+            disposition: 'REWORK',
+            maxReportQty: 2,
+            requiresMaterial: false,
+          ),
+        ],
+        'page': page,
+        'size': 100,
+        'total': 101,
+        'totalPages': 2,
+      };
+      final api = _pagedApi((request) async {
+        final page = request.queryParameters['page'] as int;
+        final keyword = request.queryParameters['keyword'] as String?;
+        requests.add((page, keyword));
+        if (page == 2 && keyword == null) return pendingPage.future;
+        return response(keyword == null ? 'old-first' : 'new-first', page);
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            productionDailyReportRepositoryProvider.overrideWithValue(
+              ProductionDailyReportRepository(api),
+            ),
+          ],
+          child: const MaterialApp(home: _PickerHost()),
+        ),
+      );
+      await tester.tap(find.text('选择来源'));
+      await tester.pumpAndSettle();
+      final next = _reportableTable(tester).rowsController!.loadNextPage();
+      await tester.pump();
+      await tester.pump();
+      final search = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == '计划号 / 产品 / 订单号 / 客户',
+      );
+      await tester.enterText(search, 'new');
+      pendingPage.complete(response('old-late', 2));
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      await next;
+      expect(requests, [(1, null), (2, null), (1, 'new')]);
+      expect(find.textContaining('SJ-new-first'), findsOneWidget);
+      expect(find.textContaining('SJ-old-late'), findsNothing);
+      expect(_reportableTable(tester).currentPage, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('375px picker blocks replacement and returns REWORK identity', (
     tester,
   ) async {
@@ -124,6 +267,31 @@ void main() {
     expect(selected?[1].fqcRecoveryAuthorizationId, 'rework-a');
     expect(tester.takeException(), isNull);
   });
+}
+
+MasterDataTableView<ReportablePlanLine> _reportableTable(WidgetTester tester) =>
+    tester.widget<MasterDataTableView<ReportablePlanLine>>(
+      find.byType(MasterDataTableView<ReportablePlanLine>),
+    );
+
+ApiClient _pagedApi(
+  Future<Map<String, dynamic>> Function(RequestOptions) respond,
+) {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) async {
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: await respond(request),
+          ),
+        );
+      },
+    ),
+  );
+  return ApiClient(dio);
 }
 
 class _PickerHost extends ConsumerStatefulWidget {

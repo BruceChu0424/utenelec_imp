@@ -39,7 +39,6 @@ public class ProductionExecutionWorkbenchService {
     /** 段级动作：在开工确认表里认料。 */
     static final String ACTION_CHOOSE = "CHOOSE";
     private static final String BIN_STATE_KNOWN = WorkshopMaterialStatePort.KNOWN;
-    private static final String BIN_STATE_NEED_CHOICE = WorkshopMaterialStatePort.NEED_CHOICE;
 
     private final EntityManager em;
     private final ProductionDocumentAccessPolicy productionAccess;
@@ -309,7 +308,7 @@ public class ProductionExecutionWorkbenchService {
                     " AND task.segment_status IN ('READY', 'DISPATCHED')"
                     + " AND NOT fn_material_discovery_pending(task.segment_id)"
                     + " AND (" + effectiveIssuedPredicate() + " OR task.zero_material)"
-                    + " AND NOT (" + needChoicePredicate() + ")";
+                    + " AND NOT (" + unresolvedBinMaterialPredicate() + ")";
                 case "IN_PROGRESS" -> " AND task.segment_status = 'IN_PROGRESS'";
                 default -> "";
             };
@@ -634,7 +633,7 @@ public class ProductionExecutionWorkbenchService {
      * 我的车间任务「等待物料」排序（2026-09-15 用户口径：可开工的放最前，越接近
      * 可开工越靠前）。档位与状态筛选四桶一一对应（preparationPredicate 同款谓词）：
      * 0 = 可开工（零料/已发料且 READY/DISPATCHED）；1 = 已提交领料·待仓库发料；
-     * 2 = 待认料 (ADR-131，排在去领料之前)；3 = 物料齐套·去领料；4 = 等料 (WAITING)。
+     * 2 = 待认料或待开启整批领料 (ADR-131)；3 = 物料齐套·去领料；4 = 等料 (WAITING)。
      * 同档位内再按既有键稳定排序。CASE 短路保证领料谓词里的 EXISTS 只对
      * READY/DISPATCHED 行求值。
      */
@@ -657,7 +656,7 @@ public class ProductionExecutionWorkbenchService {
                      task.plan_no ASC,
                      task.segment_no ASC,
                      task.segment_id ASC
-            """.formatted(needChoicePredicate(), drawRequestedPredicate());
+            """.formatted(unresolvedBinMaterialPredicate(), drawRequestedPredicate());
 
     private PageResponse<ProductionExecutionWorkbenchSegment> segmentPage(
             String predicate,
@@ -1028,6 +1027,8 @@ public class ProductionExecutionWorkbenchService {
                        (:allowReport AND task.reportable AND report_origin.allowed AND fn_execution_overproduction_policy_applies(task.segment_id) AND task.segment_status = 'IN_PROGRESS'
                         AND task.report_source_count = 1 AND task.remaining_qty > 0),
                        CASE
+                           WHEN bin_material.state = 'NEED_CHOICE' THEN '请先在开工确认表里认料'
+                           WHEN bin_material.state = 'NEED_BIN' THEN '请先开启本车间整批领料'
                            WHEN fn_material_discovery_pending(task.segment_id) THEN
                              CASE WHEN discovery.id IS NULL THEN '请提交领料，由仓库填写实际材料'
                                ELSE '等待仓库填写实际材料并办理发料' END
@@ -1050,6 +1051,7 @@ public class ProductionExecutionWorkbenchService {
                              AND current_segment.is_deleted = FALSE)),
                        %s,
                        (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED','IN_PROGRESS')
+                         AND bin_material.state NOT IN ('NEED_CHOICE','NEED_BIN')
                          AND NOT task.zero_material AND NOT (%s)
                          AND EXISTS(SELECT 1 FROM production_execution_segments route_segment
                            WHERE route_segment.id=task.segment_id AND route_segment.start_route IN ('FULL_KIT','CONTINUOUS'))
@@ -1101,6 +1103,7 @@ public class ProductionExecutionWorkbenchService {
                        fn_material_discovery_pending(task.segment_id),
                        discovery.id, discovery.status,
                        (:allowRequestDraw AND fn_material_discovery_pending(task.segment_id)
+                         AND bin_material.state NOT IN ('NEED_CHOICE','NEED_BIN')
                          AND rate_segment.start_route IN ('FULL_KIT','CONTINUOUS')
                          AND discovery.id IS NULL AND task.segment_status IN ('WAITING','READY','DISPATCHED')),
                        (SELECT root_analysis.analysis_no
@@ -1158,34 +1161,35 @@ public class ProductionExecutionWorkbenchService {
     }
 
     /**
-     * 等待物料四桶。ADR-131：待认料(车间已开启整批领料、产品还没选用哪种料)归「等待物料」桶，
+     * 等待物料四桶。ADR-131：待认料、待开启整批领料归「等待物料」桶，
      * 不进去领料、待仓库发料、可开工三桶——认完料才知道要不要领、能不能开。
      */
     static String preparationPredicate(String rawFilter) {
         if (rawFilter == null || rawFilter.isBlank()) return "";
-        String notNeedChoice = " AND NOT (" + needChoicePredicate() + ")";
+        String resolvedBinMaterial = " AND NOT (" + unresolvedBinMaterialPredicate() + ")";
         return switch (rawFilter.strip().toUpperCase(Locale.ROOT)) {
             case "WAITING_MATERIAL" -> " AND (task.segment_status='WAITING'"
-                    + " OR (task.segment_status IN ('READY','DISPATCHED') AND " + needChoicePredicate() + "))";
+                    + " OR (task.segment_status IN ('READY','DISPATCHED') AND " + unresolvedBinMaterialPredicate() + "))";
             case "DRAW_NOT_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
                     + " AND ((fn_material_discovery_pending(task.segment_id) AND NOT " + discoveryRequestedPredicate() + ")"
                     + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND NOT (" + drawRequestedPredicate() + ")))"
-                    + notNeedChoice;
+                    + resolvedBinMaterial;
             case "DRAW_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
                     + " AND ((fn_material_discovery_pending(task.segment_id) AND " + discoveryRequestedPredicate() + ")"
                     + " OR (NOT task.zero_material AND NOT (" + effectiveIssuedPredicate() + ") AND (" + drawRequestedPredicate() + ")))"
-                    + notNeedChoice;
+                    + resolvedBinMaterial;
             case "READY_TO_START" -> " AND task.segment_status IN ('READY','DISPATCHED')"
                     + " AND NOT fn_material_discovery_pending(task.segment_id)"
                     + " AND (task.zero_material OR " + effectiveIssuedPredicate() + ")"
-                    + notNeedChoice;
+                    + resolvedBinMaterial;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选无效");
         };
     }
 
-    /** ADR-131 待认料：与开工门、开工确认表同一个状态函数。 */
-    static String needChoicePredicate() {
-        return "fn_segment_bin_material_state(task.segment_id) = '" + BIN_STATE_NEED_CHOICE + "'";
+    /** ADR-131：与领料命令入口、开工确认表同一个状态函数。 */
+    static String unresolvedBinMaterialPredicate() {
+        return com.uten.imp.features.production.fulfillment.ProductionOrderMaterialGate
+                .unresolvedSql("task.segment_id");
     }
 
     static String effectiveIssuedPredicate() {

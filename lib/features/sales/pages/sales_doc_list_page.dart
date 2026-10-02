@@ -1055,7 +1055,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                             ),
                             const Spacer(),
                             // 批量发货（SOP §一9，仅订货单）：面板勾选可发行 → 同客户合并出货草稿
-                            if (_canShip) ...[
+                            if (_canShip && !_isDraftCategory) ...[
                               UtenButton(
                                 type: UtenButtonType.secondary,
                                 icon: Icons.local_shipping_outlined,
@@ -1065,7 +1065,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               const SizedBox(width: UtenSpacing.s8),
                             ],
                             // 报价引入(SOP §三1，仅订货单)：弹窗选已核价报价 → 一键转订货草稿
-                            if (_canConvertQuote) ...[
+                            if (_canConvertQuote && !_isDraftCategory) ...[
                               UtenButton(
                                 type: UtenButtonType.secondary,
                                 icon: Icons.transform_outlined,
@@ -1074,7 +1074,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               ),
                               const SizedBox(width: UtenSpacing.s8),
                             ],
-                            if (_canCreate)
+                            if (_canCreate && !_isDraftCategory)
                               UtenButton(
                                 type: UtenButtonType.tonal,
                                 icon: Icons.add_rounded,

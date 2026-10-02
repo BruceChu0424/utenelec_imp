@@ -19,6 +19,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/formatters/china_number_format.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/weight_predictor.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
@@ -65,6 +66,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     type: 'number',
     sortable: true,
     value: (r) => _qty(r.qty),
+    exactValueOf: (r) => r.qty?.toString(),
   ),
   MasterColumnDef(
     key: 'unitName',
@@ -78,6 +80,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     width: 120,
     type: 'weight',
     sortable: true,
+    exactValueOf: (r) => r.weightKg?.toString(),
     info: '≈ = 含估算重量; 未称 = 有没称过的库存, 不当 0 算',
     value: (r) => formatWeightValue(
       r.weightKg,
@@ -114,6 +117,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     sortable: true,
     info: '距最后一次出入库的天数',
     value: (r) => _days(r.idleDays),
+    exactValueOf: (r) => r.idleDays?.toString(),
   ),
   MasterColumnDef(
     key: 'age0_30',
@@ -122,6 +126,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     type: 'number',
     info: '按先进先出把当前库存分到各次入库上, 入库距今 0-30 天的数量',
     value: (r) => _qty(r.age0to30),
+    exactValueOf: (r) => r.age0to30?.toString(),
   ),
   MasterColumnDef(
     key: 'age31_90',
@@ -129,6 +134,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     width: 100,
     type: 'number',
     value: (r) => _qty(r.age31to90),
+    exactValueOf: (r) => r.age31to90?.toString(),
   ),
   MasterColumnDef(
     key: 'age91_180',
@@ -136,6 +142,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     width: 100,
     type: 'number',
     value: (r) => _qty(r.age91to180),
+    exactValueOf: (r) => r.age91to180?.toString(),
   ),
   MasterColumnDef(
     key: 'age181_365',
@@ -143,6 +150,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     width: 105,
     type: 'number',
     value: (r) => _qty(r.age181to365),
+    exactValueOf: (r) => r.age181to365?.toString(),
   ),
   MasterColumnDef(
     key: 'ageOver365',
@@ -151,6 +159,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     type: 'number',
     sortable: true,
     value: (r) => _qty(r.ageOver365),
+    exactValueOf: (r) => r.ageOver365?.toString(),
   ),
   MasterColumnDef(
     key: 'ageUnknown',
@@ -159,6 +168,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     type: 'number',
     info: '找不到入库记录的数量 (系统上线前的结存等), 库龄未知',
     value: (r) => _qty(r.ageUnknown),
+    exactValueOf: (r) => r.ageUnknown?.toString(),
   ),
   MasterColumnDef(
     key: 'out90',
@@ -168,6 +178,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     sortable: true,
     info: '销售/领料/委外发料等真实消耗 (调拨不算)',
     value: (r) => _qty(r.out90),
+    exactValueOf: (r) => r.out90?.toString(),
   ),
   MasterColumnDef(
     key: 'avgDailyOut90',
@@ -178,6 +189,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     value: (r) => r.avgDailyOut90 == null
         ? '—'
         : formatWeighQty(r.avgDailyOut90!, integer: false),
+    exactValueOf: (r) => r.avgDailyOut90?.toString(),
   ),
   MasterColumnDef(
     key: 'daysOfCover',
@@ -189,6 +201,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
     value: (r) => r.daysOfCover == null
         ? '—'
         : formatWeighQty(r.daysOfCover!, integer: true),
+    exactValueOf: (r) => r.daysOfCover?.toString(),
   ),
   MasterColumnDef(
     key: 'abc',
@@ -204,6 +217,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
       width: 120,
       type: 'money',
       sortable: true,
+      exactValueOf: (r) => r.costMasked ? null : r.amountLocalText,
       value: (r) =>
           r.amountLocal == null ? '—' : formatChinaNumber(r.amountLocal!),
     ),
@@ -257,6 +271,7 @@ List<MasterColumnDef<InsightCycleCountRow>> insightCycleCountColumns({
     width: 90,
     type: 'number',
     value: (r) => _days(r.daysSince),
+    exactValueOf: (r) => r.daysSince?.toString(),
   ),
   MasterColumnDef(
     key: 'reasons',
@@ -278,12 +293,14 @@ List<MasterColumnDef<InsightCycleCountRow>> insightCycleCountColumns({
     type: 'number',
     value: (r) =>
         r.unitName == null ? _qty(r.qty) : '${_qty(r.qty)} ${r.unitName}',
+    exactValueOf: (r) => r.qty?.toString(),
   ),
   MasterColumnDef(
     key: 'weightKg',
     label: '库存重量',
     width: 120,
     type: 'weight',
+    exactValueOf: (r) => r.weightKg?.toString(),
     value: (r) => formatWeightValue(
       r.weightKg,
       display: display,
@@ -366,6 +383,7 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
     value: (r) => r.isRegimeChange
         ? '—'
         : _withUnit(_qty(r.qtyBase, integer: r.integerQty), r),
+    exactValueOf: (r) => r.isRegimeChange ? null : r.qtyBase?.toString(),
   ),
   MasterColumnDef(
     key: 'estimatedQty',
@@ -373,6 +391,7 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
     width: 130,
     type: 'number',
     info: '实称重量 ÷ 当时的单重',
+    exactValueOf: (r) => r.isRegimeChange ? null : r.estimatedQty?.toString(),
     value: (r) {
       final est = r.estimatedQty;
       if (r.isRegimeChange || est == null) return '—';
@@ -384,6 +403,7 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
     label: '偏差',
     width: 150,
     type: 'number',
+    exactValueOf: (r) => r.isRegimeChange ? null : r.deviationQty?.toString(),
     value: (r) {
       final diff = r.deviationQty;
       final pct = r.deviationPct;
@@ -438,6 +458,7 @@ List<MasterColumnDef<InsightCounterpartSummary>> insightCounterpartColumns({
     type: 'number',
     info: '供应商 = 到货称重次数; 车间 = 领料称重次数',
     value: (s) => _days(s.events),
+    exactValueOf: (s) => s.events?.toString(),
   ),
   MasterColumnDef(
     key: 'flagged',
@@ -446,12 +467,14 @@ List<MasterColumnDef<InsightCounterpartSummary>> insightCounterpartColumns({
     type: 'number',
     info: '供应商 = 来料少数的次数; 车间 = 领料超发的次数',
     value: (s) => _days(s.flagged),
+    exactValueOf: (s) => s.flagged?.toString(),
   ),
   MasterColumnDef(
     key: 'avgPct',
     label: '平均偏差',
     width: 100,
     type: 'number',
+    exactValueOf: (s) => s.avgPct?.abs().toString(),
     value: (s) => s.avgPct == null
         ? '—'
         : '${s.isSupplier ? '少' : '多'} '
@@ -462,6 +485,7 @@ List<MasterColumnDef<InsightCounterpartSummary>> insightCounterpartColumns({
     label: '差额重量',
     width: 120,
     type: 'weight',
+    exactValueOf: (s) => s.kg?.abs().toString(),
     info: '供应商 = 少了的重量; 车间 = 多发的重量',
     value: (s) =>
         s.kg == null ? '—' : formatWeightValue(s.kg!.abs(), display: display),
@@ -517,6 +541,7 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     width: 120,
     type: 'number',
     value: (r) => formatUnitWeight(r.unitWeightKg),
+    exactValueOf: (r) => r.unitWeightKg?.toString(),
   ),
   MasterColumnDef(
     key: 'tier',
@@ -542,6 +567,7 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     type: 'number',
     info: '货品资料里填的单重 (只作参考, 学到的单重不会回写货品资料)',
     value: (r) => formatUnitWeight(r.masterUnitWeightKg),
+    exactValueOf: (r) => r.masterUnitWeightKg?.toString(),
   ),
   MasterColumnDef(
     key: 'masterDiffPct',
@@ -549,6 +575,7 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     width: 110,
     type: 'number',
     value: (r) => _pct(r.masterDiffPct),
+    exactValueOf: (r) => r.masterDiffPct?.toString(),
   ),
   MasterColumnDef(
     key: 'lastObservedAt',
@@ -561,6 +588,9 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     key: 'sampleQty',
     label: '抽样数量',
     width: 120,
+    type: 'number',
+    exactValueOf: (r) => draftOf(r.goodsId).qty.text,
+    exactListenableOf: (r) => draftOf(r.goodsId).qty,
     info: '数出这么多件放上秤 (建议数量见占位)',
     value: (r) => draftOf(r.goodsId).qty.text,
     cellBuilderHandlesSemantics: true,
@@ -590,6 +620,17 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     key: 'sampleWeight',
     label: '抽样重量(${sampleUnit.symbol})',
     width: 130,
+    type: 'number',
+    exactValueOf: (r) {
+      final input = parseWithSuffix(draftOf(r.goodsId).weight.text, sampleUnit);
+      return input == null || input.value <= 0
+          ? null
+          : financeExactMultiplyTexts([
+              input.numberText,
+              input.unit.kgPerUnit.toString(),
+            ]);
+    },
+    exactListenableOf: (r) => draftOf(r.goodsId).weight,
     info: '抽样那几件的净重 (扣掉盘/袋); 也可以直接输 46.2g、0.05kg',
     value: (r) => draftOf(r.goodsId).weight.text,
     cellBuilderHandlesSemantics: true,

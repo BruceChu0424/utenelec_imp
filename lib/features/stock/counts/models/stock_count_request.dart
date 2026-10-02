@@ -64,6 +64,7 @@ class CountStockRow {
     required this.qty,
     required this.goodsVersion,
     this.goodsCode = '',
+    this.categoryId,
     this.colorId,
     this.colorName,
     this.weightKg,
@@ -74,6 +75,7 @@ class CountStockRow {
   });
   final String goodsId;
   final String goodsCode;
+  final String? categoryId;
   final String goodsName;
   final String? colorId;
   final String? colorName;
@@ -92,6 +94,7 @@ class CountStockRow {
   factory CountStockRow.fromJson(Map<String, dynamic> json) => CountStockRow(
     goodsId: json['goodsId'] as String,
     goodsCode: json['goodsCode'] as String? ?? '',
+    categoryId: json['categoryId'] as String?,
     goodsName: json['goodsName'] as String? ?? '',
     colorId: json['colorId'] as String?,
     colorName: json['colorName'] as String?,

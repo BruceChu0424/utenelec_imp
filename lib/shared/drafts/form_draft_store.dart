@@ -40,6 +40,17 @@ class FormDraftUnknownSubmission implements Exception {
   String toString() => formDraftUnknownSubmissionMessage;
 }
 
+/// 单据保存失败的公共类型化解读：草稿保护抛出的 StateError / FormDraftConflict /
+/// 存储格式异常自带「下一步怎么办」的大白话文案，必须原样带给用户；其余未知异常
+/// 返回 null，调用方兜底提示并记日志——不许把可行动的错误吞成「保存失败，请稍后重试」。
+String? describeFormSaveError(Object error) => switch (error) {
+  FormDraftConflict() => error.toString(),
+  StateError() => error.message.isEmpty ? null : error.message,
+  final FormatException e => e.message.isEmpty ? null : e.message,
+  final TimeoutException e => e.message?.isEmpty == false ? e.message : null,
+  _ => null,
+};
+
 class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   int _generation = 0;
   String? _prefix;

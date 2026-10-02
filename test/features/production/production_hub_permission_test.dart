@@ -29,20 +29,22 @@ void main() {
     );
   });
 
-  test('legacy new-plan route redirects instead of opening the old editor', () {
+  test('new-plan route opens the blank manual editor (2026-10-01 restore)', () {
     final route = productionRoutes.whereType<GoRoute>().singleWhere(
       (entry) => entry.path == RoutePath.productionPlanNew(),
     );
 
-    expect(route.redirect, isNotNull);
+    // 2026-10-01 恢复空白手工新建页：不再是重定向到物料分析工作台。
+    expect(route.redirect, isNull);
+    expect(route.builder, isNotNull);
     expect(
       requiredAnyPermFor(RoutePath.productionPlanNew()),
-      equals([Perm.productionMaterialAnalysisCreate]),
+      equals([
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionPlanCreate,
+      ]),
     );
-    expect(
-      requiredAllPermsFor(RoutePath.productionPlanNew()),
-      equals([Perm.productionMaterialAnalysisView]),
-    );
+    expect(requiredAllPermsFor(RoutePath.productionPlanNew()), isEmpty);
   });
 
   test('material analysis history route requires view only', () {
@@ -133,7 +135,7 @@ void main() {
     },
   );
 
-  testWidgets('create without analysis view cannot see the create card', (
+  testWidgets('create without analysis view still opens the plan editor', (
     tester,
   ) async {
     await _setDesktopSize(tester);
@@ -145,22 +147,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 新建生产计划单落点 = 物料分析，守卫要求 analysis:view（creator-only）。
+    // 2026-10-01 新建生产计划单落点 = /production/plans/new 空白新建页，
+    // 守卫只要 create 码（analysis:create 或 plan:create），不再要求 analysis:view。
     expect(find.text('生产计划历史'), findsNothing);
-    expect(find.text('新建生产计划单'), findsNothing);
+    expect(find.text('新建生产计划单'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('manage user opens the independent new-analysis page', (
-    tester,
-  ) async {
+  testWidgets('manage user opens the blank plan editor', (tester) async {
     await _setDesktopSize(tester);
     final router = GoRouter(
       routes: [
         GoRoute(path: '/', builder: (_, _) => const ProductionHubPage()),
         GoRoute(
-          path: RouteName.productionMaterialAnalysis,
-          builder: (_, _) => const Scaffold(body: Text('已进入新建物料分析')),
+          path: RoutePath.productionPlanNew(),
+          builder: (_, _) => const Scaffold(body: Text('已进入新建计划')),
         ),
       ],
     );
@@ -188,7 +189,7 @@ void main() {
     await tester.tap(find.text('新建生产计划单'));
     await tester.pumpAndSettle();
 
-    expect(find.text('已进入新建物料分析'), findsOneWidget);
+    expect(find.text('已进入新建计划'), findsOneWidget);
   });
 }
 

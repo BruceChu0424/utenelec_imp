@@ -28,9 +28,6 @@ abstract final class UtenBreakpoints {
 
   /// medium → expanded 的分界
   static const double expandedStart = 840;
-
-  /// 大屏内容区最大宽度（避免超宽屏内容拉得太长）
-  static const double maxContentWidth = 1600;
 }
 
 extension UtenBreakpointValue on UtenBreakpoint {

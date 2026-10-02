@@ -791,14 +791,13 @@ abstract class _MaterialAnalysisSupplyActionsState
     return targets;
   }
 
-  /// 2026-09-29 用户口径：所选行有可认领的同主仓公共在途时，问一次「本次是否
-  /// 用可用数量抵扣」——true = 原行为(先自动认领、只为余量新下单)；false =
-  /// 足额下单不扣可用数量；null = 取消。实现落在物料表状态层(拿得到全部行与
-  /// 通道判据)，这里只声明给单独入口(行菜单/分桶页直接提交)使用。
+  /// true = 优先使用可用余量；false = 保留余量、额外下单；null = 取消。
+  /// 与行内编辑共用本轮选择，单独入口按实际提交量核对。
   Future<bool?> _askClaimableSupplyUsage(
     Iterable<_MaterialGroup> groups,
     Map<_MaterialGroup, double>? pending,
   );
+  void _completePreparationSupplyUsage();
 
   /// [silent] = 调用方已经做过一次总结确认、并会自己汇报结果（下层办齐编排，
   /// ADR-081）：跳过本函数的数量确认弹窗与成功提示，避免一次一键下单连弹三层
@@ -863,7 +862,19 @@ abstract class _MaterialAnalysisSupplyActionsState
     // 入口一律 silent=true，由 _submitMaterialTableRowsInScope 统一问过再把标志
     // 传进来，不会连问两层。
     if (!silent) {
-      final claimUsage = await _askClaimableSupplyUsage(groups, null);
+      final claimUsage = await _askClaimableSupplyUsage(groups, {
+        for (final group in groups)
+          group: quantities
+              .where(
+                (input) => group.paths.any(
+                  (path) =>
+                      input.materialLineId == path.materialLineId ||
+                      (input.actionGroupKey != null &&
+                          input.actionGroupKey == path.actionGroupKey),
+                ),
+              )
+              .fold<double>(0, (sum, input) => sum + input.qty),
+      });
       if (claimUsage == null) return null;
       skipAutoClaim = !claimUsage;
     }
@@ -994,7 +1005,10 @@ abstract class _MaterialAnalysisSupplyActionsState
                     '${batches.length} 张委外申请并通知委外部；有子层已转前置自制，入库后自动通知',
               MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
             };
-      if (!silent) context.appSuccess(message);
+      if (!silent) {
+        _completePreparationSupplyUsage();
+        context.appSuccess(message);
+      }
       // 下达产生了下游单据/任务（采购需求单/委外申请/自制任务）：徽章即时重拉
       // （此前只有创建生产计划有 refreshAfterProductionPlanGenerated，采购/委外
       // 方向漏了，相关入口的红黄数要等下一次任意 bump）。

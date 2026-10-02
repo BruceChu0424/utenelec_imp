@@ -65,6 +65,9 @@ class WeighCountRequest {
     this.integerQty,
     this.sampleRemark,
     this.canSaveSample,
+    this.expectedWeightKg,
+    this.expectedWeightSource,
+    this.colorId,
   });
 
   final WeighCountContext mode;
@@ -79,6 +82,11 @@ class WeighCountRequest {
   /// 到货供应商 (取供应商单重、抽样自动打标)。
   final String? supplierId;
   final String? warehouseId;
+  final String? colorId;
+
+  /// Reference only; never initializes the actual scale reading.
+  final double? expectedWeightKg;
+  final String? expectedWeightSource;
   final String? baseUnitName;
   final String? lineUnitName;
 
@@ -159,7 +167,9 @@ Future<WeighCountResult?> showWeighCountDialog(
   context: context,
   barrierDismissible: false,
   builder: (dialogContext) => AlertDialog(
-    title: Text('称重计数 · ${request.goodsTitle}'),
+    title: Text(
+      '${request.mode == WeighCountContext.outbound ? '出库称重核对' : '称重算数量'} · ${request.goodsTitle}',
+    ),
     content: ConstrainedBox(
       constraints: BoxConstraints(
         maxWidth: 520,
@@ -268,7 +278,12 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
     setState(() => _loadingParams = true);
     try {
       final map = await ref.read(weightRepositoryProvider).params([
-        WeightParamsLine(goodsId: _req.goodsId, supplierId: _req.supplierId),
+        WeightParamsLine(
+          goodsId: _req.goodsId,
+          supplierId: _req.supplierId,
+          warehouseId: _req.warehouseId,
+          colorId: _req.colorId,
+        ),
       ]);
       if (!mounted) return;
       setState(() {
@@ -333,7 +348,14 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
   WeightSampleInput? get _sample {
     final n = double.tryParse(_sampleQty.text.trim());
     final w = _kgOf(_sampleWeight, _units.sample);
-    if (n == null || n <= 0 || w == null || w <= 0) return null;
+    if (n == null ||
+        !n.isFinite ||
+        n <= 0 ||
+        w == null ||
+        !w.isFinite ||
+        w <= 0) {
+      return null;
+    }
     return WeightSampleInput(qty: n, weightKg: w);
   }
 
@@ -390,9 +412,40 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
 
   // ---- 提交 ----
 
+  bool get _validInputs {
+    if (_gross.any((c) => _invalid(c, _units.entry)) ||
+        _invalid(_tare, _units.entry) ||
+        _invalid(_sampleWeight, _units.sample)) {
+      return false;
+    }
+    if (_tare.text.trim().isNotEmpty &&
+        (_piecesCount <= 0 || !_piecesCount.isFinite)) {
+      return false;
+    }
+    if ((_sampleQty.text.trim().isNotEmpty ||
+            _sampleWeight.text.trim().isNotEmpty) &&
+        _sample == null) {
+      return false;
+    }
+    return true;
+  }
+
+  String? get _inputGuidance {
+    if (_tare.text.trim().isNotEmpty &&
+        (_piecesCount <= 0 || !_piecesCount.isFinite)) {
+      return '填写包装重量后，请填写箱 / 袋数量。';
+    }
+    if ((_sampleQty.text.trim().isNotEmpty ||
+            _sampleWeight.text.trim().isNotEmpty) &&
+        _sample == null) {
+      return '抽样要同时填写“数了多少”和“这些有多重”；不用抽样时清空这两项。';
+    }
+    return null;
+  }
+
   Future<void> _submit({required bool fillQty}) async {
     final net = _netKg;
-    if (net == null || _busy) return;
+    if (net == null || _busy || !_validInputs) return;
     final sample = _sample;
     final estimate = _estimate(net, sample);
     final qtyBase = fillQty ? _qtyBase(net, estimate) : null;
@@ -547,35 +600,82 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_loadingParams) const LinearProgressIndicator(minHeight: 2),
+        Text(
+          _req.mode == WeighCountContext.outbound
+              ? '按本次出库数量估算重量，称完填入秤上的实际读数即可。'
+              : '称一下整批物品，系统按单件重量估算数量。数量仍可人工核对。',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: UtenSpacing.s12),
         if (_req.mode == WeighCountContext.outbound) _outboundTarget(theme),
-        if (redTier && !_loadingParams) ...[
+        if (redTier &&
+            !_loadingParams &&
+            _req.mode != WeighCountContext.outbound) ...[
           UtenInlineNotice(
             key: const ValueKey('weigh-count-red-banner'),
             level: UtenInlineNoticeLevel.warning,
             message:
                 '单重数据不足, 请数 ${params?.effectiveSuggestedSampleSize ?? WeightPredictor.suggestedSampleSize()} '
-                '${_req.baseUnitName ?? '个'}放上秤 (下方抽样)',
+                '${_req.baseUnitName ?? '个'}放上秤，再填下面两个数；也可以只记重量。',
           ),
           const SizedBox(height: UtenSpacing.s12),
         ],
         ..._grossRows(units.entry),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            key: const ValueKey('weigh-count-add-gross'),
-            onPressed: _busy ? null : _addWeighing,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('再称一次'),
-          ),
+        ExpansionTile(
+          key: const ValueKey('weigh-count-packaging-options'),
+          tilePadding: EdgeInsets.zero,
+          title: const Text('扣除包装 / 分多次称重'),
+          subtitle: (_tareKg ?? 0) > 0
+              ? Text('已扣包装 ${formatWeight(_tareKg!)}')
+              : null,
+          initiallyExpanded: _tare.text.isNotEmpty,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('weigh-count-add-gross'),
+                onPressed: _busy ? null : _addWeighing,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('再称一批，重量相加'),
+              ),
+            ),
+            _tareRow(units.entry),
+            if (_canManageTare) _rememberTareRow(),
+          ],
         ),
-        _tareRow(units.entry),
-        if (_canManageTare) _rememberTareRow(),
         const SizedBox(height: UtenSpacing.s8),
         _netLine(theme, units),
         const SizedBox(height: UtenSpacing.s16),
-        _sampleSection(theme, units.sample, sample),
+        ExpansionTile(
+          key: const ValueKey('weigh-count-sampling-options'),
+          tilePadding: EdgeInsets.zero,
+          title: Text(
+            _req.mode == WeighCountContext.outbound
+                ? '想核对得更准？数几个，称一下'
+                : '数几个，称一下（校准单件重量）',
+          ),
+          initiallyExpanded: redTier && _req.mode != WeighCountContext.outbound,
+          children: [_sampleSection(theme, units.sample, sample)],
+        ),
         const SizedBox(height: UtenSpacing.s12),
-        if (net != null) _resultSection(theme, net, estimate, tier, sample),
+        if (_inputGuidance case final guidance?)
+          Text(
+            guidance,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        if (net != null && _req.mode != WeighCountContext.outbound)
+          _resultSection(theme, net, estimate, tier, sample),
+        if (net != null && _req.mode == WeighCountContext.outbound) ...[
+          ?_outboundWarning(net),
+          ExpansionTile(
+            key: const ValueKey('weigh-count-details'),
+            tilePadding: EdgeInsets.zero,
+            title: const Text('查看估算依据与数量范围'),
+            children: [_resultSection(theme, net, estimate, tier, sample)],
+          ),
+        ],
         if (_submitError != null) ...[
           const SizedBox(height: UtenSpacing.s8),
           Text(
@@ -613,41 +713,54 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
 
   bool get _canManageTare => ref.watch(weightManageAllowedProvider);
 
+  double? get _outboundExpectedKg {
+    final needed = _req.currentQtyBase;
+    if (needed == null || !needed.isFinite || needed <= 0) return null;
+    final params = _params;
+    if (params?.isExact == true) return params!.expectedKgFor(needed);
+    final sample = _sample;
+    if (sample?.sufficient == true) {
+      return params?.expectationFor(needed, sample: sample)?.expectedWeightKg ??
+          needed * sample!.weightKg / sample.qty;
+    }
+    return _req.expectedWeightKg ??
+        params?.suggestionFor(needed, mode: WeightCaptureMode.outbound)?.kg ??
+        params?.expectedKgFor(needed);
+  }
+
   Widget _outboundTarget(ThemeData theme) {
     final params = _params;
     final needed = _req.currentQtyBase;
-    if (needed == null || needed <= 0 || params == null) {
+    if (needed == null || needed <= 0) {
       return const SizedBox.shrink();
+    }
+    final expectedKg = _outboundExpectedKg;
+    if (expectedKg == null || !expectedKg.isFinite || expectedKg <= 0) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: UtenSpacing.s12),
+        child: Text('暂时没有可靠参考重量，可以直接填写实际称重。'),
+      );
     }
     final integer = _integerQty;
     final String text;
-    if (params.isExact) {
-      final kg = needed * params.massFactorKg!;
+    if (params?.isExact == true) {
+      final kg = needed * params!.massFactorKg!;
       text =
           '需要 ${formatWeighQtyWithUnit(needed, unitName: _req.baseUnitName, integer: false)} '
           '→ 净重 ${formatWeight(kg)} (精确换算)';
     } else {
-      final expectation = params.expectationFor(needed, sample: _sample);
-      if (expectation == null) return const SizedBox.shrink();
       final tare = _tareKg ?? 0;
-      final expected = expectation.expectedWeightKg;
-      final bandUnit = WeightDisplay.auto.unitFor(expected);
-      final low = bandUnit.format(expectation.weightLowKg, withSymbol: false);
-      final high = bandUnit.format(expectation.weightHighKg, withSymbol: false);
       final needText = formatWeighQtyWithUnit(
         needed,
         unitName: _req.baseUnitName,
         integer: integer,
       );
       final buffer = StringBuffer()
-        ..write('需要 $needText ')
-        ..write('→ 净重约 ${bandUnit.format(expected)} ($low~$high)');
+        ..write('本次出库 $needText，预计净重约 ${formatWeight(expectedKg)}');
       if (tare > 0) {
         buffer
           ..write(' + 皮重 ${formatWeight(tare)} ')
-          ..write(
-            '→ 秤上应显示约 ${formatWeight(expectation.expectedWeightKg + tare)}',
-          );
+          ..write('→ 秤上应显示约 ${formatWeight(expectedKg + tare)}');
       }
       text = buffer.toString();
     }
@@ -657,6 +770,27 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
         key: const ValueKey('weigh-count-outbound-target'),
         message: text,
       ),
+    );
+  }
+
+  Widget? _outboundWarning(double net) {
+    final suggestion = _params?.suggestionFor(
+      _req.currentQtyBase,
+      mode: WeightCaptureMode.outbound,
+    );
+    final expected = _outboundExpectedKg;
+    if (expected == null || expected <= 0) return null;
+    final reference = WeightSuggestion(
+      kg: expected,
+      source: _req.expectedWeightSource ?? suggestion?.source ?? '本次出库参考重量',
+      tolerancePct: suggestion?.tolerancePct ?? 5,
+    );
+    if (!reference.differsFrom(net)) return null;
+    return UtenInlineNotice(
+      key: const ValueKey('weigh-count-reference-warning'),
+      level: UtenInlineNoticeLevel.warning,
+      message:
+          '数值可能有问题：预计约 ${formatWeight(expected)}，实际 ${formatWeight(net)}。请核对数量、重量单位和包装；确认无误仍可填入。',
     );
   }
 
@@ -675,8 +809,10 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
                 decoration: UtenInputDecoration(
                   InputDecoration(
                     labelText: _req.mode == WeighCountContext.outbound
-                        ? (_gross.length == 1 ? '实称(秤上读数)' : '实称第 ${i + 1} 次')
-                        : (_gross.length == 1 ? '毛重' : '毛重第 ${i + 1} 次'),
+                        ? (_gross.length == 1
+                              ? '实际称了多重（秤上读数）'
+                              : '第 ${i + 1} 批秤上读数')
+                        : (_gross.length == 1 ? '整批秤上读数' : '第 ${i + 1} 批秤上读数'),
                     suffixText: entry.symbol,
                     error: utenFieldError(
                       _invalid(_gross[i], entry) ? weightInputErrorText : null,
@@ -706,7 +842,7 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
           enabled: !_busy,
           decoration: UtenInputDecoration(
             InputDecoration(
-              labelText: '皮重(每件箱/袋)',
+              labelText: '每个空箱 / 空袋多重',
               suffixText: entry.symbol,
               error: utenFieldError(
                 _invalid(_tare, entry) ? weightInputErrorText : null,
@@ -727,7 +863,10 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
           enabled: !_busy,
           keyboardType: TextInputType.number,
           onChanged: (_) => _piecesEdited = true,
-          decoration: const InputDecoration(labelText: '件数', suffixText: '件'),
+          decoration: const InputDecoration(
+            labelText: '箱 / 袋数量',
+            suffixText: '个',
+          ),
         ),
       ),
     ],
@@ -740,7 +879,7 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
     controlAffinity: ListTileControlAffinity.leading,
     value: _rememberTare,
     onChanged: _busy ? null : (v) => setState(() => _rememberTare = v ?? false),
-    title: const Text('记住为本货品皮重'),
+    title: const Text('下次自动填这个包装重量'),
   );
 
   Widget _netLine(ThemeData theme, WeightUnitsPrefs units) {
@@ -785,7 +924,7 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('本批抽样 (可选)', style: theme.textTheme.titleSmall),
+        Text('先数出一小把，再只称这一小把（不含包装）。', style: theme.textTheme.bodySmall),
         const SizedBox(height: UtenSpacing.s4),
         Row(
           children: [
@@ -796,7 +935,7 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
                 enabled: !_busy,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: '数',
+                  labelText: '数了多少',
                   hintText: '建议 $suggested',
                   suffixText: unitName,
                 ),
@@ -810,7 +949,7 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
                 enabled: !_busy,
                 decoration: UtenInputDecoration(
                   InputDecoration(
-                    labelText: '重',
+                    labelText: '这些有多重',
                     error: utenFieldError(
                       _invalid(_sampleWeight, sampleUnit)
                           ? weightInputErrorText
@@ -818,9 +957,13 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
                     ),
                     suffixIcon: _SampleUnitMenu(
                       unit: sampleUnit,
-                      onSelected: ref
-                          .read(warehouseWeightUnitsPrefsProvider.notifier)
-                          .setSample,
+                      onSelected: (next) {
+                        final kg = _kgOf(_sampleWeight, sampleUnit);
+                        if (kg != null) _sampleWeight.text = next.editText(kg);
+                        ref
+                            .read(warehouseWeightUnitsPrefsProvider.notifier)
+                            .setSample(next);
+                      },
                     ),
                   ),
                 ),
@@ -970,7 +1113,7 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
             onPressed: _busy ? null : widget.onCancel,
             child: const Text('取消'),
           );
-    final hasNet = net != null && !_busy;
+    final hasNet = net != null && !_busy && _validInputs;
     final List<Widget> buttons;
     Widget? warning;
     switch (_req.mode) {

@@ -135,6 +135,20 @@ class _ProductionFinishedArrivalRegistrationPageState
   @override
   bool get formDraftBusy => _busy;
 
+  @override
+  Future<void> Function()? get formDraftReloadSource => _reloadLatestForDraft;
+
+  Future<void> _reloadLatestForDraft() async {
+    _remarkController.clear();
+    _idempotencyKey = const Uuid().v4();
+    _registrationCompletedThisSession = false;
+    _route = InboundRoute.inspectFirst;
+    await _load();
+    if (_error != null || _detail == null) {
+      throw StateError(_error ?? '最新登记单据未能读取');
+    }
+  }
+
   /// 幂等键随草稿持久化：丢响应后可安全重放。
   @override
   bool get formDraftCanReplaySubmission => true;
@@ -214,6 +228,7 @@ class _ProductionFinishedArrivalRegistrationPageState
       restoreWeightEntryDraft(row.weight, item['weight']);
       if (item['selected'] == true) _grid.setSelected([row], true);
     }
+    _ensureWeightParams();
     if (mounted) setState(() {});
   }
 
@@ -222,8 +237,11 @@ class _ProductionFinishedArrivalRegistrationPageState
   /// 页面级单重参数缓存(build 里 watch，离开页面释放)。
   WeightParamsCache get _weightCache => ref.read(weightParamsCacheProvider);
 
-  WeightParams? _paramsOf(_FinishedArrivalLine row) =>
-      _weightCache.of(row.goodsId);
+  WeightParams? _paramsOf(_FinishedArrivalLine row) => _weightCache.of(
+    row.goodsId,
+    warehouseId: row.warehouseId,
+    colorId: row.colorId,
+  );
 
   /// 单位 -> 重量单位(报工单位本身按重量计时精确换算)。
   Map<String, WeightUnit> get _massUnits =>
@@ -234,7 +252,12 @@ class _ProductionFinishedArrivalRegistrationPageState
     if (!mounted) return;
     unawaited(
       _weightCache.ensure([
-        for (final row in _grid.rows) WeightParamsLine(goodsId: row.goodsId),
+        for (final row in _grid.rows)
+          WeightParamsLine(
+            goodsId: row.goodsId,
+            warehouseId: row.warehouseId,
+            colorId: row.colorId,
+          ),
       ]),
     );
   }
@@ -382,6 +405,7 @@ class _ProductionFinishedArrivalRegistrationPageState
         target.setWarehouse(picked.id);
       }
     });
+    _ensureWeightParams();
     ref
         .read(
           inboundWarehouseFillMemoryProvider(

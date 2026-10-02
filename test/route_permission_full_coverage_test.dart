@@ -106,12 +106,12 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
     Perm.productionExecutionView,
     Perm.productionExecutionStart,
   ],
-  // 2026-09-28 车间内料仓 (ADR-131) 五页: 内料仓页与用量报表只要查看码 (任一),
-  // 组合门槛为空; 发料、盘点、设置三页要求本码本身。
+  // 车间内料仓 (ADR-131) 五页: 总览可凭查看或设置码进入，用量报表仍只认查看码。
+  // 发料、设置要求本码，周期盘点允许录入或仓库审核码。
   '/workshop-material/bin': [],
   '/reports/workshop-material': [],
   '/workshop-material/issue': [Perm.workshopMaterialIssue],
-  '/workshop-material/count': [Perm.workshopMaterialCount],
+  '/workshop-material/count': [],
   '/warehouse/workshop-material/setup': [Perm.workshopMaterialSetup],
 
   // 2026-09-27 AI 服务设置(ADR-133): 沿用 /admin/* 的 authorization:manage 单一守卫,
@@ -128,6 +128,16 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
 /// 库存分析是管理口径 (呆滞/供应商少数)，只给 stock_report:view；
 /// 独立称重计数页库存查看即可进 (保存抽样的称样权限由页面与后端另行把关)。
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  '/workshop-material/count': [
+    Perm.workshopMaterialCount,
+    Perm.stockCountWarehouseReview,
+  ],
+  '/stock/count-requests': [Perm.stockCountSubmit],
+  '/finance/stock-count-review': [Perm.stockCountFinanceReview],
+  '/warehouse/stock-count-review': [Perm.stockCountWarehouseReview],
+  // 即时库存两页：列表页走 /stock/ 前缀的 stockView 守卫，总览页同码精确登记。
+  '/stock/instant-inventory': [Perm.stockView],
+  '/stock/instant-inventory/overview': [Perm.stockView],
   '/warehouse/insights': [Perm.stockReportView],
   '/warehouse/weigh-count': [Perm.stockView],
 };
@@ -195,14 +205,17 @@ void main() {
         expect(guarded, contains(_samplePath(route.key)));
       }
       // 组合门槛为空的已核对路径, 单独锁住它的「任一」守卫。
-      for (final path in const [
-        '/workshop-material/bin',
-        '/reports/workshop-material',
-      ]) {
+      for (final entry in const {
+        '/workshop-material/bin': [
+          Perm.workshopMaterialView,
+          Perm.workshopMaterialSetup,
+        ],
+        '/reports/workshop-material': [Perm.workshopMaterialView],
+      }.entries) {
         expect(
-          requiredAnyPermFor(path),
-          orderedEquals(const [Perm.workshopMaterialView]),
-          reason: '$path 不得放松查看守卫',
+          requiredAnyPermFor(entry.key),
+          orderedEquals(entry.value),
+          reason: '${entry.key} 不得放松或混用库存查看与设置权限',
         );
       }
       for (final route in _reviewedNewAnyGuardedRoutes.entries) {
@@ -269,7 +282,10 @@ void main() {
       addTearDown(container.dispose);
       final router = container.read(appRouterProvider);
       const expected = {
+        '/stock/instant-inventory/overview?includeDefective=false':
+            'stock-instant-inventory-overview',
         '/warehouse/insights': 'warehouse-insights',
+        '/warehouse/stock-count-review': 'warehouse-stock-count-review',
         '/warehouse/insights?segment=learning': 'warehouse-insights',
         '/warehouse/weigh-count': 'warehouse-weigh-count',
         '/warehouse/CHECK/new': 'stock-doc-new',

@@ -1,9 +1,13 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.docnumber.DocNumberPrefix;
+import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.stock.StockService;
+import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMachineService;
@@ -17,6 +21,7 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.DirectIs
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.DirectIssueRequest;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.FulfilLine;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.FulfilRequest;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.MaterialSetup;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.MachineBatchCreate;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.OtherIssueRequest;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.LeafStockView;
@@ -32,6 +37,8 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.StartCou
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.Supplement;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.VersionRequest;
 import com.uten.imp.application.port.WorkshopMaterialChoicePort;
+import com.uten.imp.application.port.ProductionMutationFootprintPort;
+import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialOtherIssueService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPeriodService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPositionQueryService;
@@ -48,6 +55,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.math.BigDecimal;
@@ -58,6 +67,12 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -93,6 +108,10 @@ class WorkshopMaterialIssuePostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired DataSource dataSource;
     @Autowired StockDocService stock;
+    @Autowired StockService stockMovements;
+    @Autowired PlatformTransactionManager transactionManager;
+    @Autowired FulfillmentMutationLocks mutationLocks;
+    @Autowired ProductionMutationFootprintPort mutationFootprints;
     @Autowired WorkshopMaterialSettingsService settings;
     @Autowired WorkshopMaterialRequisitionService requisitions;
     @Autowired WorkshopMaterialOtherIssueService otherIssues;
@@ -201,6 +220,276 @@ class WorkshopMaterialIssuePostgresTest {
     // =============================================================================================
     // 车间申请、按申请发、退回点收、其它耗用、作废
     // =============================================================================================
+
+    @Test
+    void concurrentRequestsWaitForInventoryWithoutHoldingGoodsAndBothPost() throws Exception {
+        Shop shop = shop("parallel-issue");
+        UUID material = granule(shop, "并发发料", shop.leafA());
+        otherIn(shop, shop.leafA(), material, "100", "10");
+        UUID bin = enable(shop, BusinessTime.today());
+        fixture.loginAs(shop.workshopUser());
+        RequisitionView first = requisitions.create(new RequisitionCreate("ISSUE", shop.workshop(),
+                List.of(new RequisitionLineInput(material, null, new BigDecimal("10"), null)), null, key("parallel-one")));
+        RequisitionView second = requisitions.create(new RequisitionCreate("ISSUE", shop.workshop(),
+                List.of(new RequisitionLineInput(material, null, new BigDecimal("10"), null)), null, key("parallel-two")));
+        CountDownLatch held = new CountDownLatch(1), release = new CountDownLatch(1);
+        String one = key("parallel-one-session"), two = key("parallel-two-session");
+        try (var pool = Executors.newFixedThreadPool(3)) {
+            var blocker = pool.submit(() -> transaction(shop, key("inventory-blocker"), () -> {
+                stockMovements.lockInventory(List.of(new InventoryKey(material, null)));
+                held.countDown(); await(release); return true;
+            }));
+            try {
+                assertTrue(held.await(20, TimeUnit.SECONDS));
+                var a = pool.submit(() -> transaction(shop, one, () -> fulfilTen(shop, first)));
+                var b = pool.submit(() -> transaction(shop, two, () -> fulfilTen(shop, second)));
+                awaitInventoryWaiters(List.of(one, two));
+                assertDoesNotThrow(() -> db.queryForObject("SELECT id FROM goods WHERE id=? FOR UPDATE NOWAIT",
+                        UUID.class, material), "等待库存的申请不能先拿 goods 共享锁, 否则库存持有者会在入库升级时成环");
+                release.countDown();
+                assertEquals("DONE", a.get(30, TimeUnit.SECONDS).status());
+                assertEquals("DONE", b.get(30, TimeUnit.SECONDS).status());
+                assertTrue(blocker.get(30, TimeUnit.SECONDS));
+            } finally { release.countDown(); }
+        }
+        balance(bin, material, "20", "200");
+        balance(shop.leafA(), material, "80", "800");
+    }
+
+    @Test
+    void firstMaterialSetupWaitsBehindOrdinaryInboundWithoutLockingGoodsEarly() throws Exception {
+        Shop shop = shop("parallel-setup");
+        UUID material = orderMaterial(shop, "首次设置与普通入库并发");
+        otherIn(shop, shop.leafA(), material, "100", "10");
+        UUID bin = enable(shop, BusinessTime.today());
+        fixture.loginAs(shop.workshopUser());
+        RequisitionView request = requisitions.create(new RequisitionCreate("ISSUE", shop.workshop(),
+                List.of(new RequisitionLineInput(material, null, new BigDecimal("20"), null)), null, key("parallel-setup-request")));
+        var command = new FulfilRequest(request.rowVersion(), List.of(new FulfilLine(request.lines().getFirst().id(),
+                shop.leafA(), new BigDecimal("20"))), null, key("parallel-setup-command"),
+                List.of(new MaterialSetup(material, goodsVersion(material), "OWN")));
+        fixture.loginAs(shop.admin());
+        var inboundDraft = new StockDocSaveRequest();
+        inboundDraft.setDocType("OTHER_IN");
+        inboundDraft.setWarehouseId(shop.leafA());
+        inboundDraft.setBillDate(BusinessTime.today());
+        inboundDraft.setItems(List.of(line(shop, material, "10", "10")));
+        UUID inboundId = stock.create(inboundDraft).getId();
+        CountDownLatch held = new CountDownLatch(1), continueInbound = new CountDownLatch(1);
+        String setupSession = key("setup-session");
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var inbound = pool.submit(() -> transaction(shop, key("inbound-session"), () -> {
+                // 与 StockDocService.approve 使用相同的来源前缀 -> 库存范围，不能先裸锁库存
+                // 再临时建单/审核并追加来源前缀，否则夹具自己先触发正式锁序守卫。
+                mutationLocks.acquire(() -> mutationFootprints.forStockDocuments(List.of(inboundId))).verifyUnchanged();
+                held.countDown(); await(continueInbound);
+                stock.approve(inboundId); return true;
+            }));
+            try {
+                assertTrue(held.await(20, TimeUnit.SECONDS));
+                var issue = pool.submit(() -> transaction(shop, setupSession,
+                        () -> requisitionController.fulfil(request.id(), command)));
+                awaitInventoryWaiters(List.of(setupSession));
+                assertDoesNotThrow(() -> db.queryForObject("SELECT id FROM goods WHERE id=? FOR UPDATE NOWAIT",
+                        UUID.class, material), "首次设置不能在等待库存前锁住普通入库即将更新的 goods");
+                continueInbound.countDown();
+                assertTrue(inbound.get(30, TimeUnit.SECONDS));
+                assertEquals("DONE", issue.get(30, TimeUnit.SECONDS).status());
+            } finally { continueInbound.countDown(); }
+        }
+        assertEquals("PERIODIC", issueMethod(material));
+        balance(bin, material, "20", "200");
+        balance(shop.leafA(), material, "90", "900");
+    }
+
+    @Test
+    void directIssuesForDifferentColorsAcquireExclusiveGoodsWithoutSharedLockUpgrade() throws Exception {
+        Shop shop = shop("parallel-colors");
+        UUID material = granule(shop, "同料不同色并发", shop.leafA());
+        UUID black = materialColor("并发黑"), white = materialColor("并发白");
+        otherInColor(shop, shop.leafA(), material, black, "40", "10");
+        otherInColor(shop, shop.leafA(), material, white, "60", "20");
+        UUID bin = enable(shop, BusinessTime.today());
+
+        // 同日同前缀取号在真实事务中持有 sequence 行锁，会把两个 directIssue 提前串行化。
+        // 仅对这个局部服务预分配不同日期的两个合法单号，排除正交取号串行。即使 Java
+        // 不取号，INSERT 的编号登记触发器仍会推进号码对应日期的 sequence 行，因此日期也须分开。
+        // 库存、SQL、编号登记触发器、
+        // 审核、估价和 outer TransactionTemplate 均真实，应用里的全局服务不作替换。
+        var local = beans.createBean(WorkshopMaterialRequisitionService.class);
+        var allocated = new ConcurrentLinkedQueue<>(List.of(
+                allocateIssueNumber(BusinessTime.today().minusDays(1)),
+                allocateIssueNumber(BusinessTime.today().minusDays(2))));
+        DocNumberService numbers = org.mockito.Mockito.mock(DocNumberService.class);
+        org.mockito.Mockito.when(numbers.nextNumber(DocNumberPrefix.WORKSHOP_MATERIAL_ISSUE))
+                .thenAnswer(ignored -> {
+                    String value = allocated.poll();
+                    assertNotNull(value, "夹具只允许两笔真实直接发料");
+                    return value;
+                });
+        ReflectionTestUtils.setField(local, "docNumbers", numbers);
+        assertSame(numbers, ReflectionTestUtils.getField(local, "docNumbers"));
+        CountDownLatch inventoryHeld = new CountDownLatch(2), start = new CountDownLatch(1);
+        String firstSession = key("color-black-session"), secondSession = key("color-white-session");
+        var firstCommand = new DirectIssueRequest(shop.workshop(), shop.worker(),
+                List.of(new DirectIssueLine(material, black, null, new BigDecimal("10"), shop.leafA())),
+                null, key("direct-black"));
+        var secondCommand = new DirectIssueRequest(shop.workshop(), shop.worker(),
+                List.of(new DirectIssueLine(material, white, null, new BigDecimal("20"), shop.leafA())),
+                null, key("direct-white"));
+        try (Connection gate = dataSource.getConnection()) {
+            gate.setAutoCommit(false);
+            try (var statement = gate.prepareStatement("SELECT id FROM goods WHERE id=? FOR SHARE")) {
+                statement.setObject(1, material);
+                statement.executeQuery().close();
+            }
+            try (var pool = Executors.newFixedThreadPool(2)) {
+                var first = pool.submit(() -> transaction(shop, firstSession, () -> {
+                    stockMovements.lockInventory(List.of(new InventoryKey(material, black)));
+                    inventoryHeld.countDown(); await(start);
+                    return local.directIssue(firstCommand);
+                }));
+                var second = pool.submit(() -> transaction(shop, secondSession, () -> {
+                    stockMovements.lockInventory(List.of(new InventoryKey(material, white)));
+                    inventoryHeld.countDown(); await(start);
+                    return local.directIssue(secondCommand);
+                }));
+                try {
+                    assertTrue(inventoryHeld.await(20, TimeUnit.SECONDS), "两色库存维度必须都先取得，不能被同一库存锁串行掩盖");
+                    start.countDown();
+                    awaitGoodsWaiters(List.of(firstSession, secondSession), List.of(first, second));
+                    // 此时两条路径都确实到了 goods 锁，才放开共享屏障。旧路径各持有
+                    // 明细 FK / goods SHARE 再升级 UPDATE 会成环；新路径直接 UPDATE 依次完成。
+                    gate.commit();
+                    assertEquals("DONE", first.get(30, TimeUnit.SECONDS).status());
+                    assertEquals("DONE", second.get(30, TimeUnit.SECONDS).status());
+                } finally {
+                    start.countDown();
+                    gate.rollback();
+                }
+            }
+        } finally {
+            beans.destroyBean(local);
+        }
+        colorBalance(bin, material, black, "10", "100");
+        colorBalance(bin, material, white, "20", "400");
+        colorBalance(shop.leafA(), material, black, "30", "300");
+        colorBalance(shop.leafA(), material, white, "40", "800");
+        assertEquals(2, db.queryForObject("""
+                SELECT count(*) FROM workshop_material_requisitions
+                WHERE workshop_department_id=? AND origin='WAREHOUSE_DIRECT' AND status='DONE'
+                """, Integer.class, shop.workshop()));
+    }
+
+    @Test
+    void ordinaryWeightMaterialCanBeRequestedAndFirstIssueRequiresAuthorizedAtomicSetup() {
+        Shop shop = shop("first-issue");
+        UUID material = orderMaterial(shop, "尚未设置用途的颗粒");
+        fixture.insertBom(shop.world().goodsA(), material, "0.02");
+        otherIn(shop, shop.leafA(), material, "100", "10");
+        UUID bin = enable(shop, BusinessTime.today());
+        fixture.loginAs(shop.workshopUser());
+        RequisitionView request = requisitionController.create(new RequisitionCreate("ISSUE", shop.workshop(),
+                List.of(new RequisitionLineInput(material, null, new BigDecimal("20"), null)), null, key("first-request")));
+        assertEquals("ORDER", request.lines().getFirst().issueMethod());
+        assertEquals("ORDER", issueMethod(material));
+        assertTrue(hardGate(shop.world().goodsA(), material), "申请不修改全局 BOM");
+        balance(shop.leafA(), material, "100", "1000");
+        long goodsVersion = goodsVersion(material);
+        var setup = List.of(new MaterialSetup(material, goodsVersion, "OWN"));
+        var line = new FulfilLine(request.lines().getFirst().id(), shop.leafA(), new BigDecimal("20"));
+
+        fixture.loginAs(shop.warehouseUser());
+        assertTrue(assertThrows(ApiException.class, () -> requisitionController.fulfil(request.id(),
+                new FulfilRequest(request.rowVersion(), List.of(line), null, key("missing-setup"))))
+                .getMessage().contains("首次发料需确认用途"));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, () -> requisitionController.fulfil(
+                request.id(), new FulfilRequest(request.rowVersion(), List.of(line), null, key("denied-setup"), setup)));
+        assertEquals("ORDER", issueMethod(material), "仓管发料权限不能越权变成主档编辑权限");
+
+        fixture.loginAs(shop.admin());
+        assertThrows(ApiException.class, () -> requisitionController.fulfil(request.id(), new FulfilRequest(
+                request.rowVersion(), List.of(new FulfilLine(line.lineId(), shop.leafA(), new BigDecimal("200"))),
+                null, key("shortage-setup"), setup)));
+        assertEquals("ORDER", issueMethod(material), "库存不足时首次用途设置也必须回滚");
+        assertEquals(goodsVersion, goodsVersion(material));
+        assertTrue(hardGate(shop.world().goodsA(), material), "库存失败不能留下已转换的全局 BOM");
+        assertEquals("PENDING", requisitions.detail(request.id()).status());
+        balance(shop.leafA(), material, "100", "1000");
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND qty<>0",
+                Integer.class, bin, material));
+
+        FulfilRequest command = new FulfilRequest(request.rowVersion(), List.of(line), null, key("setup-and-issue"), setup);
+        RequisitionView done = requisitionController.fulfil(request.id(), command);
+        assertEquals("DONE", done.status());
+        assertEquals("PERIODIC", done.lines().getFirst().issueMethod());
+        assertFalse(hardGate(shop.world().goodsA(), material));
+        balance(bin, material, "20", "200");
+        assertEquals(openPeriod(bin), done.documents().getFirst().periodId());
+        assertEquals(done.id(), requisitionController.fulfil(request.id(), command).id());
+        balance(bin, material, "20", "200");
+        assertEquals(1, db.queryForObject("""
+                SELECT count(*) FROM workshop_material_requisition_postings posting
+                JOIN workshop_material_requisition_lines line ON line.id=posting.line_id
+                WHERE line.requisition_id=?""", Integer.class, request.id()));
+    }
+
+    @Test
+    void firstSetupCannotEditAnotherMaterialOrApplyAfterItsVersionChanged() {
+        Shop shop = shop("setup-scope");
+        UUID first = orderMaterial(shop, "本次发的颗粒"), other = orderMaterial(shop, "这次不发的颗粒");
+        enable(shop, BusinessTime.today());
+        fixture.loginAs(shop.workshopUser());
+        RequisitionView request = requisitionController.create(new RequisitionCreate("ISSUE", shop.workshop(),
+                List.of(new RequisitionLineInput(first, null, BigDecimal.ONE, null),
+                        new RequisitionLineInput(other, null, BigDecimal.ONE, null)), null, key("setup-scope-request")));
+        UUID line = request.lines().stream().filter(row -> row.goodsId().equals(first)).findFirst().orElseThrow().id();
+        List<FulfilLine> selected = List.of(new FulfilLine(line, shop.leafA(), BigDecimal.ONE));
+        fixture.loginAs(shop.admin());
+        assertTrue(assertThrows(ApiException.class, () -> requisitionController.fulfil(request.id(),
+                new FulfilRequest(request.rowVersion(), selected, null, key("unselected-setup"),
+                        List.of(new MaterialSetup(other, goodsVersion(other), "OWN")))))
+                .getMessage().contains("只能确认本次实际发料"));
+        assertThrows(ApiException.class, () -> requisitionController.fulfil(request.id(),
+                new FulfilRequest(request.rowVersion(), selected, null, key("stale-setup"),
+                        List.of(new MaterialSetup(first, goodsVersion(first) + 1, "OWN")))));
+        db.update("UPDATE goods SET status='禁用' WHERE id=?", first);
+        assertThrows(ApiException.class, () -> requisitionController.fulfil(request.id(),
+                new FulfilRequest(request.rowVersion(), selected, null, key("disabled-goods-setup"),
+                        List.of(new MaterialSetup(first, goodsVersion(first), "OWN")))));
+        db.update("UPDATE goods SET status='使用' WHERE id=?", first);
+        db.update("UPDATE units SET status='禁用' WHERE id=?", shop.kg());
+        assertThrows(ApiException.class, () -> requisitionController.fulfil(request.id(),
+                new FulfilRequest(request.rowVersion(), selected, null, key("disabled-unit-setup"),
+                        List.of(new MaterialSetup(first, goodsVersion(first), "OWN")))));
+        db.update("UPDATE units SET status='使用' WHERE id=?", shop.kg());
+        assertEquals("ORDER", issueMethod(first));
+        assertEquals("ORDER", issueMethod(other));
+        assertEquals("PENDING", requisitions.detail(request.id()).status());
+    }
+
+    @Test
+    void requestsStillRejectNonMassReturnsAndStaleBaseUnits() {
+        Shop shop = shop("request-unit");
+        UUID material = orderMaterial(shop, "申请单位要保留的颗粒");
+        enable(shop, BusinessTime.today());
+        fixture.loginAs(shop.workshopUser());
+        assertThrows(ApiException.class, () -> requisitionController.create(new RequisitionCreate("ISSUE", shop.workshop(),
+                List.of(new RequisitionLineInput(shop.world().goodsD(), null, BigDecimal.ONE, null)), null, key("non-mass"))));
+        assertThrows(ApiException.class, () -> requisitionController.create(new RequisitionCreate("RETURN", shop.workshop(),
+                List.of(new RequisitionLineInput(material, null, BigDecimal.ONE, null)), null, key("order-return"))));
+        RequisitionView request = requisitionController.create(new RequisitionCreate("ISSUE", shop.workshop(),
+                List.of(new RequisitionLineInput(material, null, BigDecimal.ONE, null)), null, key("unit-request")));
+        fixture.loginAs(shop.admin());
+        db.update("UPDATE goods SET unit_id=?,unit_legacy_id=(SELECT legacy_id FROM units WHERE id=?) WHERE id=?",
+                shop.world().unitId(), shop.world().unitId(), material);
+        ApiException changed = assertThrows(ApiException.class, () -> requisitionController.fulfil(request.id(),
+                new FulfilRequest(request.rowVersion(), List.of(new FulfilLine(request.lines().getFirst().id(),
+                        shop.leafA(), BigDecimal.ONE)), null, key("unit-changed"),
+                        List.of(new MaterialSetup(material, goodsVersion(material), "OWN")))));
+        assertTrue(changed.getMessage().contains("基本单位已变化"), changed.getMessage());
+        assertEquals("PENDING", requisitions.detail(request.id()).status());
+    }
 
     @Test
     void requestIsNotifiedOnlyToTheLeafKeeperAndFulfilReturnOtherIssueAndCancelWork() {
@@ -659,6 +948,144 @@ class WorkshopMaterialIssuePostgresTest {
 
     private UUID granule(Shop shop, String name, UUID owningWarehouse) {
         return granule(shop, name, owningWarehouse, "OWN");
+    }
+
+    private UUID orderMaterial(Shop shop, String name) {
+        UUID id = UUID.randomUUID();
+        int legacy = db.queryForObject("SELECT legacy_id FROM units WHERE id=?", Integer.class, shop.kg());
+        db.update("""
+                INSERT INTO goods(id,code,name,source_type,status,unit_id,unit_legacy_id,price,code_sequence,
+                                  owning_warehouse_id,min_qty)
+                VALUES (?,?,?,'采购','使用',?,?,10,(SELECT coalesce(max(code_sequence),0)+1 FROM goods),?,0)
+                """, id, "WM-ORDER-" + id.toString().substring(0, 8), name, shop.kg(), legacy, shop.leafA());
+        return id;
+    }
+
+    private RequisitionView fulfilTen(Shop shop, RequisitionView request) {
+        return requisitionController.fulfil(request.id(), new FulfilRequest(request.rowVersion(),
+                List.of(new FulfilLine(request.lines().getFirst().id(), shop.leafA(), new BigDecimal("10"))), null, key("parallel-fulfil")));
+    }
+
+    private <T> T transaction(Shop shop, String session, Supplier<T> work) {
+        fixture.loginAs(shop.admin());
+        try {
+            var transaction = new TransactionTemplate(transactionManager);
+            transaction.setTimeout(40);
+            return transaction.execute(status -> {
+                db.queryForObject("SELECT set_config('application_name',?,true)", String.class, session);
+                db.execute("SET LOCAL lock_timeout='20s'");
+                return work.get();
+            });
+        } finally { SecurityContextHolder.clearContext(); }
+    }
+
+    private void awaitInventoryWaiters(List<String> sessions) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (System.nanoTime() < deadline) {
+            Integer waiting = db.queryForObject("""
+                    SELECT count(*) FROM pg_stat_activity
+                    WHERE application_name = ANY(string_to_array(?, ','))
+                      AND wait_event_type='Lock' AND wait_event='advisory'
+                    """, Integer.class, String.join(",", sessions));
+            if (waiting != null && waiting == sessions.size()) return;
+            Thread.sleep(20);
+        }
+        fail("并发请求没有按预期等待共同库存锁");
+    }
+
+    private void awaitGoodsWaiters(List<String> sessions, List<? extends Future<?>> workers) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (System.nanoTime() < deadline) {
+            for (int index = 0; index < workers.size(); index++) {
+                if (!workers.get(index).isDone()) continue;
+                try {
+                    Object result = workers.get(index).get();
+                    fail("并发会话在 goods 屏障释放前提前完成: " + sessions.get(index) + " -> " + result);
+                } catch (java.util.concurrent.ExecutionException error) {
+                    throw new AssertionError("并发会话在 goods 锁前失败: " + sessions.get(index)
+                            + "; PostgreSQL waiters=" + goodsWaitDiagnostics(sessions), error.getCause());
+                }
+            }
+            Integer waiting = db.queryForObject("""
+                    SELECT count(*) FROM pg_stat_activity
+                    WHERE application_name = ANY(string_to_array(?, ','))
+                      AND wait_event_type='Lock' AND wait_event IN ('transactionid','tuple')
+                      AND query ILIKE '%goods%' AND query ILIKE '%FOR UPDATE%'
+                    """, Integer.class, String.join(",", sessions));
+            if (waiting != null && waiting == sessions.size()) return;
+            Thread.sleep(20);
+        }
+        fail("两种颜色的直接发料未同时到达 goods UPDATE 锁，不能证明不存在共享锁升级; PostgreSQL waiters="
+                + goodsWaitDiagnostics(sessions));
+    }
+
+    private List<java.util.Map<String, Object>> goodsWaitDiagnostics(List<String> sessions) {
+        return db.queryForList("""
+                SELECT application_name, state, wait_event_type, wait_event,
+                       pg_blocking_pids(pid) AS blocking_pids, left(query, 700) AS query
+                FROM pg_stat_activity WHERE application_name = ANY(string_to_array(?, ','))
+                ORDER BY application_name
+                """, String.join(",", sessions));
+    }
+
+    private String allocateIssueNumber(LocalDate date) {
+        return db.queryForObject("""
+                WITH allocated AS (
+                    INSERT INTO business_document_sequences(namespace_key,sequence_date,last_seq)
+                    VALUES ('WORKSHOP_MATERIAL_ISSUE',?,1)
+                    ON CONFLICT(namespace_key,sequence_date)
+                    DO UPDATE SET last_seq=business_document_sequences.last_seq+1
+                    RETURNING namespace_key,sequence_date,last_seq
+                )
+                SELECT namespace.fixed_prefix || to_char(allocated.sequence_date,'YYYYMMDD')
+                       || lpad(allocated.last_seq::text,6,'0')
+                FROM allocated JOIN business_identifier_namespaces namespace USING(namespace_key)
+                """, String.class, date);
+    }
+
+    private UUID materialColor(String name) {
+        UUID color = UUID.randomUUID();
+        db.update("INSERT INTO colors(id,code,name,status) VALUES (?,?,?,'使用')", color,
+                "WM-C-" + color.toString().substring(0, 8), name + "-" + color.toString().substring(0, 4));
+        return color;
+    }
+
+    private void otherInColor(Shop shop, UUID warehouse, UUID goods, UUID color, String qty, String price) {
+        fixture.loginAs(shop.admin());
+        var request = new StockDocSaveRequest();
+        request.setDocType("OTHER_IN");
+        request.setWarehouseId(warehouse);
+        request.setBillDate(BusinessTime.today());
+        StockDocItemLine material = line(shop, goods, qty, price);
+        material.setColorId(color);
+        request.setItems(List.of(material));
+        stock.approve(stock.create(request).getId());
+    }
+
+    private void colorBalance(UUID warehouse, UUID goods, UUID color, String qty, String amount) {
+        var row = db.queryForMap("""
+                SELECT qty, amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id=?
+                """, warehouse, goods, color);
+        money(qty, (BigDecimal) row.get("qty"));
+        money(amount, (BigDecimal) row.get("amount_local"));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try { assertTrue(latch.await(30, TimeUnit.SECONDS), "等待并发夹具释放"); }
+        catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new AssertionError(error); }
+    }
+
+    private String issueMethod(UUID goods) {
+        return db.queryForObject("SELECT issue_method FROM goods WHERE id=?", String.class, goods);
+    }
+
+    private long goodsVersion(UUID goods) {
+        return db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, goods);
+    }
+
+    private boolean hardGate(UUID product, UUID material) {
+        return Boolean.TRUE.equals(db.queryForObject("SELECT hard_gate FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",
+                Boolean.class, product, material));
     }
 
     private UUID granule(Shop shop, String name, UUID owningWarehouse, String basis) {

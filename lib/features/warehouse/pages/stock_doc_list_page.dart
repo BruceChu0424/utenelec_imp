@@ -542,7 +542,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                               ),
                             ),
                             const Spacer(),
-                            if (_canCreate)
+                            if (_canCreate &&
+                                !(seg?.status == 0 && seg?.history != true))
                               UtenButton(
                                 type: UtenButtonType.tonal,
                                 icon: Icons.add_rounded,

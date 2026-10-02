@@ -142,6 +142,47 @@ Future<void> _pumpPendingOrder(
 }
 
 void main() {
+  testWidgets('按总金额计价显示完整参考单价及服务端真实总金额', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final detail = _pendingOrderDetail();
+    detail['items'] = [
+      {
+        ...(detail['items'] as List).first as Map<String, dynamic>,
+        'qty': 3000,
+        'priceExact': '0.0333333333',
+        'totalAmountInputExact': '100.000000000000000001',
+        'amountOriginalExact': '100.000000000000000001',
+      },
+    ];
+    await _pumpPendingOrder(
+      tester,
+      _api(
+        (request) => request.path.contains('/subcontract/orders/order-1')
+            ? detail
+            : <Object?>[],
+      ),
+      permissions: const {
+        Perm.subcontractOrderView,
+        Perm.subcontractOrderPriceView,
+      },
+    );
+    final table = tester.widget<MasterDataTableView<SubcontractDocItem>>(
+      find.byType(MasterDataTableView<SubcontractDocItem>),
+    );
+    final row = table.items.first;
+    final price = table.columns.singleWhere((column) => column.key == 'price');
+    final amount = table.columns.singleWhere(
+      (column) => column.key == 'amount',
+    );
+    expect(price.value(row), '0.0333333333（参考）');
+    expect(price.info, contains('结算按单据记录的总金额'));
+    expect(amount.label, '总金额');
+    expect(amount.value(row), '100.000000000000000001');
+  });
+
   testWidgets('委外订货详情(财务待审)完整渲染且始终只读，body 不被底栏挤没', (tester) async {
     tester.view.physicalSize = const Size(1200, 1800);
     tester.view.devicePixelRatio = 1;

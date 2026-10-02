@@ -1,5 +1,8 @@
 // 生产计划单编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
+// 2026-10-01 恢复手工空白新建：新建态直接 repo.create 落服务端 status=0 草稿，
+// 手工来源三要素（类型/需求编号/原因）落行级 sourceDocNo/requestNote 留底；
+// 销售单来源的计划仍走物料分析下达（ADR-099 漏斗不变，两条入口并存）。
 // 与销售/采购编辑页同构（统一模板：UtenFormGrid 表头 + UtenDateField 日期 + UtenEditableGrid 明细）。
 // 生产计划特点：
 //   - 无币种/供应商/金额（数量驱动）：只报排产量合计，挂在明细表尾（按单位分组，不跨单位相加）。
@@ -53,7 +56,6 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
 import '../providers/production_department_provider.dart';
-import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/plan_order_import_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -569,6 +571,14 @@ class _ProductionPlanEditPageState
         if (r.salesOrderNo.text.trim().isNotEmpty)
           'salesOrderNo': r.salesOrderNo.text.trim(),
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
+        // 2026-10-01 手工直接建单：手工行的来源三要素（类型/需求编号/原因）
+        // 落行级文本留底（sourceDocNo/requestNote），供后续追溯同一需求编号。
+        if (widget.id == null && r.salesOrderItemId == null) ...{
+          'sourceDocNo': _manualSourceRef.text.trim(),
+          'requestNote':
+              '手工来源: ${_manualSourceOptions[_manualSourceType] ?? '其他'}; '
+              '原因: ${_manualSourceReason.text.trim()}',
+        },
       });
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
@@ -584,55 +594,16 @@ class _ProductionPlanEditPageState
       if (_remark.text.trim().isNotEmpty) 'remark': _remark.text.trim(),
       'items': itemsBody,
     };
-    if (widget.id == null) {
-      final sources = <MaterialAnalysisSourceInput>[
-        for (final row in effectiveRows)
-          MaterialAnalysisSourceInput(
-            salesOrderItemId: row.salesOrderItemId,
-            sourceType: row.salesOrderItemId == null ? _manualSourceType : null,
-            sourceRef: row.salesOrderItemId == null
-                ? _manualSourceRef.text.trim()
-                : null,
-            goodsId: row.salesOrderItemId == null ? row.goods!.id : null,
-            colorId: row.salesOrderItemId == null ? row.colorId : null,
-            unitId: row.salesOrderItemId == null ? row.unitId : null,
-            requestedQty: double.parse(row.qty.text),
-            initialAllowedOverproductionRate: _prefilledRates.submitted(
-              row.overproductionPercent,
-            ),
-            sourceReason: row.salesOrderItemId == null
-                ? _manualSourceReason.text.trim()
-                : null,
-            deliveryDate: row.outboundDate?.trim().isNotEmpty == true
-                ? row.outboundDate
-                : _deliveryDate == null
-                ? null
-                : _fmt(_deliveryDate!),
-            initialProductNo: row.productNo.text.trim().isEmpty
-                ? null
-                : row.productNo.text.trim(),
-          ),
-      ];
-      await context.push(
-        RouteName.productionMaterialAnalysis,
-        extra: ProductionMaterialAnalysisSeed(
-          billDate: _fmt(_billDate),
-          deliveryDate: _deliveryDate == null ? null : _fmt(_deliveryDate!),
-          departmentId: _departmentId,
-          workshopName: _workshopName,
-          workerId: _workerId,
-          sources: sources,
-        ),
-      );
-      return;
-    }
-
     setState(() => _saving = true);
     try {
       final repo = ref.read(productionPlanRepositoryProvider);
-      final d = await repo.update(widget.id!, body);
+      // 2026-10-01 恢复手工直接建单（不再跳物料分析带种生成）；
+      // 生成计划仍走物料分析下达（ADR-099 漏斗不变，两条入口并存）。
+      final d = widget.id == null
+          ? await repo.create(body)
+          : await repo.update(widget.id!, body);
       if (!mounted) return;
-      context.appSuccess('已保存');
+      context.appSuccess(widget.id == null ? '已创建生产计划草稿' : '已保存');
       // 草稿计数即时刷新：生产两页不走 bumpListRefresh（它们用 context.replace
       // 直达详情，没有 B 类列表要 bump），所以在这里单独失效一次。
       refreshBadges(ref);
@@ -640,7 +611,9 @@ class _ProductionPlanEditPageState
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+      if (mounted) {
+        context.appError(widget.id == null ? '创建失败，请稍后重试' : '保存失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -944,8 +917,8 @@ class _ProductionPlanEditPageState
                             ),
                           ),
                           // 生产计划附件（图纸/样品图/排产确认）挂 PRODUCTION_PLAN。
-                          // 新建计划走物料分析生成（本页不直接 create），故只有编辑态有附件区；
-                          // 新计划请在生成后的详情/编辑页添加。
+                          // 附件只挂已保存单据（ADR-074）：新建态还没有 UUID，
+                          // 创建成功进详情/编辑页后再添加。
                           if (widget.id != null) ...[
                             const SizedBox(height: UtenSpacing.s12),
                             BusinessAttachmentSection(
@@ -963,6 +936,10 @@ class _ProductionPlanEditPageState
                           // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）。
                           const SizedBox(height: UtenSpacing.s12),
                           UtenEditableGrid<ProductionGridRow>(
+                            columnEditingEnabled:
+                                !_loading &&
+                                !_saving &&
+                                _initializationError == null,
                             tableKey: 'production.plan.items',
                             controller: _grid,
                             stickyHeaderPinned: _gridPinned,
@@ -1036,11 +1013,9 @@ class _ProductionPlanEditPageState
               onCancel: () => popOrBackTo(context, defaultPath: '/production'),
               onSave: _save,
               saving: _saving,
-              // 新建态不直接落库，先去物料分析定料。
-              saveLabel: widget.id == null ? '进入物料分析' : '保存',
-              saveIcon: widget.id == null
-                  ? Icons.insights_outlined
-                  : Icons.save_outlined,
+              // 2026-10-01 新建态同样直接落库（服务端 status=0 草稿），
+              // 保存后进详情可继续编辑、审核或补附件。
+              saveLabel: widget.id == null ? '创建' : '保存',
             ),
     );
   }

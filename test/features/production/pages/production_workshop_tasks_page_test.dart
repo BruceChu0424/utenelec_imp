@@ -217,7 +217,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('等待物料'));
+      await tester.tap(find.text('开工准备'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('产品 C'));
       await tester.pump(const Duration(milliseconds: 50));
@@ -267,7 +267,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('等待物料'));
+        await tester.tap(find.text('开工准备'));
         await tester.pumpAndSettle();
         final label = requested ? '已提交领料 · 待仓库发料' : '物料齐套 · 去领料';
         // 2026-09-27 起状态列不再画胶囊：阶段文案纯文字（正文字号），就绪度
@@ -394,7 +394,7 @@ void main() {
       // 2026-09-06 改版：「可报工」分类退役——等待物料（等料+齐套可开工）、
       // 生产中（正在生产·可报工）、历史任务三段。
       expect(find.text('可报工'), findsNothing);
-      await tester.tap(find.text('等待物料'));
+      await tester.tap(find.text('开工准备'));
       await tester.pumpAndSettle();
 
       // 齐套行状态徽章 + 未齐行锁位（带原因提示；mock 不过滤状态，
@@ -477,7 +477,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('等待物料'));
+    await tester.tap(find.text('开工准备'));
     await tester.pumpAndSettle();
     expect(find.byType(UtenInProgressBadge), findsNothing);
     final before = badges.refreshes;
@@ -526,7 +526,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('等待物料'));
+      await tester.tap(find.text('开工准备'));
       await tester.pumpAndSettle();
       // 2026-09-11 用户口径：这一步是车间自己去仓库领，不是干等仓库送。
       expect(find.text('物料齐套 · 去领料'), findsOneWidget);
@@ -743,7 +743,7 @@ void main() {
     // 分类默认不选：初始不请求列表，点分类才发第一次请求。
     expect(repository.calls, 0);
 
-    await tester.tap(find.text('等待物料'));
+    await tester.tap(find.text('开工准备'));
     await tester.pump();
     expect(repository.calls, 1);
     await selectFilterSegment(tester, '生产中');
@@ -821,7 +821,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 等待物料分类：未齐行仍能问「为什么不能开工」，但没有「查看物料进度」。
-      await tester.tap(find.text('等待物料'));
+      await tester.tap(find.text('开工准备'));
       await tester.pumpAndSettle();
       await _rightClick(tester, find.text('产品 C'));
       expect(_menuEntry('为什么不能开工'), findsOneWidget);
@@ -930,7 +930,7 @@ void batchBusyOverlayTests() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('等待物料'));
+    await tester.tap(find.text('开工准备'));
     await tester.pumpAndSettle();
     await _selectRow(tester, '产品 A');
     return plans;
@@ -1137,7 +1137,7 @@ void routeConfirmationTests() {
     ProductionExecutionWorkbenchRepository? repository,
     _FakePlanRepository? planRepository,
     bool canStart = true,
-    String category = '等待物料',
+    String category = '开工准备',
   }) async {
     await tester.binding.setSurfaceSize(const Size(1800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1775,7 +1775,7 @@ void materialUsageEntryTests() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('等待物料'));
+      await tester.tap(find.text('开工准备'));
       await tester.pumpAndSettle();
       await _rightClick(tester, find.text('产品 A'));
       expect(_menuEntry('申请追加用料'), allowed ? findsOneWidget : findsNothing);
@@ -1828,7 +1828,7 @@ void materialUsageEntryTests() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('等待物料'));
+        await tester.tap(find.text('开工准备'));
         await tester.pumpAndSettle();
         // 2026-09-20：「下一步」格=生产路线下拉（选中即提交）/冻结行的只读徽章，
         // 主操作（含用料入口）在行右键菜单与详情弹窗——这里断言行菜单的用料条目。
@@ -2770,7 +2770,7 @@ void discoveryMaterialTests() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('等待物料'));
+        await tester.tap(find.text('开工准备'));
         await tester.pumpAndSettle();
         expect(find.text(pending ? '待仓库填写物料' : '需要登记领料物料'), findsWidgets);
         await _rightClick(tester, find.text('产品 A'));

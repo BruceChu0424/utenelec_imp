@@ -87,6 +87,19 @@ class _MaterialReturnRequestState
   @override
   bool get formDraftBusy => _locked;
   @override
+  Future<void> Function()? get formDraftReloadSource => _reloadLatestForDraft;
+
+  Future<void> _reloadLatestForDraft() async {
+    _reason.text = '生产余料退仓';
+    _requestKey = null;
+    _frozenReason = null;
+    _frozenItems = null;
+    _submitError = null;
+    await _load();
+    if (_error != null) throw StateError(_error!);
+  }
+
+  @override
   bool get formDraftUseCurrentRoute => false;
   @override
   bool get formDraftUsesRouterGuard => !widget.inPanel;
@@ -551,21 +564,12 @@ class _MaterialReturnRequestState
       key: 'available',
       exactValueOf: (row) => row.source.availableQty.toString(),
       label: '可退数量',
+      headerInfo: '可退数量已扣除待仓库收料数量；有退料限制时，悬停数量可查看原因。',
       width: 100,
       numeric: true,
       cellBuilder: (_, row) => Tooltip(
         message: row.source.returnBlockedReason ?? '可退数量已扣除待仓库收料数量',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_number(row.source.availableQty)),
-            if (row.source.returnBlockedReason != null)
-              const Padding(
-                padding: EdgeInsets.only(left: UtenSpacing.s4),
-                child: Icon(Icons.info_outline, size: 16),
-              ),
-          ],
-        ),
+        child: Text(_number(row.source.availableQty)),
       ),
     ),
     EditableGridColumn(

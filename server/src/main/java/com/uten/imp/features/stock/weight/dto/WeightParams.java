@@ -37,6 +37,7 @@ import java.util.UUID;
  * @param baseUnitDimension   基本单位的计量维度 (COUNT / MASS / ... / null 未登记)
  * @param learningEnabled     是否参与学习
  * @param scaleResKg          秤分辨率 kg (预测公式里的量化误差项)
+ * @param stockBalance        请求实物仓库及精确颜色的库存均重依据; 无有效正数重量余额时为空
  */
 public record WeightParams(
         String key,
@@ -64,5 +65,28 @@ public record WeightParams(
         Double manualConflictPct,
         String baseUnitDimension,
         boolean learningEnabled,
-        double scaleResKg) {
+        double scaleResKg,
+        StockWeightBalance stockBalance) {
+
+    /** 原有货品级调用方不提供库存维度。 */
+    public WeightParams(String key, UUID goodsId, String basis, boolean supplierSpecific, String evidence,
+                        BigDecimal unitWeightKg, Double logMean, Double lotPrior, Double gamma, Double df,
+                        String tier, Double relHalfWidth, Integer nInliers, Integer suggestedSampleSize,
+                        Long exactUpToQty, BigDecimal tolerancePct, BigDecimal defaultTareKg,
+                        BigDecimal lastTareKg, BigDecimal massFactorKg, boolean stale,
+                        OffsetDateTime lastObservedAt, Double drawBiasPct, Double manualConflictPct,
+                        String baseUnitDimension, boolean learningEnabled, double scaleResKg) {
+        this(key, goodsId, basis, supplierSpecific, evidence, unitWeightKg, logMean, lotPrior, gamma, df,
+                tier, relHalfWidth, nInliers, suggestedSampleSize, exactUpToQty, tolerancePct, defaultTareKg,
+                lastTareKg, massFactorKg, stale, lastObservedAt, drawBiasPct, manualConflictPct,
+                baseUnitDimension, learningEnabled, scaleResKg, null);
+    }
+
+    /** 附加独立的库存参考快照, 不改变单重学习的来源或可靠度。 */
+    public WeightParams withStockBalance(StockWeightBalance balance) {
+        return new WeightParams(key, goodsId, basis, supplierSpecific, evidence, unitWeightKg, logMean,
+                lotPrior, gamma, df, tier, relHalfWidth, nInliers, suggestedSampleSize, exactUpToQty,
+                tolerancePct, defaultTareKg, lastTareKg, massFactorKg, stale, lastObservedAt, drawBiasPct,
+                manualConflictPct, baseUnitDimension, learningEnabled, scaleResKg, balance);
+    }
 }

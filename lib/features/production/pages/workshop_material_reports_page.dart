@@ -7,7 +7,7 @@
 //   该谁来补；「立即重试」「重新结算」「撤销结算」只按服务端下发的 allowedActions
 //   显示 (不在页面里判断权限)。撤销结算要再认证：服务端回「需要再认证」时网络层
 //   统一弹密码框，输完原请求自动重发。重试后每 2 秒查一次结算状态，最多 60 秒；
-// - 五个分段：用量表 / 产品用料 / 浪费率趋势 / 缺单重清单 / 收发明细，都用
+// - 五个分段：用量表 / 产品用料 / 耗用差异率趋势 / 缺单重清单 / 收发明细，都用
 //   MasterDataTableView。金额列只在服务端下发了金额时出现 (没有看成本权限的人
 //   收到的金额为空，整列隐藏)。缺单重清单点行直接跳到该产品的组装信息 (BOM) 填单重。
 // - 网络写操作期间由本页持有 UtenBusyOverlay；弹原因框前先撤遮罩。
@@ -22,6 +22,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -91,7 +92,7 @@ class _WorkshopMaterialReportsPageState
   String? _dataError;
   int _dataRequest = 0;
 
-  /// 浪费率趋势当前看的料 (货品 + 颜色)。
+  /// 耗用差异率趋势当前看的料 (货品 + 颜色)。
   String? _trendMaterialKey;
 
   WmReportCloseStatus? _closeStatus;
@@ -645,13 +646,29 @@ class _WorkshopMaterialReportsPageState
   }
 
   Widget _viewBody(BuildContext context, AppLocalizations l10n) {
-    return switch (_view) {
+    final body = switch (_view) {
       WmReportView.usage => _usageTable(l10n),
       WmReportView.product => _productTable(l10n),
       WmReportView.trend => _trendView(context, l10n),
       WmReportView.missing => _missingTable(l10n),
       WmReportView.ledger => _ledgerTable(l10n),
     };
+    if (_view != WmReportView.usage && _view != WmReportView.product) {
+      return body;
+    }
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+          child: UtenInlineNotice(
+            message:
+                '耗用由期初和期末盘点推算；含容器估盘时只能作为估算。'
+                '耗用差异还受单重、漏录及回收料影响，不等于报废率。产品用量为分摊或独占期平均。',
+          ),
+        ),
+        Expanded(child: body),
+      ],
+    );
   }
 
   // ---- 用量表 --------------------------------------------------------------
@@ -697,8 +714,16 @@ class _WorkshopMaterialReportsPageState
         _qtyCol('in', '领入', (r) => r.transferInQty),
         _qtyCol('return', '退回', (r) => r.returnQty),
         _qtyCol('other', '其它耗用', (r) => r.otherIssueQty),
+        _qtyCol('adjustment', '已审核账面修正', (r) => r.adjustmentQty),
         _qtyCol('closing', '期末', (r) => r.closingQty),
-        _qtyCol('actual', '实际', (r) => r.actualQty),
+        _qtyCol('actual', '盘点推算耗用', (r) => r.actualQty),
+        MasterColumnDef(
+          key: 'countEvidence',
+          label: '盘点来源',
+          width: 300,
+          info: '期初沿用上期已提交盘点；满、半、空都属于估盘。称重和袋数也不代表逐产品实测。',
+          value: (r) => r.countEvidenceLabel,
+        ),
         MasterColumnDef(
           key: 'theory',
           label: '理论',
@@ -713,9 +738,9 @@ class _WorkshopMaterialReportsPageState
         MasterColumnDef(
           key: 'wasteRate',
           label: l10n.wmWasteRate,
-          width: 90,
+          width: 125,
           type: 'number',
-          info: '(实际 − 理论) ÷ 理论，只算主料；超出 -30% 到 +50% 标红。',
+          info: '(盘点推算耗用 − 理论) ÷ 理论；含估盘、漏录和单重误差，不能直接当作报废率。超出 -30% 到 +50% 标红。',
           value: (r) => _rate(r.wasteRate),
           cellColor: (context, r) => r.flags.contains('WASTE_OUT_OF_RANGE')
               ? Theme.of(context).colorScheme.errorContainer
@@ -818,15 +843,25 @@ class _WorkshopMaterialReportsPageState
           label: l10n.wmUnitWeightGrams,
           width: 110,
           type: 'number',
-          value: (r) => _grams(r.unitWeightGrams),
+          value: (r) => r.unitWeightGrams == null && r.unitWeightBase != null
+              ? '未设置重量换算'
+              : _grams(r.unitWeightGrams),
+          info: '按材料基本单位的重量档案换成克；没有配置换算时不猜，需维护该单位的重量编码。',
+        ),
+        MasterColumnDef(
+          key: 'materialUnit',
+          label: '材料单位',
+          width: 100,
+          info: '理论和分摊耗用使用此材料基本单位；单个重量与独占期平均换算成克显示。',
+          value: (r) => r.materialUnitName ?? '未提供',
         ),
         _productQtyCol('theory', '理论', (r) => r.theoryQty),
-        _productQtyCol('allocated', '分摊实际', (r) => r.allocatedQty),
+        _productQtyCol('allocated', '分摊耗用', (r) => r.allocatedQty),
         MasterColumnDef(
           key: 'basis',
           label: '口径',
-          width: 130,
-          info: '本期这种料只有这一个产品用，就是真实单耗；否则按理论比例分摊。',
+          width: 150,
+          info: '本期这种料只有一个产品用时给独占期平均耗用，仍受盘点与报工误差影响；多产品按理论比例分摊。',
           value: (r) => r.exclusivePeriod
               ? l10n.wmTrueUnitUsage
               : l10n.wmAllocatedByTheory,
@@ -835,12 +870,22 @@ class _WorkshopMaterialReportsPageState
               : null,
         ),
         MasterColumnDef(
+          key: 'countEvidence',
+          label: '盘点来源',
+          width: 300,
+          value: (r) => r.countEvidenceLabel,
+        ),
+        MasterColumnDef(
           key: 'actualPerUnit',
-          label: '实际 / 完工 (克)',
-          width: 130,
+          label: '独占期平均 (克/件)',
+          width: 155,
           type: 'number',
-          info: '只对真实单耗的行：本期实际用量 ÷ 完工，可与单个重量对比。',
-          value: (r) => r.exclusivePeriod ? _grams(r.actualPerUnitGrams) : '',
+          info: '独占期分摊耗用 ÷ 完工量；含估盘时也是估算值，不是逐件称量的单耗。',
+          value: (r) => !r.exclusivePeriod
+              ? ''
+              : r.actualPerUnitGrams == null && r.actualPerUnitBase != null
+              ? '未设置重量换算'
+              : _grams(r.actualPerUnitGrams),
         ),
         if (showCost) ...[
           MasterColumnDef(
@@ -878,7 +923,7 @@ class _WorkshopMaterialReportsPageState
     );
   }
 
-  // ---- 浪费率趋势 ----------------------------------------------------------
+  // ---- 耗用差异率趋势 ------------------------------------------------------
 
   Widget _trendView(BuildContext context, AppLocalizations l10n) {
     final theme = Theme.of(context);
@@ -889,7 +934,7 @@ class _WorkshopMaterialReportsPageState
     if (all.isEmpty) {
       return Center(
         child: Text(
-          _dataError ?? '还没有已结算的主料浪费率',
+          _dataError ?? '还没有已结算的主料耗用差异率',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: _dataError == null
                 ? theme.colorScheme.onSurfaceVariant
@@ -935,7 +980,8 @@ class _WorkshopMaterialReportsPageState
         ),
         const SizedBox(height: UtenSpacing.s12),
         Text(
-          '${l10n.wmWasteRate}：横轴是每一期的起止日；虚线之外 (低于 -30% 或高于 +50%) 标红。',
+          '${l10n.wmWasteRate}：反映盘点耗用与理论的差额，不等于报废率。'
+          '空心点含容器估盘；低于 -30% 或高于 +50% 标红。',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -962,7 +1008,8 @@ class _WorkshopMaterialReportsPageState
             padding: const EdgeInsets.only(bottom: 2),
             child: Text(
               '${_periodText(p.periodNo, p.startDate, p.endDate)}  '
-              '${l10n.wmWasteRate} ${_rate(p.wasteRate)}',
+              '${l10n.wmWasteRate} ${p.hasEstimatedCount ? '≈ ' : ''}${_rate(p.wasteRate)}  '
+              '${p.countEvidenceLabel}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: _rateOutOfRange(p.wasteRate)
                     ? theme.colorScheme.error
@@ -1537,7 +1584,7 @@ class _ReopenReasonDialogState extends State<_ReopenReasonDialog> {
   }
 }
 
-// ---- 浪费率折线 --------------------------------------------------------------
+// ---- 耗用差异率折线 ----------------------------------------------------------
 
 class _WasteTrendPainter extends CustomPainter {
   _WasteTrendPainter({
@@ -1631,7 +1678,12 @@ class _WasteTrendPainter extends CustomPainter {
         canvas.drawCircle(
           Offset(x(i), y(v)),
           out ? 5 : 3.5,
-          Paint()..color = out ? alertColor : lineColor,
+          Paint()
+            ..color = out ? alertColor : lineColor
+            ..strokeWidth = 2
+            ..style = points[i].hasEstimatedCount
+                ? PaintingStyle.stroke
+                : PaintingStyle.fill,
         );
       }
       if (i % step == 0 || i == points.length - 1) {
@@ -1691,7 +1743,7 @@ String _periodText(int? no, String? start, String? end) {
 
 String _outcomeText(String? outcome) => switch (outcome) {
   'ALLOCATED' => '按理论比例分到工单',
-  'UNALLOCATED_LOSS' => '有实际没理论，记损失',
+  'UNALLOCATED_LOSS' => '有盘点耗用没理论，记损失',
   'GAIN' => '盘盈',
   'NOTHING' => '本期没用',
   'EXPENSED' => '记车间费用',
@@ -1700,14 +1752,16 @@ String _outcomeText(String? outcome) => switch (outcome) {
 };
 
 String _flagText(String flag) => switch (flag) {
-  'WASTE_OUT_OF_RANGE' => '浪费率超出 -30% 到 +50%',
+  'WASTE_OUT_OF_RANGE' => '耗用差异率超出 -30% 到 +50%',
   'OTHER_ISSUE_LARGE' => '试模清机等用料偏多',
-  'ACTUAL_WITHOUT_THEORY' => '有实际用量但没有报工',
+  'ACTUAL_WITHOUT_THEORY' => '有盘点耗用但没有报工',
   'GAIN_PRICE_ZERO' => '盘盈没有参考价，按 0 计',
   _ => '需要核对',
 };
 
 String _ledgerKindText(String? kind) => switch (kind) {
+  'OPENING' => '已审核期初盘点',
+  'ADJUSTMENT' => '已审核账面修正',
   'ISSUE' => '领入',
   'RETURN' => '退回仓库',
   'OTHER_ISSUE' => '试模清机等用料',

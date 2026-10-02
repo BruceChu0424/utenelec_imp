@@ -1,8 +1,7 @@
 // 工资条详情页
 // 文档：docs/03-页面/工资条详情页.md（待写）
 //
-// 响应式：全断点套默认 UtenContentContainer（1600 钳制居中）——
-// 2026-09-15 弃 narrow(1120)：两侧大留白，对齐新建销售订货单页
+// 响应式：全断点套默认 UtenContentContainer，正文随父容器扩宽，保留响应式 gutter。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -148,7 +147,7 @@ class _DetailContent extends ConsumerWidget {
               ref.invalidate(payrollDetailProvider(slip.id));
               await ref.read(payrollDetailProvider(slip.id).future);
             },
-            // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白）改默认容器
+            // 正文不设固定最大宽度，导航收起后跟随可用区域扩宽。
             child: UtenContentContainer(
               child: ListView(
                 // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。

@@ -912,7 +912,7 @@
   "productionHubSchedule": "Scheduling & progress",
   "productionHubScheduleSub": "Plan, WIP, completion",
   "productionHubPlan": "New production plan",
-  "productionHubPlanSub": "Reference a sales order or create manually; history",
+  "productionHubPlanSub": "Create a plan manually, optionally referencing a sales order",
   "productionHubPlanHistory": "Production plan history",
   "productionHubPlanHistorySub": "View plans, approvals, and batch records",
   "productionHubMaterialAnalysis": "Material readiness analysis",

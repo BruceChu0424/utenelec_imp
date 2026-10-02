@@ -118,6 +118,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   String? _sessionPrependAnchorId;
   Object? _lastPaginationScope;
   bool _loadingPreviousPage = false;
+  bool _visiblePageUpdateScheduled = false;
 
   Object get _paginationScope => (
     _actionFilter,
@@ -136,6 +137,38 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _dateRange,
     ref.watch(masterDataSessionKeyProvider),
   );
+
+  void _onPageScrollPositionChanged() => _scheduleVisiblePageUpdate();
+
+  void _scheduleVisiblePageUpdate() {
+    if (_visiblePageUpdateScheduled ||
+        _activeLoading ||
+        _loadingPreviousPage ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final sessions = _sessionMode;
+    final scope = _lastPaginationScope;
+    _visiblePageUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visiblePageUpdateScheduled = false;
+      if (!mounted ||
+          sessions != _sessionMode ||
+          scope != _lastPaginationScope ||
+          _activeLoading ||
+          _loadingPreviousPage) {
+        return;
+      }
+      final viewport = _scrollViewportKey.currentContext?.findRenderObject();
+      if (viewport is! RenderBox || !viewport.hasSize) return;
+      if (sessions) {
+        if (!_sessionRows.isAppending) _sessionRows.updateVisiblePage(viewport);
+      } else {
+        if (!_eventRows.isAppending) _eventRows.updateVisiblePage(viewport);
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
 
   void _appendAtScrollEnd(ScrollMetrics metrics) {
     if (metrics.axis != Axis.vertical ||
@@ -314,6 +347,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     )) {
       return;
     }
+    _scheduleVisiblePageUpdate();
     if (event.scrollDelta.dy > 0) {
       _appendAtScrollEnd(_scrollController.position);
     } else {
@@ -378,6 +412,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onPageScrollPositionChanged);
     _scheduleInitialRequestInvestigation();
   }
 
@@ -654,6 +689,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   void dispose() {
     _searchController.dispose();
     _requestIdController.dispose();
+    _scrollController.removeListener(_onPageScrollPositionChanged);
     _scrollController.dispose();
     _sessionsPinned.dispose();
     _eventsPinned.dispose();
@@ -1073,6 +1109,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     final paginationScope = _paginationScope;
     if (_lastPaginationScope != paginationScope) _prependScrollPadding = 0;
     _lastPaginationScope = paginationScope;
+    // The embedded table can mount or receive a new page without any outer
+    // scroll event. Bind the real page viewport after that layout as well.
+    _scheduleVisiblePageUpdate();
     // 返回即刷新：从其它页面回到审计中心时重拉当前页（保留筛选/页码），
     // 保证看到最新审计记录。本页路由为静态路径，直接用 RouteName 常量。
     ref.onPageResume(RouteName.adminAuditLogs, () {
@@ -1447,6 +1486,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                 behavior: HitTestBehavior.translucent,
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
+                    if (notification.depth == 0 &&
+                        notification.metrics.axis == Axis.vertical &&
+                        (notification is ScrollUpdateNotification ||
+                            notification is OverscrollNotification)) {
+                      _scheduleVisiblePageUpdate();
+                    }
                     final forward =
                         notification is ScrollUpdateNotification &&
                             notification.dragDetails != null &&

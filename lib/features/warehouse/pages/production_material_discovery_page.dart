@@ -127,6 +127,20 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
   @override
   bool get formDraftBusy => _saving || _uncertain;
   @override
+  Future<void> Function()? get formDraftReloadSource => _reloadLatestForDraft;
+
+  Future<void> _reloadLatestForDraft() async {
+    _initializedRows = false;
+    _validationShown = false;
+    _key = null;
+    _submittedItems = null;
+    await _load();
+    if (_error != null || _detail == null) {
+      throw StateError(_error ?? '最新材料申请未能读取');
+    }
+  }
+
+  @override
   bool get formDraftUseCurrentRoute => false;
   @override
   FormDraftSpec get formDraftSpec => FormDraftCatalog.warehouseDiscovery.spec(
@@ -246,21 +260,29 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
 
   Future<void> _pickGoods(DiscoveryMaterialRow row) async {
     if (!_editable) return;
-    final goods = await showUtenGoodsPicker(
-      context,
-      ref,
-      scope: UtenGoodsPickerScope.component,
-    );
-    if (!mounted || goods == null || !_grid.rows.contains(row) || !_editable) {
+    // 多选（2026-10-01 与仓库各新建页统一）：第一个填当前行，其余各自追加一行。
+    // 选择器默认 scope 即 component（子件），无需另传。
+    final picked = await showUtenGoodsPickerMulti(context, ref);
+    if (!mounted || picked.isEmpty || !_grid.rows.contains(row) || !_editable) {
       return;
     }
-    if (goods.unitId == null) {
+    final usable = picked.where((g) => g.unitId != null).toList();
+    // 没维护基本单位的货品选不了：提醒后跳过它们，其余照填。
+    if (usable.length != picked.length) {
       context.appWarning(
         AppLocalizations.of(context).materialDiscoveryMissingUnit,
       );
-      return;
     }
-    setState(() => row.selectGoods(goods));
+    if (usable.isEmpty) return;
+    setState(() {
+      row.selectGoods(usable.first);
+      if (usable.length > 1) {
+        _grid.addRows([
+          for (final goods in usable.skip(1))
+            DiscoveryMaterialRow()..selectGoods(goods),
+        ]);
+      }
+    });
   }
 
   Future<void> _pickWarehouse(DiscoveryMaterialRow row) async {
@@ -433,6 +455,8 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       width: 180,
       type: 'number',
       value: (row) => row.qty.text,
+      exactValueOf: (row) => row.qty.text,
+      exactListenableOf: (row) => row.qty,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (context, row) => ValueListenableBuilder<TextEditingValue>(
         valueListenable: row.qty,

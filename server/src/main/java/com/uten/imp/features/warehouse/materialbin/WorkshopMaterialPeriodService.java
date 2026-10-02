@@ -15,6 +15,8 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -122,6 +124,69 @@ public class WorkshopMaterialPeriodService {
                 });
     }
 
+    /**
+     * 审批库存盘点前恢复误启动的空周期盘点。必须没有任何实盘录入、后继期间事实；
+     * 沿正式撤回命令留审计，与审批过账同事务，后续失败会恢复原来的期间与草稿。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('stock:count:warehouse_review')")
+    public Period openForApprovedStockCount(UUID workshopId, UUID binId, UUID approvalEventId) {
+        scope.requireWorkshop(workshopId);
+        // 从一开始取排他锁，不能先 SHARE 再升级；发料、开始盘点与其它审批都按同一设置锁串行。
+        Settings settings = bins.enabledSettingsForUpdate(workshopId);
+        if (!binId.equals(settings.binWarehouseId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "车间内料仓已变化，请重新核对盘点申请");
+        }
+        Period open = bins.openPeriod(binId);
+        boolean blockedByCutoff = BusinessTime.today().isBefore(open.startDate());
+        Period previous = bins.periodByNo(binId, open.no() - 1);
+        if (previous == null || !"COUNTING".equals(previous.status())) {
+            if (!blockedByCutoff) return open;
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "本期从 " + open.startDate() + " 开始，请到车间内料仓查看上一期盘点状态后再审核");
+        }
+        previous = bins.periodForUpdate(previous.id());
+        bins.periodForUpdate(open.id());
+        List<Map<String, Object>> drafts = db.queryForList("""
+                SELECT id,status FROM workshop_material_counts WHERE period_id=:period ORDER BY id FOR UPDATE
+                """, Map.of("period", previous.id()));
+        // 锁盘点单父行也锁住新增录入行的 FK，避免检查零行后有人并发录入再被撤回。
+        Integer entered = db.queryForObject("""
+                SELECT count(*) FROM workshop_material_count_lines line
+                JOIN workshop_material_counts counted ON counted.id=line.count_id WHERE counted.period_id=:period
+                """, Map.of("period", previous.id()), Integer.class);
+        if (drafts.size() != 1 || !"DRAFT".equals(drafts.getFirst().get("status"))
+                || entered == null || entered > 0) {
+            if (!blockedByCutoff) return open;
+            throw new ApiException(ErrorCode.CONFLICT, "第 " + previous.no() + " 期已有盘点录入，不能自动退出。"
+                    + "请到车间内料仓的周期盘点继续审核，或确认撤回本次盘点后，再审核这张库存盘点申请");
+        }
+        if (hasSuccessorFacts(open)) {
+            if (!blockedByCutoff) return open;
+            throw new ApiException(ErrorCode.CONFLICT, "第 " + previous.no() + " 期开始盘点后，下一期已有收发料、报工或盘点记录，不能自动退出。"
+                    + "请先到车间内料仓完成第 " + previous.no() + " 期盘点，再按当前库存重新提交盘点申请");
+        }
+        withdrawCount(previous.id(), new VersionRequest(previous.rowVersion(), "COUNT-APPROVAL-RECOVER:" + approvalEventId));
+        return bins.openPeriod(binId);
+    }
+
+    private boolean hasSuccessorFacts(Period next) {
+        return Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM v_workshop_material_bin_ledger WHERE period_id=:next)
+                    OR EXISTS(SELECT 1 FROM workshop_material_counts WHERE period_id=:next)
+                    OR EXISTS(SELECT 1 FROM workshop_material_period_lines WHERE period_id=:next)
+                    OR EXISTS(SELECT 1 FROM workshop_material_period_closes WHERE period_id=:next)
+                    OR EXISTS(SELECT 1 FROM workshop_material_periods WHERE bin_warehouse_id=:bin AND period_no>:no)
+                    OR EXISTS(SELECT 1 FROM production_daily_reports report
+                        JOIN production_daily_report_items item ON item.report_id=report.id AND NOT item.is_deleted
+                        JOIN production_execution_periodic_materials material ON material.execution_segment_id=item.execution_segment_id
+                        WHERE material.bin_warehouse_id=:bin AND NOT report.is_deleted AND report.bill_date>=:start)
+                    OR EXISTS(SELECT 1 FROM production_execution_periodic_materials
+                        WHERE bin_warehouse_id=:bin AND effective_from>=:start)
+                """, new MapSqlParameterSource("next",next.id()).addValue("bin",next.binWarehouseId())
+                .addValue("no",next.no()).addValue("start",next.startDate()), Boolean.class));
+    }
+
     /** 撤回盘点: 只在"盘点中"且下一期没有任何进出与盘点单时; 删掉下一期, 本期回到"开着"。 */
     @Transactional
     public PeriodView withdrawCount(UUID periodId, VersionRequest request) {
@@ -138,13 +203,9 @@ public class WorkshopMaterialPeriodService {
                     Period next = bins.periodByNo(period.binWarehouseId(), period.no() + 1);
                     if (next != null) {
                         bins.periodForUpdate(next.id());
-                        Integer used = db.queryForObject("""
-                                SELECT (SELECT count(*) FROM v_workshop_material_bin_ledger WHERE period_id = :next)
-                                     + (SELECT count(*) FROM workshop_material_counts WHERE period_id = :next)
-                                """, Map.of("next", next.id()), Integer.class);
-                        if (!"OPEN".equals(next.status()) || used != null && used > 0) {
+                        if (!"OPEN".equals(next.status()) || hasSuccessorFacts(next)) {
                             throw new ApiException(ErrorCode.CONFLICT,
-                                    "盘点开始后已经有料进出了 (记进了下一期), 不能再撤回盘点");
+                                    "盘点开始后下一期已有收发料、报工或盘点记录，不能再撤回盘点");
                         }
                         WorkshopMaterialGuards.guarded(() -> db.update(
                                 "DELETE FROM workshop_material_periods WHERE id = :id", Map.of("id", next.id())));

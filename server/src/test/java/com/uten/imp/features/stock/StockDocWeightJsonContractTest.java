@@ -138,11 +138,12 @@ class StockDocWeightJsonContractTest {
 
     @Test
     void itemResponseEmitsTheWeightFieldsTheClientReadsAndIssuedWeightIsPositive() throws Exception {
+        // V787 起明细带行级 warehouseId（place 之后一位）。
         StockDocItemDto item = new StockDocItemDto(
                 ITEM, 1, GOODS, "G-1", "螺丝", null, null, COLOR,
                 UNIT, BigDecimal.ONE, new BigDecimal("10"), null, new BigDecimal("10"),
                 new BigDecimal("1.5"), null, null, null, BigDecimal.ZERO,
-                null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
                 null, null, null, null, new BigDecimal("5"), false, new BigDecimal("10"),
                 true, null, null, new BigDecimal("0.0100"), true);
         Map<String, Object> json = STRICT.convertValue(item, new TypeReference<Map<String, Object>>() {});

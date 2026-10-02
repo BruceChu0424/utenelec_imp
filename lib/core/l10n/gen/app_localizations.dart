@@ -4024,7 +4024,7 @@ abstract class AppLocalizations {
   /// No description provided for @productionHubPlanSub.
   ///
   /// In zh, this message translates to:
-  /// **'引用销售订单或手工新建·历史记录'**
+  /// **'手工新建排产计划，可引用销售订单'**
   String get productionHubPlanSub;
 
   /// No description provided for @productionHubPlanHistory.

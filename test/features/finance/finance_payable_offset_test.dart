@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,7 +49,7 @@ void main() {
       await tester.tap(find.text('打开贷项'));
       await tester.pumpAndSettle();
       expect(find.textContaining('当前页暂无符合条件'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('supplier-offset-load-more')));
+      await _scrollOffsetTargetsToNextPage(tester);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('supplier-offset-target-payable-1')),
@@ -59,7 +60,7 @@ void main() {
         const ValueKey('supplier-offset-amount-payable-1'),
       );
       await tester.enterText(amount, exact);
-      await tester.tap(find.byKey(const ValueKey('supplier-offset-load-more')));
+      await _scrollOffsetTargetsToNextPage(tester);
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(amount).controller!.text, exact);
       expect(api.pages, [1, 2, 3]);
@@ -310,6 +311,22 @@ const _payableItem = <String, dynamic>{
   'outstandingLocal': '1440.0000',
   'status': 'OPEN',
 };
+
+Future<void> _scrollOffsetTargetsToNextPage(WidgetTester tester) async {
+  final list = find.byType(ListView).last;
+  final scrollable = tester.state<ScrollableState>(
+    find.descendant(of: list, matching: find.byType(Scrollable)).first,
+  );
+  scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+  await tester.pump();
+  await tester.sendEventToBinding(
+    PointerScrollEvent(
+      position: tester.getCenter(list),
+      scrollDelta: const Offset(0, 100),
+    ),
+  );
+  await tester.pump();
+}
 
 class _OffsetApi extends ApiClient {
   _OffsetApi() : super(Dio());

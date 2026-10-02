@@ -2105,7 +2105,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionHubPlan => '새 생산 계획';
 
   @override
-  String get productionHubPlanSub => '판매 주문 참조 또는 수동 생성·이력';
+  String get productionHubPlanSub => '판매 주문을 참조해 직접 생성';
 
   @override
   String get productionHubPlanHistory => '생산 계획 이력';

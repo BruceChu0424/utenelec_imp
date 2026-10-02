@@ -570,23 +570,31 @@ class _FinanceProcurementApprovalTasksPageState
     final allowed =
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(Perm.financeOrderApprovalView);
+    final Widget main;
+    if (!allowed) {
+      main = _pinHostHeader(
+        UtenEmpty.error(
+          message: '无权查看订货审批任务',
+          description: '只有被授权的财务审核人员可以进入。',
+        ),
+      );
+    } else if (_loading && _result == null) {
+      main = _pinHostHeader(const UtenSkeletonList());
+    } else if (_error != null && _result == null) {
+      main = _pinHostHeader(
+        UtenEmpty.error(
+          message: _error,
+          actionLabel: '重新加载',
+          onAction: () => _load(1),
+        ),
+      );
+    } else {
+      main = _buildList(context);
+    }
     final body = SafeArea(
       child: Stack(
         children: [
-          !allowed
-              ? UtenEmpty.error(
-                  message: '无权查看订货审批任务',
-                  description: '只有被授权的财务审核人员可以进入。',
-                )
-              : _loading && _result == null
-              ? const UtenSkeletonList()
-              : _error != null && _result == null
-              ? UtenEmpty.error(
-                  message: _error,
-                  actionLabel: '重新加载',
-                  onAction: () => _load(1),
-                )
-              : _buildList(context),
+          main,
           // 批量审批提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑
           // 网络一律 UtenBusyOverlay，弃折叠头里的 LinearProgressIndicator）。
           if (_busyDecision)
@@ -624,6 +632,20 @@ class _FinanceProcurementApprovalTasksPageState
       body: body,
     );
   }
+
+  /// 骨架/错误/无权态钉住宿主分类栏：分类栏在、内容区给 [child]（数据到位后由
+  /// [_buildList] 接管，分类栏随页滚走）。2026-10-01 用户口径：点击子分类的
+  /// 瞬间整条分类栏不得消失。
+  Widget _pinHostHeader(Widget child) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (widget.externalHeader != null) ...[
+        widget.externalHeader!,
+        const SizedBox(height: UtenSpacing.s12),
+      ],
+      Expanded(child: child),
+    ],
+  );
 
   Widget _buildList(BuildContext context) {
     final result =

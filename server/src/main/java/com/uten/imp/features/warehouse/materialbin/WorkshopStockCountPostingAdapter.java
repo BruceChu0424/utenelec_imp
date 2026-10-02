@@ -38,12 +38,15 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
     private final StockBalanceRepository balances;
     private final WorkshopMaterialSetupPort materialSetup;
     private final SecurityContextCurrentUser currentUser;
+    private final WorkshopMaterialPeriodService periods;
 
     public WorkshopStockCountPostingAdapter(NamedParameterJdbcTemplate db, WorkshopMaterialBinSupport bins,
             WorkshopMaterialScope scope, StockService stock, StockBalanceRepository balances,
-            WorkshopMaterialSetupPort materialSetup, SecurityContextCurrentUser currentUser) {
+            WorkshopMaterialSetupPort materialSetup, SecurityContextCurrentUser currentUser,
+            WorkshopMaterialPeriodService periods) {
         this.db=db; this.bins=bins; this.scope=scope; this.stock=stock; this.balances=balances;
         this.materialSetup=materialSetup; this.currentUser=currentUser;
+        this.periods=periods;
     }
 
     @Override
@@ -98,10 +101,6 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
         var settings=bins.settingsByBin(warehouse);
         if(settings==null) throw conflict("此仓库不是车间内料仓");
         scope.requireWorkshop(settings.workshopDepartmentId());
-        settings=bins.enabledSettingsForShare(settings.workshopDepartmentId());
-        var period=bins.openPeriod(warehouse);
-        LocalDate today=BusinessTime.today();
-        if(today.isBefore(period.startDate())) throw conflict("当前正在盘点截止期间，请完成本次期间盘点后再批准库存修正");
         List<Map<String,Object>> lines=db.queryForList("""
                 SELECT line.* FROM stock_count_request_lines line WHERE line.request_id=:request ORDER BY line.line_no,line.id
                 """,Map.of("request",requestId));
@@ -115,6 +114,8 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
             if(existing.size()!=lines.size()) throw conflict("盘点过账记录不完整，请核对原审核结果");
             return new PostingResult(existing);
         }
+        var period=periods.openForApprovedStockCount(settings.workshopDepartmentId(),warehouse,approvalEventId);
+        LocalDate today=BusinessTime.today();
         stock.lockInventory(lines.stream().map(line->new InventoryKey((UUID)line.get("goods_id"),(UUID)line.get("color_id"))).toList());
         Map<UUID,WorkshopMaterialSetupPort.Setup> setups=new LinkedHashMap<>();
         for(Map<String,Object> line:lines) {

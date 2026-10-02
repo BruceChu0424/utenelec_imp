@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_detail_page.dart';
 import 'package:uten_imp/features/purchase/repositories/purchase_repository.dart';
@@ -19,6 +20,27 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
+  testWidgets('按总金额计价显示完整参考单价及服务端真实总金额', (tester) async {
+    await _pumpDetail(
+      tester,
+      permissions: const {Perm.purchaseOrderPriceView},
+      priceMasked: false,
+      totalPricing: true,
+    );
+    final table = tester.widget<MasterDataTableView<PurchaseDocItem>>(
+      find.byType(MasterDataTableView<PurchaseDocItem>),
+    );
+    final row = table.items.first;
+    final price = table.columns.singleWhere((column) => column.key == 'price');
+    final amount = table.columns.singleWhere(
+      (column) => column.key == 'amount',
+    );
+    expect(price.value(row), '0.0333333333（参考）');
+    expect(price.info, contains('结算按单据记录的总金额'));
+    expect(amount.label, '总金额');
+    expect(amount.value(row), '100.000000000000000001');
+  });
+
   testWidgets('订货详情：合计数量按单位分组、合计金额标红且币种取表头', (tester) async {
     await _pumpDetail(
       tester,
@@ -65,6 +87,7 @@ Future<void> _pumpDetail(
   WidgetTester tester, {
   required Set<String> permissions,
   required bool priceMasked,
+  bool totalPricing = false,
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1;
@@ -73,7 +96,7 @@ Future<void> _pumpDetail(
 
   const docType = PurchaseDocType.order;
   const id = 'order-1';
-  final api = _TestApi(priceMasked: priceMasked);
+  final api = _TestApi(priceMasked: priceMasked, totalPricing: totalPricing);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -95,9 +118,11 @@ Future<void> _pumpDetail(
 }
 
 class _TestApi extends ApiClient {
-  _TestApi({required this.priceMasked}) : super(Dio());
+  _TestApi({required this.priceMasked, this.totalPricing = false})
+    : super(Dio());
 
   final bool priceMasked;
+  final bool totalPricing;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -147,6 +172,12 @@ class _TestApi extends ApiClient {
             'price': 5,
             'amountOriginal': 50,
             'amountLocal': 350,
+            if (totalPricing) ...{
+              'qty': 3000,
+              'priceExact': '0.0333333333',
+              'totalAmountInputExact': '100.000000000000000001',
+              'amountOriginalExact': '100.000000000000000001',
+            },
           },
           <String, dynamic>{
             'id': 'item-2',

@@ -406,7 +406,7 @@ const _allGroups = <_ModuleGroup>[
         location: RouteName.productionWorkshopTasks,
         badge: WorkbenchBadgeKind.productionWorkshop,
       ),
-      // 车间内料仓 (ADR-131): 现存与估计还剩、申请领料 / 退回 / 其它耗用、盘点与结算状态;
+      // 车间内料仓 (ADR-131): 通用入口先查看各车间启用情况，再进入库存或设置。
       // 紧挨车间生产任务, 不挂数 (待办在车间任务与仓库任务中心)。
       _ModuleItem(
         icon: Icons.inventory_2_outlined,
@@ -775,16 +775,22 @@ class _ModuleTile extends StatelessWidget {
               ),
               const SizedBox(width: UtenSpacing.s12),
               Expanded(
-                child: Text(
-                  comingSoon ? '$label(功能规划接入中)' : label,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: comingSoon
-                        ? theme.colorScheme.onSurfaceVariant
-                        : null,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      comingSoon ? '$label(功能规划接入中)' : label,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: comingSoon
+                            ? theme.colorScheme.onSurfaceVariant
+                            : null,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
               // 计数徽章与图标、名字同一行, 在这一行最右边(2026-09-23 用户口径:

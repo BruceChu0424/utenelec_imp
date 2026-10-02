@@ -442,7 +442,13 @@ class _WarehouseSalesOutboundBatchPageState
                                       // V631：发出仓按行在表格里选，批量核对不再逐单选仓。
                                       draftOf: (row) =>
                                           _picking[row.detail.header.id],
-                                      onDraftChanged: () => setState(() {}),
+                                      onDraftChanged: () {
+                                        setState(() {});
+                                        ensureOutboundWeightParams(
+                                          _weightCache,
+                                          _weightEntries,
+                                        );
+                                      },
                                       stockPlaceControllerOf: (row) =>
                                           _picking[row.detail.header.id]
                                               ?.places[row.line.id],

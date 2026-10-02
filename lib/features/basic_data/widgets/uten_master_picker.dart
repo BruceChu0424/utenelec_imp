@@ -21,6 +21,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
@@ -125,6 +126,8 @@ class _MasterPickerSheetState<TItem>
   String? _categoryContentKeyword;
   int _requestVersion = 0;
   int _page = 1;
+  int _confirmedPage = 1;
+  int _queryRevision = 0;
   List<TItem>? _items;
   int _totalPages = 1;
   String? _globalItemsQuery;
@@ -168,7 +171,7 @@ class _MasterPickerSheetState<TItem>
       _selectedCategoryId = node.id;
       _categoryContentKeyword = keepKeyword ? _globalQuery : null;
       _showingGlobalResults = false;
-      _page = 1;
+      _resetPageWindow();
     });
     _reloadCategory();
   }
@@ -176,9 +179,23 @@ class _MasterPickerSheetState<TItem>
   /// 用户继续输入时立即让正在飞行的旧请求失效(UtenSearchBar 的 300ms 防抖期间
   /// 旧结果不回写)；防抖到期后由 [_onKeywordChanged] 发起替换请求。
   void _onKeywordInputChanged(String v) {
-    _requestVersion++;
-    _globalItemsQuery = null;
-    _globalItems = const [];
+    setState(() {
+      _requestVersion++;
+      _globalItemsQuery = null;
+      _globalItems = const [];
+      _resetPageWindow();
+      _loading = true;
+      _error = null;
+    });
+  }
+
+  /// A changed query starts a new page window; adjacent-page loads keep it.
+  void _resetPageWindow() {
+    _queryRevision++;
+    _page = 1;
+    _confirmedPage = 1;
+    _items = null;
+    _totalPages = 1;
   }
 
   void _onKeywordChanged(String v) {
@@ -202,7 +219,7 @@ class _MasterPickerSheetState<TItem>
         _selectedCategoryId ??= widget.tree.isEmpty
             ? null
             : widget.tree.first.id;
-        _page = 1;
+        _resetPageWindow();
       });
       await _reloadCategory();
       return;
@@ -217,7 +234,7 @@ class _MasterPickerSheetState<TItem>
       _searchLocationError = null;
       _showingGlobalResults = true;
       _categoryContentKeyword = null;
-      _page = 1;
+      _resetPageWindow();
     });
     await _reloadGlobalSearch(allowCategoryFallback: true);
   }
@@ -248,6 +265,8 @@ class _MasterPickerSheetState<TItem>
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _items = r.items;
+        _page = r.page;
+        _confirmedPage = r.page;
         _totalPages = r.totalPages < 1 ? 1 : r.totalPages;
         _loading = false;
       });
@@ -323,6 +342,8 @@ class _MasterPickerSheetState<TItem>
             _showingGlobalResults = false;
             _categoryContentKeyword = null;
             _items = categoryPage.items;
+            _page = categoryPage.page;
+            _confirmedPage = categoryPage.page;
             _totalPages = categoryPage.totalPages < 1
                 ? 1
                 : categoryPage.totalPages;
@@ -349,6 +370,7 @@ class _MasterPickerSheetState<TItem>
         _searchLocationError = null;
         _showingGlobalResults = true;
         _page = safePage;
+        _confirmedPage = safePage;
         _items = allItems.sublist(start, end);
         _totalPages = totalPages;
         _loading = false;
@@ -367,12 +389,17 @@ class _MasterPickerSheetState<TItem>
     }
   }
 
-  void _reloadCurrentPage() {
+  Future<void> _reloadCurrentPage() async {
     if (_globalQuery.isNotEmpty && _showingGlobalResults) {
-      _reloadGlobalSearch(allowCategoryFallback: false);
+      await _reloadGlobalSearch(allowCategoryFallback: false);
     } else {
-      _reloadCategory();
+      await _reloadCategory();
     }
+  }
+
+  Future<void> _changePage(int page) async {
+    _page = page;
+    await _reloadCurrentPage();
   }
 
   Future<void> _quickCreate() async {
@@ -474,15 +501,27 @@ class _MasterPickerSheetState<TItem>
     );
   }
 
-  Widget _buildRightPane(ThemeData theme) {
-    return Column(
-      children: [
-        Expanded(child: _buildList(theme)),
-        if ((_items?.isNotEmpty ?? false) && _totalPages > 1)
-          _buildPager(theme),
-      ],
-    );
-  }
+  Widget _buildRightPane(ThemeData theme) => UtenPagedPickerList<TItem>(
+    items: _items ?? <TItem>[],
+    idOf: _spec.idOf,
+    itemBuilder: (context, item) => _buildItem(context, theme, item),
+    currentPage: _confirmedPage,
+    totalPages: _totalPages,
+    onPageChange: _changePage,
+    paginationScope: (
+      _queryRevision,
+      _selectedCategoryId,
+      _globalQuery,
+      _showingGlobalResults,
+      _categoryContentKeyword,
+    ),
+    paginationRevision: _items,
+    loading: _loading,
+    error: _error,
+    onRetry: _reloadCurrentPage,
+    emptyMessage: '未找到匹配${_spec.noun}',
+    separatorBuilder: (_, _) => const Divider(height: 1),
+  );
 
   Widget _buildUnifiedSearch() {
     return Padding(
@@ -502,88 +541,28 @@ class _MasterPickerSheetState<TItem>
     );
   }
 
-  Widget _buildList(ThemeData theme) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (_error != null) {
-      return Center(
-        child: Text(
-          _error!,
-          style: TextStyle(color: theme.colorScheme.error),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-    final items = _items;
-    if (items == null || items.isEmpty) {
-      return Center(
-        child: Text(
-          '未找到匹配${_spec.noun}',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-        ),
-      );
-    }
-    return ListView.separated(
-      itemCount: items.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (ctx, i) {
-        final item = items[i];
-        final sub = _spec
-            .subtitleOf(item)
-            .where((s) => s != null && s.isNotEmpty)
-            .join(' · ');
-        final current = _picked;
-        final picked =
-            current != null && _spec.idOf(current) == _spec.idOf(item);
-        return ListTile(
-          selected: picked,
-          // 选中行淡绿背景（全站表格统一口径，与货品选择滑窗同款）。
-          selectedTileColor: utenTableSelectedRowColor(theme),
-          title: Text(_spec.labelOf(item)),
-          subtitle: sub.isEmpty
-              ? null
-              : Text(sub, style: Theme.of(ctx).textTheme.bodySmall),
-          trailing: picked
-              ? Icon(
-                  Icons.check_circle_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 22,
-                )
-              : null,
-          onTap: () => setState(() => _picked = item),
-        );
-      },
-    );
-  }
-
-  Widget _buildPager(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left_rounded),
-            onPressed: _page > 1
-                ? () {
-                    setState(() => _page -= 1);
-                    _reloadCurrentPage();
-                  }
-                : null,
-          ),
-          Text('$_page / $_totalPages'),
-          IconButton(
-            icon: const Icon(Icons.chevron_right_rounded),
-            onPressed: _page < _totalPages
-                ? () {
-                    setState(() => _page += 1);
-                    _reloadCurrentPage();
-                  }
-                : null,
-          ),
-        ],
-      ),
+  Widget _buildItem(BuildContext context, ThemeData theme, TItem item) {
+    final sub = _spec
+        .subtitleOf(item)
+        .where((value) => value != null && value.isNotEmpty)
+        .join(' · ');
+    final current = _picked;
+    final picked = current != null && _spec.idOf(current) == _spec.idOf(item);
+    return ListTile(
+      selected: picked,
+      selectedTileColor: utenTableSelectedRowColor(theme),
+      title: Text(_spec.labelOf(item)),
+      subtitle: sub.isEmpty
+          ? null
+          : Text(sub, style: Theme.of(context).textTheme.bodySmall),
+      trailing: picked
+          ? Icon(
+              Icons.check_circle_rounded,
+              color: theme.colorScheme.primary,
+              size: 22,
+            )
+          : null,
+      onTap: () => setState(() => _picked = item),
     );
   }
 }

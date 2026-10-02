@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_context_menu.dart';
 import '../../../../components/feedback/uten_empty.dart';
@@ -18,6 +19,7 @@ import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
 import '../../../../components/layout/uten_filter_toolbar.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/nav_helpers.dart';
@@ -39,12 +41,13 @@ import '../widgets/workshop_material_close_poller.dart';
 import '../widgets/workshop_material_close_status_banner.dart';
 import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_other_issue_dialog.dart';
+import '../widgets/workshop_material_overview.dart';
 import '../widgets/workshop_material_request_dialog.dart';
 
 class WorkshopMaterialBinPage extends ConsumerStatefulWidget {
   const WorkshopMaterialBinPage({super.key, this.workshopId});
 
-  /// 深链指定的车间 (通知"结算被拦住"落点带它); 为空时取第一个已开启的车间。
+  /// 指定车间时直达；通用入口显示所有可见车间的启用总览。
   final String? workshopId;
 
   @override
@@ -138,6 +141,51 @@ class _WorkshopMaterialBinPageState
     return null;
   }
 
+  bool get _canViewStock =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(Perm.workshopMaterialView);
+
+  bool get _canSetup => locationAllowedFor(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+    RouteName.workshopMaterialSetup,
+  );
+
+  Future<void> _openSetup([WmSetting? setting]) async {
+    if (!_canSetup || (setting != null && !setting.can(WmAction.setup))) return;
+    if (_countEditor.active) {
+      context.appInfo('请先送审或退出盘点，再进入设置');
+      return;
+    }
+    await context.push(
+      Uri(
+        path: RouteName.workshopMaterialSetup,
+        queryParameters: {'workshopId': ?setting?.workshopDepartmentId},
+      ).toString(),
+    );
+    if (mounted) await _loadAll();
+  }
+
+  Future<void> _openWorkshop(WmSetting setting) async {
+    if (!_canViewStock ||
+        !setting.periodicEnabled ||
+        setting.binWarehouseId == null) {
+      return;
+    }
+    await context.push(
+      RoutePath.workshopMaterialBin(workshopId: setting.workshopDepartmentId),
+    );
+    if (mounted) await _loadAll();
+  }
+
+  void _openOverview() {
+    if (_countEditor.active) {
+      context.appInfo('请先送审或退出盘点，再返回车间总览');
+      return;
+    }
+    context.go(RouteName.workshopMaterialBin);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -156,6 +204,26 @@ class _WorkshopMaterialBinPageState
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant WorkshopMaterialBinPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.workshopId == widget.workshopId) return;
+    _loadSeq++;
+    _historyLoadGeneration++;
+    _poller.stop();
+    _countEditor.clear();
+    _myLocation = null;
+    _view = _viewStock;
+    _workshopId = widget.workshopId;
+    _position = null;
+    _periods = const [];
+    _statusPeriod = null;
+    _closeStatus = null;
+    _history = null;
+    _historyError = null;
+    _loadAll();
+  }
+
   Future<void> _loadAll() async {
     final seq = ++_loadSeq;
     setState(() {
@@ -166,11 +234,7 @@ class _WorkshopMaterialBinPageState
       final settings = await _repo.settings();
       if (!mounted || seq != _loadSeq) return;
       _settings = settings;
-      final enabled = _enabled;
-      // 显式指定或已选中的车间未启用/不可见时保留目标，不能借用另一车间的库存。
-      _workshopId ??= enabled.isEmpty
-          ? null
-          : enabled.first.workshopDepartmentId;
+      // 通用入口保持总览；不因已有已启用车间而默认跳到第一个仓。
       await _loadWorkshop(seq);
     } on ApiException catch (e) {
       if (mounted && seq == _loadSeq) {
@@ -243,7 +307,7 @@ class _WorkshopMaterialBinPageState
   Future<void> _loadWorkshop(int seq) async {
     if (!mounted) return;
     final setting = _current;
-    if (setting == null) {
+    if (setting == null || !_canViewStock) {
       if (_countEditor.active) _countEditor.clear();
       _poller.stop();
       _historyLoadGeneration++;
@@ -264,7 +328,7 @@ class _WorkshopMaterialBinPageState
       _repo.position(binId),
       _repo.periods(binId),
     ]);
-    if (!mounted || seq != _loadSeq) return;
+    if (!mounted || seq != _loadSeq || !_canViewStock) return;
     final position = results[0] as WmPosition;
     final periods = [...results[1] as List<WmPeriod>]
       ..sort((a, b) => a.periodNo.compareTo(b.periodNo));
@@ -521,6 +585,8 @@ class _WorkshopMaterialBinPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(isSuperAdminProvider);
     ref.listen(currentPermissionsProvider, (previous, next) {
       if (_countEditor.active && !next.contains(stockCountSubmitPermission)) {
         _countEditor.clear();
@@ -543,6 +609,9 @@ class _WorkshopMaterialBinPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: title,
+        subtitle: _current?.currentPeriod == null
+            ? null
+            : wmPeriodLabel(_current!.currentPeriod!),
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
@@ -571,6 +640,9 @@ class _WorkshopMaterialBinPageState
           ],
         ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: _floatingActions(l10n),
     );
   }
 
@@ -583,6 +655,18 @@ class _WorkshopMaterialBinPageState
         message: _error,
         actionLabel: '重试',
         onAction: _loadAll,
+      );
+    }
+    if (_workshopId == null) {
+      return WorkshopMaterialOverview(
+        settings: _settings ?? const [],
+        canViewStock: _canViewStock,
+        canSetup: _canSetup,
+        loading: _loading,
+        error: _error,
+        onOpen: _openWorkshop,
+        onConfigure: _openSetup,
+        onRetry: _loadAll,
       );
     }
     final enabled = _enabled;
@@ -627,11 +711,8 @@ class _WorkshopMaterialBinPageState
       );
     }
     if (_current == null) {
-      final canSetup = locationAllowedFor(
-        ref.watch(currentPermissionsProvider),
-        ref.watch(isSuperAdminProvider),
-        RouteName.workshopMaterialSetup,
-      );
+      final canSetup =
+          _canSetup && (selected == null || selected.can(WmAction.setup));
       return UtenEmpty(
         icon: Icons.inventory_2_outlined,
         message: selected == null
@@ -642,20 +723,23 @@ class _WorkshopMaterialBinPageState
             '首次只需认料，不必逐工单领料。'
             '${canSetup ? '' : '请找仓库在「${l10n.workshopMaterialSetup}」里办理。'}',
         actionLabel: canSetup ? '去开启整批领料' : null,
-        onAction: canSetup
-            ? () async {
-                await context.push(
-                  Uri(
-                    path: RouteName.workshopMaterialSetup,
-                    queryParameters: {'workshopId': ?_workshopId},
-                  ).toString(),
-                );
-                if (mounted) await _loadAll();
-              }
-            : null,
+        onAction: canSetup ? () => _openSetup(selected) : null,
       );
     }
     final position = _position;
+    if (!_canViewStock) {
+      return UtenEmpty(
+        icon: Icons.settings_outlined,
+        message: '当前只有设置权限',
+        description: '可管理此车间配置；查看库存需要内料仓查看权限。',
+        actionLabel: _canSetup && selected?.can(WmAction.setup) == true
+            ? '车间设置'
+            : null,
+        onAction: _canSetup && selected?.can(WmAction.setup) == true
+            ? () => _openSetup(selected)
+            : null,
+      );
+    }
     final status = _closeStatus;
     final statusPeriod = _statusPeriod;
     return Column(
@@ -679,8 +763,6 @@ class _WorkshopMaterialBinPageState
           ),
           const SizedBox(height: UtenSpacing.s8),
         ],
-        _actions(l10n, position),
-        const SizedBox(height: UtenSpacing.s8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
           child: UtenFilterToolbar<String>(
@@ -698,17 +780,13 @@ class _WorkshopMaterialBinPageState
               setState(() => _view = value);
               if (value == _viewHistory && _history == null) _loadHistory(1);
             },
-            trailing: _current?.currentPeriod == null
-                ? null
-                : Text(
-                    '本期: ${wmPeriodLabel(_current!.currentPeriod!)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
+        if (_countEditor.active) ...[
+          _countContext(theme),
+          const SizedBox(height: UtenSpacing.s12),
+        ],
         Expanded(
           child: _view == _viewHistory
               ? _historyTable(l10n)
@@ -718,66 +796,184 @@ class _WorkshopMaterialBinPageState
     );
   }
 
-  Widget _actions(AppLocalizations l10n, WmPosition? position) {
-    bool can(String action) =>
-        !_countEditor.active && (position?.can(action) ?? false);
-    final buttons = <Widget>[
-      if (ref
-          .watch(currentPermissionsProvider)
-          .contains(stockCountSubmitPermission))
-        StockCountModeToolbar(
-          controller: _countEditor,
-          allowed: true,
-          warehouseId: _current?.binWarehouseId,
-          fixedWarehouse: true,
-          goodsIds: () => _position?.rows.map((row) => row.goodsId) ?? const [],
-          onStart: (_) async {
-            setState(() => _view = _viewStock);
-          },
-          onSubmitted: _reloadWorkshop,
+  Widget? _floatingActions(AppLocalizations l10n) {
+    if (_busyTitle != null) return null;
+    if (_workshopId == null) {
+      if (!_canSetup) return null;
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            key: const Key('wm-overview-manage'),
+            size: UtenButtonSize.large,
+            icon: Icons.settings_outlined,
+            onPressed: _loading ? null : () => _openSetup(),
+            child: const Text('开通与设置'),
+          ),
+        ],
+      );
+    }
+    if (_current == null || !_canViewStock) {
+      return UtenFloatingActionGroup(
+        children: [
+          UtenButton(
+            key: const Key('wm-bin-overview'),
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: Icons.warehouse_outlined,
+            onPressed: _openOverview,
+            child: const Text('车间总览'),
+          ),
+        ],
+      );
+    }
+    if (ref
+        .watch(currentPermissionsProvider)
+        .contains(stockCountSubmitPermission)) {
+      return StockCountModeToolbar(
+        controller: _countEditor,
+        allowed: true,
+        floating: true,
+        inactiveActionsBuilder: (start, history) => _businessActions(
+          l10n,
+          startInventoryCount: start,
+          openCountHistory: history,
         ),
-      if (can(WmAction.request))
-        UtenButton(
-          key: const Key('wm-bin-request'),
-          icon: Icons.add_shopping_cart_outlined,
-          onPressed: () => _openRequest('ISSUE'),
-          child: Text(l10n.wmRequestIssue),
+        warehouseId: _current?.binWarehouseId,
+        fixedWarehouse: true,
+        goodsIds: () => _position?.rows.map((row) => row.goodsId) ?? const [],
+        onStart: (_) async {
+          setState(() => _view = _viewStock);
+        },
+        onSubmitted: _reloadWorkshop,
+      );
+    }
+    return UtenFloatingActionGroup(children: _businessActions(l10n));
+  }
+
+  List<Widget> _businessActions(
+    AppLocalizations l10n, {
+    VoidCallback? startInventoryCount,
+    VoidCallback? openCountHistory,
+  }) {
+    bool can(String action) => _position?.can(action) ?? false;
+    final starting = openCountHistory != null && startInventoryCount == null;
+    final more = <Widget>[
+      MenuItemButton(
+        key: const Key('wm-bin-overview'),
+        leadingIcon: const Icon(Icons.warehouse_outlined),
+        onPressed: _openOverview,
+        child: const Text('车间总览'),
+      ),
+      if (_canSetup && _selectedSetting?.can(WmAction.setup) == true)
+        MenuItemButton(
+          key: const Key('wm-bin-settings'),
+          leadingIcon: const Icon(Icons.settings_outlined),
+          onPressed: () => _openSetup(_selectedSetting),
+          child: const Text('本车间设置'),
         ),
       if (can(WmAction.returnMaterial))
-        UtenButton(
+        MenuItemButton(
           key: const Key('wm-bin-return'),
-          type: UtenButtonType.secondary,
-          icon: Icons.assignment_return_outlined,
+          leadingIcon: const Icon(Icons.assignment_return_outlined),
           onPressed: () => _openRequest('RETURN'),
           child: Text(l10n.wmReturn),
         ),
       if (can(WmAction.otherIssue))
-        UtenButton(
+        MenuItemButton(
           key: const Key('wm-bin-other-issue'),
-          type: UtenButtonType.secondary,
-          icon: Icons.science_outlined,
+          leadingIcon: const Icon(Icons.science_outlined),
           onPressed: _openOtherIssue,
           child: Text(l10n.wmOtherIssue),
         ),
       if (can(WmAction.startCount) || can(WmAction.editCount))
-        UtenButton(
+        MenuItemButton(
           key: const Key('wm-bin-count'),
-          type: UtenButtonType.tonal,
-          icon: Icons.fact_check_outlined,
+          leadingIcon: const Icon(Icons.fact_check_outlined),
           onPressed: _openCount,
-          child: Text(l10n.wmCount),
+          child: const Text('周期盘点'),
+        ),
+      if (openCountHistory != null)
+        MenuItemButton(
+          key: const Key('wm-bin-my-counts'),
+          leadingIcon: const Icon(Icons.history_outlined),
+          onPressed: openCountHistory,
+          child: const Text('我的盘点'),
         ),
     ];
-    if (buttons.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-      child: Wrap(
+    return [
+      if (more.isNotEmpty)
+        MenuAnchor(
+          menuChildren: more,
+          builder: (context, menu, _) => UtenButton(
+            key: const Key('wm-bin-more'),
+            size: UtenButtonSize.large,
+            type: UtenButtonType.secondary,
+            icon: Icons.more_horiz,
+            onPressed: starting
+                ? null
+                : () => menu.isOpen ? menu.close() : menu.open(),
+            child: const Text('更多操作'),
+          ),
+        ),
+      if (openCountHistory != null)
+        UtenButton(
+          key: const Key('stock-count-mode'),
+          size: UtenButtonSize.large,
+          type: UtenButtonType.secondary,
+          icon: Icons.fact_check_outlined,
+          onPressed: startInventoryCount,
+          isLoading: starting,
+          child: const Text('库存盘点'),
+        ),
+      if (can(WmAction.request))
+        UtenButton(
+          key: const Key('wm-bin-request'),
+          size: UtenButtonSize.large,
+          icon: Icons.add_shopping_cart_outlined,
+          onPressed: starting ? null : () => _openRequest('ISSUE'),
+          child: Text(l10n.wmRequestIssue),
+        ),
+    ];
+  }
+
+  Widget _countContext(ThemeData theme) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Wrap(
         spacing: UtenSpacing.s8,
         runSpacing: UtenSpacing.s8,
-        children: buttons,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          // 2026-10-02 用户口径：盘点说明放最左、选填；「库存盘点 · 已改 N 项」计数退役。
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: TextField(
+              key: const Key('stock-count-reason'),
+              controller: _countEditor.reason,
+              enabled: !_countEditor.busy,
+              decoration: const InputDecoration(
+                isDense: true,
+                labelText: '盘点说明（选填）',
+              ),
+            ),
+          ),
+        ],
       ),
-    );
-  }
+      if (_countEditor.error != null)
+        UtenInlineNotice(
+          level: UtenInlineNoticeLevel.error,
+          message: _countEditor.error!,
+          trailing: TextButton(
+            onPressed: _countEditor.busy
+                ? null
+                : () => _countEditor.ensureRows(
+                    _position?.rows.map((row) => row.goodsId) ?? const [],
+                  ),
+            child: const Text('重试'),
+          ),
+        ),
+    ],
+  );
 
   Widget _stockTable(AppLocalizations l10n, WmPosition? position) {
     final kg = l10n.wmKg;
@@ -893,6 +1089,7 @@ class _WorkshopMaterialBinPageState
         ),
       ],
       items: _stockRows(position),
+      bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
       facets: const {},
       nullCounts: const {},
       filters: const {},
@@ -901,7 +1098,7 @@ class _WorkshopMaterialBinPageState
       isLoading: _loading && position == null,
       error: position == null ? _error : null,
       onRetry: _reloadWorkshop,
-      emptyMessage: '内料仓里还没有料\n仓库直接发料或车间申请领料后, 这里会显示每种料的现存',
+      emptyMessage: '内料仓暂无库存',
     );
   }
 
@@ -948,6 +1145,11 @@ class _WorkshopMaterialBinPageState
           label: '状态',
           width: 90,
           value: (r) => wmRequisitionStatusLabel(r.status),
+          // 2026-10-01 口径「不同状态不同颜色」：待处理琥珀 / 已完成绿 / 已取消灰。
+          cellColor: (context, r) => udenStatusBadgeCellColor(
+            context,
+            wmRequisitionStatusBadgeType(r.status),
+          ),
         ),
         MasterColumnDef(
           key: 'receiver',
@@ -975,6 +1177,7 @@ class _WorkshopMaterialBinPageState
         ),
       ],
       items: page?.items ?? const [],
+      bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
       facets: const {},
       nullCounts: const {},
       filters: const {},

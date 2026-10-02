@@ -36,8 +36,10 @@ import static com.uten.imp.features.sales.order.dto.OrderProgressTimelineEvent.R
  * {@link EmployeeNameResolver#nameOf} 解析为实际姓名，兼容 users.id 历史数据)；审核/红冲/驳回的时间点读单据
  * 自身的 approved_at / reversed_at / rejected_at 列(V672 起由命令写入，ADR-105 规定业务逻辑不读审计日志)。
  *
- * <p>展示顺序（服务端排好，前端直接渲染）：已发生事件（DONE/CURRENT/REJECTED）按发生时间倒序、
- * 无时间的当前阶段置顶；PENDING 占位按业务顺序垫底。只读接口，归属校验与 detail 同口径。
+ * <p>展示顺序（服务端排好，前端直接渲染，2026-10-01 用户口径「还没有进行的放上面，
+ * 最下面是进度开始、最上面是最后的阶段」）：未开始的 PENDING 占位整块置顶（其中
+ * 阶段最靠后的在最顶）；其下已发生事件（DONE/CURRENT/REJECTED）按时间倒序，无时间的
+ * 当前/驳回环置顶该块；销售下单垫底。只读接口，归属校验与 detail 同口径。
  */
 @Service
 @RequiredArgsConstructor
@@ -71,18 +73,22 @@ public class SalesOrderTimelineService {
         return events;
     }
 
-    /** 展示排序：已发生事件按时间倒序（无时间的当前阶段置顶），PENDING 占位按业务顺序垫底。 */
-    private static final Comparator<OrderProgressTimelineEvent> TIMELINE_ORDER = (a, b) -> {
+    /**
+     * 展示排序：未开始的 PENDING 占位整块置顶（阶段最靠后的在最顶，已完成的更晚
+     * 阶段不插进未开始块中间）；其下已发生事件按时间倒序（无时间的当前/驳回环置顶
+     * 该块），销售下单垫底。包级可见供同包单测锁定顺序。
+     */
+    static final Comparator<OrderProgressTimelineEvent> TIMELINE_ORDER = (a, b) -> {
         boolean aPending = PENDING.equals(a.state());
         boolean bPending = PENDING.equals(b.state());
-        if (aPending != bPending) return aPending ? 1 : -1;
-        if (aPending) return Integer.compare(a.seq(), b.seq());
+        if (aPending != bPending) return aPending ? -1 : 1; // 未开始的占位排最上
+        if (aPending) return Integer.compare(b.seq(), a.seq()); // 最后的阶段在最顶
         OffsetDateTime at = a.occurredAt();
         OffsetDateTime bt = b.occurredAt();
         if (at == null && bt == null) return Integer.compare(b.seq(), a.seq());
-        if (at == null) return -1; // 无时间的当前阶段排最上
+        if (at == null) return -1; // 无时间的当前/驳回环排已发生块最上
         if (bt == null) return 1;
-        int byTime = bt.compareTo(at); // 最新在前
+        int byTime = bt.compareTo(at); // 已发生：最新在上
         return byTime != 0 ? byTime : Integer.compare(b.seq(), a.seq());
     };
 

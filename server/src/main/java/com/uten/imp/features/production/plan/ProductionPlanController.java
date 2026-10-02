@@ -138,11 +138,11 @@ public class ProductionPlanController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('production_material_analysis:create')")
+    @PreAuthorize("hasAuthority('production_material_analysis:create') or hasAuthority('production_plan:create')")
     public PlanDetail create(@Valid @RequestBody PlanSaveRequest req) {
-        throw new com.uten.imp.common.web.ApiException(
-                com.uten.imp.common.web.ErrorCode.CONFLICT,
-                "新增生产计划必须先完成物料分析，请使用 /api/production/material-analyses");
+        // 2026-10-01 恢复手工空白新建（用户口径：新建单据进去都是默认新建页）。
+        // 手工计划没有来源物料分析，排产时按 v_goods_bom_item_usage.effective_qty 展开分段。
+        return service.create(req);
     }
 
     @PutMapping("/{id}")

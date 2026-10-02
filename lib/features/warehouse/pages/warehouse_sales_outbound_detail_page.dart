@@ -386,7 +386,14 @@ class _WarehouseSalesOutboundDetailPageState
                             rows: rows,
                             // V631：发出仓按行在表格里选，预填建议仓。
                             draftOf: (_) => _picking,
-                            onDraftChanged: () => setState(() {}),
+                            onDraftChanged: () {
+                              setState(() {});
+                              ensureOutboundWeightParams(
+                                _weightCache,
+                                _picking?.weights.values ??
+                                    const <OutboundWeightEntry>[],
+                              );
+                            },
                             stockPlaceControllerOf:
                                 detail.header.allows(
                                   WarehouseSalesOutboundAction.confirmShipment,

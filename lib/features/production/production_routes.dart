@@ -194,7 +194,9 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: '/production/plans/new',
     name: 'production-plan-new',
-    redirect: (_, _) => RouteName.productionMaterialAnalysis,
+    // 2026-10-01 恢复空白手工新建页（用户口径：新建单据进去都是默认新建页）。
+    // 此前该路由被重定向到物料分析工作台；计划列表「新建」与生产 hub 卡共用本页。
+    builder: (_, _) => const ProductionPlanEditPage(),
   ),
   DraftAwareGoRoute(
     path: '/production/plans/:id/edit',

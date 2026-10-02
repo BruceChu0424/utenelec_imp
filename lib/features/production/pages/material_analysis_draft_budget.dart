@@ -100,6 +100,7 @@ final class _MaterialPreparationDraftBudgetController {
           ownedAvailableQty: owned,
           uncoveredBeforeSharedQty: need.clamp(0.0, double.infinity),
           requestedQty: requested,
+          useAvailableQty: owner._preparationUseAvailableQty != false,
           selected: owner._selectedMaterialGroupKeys.contains(group.key),
           inputKey: draft != null && sourceAmount == null
               ? 'AGGREGATE|${draft.key}'

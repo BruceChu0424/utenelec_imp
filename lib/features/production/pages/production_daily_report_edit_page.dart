@@ -3412,6 +3412,12 @@ class _ProductionDailyReportEditPageState
                               ),
                             _savedFields(
                               UtenEditableGrid<DailyGridRow>(
+                                columnEditingEnabled:
+                                    !_loading &&
+                                    !_saving &&
+                                    !_resumeBlocked &&
+                                    _createdReportId == null &&
+                                    (_isCreate || _detailLoaded),
                                 tableKey: 'production.daily.items',
                                 controller: _grid,
                                 stickyHeaderPinned: _gridPinned,

@@ -30,6 +30,62 @@ import 'drafts/memory_form_draft_storage.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   for (final module in ['purchase', 'subcontract']) {
+    testWidgets(
+      '$module total amount survives draft recovery and exact submission',
+      (tester) async {
+        final storage = _Storage();
+        final api = _Api();
+        var env = await _pump(tester, module, storage, api);
+        await _seed(tester, module);
+        final pricing = module == 'purchase'
+            ? tester
+                  .widget<UtenEditableGrid<PurchaseGridRow>>(
+                    find.byType(UtenEditableGrid<PurchaseGridRow>),
+                  )
+                  .controller[0]
+                  .pricing
+            : tester
+                  .widget<UtenEditableGrid<SubcontractGridRow>>(
+                    find.byType(UtenEditableGrid<SubcontractGridRow>),
+                  )
+                  .controller[0]
+                  .pricing;
+        pricing.qty.text = '3000';
+        pricing.totalAmount.text = '100';
+        expect(pricing.totalAmountInput, '100');
+        expect(pricing.price.text, '0.0333333333');
+        final state = module == 'purchase'
+            ? tester.state(find.byType(PurchaseOrderEditPage))
+                  as FormDraftMixin<PurchaseOrderEditPage>
+            : tester.state(find.byType(SubcontractOrderEditPage))
+                  as FormDraftMixin<SubcontractOrderEditPage>;
+        await state.saveFormDraftNow();
+        final draft = env.container.read(formDraftsProvider).single;
+        await tester.pumpWidget(const SizedBox());
+        env.router.dispose();
+        env.container.dispose();
+        env = await _pump(
+          tester,
+          module,
+          storage,
+          api,
+          location: draft.resumeLocation,
+        );
+        await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+        await tester.pumpAndSettle();
+        expect(api.creates, 1);
+        final line = (api.lastBody!['items'] as List).single as Map;
+        expect(line['qty'], '3000');
+        expect(line['price'], '0.0333333333');
+        expect(line['totalAmountInput'], '100');
+        expect(line.containsKey('amountOriginal'), isFalse);
+        expect(line.containsKey('amountLocal'), isFalse);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
     for (final failCheckpoint in [false, true]) {
       testWidgets(
         '$module restored partial order saves; failed local checkpoint=$failCheckpoint',
@@ -239,6 +295,7 @@ class _Session extends SessionNotifier {
 class _Api extends ApiClient {
   _Api() : super(Dio());
   int creates = 0;
+  Map<String, dynamic>? lastBody;
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -264,6 +321,7 @@ class _Api extends ApiClient {
   }) async {
     if (!path.endsWith('/orders/batch')) return const {};
     creates++;
+    lastBody = body as Map<String, dynamic>;
     return const {
       'items': [
         {'id': 'created-order', 'items': <Map<String, dynamic>>[]},

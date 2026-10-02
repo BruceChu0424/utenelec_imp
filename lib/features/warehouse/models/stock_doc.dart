@@ -102,6 +102,7 @@ class StockDocItem {
     this.surplusQty,
     this.countQty,
     this.place,
+    this.warehouseId,
     this.remark,
     this.issuedQty,
     this.requestedQty,
@@ -149,6 +150,9 @@ class StockDocItem {
   final double? surplusQty;
   final double? countQty;
   final String? place;
+
+  /// 行级仓库（V787 手工出入库单逐行选仓）；null = 沿用表头仓。
+  final String? warehouseId;
   final String? remark;
   final double? unitRate;
   final String? upstreamItemId;
@@ -182,6 +186,7 @@ class StockDocItem {
     surplusQty: (json['surplusQty'] as num?)?.toDouble(),
     countQty: (json['countQty'] as num?)?.toDouble(),
     place: json['place'] as String?,
+    warehouseId: json['warehouseId'] as String?,
     remark: json['remark'] as String?,
     issuedQty: (json['issuedQty'] as num?)?.toDouble(),
     requestedQty: (json['requestedQty'] as num?)?.toDouble(),

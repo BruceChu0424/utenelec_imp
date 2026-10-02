@@ -4,6 +4,7 @@ import '../../shared/platform_tables/platform_table_picker.dart';
 import '../../shared/platform_tables/platform_table_widgets.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../shared/platform_tables/platform_row_draft.dart';
+import '../../shared/widgets/column_editor_dialog.dart';
 // UtenEditableGrid - 编辑页明细可编辑 Excel 表（采购/销售/委外/仓库/钱流 共用）
 //
 // 设计目标（plans/witty-imagining-reef.md Workstream B1）：
@@ -733,6 +734,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.addColumnLabel = '添加列',
     this.tableKey,
     this.platformBinding,
+    this.columnEditingEnabled = false,
   }) : assert(
          !showAddRow || createBlankRow != null,
          'showAddRow=true 必须提供 createBlankRow（「添加行」按钮需要构造空行）',
@@ -740,6 +742,10 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 
   final String? tableKey;
   final PlatformTableBinding<T>? platformBinding;
+
+  /// Only document entry forms opt in. Review/selection tables keep their
+  /// existing layout controls without creating columns or editing field values.
+  final bool columnEditingEnabled;
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
 
@@ -977,6 +983,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         rows: widget.controller.rows,
       ),
       explicitBinding: widget.platformBinding,
+      columnEditingEnabled: widget.columnEditingEnabled,
       stagedDraftOf: (row) => row.platformFields,
       exactFactKeys: widget.columns
           .where((column) => column.exactValueOf != null)
@@ -1153,37 +1160,40 @@ class _UtenEditableGridState<T extends EditableGridRow>
   );
   Future<void> _addColumn() async {
     String? key;
-    if (widget.onAddColumn != null) {
+    if (_platform.columnEditingEnabled && widget.onAddColumn != null) {
       final mode = await showDialog<String>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('添加列'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.calculate_outlined),
-                title: const Text('单据附加项'),
-                subtitle: const Text('费用可计入金额，文字信息仅作记录'),
-                onTap: () => Navigator.pop(dialogContext, 'business'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.view_column_outlined),
-                title: const Text('辅助计算与说明'),
-                subtitle: const Text('不改变业务金额或库存数量'),
-                onTap: () => Navigator.pop(dialogContext, 'platform'),
-              ),
-            ],
-          ),
+        builder: (dialogContext) => ColumnEditorDialog(
+          title: '添加列',
+          subtitle: '选择这列的用途，再设置内容和计算规则。',
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('取消'),
             ),
           ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.calculate_outlined),
+                title: const Text('单据附加项'),
+                subtitle: const Text('输入附加费或优惠，计入正式金额；也可补充文字、数字和管理本单已添加列'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(dialogContext, 'business'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.view_column_outlined),
+                title: const Text('辅助计算与说明'),
+                subtitle: const Text('引用已有数值做辅助计算，或添加记录信息'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(dialogContext, 'platform'),
+              ),
+            ],
+          ),
         ),
       );
-      if (!mounted || mode == null) return;
+      if (!mounted || mode == null || !_platform.columnEditingEnabled) return;
       key = mode == 'business'
           ? await widget.onAddColumn!(
               _columns.where((c) => _hiddenColumnKeys.contains(c.key)).toList(),
@@ -2138,9 +2148,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
       ? const SizedBox(width: 48, height: 48)
       : IconButton(
           key: const Key('editable-grid-add-column'),
-          tooltip: widget.addColumnLabel,
+          tooltip: _platform.columnEditingEnabled
+              ? widget.addColumnLabel
+              : '显示列',
           onPressed: _addColumn,
-          icon: const Icon(Icons.add_rounded),
+          icon: Icon(
+            _platform.columnEditingEnabled
+                ? Icons.add_rounded
+                : Icons.view_column_outlined,
+          ),
         );
 
   /// 表头全选 checkbox 的格子内容（批量模式表头首列；读写由 controller 或外部

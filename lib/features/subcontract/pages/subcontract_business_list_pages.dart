@@ -705,7 +705,7 @@ class _SubcontractBusinessListPageState
     // 2026-09-06 页头动作进工具条 trailing：与分类分段/搜索同一行
     // （紧凑断点自动换行到搜索下方），不再单独占一行。
     final action = _p.primaryAction;
-    final actionReady = action != null && _canUse(action);
+    final actionReady = _seg != _draftSeg && action != null && _canUse(action);
     final page = Scaffold(
       appBar: UtenAppBar(
         title: _p.title,

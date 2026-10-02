@@ -22,7 +22,6 @@
 // 参数原样透传给出库小类。进页面不预选大类（未选显示引导空态，不发请求）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -37,6 +36,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/badges/badge_scope.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
 import '../widgets/warehouse_form_draft_categories.dart';
@@ -49,6 +49,7 @@ import '../pages/warehouse_inbound_task_center_page.dart';
 import '../pages/warehouse_outbound_task_center_page.dart';
 import '../pages/warehouse_quality_results_page.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../providers/warehouse_stock_count_review_count_provider.dart';
 import '../widgets/warehouse_document_history_view.dart';
 import '../widgets/warehouse_history_gate.dart';
 import '../widgets/warehouse_scope_selector.dart';
@@ -97,11 +98,16 @@ class _WarehouseTaskCenterPageState
   String _keyword = '';
   String? _myLocation;
   int _refreshTick = 0;
+  String? _workshopMaterialSection;
+  int _workshopMaterialSelection = 0;
 
   @override
   void initState() {
     super.initState();
     _group = widget.initialGroup;
+    if (_group == 'workshopMaterial') {
+      _workshopMaterialSection = widget.initialSection;
+    }
   }
 
   @override
@@ -110,6 +116,10 @@ class _WarehouseTaskCenterPageState
     if (widget.initialGroup != oldWidget.initialGroup &&
         widget.initialGroup != null) {
       _group = widget.initialGroup;
+      if (_group == 'workshopMaterial') {
+        _workshopMaterialSection = widget.initialSection;
+        _workshopMaterialSelection++;
+      }
     }
   }
 
@@ -149,8 +159,43 @@ class _WarehouseTaskCenterPageState
     final canScWaste = canOpen(RouteName.warehouseSubcontractWasteHistory);
     final canMasterDrafts = canOpen(RouteName.basicinfoWarehouse);
     final canReviewCounts = canOpen(RouteName.warehouseStockCountReview);
-    // 车间内料仓 (ADR-131): 可见性 = 仓库发料页的路由守卫。
+    // 独立授权的盘点审核人也从同一分类办理，不要求仓库发料权限。
     final canWorkshopMaterial = canOpen(RouteName.workshopMaterialIssue);
+    final canCycleCount =
+        canOpen(RouteName.workshopMaterialBin) &&
+        canOpen(RouteName.workshopMaterialCount);
+    final reviewCount = ref.watch(warehouseStockCountReviewCountProvider);
+    final warehouseScope = ref.watch(warehouseTaskScopeProvider);
+    final workshopCounts = ref.watch(
+      badgeScopeCountsProvider(
+        BadgeScope.entries(
+          todo: canWorkshopMaterial
+              ? BadgeEntry.warehouseWorkshopMaterial
+              : BadgeEntry.warehouseStockCountReview,
+          inProgress: canCycleCount
+              ? BadgeEntry.warehouseWorkshopMaterial
+              : null,
+          additionalTodoEntries: {
+            if (canWorkshopMaterial && canReviewCounts && warehouseScope.isAll)
+              BadgeEntry.warehouseStockCountReview,
+          },
+        ),
+      ),
+    );
+    // ALL uses the existing entry union. A selected warehouse replaces only
+    // the review entry with its server-filtered total; module totals are intact.
+    final workshopTodo = !canWorkshopMaterial && !canReviewCounts
+        ? 0
+        : warehouseScope.isAll
+        ? workshopCounts.todo
+        : (canWorkshopMaterial
+                  ? ref.watch(
+                      badgeEntryTodoProvider(
+                        BadgeEntry.warehouseWorkshopMaterial,
+                      ),
+                    )
+                  : 0) +
+              (reviewCount ?? 0);
     // 本页其余文案尚未接 arb (部分既有测试不挂本地化代理), 取不到时回落中文原文。
     final workshopMaterialLabel =
         Localizations.of<AppLocalizations>(
@@ -208,17 +253,13 @@ class _WarehouseTaskCenterPageState
             badgeEntryInProgressProvider(BadgeEntry.warehouseQualityResult),
           ),
         ),
-      if (canWorkshopMaterial)
+      if (canWorkshopMaterial || canReviewCounts || canCycleCount)
         _GroupSpec(
           value: 'workshopMaterial',
           label: workshopMaterialLabel,
-          // 红 = 待发料 + 待收退回; 黄 = 盘点中 (服务端徽章目录算好)。
-          count: ref.watch(
-            badgeEntryTodoProvider(BadgeEntry.warehouseWorkshopMaterial),
-          ),
-          inProgressCount: ref.watch(
-            badgeEntryInProgressProvider(BadgeEntry.warehouseWorkshopMaterial),
-          ),
+          // 红 = 待发料/退回与待审盘点的独立入口并集；黄仅真实周期盘点中。
+          count: workshopTodo,
+          inProgressCount: workshopCounts.inProgress,
         ),
       if (canScReturn) const _GroupSpec(value: 'scReturn', label: '委外成品退货'),
       if (canScWaste) const _GroupSpec(value: 'scWaste', label: '委外损耗'),
@@ -252,7 +293,7 @@ class _WarehouseTaskCenterPageState
       ],
     );
 
-    if (groups.isEmpty && !canMasterDrafts) {
+    if (groups.isEmpty && !canMasterDrafts && !canReviewCounts) {
       return Scaffold(
         appBar: AppBar(title: const Text('仓库任务中心')),
         body: Center(
@@ -271,14 +312,6 @@ class _WarehouseTaskCenterPageState
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
         actions: [
-          if (canReviewCounts)
-            TextButton.icon(
-              key: const Key('warehouse-count-review-entry'),
-              onPressed: () =>
-                  context.push(RouteName.warehouseStockCountReview),
-              icon: const Icon(Icons.fact_check_outlined),
-              label: const Text('盘点审核'),
-            ),
           if (canMasterDrafts)
             const FormDraftsAppBarButton(categoryId: 'warehouse-master'),
           const WarehouseScopeSelector(),
@@ -349,18 +382,20 @@ class _WarehouseTaskCenterPageState
       externalHeader: categoryBar,
     ),
     'workshopMaterial' => WorkshopMaterialTaskCenter(
+      key: ValueKey(_workshopMaterialSelection),
+      initialSection: _workshopMaterialSection,
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
       externalHeader: categoryBar,
     ),
     'scReturn' => WarehouseHistoryGate(
       timeKey: const Key('warehouse-task-center-sc-return-time'),
+      externalHeader: categoryBar,
       builder: (time) => WarehouseDocumentHistoryView(
         type: WarehouseDocumentHistoryType.subcontractReturn,
         keyword: _keyword,
         refreshTick: _refreshTick,
         embedded: true,
-        externalHeader: categoryBar,
         dateFrom: time.range == null
             ? null
             : ChinaDateTime.formatDate(time.range!.start),
@@ -371,12 +406,12 @@ class _WarehouseTaskCenterPageState
     ),
     _ => WarehouseHistoryGate(
       timeKey: const Key('warehouse-task-center-sc-waste-time'),
+      externalHeader: categoryBar,
       builder: (time) => WarehouseDocumentHistoryView(
         type: WarehouseDocumentHistoryType.subcontractWaste,
         keyword: _keyword,
         refreshTick: _refreshTick,
         embedded: true,
-        externalHeader: categoryBar,
         dateFrom: time.range == null
             ? null
             : ChinaDateTime.formatDate(time.range!.start),

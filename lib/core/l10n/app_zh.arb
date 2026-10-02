@@ -906,7 +906,7 @@
   "productionHubSchedule": "生产调度与进度",
   "productionHubScheduleSub": "待排产·在产·完工",
   "productionHubPlan": "新建生产计划单",
-  "productionHubPlanSub": "引用销售订单或手工新建·历史记录",
+  "productionHubPlanSub": "手工新建排产计划，可引用销售订单",
   "productionHubPlanHistory": "生产计划历史",
   "productionHubPlanHistorySub": "查看计划、审批与分批记录",
   "productionHubMaterialAnalysis": "物料分析准备",

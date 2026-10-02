@@ -78,6 +78,7 @@ import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/pricing/line_pricing_controller.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
@@ -155,11 +156,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   final _freeReason = TextEditingController();
   int _shipmentRevision = 0;
 
-  /// 订单/报价：金额 = 数量 × 只读单价 × 可编辑折扣；其它单据仍 = 数量 × 单价。
+  /// 与服务端一致：适用折扣的商业单据按数量 × 单价 × 折扣计算。
   bool get _amountUsesDiscount =>
       widget.docType == SalesDocType.order ||
       widget.docType == SalesDocType.quote ||
+      widget.docType == SalesDocType.returnDoc ||
       _isCustomerShipment;
+
+  bool get _allowPricingInput =>
+      _isCustomerShipment || widget.docType == SalesDocType.returnDoc;
 
   /// 单价由货品资料标价锁定(服务端权威)的单据：订货、报价(ADR-134)。
   bool get _lockedPrice =>
@@ -465,7 +470,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _validUntil = DateTime.tryParse(data['validUntil'] as String? ?? '');
     _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
     restoreDraftEmployees(_empCache, data['employees']);
-    restoreDraftGrid(_grid, data['rows'], SalesGridRow.fromDraft);
+    restoreDraftGrid(
+      _grid,
+      data['rows'],
+      (row) => SalesGridRow.fromDraft(
+        row,
+        allowPricingInput: _allowPricingInput,
+        amountUsesDiscount: _amountUsesDiscount,
+      ),
+    );
     _pendingFiles.restoreDraft(draftMap(data['attachments']));
     _batchIntentKey = data['batchIntentKey'] as String? ?? _batchIntentKey;
     _uncertainShipmentBody = data['uncertainShipmentBody'] is Map
@@ -664,20 +677,24 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _financeRejectedByName = d.financeRejectedByName;
         final rows = <SalesGridRow>[];
         for (final it in d.items) {
-          final row = SalesGridRow(amountUsesDiscount: _amountUsesDiscount)
-            ..documentItemId = it.id
-            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
-            ..goods = ref
-                .read(salesMasterNameServiceProvider)
-                .goodsOptionOf(it.goodsId)
-            ..orderItemId = it.orderItemId
-            ..outItemId = it.outItemId
-            ..colorId = it.colorId
-            ..unitId = it.unitId
-            ..unitRate = it.unitRate
-            ..unitRateExact = it.exactDecimals['unitRate']
-            ..solution = it.solution
-            ..responsible = it.responsible;
+          final row =
+              SalesGridRow(
+                  amountUsesDiscount: _amountUsesDiscount,
+                  allowPricingInput: _allowPricingInput,
+                )
+                ..documentItemId = it.id
+                // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+                ..goods = ref
+                    .read(salesMasterNameServiceProvider)
+                    .goodsOptionOf(it.goodsId)
+                ..orderItemId = it.orderItemId
+                ..outItemId = it.outItemId
+                ..colorId = it.colorId
+                ..unitId = it.unitId
+                ..unitRate = it.unitRate
+                ..unitRateExact = it.exactDecimals['unitRate']
+                ..solution = it.solution
+                ..responsible = it.responsible;
           row.qty.text =
               financeExactTrimmed(
                 it.exactDecimals['qty'] ?? it.qty?.toString(),
@@ -776,7 +793,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _grid.replaceAll(rows);
       }
       if (_grid.isEmpty) {
-        _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+        _grid.addRow(
+          SalesGridRow(
+            amountUsesDiscount: _amountUsesDiscount,
+            allowPricingInput: _allowPricingInput,
+          ),
+        );
       }
       if (widget.id == null &&
           widget.docType == SalesDocType.shipment &&
@@ -979,7 +1001,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final extraRows = <SalesGridRow>[];
     if (picked.length > 1) {
       for (final g in picked.skip(1)) {
-        final r = SalesGridRow(amountUsesDiscount: _amountUsesDiscount);
+        final r = SalesGridRow(
+          amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
+        );
         fill(r, g);
         extraRows.add(r);
       }
@@ -1047,6 +1072,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           li,
           goods,
           amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
         ),
       );
     }
@@ -1374,6 +1400,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       final touched =
           r.qty.text.trim().isNotEmpty ||
           r.price.text.trim().isNotEmpty ||
+          (r.canEditTotal && r.pricing.totalAmount.text.trim().isNotEmpty) ||
           r.remark.text.trim().isNotEmpty;
       if (touched) {
         r.invalidNotifier.value = true;
@@ -1395,8 +1422,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       var badRow = 0;
       var badDiscountRow = 0;
       var copiedPriceRow = 0;
+      String? pricingError;
       for (var i = 0; i < rows.length; i++) {
         final r = rows[i];
+        if (_allowPricingInput &&
+            !_freeCustomerShipment &&
+            !masked &&
+            r.pricing.mode != LinePricingMode.calculateAmount) {
+          final error = r.pricing.validate();
+          if (error != null) {
+            r.invalidNotifier.value = true;
+            pricingError ??= '第 ${allRows.indexOf(r) + 1} 行明细：$error';
+          }
+        }
         final qtyOk = (double.tryParse(r.qty.text.trim()) ?? 0) > 0;
         final priceOk =
             !priceRequired ||
@@ -1431,6 +1469,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           'items',
           '第 $copiedPriceRow 行是复制的新${_cfg.shortLabel}明细，请重新选择货品以取得当前主档单价',
         );
+      } else if (pricingError != null) {
+        fail('items', pricingError);
       } else if (badRow > 0) {
         fail('items', '第 $badRow 行明细：数量须大于 0${priceRequired ? '，单价必填' : ''}');
       } else if (badDiscountRow > 0) {
@@ -2322,6 +2362,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       r.extraColumnSnapshots.any((c) => c.value?.trim().isNotEmpty ?? false) ||
       r.goods != null ||
       r.qty.text.trim().isNotEmpty ||
+      (r.canEditTotal && r.pricing.totalAmount.text.trim().isNotEmpty) ||
       r.remark.text.trim().isNotEmpty ||
       r.clientModel.text.trim().isNotEmpty;
 
@@ -2457,7 +2498,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final names = ref.read(salesMasterNameServiceProvider);
     final rows = [
       for (final p in patch.rows)
-        SalesGridRow.fromIntake(p, amountUsesDiscount: _amountUsesDiscount),
+        SalesGridRow.fromIntake(
+          p,
+          amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
+        ),
     ];
     for (var index = 0; index < rows.length; index++) {
       final row = rows[index];
@@ -2517,7 +2562,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       _grid.addRows(rows);
     }
     if (_grid.isEmpty) {
-      _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+      _grid.addRow(
+        SalesGridRow(
+          amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
+        ),
+      );
     }
     _recalcQtyTotal();
     if (mounted) setState(() {});
@@ -3447,6 +3497,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                   return SavedDocumentFields(
                                     locked: _hasCreatedDocuments,
                                     child: UtenEditableGrid<SalesGridRow>(
+                                      columnEditingEnabled:
+                                          !_loading &&
+                                          !_saving &&
+                                          !_hasCreatedDocuments &&
+                                          !_editingApprovedOrder &&
+                                          _uncertainShipmentBody == null,
                                       tableKey:
                                           'sales.${widget.docType.name}.items',
                                       onAddColumn: !_lockedPrice
@@ -3460,15 +3516,26 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   : 'sales_order',
                                               hiddenColumns: hidden,
                                               rows: _grid.rows,
+                                              currentRows: () => _grid.rows,
                                               createRow: () {
                                                 final row = SalesGridRow(
                                                   amountUsesDiscount:
                                                       _amountUsesDiscount,
+                                                  allowPricingInput:
+                                                      _allowPricingInput,
                                                 );
                                                 _grid.addRow(row);
                                                 return row;
                                               },
                                               priceMasked: _priceMasked,
+                                              isEditingEnabled: () =>
+                                                  mounted &&
+                                                  !_loading &&
+                                                  !_saving &&
+                                                  !_hasCreatedDocuments &&
+                                                  !_editingApprovedOrder &&
+                                                  _uncertainShipmentBody ==
+                                                      null,
                                               onChanged: () => setState(() {}),
                                             ),
                                       forceVisibleColumnKeys:
@@ -3497,6 +3564,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                             SalesGridRow(
                                               amountUsesDiscount:
                                                   _amountUsesDiscount,
+                                              allowPricingInput:
+                                                  _allowPricingInput,
                                             ),
                                             _grid.rows,
                                           ),

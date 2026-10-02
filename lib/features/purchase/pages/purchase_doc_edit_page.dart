@@ -62,7 +62,8 @@ import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
-import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../basic_data/models/goods_node.dart' show GoodsListItem;
+import '../widgets/purchase_goods_picker.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../repositories/purchase_repository.dart';
@@ -353,9 +354,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..unitRate = it.unitRate;
-          row.qty.text = financeExactTrimmed(it.qty?.toString()) ?? '';
+          row.qty.text =
+              financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '';
           row.weight.text = financeExactTrimmed(it.weight?.toString()) ?? '';
-          row.price.text = financeExactTrimmed(it.price?.toString()) ?? '';
+          row.price.text =
+              financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? '';
+          row.recordSourceAmount(it.amountOriginalText);
           row.remark.text = it.remark ?? '';
           rows.add(row);
         }
@@ -415,18 +419,28 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
 
   Future<void> _pickGoods(PurchaseGridRow row) async {
     if (row.sourceLocked) return;
-    final g = await showUtenGoodsPicker(
+    final picked = await ref.read(purchaseGridGoodsPickerProvider)(
       context,
       ref,
-      scope: UtenGoodsPickerScope.material,
     );
-    if (g == null) return;
-    row
-      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = g.colorId
-      ..unitId = g.unitId
-      ..unitRate = 1
-      ..stockPlaceNotifier.value = g.stockPlace;
+    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    void fill(PurchaseGridRow target, GoodsListItem goods) {
+      target
+        ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)
+        ..colorId = goods.colorId
+        ..unitId = goods.unitId
+        ..unitRate = 1
+        ..stockPlaceNotifier.value = goods.stockPlace;
+    }
+
+    fill(row, picked.first);
+    final extra = <PurchaseGridRow>[];
+    for (final goods in picked.skip(1)) {
+      final added = PurchaseGridRow();
+      fill(added, goods);
+      extra.add(added);
+    }
+    if (extra.isNotEmpty) _grid.addRows(extra);
   }
 
   /// 供应商确定后预填结账方式：上游单据带结账方式时优先（收货/退货沿用来源
@@ -538,7 +552,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       (r) =>
           r.goods == null &&
           r.qty.text.trim().isEmpty &&
-          r.price.text.trim().isEmpty,
+          r.price.text.trim().isEmpty &&
+          r.pricing.totalAmount.text.trim().isEmpty,
     );
     _grid.addRows(rows);
     // 表头未选供应商 → 以上游单据供应商回填；结账方式未选时按上游单据结账方式
@@ -631,6 +646,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         rowOk = false;
       }
       final price = double.tryParse(r.price.text);
+      if (r.upstreamItemId == null &&
+          (r.price.text.trim().isNotEmpty ||
+              r.pricing.totalAmount.text.trim().isNotEmpty)) {
+        final pricingError = r.pricing.validate();
+        if (pricingError != null) {
+          context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+          return;
+        }
+      }
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
@@ -642,9 +666,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       itemsBody.add({
         ...platformRowPayload(r),
         'goodsId': r.goods!.id,
-        'qty': qty,
+        'qty': r.qty.text.trim(),
         // 金额由服务端按 数量 × 单价 × 汇率 精确派生(ADR-112), 请求不带金额。
-        'price': ?price,
+        if (price != null) 'price': r.price.text.trim(),
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
         // 来源单据编号谱系（到货登记=来源订货单号），与委外进仓口径一致。
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
@@ -733,8 +757,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+    } catch (error, stack) {
+      // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
+      debugPrint('保存采购单据失败: $error\n$stack');
+      if (mounted) {
+        context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1033,6 +1061,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                 purchaseDocGridColumnPrefsProvider,
                               )[widget.docType.name];
                               return UtenEditableGrid<PurchaseGridRow>(
+                                columnEditingEnabled:
+                                    !_loading &&
+                                    !_saving &&
+                                    _draftCreatedId == null &&
+                                    (widget.id == null || _existingEditable),
                                 tableKey:
                                     'purchase.${widget.docType.name}.items',
                                 controller: _grid,
@@ -1101,13 +1134,21 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                               )
                                             : null,
                                       ),
-                                      financeExactMoneyDisplay(
-                                        exactAmountSumText(
-                                          _grid.rows.map(
-                                            (r) => r.amountExactNotifier.value,
-                                          ),
-                                        ),
-                                      ),
+                                      _grid.rows.any(
+                                            (r) =>
+                                                r.goods != null &&
+                                                r.sourceAmountPending,
+                                          )
+                                          ? '保存后按来源计算'
+                                          : financeExactMoneyDisplay(
+                                              exactAmountSumText(
+                                                _grid.rows.map(
+                                                  (r) => r
+                                                      .amountExactNotifier
+                                                      .value,
+                                                ),
+                                              ),
+                                            ),
                                       danger: true,
                                     ),
                                   ],

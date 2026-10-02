@@ -25,7 +25,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -70,6 +69,8 @@ class _FqcSheetGroup {
   final ProductionFqcInspectionSheet sheet;
   final List<ProductionFqcInspection> inspections;
   final String? loadError;
+
+  String get label => '品质检查单 ${sheet.sheetNo}';
 }
 
 /// 一行可编辑的 IQC 检验明细（合格默认=剩余待检，不合格默认=0）。
@@ -123,6 +124,49 @@ class _IqcReceiptGroup {
   final PendingInspectionReceipt receipt;
   final List<_EditableIqcRow> rows;
   final String? loadError;
+
+  String get label =>
+      '${receipt.isSubcontract ? '委外进仓单' : '采购收货单'} ${receipt.billNo ?? receipt.receiptId}';
+}
+
+/// 合一审批表的一行：IQC 收货明细或 FQC 检查任务，类型/单号成列区分。
+class _ApprovalRow {
+  _ApprovalRow.iqc(this.receipt, this.iqc) : fqc = null, sheetNo = null;
+  _ApprovalRow.fqc(this.fqc, {this.sheetNo}) : receipt = null, iqc = null;
+
+  final PendingInspectionReceipt? receipt;
+  final _EditableIqcRow? iqc;
+  final ProductionFqcInspection? fqc;
+  final String? sheetNo;
+
+  bool get isFqc => fqc != null;
+
+  String get kindLabel => isFqc
+      ? (sheetNo != null ? '检查单' : '报工')
+      : (receipt!.isSubcontract ? '委外进仓' : '收货单');
+
+  String get docNo => isFqc
+      ? (sheetNo ?? fqc!.reportNo ?? fqc!.id)
+      : (receipt!.billNo ?? receipt!.receiptId);
+
+  String? get goodsName => isFqc ? fqc!.goodsName : iqc!.item.goodsName;
+  String? get goodsCode => isFqc ? fqc!.goodsCode : iqc!.item.goodsCode;
+  String? get colorName => isFqc ? fqc!.colorName : iqc!.item.colorName;
+
+  /// 勾一行就是整行判合格。
+  bool get preStocked =>
+      isFqc ? fqc!.preStocked != null : iqc!.item.preStocked != null;
+  String get preStockedLabel => isFqc
+      ? fqcStorageText(fqc!)
+      : (iqc!.item.preStocked == null
+            ? '待检区'
+            : '已入库 · ${iqc!.item.preStocked!.label}');
+
+  /// 表内唯一行标识（IQC 前缀避免与 FQC 的 UUID 撞车）。
+  String get selectId => isFqc ? 'fqc:${fqc!.id}' : 'iqc:${iqc!.item.id}';
+
+  /// 已确认提交的 IQC 行不可再选；FQC 行恒可选。
+  bool get selectable => isFqc || !iqc!.completed;
 }
 
 class QualityBatchApprovalPage extends ConsumerStatefulWidget {
@@ -738,7 +782,19 @@ class _QualityBatchApprovalPageState
     final looseFqc = _selection.inspections
         .where((inspection) => !groupedFqcIds.contains(inspection.id))
         .toList(growable: false);
-    if (groups.isEmpty && sheetGroups.isEmpty && looseFqc.isEmpty) {
+    final rows = <_ApprovalRow>[
+      // 2026-10-02 用户口径：批量审批合一张表——每行一条待检明细，单据类型/单号
+      // 成列区分，不再按单分组各画一张表；加载失败的单据行不进表，上方给出重试。
+      for (final group in groups)
+        if (group.loadError == null)
+          for (final row in group.rows) _ApprovalRow.iqc(group.receipt, row),
+      for (final group in sheetGroups)
+        if (group.loadError == null)
+          for (final inspection in group.inspections)
+            _ApprovalRow.fqc(inspection, sheetNo: group.sheet.sheetNo),
+      for (final inspection in looseFqc) _ApprovalRow.fqc(inspection),
+    ];
+    if (rows.isEmpty) {
       return UtenEmpty(
         icon: Icons.fact_check_outlined,
         message: '所选任务都已处理',
@@ -748,6 +804,12 @@ class _QualityBatchApprovalPageState
             popOrBackTo(context, defaultPath: RouteName.warehouseInspections),
       );
     }
+    final failures = <String>[
+      for (final group in groups)
+        if (group.loadError != null) '${group.label} 明细加载失败：${group.loadError}',
+      for (final group in sheetGroups)
+        if (group.loadError != null) '${group.label} 明细加载失败：${group.loadError}',
+    ];
     return ListView(
       controller: _pageScroll,
       padding: const EdgeInsets.fromLTRB(
@@ -761,15 +823,24 @@ class _QualityBatchApprovalPageState
           padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
           child: Text(
             _submission == null
-                ? '按单核对检验明细，合格部分提交后转仓库待入库。'
+                ? '按行核对检验明细，合格部分提交后转仓库待入库。'
                 : '已确认 ${_submission!.completedReceiptCount} 单；重试原报告核对未完成部分。需修改请返回待检重新读取。',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ),
-        if (groups.any((group) => group.loadError != null) ||
-            sheetGroups.any((group) => group.loadError != null))
+        for (final failure in failures)
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
+            child: Text(
+              failure,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ),
+        if (failures.isNotEmpty)
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
@@ -779,342 +850,10 @@ class _QualityBatchApprovalPageState
               label: const Text('重试加载失败的单据'),
             ),
           ),
-        for (final group in groups) ...[
-          _receiptHeader(theme, group),
-          // 组头与下方表格/错误行留间距（2026-09-12 用户口径：现在贴在一起）。
-          const SizedBox(height: UtenSpacing.s8),
-          if (group.loadError != null)
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              child: Text(
-                '本单明细加载失败：${group.loadError}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            )
-          else
-            _iqcTable(group),
-          const SizedBox(height: UtenSpacing.s12),
-        ],
-        for (final group in sheetGroups) ...[
-          _sheetHeader(theme, group),
-          const SizedBox(height: UtenSpacing.s8),
-          if (group.loadError != null)
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              child: Text(
-                '本单明细加载失败：${group.loadError}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
-                ),
-              ),
-            )
-          else if (group.inspections.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s8),
-              child: Text(
-                '本单已无待检行',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            )
-          else
-            _fqcTable(group.inspections, tableKey: group.sheet.id),
-          const SizedBox(height: UtenSpacing.s12),
-        ],
-        if (looseFqc.isNotEmpty) ...[
-          Text(
-            '自制产成品 · 无检查单 (勾选即全部合格)',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          _fqcTable(looseFqc, tableKey: 'legacy'),
-        ],
+        _unifiedTable(theme, rows),
       ],
     );
   }
-
-  /// 检查单组头：三态复选（全选/部分/未选）镜像 IQC 收货单组头。
-  Widget _sheetHeader(ThemeData theme, _FqcSheetGroup group) {
-    final ids = group.inspections.map((item) => item.id).toList();
-    final selected = ids.where(_selectedFqcIds.contains).length;
-    final bool? value = ids.isEmpty || selected == 0
-        ? false
-        : selected == ids.length
-        ? true
-        : null;
-    // 先入库后检(V597)：已上架的成品检查单在单头下同样标红。
-    final preStocked = [
-      for (final item in group.inspections)
-        if (item.preStocked != null) item,
-    ];
-    final header = Container(
-      key: ValueKey('batch-approval-sheet-${group.sheet.id}'),
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.5),
-      child: Row(
-        children: [
-          Checkbox(
-            key: ValueKey('batch-approval-sheet-check-${group.sheet.id}'),
-            value: value,
-            tristate: true,
-            onChanged: ids.isEmpty
-                ? null
-                : (_) => setState(() {
-                    if (value != true) {
-                      _selectedFqcIds.addAll(ids);
-                    } else {
-                      _selectedFqcIds.removeAll(ids);
-                    }
-                  }),
-          ),
-          Expanded(
-            child: Text(
-              '品质检查单 ${group.sheet.sheetNo}'
-              ' · ${group.sheet.warehouseName ?? '—'}'
-              '${group.sheet.receiverName == null ? '' : ' · 收货 ${group.sheet.receiverName}'}'
-              '（${group.inspections.length} 行待检，勾选 = 全部合格）',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (preStocked.isEmpty) return header;
-    final shown = preStocked.take(3).toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        header,
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s8,
-            UtenSpacing.s4,
-            UtenSpacing.s8,
-            UtenSpacing.s4,
-          ),
-          child: UtenInlineNotice(
-            key: ValueKey('batch-approval-sheet-pre-stocked-${group.sheet.id}'),
-            level: UtenInlineNoticeLevel.error,
-            title: '货品已入库，需到对应储放区域检查',
-            message: [
-              for (final item in shown)
-                '${item.goodsName ?? item.goodsCode ?? '货品'} → ${item.preStocked!.label}',
-              if (preStocked.length > shown.length)
-                '另 ${preStocked.length - shown.length} 行见明细',
-            ].join('；'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _receiptHeader(ThemeData theme, _IqcReceiptGroup group) {
-    final pending = group.rows.where((row) => !row.completed).toList();
-    final selected = pending.where((row) => row.selected).length;
-    final bool? allSelected = selected == 0
-        ? false
-        : selected == pending.length
-        ? true
-        : null;
-    // 先入库后检(V596)：本单实物已在库位上，批量审批页同样顶部标红。
-    final preStocked = [
-      for (final row in group.rows)
-        if (row.item.preStocked != null) row.item,
-    ];
-    final header = Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.5),
-      child: Row(
-        children: [
-          Checkbox(
-            key: ValueKey(
-              'batch-approval-receipt-check-${group.receipt.receiptId}',
-            ),
-            value: allSelected,
-            tristate: true,
-            onChanged: pending.isEmpty
-                ? null
-                : (_) => setState(() {
-                    for (final row in pending) {
-                      row.selected = allSelected != true;
-                    }
-                  }),
-          ),
-          Expanded(
-            child: Text(
-              '${group.receipt.isSubcontract ? '委外进仓单' : '采购收货单'} '
-              '${group.receipt.billNo ?? group.receipt.receiptId}'
-              '${group.receipt.supplierName == null ? '' : ' · ${group.receipt.supplierName}'}'
-              '（${group.rows.length} 行待检）',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (preStocked.isEmpty) return header;
-    final shown = preStocked.take(3).toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        header,
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s8,
-            UtenSpacing.s4,
-            UtenSpacing.s8,
-            UtenSpacing.s4,
-          ),
-          child: UtenInlineNotice(
-            key: ValueKey(
-              'batch-approval-pre-stocked-${group.receipt.receiptId}',
-            ),
-            level: UtenInlineNoticeLevel.error,
-            title: '货品已入库，需到对应储放区域检查',
-            message: [
-              for (final item in shown)
-                '${item.goodsName ?? item.goodsCode ?? '货品'} → ${item.preStocked!.label}',
-              if (preStocked.length > shown.length)
-                '另 ${preStocked.length - shown.length} 行见明细',
-            ].join('；'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _iqcTable(
-    _IqcReceiptGroup group,
-  ) => MasterDataTableView<_EditableIqcRow>(
-    tableKey:
-        'features.quality.pages.quality_batch_approval_page.QualityBatchApprovalPageState._iqcTable.1',
-    key: ValueKey('batch-approval-iqc-table-${group.receipt.receiptId}'),
-    embedded: true,
-    stickyHeaderPinned: _pinOf('iqc:${group.receipt.receiptId}'),
-    showSelectionSummary: false,
-    columns: [
-      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-      // 批量页一屏多单，名称撞车时靠编号区分；颜色与验收单位本表已有独立列。
-      MasterColumnDef(
-        key: 'goods',
-        label: '货品名称',
-        width: 200,
-        value: (row) => row.item.goodsName ?? '—',
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (_, row) =>
-            UtenGoodsIdentityCell(name: row.item.goodsName),
-      ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '编号',
-        width: 130,
-        value: (row) => UtenGoodsAttributeCell.text(row.item.goodsCode),
-        cellBuilder: (_, row) => UtenGoodsAttributeCell(row.item.goodsCode),
-      ),
-      MasterColumnDef(
-        key: 'color',
-        label: '颜色',
-        width: 100,
-        value: (row) => row.item.colorName ?? '—',
-      ),
-      // 2026-09-18 用户口径：先入库后检的货品在批量页也要逐行看到储放位置
-      //（此前只在组头红条里显示前 3 行）；写法对齐检验处置页。
-      MasterColumnDef(
-        key: 'preStocked',
-        label: '储放位置',
-        width: 200,
-        value: (row) => row.item.preStocked?.label ?? '待检区',
-        cellBuilder: (context, row) {
-          final location = row.item.preStocked;
-          if (location == null) return const Text('待检区');
-          return Text(
-            '已入库 · ${location.label}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: UtenColors.error,
-              fontWeight: FontWeight.w700,
-            ),
-          );
-        },
-      ),
-      MasterColumnDef(
-        key: 'pass',
-        label: '合格数量',
-        width: 150,
-        type: 'number',
-        info: inspectionQuantityColumnHint(context, passed: true),
-        value: (row) => row.pass.text,
-        cellBuilder: (context, row) => _iqcQuantityField(row, passed: true),
-      ),
-      MasterColumnDef(
-        key: 'fail',
-        label: '不合格数量',
-        width: 150,
-        type: 'number',
-        info: inspectionQuantityColumnHint(context, passed: false),
-        value: (row) => row.fail.text,
-        cellBuilder: (context, row) => _iqcQuantityField(row, passed: false),
-      ),
-      MasterColumnDef(
-        key: 'remaining',
-        label: '剩余待检',
-        width: 110,
-        type: 'number',
-        value: (row) => _fmt(row.item.remainingBaseQty ?? 0),
-      ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '验收单位',
-        width: 190,
-        value: (row) => inspectionQuantityUnitCell(context, row.item),
-      ),
-      MasterColumnDef(
-        key: 'source',
-        label: '来源订货单',
-        width: 160,
-        value: (row) => row.item.sourceOrderNo ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: '本次报告',
-        width: 190,
-        value: (row) => row.completed ? '本次报告已确认提交' : '待提交',
-      ),
-    ],
-    items: group.rows,
-    facets: const {},
-    nullCounts: const {},
-    filters: const {},
-    onFilterChanged: (_, _) {},
-    selectable: true,
-    idOf: (row) => row.completed ? null : row.item.id,
-    selectedIds: {
-      for (final row in group.rows)
-        if (row.selected && !row.completed) row.item.id,
-    },
-    onSelectedIdsChanged: (next) => setState(() {
-      for (final row in group.rows) {
-        if (!row.completed) row.selected = next.contains(row.item.id);
-      }
-    }),
-    emptyMessage: '本单已无待检明细',
-  );
 
   Widget _iqcQuantityField(_EditableIqcRow row, {required bool passed}) =>
       ListenableBuilder(
@@ -1142,24 +881,37 @@ class _QualityBatchApprovalPageState
         ),
       );
 
-  Widget _fqcTable(
-    List<ProductionFqcInspection> inspections, {
-    required String tableKey,
-  }) => MasterDataTableView<ProductionFqcInspection>(
+  /// 合一后的批量审批表：IQC 收货明细与 FQC 检查任务同表逐行核对。
+  /// 类型/单号列区分来源；FQC 是「勾选即全部合格」语义，合格/不合格两列只属于
+  /// IQC 行（FQC 行显示 —），本次合格数量看「待检/本次合格」列。
+  Widget _unifiedTable(
+    ThemeData theme,
+    List<_ApprovalRow> rows,
+  ) => MasterDataTableView<_ApprovalRow>(
     tableKey:
-        'features.quality.pages.quality_batch_approval_page.QualityBatchApprovalPageState._fqcTable.1',
-    key: ValueKey('batch-approval-fqc-table-$tableKey'),
+        'features.quality.pages.quality_batch_approval_page.QualityBatchApprovalPageState._unifiedTable.1',
+    key: const Key('batch-approval-unified-table'),
     embedded: true,
-    stickyHeaderPinned: _pinOf('fqc:$tableKey'),
+    stickyHeaderPinned: _pinOf('unified'),
     showSelectionSummary: false,
     columns: [
-      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-      // 勾一行就是整行判合格，认错货直接放行错批次；颜色与单位本表已有独立列。
+      MasterColumnDef(
+        key: 'kind',
+        label: '类型',
+        width: 96,
+        value: (row) => row.kindLabel,
+      ),
+      MasterColumnDef(
+        key: 'docNo',
+        label: '单号',
+        width: 170,
+        value: (row) => row.docNo,
+      ),
       MasterColumnDef(
         key: 'goods',
         label: '货品名称',
         width: 200,
-        value: (row) => row.goodsName ?? row.goodsCode ?? '—',
+        value: (row) => row.goodsName ?? '—',
         cellBuilderHandlesSemantics: true,
         cellBuilder: (_, row) => UtenGoodsIdentityCell(name: row.goodsName),
       ),
@@ -1177,48 +929,76 @@ class _QualityBatchApprovalPageState
         value: (row) => row.colorName ?? '—',
       ),
       MasterColumnDef(
-        key: 'quantity',
-        label: '本次合格',
-        width: 110,
+        key: 'pass',
+        label: '合格数量',
+        width: 150,
         type: 'number',
-        info: '勾选本行表示将本行剩余待检数量全部判定合格。',
-        value: (row) => fqcQtyText(row.remainingQty),
+        info: inspectionQuantityColumnHint(context, passed: true),
+        value: (row) => row.iqc?.pass.text ?? '—',
+        exactValueOf: (row) => row.iqc?.pass.text,
+        exactListenableOf: (row) => row.iqc?.pass,
+        cellBuilder: (context, row) => row.iqc == null
+            ? const Text('—')
+            : _iqcQuantityField(row.iqc!, passed: true),
+      ),
+      MasterColumnDef(
+        key: 'fail',
+        label: '不合格数量',
+        width: 150,
+        type: 'number',
+        info: inspectionQuantityColumnHint(context, passed: false),
+        value: (row) => row.iqc?.fail.text ?? '—',
+        exactValueOf: (row) => row.iqc?.fail.text,
+        exactListenableOf: (row) => row.iqc?.fail,
+        cellBuilder: (context, row) => row.iqc == null
+            ? const Text('—')
+            : _iqcQuantityField(row.iqc!, passed: false),
+      ),
+      MasterColumnDef(
+        key: 'remaining',
+        label: '待检/本次合格',
+        width: 120,
+        type: 'number',
+        value: (row) => row.iqc != null
+            ? _fmt(row.iqc!.item.remainingBaseQty ?? 0)
+            : fqcQtyText(row.fqc!.remainingQty),
+        exactValueOf: (row) => row.iqc?.item.remainingBaseQty?.toString(),
       ),
       MasterColumnDef(
         key: 'unit',
         label: '单位',
-        width: 80,
-        value: (row) => row.unitName ?? '—',
+        width: 190,
+        value: (row) => row.iqc != null
+            ? inspectionQuantityUnitCell(context, row.iqc!.item)
+            : row.fqc?.unitName ?? '—',
       ),
       MasterColumnDef(
-        key: 'report',
-        label: '来源报工单',
+        key: 'source',
+        label: '来源单据',
         width: 170,
-        value: (row) => row.reportNo ?? row.id,
+        value: (row) => row.iqc?.item.sourceOrderNo ?? row.fqc?.reportNo ?? '—',
       ),
       MasterColumnDef(
         key: 'plan',
         label: '生产计划',
         width: 150,
-        value: (row) => row.planNo ?? '—',
+        value: (row) => row.fqc?.planNo ?? '—',
       ),
       MasterColumnDef(
         key: 'warehouse',
         label: '实际成品仓',
         width: 150,
-        value: (row) => row.warehouseName ?? '—',
+        value: (row) => row.fqc?.warehouseName ?? '—',
       ),
-      // 先入库后检(V597)：已上架行红字给出实际储放位置，与 FQC 办理页同口径。
       MasterColumnDef(
-        key: 'place',
+        key: 'preStocked',
         label: '储放位置',
-        width: 150,
-        value: (row) => fqcStorageText(row),
+        width: 200,
+        value: (row) => row.preStockedLabel,
         cellBuilder: (context, row) {
-          final text = fqcStorageText(row);
-          if (row.preStocked == null) return Text(text);
+          if (!row.preStocked) return Text(row.preStockedLabel);
           return Text(
-            text,
+            row.preStockedLabel,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -1228,22 +1008,46 @@ class _QualityBatchApprovalPageState
           );
         },
       ),
+      MasterColumnDef(
+        key: 'status',
+        label: '本次报告',
+        width: 190,
+        value: (row) => row.isFqc
+            ? '勾选即全部合格'
+            : row.iqc!.completed
+            ? '本次报告已确认提交'
+            : '待提交',
+      ),
     ],
-    items: inspections,
+    items: rows,
     facets: const {},
     nullCounts: const {},
     filters: const {},
     onFilterChanged: (_, _) {},
     selectable: true,
-    idOf: (row) => row.id,
-    selectedIds: _selectedFqcIds.intersection(
-      inspections.map((row) => row.id).toSet(),
-    ),
+    idOf: (row) => row.selectable ? row.selectId : null,
+    selectedIds: {
+      for (final row in rows)
+        if (row.isFqc
+            ? _selectedFqcIds.contains(row.fqc!.id)
+            : row.iqc!.selected && !row.iqc!.completed)
+          row.selectId,
+    },
     onSelectedIdsChanged: (next) => setState(() {
-      _selectedFqcIds.removeAll(inspections.map((row) => row.id));
-      _selectedFqcIds.addAll(next);
+      for (final row in rows) {
+        final checked = next.contains(row.selectId);
+        if (row.iqc != null) {
+          if (!row.iqc!.completed) row.iqc!.selected = checked;
+        } else if (row.fqc != null) {
+          if (checked) {
+            _selectedFqcIds.add(row.fqc!.id);
+          } else {
+            _selectedFqcIds.remove(row.fqc!.id);
+          }
+        }
+      }
     }),
-    emptyMessage: '本单已无待检明细',
+    emptyMessage: '所选单据已无待检明细',
   );
 
   Widget _buildBottomBar(ThemeData theme) {

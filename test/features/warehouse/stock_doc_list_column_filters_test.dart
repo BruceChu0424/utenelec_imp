@@ -48,10 +48,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    MasterDataTableView<StockDocListItem> tableWidget() => tester.widget(
-      find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<StockDocListItem>,
-      ),
+    MasterDataTableView<Object> tableWidget() => tester.widget(
+      find.byWidgetPredicate((widget) => widget is MasterDataTableView<Object>),
     );
     final table = tableWidget();
     expect(table.facets.keys, containsAll(<String>['warehouse', 'department']));
@@ -114,10 +112,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final table = tester.widget<MasterDataTableView<StockDocListItem>>(
-      find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<StockDocListItem>,
-      ),
+    final table = tester.widget<MasterDataTableView<Object>>(
+      find.byWidgetPredicate((widget) => widget is MasterDataTableView<Object>),
     );
     // 转仓段：仓库 + 调入仓两桶（无领料车间列）。
     expect(
@@ -132,10 +128,8 @@ void main() {
     expect(api.lastQuery?['toWarehouseId'], 'warehouse-1');
     expect(api.lastQuery?['page'], 1);
 
-    final refreshed = tester.widget<MasterDataTableView<StockDocListItem>>(
-      find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<StockDocListItem>,
-      ),
+    final refreshed = tester.widget<MasterDataTableView<Object>>(
+      find.byWidgetPredicate((widget) => widget is MasterDataTableView<Object>),
     );
     expect(refreshed.filters['toWarehouse'], 'warehouse-1');
     expect(tester.takeException(), isNull);

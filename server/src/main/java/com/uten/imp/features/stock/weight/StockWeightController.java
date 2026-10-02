@@ -105,10 +105,10 @@ public class StockWeightController {
         return profiles.resetRegime(goodsId);
     }
 
-    /** 旧快捷核重入口退役；主档称重配置接口保持原权限和行为。 */
+    /** 旧快捷核重入口退役，保留明确指引；库存目标重量须送盘点审核。 */
     @PostMapping("/balances/set")
     @PreAuthorize("hasAuthority('stock:weight:manage')")
     public BalanceWeightView setBalanceWeight(@Valid @RequestBody SetBalanceWeightRequest request) {
-        throw new ApiException(ErrorCode.CONFLICT, "库存快捷核重已退役，请通过库存盘点提交审核");
+        throw new ApiException(ErrorCode.CONFLICT, "库存核重已改为盘点审批，请通过盘点模式录入目标重量并提交审核");
     }
 }

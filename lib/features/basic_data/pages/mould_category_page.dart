@@ -266,6 +266,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     return buildShell(
       context,
       detailPaneBuilder: (selected) =>

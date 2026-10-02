@@ -1,6 +1,6 @@
 // 员工编辑页（真实后端）：部分更新——仅发送"已变更"字段，契合后端 UpdateEmployeeRequest 语义。
 // 敏感 PII/薪资字段仅当变更且非空才回写（避免把脱敏占位误重新加密）。HR 角色拿明文，可正常编辑。
-// 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120），分组为 UtenSectionHeader + UtenCard。
+// 表单页全断点套 UtenContentContainer.narrow（无固定最大宽度），分组为 UtenSectionHeader + UtenCard。
 // 文档：docs/03-页面/员工编辑页.md
 
 import 'package:flutter/material.dart';
@@ -368,7 +368,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
               actionLabel: l10n.commonRetry,
               onAction: _load,
             )
-          // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
+          // 表单正文随父容器扩宽，保留响应式 gutter。
           : UtenContentContainer.narrow(
               child: Stack(
                 children: [

@@ -1,6 +1,6 @@
 // 车间内料仓用量报表与结算页 (ADR-131 §5.10)：
 //  1. 没有看成本权限的人 (服务端金额下发为空) 看不到金额列，有金额时出现；
-//  2. 产品用料：独占期标「真实单耗」，其余标「按理论比例分摊」；
+//  2. 产品用料：独占期平均耗用与分摊区分，估盘来源沿期初/期末展示；
 //  3. 结算被拦：三种拦截文案与负责人都显示；按钮只按服务端 allowedActions 出现；
 //  4. 撤销结算：先填原因，服务端要求再认证时弹统一密码框，输完后撤销生效；
 //     版本取结算状态里的最新期间版本 (每次结算尝试都会让它 +1)，不用期间列表里的旧值；
@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/step_up_coordinator.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/models/workshop_material_report_models.dart';
 import 'package:uten_imp/features/production/pages/workshop_material_reports_page.dart';
 import 'package:uten_imp/features/production/repositories/workshop_material_report_repository.dart';
@@ -209,7 +210,7 @@ void main() {
     await _pump(tester, _FakeRepo(usage: const [_usageRow]));
 
     expect(find.text('PC E-15'), findsOneWidget);
-    expect(find.text('实际'), findsOneWidget);
+    expect(find.text('盘点推算耗用'), findsOneWidget);
     expect(find.text('金额'), findsNothing);
     expect(find.text('结算时金额'), findsNothing);
     expect(find.text('单价'), findsNothing);
@@ -220,7 +221,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('产品用料：独占期标真实单耗，其余按理论比例分摊', (tester) async {
+  testWidgets('产品用料：独占期平均不冒充实测，并展示期初估盘来源', (tester) async {
     await _pump(
       tester,
       _FakeRepo(
@@ -237,6 +238,9 @@ void main() {
             allocatedQty: 13,
             exclusivePeriod: true,
             actualPerUnitGrams: 13,
+            openingCountBasis: 'ESTIMATED',
+            closingCountBasis: 'WEIGHED',
+            materialUnitName: 'kg',
           ),
           WmProductUsageRow(
             periodId: 'p1',
@@ -256,10 +260,25 @@ void main() {
     await tester.tap(find.text('产品用料'));
     await tester.pumpAndSettle();
 
-    expect(find.text('真实单耗'), findsOneWidget);
+    expect(find.text('独占期平均耗用'), findsOneWidget);
+    expect(find.text('真实单耗'), findsNothing);
     expect(find.text('按理论比例分摊'), findsOneWidget);
     expect(find.text('12.5'), findsWidgets);
     expect(find.text('材料金额'), findsNothing, reason: '没有金额时不出金额列');
+    final table = tester.widget<MasterDataTableView<WmProductUsageRow>>(
+      find.byType(MasterDataTableView<WmProductUsageRow>),
+    );
+    final evidence = table.columns.singleWhere(
+      (column) => column.key == 'countEvidence',
+    );
+    expect(evidence.value(table.items.first), '期初：含容器估盘；期末：称重/公斤录入');
+    expect(table.columns.map((column) => column.label), contains('分摊耗用'));
+    final unit = table.columns.singleWhere(
+      (column) => column.key == 'materialUnit',
+    );
+    expect(unit.label, '材料单位');
+    expect(unit.value(table.items.first), 'kg');
+    expect(find.textContaining('不等于报废率'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -399,6 +418,73 @@ void main() {
 
 /// 服务端报表行形状 (WorkshopMaterialReportDtos / CloseStatusView)。
 void _serverShapeTests() {
+  test('盘点来源兼容旧响应，期初或期末估盘都影响本期而独占不改变可信度', () {
+    final inherited = WmBinUsageRow.fromJson({
+      'openingCountBasis': 'ESTIMATED',
+      'closingCountBasis': 'WEIGHED',
+      'actualQty': 90,
+    });
+    expect(inherited.hasEstimatedCount, isTrue);
+    expect(inherited.hasUnknownCount, isFalse);
+    expect(inherited.actualQty, 90);
+    final product = WmProductUsageRow.fromJson({
+      'exclusivePeriod': true,
+      'openingCountBasis': 'BAG_COUNT',
+      'closingCountBasis': 'ESTIMATED',
+      'actualPerUnit': 0.013,
+      'materialUnitKgFactor': 1,
+    });
+    expect(product.hasEstimatedCount, isTrue);
+    expect(product.actualPerUnitGrams, 13);
+    final old = WmBinUsageRow.fromJson({'actualQty': 90});
+    expect(old.hasUnknownCount, isTrue);
+    expect(old.countEvidenceLabel, '期初：来源未提供；期末：来源未提供');
+    final trend = WmWasteTrendPoint.fromJson({
+      'openingCountBasis': 'EMPTY_START',
+      'closingCountBasis': 'WEIGHED_AND_BAGS',
+    });
+    expect(trend.hasEstimatedCount, isFalse);
+    expect(trend.hasUnknownCount, isFalse);
+  });
+
+  test('产品用量按服务端质量单位因子换克，别名和未知单位不靠名字猜', () {
+    WmProductUsageRow read(double? factor, {String name = '别名单位'}) =>
+        WmProductUsageRow.fromJson({
+          'unitWeight': 12.5,
+          'actualPerUnit': 13,
+          'materialUnitName': name,
+          'materialUnitKgFactor': factor,
+        });
+    expect(read(0.001).unitWeightGrams, closeTo(12.5, 0.000000001));
+    expect(read(0.001).actualPerUnitGrams, closeTo(13, 0.000000001));
+    expect(read(1).unitWeightGrams, closeTo(12500, 0.000000001));
+    expect(read(0.45359237).unitWeightGrams, closeTo(5669.904625, 0.000001));
+    final unknown = read(null, name: 'kg');
+    expect(unknown.unitWeightGrams, isNull);
+    expect(unknown.actualPerUnitGrams, isNull);
+    expect(unknown.unitWeightBase, 12.5);
+    expect(unknown.materialUnitName, 'kg');
+    expect(read(0).unitWeightGrams, isNull);
+  });
+
+  test('已审核期初和账面修正与领入分开保留', () {
+    final row = WmBinUsageRow.fromJson({
+      'openingCountBasis': 'APPROVED_OPENING',
+      'closingCountBasis': 'WEIGHED',
+      'transferInQty': 100,
+      'adjustmentQty': -5,
+    });
+    expect(row.hasUnknownCount, isFalse);
+    expect(row.countEvidenceLabel, '期初：已审核期初盘点；期末：称重/公斤录入');
+    expect(row.transferInQty, 100);
+    expect(row.adjustmentQty, -5);
+    expect(WmLedgerRow.fromJson({'sourceKind': 'OPENING'}).sourceLabel, '盘点审核');
+    expect(
+      WmLedgerRow.fromJson({'sourceKind': 'ADJUSTMENT'}).sourceLabel,
+      '盘点审核',
+    );
+  });
+
   test('收发明细：来源单据取库存单据号与领料单号，盘点过账显示盘点', () {
     final issue = WmLedgerRow.fromJson({
       'sourceRowId': 'r1',

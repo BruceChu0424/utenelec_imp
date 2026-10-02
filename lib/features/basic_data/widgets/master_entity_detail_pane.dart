@@ -109,6 +109,9 @@ abstract interface class MasterEntityPaneController<TItem, TDetail> {
 
   /// 当前页加载完成后滚到列表末尾，供追加/粘贴完成后的定位使用。
   void scrollToEnd();
+
+  /// 用业务操作的结果替换选择集（例如本次成功粘贴的新货品）。
+  void selectIds(Iterable<String> ids);
   void clearSelection();
 
   /// 行操作互斥(防连点)：已有操作在跑时直接返回 null。
@@ -384,7 +387,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   @override
-  void clearSelection() => setState(() => _selectedIds = {});
+  void selectIds(Iterable<String> ids) {
+    if (!mounted) return;
+    setState(() => _selectedIds = Set<String>.of(ids));
+  }
+
+  @override
+  void clearSelection() => selectIds(const []);
 
   @override
   Future<void> reload({int? page}) async {
@@ -995,6 +1004,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
             // primary:true → 表体参与「卡片折叠 → 表格内滚」联动。
             Expanded(
               child: MasterDataTableView<TItem>(
+                columnEditingEnabled: _c.canEdit,
                 rowsController: _tableRows,
                 paginationRevision: _page,
                 paginationScope: (widget.categoryId, _keyword),

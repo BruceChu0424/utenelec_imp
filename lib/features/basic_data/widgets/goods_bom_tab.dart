@@ -26,7 +26,7 @@
 // 选中集 _selectedRowIds 是本页唯一的「当前选中」真相——「编辑」只在恰好勾中
 // 一条时可用，「删除」勾中一条起就是批量删除。行键用 `父货品id|关系行id` 复合
 // 键：同一个子件可能同时挂在两个父件下并各自展开，光用关系行 id 会串行；复合
-// 键正好也是删除要的(父货品, 关系行)二元组。审计模式例外，见下。
+// 键正好也是删除和审计标记要的(父货品, 关系行)二元组。
 //
 // 表格：复用全站统一表格组件 MasterDataTableView（与货品资料列表同款）——
 // Excel 风格表头（竖线分隔 + 可拖拽拉宽拉窄）+ 表头/表体横滚同步 +
@@ -46,6 +46,8 @@
 // 没有数据或不适用显示「—」，悬停说明原因、有效批次和累计产量)。系统学出的
 // 组件在身份格带「系统学习」标记；编辑它只在改了设计使用数量时才提交数量
 // (改了即转为人工维护)，删除它后系统不再自动加回。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -81,7 +83,7 @@ import 'periodic_bom_confirmation.dart';
 class _BomNode {
   _BomNode(this.item);
 
-  final GoodsBomItem item;
+  GoodsBomItem item;
   List<_BomNode>? children; // null = 未加载
   bool expanded = false;
   bool loading = false;
@@ -96,6 +98,7 @@ class _BomRow {
     this.parentGoodsId,
     this.ancestorContinuations,
     this.isLastChild,
+    this.occurrenceKey,
   );
 
   final _BomNode node;
@@ -106,6 +109,9 @@ class _BomRow {
   final String parentGoodsId;
   final List<bool> ancestorContinuations;
   final bool isLastChild;
+
+  /// 同一关系可在多条展开路径出现；显示身份与批量操作的关系身份分开。
+  final String occurrenceKey;
 }
 
 /// 添加组件时的父级候选项（顶层本货品 或 任一可见组件）。
@@ -194,8 +200,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   /// 当前勾选的行键集合(复合键 `父货品id|关系行id`，见 [_rowId])。
   ///
-  /// 本页「当前选中」的唯一真相：多选态由表格最前列勾选框写入，审计模式的单击
-  /// 单选也写这里。不再另留一个 _selected 字段，否则两份真相一旦错位，批量删除
+  /// 本页「当前选中」的唯一真相：表格勾选框与单击行都写入这里，审计模式同样适用。
+  /// 不再另留一个 _selected 字段，否则两份真相一旦错位，批量删除
   /// 删的就不是用户勾的那几条。
   Set<String> _selectedRowIds = <String>{};
 
@@ -205,18 +211,19 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 当前展开的组件 goodsId 集合：CRUD 重载后据此恢复展开，让新加的子组件可见。
   final Set<String> _expandedIds = {};
 
-  /// 审计模式（V256）：点行把该组件标记为「已核对无误」（绿色），再点取消。
+  /// 审计模式（V256）：点已审格把该组件标记为「已核对无误」（绿色），再点取消。
   /// 标记持久化在服务端，多人/跨天/换机器都保留；编辑行内容后服务端自动清除。
   bool _auditMode = false;
 
-  /// 审计标记请求防并发（连点同一行导致标记状态来回翻转）。
-  bool _auditBusy = false;
+  /// 同一关系行防连点；不同组件可以连续核对，不互相阻塞。
+  final Map<String, Completer<void>> _auditBusyRows = {};
+  final Map<String, int> _auditRevisions = {};
 
   /// 「审计模式」按钮可见性：goods:bom:audit 或超管（已审绿色/已审列只在该模式
   /// 下出现，只有持有权限者能改标记）。
   bool get _canAudit =>
-      ref.watch(isSuperAdminProvider) ||
-      ref.watch(currentPermissionsProvider).contains(Perm.goodsBomAudit);
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsBomAudit);
 
   /// 整批领料的料 (期间边) 的单个重量要标黄待核对：服务端给了提醒，或直接挂在
   /// 本产品下、与货品资料单重相差 20% 以上 (ADR-131)。只提示，不拦截。
@@ -249,15 +256,34 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     _load();
   }
 
+  /// 展开/刷新若与审计写入交错，只重读相应父件，不能让旧 GET 覆盖新标记。
+  Future<List<GoodsBomItem>> _readBomItems(String goodsId) async {
+    bool hasPending() =>
+        _auditBusyRows.keys.any((key) => key.startsWith('$goodsId|'));
+    while (mounted) {
+      final pending = [
+        for (final entry in _auditBusyRows.entries)
+          if (entry.key.startsWith('$goodsId|')) entry.value.future,
+      ];
+      if (pending.isNotEmpty) await Future.wait(pending);
+      if (!mounted) return const [];
+      if (hasPending()) continue;
+      final revision = _auditRevisions[goodsId] ?? 0;
+      final items = await ref.read(goodsBomRepositoryProvider).list(goodsId);
+      if (revision == (_auditRevisions[goodsId] ?? 0) && !hasPending()) {
+        return items;
+      }
+    }
+    return const [];
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await ref
-          .read(goodsBomRepositoryProvider)
-          .list(widget.goodsId);
+      final items = await _readBomItems(widget.goodsId);
       if (!mounted) return;
       final roots = items.map(_BomNode.new).toList();
       // 恢复之前展开的子树（CRUD 后树不塌，新加的子组件立即可见）。
@@ -266,7 +292,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       setState(() {
         _roots = roots;
         // 重载会重建全部行/节点对象，但勾选集用的是业务复合键而非对象引用，
-        // 所以审计标记、编辑保存后的重载不会平白丢掉用户的勾选；真正已经不在
+        // 所以编辑保存后的重载不会平白丢掉用户的勾选；真正已经不在
         // 树里的行(刚被删掉的、父级子树没恢复展开的)在这里一并剪掉，
         // 避免编辑/删除去指一个已经不存在的 id。
         _pruneSelection();
@@ -294,9 +320,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       if (_expandedIds.contains(n.item.componentGoodsId) &&
           n.item.hasChildren) {
         try {
-          final items = await ref
-              .read(goodsBomRepositoryProvider)
-              .list(n.item.componentGoodsId);
+          final items = await _readBomItems(n.item.componentGoodsId);
           n.children = items.map(_BomNode.new).toList();
           n.expanded = true;
           await _restoreExpansion(n.children!, depth + 1);
@@ -321,11 +345,13 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       String prefix,
       String parentGoodsId,
       List<bool> ancestorContinuations,
+      String parentPath,
     ) {
       for (var i = 0; i < nodes.length; i++) {
         final seq = prefix.isEmpty ? '${i + 1}' : '$prefix.${i + 1}';
         final n = nodes[i];
         final isLastChild = i == nodes.length - 1;
+        final path = '$parentPath/${n.item.id}';
         rows.add(
           _BomRow(
             n,
@@ -334,18 +360,26 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             parentGoodsId,
             List.unmodifiable(ancestorContinuations),
             isLastChild,
+            path,
           ),
         );
         if (n.expanded && n.children != null) {
           walk(n.children!, depth + 1, seq, n.item.componentGoodsId, [
             ...ancestorContinuations,
             !isLastChild,
-          ]);
+          ], path);
         }
       }
     }
 
-    walk(_roots ?? const <_BomNode>[], 0, '', widget.goodsId, const []);
+    walk(
+      _roots ?? const <_BomNode>[],
+      0,
+      '',
+      widget.goodsId,
+      const [],
+      widget.goodsId,
+    );
     return rows;
   }
 
@@ -450,8 +484,12 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
     setState(() => node.loading = true);
     try {
-      final items = await ref.read(goodsBomRepositoryProvider).list(id);
-      if (!mounted) return;
+      final items = await _readBomItems(id);
+      if (!mounted ||
+          node.item.componentGoodsId != id ||
+          !node.item.hasChildren) {
+        return;
+      }
       setState(() {
         node.children = items.map(_BomNode.new).toList();
         node.expanded = true;
@@ -700,6 +738,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         const UtenMenuDivider(),
         UtenMenuItem(
           label: row.node.item.audited ? '取消已核对' : '标记已核对无误', // TODO(l10n)
+          enabled: _canAudit && !_auditBusyRows.containsKey(_rowId(row)),
           onTap: () => _toggleAudited(row),
         ),
       ],
@@ -708,21 +747,73 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   // ---- 审计标记（V256） ---------------------------------------------------
   //
-  // 审计模式下单击行 = 标记/取消「已核对无误」（已审行绿色 + 「已审」列 ✓，两者都
-  // 只在审计模式出现；关闭审计模式就是普通清单视图）。标记写服务端
-  // goods_bom_items.audited_at/_by：多人协作、跨天核对不丢。
-  // 双击仍展开/收起子级（第一击已翻面标记属预期，展开后子组件才可逐行审）。
+  // 已审格/右键菜单修改标记。PUT 已返回完整行，直接更新已加载的同一关系，
+  // 不再为一次打标重读根清单及全部展开子树。只在保存成功后显示已核对。
+
+  Iterable<_BomNode> _auditNodes(String parentGoodsId, String itemId) sync* {
+    Iterable<_BomNode> walk(List<_BomNode> nodes, String parent) sync* {
+      for (final node in nodes) {
+        if (parent == parentGoodsId && node.item.id == itemId) yield node;
+        final children = node.children;
+        if (children != null) {
+          yield* walk(children, node.item.componentGoodsId);
+        }
+      }
+    }
+
+    yield* walk(_roots ?? const [], widget.goodsId);
+  }
 
   Future<void> _toggleAudited(_BomRow row) async {
-    if (_auditBusy) return;
-    _auditBusy = true;
+    final key = _rowId(row);
+    if (!_auditMode ||
+        _loading ||
+        !_canAudit ||
+        _auditBusyRows.containsKey(key)) {
+      return;
+    }
     final item = row.node.item;
+    final originals = {
+      for (final node in _auditNodes(row.parentGoodsId, item.id))
+        node: node.item,
+    };
+    if (!originals.containsKey(row.node)) return;
+    final repository = ref.read(goodsBomRepositoryProvider);
+    final pending = Completer<void>();
+    setState(() {
+      _auditBusyRows[key] = pending;
+      _auditRevisions.update(
+        row.parentGoodsId,
+        (value) => value + 1,
+        ifAbsent: () => 1,
+      );
+    });
     try {
-      await ref
-          .read(goodsBomRepositoryProvider)
-          .setAudited(row.parentGoodsId, item.id, !item.audited);
-      if (!mounted) return;
-      await _load(); // 重载保留展开状态（_expandedIds），新标记即刻显色
+      final updated = await repository.setAudited(
+        row.parentGoodsId,
+        item.id,
+        !item.audited,
+      );
+      if (!mounted ||
+          !identical(repository, ref.read(goodsBomRepositoryProvider))) {
+        return;
+      }
+      setState(() {
+        var structureChanged = false;
+        for (final node in _auditNodes(row.parentGoodsId, item.id)) {
+          // 编辑/重载已换过节点或行时，以新读到的内容为准，旧请求不能覆盖它。
+          if (!identical(node.item, originals[node])) continue;
+          if (node.item.componentGoodsId != updated.componentGoodsId ||
+              !updated.hasChildren) {
+            structureChanged = structureChanged || node.children != null;
+            node.children = null;
+            node.expanded = false;
+            node.loading = false;
+          }
+          node.item = updated;
+        }
+        if (structureChanged) _pruneSelection();
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       context.appError(e.message);
@@ -730,7 +821,14 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       if (!mounted) return;
       context.appError('审计标记失败，请稍后重试'); // TODO(l10n): 补 arb
     } finally {
-      _auditBusy = false;
+      _auditRevisions.update(
+        row.parentGoodsId,
+        (value) => value + 1,
+        ifAbsent: () => 1,
+      );
+      _auditBusyRows.remove(key);
+      pending.complete();
+      if (mounted) setState(() {});
     }
   }
 
@@ -815,26 +913,43 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
           // 点这一格 = 翻「已核对无误」（2026-09-25：右键菜单之外的快捷路径）；
           // 图标弃用细体 ✓ 文本，换实心圆形对勾（已核对，绿色）/ 空心圆（未核对，
           // 待点选），年长用户隔着屏幕也认得出状态。
-          cellBuilder: (context, r) => Tooltip(
-            message: r.node.item.audited ? '已核对，点击取消' : '点击标记已核对',
-            child: IconButton(
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-              visualDensity: VisualDensity.compact,
-              iconSize: 22,
-              icon: Icon(
-                r.node.item.audited
-                    ? Icons.check_circle
-                    : Icons.radio_button_unchecked,
-                color: r.node.item.audited
-                    ? Colors.green.shade700
-                    : Theme.of(
-                        context,
-                      ).colorScheme.onSurfaceVariant.withValues(alpha: 0.45),
+          cellBuilder: (context, r) {
+            final saving = _auditBusyRows.containsKey(_rowId(r));
+            return Tooltip(
+              message: saving
+                  ? '正在保存审计标记'
+                  : r.node.item.audited
+                  ? '已核对，点击取消'
+                  : '点击标记已核对',
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                visualDensity: VisualDensity.compact,
+                iconSize: 22,
+                icon: saving
+                    ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          key: ValueKey('goods-bom-audit-saving-${_rowId(r)}'),
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Icon(
+                        r.node.item.audited
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: r.node.item.audited
+                            ? Colors.green.shade700
+                            : Theme.of(context).colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.45),
+                      ),
+                onPressed: saving || !_canAudit
+                    ? null
+                    : () => _toggleAudited(r),
               ),
-              onPressed: () => _toggleAudited(r),
-            ),
-          ),
+            );
+          },
         ),
       MasterColumnDef(
         key: 'code',
@@ -884,6 +999,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         width: 88,
         type: 'number',
         value: (r) => r.node.item.basisOutputQtyText,
+        exactValueOf: (r) => r.node.item.basisOutputQty.toString(),
       ),
       MasterColumnDef(
         key: 'allowPartialPackage',
@@ -902,6 +1018,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         value: (r) => r.node.item.isPeriodicEdge
             ? _qtyText(r.node.item)
             : r.node.item.designQtyText,
+        exactValueOf: (r) =>
+            (r.node.item.isPeriodicEdge
+                    ? r.node.item.periodicUnitWeightGrams ?? r.node.item.qty
+                    : r.node.item.qty)
+                ?.toString(),
         cellColor: (context, r) =>
             _weightNeedsReview(r) ? Colors.amber.withValues(alpha: 0.28) : null,
       ),
@@ -913,6 +1034,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         width: 112,
         type: 'number',
         value: (r) => r.node.item.actualQtyText,
+        exactValueOf: (r) => r.node.item.actual.qty?.toString(),
         cellBuilder: (context, r) => Tooltip(
           message: bomActualUsageTip(
             l10n,
@@ -934,6 +1056,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   @override
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin
+    ref.watch(isSuperAdminProvider);
+    ref.watch(currentPermissionsProvider);
     final visible = _visibleRows;
     // 勾中条数决定悬浮组「编辑」的可用性：编辑只认 1 条，删除 >=1 条即可。
     final selectedCount = _selectedRowIds.length;
@@ -969,6 +1093,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             selectable: selectable,
             // _BomRow 无天然唯一 id，用复合键(见 _rowId)。
             idOf: _rowId,
+            rowKeyOf: (row) => row.occurrenceKey,
             selectedIds: _selectedRowIds,
             onSelectedIdsChanged: (next) =>
                 setState(() => _selectedRowIds = next),

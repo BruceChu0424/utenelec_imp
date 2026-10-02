@@ -1,9 +1,9 @@
-// UtenContentContainer - 内容宽度收敛容器
+// UtenContentContainer - 自适应内容容器
 // 文档：docs/00-项目准则/02-响应式与多端适配.md
 //
-// 解决超宽屏下内容被无限拉宽的问题：
-// - 内容最大宽度钳制在 maxWidth（默认 UtenBreakpoints.maxContentWidth = 1600）
-// - 居中显示，两侧留白
+// 页面正文始终使用父容器提供的宽度，不设置固定版心：
+// - 默认、narrow 和 wide 入口均不限制页面最大宽度
+// - 导航收起 / 展开时，页面正文随右侧可用空间一起伸缩
 // - 水平 gutter 随可用宽度自适应（<600: 16 / <840: 24 / >=840: 32）；大字号按倍率反向收
 //
 // 注意：gutter 基于 LayoutBuilder 拿到的"可用宽度"（父容器实际宽度），
@@ -15,11 +15,9 @@
 // 页内自动轮询做结构重建的页面（如生产物料分析）必须传 selectable:false 退出。
 //
 // 用法：
-//   UtenContentContainer(child: 页面内容)          // 列表/工作台等宽页面；2026-09-15 起
-//                                                   // 单据详情/财审/任务详情类页面同用默认
-//                                                   // 容器（1600 钳制），对齐新建销售订货单页
-//   UtenContentContainer.narrow(child: 表单)       // 输入表单/设置等窄页面（maxWidth 1120）
-//   UtenContentContainer.wide(child: 列表/报表)    // 数据页全宽（不钳制、靠左顶满侧栏右沿）
+//   UtenContentContainer(child: 页面内容)         // 页面正文随可用宽度伸缩
+//   UtenContentContainer.narrow(child: 表单)      // 兼容历史入口，同样不限制宽度
+//   UtenContentContainer.wide(child: 列表/报表)   // 全宽、靠左
 
 import 'dart:math' as math;
 
@@ -28,23 +26,20 @@ import 'package:flutter/material.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/responsive/display_zoom.dart';
 
-/// Uten 内容宽度收敛容器
+/// Uten 自适应内容容器
 ///
-/// 居中 + 最大宽度钳制 + 响应式水平 gutter 三合一，
-/// 是页面级内容的标准外壳。
+/// 页面级内容的标准外壳：使用可用宽度并保留响应式水平 gutter。
 class UtenContentContainer extends StatelessWidget {
   const UtenContentContainer({
     super.key,
     required this.child,
-    this.maxWidth = UtenBreakpoints.maxContentWidth,
+    this.maxWidth = double.infinity,
     this.padding,
     this.center = true,
     this.selectable = true,
   });
 
-  /// 窄内容变体：输入表单 / 设置页专用（maxWidth 1120）。
-  /// 2026-09-15 起：单据详情/财审/任务详情类页面改用默认容器（1600 钳制），
-  /// narrow 只留给纯表单与设置页（用户口径：详情类页面两侧不留大空白）。
+  /// 历史表单入口，保留调用兼容；与默认容器一样使用全部可用宽度。
   factory UtenContentContainer.narrow({
     Key? key,
     required Widget child,
@@ -54,7 +49,6 @@ class UtenContentContainer extends StatelessWidget {
   }) {
     return UtenContentContainer(
       key: key,
-      maxWidth: narrowMaxWidth,
       padding: padding,
       center: center,
       selectable: selectable,
@@ -62,7 +56,7 @@ class UtenContentContainer extends StatelessWidget {
     );
   }
 
-  /// 宽内容变体：列表 / 报表页专用（实质不钳制最大宽度、靠左顶满侧栏右沿）
+  /// 宽内容变体：列表 / 报表页专用（不钳制最大宽度、靠左）
   ///
   /// 用于以表格为主的"数据页"，让表顶到导航侧栏右沿，避免超宽屏两侧大留白。
   /// 仍保留响应式水平 gutter（<600:16 / <840:24 / >=840:32）。
@@ -74,7 +68,6 @@ class UtenContentContainer extends StatelessWidget {
   }) {
     return UtenContentContainer(
       key: key,
-      maxWidth: wideMaxWidth,
       padding: padding,
       center: false,
       selectable: selectable,
@@ -82,22 +75,16 @@ class UtenContentContainer extends StatelessWidget {
     );
   }
 
-  /// 窄内容变体的最大宽度（表单 / 详情页）
-  static const double narrowMaxWidth = 1120;
-
-  /// 宽内容变体的最大宽度（实质不钳制：超过任何常见显示器宽度即可）
-  static const double wideMaxWidth = 4000;
-
   /// 内容
   final Widget child;
 
-  /// 内容最大宽度（默认 [UtenBreakpoints.maxContentWidth] = 1600）
+  /// 可选的显式上限，供认证卡等局部内容使用；页面正文默认不设上限。
   final double maxWidth;
 
   /// 额外内边距（在响应式水平 gutter 之外叠加，如垂直 padding）
   final EdgeInsetsGeometry? padding;
 
-  /// 是否居中（false 时内容靠左，仅钳制最大宽度）
+  /// 设置显式上限时是否居中（false 时内容靠左）。
   final bool center;
 
   /// 是否把 child 包一层局部 SelectionArea（文字框选复制；页内有结构重建轮询的

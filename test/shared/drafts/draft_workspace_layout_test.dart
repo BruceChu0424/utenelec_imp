@@ -141,6 +141,8 @@ void main() {
         expect(table.columns.first.key, 'category');
         expect(table.items.length, 4);
         expect(find.text('钱流管理 · 草稿'), findsOneWidget);
+        expect(find.byKey(const Key('draft-workspace-create')), findsNothing);
+        expect(find.text('新建'), findsNothing);
         if (capture) {
           final render =
               boundary.currentContext!.findRenderObject()

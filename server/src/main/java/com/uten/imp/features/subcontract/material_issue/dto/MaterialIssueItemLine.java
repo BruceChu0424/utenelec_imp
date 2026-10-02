@@ -17,6 +17,9 @@ import java.util.UUID;
 @Setter
 public class MaterialIssueItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
+    /** 编辑现有明细时回传, 必须属于当前单据; 旧客户端计划行可继续仅回传 planItemId。 */
+    private UUID id;
+
     private Integer lineNo;
 
     @NotNull

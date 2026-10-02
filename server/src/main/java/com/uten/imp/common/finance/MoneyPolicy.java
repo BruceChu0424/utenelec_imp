@@ -82,6 +82,55 @@ public final class MoneyPolicy {
         return new LineAmounts(original, rate == null ? null : local(original, rate));
     }
 
+    /** User-entered line consideration is a fact; its displayed unit price is only a reference. */
+    public static BigDecimal totalAmountInput(BigDecimal total) {
+        if (total == null) return null;
+        BigDecimal exact = FinancialExactAmount.require(total, "总金额");
+        if (exact.signum() < 0) throw invalid("总金额不能为负数");
+        return exact;
+    }
+
+    /** Never multiply this truncated display/reference price back into the agreed total. */
+    public static BigDecimal referenceUnitPrice(BigDecimal total, BigDecimal quantity) {
+        BigDecimal exact = totalAmountInput(total);
+        if (exact == null || quantity == null || quantity.signum() <= 0) {
+            throw invalid("按总金额计价时数量必须大于 0");
+        }
+        FinancialExactAmount.quantity(quantity, "数量");
+        return FinancialExactAmount.unitPrice(exact.divide(quantity, 10, RoundingMode.DOWN), "参考单价");
+    }
+
+    /** The input total precedes any separately declared extra-column adjustments. */
+    public static BigDecimal orderBaseAmount(BigDecimal quantity, BigDecimal price, BigDecimal totalInput) {
+        if (totalInput != null) {
+            referenceUnitPrice(totalInput, quantity);
+            return canonical(totalAmountInput(totalInput));
+        }
+        return price == null ? null : exactProduct(quantity, price);
+    }
+
+    /** Approved quantity revisions retain the original exact ratio, never the reference price. */
+    public static BigDecimal revisedTotalAmountInput(BigDecimal total, BigDecimal oldQty, BigDecimal newQty) {
+        if (total == null) return null;
+        if (oldQty == null || oldQty.signum() <= 0 || newQty == null || newQty.signum() <= 0) {
+            throw invalid("按总金额计价的改量数量必须大于 0");
+        }
+        FinancialExactAmount.quantity(newQty, "数量");
+        try {
+            return totalAmountInput(totalAmountInput(total).multiply(newQty).divide(oldQty));
+        } catch (ArithmeticException nonTerminating) {
+            throw invalid("按总金额计价的明细改量后金额除不尽，请重新约定总金额后再修改，不能按参考单价结算");
+        }
+    }
+
+    /** Extra deliveries require the same exact commercial ratio as a quantity revision. */
+    public static BigDecimal orderOverageAmount(BigDecimal qty, BigDecimal price,
+            BigDecimal totalInput, BigDecimal sourceQty) {
+        if (qty.signum() == 0) return BigDecimal.ZERO;
+        return totalInput == null ? exactProduct(qty, price)
+                : revisedTotalAmountInput(totalInput, sourceQty, qty);
+    }
+
     /** 表头合计 = 行金额相加; 空行金额不计入。全部为空时返回 0(与旧表头口径一致)。 */
     public static BigDecimal sum(Collection<BigDecimal> amounts) {
         BigDecimal total = BigDecimal.ZERO;

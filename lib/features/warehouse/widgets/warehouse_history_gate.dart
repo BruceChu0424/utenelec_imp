@@ -10,10 +10,19 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/theme/uten_tokens.dart';
 
 class WarehouseHistoryGate extends StatefulWidget {
-  const WarehouseHistoryGate({super.key, this.timeKey, required this.builder});
+  const WarehouseHistoryGate({
+    super.key,
+    this.timeKey,
+    this.externalHeader,
+    required this.builder,
+  });
 
   /// 时间行 key（页面测试锚点透传）。
   final Key? timeKey;
+
+  /// 宿主（任务中心大类行/小类行）：钉在时间行上方常驻——未选时间段时也
+  /// 可见可切（2026-10-01 修「点历史类分类后分类栏消失」），不随列表滚走。
+  final Widget? externalHeader;
 
   /// 列表子树构建器；仅在时间值非 none 时被调用。
   final Widget Function(UtenHistoryTimeValue value) builder;
@@ -30,6 +39,10 @@ class _WarehouseHistoryGateState extends State<WarehouseHistoryGate> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
         Padding(
           padding: const EdgeInsets.only(
             bottom: UtenSpacing.s8,

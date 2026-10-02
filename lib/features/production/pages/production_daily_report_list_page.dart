@@ -307,7 +307,8 @@ class _ProductionDailyReportListPageState
                               },
                             ),
                           ),
-                          if (_canCreate) ...[
+                          if (_canCreate &&
+                              _statusFilter != kProductionStatusDraft) ...[
                             const SizedBox(width: UtenSpacing.s8),
                             UtenButton(
                               type: UtenButtonType.tonal,

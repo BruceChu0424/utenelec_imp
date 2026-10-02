@@ -32,6 +32,8 @@ class WarehouseSalesPickingDraft {
       if (selectable) {
         weights[line.id] = OutboundWeightEntry(
           goodsId: line.goodsId,
+          colorId: line.colorId,
+          warehouseIdOf: () => warehouses[line.id],
           qtyOf: () => double.tryParse(line.quantity ?? ''),
           unitRate: line.unitRate,
           unit: weightUnit,

@@ -21,7 +21,6 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/widgets/metric_filter_cards.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/quality_inspection_record.dart';
@@ -375,17 +374,17 @@ class _QualityInspectionRecordsPageState
         // compactCards），本页自绘记录卡与移动分页条已退役。
         child: Builder(
           builder: (context) {
-            final width = MediaQuery.sizeOf(context).width;
-            final overview = _buildOverview(data, width);
+            // 2026-10-01 用户口径（对齐待检处置/研发任务中心）：删除顶部指标卡
+            //（合格/不合格等计数）与筛选行下的常驻说明框，只留筛选 + 表格；
+            // 检验结果筛选走表头 decision 桶，错误横幅仅在刷新失败时出现。
             final filters = _buildFilters(allowedDomains);
-            const hint = _InspectionRecordScopeHint();
             final inlineError = _error == null || _data == null
                 ? const SizedBox.shrink()
                 : _InlineRecordError(message: _error!, onRetry: _load);
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 顶部概览/筛选/提示区：大字号下可能超过视口，封顶后自滚，
+                // 顶部筛选区：大字号下可能超过视口，封顶后自滚，
                 // 表格至少保留 160 逻辑像素（空态/行集都能露出来）。
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 640),
@@ -393,11 +392,7 @@ class _QualityInspectionRecordsPageState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        overview,
-                        const SizedBox(height: UtenSpacing.s16),
                         filters,
-                        const SizedBox(height: UtenSpacing.s12),
-                        hint,
                         if (_error != null && _data != null) ...[
                           const SizedBox(height: UtenSpacing.s12),
                           inlineError,
@@ -413,42 +408,6 @@ class _QualityInspectionRecordsPageState
           },
         ),
       ),
-    );
-  }
-
-  Widget _buildOverview(QualityInspectionRecordPage data, double width) {
-    final metrics = data.metrics;
-    if (metrics.isEmpty) {
-      final theme = Theme.of(context);
-      return Container(
-        key: const Key('quality-inspection-record-metrics-unavailable'),
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: const Text('后端尚未返回检测记录概览，系统不会用当前分页推算或伪造计数。'),
-      );
-    }
-    final itemWidth = width < 600 ? (width - UtenSpacing.s12) / 2 : 200.0;
-    return MetricFilterCards(
-      key: const Key('quality-inspection-record-metrics'),
-      itemWidth: itemWidth,
-      items: [
-        for (final metric in metrics)
-          MetricFilterCardItem(
-            key: metric.key,
-            label: metric.label,
-            value: metric.value,
-            tone: metric.tone,
-            icon: _metricIcon(metric.key),
-            selected: (metric.decisionFilter?.isEmpty ?? true)
-                ? _decision == null
-                : _decision == metric.decisionFilter,
-            onTap: () => _selectDecision(metric.decisionFilter),
-          ),
-      ],
     );
   }
 
@@ -716,37 +675,6 @@ class _QualityInspectionRecordsPageState
   ];
 }
 
-class _InspectionRecordScopeHint extends StatelessWidget {
-  const _InspectionRecordScopeHint();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(UtenSpacing.s12),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: UtenRadius.mdAll,
-      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          Icons.info_outline_rounded,
-          size: 18,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        const Expanded(
-          child: Text(
-            '这里按每一次不可变检验决定展示，部分处置不会被合并。'
-            '来源红冲后的决定仍保留，但会明确标为“历史失效”；本页只读，待处理动作请回到品质任务中心。',
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
 class _QualityInspectionRecordDetailPanel extends ConsumerStatefulWidget {
   const _QualityInspectionRecordDetailPanel({required this.record});
 
@@ -989,14 +917,16 @@ class _QualityInspectionRecordDetailPanelState
           label: '本次决定',
           width: 110,
           type: 'number',
-          value: (row) => row.current,
+          value: (row) => row.current == null ? '—' : _qty(row.current!),
+          exactValueOf: (row) => row.current?.toString(),
         ),
         MasterColumnDef(
           key: 'cumulative',
           label: '当前累计',
           width: 110,
           type: 'number',
-          value: (row) => row.cumulative,
+          value: (row) => _qty(row.cumulative),
+          exactValueOf: (row) => row.cumulative.toString(),
         ),
         MasterColumnDef(
           key: 'unit',
@@ -1008,27 +938,27 @@ class _QualityInspectionRecordDetailPanelState
       items: [
         _DetailQuantityRow(
           item: '合格',
-          current: _qty(record.passQty),
-          cumulative: _qty(record.currentPassedQty),
+          current: record.passQty,
+          cumulative: record.currentPassedQty,
           unit: unit,
         ),
         _DetailQuantityRow(
           item: '不合格',
-          current: _qty(record.failQty),
-          cumulative: _qty(record.currentFailedQty),
+          current: record.failQty,
+          cumulative: record.currentFailedQty,
           unit: unit,
         ),
         // 送检量与剩余待检是批量级事实，不随单笔决定变化，故本次列留空占位。
         _DetailQuantityRow(
           item: '送检',
-          current: '—',
-          cumulative: _qty(record.inspectedQty),
+          current: null,
+          cumulative: record.inspectedQty,
           unit: unit,
         ),
         _DetailQuantityRow(
           item: '剩余待检',
-          current: '—',
-          cumulative: _qty(record.currentRemainingQty),
+          current: null,
+          cumulative: record.currentRemainingQty,
           unit: unit,
         ),
       ],
@@ -1139,8 +1069,8 @@ class _DetailQuantityRow {
   });
 
   final String item;
-  final String current;
-  final String cumulative;
+  final double? current;
+  final double cumulative;
   final String unit;
 }
 
@@ -1180,14 +1110,6 @@ class _InlineRecordError extends StatelessWidget {
     ),
   );
 }
-
-IconData _metricIcon(String key) => switch (key.toUpperCase()) {
-  'PASS' => Icons.check_circle_outline_rounded,
-  'PARTIAL' => Icons.rule_folder_outlined,
-  'FAIL' => Icons.cancel_outlined,
-  'CANCELLED' => Icons.history_rounded,
-  _ => Icons.fact_check_outlined,
-};
 
 IconData _decisionIcon(String decision) => switch (decision) {
   'PASS' => Icons.check_rounded,

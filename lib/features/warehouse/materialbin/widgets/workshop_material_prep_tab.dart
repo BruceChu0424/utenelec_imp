@@ -132,6 +132,8 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
   List<WmMaterialOption> _materials = const [];
   Set<WmPrepRow> _hidden = const {};
   bool _loading = true;
+  // 服务端按「常做程度」截断行数(进度三数是独立聚合)；为真时在进度下提示截断。
+  bool _truncated = false;
   String? _error;
   String? _busyTitle;
 
@@ -162,6 +164,8 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
         _prep = prep;
         _materials = prep.materials;
         _grid.replaceAll(wmPrepRowsOf(prep.rows));
+        _truncated =
+            prep.total > prep.rows.map((r) => r.productGoodsId).toSet().length;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -297,6 +301,8 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
     ),
     EditableGridColumn<WmPrepRow>(
       key: 'grams',
+      exactValueOf: (row) => row.grams.text,
+      exactListenableOf: (row) => row.grams,
       label: l10n.wmUnitWeightGrams,
       width: 170,
       numeric: true,
@@ -349,6 +355,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
     ),
     EditableGridColumn<WmPrepRow>(
       key: 'goodsWeight',
+      exactValueOf: (row) => row.source.goodsWeightGrams?.toString(),
       label: '参考: 货品资料单重 (克)',
       width: 160,
       numeric: true,
@@ -546,6 +553,17 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                 key: const Key('wm-prep-progress'),
                 style: theme.textTheme.titleSmall,
               ),
+              if (_truncated)
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s2),
+                  child: Text(
+                    '产品较多，按常做程度显示最常做的一部分；进度统计仍按全部产品计算。',
+                    key: const Key('wm-prep-truncated'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
               const SizedBox(height: UtenSpacing.s4),
               Text(
                 '单个重量填件重 (不含水口)。勾选多行后改任一勾选行的颗粒或单重, 会对全部勾选行生效。'

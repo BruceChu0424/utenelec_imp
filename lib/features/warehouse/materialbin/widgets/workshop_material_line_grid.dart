@@ -114,10 +114,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
   bool showWarehouseAvailable = true,
   Map<String, WmPositionRow> positionByKey = const {},
   String? qtyLabel,
-
-  /// 申请可从分页清单选首次物料；其他发料/退回继续使用现有下拉。
-  Future<WmMaterialOption?> Function(BuildContext context)? pickMaterial,
-  bool useMaterialUnit = false,
+  Future<WmMaterialOption?> Function()? pickMaterial,
   VoidCallback? onChanged,
 }) {
   final byKey = {for (final m in materials) m.key: m};
@@ -156,73 +153,57 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
                 '',
           );
         }
+        if (pickMaterial != null) {
+          return ValueListenableBuilder<WmMaterialOption?>(
+            valueListenable: row.material,
+            builder: (context, selected, _) => RequiredCellFrame(
+              listenable: row.material,
+              isEmpty: () => row.material.value == null,
+              child: TextButton(
+                key: ValueKey('wm-line-material-${row.id}'),
+                onPressed: !enabled
+                    ? null
+                    : () async {
+                        final material = await pickMaterial();
+                        if (!context.mounted || material == null) return;
+                        for (final target in targets(row)) {
+                          target.applyMaterial(material);
+                        }
+                        onChanged?.call();
+                      },
+                child: Text(selected?.displayName ?? '选择物料'),
+              ),
+            ),
+          );
+        }
         return ValueListenableBuilder<WmMaterialOption?>(
           valueListenable: row.material,
           builder: (context, value, _) => RequiredCellFrame(
             listenable: row.material,
             isEmpty: () => row.material.value == null,
-            child: pickMaterial != null
-                ? InkWell(
-                    key: ValueKey('wm-line-material-${row.id}'),
-                    onTap: !enabled
-                        ? null
-                        : () async {
-                            final next = await pickMaterial(context);
-                            if (!context.mounted ||
-                                next == null ||
-                                !grid.rows.contains(row)) {
-                              return;
-                            }
-                            for (final target in targets(row)) {
-                              target.applyMaterial(next);
-                            }
-                            onChanged?.call();
-                          },
-                    child: InputDecorator(
-                      decoration: InputDecoration(
-                        isDense: true,
-                        enabled: enabled,
-                        suffixIcon: const Icon(Icons.search),
-                      ),
-                      child: Text(value?.displayName ?? '选择物料'),
-                    ),
-                  )
-                : UtenDropdownField(
-                    key: ValueKey('wm-line-material-${row.id}'),
-                    dense: true,
-                    enabled: enabled,
-                    allowClear: false,
-                    value: value?.key,
-                    hintText: '选择料',
-                    items: [
-                      for (final m in materials)
-                        UtenDropdownItem(value: m.key, label: m.displayName),
-                    ],
-                    onChanged: (key) {
-                      final next = key == null ? null : byKey[key];
-                      for (final target in targets(row)) {
-                        target.applyMaterial(next);
-                      }
-                      onChanged?.call();
-                    },
-                  ),
+            child: UtenDropdownField(
+              key: ValueKey('wm-line-material-${row.id}'),
+              dense: true,
+              enabled: enabled,
+              allowClear: false,
+              value: value?.key,
+              hintText: '选择料',
+              items: [
+                for (final m in materials)
+                  UtenDropdownItem(value: m.key, label: m.displayName),
+              ],
+              onChanged: (key) {
+                final next = key == null ? null : byKey[key];
+                for (final target in targets(row)) {
+                  target.applyMaterial(next);
+                }
+                onChanged?.call();
+              },
+            ),
           ),
         );
       },
     ),
-    if (useMaterialUnit)
-      EditableGridColumn<WmIssueLineRow>(
-        key: 'unit',
-        label: '单位',
-        width: 70,
-        textOf: (row) => row.material.value?.unitName ?? '',
-        listenableOf: (row) => row.material,
-        cellBuilder: (context, row) =>
-            ValueListenableBuilder<WmMaterialOption?>(
-              valueListenable: row.material,
-              builder: (context, material, _) => Text(material?.unitName ?? ''),
-            ),
-      ),
     if (showLeafWarehouse)
       EditableGridColumn<WmIssueLineRow>(
         key: 'leaf',
@@ -254,7 +235,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
                       UtenDropdownItem(
                         value: w.warehouseId,
                         label: w.availableQty > 0
-                            ? '${w.warehouseName} (${wmQty(w.availableQty)} ${l10n.wmKg})'
+                            ? '${w.warehouseName} (${wmQty(w.availableQty)} ${material?.unitName ?? row.requisitionLine?.unitName ?? ''})'
                             : w.warehouseName,
                       ),
                   ],
@@ -276,6 +257,19 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
           ),
         ),
       ),
+    EditableGridColumn<WmIssueLineRow>(
+      key: 'unit',
+      label: '单位',
+      width: 75,
+      listenableOf: (row) => row.material,
+      textOf: (row) =>
+          row.material.value?.unitName ?? row.requisitionLine?.unitName ?? '',
+      cellBuilder: (_, row) => ValueListenableBuilder<WmMaterialOption?>(
+        valueListenable: row.material,
+        builder: (_, material, _) =>
+            Text(material?.unitName ?? row.requisitionLine?.unitName ?? ''),
+      ),
+    ),
     EditableGridColumn<WmIssueLineRow>(
       key: 'bags',
       exactValueOf: (r) => r.bags.text,
@@ -304,7 +298,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
       key: 'qty',
       exactValueOf: (r) => r.qty.text,
       exactListenableOf: (r) => r.qty,
-      label: qtyLabel ?? l10n.wmKg,
+      label: qtyLabel ?? '数量',
       width: 120,
       numeric: true,
       required: true,
@@ -339,7 +333,6 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
         positionByKey,
         atLeaf: showLeafWarehouse,
         showWarehouseAvailable: showWarehouseAvailable,
-        useMaterialUnit: useMaterialUnit,
       ),
       cellBuilder: (context, row) => ValueListenableBuilder<String?>(
         valueListenable: row.leafWarehouseId,
@@ -352,7 +345,6 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
               positionByKey,
               atLeaf: showLeafWarehouse,
               showWarehouseAvailable: showWarehouseAvailable,
-              useMaterialUnit: useMaterialUnit,
             ),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -393,12 +385,10 @@ String _hintText(
   Map<String, WmPositionRow> positionByKey, {
   required bool atLeaf,
   required bool showWarehouseAvailable,
-  required bool useMaterialUnit,
 }) {
   final material = row.material.value;
   final key = material?.key ?? row.requisitionLine?.key;
   final parts = <String>[];
-  final unit = useMaterialUnit ? material?.unitName ?? '' : l10n.wmKg;
   if (material != null && showWarehouseAvailable) {
     var available = material.warehouseAvailableQty;
     if (atLeaf) {
@@ -408,21 +398,19 @@ String _hintText(
         }
       }
     }
-    parts.add(
-      useMaterialUnit
-          ? '仓库还有 ${wmQty(available)} $unit'
-          : l10n.wmWarehouseAvailable(wmQty(available)),
-    );
+    parts.add('仓库可发 ${wmQty(available)} ${material.unitName ?? ''}');
   }
   final position = key == null ? null : positionByKey[key];
   if (position != null) {
     parts.add(
-      useMaterialUnit
-          ? '内料仓估计还剩 ${wmQty(position.estimatedRemainingQty)} $unit'
-          : l10n.wmEstimatedRemaining(wmQty(position.estimatedRemainingQty)),
+      '内料仓估计还剩 ${wmQty(position.estimatedRemainingQty)} ${material?.unitName ?? row.requisitionLine?.unitName ?? ''}',
     );
   }
   final net = row.bagNet;
-  if (net != null && net > 0) parts.add('每袋 ${wmQty(net)} $unit');
+  if (net != null && net > 0) {
+    parts.add(
+      '每袋 ${wmQty(net)} ${material?.unitName ?? row.requisitionLine?.unitName ?? ''}',
+    );
+  }
   return parts.join(' · ');
 }

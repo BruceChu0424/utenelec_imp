@@ -62,6 +62,7 @@ public class ProductionMaterialDiscoveryService {
                 .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()));
         if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()[1]))throw conflict("幂等键已用于另一项领料申请");return detail((UUID)replay.getFirst()[0]);}
         var footprint=footprints.beginPlan(discovered.plan(),List.of());Segment segment=segment(segmentId,true);footprint.verifyUnchanged();requireWorkshop(segment,true);
+        requireDiscoveryRoute(segment);
         if(!segment.eligible()||segment.version()!=command.expectedVersion())throw conflict("任务已变化，请刷新后重新申请");
         if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT start_route IN('FULL_KIT','CONTINUOUS') FROM production_execution_segments WHERE id=:id").setParameter("id",segmentId).getSingleResult()))
             throw conflict("实际物料尚未确定，请先选择齐套或持续生产路线再申请领料");
@@ -116,6 +117,7 @@ public class ProductionMaterialDiscoveryService {
             if(Objects.equals(request[2],command.idempotencyKey())&&Objects.equals(request[3],hash)&&Objects.equals(request[6],currentUser.requireId()))return detail(id);
             throw conflict("仓库已登记此申请，请查看正式领料单");
         }
+        requireDiscoveryRoute(segment);
         if(!segment.eligible()||!"PENDING".equals(request[0])||((Number)request[1]).longValue()!=command.expectedVersion())throw conflict("领料申请或任务已变化，请刷新");
         if(segment.version()!=((Number)request[7]).longValue()+1)throw conflict("申请后生产任务已变化，请车间撤回申请并按最新任务重新领料");
         for(Material item:items)validateMaterial(segment,item);
@@ -213,16 +215,25 @@ public class ProductionMaterialDiscoveryService {
         List<Object[]> rows=rows("""
                 SELECT segment.id,segment.plan_id,segment.package_id,package.warehouse_id,segment.source_plan_item_id,
                        segment.workshop_department_id,segment.responsible_employee_id,plan.maker_id,segment.lock_version,
-                       COALESCE(segment.material_snapshot_product_qty,segment.planned_qty),segment.material_discovery_required,
-                       (segment.material_discovery_required AND segment.material_requirement_mode='ZERO_MATERIAL'
+                       COALESCE(segment.material_snapshot_product_qty,segment.planned_qty),fn_material_discovery_pending(segment.id),
+                       (fn_material_discovery_pending(segment.id) AND segment.material_requirement_mode='ZERO_MATERIAL'
                         AND segment.zero_material_reason='DIRECT_MAKE' AND segment.status IN('READY','DISPATCHED')
+                        AND NOT (%s)
                         AND NOT segment.is_deleted AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_closed
                         AND NOT plan.is_canceled AND NOT plan.is_stopped AND package.status='CONFIRMED' AND NOT package.is_deleted
-                        AND NOT EXISTS(SELECT 1 FROM production_daily_report_items report WHERE report.execution_segment_id=segment.id))
+                        AND NOT EXISTS(SELECT 1 FROM production_daily_report_items report WHERE report.execution_segment_id=segment.id)),
+                       fn_segment_bin_material_state(segment.id)
                 FROM production_execution_segments segment JOIN production_plans plan ON plan.id=segment.plan_id
                 JOIN production_planning_packages package ON package.id=segment.package_id WHERE segment.id=:id
-                """+(lock?" FOR UPDATE OF segment":""),id);
-        if(rows.isEmpty())throw notFound();Object[] r=rows.getFirst();return new Segment((UUID)r[0],(UUID)r[1],(UUID)r[2],(UUID)r[3],(UUID)r[4],(UUID)r[5],(UUID)r[6],(UUID)r[7],((Number)r[8]).longValue(),decimal(r[9]),Boolean.TRUE.equals(r[10]),Boolean.TRUE.equals(r[11]));
+                """.formatted(ProductionOrderMaterialGate.unresolvedSql("segment.id"))+(lock?" FOR UPDATE OF segment":""),id);
+        if(rows.isEmpty())throw notFound();Object[] r=rows.getFirst();return new Segment((UUID)r[0],(UUID)r[1],(UUID)r[2],(UUID)r[3],(UUID)r[4],(UUID)r[5],(UUID)r[6],(UUID)r[7],((Number)r[8]).longValue(),decimal(r[9]),Boolean.TRUE.equals(r[10]),Boolean.TRUE.equals(r[11]),(String)r[12]);
+    }
+
+    private void requireDiscoveryRoute(Segment segment) {
+        ProductionOrderMaterialGate.requireResolved(segment.binMaterialState());
+        if (!segment.discovery()) {
+            throw conflict("任务已不需要按工单登记材料；如有未办理的原领料申请，请车间撤回后按当前用料方式开工");
+        }
     }
     private void validateMaterial(Segment segment,Material item) {
         validateMaterialIdentity(segment,item.goodsId(),item.colorId(),item.unitId());
@@ -327,5 +338,5 @@ public class ProductionMaterialDiscoveryService {
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
     private static ApiException validation(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException notFound(){return new ApiException(ErrorCode.NOT_FOUND,"领料申请或任务不存在或不可见");}
-    private record Segment(UUID id,UUID plan,UUID pack,UUID warehouse,UUID source,UUID workshop,UUID responsible,UUID maker,long version,BigDecimal output,boolean discovery,boolean eligible) {}
+    private record Segment(UUID id,UUID plan,UUID pack,UUID warehouse,UUID source,UUID workshop,UUID responsible,UUID maker,long version,BigDecimal output,boolean discovery,boolean eligible,String binMaterialState) {}
 }

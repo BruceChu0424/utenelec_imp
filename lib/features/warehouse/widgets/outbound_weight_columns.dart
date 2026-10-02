@@ -1,8 +1,8 @@
 // 出库类明细表的「本次重量」列 (ADR-135 §3.6-§3.9): 领料出库 / 销售出库 / 生产退料收仓。
 //
 // 这些明细表是 MasterDataTableView (只读表 + 行内输入), 不是 UtenEditableGrid;
-// 这里把共享采集列 [weightGridColumn] 的格子原样借过来 (占位「应称 12.5」、WARN 琥珀 /
-// ALERT 红框与 ⓘ 件数说明、⚖ 称重计数), 各出库表的重量格与采集表格同一长相同一口径:
+// 这里复用共享采集列 [weightGridColumn] (预估预填、黄色偏差文字与称重操作),
+// 各出库表的重量格与采集表格同一长相同一口径，说明图标只留在表头:
 // - [outboundWeightColumn]: 可编辑「实称重量(kg)」列;
 // - [outboundWeightCheckColumn]: 「称重核对」只读列 (偏差标签, 如「比应发多约35个 (+1.5%)」);
 // - [weighOutboundEntry]: 出库反推称重计数 (需要 N 个 → 秤上应显示约 Y kg), 只回填重量;
@@ -72,6 +72,16 @@ MasterColumnDef<R> outboundWeightColumn<R>({
     info: column.headerInfo,
     cellBuilderHandlesSemantics: true,
     value: (row) => entryOf(row)?.weight.text.text ?? '',
+    // Delegate canonical kilograms and EXACT quantity-derived weights to the
+    // shared capture column; its listeners include quantity and unit metadata.
+    exactValueOf: (row) {
+      final entry = entryOf(row);
+      return entry == null ? null : column.exactValueOf?.call(entry);
+    },
+    exactListenableOf: (row) {
+      final entry = entryOf(row);
+      return entry == null ? null : column.exactListenableOf?.call(entry);
+    },
     cellBuilder: (context, row) {
       final entry = entryOf(row);
       if (entry == null) return const Text('—');
@@ -98,6 +108,13 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
   String Function(WeightCheck check, OutboundWeightEntry entry)? textOf,
 }) {
   String? text(OutboundWeightEntry entry) {
+    if (mode == WeightCaptureMode.outbound &&
+        entry.paramsIn(params)?.stockBalance?.expectedKgFor(entry.qtyBase) !=
+            null) {
+      if (!entry.hasWeightDeviation(params, mode: mode)) return null;
+      final expected = entry.suggestion(params, mode: mode)!;
+      return '数值可能有问题，预计约 ${formatWeight(expected.kg)}';
+    }
     final check = entry.check(params, mode: mode);
     if (check == null) return null;
     if (textOf != null) return textOf(check, entry);
@@ -113,17 +130,20 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
     key: key,
     label: label,
     width: width,
-    info: '按单重核对实称与数量; 单重还没学准时不核对。偏差只提醒, 不拦截出入库。',
+    info: '出库优先按对应仓库、货品、颜色的库存均重核对，否则参考可靠历史单重。偏差变黄提醒，不拦截出入库。',
     value: (row) {
       final entry = entryOf(row);
       return entry == null ? '' : (text(entry) ?? '');
     },
     // 2026-09-27 用户口径「格内胶囊改单元格背景色」：偏差档位色铺整格
-    // （ALERT 红 / WARN 琥珀 / 无偏差不铺色；textOf 常显文本时无偏差铺中性灰）。
+    // （偏差统一琥珀 / 无偏差不铺色；textOf 常显文本时无偏差铺中性灰）。
     // 底色依赖行内重量/数量输入，经 cellColorListenableOf 让整格实时重算。
     cellColor: (context, row) {
       final entry = entryOf(row);
       if (entry == null) return null;
+      if (entry.hasWeightDeviation(params, mode: mode)) {
+        return udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning);
+      }
       final check = entry.check(params, mode: mode);
       final resolved = entry.paramsIn(params);
       // 单重没学准 (或非学习/人工单重) 不核对, 不铺色 (防假阳性)。
@@ -133,7 +153,7 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
       return switch (check.level) {
         WeightAlertLevel.alert => udenStatusBadgeCellColor(
           context,
-          UtenStatusBadgeType.danger,
+          UtenStatusBadgeType.warning,
         ),
         WeightAlertLevel.warn => udenStatusBadgeCellColor(
           context,
@@ -162,12 +182,21 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
         builder: (context, _) {
           final check = entry.check(params, mode: mode);
           final resolved = entry.paramsIn(params);
+          final body = text(entry) ?? '';
+          if (mode == WeightCaptureMode.outbound &&
+              resolved?.stockBalance?.expectedKgFor(entry.qtyBase) != null) {
+            if (body.isEmpty) return const SizedBox.shrink();
+            return Tooltip(
+              message:
+                  '$body；实称 ${formatWeight(entry.kg!)}。请核对数量、重量单位和包装；确认无误仍可出库。',
+              child: Text(body),
+            );
+          }
           // 单重没学准 (或非学习/人工单重) 不核对, 不出文本 (防假阳性)。
           if (check == null || resolved == null || !resolved.alertsEnabled) {
             return const SizedBox.shrink();
           }
           final unitName = unitNameOf?.call(entry);
-          final body = text(entry) ?? '';
           if (body.isEmpty) return const SizedBox.shrink();
           return Tooltip(
             message: weightCheckTooltip(
@@ -206,7 +235,12 @@ Future<void> weighOutboundEntry(
       goodsTitle: goodsTitle,
       params: entry.paramsIn(cache),
       supplierId: entry.supplierId,
-      warehouseId: warehouseId,
+      warehouseId: warehouseId ?? entry.currentWarehouseId,
+      colorId: entry.colorId,
+      expectedWeightKg: entry
+          .paramsIn(cache)
+          ?.suggestionFor(entry.qtyBase, mode: WeightCaptureMode.outbound)
+          ?.kg,
       baseUnitName: baseUnitName,
       lineUnitName: lineUnitName,
       unitRate: entry.unitRate ?? 1,

@@ -30,7 +30,7 @@ public class BusinessColumnService {
     public Capabilities capabilities(String scope) {
         requireScope(scope);
         requirePermission(scope, false);
-        return new Capabilities(scope, arithmetic(scope), 32);
+        return new Capabilities(scope, arithmetic(scope) && canViewPrice(scope), 32);
     }
 
     @Transactional(readOnly = true)
@@ -199,7 +199,7 @@ public class BusinessColumnService {
         if (scope == null || !SCOPES.contains(scope)) throw invalid("不支持此单据类型");
     }
     private void requirePermission(String scope, boolean write) {
-        boolean permitted = currentUser.get().map(user -> user.isSuperAdmin() || user.getPermissions().contains(scope + ":" + (write ? "edit" : "view"))
+        boolean permitted = currentUser.get().filter(user -> !user.isVisitor()).map(user -> user.isSuperAdmin() || user.getPermissions().contains(scope + ":" + (write ? "edit" : "view"))
                 || (write && user.getPermissions().contains(scope + ":create"))
                 || (!write && (user.getPermissions().contains(scope + ":create")
                         || user.getPermissions().contains(scope + ":edit")
@@ -207,11 +207,13 @@ public class BusinessColumnService {
         if (!permitted) throw forbidden("没有此单据的" + (write ? "编辑" : "查看") + "权限");
     }
     private void requirePricePermission(String scope) {
+        if (!canViewPrice(scope)) throw forbidden("没有此单据的价格权限");
+    }
+    private boolean canViewPrice(String scope) {
         String priceScope = "sales_quote".equals(scope) ? "sales_order" : scope;
-        boolean permitted = currentUser.get().map(user -> user.isSuperAdmin() || user.getPermissions().contains(priceScope + ":price:view")
+        return currentUser.get().filter(user -> !user.isVisitor()).map(user -> user.isSuperAdmin() || user.getPermissions().contains(priceScope + ":price:view")
                 || ("sales_quote".equals(scope) && user.getPermissions().contains("sales_quote_finance:view"))
                 || user.getPermissions().contains("finance:view:all")).orElse(false);
-        if (!permitted) throw forbidden("没有此单据的价格权限");
     }
     private static ApiException invalid(String message) { return new ApiException(ErrorCode.VALIDATION_FAILED, message); }
     private static ApiException forbidden(String message) { return new ApiException(ErrorCode.FORBIDDEN, message); }

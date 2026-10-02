@@ -271,6 +271,9 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'remaining',
+        exactValueOf: (row) =>
+            (row.draft?.slice.remainingBaseQty ?? row.line.pendingStockBaseQty)
+                .toString(),
         label: '合格待入量',
         width: 110,
         numeric: true,
@@ -283,6 +286,8 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       if (editable)
         EditableGridColumn(
           key: 'quantity',
+          exactValueOf: (row) => row.draft?.quantity.text,
+          exactListenableOf: (row) => row.draft?.quantity,
           label: '本次实收',
           width: 140,
           numeric: true,
@@ -292,12 +297,14 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       if (editable)
         EditableGridColumn(
           key: 'releasedWeight',
+          exactValueOf: (row) => row.draft?.previewWeightKg?.toString(),
+          exactListenableOf: (row) => row.draft?.quantity,
           label: '放行重量',
           width: 120,
           numeric: true,
           headerInfo:
               '本次实收按到货实称分摊的重量(只读)，入库时按它记库存重量；'
-              '到货没称显示「未称」，入库后由库存账推算。',
+              '到货没称显示「未称」，入库后由库存账推算；辅助计算统一使用千克(kg)。',
           textOf: (row) => _releasedWeightText(row) ?? '—',
           listenableOf: (row) => row.draft?.quantity,
           cellBuilder: (context, row) => _releasedWeightCell(context, row),
@@ -321,6 +328,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'received',
+        exactValueOf: (row) => row.line.receivedBaseQty.toString(),
         label: '收货总量',
         width: 112,
         numeric: true,
@@ -329,6 +337,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'passed',
+        exactValueOf: (row) => row.line.passedBaseQty.toString(),
         label: '合格总量',
         width: 112,
         numeric: true,
@@ -337,6 +346,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'failed',
+        exactValueOf: (row) => row.line.failedBaseQty.toString(),
         label: '不合格总量',
         width: 116,
         numeric: true,

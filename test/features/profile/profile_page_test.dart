@@ -15,6 +15,24 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets('expanded profile content grows with the available width', (
+    tester,
+  ) async {
+    await _pumpProfilePage(tester, () async => _completeProfile);
+
+    final content = find.byType(TabBarView);
+    expect(content, findsOneWidget);
+    final initialWidth = tester.getSize(content).width;
+    expect(initialWidth, greaterThan(720));
+
+    await tester.binding.setSurfaceSize(const Size(1800, 2200));
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(content).width, closeTo(initialWidth + 400, 0.01));
+    expect(find.text('DTO-CODE'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'EmployeeProfile overrides stale session identity and shows aligned fields',
     (tester) async {

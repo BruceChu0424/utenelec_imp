@@ -134,10 +134,10 @@ class InstantInventoryScope {
     if (inventoryOnly && (warehouseId == null || warehouseHasChildren))
       includeDefective ? '含不良品仓' : '不含不良品仓',
     if (inventoryOnly && (warehouseId == null || warehouseHasChildren))
-      includeLineSide ? '含线边仓' : '不含线边仓',
+      includeLineSide ? '含内料仓' : '不含内料仓',
     if (inventoryOnly && warehouseId != null && !warehouseHasChildren)
       '叶仓精确查询（仓类型开关不排除所选仓）',
-    if (!inventoryOnly) '含不良品仓及线边仓',
+    if (!inventoryOnly) '含不良品仓及内料仓',
     colorId != null
         ? '颜色：${colorName == null || colorName == '—' ? colorId : colorName}'
         : colorNull

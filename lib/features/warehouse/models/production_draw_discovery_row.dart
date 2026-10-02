@@ -16,6 +16,8 @@ class ProductionDrawDiscoveryRow {
     // 材料申请按基本单位领料 (unitId 即基本单位), 本次重量按领料数量核对偏差。
     weight = OutboundWeightEntry(
       goodsId: values['goodsId'] as String?,
+      colorId: values['colorId'] as String?,
+      warehouseIdOf: () => values['warehouseId'] as String?,
       qtyOf: () => double.tryParse(quantity.text.trim()),
       qtyController: quantity,
       unitRate: 1,

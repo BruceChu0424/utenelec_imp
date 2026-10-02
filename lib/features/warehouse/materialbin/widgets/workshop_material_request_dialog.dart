@@ -1,7 +1,7 @@
 // 车间申请领料 / 退回面板 (ADR-131 §5.2 按申请发、§5.3 退回)。
 //
-// 申请使用服务端分页物料清单，按物料原单位填数量或袋数；退回只列内料仓现有料。
-// 提交只生成申请，服务端通知该仓仓管。
+// 只列整批领料的料; 每行填公斤或袋数 (袋数按每袋净重自动算公斤), 同时显示
+// "仓库还有 X 公斤 / 内料仓估计还剩 Y 公斤"。提交只生成申请, 服务端通知该仓仓管。
 // 提交失败保留输入; 原样再点提交用同一个请求号, 服务端不会重复登记。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,7 +60,7 @@ class WorkshopMaterialRequestPanel extends ConsumerStatefulWidget {
   final String workshopName;
   final Map<String, WmPositionRow> positionByKey;
 
-  /// 货品 + 颜色键；只采用服务端当前仍允许申请的物料。
+  /// 从工单补料时只预填所用的料；实际整批数量由车间填写，不按工单需求封顶。
   final Set<String> initialMaterialKeys;
 
   @override
@@ -104,38 +104,23 @@ class _WorkshopMaterialRequestPanelState
     });
     try {
       final repository = ref.read(workshopMaterialRepositoryProvider);
-      var materials = <WmMaterialOption>[];
+      var materials = _isReturn
+          ? await repository.materials(widget.workshopId)
+          : (await repository.requestMaterials(
+              widget.workshopId,
+              goodsIds: widget.initialMaterialKeys
+                  .map((key) => key.split('|').first)
+                  .toSet()
+                  .toList(),
+              size: 100,
+            )).items;
       if (_isReturn) {
-        materials = await repository.materials(widget.workshopId);
         // 退回只列内料仓里有账的料。
         final inBin = {
           for (final row in widget.positionByKey.values)
             if (row.bookQty > 0) row.key,
         };
         materials = materials.where((m) => inBin.contains(m.key)).toList();
-      } else if (widget.initialMaterialKeys.isNotEmpty) {
-        final remaining = {...widget.initialMaterialKeys};
-        final goodsIds = remaining
-            .map((key) => key.split('|').first)
-            .toSet()
-            .toList();
-        var page = 1;
-        while (remaining.isNotEmpty) {
-          final result = await repository.requestMaterials(
-            widget.workshopId,
-            goodsIds: goodsIds,
-            page: page,
-          );
-          if (!mounted) return;
-          for (final material in result.items) {
-            if (remaining.remove(material.key)) materials.add(material);
-          }
-          if (page >= result.totalPages) break;
-          page++;
-        }
-        if (remaining.isNotEmpty) {
-          throw ApiException('MATERIAL_UNAVAILABLE', '部分所选物料当前不可申请，请重新选择');
-        }
       }
       if (!mounted) return;
       setState(() {
@@ -167,21 +152,6 @@ class _WorkshopMaterialRequestPanelState
     }
   }
 
-  Future<WmMaterialOption?> _pickMaterial(BuildContext context) async {
-    final material = await showWorkshopRequestMaterialPicker(
-      context,
-      workshopId: widget.workshopId,
-    );
-    if (!mounted || _saving || material == null) return null;
-    setState(() {
-      _materials = [
-        ..._materials.where((m) => m.key != material.key),
-        material,
-      ];
-    });
-    return material;
-  }
-
   String? _validate() {
     final rows = _grid.rows.where((r) => !r.isBlank).toList();
     if (rows.isEmpty) return '请至少填一种料';
@@ -190,7 +160,7 @@ class _WorkshopMaterialRequestPanelState
       final material = row.material.value;
       if (material == null) return '有一行还没选料';
       if ((row.qtyValue ?? 0) <= 0) {
-        return '「${material.displayName}」请填数量';
+        return '「${material.displayName}」请填申请数量 (${material.unitName ?? '基本单位'})';
       }
       if (!seen.add(material.key)) {
         return '「${material.displayName}」填了两行, 请合成一行';
@@ -301,7 +271,7 @@ class _WorkshopMaterialRequestPanelState
                         Text(
                           _isReturn
                               ? '只退没拆袋、没掺色母的料。仓库按实收确认后, 料从内料仓退回仓库。'
-                              : '按物料单位填数量或袋数 (袋数按每袋净重自动算数量, 可再改)。提交后通知仓库发到本车间内料仓。',
+                              : '选择要申请的物料，按各行单位填数量，也可按已设置的每袋净重填写袋数。提交后通知仓库发到本车间内料仓。',
                           style: theme.textTheme.bodyMedium,
                         ),
                         const SizedBox(height: UtenSpacing.s8),
@@ -319,9 +289,27 @@ class _WorkshopMaterialRequestPanelState
                               enabled: !_saving,
                               positionByKey: widget.positionByKey,
                               showWarehouseAvailable: !_isReturn,
-                              pickMaterial: _isReturn ? null : _pickMaterial,
-                              useMaterialUnit: !_isReturn,
-                              qtyLabel: _isReturn ? null : '数量',
+                              pickMaterial: _isReturn
+                                  ? null
+                                  : () async {
+                                      final material =
+                                          await showWorkshopRequestMaterialPicker(
+                                            context,
+                                            workshopId: widget.workshopId,
+                                          );
+                                      if (mounted && material != null) {
+                                        setState(
+                                          () => _materials = [
+                                            ..._materials.where(
+                                              (existing) =>
+                                                  existing.key != material.key,
+                                            ),
+                                            material,
+                                          ],
+                                        );
+                                      }
+                                      return material;
+                                    },
                             ),
                             createBlankRow: _newRow,
                             showColumnSettings: false,

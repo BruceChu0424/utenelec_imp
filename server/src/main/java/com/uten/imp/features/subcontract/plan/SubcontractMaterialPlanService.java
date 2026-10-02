@@ -314,11 +314,11 @@ public class SubcontractMaterialPlanService
                            AND reversed_movement.direction = 1
                            AND reversed_movement.xmin::text::numeric =
                                mod(pg_current_xact_id()::text::numeric, 4294967296)
-                          WHERE reversed_item.plan_item_id = pi.id)
+                          WHERE reversed_item.plan_item_id = pi.id AND NOT reversed_item.is_deleted)
                       AND LEAST(pi.planned_qty, pi.prepared_qty) - pi.issued_qty - COALESCE((
                             SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii
                             JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                            WHERE ii.plan_item_id = pi.id
+                            WHERE ii.plan_item_id = pi.id AND NOT ii.is_deleted
                               AND i.status = 0 AND i.is_deleted = FALSE), 0) > 0
                     ORDER BY p.id, pi.line_no ASC NULLS LAST, pi.id
                     """,
@@ -1068,7 +1068,7 @@ public class SubcontractMaterialPlanService
         @SuppressWarnings("unchecked")
         List<Object[]> lines = em.createNativeQuery("""
                 SELECT id, plan_item_id, qty FROM subcontract_material_issue_items
-                WHERE issue_id = :issueId AND plan_item_id IS NOT NULL
+                WHERE issue_id = :issueId AND plan_item_id IS NOT NULL AND is_deleted = FALSE
                 """).setParameter("issueId", issueId).getResultList();
         if (lines.isEmpty()) {
             return;
@@ -1104,7 +1104,7 @@ public class SubcontractMaterialPlanService
                 WHERE id IN (
                     SELECT DISTINCT plan_item_id
                     FROM subcontract_material_issue_items
-                    WHERE issue_id = ? AND plan_item_id IS NOT NULL)
+                    WHERE issue_id = ? AND plan_item_id IS NOT NULL AND is_deleted = FALSE)
                   AND flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                   AND issued_qty = planned_qty
                   AND preparation_status = 'READY_OUTBOUND'
@@ -1159,6 +1159,7 @@ public class SubcontractMaterialPlanService
                   ON plan_item.id = issue_item.plan_item_id
                 WHERE issue_item.issue_id = :issueId
                   AND issue_item.plan_item_id IS NOT NULL
+                  AND issue_item.is_deleted = FALSE
                 """).setParameter("issueId", issueId).getResultList();
         boolean reversedNewFlow = false;
         for (Object[] line : lines) {
@@ -1395,7 +1396,7 @@ public class SubcontractMaterialPlanService
                 WHERE issue.status=0 AND issue.is_deleted=FALSE AND EXISTS(
                     SELECT 1 FROM subcontract_material_issue_items ii
                     JOIN subcontract_material_plan_items pi ON pi.id=ii.plan_item_id
-                    WHERE ii.issue_id=issue.id AND pi.order_item_id=?)
+                    WHERE ii.issue_id=issue.id AND NOT ii.is_deleted AND pi.order_item_id=?)
                 ORDER BY issue.id FOR UPDATE
                 """,UUID.class,orderItemId);
         for(UUID draftId:affectedDrafts) {
@@ -1597,7 +1598,7 @@ public class SubcontractMaterialPlanService
                     WHERE status = 0 AND is_deleted = FALSE AND id IN (
                         SELECT DISTINCT ii.issue_id FROM subcontract_material_issue_items ii
                         JOIN subcontract_material_plan_items pi ON pi.id = ii.plan_item_id
-                        WHERE pi.plan_id = ?)
+                        WHERE pi.plan_id = ? AND NOT ii.is_deleted)
                     """, planId);
             jdbc.update("""
                     UPDATE subcontract_material_plans
@@ -1820,7 +1821,7 @@ public class SubcontractMaterialPlanService
                     FROM subcontract_material_issue_items issue_item
                     JOIN subcontract_material_issues issue
                       ON issue.id = issue_item.issue_id
-                    WHERE issue_item.plan_item_id = :planItemId
+                    WHERE issue_item.plan_item_id = :planItemId AND NOT issue_item.is_deleted
                       AND issue.status = 0 AND issue.is_deleted = FALSE
                     """).setParameter("planItemId", planItemId).getSingleResult();
             if (drafts.longValue() > 0) {
@@ -1877,7 +1878,7 @@ public class SubcontractMaterialPlanService
                   ON plan_item.id = issue_item.plan_item_id
                  AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
                  AND plan_item.is_deleted = FALSE
-                WHERE issue_item.issue_id = :issueId
+                WHERE issue_item.issue_id = :issueId AND issue_item.is_deleted = FALSE
                 ORDER BY plan_item.id, issue_item.id
                 FOR UPDATE OF plan_item
                 """).setParameter("issueId", issueId).getResultList();
@@ -2027,6 +2028,9 @@ public class SubcontractMaterialPlanService
             if (warehouseUpdated != 1) throw new ApiException(ErrorCode.CONFLICT,
                     "委外目标件出仓任务已变化，请刷新后重试");
             if (publicQty.signum() == 0) continue;
+            // 原预留已释放但保留历史及全局唯一键。明细 UUID 在草稿保存间保持不变,
+            // 因此每次重新占用必须有自己的事件身份, 不能再次使用明细 UUID 作为唯一键。
+            UUID reservationId = UUID.randomUUID();
             em.createNativeQuery("""
                     INSERT INTO stock_reservations(
                         id, order_item_id, goods_id, color_id, warehouse_id,
@@ -2042,12 +2046,12 @@ public class SubcontractMaterialPlanService
                         'SUBCONTRACT_OUTBOUND', NULL,
                         'STOCK_BALANCE', :balanceId, :key,
                         :actorId, :actorId)
-                    """).setParameter("id", UUID.randomUUID())
+                    """).setParameter("id", reservationId)
                     .setParameter("goodsId", goodsId).setParameter("colorId", colorId)
                     .setParameter("warehouseId", warehouseId).setParameter("qty", publicQty)
                     .setParameter("issueId", issueId).setParameter("planItemId", planItemId)
                     .setParameter("balanceId", balances.getFirst()[0])
-                    .setParameter("key", "SC-OUT-DRAFT:" + issueItemId)
+                    .setParameter("key", "SC-OUT-DRAFT:" + issueItemId + ":" + reservationId)
                     .setParameter("actorId", actorId).executeUpdate();
         }
     }
@@ -2076,7 +2080,7 @@ public class SubcontractMaterialPlanService
                 JOIN subcontract_material_plan_items plan_item
                   ON plan_item.id = issue_item.plan_item_id
                  AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                WHERE issue_item.issue_id = :issueId
+                WHERE issue_item.issue_id = :issueId AND issue_item.is_deleted = FALSE
                 ORDER BY plan_item.id, issue_item.id
                 """).setParameter("issueId", issueId).getResultList();
         UUID actorId = currentUser.requireId();
@@ -2262,7 +2266,7 @@ public class SubcontractMaterialPlanService
                                   ON scope_issue_item.issue_id = scope_issue.id
                                 JOIN subcontract_material_plan_items scope_plan_item
                                   ON scope_plan_item.id = scope_issue_item.plan_item_id
-                                WHERE scope_plan_item.plan_id = p.id
+                                WHERE scope_plan_item.plan_id = p.id AND NOT scope_issue_item.is_deleted
                                   AND scope_issue.status = 0 AND scope_issue.is_deleted = FALSE
                                   AND scope_issue.warehouse_id %1$s)%2$s)
                 """.formatted(inScope, warehouseScope.includeUnassigned() ? """
@@ -2373,6 +2377,7 @@ public class SubcontractMaterialPlanService
                           ON issue.id = ii.issue_id
                          AND issue.status = 0
                          AND issue.is_deleted = FALSE
+                        WHERE NOT ii.is_deleted
                         GROUP BY ii.plan_item_id
                     ) draft_qty ON draft_qty.plan_item_id = pi.id
                     LEFT JOIN LATERAL (
@@ -2390,7 +2395,7 @@ public class SubcontractMaterialPlanService
                     WHERE i.status = 0 AND i.is_deleted = FALSE AND EXISTS (
                         SELECT 1 FROM subcontract_material_issue_items ii
                         JOIN subcontract_material_plan_items pi2 ON pi2.id = ii.plan_item_id
-                        WHERE ii.issue_id = i.id AND pi2.plan_id = p.id)
+                        WHERE ii.issue_id = i.id AND NOT ii.is_deleted AND pi2.plan_id = p.id)
                     ORDER BY i.created_at DESC
                     LIMIT 1
                 ) draft ON TRUE
@@ -2455,7 +2460,7 @@ public class SubcontractMaterialPlanService
                            OR EXISTS (
                                SELECT 1 FROM subcontract_material_issue_items ii
                                JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                               WHERE ii.plan_item_id = pi.id
+                               WHERE ii.plan_item_id = pi.id AND NOT ii.is_deleted
                                  AND i.status = 0 AND i.is_deleted = FALSE)
                            OR EXISTS (
                                SELECT 1 FROM (
@@ -2492,7 +2497,7 @@ public class SubcontractMaterialPlanService
                            OR EXISTS (
                                SELECT 1 FROM subcontract_material_issue_items ii
                                JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                               WHERE ii.plan_item_id = pi.id
+                               WHERE ii.plan_item_id = pi.id AND NOT ii.is_deleted
                                  AND i.status = 0 AND i.is_deleted = FALSE)
                            OR EXISTS (
                                SELECT 1 FROM (
@@ -2540,7 +2545,7 @@ public class SubcontractMaterialPlanService
                     SELECT SUM(ii.qty) AS qty
                     FROM subcontract_material_issue_items ii
                     JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                    WHERE ii.plan_item_id = pi.id
+                    WHERE ii.plan_item_id = pi.id AND NOT ii.is_deleted
                       AND i.status = 0 AND i.is_deleted = FALSE
                 ) draft_qty ON TRUE
                 LEFT JOIN LATERAL (
@@ -2608,13 +2613,13 @@ public class SubcontractMaterialPlanService
         }
         List<OutboundDraftRef> drafts = jdbc.query("""
                 SELECT i.id, i.bill_no, i.status, i.bill_date, w.name, i.approver_name,
-                       (SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii WHERE ii.issue_id = i.id)
+                       (SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii WHERE ii.issue_id = i.id AND NOT ii.is_deleted)
                 FROM subcontract_material_issues i
                 LEFT JOIN warehouses w ON w.id = i.warehouse_id
                 WHERE i.is_deleted = FALSE AND EXISTS (
                     SELECT 1 FROM subcontract_material_issue_items ii
                     JOIN subcontract_material_plan_items pi ON pi.id = ii.plan_item_id
-                    WHERE ii.issue_id = i.id AND pi.plan_id = ?)
+                    WHERE ii.issue_id = i.id AND NOT ii.is_deleted AND pi.plan_id = ?)
                 ORDER BY i.created_at
                 """,
                 (rs, rowNum) -> new OutboundDraftRef(
@@ -2760,7 +2765,7 @@ public class SubcontractMaterialPlanService
                 WHERE i.status = 0 AND i.is_deleted = FALSE AND EXISTS (
                     SELECT 1 FROM subcontract_material_issue_items ii
                     JOIN subcontract_material_plan_items pi ON pi.id = ii.plan_item_id
-                    WHERE ii.issue_id = i.id AND pi.plan_id = ?)
+                    WHERE ii.issue_id = i.id AND NOT ii.is_deleted AND pi.plan_id = ?)
                 """, Long.class, planId);
         return count != null && count > 0;
     }
@@ -2800,7 +2805,7 @@ public class SubcontractMaterialPlanService
                               - pi.issued_qty - COALESCE((
                            SELECT SUM(ii.qty) FROM subcontract_material_issue_items ii
                            JOIN subcontract_material_issues i ON i.id = ii.issue_id
-                           WHERE ii.plan_item_id = pi.id AND i.status = 0 AND i.is_deleted = FALSE), 0)
+                           WHERE ii.plan_item_id = pi.id AND NOT ii.is_deleted AND i.status = 0 AND i.is_deleted = FALSE), 0)
                          ELSE 0
                        END,
                        pi.color_id,
@@ -2994,7 +2999,7 @@ public class SubcontractMaterialPlanService
                 SELECT COUNT(*)
                 FROM subcontract_material_issue_items issue_item
                 JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
-                WHERE issue_item.plan_item_id = ?
+                WHERE issue_item.plan_item_id = ? AND NOT issue_item.is_deleted
                   AND issue.status = 0 AND issue.is_deleted = FALSE
                 """, Long.class, planItemId);
         return count != null && count > 0;
@@ -3011,7 +3016,7 @@ public class SubcontractMaterialPlanService
                       FROM subcontract_material_issue_items issue_item
                       JOIN subcontract_material_plan_items plan_item
                         ON plan_item.id = issue_item.plan_item_id
-                      WHERE issue_item.issue_id = issue.id
+                      WHERE issue_item.issue_id = issue.id AND NOT issue_item.is_deleted
                         AND plan_item.plan_id = ?)
                 """, Long.class, warehouseId, planId);
         return count != null && count > 0;

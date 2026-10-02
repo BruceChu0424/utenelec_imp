@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/layout/uten_paged_picker_list.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -31,7 +33,11 @@ class _ProductionFqcReplenishmentBannerState
   String? _error;
   bool _loading = false;
   int _page = 1;
+  int _retryPage = 1;
   int _pendingCount = 0;
+  final _requests = LatestRequestGuard();
+  final _taskRows =
+      MasterDataTableRowsController<ProductionFqcReplenishmentMaterialTask>();
   final Set<String> _busyAuthorizations = {};
   final Map<String, String> _confirmationKeys = {};
 
@@ -55,6 +61,7 @@ class _ProductionFqcReplenishmentBannerState
   }
 
   Future<void> _load({int? page}) async {
+    final generation = _requests.begin();
     if (!_canView) {
       if (mounted) {
         setState(() {
@@ -71,6 +78,7 @@ class _ProductionFqcReplenishmentBannerState
       return;
     }
     final targetPage = page ?? _page;
+    _retryPage = targetPage;
     setState(() {
       _loading = true;
       _error = null;
@@ -85,7 +93,7 @@ class _ProductionFqcReplenishmentBannerState
         // Count is a badge enhancement. Keep the operable paged queue when it
         // is temporarily unavailable instead of replacing it with an error.
       }
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _result = result;
         _page = result.page;
@@ -93,13 +101,13 @@ class _ProductionFqcReplenishmentBannerState
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_requests.isCurrent(generation)) return;
       setState(() {
         _error = 'FQC 补产物料任务加载失败，请刷新重试';
         _loading = false;
@@ -303,6 +311,13 @@ class _ProductionFqcReplenishmentBannerState
       showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, refreshSheet) {
+          Future<void> loadPage(int page) async {
+            final request = _load(page: page);
+            refreshSheet(() {});
+            await request;
+            if (sheetContext.mounted) refreshSheet(() {});
+          }
+
           final result = _result;
           final items = result?.items ?? const [];
           return FractionallySizedBox(
@@ -334,129 +349,68 @@ class _ProductionFqcReplenishmentBannerState
                   ),
                 ),
                 const Divider(height: 1),
-                if (_error != null)
-                  MaterialBanner(
-                    content: Text('刷新失败：$_error'),
-                    actions: [
-                      TextButton(
-                        onPressed: _loading
-                            ? null
-                            : () async {
-                                await _load(page: _page);
-                                if (sheetContext.mounted) refreshSheet(() {});
-                              },
-                        child: const Text('重试'),
-                      ),
-                    ],
-                  ),
                 Expanded(
-                  child: items.isEmpty
-                      ? const Center(child: Text('当前没有 FQC 补产物料任务'))
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(UtenSpacing.s16),
-                          itemCount: items.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: UtenSpacing.s12),
-                          itemBuilder: (_, index) {
-                            final task = items[index];
-                            return _MaterialTaskCard(
-                              task: task,
-                              canCreateAnalysis: _canCreateAnalysis,
-                              canViewAnalysis: _canViewAnalysis,
-                              canConfirm: _canConfirm,
-                              canOpenDraw: _canOpenDraw,
-                              canViewPlan: _canViewPlan,
-                              busy: _busyAuthorizations.contains(
-                                task.authorizationId,
-                              ),
-                              onCreateAnalysis: () async {
-                                final operation = _createAndOpenAnalysis(
-                                  task,
-                                  sheetContext,
-                                  () => refreshSheet(() {}),
-                                );
-                                refreshSheet(() {});
-                                await operation;
-                              },
-                              onOpenAnalysis:
-                                  task.materialAnalysisId?.isNotEmpty == true
-                                  ? () => _openAnalysis(
-                                      task.materialAnalysisId!,
-                                      sheetContext: sheetContext,
-                                    )
-                                  : null,
-                              onConfirm: () async {
-                                final operation = _confirmMaterial(
-                                  task,
-                                  sheetContext,
-                                  () => refreshSheet(() {}),
-                                );
-                                refreshSheet(() {});
-                                await operation;
-                              },
-                              onOpenDraw: () => _openDraw(task, sheetContext),
-                              onOpenPlan: () => _openPlan(task, sheetContext),
-                            );
-                          },
-                        ),
+                  child:
+                      UtenPagedPickerList<
+                        ProductionFqcReplenishmentMaterialTask
+                      >(
+                        key: const Key('fqc-replenishment-task-list'),
+                        items: items,
+                        idOf: (task) => task.authorizationId,
+                        rowsController: _taskRows,
+                        currentPage: result?.page ?? 1,
+                        paginationRevision: result,
+                        totalPages: result?.totalPages ?? 1,
+                        loading: _loading,
+                        error: _error,
+                        onRetry: () => loadPage(_retryPage),
+                        onPageChange: loadPage,
+                        emptyMessage: '当前没有 FQC 补产物料任务',
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        separatorBuilder: (_, _) =>
+                            const SizedBox(height: UtenSpacing.s12),
+                        itemBuilder: (_, task) {
+                          return _MaterialTaskCard(
+                            task: task,
+                            canCreateAnalysis: _canCreateAnalysis,
+                            canViewAnalysis: _canViewAnalysis,
+                            canConfirm: _canConfirm,
+                            canOpenDraw: _canOpenDraw,
+                            canViewPlan: _canViewPlan,
+                            busy: _busyAuthorizations.contains(
+                              task.authorizationId,
+                            ),
+                            onCreateAnalysis: () async {
+                              final operation = _createAndOpenAnalysis(
+                                task,
+                                sheetContext,
+                                () => refreshSheet(() {}),
+                              );
+                              refreshSheet(() {});
+                              await operation;
+                            },
+                            onOpenAnalysis:
+                                task.materialAnalysisId?.isNotEmpty == true
+                                ? () => _openAnalysis(
+                                    task.materialAnalysisId!,
+                                    sheetContext: sheetContext,
+                                  )
+                                : null,
+                            onConfirm: () async {
+                              final operation = _confirmMaterial(
+                                task,
+                                sheetContext,
+                                () => refreshSheet(() {}),
+                              );
+                              refreshSheet(() {});
+                              await operation;
+                            },
+                            onOpenDraw: () => _openDraw(task, sheetContext),
+                            onOpenPlan: () => _openPlan(task, sheetContext),
+                          );
+                        },
+                      ),
                 ),
-                if (result != null && result.totalPages > 1)
-                  SafeArea(
-                    top: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        UtenSpacing.s16,
-                        UtenSpacing.s8,
-                        UtenSpacing.s16,
-                        UtenSpacing.s12,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: UtenButton(
-                              size: UtenButtonSize.large,
-                              type: UtenButtonType.tonal,
-                              icon: Icons.chevron_left_rounded,
-                              onPressed: _loading || result.page <= 1
-                                  ? null
-                                  : () async {
-                                      await _load(page: result.page - 1);
-                                      if (sheetContext.mounted) {
-                                        refreshSheet(() {});
-                                      }
-                                    },
-                              child: const Text('上一页'),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: UtenSpacing.s12,
-                            ),
-                            child: Text(
-                              '${result.page} / ${result.totalPages}',
-                            ),
-                          ),
-                          Expanded(
-                            child: UtenButton(
-                              size: UtenButtonSize.large,
-                              type: UtenButtonType.tonal,
-                              icon: Icons.chevron_right_rounded,
-                              onPressed:
-                                  _loading || result.page >= result.totalPages
-                                  ? null
-                                  : () async {
-                                      await _load(page: result.page + 1);
-                                      if (sheetContext.mounted) {
-                                        refreshSheet(() {});
-                                      }
-                                    },
-                              child: const Text('下一页'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
               ],
             ),
           );

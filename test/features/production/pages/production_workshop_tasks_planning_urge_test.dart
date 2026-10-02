@@ -227,7 +227,7 @@ Future<ProviderContainer> _pump(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('等待物料'));
+  await tester.tap(find.text('开工准备'));
   await tester.pumpAndSettle();
   return ProviderScope.containerOf(
     tester.element(find.byType(ProductionWorkshopTasksPage)),

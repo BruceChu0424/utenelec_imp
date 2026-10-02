@@ -30,13 +30,13 @@ class DocumentPlatformHistoryAccessTest {
         var adapter=header().history(id->Map.of("id",id.toString(),"priceMasked",true),null);
         assertThat(adapter.authorizeHistory(Set.of(parent)).get(parent).priceVisible()).isFalse();
     }
-    @Test void revokedCurrentReadAuthorityIsDeniedBeforeHistoricalContentLoading() {
+    @Test @SuppressWarnings("unchecked") void revokedCurrentReadAuthorityIsDeniedBeforeHistoricalContentLoading() {
         signIn(Set.of("row:price"));Function<UUID,Object> nativeHistory=mock(Function.class);
         var adapter=header().history(nativeHistory,null);
         assertThatThrownBy(()->adapter.authorizeHistory(Set.of(parent))).isInstanceOf(ApiException.class);
         verifyNoInteractions(nativeHistory,em);
     }
-    @Test void conflictingOriginalParentsCannotUseAnArbitraryWinningParent() {
+    @Test @SuppressWarnings("unchecked") void conflictingOriginalParentsCannotUseAnArbitraryWinningParent() {
         signIn(Set.of("row:view"));Query lookup=mock(Query.class);
         when(em.createNativeQuery("fixed-lookup")).thenReturn(lookup);when(lookup.setParameter("ids",Set.of(item))).thenReturn(lookup);
         when(lookup.getResultList()).thenReturn(Arrays.asList(new Object[]{item,parent},new Object[]{item,UUID.randomUUID()}));

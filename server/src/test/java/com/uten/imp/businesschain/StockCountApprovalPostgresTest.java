@@ -121,6 +121,46 @@ class StockCountApprovalPostgresTest {
         assertThrows(ApiException.class,()->controller.candidates(UUID.randomUUID(),"",null,1,50));
     }
 
+    @Test void countingQuantityToZeroShowsAndPostsDerivedWeightZeroWhileKeepingInputFact(){
+        fixture.loginAs(maker);
+        var weightRequest=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"先核定库存重量",key(),
+                List.of(input(world.goodsA(),"10","2.5000",true))));
+        fixture.loginAs(finance);
+        controller.approve((UUID)weightRequest.get("id"),new StockCountDtos.Decision(0L,key(),null));
+        fixture.loginAs(maker);
+        var request=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"实盘已无库存",key(),
+                List.of(input(world.goodsA(),"0",null,false))));
+        UUID id=(UUID)request.get("id");
+        @SuppressWarnings("unchecked")
+        var line=((List<Map<String,Object>>)request.get("lines")).getFirst();
+        assertEquals(Boolean.TRUE,line.get("weightChanged"),"审核展示必须包含数量清零派生的重量清零");
+        assertEquals(0,BigDecimal.ZERO.compareTo(new BigDecimal(line.get("targetWeightKg").toString())));
+        assertEquals(0,new BigDecimal("-2.5").compareTo(new BigDecimal(line.get("deltaWeightKg").toString())));
+        assertEquals(Boolean.FALSE,db.queryForObject("SELECT weight_changed FROM stock_count_request_lines WHERE request_id=?",Boolean.class,id),
+                "存储仍保留员工没有单独编辑重量的原始事实");
+        qty("10");
+        fixture.loginAs(finance);
+        var approved=controller.approve(id,new StockCountDtos.Decision(0L,key(),null));
+        assertEquals("APPROVED",approved.get("status"));
+        qty("0");
+        assertEquals(0,BigDecimal.ZERO.compareTo(db.queryForObject(
+                "SELECT weight FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class,world.warehouseId(),world.goodsA())));
+    }
+
+    @Test void leavingUnknownWeightBlankDoesNotLookLikeClearingItInReview(){
+        fixture.loginAs(maker);
+        var request=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"只修数量，重量尚未称",key(),
+                List.of(input(world.goodsA(),"12",null,false))));
+        @SuppressWarnings("unchecked")
+        var line=((List<Map<String,Object>>)request.get("lines")).getFirst();
+        assertNull(line.get("beforeWeightKg"));
+        assertNull(line.get("targetWeightKg"));
+        assertEquals(Boolean.FALSE,line.get("weightChanged"));
+        assertNull(line.get("deltaWeightKg"));
+        qty("10");
+    }
+
     @Test void disabledWarehouseRemainsReviewableForRejectionButCannotBePosted(){
         fixture.loginAs(maker);var request=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"停用前盘点",key(),
                 List.of(input(world.goodsA(),"12",null,false))));

@@ -103,8 +103,11 @@ Set<String> procurementChangedFields(
     'unitName',
   if (_decimal(before.unitRate) != _decimal(after.unitRate)) 'unitRate',
   if (_decimal(before.qty) != _decimal(after.qty)) 'qty',
-  if (_decimal(before.price) != _decimal(after.price)) 'price',
-  if (_decimal(before.amountOriginal) != _decimal(after.amountOriginal))
+  if (_decimal(before.price) != _decimal(after.price) ||
+      _decimal(before.totalAmountInput) != _decimal(after.totalAmountInput))
+    'price',
+  if (_decimal(before.amountOriginal) != _decimal(after.amountOriginal) ||
+      _decimal(before.totalAmountInput) != _decimal(after.totalAmountInput))
     'amountOriginal',
   if (_decimal(before.amountLocal) != _decimal(after.amountLocal))
     'amountLocal',

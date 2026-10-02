@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../basic_data/models/product_category_node.dart';
 import '../models/stock_count_request.dart';
 
 class StockCountRequestRepository {
@@ -16,6 +17,7 @@ class StockCountRequestRepository {
   Future<PagedResult<CountStockRow>> candidates({
     required String warehouseId,
     String? keyword,
+    String? categoryId,
     List<String> goodsIds = const [],
     int page = 1,
     int size = 50,
@@ -25,6 +27,7 @@ class StockCountRequestRepository {
       query: {
         'warehouseId': warehouseId,
         'keyword': ?keyword,
+        'categoryId': ?categoryId,
         if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
         'page': page,
         'size': size,
@@ -32,6 +35,20 @@ class StockCountRequestRepository {
     ),
     CountStockRow.fromJson,
   );
+  Future<List<ProductCategoryNode>> candidateCategories(
+    String warehouseId,
+  ) async => (await api.getList(
+    '$base/candidate-categories',
+    query: {'warehouseId': warehouseId},
+  )).map(ProductCategoryNode.fromJson).toList();
+
+  Future<Set<String>> candidateCategoryIds(
+    String warehouseId,
+    String keyword,
+  ) async => (await api.getStringList(
+    '$base/candidate-category-ids',
+    query: {'warehouseId': warehouseId, 'keyword': keyword},
+  )).toSet();
   Future<StockCountRequest> submit({
     required String warehouseId,
     required String reason,
@@ -51,6 +68,10 @@ class StockCountRequestRepository {
   Future<PagedResult<StockCountRequest>> list({
     String? reviewRoute,
     String? status,
+    String? warehouseId,
+    String? warehouseScope,
+    String? scopeWarehouseId,
+    String? keyword,
     int page = 1,
     int size = 50,
   }) async => PagedResult.fromJson(
@@ -59,6 +80,10 @@ class StockCountRequestRepository {
       query: {
         'reviewRoute': ?reviewRoute,
         'status': ?status,
+        'warehouseId': ?warehouseId,
+        'warehouseScope': ?warehouseScope,
+        'scopeWarehouseId': ?scopeWarehouseId,
+        'keyword': ?keyword,
         'page': page,
         'size': size,
       },

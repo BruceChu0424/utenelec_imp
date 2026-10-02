@@ -2078,7 +2078,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubPlan => '新建生产计划单';
 
   @override
-  String get productionHubPlanSub => '引用销售订单或手工新建·历史记录';
+  String get productionHubPlanSub => '手工新建排产计划，可引用销售订单';
 
   @override
   String get productionHubPlanHistory => '生产计划历史';

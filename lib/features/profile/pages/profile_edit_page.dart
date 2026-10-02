@@ -18,7 +18,7 @@
 //   4) 成功通知 → 纯直改回 /profile；含审核跳 /profile/me/changes
 //
 // 数据复用 myEmployeeProfileProvider（查看页同源，进编辑页不重复拉取）；
-// 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
+// 表单页全断点套 UtenContentContainer.narrow（兼容入口，正文随可用宽度伸缩）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -361,7 +361,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _locateInitialField();
     });
-    // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
+    // 表单正文随可用宽度伸缩，字段由表单网格自适应分列。
     return UtenContentContainer.narrow(
       child: Form(
         key: _formKey,

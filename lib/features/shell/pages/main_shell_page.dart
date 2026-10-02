@@ -7,7 +7,7 @@
 //     (= 各模块卡角标之和，服务端徽章汇总算好，badgeTotalTodoProvider)、通知挂未读角标
 //   - medium+（≥600dp）：全高左侧 NavigationRail（surface 底 + 右侧发丝边框），
 //     屏宽 ≥1280dp 时 extended 常驻标签，否则纯图标 + Tooltip；
-//     大屏可手动收成图标栏，同时释放外壳内容的 1600dp 上限；展开时恢复版心
+//     大屏可手动收成图标栏，所有页面正文始终随右侧可用宽度伸缩
 //
 // 主 Tab 承载（全断点一致）：
 //   - 四个主 Tab 由 UtenSlidingTabView 承载：离散方向滑动转场（当前页左移 / 新页右进），
@@ -276,7 +276,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     );
   }
 
-  /// medium+ 外壳：左侧 Rail + UtenContentContainer 收敛内容区
+  /// medium+ 外壳：左侧 Rail + UtenContentContainer 自适应内容区
   Widget _buildRailShell({
     required int? tabIndex,
     required String location,
@@ -308,12 +308,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
               badgeCounts: [workbenchTodos, unread, 0, 0],
             ),
             Expanded(
-              // 手动收起时释放外壳版心，让表格真正获得宽度；页面自身的宽度策略不变。
+              // 页面正文不设固定版心，随导航收起 / 展开使用全部可用宽度。
               // 只改约束、不切换容器结构，保留表单输入、滚动位置和常驻 Tab State。
               child: UtenContentContainer(
-                maxWidth: _railCollapsed
-                    ? double.infinity
-                    : UtenBreakpoints.maxContentWidth,
                 // ⚠️ selectable:false 必须保留：此容器包住所有 medium+ 路由页（含常驻
                 // 保活的工作台/通知 Tab），若包 SelectionArea 等于变相全局包裹——
                 // 徽章/通知轮询的动态重建与拖选并发会触发框架 CME（准则 §3.4、

@@ -329,12 +329,21 @@ class _WarehouseArrivalReceiptPageState
   Map<String, WeightUnit> get _massUnits =>
       ref.read(warehouseUnitMassUnitsProvider).valueOrNull ?? const {};
 
-  WeightParams? _paramsOf(_ArrivalReceiptLine line) =>
-      _weightCache.of(line.goodsId, supplierId: _prefill?.supplierId);
+  WeightParams? _paramsOf(_ArrivalReceiptLine line) => _weightCache.of(
+    line.goodsId,
+    supplierId: _prefill?.supplierId,
+    warehouseId: line.warehouseId,
+    colorId: line.colorId,
+  );
 
   Iterable<WeightParamsLine> _weightParamsLines() => [
     for (final line in _lines)
-      WeightParamsLine(goodsId: line.goodsId, supplierId: _prefill?.supplierId),
+      WeightParamsLine(
+        goodsId: line.goodsId,
+        supplierId: _prefill?.supplierId,
+        warehouseId: line.warehouseId,
+        colorId: line.colorId,
+      ),
   ];
 
   void _ensureWeightParams() {
@@ -453,7 +462,6 @@ class _WarehouseArrivalReceiptPageState
     // 进页默认全选（2026-09-17，与批量登记页同款）：勾选=本次要登记送检的行，
     // 右下两个提交按钮只认勾选行；默认全选让「进来直接提交」行为不变。
     _lineGrid.setSelected(_lineGrid.rows, true);
-    _ensureWeightParams();
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
     ).selectableIds;
@@ -470,6 +478,7 @@ class _WarehouseArrivalReceiptPageState
         line.setWarehouse(rememberedWarehouse, autofilled: true);
       }
     }
+    _ensureWeightParams();
     _removedLineCount = 0;
     await _preloadEmployees([prefill.purchaserId, meId]);
     if (mounted) setState(() => _loading = false);
@@ -568,6 +577,7 @@ class _WarehouseArrivalReceiptPageState
         target.setWarehouse(picked.id);
       }
     });
+    _ensureWeightParams();
     ref
         .read(
           inboundWarehouseFillMemoryProvider(

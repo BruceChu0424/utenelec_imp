@@ -75,6 +75,40 @@ class SalesQuoteTemplateServiceTest {
         verify(audit).logExplicit(any(), any(), eq("export_sales_quote"), eq("sales_quotes"), eq(quoteId.toString()), any());
     }
 
+    @Test void defaultExportKeepsSameNamedFeesAndNativeAmountSeparateByIdentity() throws Exception {
+        var first = new ExtraColumnSnapshot(UUID.randomUUID(), "Insurance", "AMOUNT", "ADD", "2.25");
+        var second = new ExtraColumnSnapshot(UUID.randomUUID(), "Insurance", "AMOUNT", "SUBTRACT", ".75");
+        var nativeName = new ExtraColumnSnapshot(UUID.randomUUID(), "金额", "AMOUNT", "ADD", "3");
+        quote.getItems().getFirst().setExtraColumns(List.of(first, second, nativeName));
+        var download = service.export(quoteId, null);
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(download.bytes()))) {
+            var sheet = workbook.getSheetAt(0); var row = sheet.getRow(5);
+            assertThat(sheet.getRow(4).getLastCellNum()).isEqualTo((short) 13);
+            assertThat(row.getCell(8).getNumericCellValue()).isEqualTo(19.25);
+            assertThat(row.getCell(10).getStringCellValue()).isEqualTo("2.25");
+            assertThat(row.getCell(11).getStringCellValue()).isEqualTo(".75");
+            assertThat(row.getCell(12).getStringCellValue()).isEqualTo("3");
+        }
+    }
+
+    @Test void projectionKeepsRepeatedFeeNamesInRequestedIdentityOrder() throws Exception {
+        var first = new ExtraColumnSnapshot(UUID.randomUUID(), "Insurance", "AMOUNT", "ADD", "2.25");
+        var second = new ExtraColumnSnapshot(UUID.randomUUID(), "Insurance", "AMOUNT", "SUBTRACT", ".75");
+        quote.getItems().getFirst().setExtraColumns(List.of(first, second));
+        var requested = projection(Map.of("scope", "sales_quote", "columns", List.of(
+                Map.of("key", "extra:" + second.columnId(), "label", "减免"),
+                Map.of("key", "amount", "label", "金额"),
+                Map.of("key", "extra:" + first.columnId(), "label", "附加"))));
+        var download = service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(), false, null, requested));
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(download.bytes()))) {
+            var row = workbook.getSheetAt(0).getRow(5);
+            assertThat(row.getLastCellNum()).isEqualTo((short) 3);
+            assertThat(row.getCell(0).getStringCellValue()).isEqualTo(".75");
+            assertThat(row.getCell(1).getNumericCellValue()).isEqualTo(19.25);
+            assertThat(row.getCell(2).getStringCellValue()).isEqualTo("2.25");
+        }
+    }
+
     @Test void allTemplatesProduceIndividuallyEncryptedFilesInsideZip() throws Exception {
         var candidate = QuoteTemplateWorkbook.defaultTemplate(); UUID first = UUID.randomUUID(), second = UUID.randomUUID();
         when(templates.list(clientId)).thenReturn(List.of(view(first), view(second)));

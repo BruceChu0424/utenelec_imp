@@ -445,7 +445,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                           ),
                         ),
                         const Spacer(),
-                        if (_canCreate)
+                        if (_canCreate && _statusFilter != kFinanceStatusDraft)
                           UtenButton(
                             type: UtenButtonType.tonal,
                             icon: Icons.add_rounded,

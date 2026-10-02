@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.WorkshopStockCountPostingPort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.CanonicalFingerprint;
@@ -26,6 +27,8 @@ import java.util.*;
 @PreAuthorize("hasAnyAuthority('stock:count:submit','stock:count:finance_review','stock:count:warehouse_review')")
 public class StockCountRequestService {
     public static final String SUBMIT="stock:count:submit", FINANCE="stock:count:finance_review", WAREHOUSE="stock:count:warehouse_review";
+    /** Read-only picker identity for absent/deleted categories; never written back to goods. */
+    static final UUID UNCATEGORIZED_CATEGORY=UUID.fromString("00000000-0000-0000-0000-00000000c076");
     private final NamedParameterJdbcTemplate db;
     private final SecurityContextCurrentUser user;
     private final WorkshopStockCountPostingPort workshop;
@@ -96,35 +99,127 @@ public class StockCountRequestService {
     private static final String SNAPSHOT_SELECT="""
             SELECT g.id AS goods_id,g.code AS goods_code,g.name AS goods_name,c.id AS color_id,c.name AS color_name,
                    g.unit_id,u.name AS unit_name,g.version AS goods_version,g.issue_method,
+                   COALESCE(category.id,'00000000-0000-0000-0000-00000000c076'::uuid) AS category_id,
                    COALESCE(b.qty,0) AS qty, b.weight AS weight_kg,COALESCE(b.weight_estimated,false) AS weight_estimated,
                    CASE WHEN p.measurement_dimension='MASS' THEN fn_weight_unit_kg_factor(p.mass_unit_code) END AS kg_factor
             FROM candidate k JOIN goods g ON g.id=k.goods_id JOIN units u ON u.id=g.unit_id
             LEFT JOIN colors c ON c.id=k.color_id
+            LEFT JOIN material_categories category ON category.id=g.category_id AND NOT category.is_deleted
             LEFT JOIN unit_measurement_profiles p ON p.unit_id=g.unit_id
             LEFT JOIN stock_balances b ON b.warehouse_id=:warehouse AND b.goods_id=g.id AND b.color_id IS NOT DISTINCT FROM k.color_id
-            WHERE NOT g.is_deleted AND g.status='使用' AND NOT u.is_deleted AND u.status='使用'
+            WHERE NOT g.is_deleted AND NOT COALESCE(g.auto_created,false)
+              AND g.status='使用' AND NOT u.is_deleted AND u.status='使用'
               AND (k.color_id IS NULL OR (c.id IS NOT NULL AND NOT c.is_deleted AND c.status='使用'))
             """;
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,int page,int size) {
-        var w=warehouse(warehouseId); require(SUBMIT);
+        return candidates(warehouseId,keyword,ids,null,page,size);
+    }
+    @Transactional(readOnly=true)
+    public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,int page,int size) {
+        require(SUBMIT);var w=warehouse(warehouseId);
         if(ids!=null&&ids.size()>500)throw invalid("一次最多查询500种物料");
         var paging=Pageables.of(page,size);
         var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword==null?"":keyword.strip())
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
-        String idFilter=ids==null||ids.isEmpty()?"":" AND g.id IN (:ids)";
-        if(!idFilter.isEmpty())params.addValue("ids",ids);
-        String eligible="""
-                WITH eligible AS (SELECT g.id,g.color_id FROM goods g WHERE NOT g.is_deleted
-                """+idFilter+("WORKSHOP".equals(w.get("kind"))?" AND EXISTS(SELECT 1 FROM unit_measurement_profiles p WHERE p.unit_id=g.unit_id AND p.measurement_dimension='MASS')":"")+"""
-                ), candidate AS (SELECT id AS goods_id,color_id FROM eligible UNION
-                    SELECT b.goods_id,b.color_id FROM stock_balances b JOIN eligible g ON g.id=b.goods_id WHERE b.warehouse_id=:warehouse),
-                snapshot AS (
-                """+SNAPSHOT_SELECT+" AND strpos(lower(concat_ws(' ',g.code,g.name,c.name)),lower(:keyword))>0) ";
+        String eligible=candidateSnapshots(w,ids,categoryId,params);
         long total=Objects.requireNonNull(db.queryForObject(eligible+"SELECT count(*) FROM snapshot",params,Long.class));
         var rows=db.queryForList(eligible+"SELECT * FROM snapshot ORDER BY goods_code,goods_id,color_name NULLS FIRST,color_id NULLS FIRST LIMIT :limit OFFSET :offset",params)
                 .stream().map(this::snapshotView).toList();
         return new PageResponse<>(rows,paging.getPageNumber()+1,paging.getPageSize(),total,(int)((total+paging.getPageSize()-1)/paging.getPageSize()));
+    }
+
+    /** One eligibility/colour/search projection for candidate pages, the tree, and search relocation. */
+    private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,MapSqlParameterSource params) {
+        String idFilter=ids==null||ids.isEmpty()?"":" AND g.id IN (:ids)";
+        if(!idFilter.isEmpty())params.addValue("ids",ids);
+        String categoryCte="";
+        String categoryFilter="";
+        if(UNCATEGORIZED_CATEGORY.equals(categoryId)) {
+            categoryFilter=" AND NOT EXISTS(SELECT 1 FROM material_categories category WHERE category.id=g.category_id AND NOT category.is_deleted)";
+        } else if(categoryId!=null) {
+            params.addValue("category",categoryId);
+            categoryCte="""
+                    category_scope AS (
+                        SELECT id FROM material_categories WHERE id=:category AND NOT is_deleted
+                        UNION
+                        SELECT child.id FROM material_categories child JOIN category_scope parent ON child.parent_id=parent.id
+                        WHERE NOT child.is_deleted
+                    ),
+                    """;
+            categoryFilter=" AND g.category_id IN (SELECT id FROM category_scope)";
+        }
+        return "WITH RECURSIVE "+categoryCte+"""
+                eligible AS (SELECT g.id,g.color_id FROM goods g WHERE NOT g.is_deleted
+                """+idFilter+categoryFilter+("WORKSHOP".equals(warehouse.get("kind"))?" AND EXISTS(SELECT 1 FROM unit_measurement_profiles p WHERE p.unit_id=g.unit_id AND p.measurement_dimension='MASS')":"")+"""
+                ), candidate AS (SELECT id AS goods_id,color_id FROM eligible UNION
+                    SELECT b.goods_id,b.color_id FROM stock_balances b JOIN eligible g ON g.id=b.goods_id WHERE b.warehouse_id=:warehouse),
+                snapshot AS (
+                """+SNAPSHOT_SELECT+" AND strpos(lower(concat_ws(' ',g.code,g.name,c.name)),lower(:keyword))>0) ";
+    }
+
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> candidateCategories(UUID warehouseId) {
+        require(SUBMIT);var w=warehouse(warehouseId);
+        var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword","")
+                .addValue("uncategorized",UNCATEGORIZED_CATEGORY);
+        String cte=candidateSnapshots(w,null,null,params);
+        var categories=db.queryForList(cte+"""
+                , visible_categories AS (
+                    SELECT category.id,category.parent_id FROM material_categories category
+                    WHERE NOT category.is_deleted AND category.id IN (SELECT category_id FROM snapshot)
+                    UNION
+                    SELECT parent.id,parent.parent_id FROM material_categories parent
+                    JOIN visible_categories child ON child.parent_id=parent.id WHERE NOT parent.is_deleted
+                )
+                SELECT * FROM (
+                    SELECT category.id,category.code,category.name,category.parent_id,category.level,category.sort_order
+                    FROM material_categories category JOIN visible_categories visible ON visible.id=category.id
+                    UNION ALL
+                    SELECT CAST(:uncategorized AS uuid),'UNCATEGORIZED','未分类',NULL::uuid,0,2147483647
+                    WHERE EXISTS(SELECT 1 FROM snapshot WHERE category_id=:uncategorized)
+                ) visible_tree
+                ORDER BY sort_order NULLS LAST,code,id
+                """,params);
+        Map<UUID,Map<String,Object>> nodes=new LinkedHashMap<>();
+        Map<UUID,List<Map<String,Object>>> children=new LinkedHashMap<>();
+        for(var category:categories) {
+            UUID id=(UUID)category.get("id");
+            Map<String,Object> node=new LinkedHashMap<>();
+            node.put("id",id);node.put("code",category.get("code"));node.put("name",category.get("name"));
+            node.put("parentId",category.get("parent_id"));node.put("level",category.get("level"));
+            node.put("sortOrder",category.get("sort_order"));
+            var childNodes=new ArrayList<Map<String,Object>>();children.put(id,childNodes);node.put("children",childNodes);
+            nodes.put(id,node);
+        }
+        List<Map<String,Object>> roots=new ArrayList<>();
+        for(var node:nodes.values()) {
+            UUID id=(UUID)node.get("id"),parent=(UUID)node.get("parentId");
+            if(parent!=null&&nodes.containsKey(parent)&&!categoryCycle(id,parent,nodes)) children.get(parent).add(node);
+            else roots.add(node);
+        }
+        return roots;
+    }
+
+    /** Defensive only: corrupt legacy ancestry must not create recursive JSON objects. */
+    private static boolean categoryCycle(UUID id,UUID parent,Map<UUID,Map<String,Object>> nodes) {
+        Set<UUID> seen=new HashSet<>();seen.add(id);
+        UUID current=parent;
+        while(current!=null&&nodes.containsKey(current)) {
+            if(!seen.add(current))return true;
+            current=(UUID)nodes.get(current).get("parentId");
+        }
+        return false;
+    }
+
+    @Transactional(readOnly=true)
+    public List<UUID> candidateCategoryIds(UUID warehouseId,String keyword) {
+        require(SUBMIT);var w=warehouse(warehouseId);
+        if(keyword==null||keyword.isBlank())return List.of();
+        var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword.strip());
+        return db.queryForList(candidateSnapshots(w,null,null,params)+"""
+                SELECT DISTINCT category_id FROM snapshot ORDER BY category_id
+                """,params,UUID.class);
     }
     private Map<String,Object> snapshot(UUID warehouse,UUID goods,UUID color) {
         var rows=db.queryForList("WITH candidate AS (SELECT CAST(:goods AS uuid) AS goods_id,CAST(:color AS uuid) AS color_id) "+SNAPSHOT_SELECT,
@@ -136,7 +231,7 @@ public class StockCountRequestService {
         Map<String,Object> out=new LinkedHashMap<>();
         String[][] ids={{"goodsId","goods_id"},{"goodsCode","goods_code"},{"goodsName","goods_name"},
                 {"colorId","color_id"},{"colorName","color_name"},{"unitId","unit_id"},{"unitName","unit_name"},
-                {"goodsVersion","goods_version"},{"issueMethod","issue_method"}};
+                {"goodsVersion","goods_version"},{"issueMethod","issue_method"},{"categoryId","category_id"}};
         for(String[] field:ids)out.put(field[0],row.get(field[1]));
         out.put("qty",exact(row.get("qty")));out.put("weightKg",exact(row.get("weight_kg")));
         out.put("weightEstimated",row.get("weight_estimated"));out.put("kgPerBaseUnit",exact(row.get("kg_factor")));
@@ -162,7 +257,8 @@ public class StockCountRequestService {
         }
         var w=warehouse(request.warehouseId());
         if(request.lines()==null||request.lines().isEmpty()||request.lines().size()>500)throw invalid("请选择1至500项盘点数值");
-        if(request.reason()==null||request.reason().isBlank()||request.reason().length()>500)throw invalid("请填写盘点说明（最多500字）");
+        // 2026-10-02 用户口径：盘点说明选填（例行盘点常无话可说），只保留长度上限。
+        if(request.reason()!=null&&request.reason().strip().length()>500)throw invalid("盘点说明最多500字");
         var snapshots=new ArrayList<Map<String,Object>>();var targets=new ArrayList<BigDecimal>();var identities=new HashSet<String>();
         for(var line:request.lines()) {
             if(line==null||line.goodsId()==null||line.unitId()==null||line.expectedQty()==null||line.targetQty()==null||line.targetQty().signum()<0)
@@ -247,7 +343,11 @@ public class StockCountRequestService {
             for(var name:names)line.put(name[0],row.get(name[1]));
             line.put("beforeQty",exact(row.get("expected_qty")));line.put("beforeWeightKg",exact(row.get("expected_weight_kg")));
             line.put("targetQty",exact(row.get("target_qty")));line.put("targetWeightKg",exact(row.get("target_weight_kg")));
-            line.put("weightChanged",row.get("weight_changed"));line.put("deltaQty",decimal(row.get("target_qty")).subtract(decimal(row.get("expected_qty"))).toPlainString());
+            // Review shows the effective posting difference, including quantity-zero's derived weight-zero.
+            // Persisted weight_changed remains the user's input fact; an absent target is never a request to clear weight.
+            line.put("weightChanged",row.get("target_weight_kg")!=null
+                    &&!same(row.get("expected_weight_kg"),row.get("target_weight_kg")));
+            line.put("deltaQty",decimal(row.get("target_qty")).subtract(decimal(row.get("expected_qty"))).toPlainString());
             line.put("weightEstimated",row.get("expected_weight_estimated"));line.put("kgPerBaseUnit",exact(row.get("kg_per_base_unit")));
             line.put("deltaWeightKg",row.get("target_weight_kg")==null||row.get("expected_weight_kg")==null?null:
                     decimal(row.get("target_weight_kg")).subtract(decimal(row.get("expected_weight_kg"))).toPlainString());
@@ -328,6 +428,16 @@ public class StockCountRequestService {
     }
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size) {
+        return list(route,status,warehouseId,page,size,WarehouseTaskScope.ALL);
+    }
+    @Transactional(readOnly=true)
+    public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size,
+                                               WarehouseTaskScope taskWarehouseScope) {
+        return list(route,status,warehouseId,page,size,taskWarehouseScope,null);
+    }
+    @Transactional(readOnly=true)
+    public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size,
+                                               WarehouseTaskScope taskWarehouseScope,String keyword) {
         if(route!=null&&!Set.of("FINANCE","WAREHOUSE").contains(route))throw invalid("审核归属无效");
         if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED").contains(status))throw invalid("盘点状态无效");
         if(route!=null)require("WAREHOUSE".equals(route)?WAREHOUSE:FINANCE);
@@ -336,8 +446,23 @@ public class StockCountRequestService {
         var params=new MapSqlParameterSource("warehouses",allowed).addValue("actor",user.requireId())
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
         String where=" WHERE r.warehouse_id IN (:warehouses)";
+        // This is a task-center filter, intersected with the original object scope and optional exact warehouse.
+        // The resolved scope already expands a parent to its children, including workshop bins.
+        if(taskWarehouseScope!=null&&taskWarehouseScope.active()) {
+            where+=" AND "+taskWarehouseScope.predicate("r.warehouse_id",":taskWarehouseScope");
+            params.addValue("taskWarehouseScope",taskWarehouseScope.idsCsv());
+        }
         if(route==null)where+=" AND r.submitted_by=:actor";else{where+=" AND r.review_route=:route";params.addValue("route",route);}
         if(status!=null){where+=" AND r.status=:status";params.addValue("status",status);}
+        if(keyword!=null&&!keyword.isBlank()) {
+            params.addValue("keyword",keyword.strip());
+            where+="""
+                     AND (strpos(lower(concat_ws(' ',r.request_no,r.reason,
+                           (SELECT count_warehouse.name FROM warehouses count_warehouse WHERE count_warehouse.id=r.warehouse_id))),lower(:keyword))>0
+                       OR EXISTS(SELECT 1 FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id
+                           AND strpos(lower(concat_ws(' ',count_line.goods_code,count_line.goods_name,count_line.color_name)),lower(:keyword))>0))
+                    """;
+        }
         long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM stock_count_requests r"+where,params,Long.class));
         var rows=db.queryForList("""
                 SELECT r.*,w.name AS warehouse_name,COALESCE(e.full_name,u.login_account) AS submitted_by_name

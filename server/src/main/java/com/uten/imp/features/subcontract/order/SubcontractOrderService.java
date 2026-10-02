@@ -824,9 +824,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     MoneyPolicy.quantity(newQty.subtract((BigDecimal) change[1]).multiply(unitRate)));
             unitRates.put(item.getId(), unitRate);
             goodsByItem.put(item.getId(), item.getGoodsId());
+            item.setTotalAmountInput(MoneyPolicy.revisedTotalAmountInput(
+                    item.getTotalAmountInput(), (BigDecimal) change[1], newQty));
             item.setQty(newQty);
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    item.getPrice() == null ? null : MoneyPolicy.exactProduct(newQty, item.getPrice()), item.getExtraColumns());
+                    item.getPrice() == null ? null : MoneyPolicy.orderBaseAmount(newQty, item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || rate == null ? null : MoneyPolicy.local(original, rate));
             item.setAmountOriginal(amounts.original());
@@ -1261,7 +1263,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         "委外订货数量、单价和金额必须完整且不能为负");
             }
             BigDecimal expectedOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    MoneyPolicy.exactProduct(item.getQty(), item.getPrice()), item.getExtraColumns());
+                    MoneyPolicy.orderBaseAmount(item.getQty(), item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
+            if (item.getTotalAmountInput() != null
+                    && item.getPrice().compareTo(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty())) != 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "参考单价与总金额、数量不一致");
+            }
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
@@ -1313,7 +1319,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                                 item.getPrice(),
                                 item.getAmountOriginal(),
                                 item.getAmountLocal(),
-                                item.getDeliverDate()))
+                                item.getDeliverDate(), item.getTotalAmountInput()))
                         .toList());
     }
 
@@ -1551,8 +1557,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         lines.stream().map(OrderItemLine::getGoodsId).toList(),
                         SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         UUID actorId = currentUser.requireId();
-        // 行金额只由服务端按「数量×单价」「原币金额×表头汇率」精确派生(ADR-112), 与采购同口径;
-        // 请求不带金额, 单价缺省则金额为空, 汇率缺省则本币为空。
+        // 行金额按单价乘数量或用户约定总金额派生；本币仍由服务端按汇率计算。
+        // 单价和约定总金额都缺省时金额为空；汇率缺省则本币为空。
         BigDecimal headerRate = r.getExchangeRate();
         int autoLine = 1;
         for (OrderItemLine l : lines) {
@@ -1581,12 +1587,16 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             // 哈希失配导致 approve/reject 双 409（单据永久卡死）。
             it.setUnitRate(l.getUnitRate() == null ? BigDecimal.ONE : l.getUnitRate());
             it.setQty(l.getQty());
-            BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"委外加工单价");
+            BigDecimal totalInput = MoneyPolicy.totalAmountInput(l.getTotalAmountInput());
+            BigDecimal price = totalInput == null
+                    ? (l.getPrice() == null ? null : com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(), "单价"))
+                    : MoneyPolicy.referenceUnitPrice(totalInput, l.getQty());
+            it.setTotalAmountInput(totalInput);
             it.setPrice(price);
             it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "subcontract_order",
                     l.getExtraColumns(), previousColumns.getOrDefault(l, it.getExtraColumns()), subcontractPriceMasked()));
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    price == null ? null : MoneyPolicy.exactProduct(l.getQty(), price), it.getExtraColumns());
+                    MoneyPolicy.orderBaseAmount(l.getQty(), price, totalInput), it.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
             it.setAmountOriginal(amounts.original());
@@ -1871,6 +1881,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getMaterialReturnedQty(), it.getApplicationItemId(), it.getDeliverDate(),
                 it.getWeight(), it.getSourceDocNo(), it.getRemark(),
                 sourceApplications, it.getAllowedLossPct(), BigDecimal.ZERO);
+        dto.setTotalAmountInput(it.getTotalAmountInput());
         dto.setExtraColumns(it.getExtraColumns());
         return dto;
     }

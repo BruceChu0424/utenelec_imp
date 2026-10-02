@@ -5,28 +5,49 @@ import 'package:uuid/uuid.dart';
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
-import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
+import '../../../../components/layout/uten_filter_toolbar.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/nav_helpers.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../core/utils/display_datetime.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/badges/badge_registry.dart';
 import '../../../../shared/formatters/exact_decimal.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../basic_data/models/goods_issue_method.dart';
+import '../../../basic_data/repositories/goods_issue_method_repository.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
-import '../../../warehouse/materialbin/widgets/workshop_material_first_use_card.dart';
+import '../../../../shared/warehouse/workshop_material_first_use_impact.dart';
 import '../models/stock_count_request.dart';
 import '../repositories/stock_count_request_repository.dart';
 
 /// A submitted stock count changes stock only after its designated reviewer approves.
 class StockCountReviewPage extends ConsumerStatefulWidget {
-  const StockCountReviewPage({super.key, this.reviewRoute, this.requestId});
+  const StockCountReviewPage({
+    super.key,
+    this.reviewRoute,
+    this.requestId,
+    this.embedded = false,
+    this.externalHeader,
+    this.externalRefreshTick,
+    this.warehouseScope = const WarehouseTaskScope.all(),
+    this.keyword,
+    this.onChanged,
+  });
   final String? reviewRoute;
   final String? requestId;
+  final bool embedded;
+  final Widget? externalHeader;
+  final int? externalRefreshTick;
+  final WarehouseTaskScope warehouseScope;
+  final String? keyword;
+  final VoidCallback? onChanged;
 
   @override
   ConsumerState<StockCountReviewPage> createState() =>
@@ -40,9 +61,12 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
   String? _error;
   bool _loading = true;
   bool _working = false;
+  bool _confirming = false;
   int _sequence = 0;
   final _keys = <String, String>{};
-  final _confirmedSetup = <String>{};
+  final _setupPreviews = <String, GoodsIssueMethodPreview>{};
+  final _setupErrors = <String, String>{};
+  final _setupLoading = <String>{};
 
   bool get _authorized {
     final permission = switch (widget.reviewRoute) {
@@ -68,6 +92,22 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     );
   }
 
+  @override
+  void didUpdateWidget(covariant StockCountReviewPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.warehouseScope != widget.warehouseScope ||
+        oldWidget.keyword != widget.keyword ||
+        oldWidget.reviewRoute != widget.reviewRoute) {
+      _sequence++;
+      _detail = null;
+      _page = null;
+      _load();
+    } else if (oldWidget.externalRefreshTick != widget.externalRefreshTick &&
+        !_working) {
+      _detail == null ? _load() : _open(_detail!.id);
+    }
+  }
+
   Future<void> _load([int page = 1]) async {
     if (!_authorized) {
       if (mounted) setState(() => _loading = false);
@@ -84,6 +124,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           .list(
             reviewRoute: widget.reviewRoute,
             status: _status.isEmpty ? null : _status,
+            warehouseScope:
+                widget.warehouseScope.queryParameters['warehouseScope'],
+            scopeWarehouseId:
+                widget.warehouseScope.queryParameters['scopeWarehouseId'],
+            keyword: widget.keyword,
             page: page,
           );
       if (mounted && sequence == _sequence) setState(() => _page = result);
@@ -102,6 +147,9 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _setupPreviews.clear();
+      _setupErrors.clear();
+      _setupLoading.clear();
     });
     try {
       final detail = await ref
@@ -114,9 +162,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             _error = '该盘点不属于当前审核队列';
           } else {
             _detail = detail;
-            _confirmedSetup.clear();
           }
         });
+        if (identical(_detail, detail)) {
+          await _loadSetupPreviews(detail, sequence);
+        }
       }
     } catch (error) {
       if (mounted && sequence == _sequence) {
@@ -127,17 +177,111 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     }
   }
 
+  Map<String, StockCountRequestLine> _setupLines(StockCountRequest detail) => {
+    for (final line in detail.lines)
+      if (line.materialSetupBasis != null) line.goodsId: line,
+  };
+
+  Future<void> _loadSetupPreviews(
+    StockCountRequest detail,
+    int sequence,
+  ) async {
+    if (detail.status != 'PENDING' ||
+        !detail.canApprove ||
+        !_canConfigureMaterials) {
+      return;
+    }
+    final lines = _setupLines(detail).values.toList();
+    var next = 0;
+    // Bound preview requests for large counts; each goods identity is read once.
+    await Future.wait([
+      for (var worker = 0; worker < 4 && worker < lines.length; worker++)
+        () async {
+          while (mounted && sequence == _sequence && next < lines.length) {
+            await _loadSetupPreview(lines[next++], detail, sequence);
+          }
+        }(),
+    ]);
+  }
+
+  Future<void> _loadSetupPreview(
+    StockCountRequestLine line,
+    StockCountRequest detail,
+    int sequence,
+  ) async {
+    if (!mounted ||
+        sequence != _sequence ||
+        _detail?.id != detail.id ||
+        !_canConfigureMaterials ||
+        _setupLoading.contains(line.goodsId)) {
+      return;
+    }
+    setState(() {
+      _setupLoading.add(line.goodsId);
+      _setupPreviews.remove(line.goodsId);
+      _setupErrors.remove(line.goodsId);
+    });
+    try {
+      final preview = await ref
+          .read(goodsIssueMethodRepositoryProvider)
+          .preview(
+            line.goodsId,
+            target: 'PERIODIC',
+            costBasis: line.materialSetupBasis,
+          );
+      if (mounted && sequence == _sequence && _detail?.id == detail.id) {
+        setState(() => _setupPreviews[line.goodsId] = preview);
+      }
+    } catch (error) {
+      if (mounted && sequence == _sequence && _detail?.id == detail.id) {
+        setState(() {
+          _setupErrors[line.goodsId] = error is ApiException
+              ? error.message
+              : '用途影响读取失败，请重试';
+        });
+      }
+    } finally {
+      if (mounted && sequence == _sequence && _detail?.id == detail.id) {
+        setState(() => _setupLoading.remove(line.goodsId));
+      }
+    }
+  }
+
   Future<void> _decide(String action) async {
     final detail = _detail;
-    if (detail == null || _working || !_authorized) return;
-    if (action == 'approve' && !_setupConfirmed(detail)) return;
+    if (detail == null || _working || _confirming || _loading || !_authorized) {
+      return;
+    }
+    final decisionSequence = _sequence;
+    if (action == 'approve' &&
+        (!_setupReady(detail) || detail.lines.any((line) => line.stale))) {
+      return;
+    }
     if (action == 'approve' && !detail.canApprove ||
         action == 'reject' && !detail.canReject ||
         action == 'cancel' && !detail.canCancel) {
       return;
     }
-    final reason = await _confirmDecision(context, action);
-    if (reason == null || !mounted || !_authorized) return;
+    _confirming = true;
+    String? reason;
+    try {
+      reason = await _confirmDecision(
+        context,
+        action,
+        setupCount: _setupLines(detail).length,
+      );
+    } finally {
+      _confirming = false;
+    }
+    if (reason == null ||
+        !mounted ||
+        !_authorized ||
+        decisionSequence != _sequence ||
+        _detail?.id != detail.id ||
+        _detail?.version != detail.version ||
+        (action == 'approve' && !_setupReady(detail))) {
+      return;
+    }
     final key = _keys.putIfAbsent(
       '${detail.id}:${detail.version}:$action:$reason',
       const Uuid().v4,
@@ -169,8 +313,23 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
         ),
       };
       if (!mounted) return;
-      setState(() => _detail = result);
+      if (decisionSequence == _sequence) {
+        setState(() {
+          _detail = action == 'approve' ? null : result;
+          if (action == 'approve') _page = null;
+          _setupPreviews.clear();
+          _setupErrors.clear();
+          _setupLoading.clear();
+        });
+      }
       refreshBadges(ref);
+      widget.onChanged?.call();
+      if (decisionSequence != _sequence) {
+        // Approval has completed, but the user is now viewing another scope.
+        // Refresh that queue without restoring the old request or its message.
+        await _load();
+        return;
+      }
       context.appSuccess(
         action == 'approve'
             ? '审核通过，库存已按盘点更新'
@@ -178,8 +337,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             ? '已退回，库存未改变'
             : '已撤回，库存未改变',
       );
+      if (action == 'approve') await _load();
     } catch (error) {
-      if (mounted) setState(() => _error = _message(error));
+      if (mounted && decisionSequence == _sequence) {
+        setState(() => _error = _message(error));
+      }
     } finally {
       if (mounted) setState(() => _working = false);
     }
@@ -190,78 +352,110 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     ref.watch(currentPermissionsProvider);
     ref.watch(isSuperAdminProvider);
     final allowed = _authorized;
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: _title,
-        leading: UtenBackButton(
-          onPressed: () {
-            if (_detail != null) {
-              setState(() => _detail = null);
-              _load();
-            } else {
-              backTo(
-                context,
-                defaultPath: widget.reviewRoute == 'FINANCE'
-                    ? RouteName.finance
-                    : RouteName.warehouse,
-              );
-            }
-          },
-        ),
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: !allowed || _working
-                ? null
-                : () => _detail == null ? _load() : _open(_detail!.id),
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: UtenContentContainer(
-        child: !allowed
-            ? const Center(child: Text('未获本页盘点授权'))
-            : Column(
-                children: [
-                  if (_error != null)
-                    UtenInlineNotice(
-                      message: _error!,
-                      level: UtenInlineNoticeLevel.error,
-                    ),
-                  if (_working || _loading) const LinearProgressIndicator(),
-                  Expanded(
-                    child: _detail == null ? _list() : _detailBody(_detail!),
+    final content = !allowed
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 无权态也钉住宿主分类栏（2026-10-01 用户口径：分类栏不得消失）。
+              if (widget.externalHeader != null) ...[
+                widget.externalHeader!,
+                const SizedBox(height: UtenSpacing.s12),
+              ],
+              const Expanded(child: Center(child: Text('未获本页盘点授权'))),
+            ],
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.externalHeader != null) ...[
+                widget.externalHeader!,
+                const SizedBox(height: UtenSpacing.s12),
+              ],
+              if (widget.embedded && _detail != null)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const Key('stock-count-review-back-to-list'),
+                    onPressed: _working ? null : _backToList,
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('返回审核列表'),
                   ),
-                ],
+                ),
+              if (_error != null)
+                UtenInlineNotice(
+                  message: _error!,
+                  level: UtenInlineNoticeLevel.error,
+                ),
+              Expanded(
+                child: _detail == null ? _list() : _detailBody(_detail!),
               ),
-      ),
+            ],
+          );
+    return Scaffold(
+      appBar: widget.embedded
+          ? null
+          : UtenAppBar(
+              title: _title,
+              leading: UtenBackButton(
+                onPressed: () {
+                  if (_detail != null) {
+                    _backToList();
+                  } else {
+                    backTo(
+                      context,
+                      defaultPath: widget.reviewRoute == 'FINANCE'
+                          ? RouteName.finance
+                          : RouteName.warehouse,
+                    );
+                  }
+                },
+              ),
+              actions: [
+                IconButton(
+                  tooltip: '刷新',
+                  onPressed: !allowed || _working
+                      ? null
+                      : () => _detail == null ? _load() : _open(_detail!.id),
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+      body: widget.embedded ? content : UtenContentContainer(child: content),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: allowed && _detail != null
+          ? _floatingActions(_detail!)
+          : null,
     );
+  }
+
+  void _backToList() {
+    if (_working) return;
+    setState(() => _detail = null);
+    _load();
   }
 
   Widget _list() => Column(
     children: [
       Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenDropdownField(
-          label: '状态',
-          value: _status,
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+        child: UtenFilterToolbar<String>(
+          segmentsKey: const Key('stock-count-status-segments'),
+          selected: {_status},
           enabled: !_working,
-          allowClear: false,
-          items: const [
-            UtenDropdownItem(value: 'PENDING', label: '待审核'),
-            UtenDropdownItem(value: 'APPROVED', label: '已通过'),
-            UtenDropdownItem(value: 'REJECTED', label: '已退回'),
-            UtenDropdownItem(value: 'CANCELLED', label: '已撤回'),
-            UtenDropdownItem(value: '', label: '全部'),
+          segments: const [
+            UtenFilterSegment(value: 'PENDING', label: '待审核'),
+            UtenFilterSegment(value: 'APPROVED', label: '已通过'),
+            UtenFilterSegment(value: 'REJECTED', label: '已退回'),
+            UtenFilterSegment(value: 'CANCELLED', label: '已撤回'),
+            UtenFilterSegment(value: '', label: '全部'),
           ],
-          onChanged: (value) {
-            if (value != null) {
-              setState(() {
-                _status = value;
-                _page = null;
-              });
-              _load();
-            }
+          onSelectionChanged: (value) {
+            setState(() {
+              _status = value;
+              _page = null;
+            });
+            _load();
           },
         ),
       ),
@@ -303,7 +497,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               key: 'submittedAt',
               label: '提交时间',
               width: 180,
-              value: (r) => r.submittedAt,
+              value: (r) => DisplayDateTime.format(r.submittedAt),
             ),
             MasterColumnDef(
               key: 'reason',
@@ -333,7 +527,12 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           currentPage: _page?.page ?? 1,
           totalPages: _page?.totalPages ?? 1,
           onPageChange: _load,
-          paginationScope: (widget.reviewRoute, _status),
+          paginationScope: (
+            widget.reviewRoute,
+            _status,
+            widget.warehouseScope,
+            widget.keyword,
+          ),
           onRetry: _load,
         ),
       ),
@@ -342,12 +541,15 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
 
   Widget _detailBody(StockCountRequest detail) {
     final stale = detail.lines.any((line) => line.stale);
-    final setup = {
-      for (final line in detail.lines)
-        if (line.materialSetupBasis != null) line.goodsId: line,
-    };
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final reviewingSetup =
+        detail.status == 'PENDING' &&
+        detail.canApprove &&
+        _setupLines(detail).isNotEmpty;
+    return ListView(
+      key: const Key('stock-count-detail-scroll'),
+      padding: const EdgeInsets.only(
+        bottom: UtenFloatingActionGroup.scrollClearance,
+      ),
       children: [
         Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -368,11 +570,16 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
                   level: UtenInlineNoticeLevel.warning,
                   message: '提交后库存已变化，请退回重新盘点；本次不能直接覆盖当前库存。',
                 ),
-              const Text('仅变更的旧数值显示红色删除线；审核通过后才更新库存。'),
+              if (reviewingSetup && !_canConfigureMaterials)
+                const UtenInlineNotice(
+                  level: UtenInlineNoticeLevel.warning,
+                  message: '首次材料用途确认需货品及 BOM 编辑权限。',
+                ),
             ],
           ),
         ),
-        Expanded(
+        SizedBox(
+          height: (150.0 + detail.lines.length * 48).clamp(245.0, 560.0),
           child: MasterDataTableView<StockCountRequestLine>(
             tableKey: 'stock.count-request-lines',
             columns: [
@@ -466,6 +673,15 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
                   _ => '—',
                 },
               ),
+              if (reviewingSetup)
+                MasterColumnDef(
+                  key: 'materialImpact',
+                  label: '用途及 BOM 影响',
+                  width: 235,
+                  value: _setupImpactLabel,
+                  cellBuilderHandlesSemantics: true,
+                  cellBuilder: (_, line) => _setupImpactCell(detail, line),
+                ),
             ],
             items: detail.lines,
             facets: const {},
@@ -475,80 +691,118 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             emptyMessage: '没有盘点明细',
           ),
         ),
-        if (detail.status == 'PENDING' && detail.canApprove && setup.isNotEmpty)
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 300),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s12,
-                ),
-                child: Column(
-                  children: [
-                    for (final line in setup.values)
-                      WorkshopMaterialFirstUseCard(
-                        key: ValueKey(
-                          'count-setup-${detail.id}-${detail.version}-${line.goodsId}',
-                        ),
-                        goodsId: line.goodsId,
-                        goodsName: line.goodsName,
-                        canConfigure: _canConfigureMaterials,
-                        enabled: !_working,
-                        fixedBasis: line.materialSetupBasis,
-                        expectedVersion: line.goodsVersion,
-                        approvalContext: true,
-                        onChanged: (value) {
-                          if (!mounted) return;
-                          setState(() {
-                            if (value == null) {
-                              _confirmedSetup.remove(line.goodsId);
-                            } else {
-                              _confirmedSetup.add(line.goodsId);
-                            }
-                          });
-                        },
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              if (detail.canApprove)
-                UtenButton(
-                  key: const Key('stock-count-approve'),
-                  onPressed:
-                      _working || _loading || stale || !_setupConfirmed(detail)
-                      ? null
-                      : () => _decide('approve'),
-                  child: const Text('审核通过并更新库存'),
-                ),
-              if (detail.canReject)
-                UtenButton(
-                  key: const Key('stock-count-reject'),
-                  type: UtenButtonType.secondary,
-                  onPressed: _working || _loading
-                      ? null
-                      : () => _decide('reject'),
-                  child: const Text('退回'),
-                ),
-              if (detail.canCancel)
-                UtenButton(
-                  key: const Key('stock-count-cancel'),
-                  type: UtenButtonType.secondary,
-                  onPressed: _working || _loading
-                      ? null
-                      : () => _decide('cancel'),
-                  child: const Text('撤回申请'),
-                ),
-            ],
+      ],
+    );
+  }
+
+  String _setupImpactLabel(StockCountRequestLine line) {
+    if (line.materialSetupBasis == null) return '—';
+    if (!_canConfigureMaterials) return '需货品及 BOM 编辑权限';
+    if (_setupLoading.contains(line.goodsId)) return '正在核对用途影响…';
+    if (_setupErrors.containsKey(line.goodsId)) return '读取失败，点击重试';
+    final preview = _setupPreviews[line.goodsId];
+    if (preview == null) return '等待核对用途影响';
+    final blockers = workshopMaterialFirstUseBlockers(
+      preview: preview,
+      goodsId: line.goodsId,
+      basis: line.materialSetupBasis!,
+      expectedVersion: line.goodsVersion,
+    );
+    if (blockers.isNotEmpty) return blockers.first;
+    final changed = preview.bomRows
+        .where((row) => row.action != GoodsIssueMethodBomRow.actionKeep)
+        .length;
+    return '关联 BOM ${preview.bomRows.length} 行，调整 $changed 行';
+  }
+
+  Widget _setupImpactCell(
+    StockCountRequest detail,
+    StockCountRequestLine line,
+  ) {
+    if (line.materialSetupBasis == null) return const Text('—');
+    final label = _setupImpactLabel(line);
+    final preview = _setupPreviews[line.goodsId];
+    final canOpen =
+        !_working &&
+        !_setupLoading.contains(line.goodsId) &&
+        _canConfigureMaterials &&
+        (preview != null || _setupErrors.containsKey(line.goodsId));
+    return Tooltip(
+      message: _setupErrors[line.goodsId] ?? label,
+      child: TextButton(
+        key: ValueKey('stock-count-impact-${line.goodsId}'),
+        onPressed: !canOpen
+            ? null
+            : () {
+                if (preview == null) {
+                  _loadSetupPreview(line, detail, _sequence);
+                } else {
+                  _showSetupImpact(line, preview);
+                }
+              },
+        child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+      ),
+    );
+  }
+
+  Future<void> _showSetupImpact(
+    StockCountRequestLine line,
+    GoodsIssueMethodPreview preview,
+  ) => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('${line.goodsName} · 用途及 BOM 影响'),
+      content: SizedBox(
+        width: 640,
+        child: SingleChildScrollView(
+          child: WorkshopMaterialFirstUseImpact(
+            preview: preview,
+            goodsId: line.goodsId,
+            basis: line.materialSetupBasis!,
+            expectedVersion: line.goodsVersion,
+            approvalContext: true,
           ),
         ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    ),
+  );
+
+  Widget _floatingActions(StockCountRequest detail) {
+    final stale = detail.lines.any((line) => line.stale);
+    // 2026-10-02 用户口径：审核视图（仓库/财务队列）只有「退回 + 审批通过」，审批通过
+    // 摆最右；「撤回申请」是提交人动作，只出现在我的盘点（/stock/count-requests）视图。
+    final reviewerView = widget.reviewRoute != null;
+    return UtenFloatingActionGroup(
+      children: [
+        if (!reviewerView && detail.canCancel)
+          UtenButton(
+            key: const Key('stock-count-cancel'),
+            type: UtenButtonType.secondary,
+            onPressed: _working || _loading ? null : () => _decide('cancel'),
+            child: const Text('撤回申请'),
+          ),
+        if (detail.canReject)
+          UtenButton(
+            key: const Key('stock-count-reject'),
+            type: UtenButtonType.secondary,
+            onPressed: _working || _loading ? null : () => _decide('reject'),
+            child: const Text('退回'),
+          ),
+        if (detail.canApprove)
+          UtenButton(
+            key: const Key('stock-count-approve'),
+            isLoading: _working,
+            onPressed: _working || _loading || stale || !_setupReady(detail)
+                ? null
+                : () => _decide('approve'),
+            child: const Text('审核通过'),
+          ),
       ],
     );
   }
@@ -560,14 +814,18 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
         Perm.goodsBomEdit,
       });
 
-  bool _setupConfirmed(StockCountRequest detail) {
-    final setup = detail.lines
-        .where((line) => line.materialSetupBasis != null)
-        .map((line) => line.goodsId)
-        .toSet();
-    return setup.isEmpty ||
-        (_canConfigureMaterials && _confirmedSetup.containsAll(setup));
-  }
+  bool _setupReady(StockCountRequest detail) => detail.lines
+      .where((line) => line.materialSetupBasis != null)
+      .every(
+        (line) => canConfirmWorkshopMaterialFirstUse(
+          preview: _setupPreviews[line.goodsId],
+          goodsId: line.goodsId,
+          basis: line.materialSetupBasis!,
+          expectedVersion: line.goodsVersion,
+          canConfigure: _canConfigureMaterials,
+          loading: _setupLoading.contains(line.goodsId),
+        ),
+      );
 }
 
 /// Exact text comparison: 1 and 1.0000 are equal without a double round trip.
@@ -597,7 +855,11 @@ class StockCountOldValue extends StatelessWidget {
   }
 }
 
-Future<String?> _confirmDecision(BuildContext context, String action) async {
+Future<String?> _confirmDecision(
+  BuildContext context,
+  String action, {
+  int setupCount = 0,
+}) async {
   final input = TextEditingController();
   try {
     return await showDialog<String>(
@@ -619,6 +881,8 @@ Future<String?> _confirmDecision(BuildContext context, String action) async {
                     ? '将按提交的目标数量和重量更新库存，并保留审核及差额记录。'
                     : '库存保持不变。',
               ),
+              if (action == 'approve' && setupCount > 0)
+                Text('同时按申请用途确认 $setupCount 种材料，关联 BOM 调整对所有使用该材料的产品生效。'),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('stock-count-review-reason'),

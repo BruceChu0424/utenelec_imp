@@ -2,26 +2,17 @@
 //
 // 面向员工的文案一律傻瓜化中文, 不出现代号、表名、英文标识; 括号一律半角。
 // 服务端状态码只在这里翻成中文, 页面不直接显示状态码。
+import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
+import '../../../../shared/formatters/quantity_display.dart';
 import '../models/workshop_material_models.dart';
 
-/// 数量显示: 最多 [maxDecimals] 位小数, 去掉末尾的 0。
-String wmQty(num? value, {int maxDecimals = 2}) {
-  if (value == null) return '';
-  var text = value.toStringAsFixed(maxDecimals);
-  if (text.contains('.')) {
-    text = text.replaceFirst(RegExp(r'0+$'), '');
-    if (text.endsWith('.')) text = text.substring(0, text.length - 1);
-  }
-  return text == '-0' ? '0' : text;
-}
+/// 数量显示: 最多 [maxDecimals] 位小数, 去掉末尾的 0。（实现升位 shared/formatters。）
+String wmQty(num? value, {int maxDecimals = 2}) =>
+    formatQty(value, maxDecimals: maxDecimals);
 
 /// 输入框文本 → 数量; 空或非法为 null。
-double? wmParseQty(String text) {
-  final raw = text.trim().replaceAll(',', '');
-  if (raw.isEmpty) return null;
-  return double.tryParse(raw);
-}
+double? wmParseQty(String text) => parseQty(text);
 
 /// 期间显示名: 第 N 期 (起 至 止)。
 String wmPeriodLabel(WmPeriod period) {
@@ -38,6 +29,13 @@ String wmPeriodStatusLabel(String status) => switch (status) {
   WmPeriodStatus.counted => '已盘点, 待结算',
   WmPeriodStatus.closed => '已结算',
   _ => '',
+};
+
+UtenStatusBadgeType wmPeriodStatusBadgeType(String status) => switch (status) {
+  WmPeriodStatus.open => UtenStatusBadgeType.success,
+  WmPeriodStatus.counting => UtenStatusBadgeType.info,
+  WmPeriodStatus.counted => UtenStatusBadgeType.warning,
+  _ => UtenStatusBadgeType.neutral,
 };
 
 String wmCloseStateLabel(String closeState) => switch (closeState) {
@@ -57,6 +55,26 @@ String wmRequisitionStatusLabel(String status) => switch (status) {
   'CANCELLED' => '已取消',
   _ => '',
 };
+
+// 状态 → 整格底色语义 (2026-10-01 口径「不同状态不同颜色」)。表格 cellColor
+// 显式映射, 不走按文案猜色的兜底: 开着=正常绿、盘点中/自动结算中=蓝、
+// 已盘点待结算/差资料=琥珀、结算没成功=红、已结算/已撤销=灰。
+UtenStatusBadgeType wmRequisitionStatusBadgeType(String status) =>
+    switch (status) {
+      'PENDING' => UtenStatusBadgeType.warning,
+      'DONE' => UtenStatusBadgeType.success,
+      _ => UtenStatusBadgeType.neutral,
+    };
+
+/// null = 期间开着没有结算状态, 不上色。
+UtenStatusBadgeType? wmCloseStateBadgeType(String closeState) =>
+    switch (closeState) {
+      WmCloseState.queued => UtenStatusBadgeType.info,
+      WmCloseState.blocked => UtenStatusBadgeType.warning,
+      WmCloseState.failed => UtenStatusBadgeType.danger,
+      WmCloseState.held => UtenStatusBadgeType.neutral,
+      _ => null,
+    };
 
 String wmRequisitionOriginLabel(String? origin) => switch (origin) {
   'WAREHOUSE_DIRECT' => '仓库直接发料',

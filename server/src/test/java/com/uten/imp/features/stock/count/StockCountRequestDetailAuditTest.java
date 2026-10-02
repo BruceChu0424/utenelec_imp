@@ -1,6 +1,7 @@
 package com.uten.imp.features.stock.count;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -13,7 +14,7 @@ import static org.mockito.Mockito.*;
 class StockCountRequestDetailAuditTest {
     private final StockCountRequestService service=mock(StockCountRequestService.class);
     private final AuditDetailViewRecorder recorder=mock(AuditDetailViewRecorder.class);
-    private StockCountRequestController controller() {return new StockCountRequestController(service,recorder);}
+    private StockCountRequestController controller() {return new StockCountRequestController(service,recorder,mock(WarehouseTaskScopePort.class));}
     @Test void successfulAuthorizedDetailRecordsOnlyTheSafeRequestIdentityOnce() throws Exception {
         UUID id=UUID.randomUUID();var detail=Map.<String,Object>of("requestNo","PD-001","reason","PRIVATE REASON","targetQty","999");
         when(service.detail(id)).thenReturn(detail);

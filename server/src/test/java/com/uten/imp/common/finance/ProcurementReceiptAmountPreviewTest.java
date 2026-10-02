@@ -8,6 +8,14 @@ class ProcurementReceiptAmountPreviewTest {
     private static BigDecimal n(String value) { return new BigDecimal(value); }
 
     @Test void multipleRowsForOneSourceWithinADraftShareTheRemainder() {
+        cumulativeDraft(false);
+    }
+
+    @Test void enteredTotalWithoutExtraColumnsUsesSourceRemainderInDraft() {
+        cumulativeDraft(true);
+    }
+
+    private void cumulativeDraft(boolean totalPricing) {
         var em = org.mockito.Mockito.mock(jakarta.persistence.EntityManager.class);
         var replacement = org.mockito.Mockito.mock(ProcurementIqcReplacementAllocationService.class);
         var source = org.mockito.Mockito.mock(jakarta.persistence.Query.class);
@@ -20,7 +28,7 @@ class ProcurementReceiptAmountPreviewTest {
         for (var query : java.util.List.of(source, prior, allowance))
             org.mockito.Mockito.when(query.setParameter(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
         org.mockito.Mockito.when(source.getResultList()).thenReturn(java.util.Collections.singletonList(
-                new Object[]{n("3"), n("30"), n("100"), n("710"), n("7.1"), n("0"), "[{\"operation\":\"ADD\"}]"}));
+                new Object[]{n("3"), n("30"), n("100"), n("710"), n("7.1"), n("0"), totalPricing ? "[]" : "[{\"operation\":\"ADD\"}]", totalPricing ? n("100") : null}));
         org.mockito.Mockito.when(prior.getSingleResult()).thenReturn(new Object[]{n("0"),n("0"),n("0")});
         org.mockito.Mockito.when(allowance.getSingleResult()).thenReturn(n("0"));
         var item = java.util.UUID.randomUUID();

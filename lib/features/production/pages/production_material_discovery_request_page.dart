@@ -550,6 +550,8 @@ class _RequestState
       width: 170,
       type: 'number',
       value: (row) => row.qty.text,
+      exactValueOf: (row) => row.qty.text,
+      exactListenableOf: (row) => row.qty,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => TextField(
         key: ValueKey('discovery-request-qty-${row.id}'),

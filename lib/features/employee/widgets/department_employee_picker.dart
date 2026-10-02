@@ -4,6 +4,7 @@
 // 问题 #6：模具「保管人」原来是纯搜索平铺列表，改成"先浏览部门再挑人"，更贴近老员工的
 // 使用习惯（不知道该搜什么名字时，按部门找人更直观）。
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_load_more_boundary.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_employee_picker.dart'
@@ -558,49 +559,59 @@ class _DeptEmployeePickerSheetState
     }
     final showFooter =
         _loadingMore || _loadMoreError != null || _itemPage < _itemTotalPages;
-    return ListView.separated(
-      itemCount: _items.length + (showFooter ? 1 : 0),
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (ctx, i) {
-        if (i == _items.length) {
-          if (_loadingMore) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+    return UtenLoadMoreBoundary(
+      enabled:
+          !_loadingMore &&
+          _loadMoreError == null &&
+          _itemPage < _itemTotalPages,
+      scope: (_pageDepartmentId, _pageKeyword, _requestVersion),
+      onLoadMore: _loadMoreEmployees,
+      child: ListView.separated(
+        itemCount: _items.length + (showFooter ? 1 : 0),
+        separatorBuilder: (_, _) => const Divider(height: 1),
+        itemBuilder: (ctx, i) {
+          if (i == _items.length) {
+            if (_loadingMore) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              );
+            }
+            return Padding(
+              padding: const EdgeInsets.all(12),
+              child: Center(
+                child: TextButton.icon(
+                  key: const ValueKey('department-employee-load-more'),
+                  onPressed: _loadMoreEmployees,
+                  icon: Icon(
+                    _loadMoreError == null
+                        ? Icons.expand_more_rounded
+                        : Icons.refresh_rounded,
+                  ),
+                  label: Text(_loadMoreError ?? '加载更多员工'),
+                ),
+              ),
             );
           }
-          return Padding(
-            padding: const EdgeInsets.all(12),
-            child: Center(
-              child: TextButton.icon(
-                key: const ValueKey('department-employee-load-more'),
-                onPressed: _loadMoreEmployees,
-                icon: Icon(
-                  _loadMoreError == null
-                      ? Icons.expand_more_rounded
-                      : Icons.refresh_rounded,
-                ),
-                label: Text(_loadMoreError ?? '加载更多员工'),
-              ),
-            ),
+          final e = _items[i];
+          final picked = e.id == _picked?.id;
+          return ListTile(
+            selected: picked,
+            title: Text(e.displayName),
+            subtitle: e.departmentName == null ? null : Text(e.departmentName!),
+            trailing: picked
+                ? Icon(
+                    Icons.check_circle_rounded,
+                    size: 20,
+                    color: theme.colorScheme.primary,
+                  )
+                : null,
+            onTap: () => setState(() => _picked = e),
           );
-        }
-        final e = _items[i];
-        final picked = e.id == _picked?.id;
-        return ListTile(
-          selected: picked,
-          title: Text(e.displayName),
-          subtitle: e.departmentName == null ? null : Text(e.departmentName!),
-          trailing: picked
-              ? Icon(
-                  Icons.check_circle_rounded,
-                  size: 20,
-                  color: theme.colorScheme.primary,
-                )
-              : null,
-          onTap: () => setState(() => _picked = e),
-        );
-      },
+        },
+      ),
     );
   }
 }

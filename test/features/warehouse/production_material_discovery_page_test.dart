@@ -152,6 +152,16 @@ DiscoveryMaterialRow _row(WidgetTester tester) => tester
     .items
     .first;
 
+Future<void> _revealHeader(WidgetTester tester) async {
+  // Editing the table can collapse the independent outer header. Completion
+  // must preserve the generated document link, not reset the user's scroll.
+  final state = tester.state<NestedScrollViewState>(
+    find.byType(NestedScrollView),
+  );
+  state.outerController.jumpTo(0);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'request detail shows its real LQ and opens each formal SL with its physical warehouse',
@@ -399,6 +409,7 @@ void main() {
       'warehouseId': 'leaf-warehouse',
       'qty': '12.5',
     });
+    await _revealHeader(tester);
     expect(find.text('打开领料单'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -453,6 +464,7 @@ void main() {
       await tester.tap(find.text('核对提交结果'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('discovery-save')), findsNothing);
+      await _revealHeader(tester);
       expect(find.text('该申请已办理，请查看对应领料单'), findsOneWidget);
       expect(repo.submissions, hasLength(1));
       expect(tester.takeException(), isNull);
@@ -543,6 +555,7 @@ void main() {
         repo.submissions.single.items.single['warehouseId'],
         'leaf-warehouse',
       );
+      await _revealHeader(tester);
       expect(find.text('打开领料单'), findsOneWidget);
       expect(find.byKey(const Key('discovery-save')), findsNothing);
       expect(tester.takeException(), isNull);

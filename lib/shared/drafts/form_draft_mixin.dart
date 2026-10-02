@@ -18,6 +18,7 @@ import 'form_draft_navigation.dart';
 import 'form_draft_store.dart';
 
 export 'form_draft.dart';
+export 'form_draft_store.dart' show describeFormSaveError;
 
 /// Pages provide only their typed snapshot codec and editable listenables.
 /// Saving here never invokes a business create/submit/approve endpoint.

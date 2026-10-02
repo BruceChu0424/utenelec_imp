@@ -162,9 +162,11 @@ public class GoodsService {
         List<UUID> subtreeIds = resolveCategoryScopeIds(f);
         var scope = goodsScope();
         Specification<Goods> spec = (root, q, cb) -> goodsPredicate(f, subtreeIds, scope, root, cb);
-        // 默认按创建时间倒序，保证新建货品优先显示；显式排序参数仍然覆盖默认值。
-        Sort defaultSort = Sort.by(Sort.Direction.DESC, "createdAt")
-                .and(Sort.by(Sort.Direction.DESC, "id"));
+        // 2026-10-02 恢复编号升序默认（与货品选择弹窗、新建/粘贴后的「跳末页看新货品」
+        // 口径一致）：此前临时改成创建时间倒序让新货品置顶，与用户定的「复制落最后面」
+        // 相反；显式排序参数仍然覆盖默认值。
+        Sort defaultSort = Sort.by(Sort.Direction.ASC, "code")
+                .and(Sort.by(Sort.Direction.ASC, "id"));
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT));
         Page<Goods> p = repo.findAll(spec, pageable);

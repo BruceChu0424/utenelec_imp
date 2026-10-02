@@ -65,7 +65,7 @@ public class WorkshopMaterialCountController {
     }
 
     @PostMapping("/periods/{periodId}/withdraw-count")
-    @PreAuthorize("hasAuthority('workshop_material:count')")
+    @PreAuthorize("hasAnyAuthority('workshop_material:count','stock:count:warehouse_review')")
     public PeriodView withdrawCount(@PathVariable UUID periodId, @RequestBody VersionRequest request) {
         return periods.withdrawCount(periodId, request);
     }

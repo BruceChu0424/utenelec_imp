@@ -440,8 +440,9 @@ class _ProductionPlanListPageState
                             ),
                             child: const Text('超产比例审批'),
                           ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        if (_canCreate)
+                        if (_canCreate &&
+                            _statusFilter != kProductionStatusDraft) ...[
+                          const SizedBox(width: UtenSpacing.s8),
                           UtenButton(
                             type: UtenButtonType.tonal,
                             icon: Icons.add_rounded,
@@ -449,6 +450,7 @@ class _ProductionPlanListPageState
                                 context.push('/production/plans/new'),
                             child: const Text('新建'),
                           ),
+                        ],
                       ],
                     ),
                   ),

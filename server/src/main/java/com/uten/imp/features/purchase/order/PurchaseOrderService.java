@@ -844,10 +844,12 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         for (Object[] change : changes) {
             PurchaseOrderItem item = (PurchaseOrderItem) change[0];
             BigDecimal newQty = (BigDecimal) change[2];
+            item.setTotalAmountInput(MoneyPolicy.revisedTotalAmountInput(
+                    item.getTotalAmountInput(), (BigDecimal) change[1], newQty));
             item.setQty(newQty);
             BigDecimal amountOriginal = item.getPrice() == null
                     ? null : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                            MoneyPolicy.exactProduct(newQty, item.getPrice()), item.getExtraColumns());
+                            MoneyPolicy.orderBaseAmount(newQty, item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
             item.setAmountOriginal(amountOriginal);
             item.setAmountLocal(amountOriginal == null
                     ? null : money(amountOriginal.multiply(rate)));
@@ -992,7 +994,11 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         "采购订货数量、单价和金额必须完整且不能为负");
             }
             BigDecimal expectedOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    MoneyPolicy.exactProduct(item.getQty(), item.getPrice()), item.getExtraColumns());
+                    MoneyPolicy.orderBaseAmount(item.getQty(), item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
+            if (item.getTotalAmountInput() != null
+                    && item.getPrice().compareTo(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty())) != 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "参考单价与总金额、数量不一致");
+            }
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
@@ -1044,7 +1050,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                                 item.getPrice(),
                                 item.getAmountOriginal(),
                                 item.getAmountLocal(),
-                                item.getDeliverDate()))
+                                item.getDeliverDate(), item.getTotalAmountInput()))
                         .toList());
     }
 
@@ -1152,8 +1158,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         lines.stream().map(OrderItemLine::getGoodsId).toList(),
                         PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         UUID actorId = currentUser.requireId();
-        // 行金额只由服务端按「数量×单价」「原币金额×表头汇率」精确派生(ADR-112), 请求不带金额;
-        // 单价缺省则金额为空(送审要求单价完整), 汇率缺省则本币为空。
+        // 行金额按单价乘数量或用户约定总金额派生；本币仍由服务端按汇率计算。
+        // 单价和约定总金额都缺省时金额为空；汇率缺省则本币为空。
         BigDecimal headerRate = o.getExchangeRate();
         int auto = 1;
         for (OrderItemLine l : lines) {
@@ -1182,12 +1188,16 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
-            BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购单价");
+            BigDecimal totalInput = MoneyPolicy.totalAmountInput(l.getTotalAmountInput());
+            BigDecimal price = totalInput == null
+                    ? (l.getPrice() == null ? null : com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(), "单价"))
+                    : MoneyPolicy.referenceUnitPrice(totalInput, l.getQty());
+            it.setTotalAmountInput(totalInput);
             it.setPrice(price);
             it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "purchase_order",
                     l.getExtraColumns(), previousColumns.getOrDefault(l, List.of()), purchasePriceMasked()));
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    price == null ? null : MoneyPolicy.exactProduct(l.getQty(), price), it.getExtraColumns());
+                    MoneyPolicy.orderBaseAmount(l.getQty(), price, totalInput), it.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
             it.setAmountOriginal(amounts.original());
@@ -1458,6 +1468,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(),
                 it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
                 sourceRequests);
+        dto.setTotalAmountInput(it.getTotalAmountInput());
         dto.setExtraColumns(it.getExtraColumns());
         return dto;
     }

@@ -55,6 +55,8 @@ final class ProcurementApprovalSnapshot {
         row.put("amountOriginal", decimal(item.amountOriginal()));
         row.put("amountLocal", decimal(item.amountLocal()));
         row.put("deliverDate", item.deliverDate());
+        // Preserve old hashes; only new total-priced rows acquire a new fact.
+        if (item.totalAmountInput() != null) row.put("totalAmountInput", decimal(item.totalAmountInput()));
         return row;
     }
 

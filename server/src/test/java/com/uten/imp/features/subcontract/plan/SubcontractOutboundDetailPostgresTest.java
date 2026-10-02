@@ -95,7 +95,7 @@ class SubcontractOutboundDetailPostgresTest {
                 """);
         jdbc.execute("""
                 CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY,
-                    issue_id uuid, plan_item_id uuid, qty numeric)
+                    issue_id uuid, plan_item_id uuid, qty numeric, is_deleted boolean NOT NULL DEFAULT false)
                 """);
         // These indexes already exist in V53/V304; no proposed production index is assumed.
         jdbc.execute("CREATE INDEX ON subcontract_material_plan_items(plan_id) WHERE is_deleted = FALSE");
@@ -239,7 +239,7 @@ class SubcontractOutboundDetailPostgresTest {
     }
 
     private static void item(int value, int issue, int line, int qty) {
-        jdbc.update("INSERT INTO subcontract_material_issue_items VALUES (?, ?, ?, ?)",
+        jdbc.update("INSERT INTO subcontract_material_issue_items(id, issue_id, plan_item_id, qty) VALUES (?, ?, ?, ?)",
                 id(value), id(issue), id(line), qty);
     }
 

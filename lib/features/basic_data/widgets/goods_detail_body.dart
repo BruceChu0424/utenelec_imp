@@ -14,7 +14,7 @@
 //   ([GoodsDetailTab.parse])；按权限隐藏的页签回落基本信息。
 // - 头部：返回键 + 货品名（「预览」A4 产品配件清单 2026-09-12 起在组装信息
 //   表格工具条「全屏」旁，goods_bom_tab.dart）。
-// - 布局：页签靠左；基本信息限宽 960 居中；组装信息和成本表使用完整内容宽度。
+// - 布局：页签靠左；基本信息、附件、组装信息和成本表随可用内容宽度铺满。
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -881,7 +881,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     ),
     child: Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 960),
+        constraints: const BoxConstraints.tightFor(width: double.infinity),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -985,10 +985,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     return Column(
       children: [
         Expanded(
-          // 宽屏下表单限宽居中，避免字段被拉成超长一行。
+          // 表单随可用内容宽度扩展，字段继续由表单内部响应式分列。
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 960),
+              constraints: const BoxConstraints.tightFor(
+                width: double.infinity,
+              ),
               child: MasterEditForm(
                 key: _formKey,
                 fields: _goodsFields(
@@ -1080,10 +1082,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(UtenSpacing.s16),
-            // 宽屏下只读网格限宽居中，与编辑态表单同宽（960）。
+            // 只读网格与编辑态表单同样使用完整可用内容宽度。
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 960),
+                constraints: const BoxConstraints.tightFor(
+                  width: double.infinity,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: bodyChildren,

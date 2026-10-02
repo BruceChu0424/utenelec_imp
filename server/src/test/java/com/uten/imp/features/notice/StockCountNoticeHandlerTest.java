@@ -1,6 +1,7 @@
 package com.uten.imp.features.notice;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WorkshopStockCountPostingPort;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -25,7 +26,8 @@ class StockCountNoticeHandlerTest {
     private final UserAccountRepository users = mock(UserAccountRepository.class);
     private final PermissionResolver permissions = mock(PermissionResolver.class);
     private final WorkshopStockCountPostingPort workshop = mock(WorkshopStockCountPostingPort.class);
-    private final StockCountNoticeHandler handler = new StockCountNoticeHandler(db, notices, candidates, users, permissions, workshop);
+    private final WarehouseTaskScopePort warehouseScopes = mock(WarehouseTaskScopePort.class);
+    private final StockCountNoticeHandler handler = new StockCountNoticeHandler(db, notices, candidates, users, permissions, workshop, warehouseScopes);
     private final UUID request = UUID.randomUUID(), warehouse = UUID.randomUUID(), submitter = UUID.randomUUID();
 
     @Test void workshopReviewRecipientsNeedCurrentReviewPermissionNoticePermissionAndExactWarehouseScope() {
@@ -39,6 +41,24 @@ class StockCountNoticeHandlerTest {
         when(workshop.canAccessWarehouseForUser(warehouse, allowed.getId())).thenReturn(true);
         deliver("STOCK_COUNT_SUBMITTED");
         verify(notices).publishForUser(eq(allowed.getId()), anyString(), anyString(), eq("approval"), eq("库存盘点"),
+                eq("/warehouse/stock-count-review?requestId=" + request), eq(StockCountNoticeHandler.WAREHOUSE_EVENT), eq("important"), eq(request));
+        verifyNoMoreInteractions(notices);
+    }
+
+    @Test void registeredKeepersNarrowWarehouseReviewToResponsiblePermissionHolders() {
+        // 2026-10-02 用户口径（对齐 requisitionPending 既有设计）：登记了负责人的仓
+        // 只发「负责人 且 持审核权限」；负责人没权限不发，非负责人有权限也不发。
+        header("WAREHOUSE", "PENDING");
+        UserAccount keeper = user(), keeperWithoutPerm = user(), outsiderWithPerm = user();
+        pool(keeper, keeperWithoutPerm, outsiderWithPerm);
+        when(permissions.permsOf(keeper)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
+        when(permissions.permsOf(keeperWithoutPerm)).thenReturn(Set.of("notice:read"));
+        when(permissions.permsOf(outsiderWithPerm)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
+        when(workshop.canAccessWarehouseForUser(warehouse, keeper.getId())).thenReturn(true);
+        when(workshop.canAccessWarehouseForUser(warehouse, outsiderWithPerm.getId())).thenReturn(true);
+        when(warehouseScopes.keeperUserIds(anyList())).thenReturn(List.of(keeper.getId(), keeperWithoutPerm.getId()));
+        deliver("STOCK_COUNT_SUBMITTED");
+        verify(notices).publishForUser(eq(keeper.getId()), anyString(), anyString(), eq("approval"), eq("库存盘点"),
                 eq("/warehouse/stock-count-review?requestId=" + request), eq(StockCountNoticeHandler.WAREHOUSE_EVENT), eq("important"), eq(request));
         verifyNoMoreInteractions(notices);
     }

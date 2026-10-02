@@ -17,6 +17,7 @@ public class GoodsCostDisplayColumnsConfiguration {
         return new DisplayPlatformColumnAdapter("view_goods_cost", "货品成本辅助显示", Set.of("goods:cost:view"),
                 Set.of("goods:cost:view"), current, List.of(
                 new FactDefinition("designQty", "设计使用数量", false), new FactDefinition("actualQty", "真实使用数量", false),
+                new FactDefinition("price", "导入单价", true), new FactDefinition("rate", "计价换算率", true),
                 new FactDefinition("adoptedQty", "采用量", false), new FactDefinition("batchQty", "批次计价数量", false),
                 new FactDefinition("perProductQty", "每产品用量", false), new FactDefinition("unitPrice", "采用单价", true),
                 new FactDefinition("amount", "行成本", true), new FactDefinition("materialAmount", "材料金额", true),

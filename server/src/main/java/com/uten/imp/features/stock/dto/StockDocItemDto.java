@@ -38,6 +38,8 @@ public class StockDocItemDto {
     private BigDecimal surplusQty;
     private BigDecimal countQty;
     private String place;
+    /** 行级仓库（V787，手工出入库单逐行选仓）；空 = 沿用表头仓。 */
+    private UUID warehouseId;
     private UUID upstreamItemId;
     private UUID executionSegmentId;
     private UUID executionSegmentSalesAllocationId;

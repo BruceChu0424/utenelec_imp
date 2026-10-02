@@ -211,7 +211,7 @@ class _MachineCountCardState extends State<MachineCountCard> {
               )
             else if (line?.qtyBase != null)
               Text(
-                '${wmQty(line!.qtyBase)} ${l10n.wmKg}',
+                '${level == WmFillLevel.weighed ? '' : '≈ '}${wmQty(line!.qtyBase)} ${l10n.wmKg}',
                 key: Key('wm-container-qty-$id'),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -220,6 +220,14 @@ class _MachineCountCardState extends State<MachineCountCard> {
           ],
         ),
         const SizedBox(height: UtenSpacing.s6),
+        if (line != null)
+          Text(
+            level == WmFillLevel.weighed ? '称重/公斤录入' : '容器估盘，按容量折算',
+            key: Key('wm-container-basis-$id'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         Wrap(
           spacing: UtenSpacing.s8,
           runSpacing: UtenSpacing.s6,

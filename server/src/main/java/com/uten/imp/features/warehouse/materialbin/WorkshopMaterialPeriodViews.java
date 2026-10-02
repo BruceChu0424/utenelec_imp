@@ -79,7 +79,6 @@ class WorkshopMaterialPeriodViews {
                 if (draft != null) {
                     actions.add("EDIT_COUNT");
                 }
-                if ("COUNTING".equals(status) && "OPEN".equals(next)) actions.add("WITHDRAW_COUNT");
                 if ("COUNTED".equals(status) && draft == null
                         && (next == null || "OPEN".equals(next) || "COUNTING".equals(next))) {
                     actions.add("CORRECT_COUNT");
@@ -87,6 +86,9 @@ class WorkshopMaterialPeriodViews {
                 if ("COUNTED".equals(status)) actions.add("CLOSE_RETRY");
             }
             if (canReviewCount && draft != null) actions.add("SUBMIT_COUNT");
+            if ((canCount || canReviewCount) && "COUNTING".equals(status) && "OPEN".equals(next)) {
+                actions.add("WITHDRAW_COUNT");
+            }
             if (canReopen && "CLOSED".equals(status) && Boolean.TRUE.equals(row.get("latest_closed_candidate"))
                     && ("OPEN".equals(next) || "COUNTING".equals(next))) {
                 actions.add("REOPEN");

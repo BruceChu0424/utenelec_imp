@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -73,6 +74,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
 
   final _keywordController = TextEditingController();
   _MaterialPage? _result;
+  bool _hasPageWindow = false;
   String _keyword = '';
   String? _error;
   int _page = 1;
@@ -94,6 +96,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
       _keyword = value;
       _page = 1;
       _result = null;
+      _hasPageWindow = false;
       _error = null;
       _loading = hasKeyword;
     });
@@ -121,7 +124,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
     _onInputChanged('');
   }
 
-  void _reload() {
+  Future<void> _reload() async {
     if (_keyword.trim().isEmpty) {
       _resetToSearchPrompt();
       return;
@@ -130,9 +133,8 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
     setState(() {
       _loading = true;
       _error = null;
-      _result = null;
     });
-    _load(generation: generation);
+    await _load(generation: generation);
   }
 
   void _resetToSearchPrompt() {
@@ -140,6 +142,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
     setState(() {
       _page = 1;
       _result = null;
+      _hasPageWindow = false;
       _error = null;
       _loading = false;
     });
@@ -162,6 +165,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
       final result = _MaterialPage.fromJson(json, fallbackPage: requestedPage);
       setState(() {
         _result = result;
+        _hasPageWindow = _hasPageWindow || result.items.isNotEmpty;
         _page = result.page;
         _loading = false;
       });
@@ -174,10 +178,10 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
     }
   }
 
-  void _goToPage(int page) {
-    if (_loading || page < 1 || page == _page) return;
+  Future<void> _goToPage(int page) async {
+    if (_loading || page < 1) return;
     _page = page;
-    _reload();
+    await _reload();
   }
 
   @override
@@ -209,10 +213,6 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           if (!_loading) const SizedBox(height: 2),
           Expanded(child: _buildContent(theme)),
-          if (_result != null && _result!.totalPages > 1) ...[
-            const Divider(height: 1),
-            _buildPager(theme, _result!),
-          ],
         ],
       ),
     );
@@ -270,7 +270,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
         ),
       );
     }
-    if (_error != null) {
+    if (_error != null && _result == null) {
       return _scrollableState(
         child: Center(
           child: Padding(
@@ -332,7 +332,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
     }
 
     final result = _result;
-    if (result == null || result.items.isEmpty) {
+    if (result == null || (result.items.isEmpty && !_hasPageWindow)) {
       return _scrollableState(
         child: Center(
           child: Padding(
@@ -370,12 +370,20 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
       );
     }
 
-    return ListView.separated(
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      itemCount: result.items.length,
+    return UtenPagedPickerList<_WhereUsedMaterial>(
+      key: const Key('where-used-material-paged-list'),
+      items: result.items,
+      idOf: (item) => item.id,
+      currentPage: result.page,
+      totalPages: result.totalPages,
+      paginationScope: _keyword.trim(),
+      onPageChange: _goToPage,
+      loading: _loading,
+      error: _error,
+      onRetry: _reload,
+      emptyMessage: '没有匹配的物料',
       separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final item = result.items[index];
+      itemBuilder: (context, item) {
         return _MaterialTile(
           key: ValueKey('where-used-material-${item.id}'),
           item: item,
@@ -394,43 +402,6 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
           ),
           child: child,
         ),
-      ),
-    );
-  }
-
-  Widget _buildPager(ThemeData theme, _MaterialPage result) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s12,
-        vertical: UtenSpacing.s8,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            key: const Key('where-used-material-prev'),
-            tooltip: '上一页',
-            onPressed: !_loading && result.page > 1
-                ? () => _goToPage(result.page - 1)
-                : null,
-            icon: const Icon(Icons.chevron_left_rounded),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-            child: Text(
-              '${result.page} / ${result.totalPages}',
-              style: theme.textTheme.labelLarge,
-            ),
-          ),
-          IconButton(
-            key: const Key('where-used-material-next'),
-            tooltip: '下一页',
-            onPressed: !_loading && result.page < result.totalPages
-                ? () => _goToPage(result.page + 1)
-                : null,
-            icon: const Icon(Icons.chevron_right_rounded),
-          ),
-        ],
       ),
     );
   }

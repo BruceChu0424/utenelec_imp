@@ -25,7 +25,7 @@ class HeaderColumnFilterTest {
         assertThrows(ApiException.class,()->HeaderColumnFilter.from(Map.of("hf.amountMin;DELETE", "1")));
         assertEquals(HeaderColumnFilter.EMPTY,HeaderColumnFilter.from(Map.of("keyword","normal legacy search")));
     }
-    @Test void finiteDecimalBoundsPreserveLargeFractionalValueExactly() {
+    @Test @SuppressWarnings("unchecked") void finiteDecimalBoundsPreserveLargeFractionalValueExactly() {
         Root<?> root=mock(Root.class);CriteriaBuilder builder=mock(CriteriaBuilder.class);
         var field=mock(jakarta.persistence.criteria.Path.class);doReturn(field).when(root).get("amountLocal");
         String value="9876543210123.123456789012345678901234";

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +15,94 @@ import 'package:uten_imp/features/basic_data/widgets/uten_goods_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets('向下滚动续页保留列表和多选，分类高亮变化不清掉旧页', (tester) async {
+    final repository = _FakeGoodsRepository(
+      splitAcrossPages: true,
+      delayedPage: 2,
+    );
+    final results = <List<GoodsListItem>>[];
+    await _pumpMultiPicker(tester, repository, results);
+    await tester.tap(find.byKey(const Key('open-multi-picker')));
+    await tester.pumpAndSettle();
+    await tester.enterText(_searchEditable(), 'G-');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连接器甲'));
+    await tester.pump();
+    final list = find.byKey(const Key('goods-picker-paged-list'));
+    final originalElement = tester.element(list);
+
+    await _wheelOnGoods(tester, '连接器甲', 100);
+    expect(repository.searchPages, [1, 2]);
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(tester.element(list), same(originalElement));
+
+    repository.completeDelayedPage();
+    await tester.pumpAndSettle();
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(find.text('连接器乙'), findsOneWidget);
+    final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+      find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+    );
+    expect(tree.selectedIds, {'section-b'});
+    expect(repository.searchPolicies, everyElement((true, true)));
+
+    await tester.tap(find.text('连接器乙'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
+    await tester.pumpAndSettle();
+    expect(results.single.map((goods) => goods.id), ['goods-a', 'goods-b']);
+  });
+
+  testWidgets('从后页向上滚动补前页，失败后重试同一页', (tester) async {
+    final repository = _FakeGoodsRepository(splitAcrossPages: true);
+    GoodsListItem? selected;
+    await _pumpPicker(
+      tester,
+      repository,
+      onSelected: (value) => selected = value,
+    );
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+    await tester.enterText(_searchEditable(), 'G-');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('下一页'));
+    await tester.pumpAndSettle();
+    expect(find.text('连接器甲'), findsNothing);
+    expect(find.text('连接器乙'), findsOneWidget);
+    final oldRowTop = tester.getTopLeft(find.text('连接器乙')).dy;
+
+    repository.failNextPage = 1;
+    await _wheelOnGoods(tester, '连接器乙', -100);
+    await tester.pumpAndSettle();
+    expect(repository.searchPages, [1, 2, 1]);
+    expect(find.text('连接器乙'), findsOneWidget);
+    await tester.tap(find.text('重试').last);
+    await tester.pumpAndSettle();
+    expect(repository.searchPages, [1, 2, 1, 1]);
+    // Prepending keeps the old row anchored. The preceding row is above the
+    // viewport and may remain unbuilt until the user continues scrolling up.
+    expect(find.text('连接器乙'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('连接器乙')).dy, closeTo(oldRowTop, 0.5));
+    await _wheelOnGoods(tester, '连接器乙', -100);
+    await tester.pumpAndSettle();
+    expect(repository.searchPages, [1, 2, 1, 1]);
+
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(find.text('连接器乙'), findsOneWidget);
+    expect(repository.searchCategoryIdQueries, ['G-']);
+    await tester.tap(find.text('连接器甲'));
+    await tester.pumpAndSettle();
+    expect(selected, isNull, reason: '单击仅选中，仍须底部确认');
+    expect(_widePickerSheet(), findsOneWidget);
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(selected?.id, 'goods-a');
+    expect(_widePickerSheet(), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('统一搜索受 picker scope 限定并定位所有命中分类', (tester) async {
     final goodsRepository = _FakeGoodsRepository();
     await _pumpPicker(tester, goodsRepository);
@@ -163,7 +252,7 @@ void main() {
     expect(goodsRepository.searchPages, [1]);
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
 
-    await tester.tap(find.byIcon(Icons.chevron_right_rounded).last);
+    await tester.tap(find.text('下一页'));
     await tester.pumpAndSettle();
 
     final pageTwoTree = tester
@@ -307,10 +396,25 @@ void main() {
   });
 }
 
+Future<void> _wheelOnGoods(
+  WidgetTester tester,
+  String name,
+  double delta,
+) async {
+  final pointer = TestPointer(1, PointerDeviceKind.mouse);
+  await tester.sendEventToBinding(
+    pointer.hover(tester.getCenter(find.text(name))),
+  );
+  await tester.sendEventToBinding(pointer.scroll(Offset(0, delta)));
+  await tester.pump();
+  await tester.pump();
+}
+
 Future<void> _pumpPicker(
   WidgetTester tester,
-  GoodsRepository goodsRepository,
-) async {
+  GoodsRepository goodsRepository, {
+  ValueChanged<GoodsListItem?>? onSelected,
+}) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(1200, 900);
   addTearDown(() {
@@ -325,7 +429,7 @@ Future<void> _pumpPicker(
         ),
         goodsRepositoryProvider.overrideWithValue(goodsRepository),
       ],
-      child: const MaterialApp(home: _PickerHarness()),
+      child: MaterialApp(home: _PickerHarness(onSelected: onSelected)),
     ),
   );
 }
@@ -373,14 +477,19 @@ Finder _searchTextField() => find.descendant(
 );
 
 class _PickerHarness extends ConsumerWidget {
-  const _PickerHarness();
+  const _PickerHarness({this.onSelected});
+
+  final ValueChanged<GoodsListItem?>? onSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: ElevatedButton(
         key: const Key('open-goods-picker'),
-        onPressed: () => showUtenGoodsPicker(context, ref),
+        onPressed: () async {
+          final selected = await showUtenGoodsPicker(context, ref);
+          onSelected?.call(selected);
+        },
         child: const Text('打开货品选择'),
       ),
     );
@@ -427,17 +536,22 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     this.splitAcrossPages = false,
     this.delayedQuery,
     this.categoryOnlyQuery,
+    this.delayedPage,
   });
 
   final bool returnOutOfScopeItem;
   final bool splitAcrossPages;
   final String? delayedQuery;
   final String? categoryOnlyQuery;
+  final int? delayedPage;
+  int? failNextPage;
   final _delayedSearch = Completer<PagedResult<GoodsListItem>>();
+  final _delayedPage = Completer<PagedResult<GoodsListItem>>();
   final searchQueries = <String>[];
   final searchPages = <int>[];
   final searchRootScopes = <Set<String>>[];
   final searchSortOrders = <(String?, String?)>[];
+  final searchPolicies = <(bool, bool)>[];
   final searchCategoryIdQueries = <String>[];
   final listCalls = <(String, String?)>[];
   final listSortOrders = <(String?, String?)>[];
@@ -445,6 +559,16 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
   void completeDelayedSearch(List<GoodsListItem> items) {
     _delayedSearch.complete(_page(items, page: 1, size: 100));
   }
+
+  void completeDelayedPage() => _delayedPage.complete(
+    const PagedResult(
+      items: [_goodsB],
+      page: 2,
+      size: 100,
+      total: 2,
+      totalPages: 2,
+    ),
+  );
 
   @override
   Future<PagedResult<GoodsListItem>> search(
@@ -461,6 +585,12 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     searchPages.add(page);
     searchRootScopes.add({...categoryRootIds});
     searchSortOrders.add((sort, order));
+    searchPolicies.add((excludeDisabled, excludeStub));
+    if (page == failNextPage) {
+      failNextPage = null;
+      throw StateError('page temporarily unavailable');
+    }
+    if (page == delayedPage) return _delayedPage.future;
     if (keyword == delayedQuery) return _delayedSearch.future;
     if (keyword == categoryOnlyQuery) {
       return _page(const [], page: page, size: size);

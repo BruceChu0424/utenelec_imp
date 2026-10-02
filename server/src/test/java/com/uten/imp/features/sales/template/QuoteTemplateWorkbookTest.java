@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.template;
 
+import com.uten.imp.common.columns.ExtraColumnSnapshot;
 import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -131,6 +132,68 @@ class QuoteTemplateWorkbookTest {
             assertThat(standard.getSheetAt(0).getRow(5).getCell(6).getNumericCellValue()).isEqualTo(10);
             assertThat(standard.getSheetAt(0).getRow(5).getCell(7).getNumericCellValue()).isEqualTo(.85);
             assertThat(standard.getSheetAt(0).getRow(4).getCell(10).getStringCellValue()).isEqualTo("Insurance");
+        }
+    }
+
+    @Test
+    void legacyTemplateMatchesOneExtraByNameWhileOtherIdentitiesKeepTheirOwnCells() throws Exception {
+        var oldRoles = new LinkedHashMap<>(ROLES);
+        oldRoles.put("G", "IGNORED");
+        var candidate = QuoteTemplateWorkbook.capture(sample("OLD", 2), 1, 3, 1,
+                oldRoles, Map.of("G", "Packaging fee"), List.of(4, 5));
+        var packing = new ExtraColumnSnapshot(UUID.randomUUID(), "Packaging fee", "AMOUNT", "ADD", "2.25");
+        var discount = new ExtraColumnSnapshot(UUID.randomUUID(), "Packaging fee", "AMOUNT", "SUBTRACT", ".75");
+        var firstValues = new LinkedHashMap<>(line("P1", "2", "8").values());
+        firstValues.put("EXTRA_ID:" + packing.columnId(), packing.value());
+        firstValues.put("EXTRA_ID:" + discount.columnId(), discount.value());
+        var secondValues = new LinkedHashMap<>(line("P2", "3", "12").values());
+        // A row without the first fee must remain empty in its column.
+        secondValues.put("EXTRA_ID:" + discount.columnId(), "1");
+        var rows = List.of(new QuoteTemplateWorkbook.ExportLine(firstValues, List.of(packing, discount)),
+                new QuoteTemplateWorkbook.ExportLine(secondValues, List.of(discount)));
+        try (var workbook = open(QuoteTemplateWorkbook.render(candidate.xlsx(), candidate.mapping(), rows, Map.of(), "20"))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(3).getLastCellNum()).isEqualTo((short) 8);
+            assertThat(sheet.getRow(4).getCell(6).getStringCellValue()).isEqualTo("2.25");
+            assertThat(sheet.getRow(4).getCell(7).getStringCellValue()).isEqualTo(".75");
+            assertThat(sheet.getRow(5).getCell(6).getCellType()).isEqualTo(CellType.BLANK);
+            assertThat(sheet.getRow(5).getCell(7).getStringCellValue()).isEqualTo("1");
+            assertThat(sheet.getRow(4).getCell(5).getNumericCellValue()).isEqualTo(8);
+        }
+    }
+
+    @Test
+    void legacyPackingRoleKeepsItsPositionWhenTheValueComesFromAnExtraColumn() throws Exception {
+        var oldRoles = new LinkedHashMap<>(ROLES);
+        oldRoles.put("G", "PCS_PER_CTN");
+        var candidate = QuoteTemplateWorkbook.capture(sample("OLD", 2), 1, 3, 1,
+                oldRoles, Map.of(), List.of(4, 5));
+        var packing = new ExtraColumnSnapshot(UUID.randomUUID(), "Packaging fee", "NUMBER", "NONE", "24");
+        var values = new LinkedHashMap<>(line("P1", "2", "8").values());
+        values.put("EXTRA_ID:" + packing.columnId(), packing.value());
+        try (var workbook = open(QuoteTemplateWorkbook.render(candidate.xlsx(), candidate.mapping(),
+                List.of(new QuoteTemplateWorkbook.ExportLine(values, List.of(packing))), Map.of(), "8"))) {
+            var sheet = workbook.getSheetAt(0);
+            assertThat(sheet.getRow(3).getLastCellNum()).isEqualTo((short) 7);
+            assertThat(sheet.getRow(4).getCell(6).getStringCellValue()).isEqualTo("24");
+        }
+    }
+
+    @Test
+    void feeNamedLikeAnEmptyNativeAmountNeverBecomesThatAmount() throws Exception {
+        var candidate = capture(sample("OLD", 2));
+        var oldMapping = new LinkedHashMap<>(candidate.mapping());
+        oldMapping.put("extraHeaders", Map.of("F", "Amount", "G", "Packaging fee"));
+        var fee = new ExtraColumnSnapshot(UUID.randomUUID(), "Amount", "AMOUNT", "ADD", "7");
+        var values = new LinkedHashMap<String, String>();
+        values.put("EXTRA_ID:" + fee.columnId(), fee.value());
+        // A legacy alias must not override a known native field either.
+        values.put("extra:amount", "7");
+        try (var workbook = open(QuoteTemplateWorkbook.render(candidate.xlsx(), oldMapping,
+                List.of(new QuoteTemplateWorkbook.ExportLine(values, List.of(fee))), Map.of(), null))) {
+            var row = workbook.getSheetAt(0).getRow(4);
+            assertThat(row.getCell(5).getCellType()).isEqualTo(CellType.BLANK);
+            assertThat(row.getCell(7).getStringCellValue()).isEqualTo("7");
         }
     }
 

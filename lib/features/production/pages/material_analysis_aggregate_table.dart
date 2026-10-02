@@ -266,6 +266,7 @@ final class _MaterialAggregateTableController {
           (owner._canNotify || owner._canGenerate),
       hintText: owner._qty(pendingQty(aggregate)),
       onTyped: (value) => changed(aggregate, value),
+      onFinished: append ? owner._finishPreparationQuantityEditing : null,
       invalid: () {
         final text = controller.text;
         if (!validText(text)) return true;
@@ -972,8 +973,11 @@ final class _MaterialAggregateTableController {
   Future<void> refreshPreview({
     Set<String>? keys,
     bool forSubmission = false,
-    bool skipAutoClaim = false,
+    bool? skipAutoClaim,
   }) async {
+    // 编辑预览重试应重读工具栏当前选择；提交显式指定的选择则必须贯穿整轮。
+    final skipAutoClaimOverride = skipAutoClaim;
+    skipAutoClaim ??= owner._preparationUseAvailableQty == false;
     _debounce?.cancel();
     if (saving || uncertain || drafts.isEmpty) return;
     if (!forSubmission && owner._preparationSubmissionActive) return;
@@ -1014,7 +1018,7 @@ final class _MaterialAggregateTableController {
         return refreshPreview(
           keys: keys,
           forSubmission: forSubmission,
-          skipAutoClaim: skipAutoClaim,
+          skipAutoClaim: skipAutoClaimOverride,
         );
       }
     }
@@ -1046,7 +1050,11 @@ final class _MaterialAggregateTableController {
         !saving &&
         !uncertain &&
         (forSubmission || !owner._preparationSubmissionActive)) {
-      await refreshPreview(keys: keys, forSubmission: forSubmission);
+      await refreshPreview(
+        keys: keys,
+        forSubmission: forSubmission,
+        skipAutoClaim: skipAutoClaimOverride,
+      );
     }
   }
 

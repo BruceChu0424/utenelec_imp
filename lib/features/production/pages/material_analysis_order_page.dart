@@ -214,6 +214,7 @@ class _PreparationOrderPageState extends State<_PreparationOrderPage> {
                   onPageChange: (next) => setState(() => _page = next),
                   emptyMessage: _host._l10n.materialPreparationNoActions,
                   toolbarLeadingActions: [
+                    ?_host._preparationSupplyUsageAction(),
                     if (_host._permissions.contains(Perm.productionPlanApprove))
                       SizedBox(
                         width: 220,

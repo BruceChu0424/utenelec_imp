@@ -686,7 +686,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                               ),
                             ),
                             const Spacer(),
-                            if (_canCreate)
+                            if (_canCreate && _seg != _draftSeg)
                               UtenButton(
                                 type: UtenButtonType.tonal,
                                 icon: Icons.add_rounded,

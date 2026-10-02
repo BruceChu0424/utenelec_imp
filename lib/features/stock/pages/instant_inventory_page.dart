@@ -57,11 +57,12 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../basic_data/widgets/product_category_picker_panel.dart';
 import '../../basic_data/widgets/uten_category_tree_view.dart';
-import '../../report/shared/report_total.dart';
+import '../models/instant_inventory_summary.dart';
 import '../models/stock_query.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../providers/instant_inventory_prefs_provider.dart';
 import '../repositories/stock_query_repository.dart';
+import '../widgets/instant_inventory_summary_bar.dart';
 import '../counts/models/stock_count_request.dart';
 import '../counts/repositories/stock_count_request_repository.dart';
 import '../counts/widgets/stock_count_inline_editor.dart';
@@ -130,6 +131,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   // 库存表格分页态。
   PagedResult<InstantInventoryRow>? _page;
+  String _pageSummaryScopeLabel = '';
   int _pageNum = 1;
   bool _loading = false;
   String? _error;
@@ -247,6 +249,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _page = r;
+        _pageSummaryScopeLabel = _summaryScopeLabel;
       });
       if (_countEditor.active && _countEditor.warehouse?.id == _warehouseId) {
         await _countEditor.ensureRows(r.items.map((row) => row.goodsId ?? ''));
@@ -280,6 +283,66 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   bool get _owningFilterIsNull =>
       _filters['owningWarehouse'] == kMasterFilterNullValue;
+
+  bool get _summaryLoading =>
+      _loading || _searchLoading || _acceptPendingSearch;
+  bool get _summaryHasError => _error != null || _searchError != null;
+
+  String get _summaryScopeLabel {
+    final names = ref.read(masterNameServiceProvider);
+    final parts = <String>[
+      findCategoryName(_tree ?? const [], _categoryId) ?? '全部分类',
+      _warehouseId == null
+          ? '全部仓库'
+          : names.warehouseEntries[_warehouseId] ?? '所选仓库',
+      if (_warehouseId == null || names.warehouseHasChildren(_warehouseId)) ...[
+        _includeDefective ? '含不良品仓' : '不含不良品仓',
+        _includeLineSide ? '含内料仓' : '不含内料仓',
+      ],
+      if (_keyword.isNotEmpty) '搜索：$_keyword',
+    ];
+    const filterLabels = {
+      'owningWarehouse': '归属仓库',
+      'color': '颜色',
+      'series': '物料系列',
+      'unit': '单位',
+    };
+    for (final filter in _filters.entries) {
+      if (filter.value == null) continue;
+      String label = filter.value == kMasterFilterNullValue ? '未登记' : '已筛选';
+      for (final bucket in _page?.facets[filter.key] ?? <MasterFacetBucket>[]) {
+        if (bucket.value == filter.value) label = bucket.display;
+      }
+      parts.add('${filterLabels[filter.key] ?? filter.key}：$label');
+    }
+    return parts.join(' · ');
+  }
+
+  void _showSummary() {
+    final page = _page;
+    if (page == null || _summaryLoading || _summaryHasError) return;
+    final scope = InstantInventoryScope(
+      categoryId: _categoryId,
+      warehouseId: _warehouseId,
+      includeDefective: _includeDefective,
+      includeLineSide: _includeLineSide,
+      keyword: _keyword.isEmpty ? null : _keyword,
+      owningWarehouse: _owningFilterUuid,
+      owningWarehouseNull: _owningFilterIsNull,
+      colorId: _columnFilter('color'),
+      series: _columnFilter('series'),
+      unitId: _columnFilter('unit'),
+    );
+    context.push(
+      Uri(
+        path: RouteName.stockInstantInventoryOverview,
+        queryParameters: {
+          ...scope.toQuery(),
+          'scopeLabel': _pageSummaryScopeLabel,
+        },
+      ).toString(),
+    );
+  }
 
   /// 颜色/系列/单位列筛选值（服务端 facet 桶值：颜色 UUID / 系列文本 / 单位 UUID）。
   /// 这三列不下发空值桶，哨兵值按无过滤处理。
@@ -950,14 +1013,20 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         error: _error,
         onRetry: () => _load(_pageNum),
         emptyMessage: '暂无库存', // TODO(l10n): 补 arb
-        // 合计条：值全部来自服务端（/stock/instant-inventory 的 totals），口径与本页
-        // 当前的分类/仓库/含不良品仓/关键字筛选完全一致，且覆盖整个结果集而不是当前这一页；
-        // 前端一个加法都不做，数量按单位分组显示「12 个 · 3 箱」；重量按显示单位换算，
-        // 含估算加「≈」，有未称项追加「(另有 N 项未称)」。
-        summaryBar: reportTotalsBar(
-          _page?.totals ?? const [],
-          weightDisplay: weightDisplay,
-        ),
+        // 页脚收敛为重量 + 详情；分析只消费同一响应的全筛选范围服务端合计。
+        // 加载/失败时禁止打开旧范围的快照，缺失 totals 不伪造本页合计。
+        summaryBar: _page == null || _page!.totals.isEmpty
+            ? null
+            : InstantInventorySummaryBar(
+                summary: InstantInventorySummary(
+                  totals: _page!.totals,
+                  totalRows: _page!.total,
+                ),
+                weightDisplay: weightDisplay,
+                loading: _summaryLoading,
+                hasError: _summaryHasError,
+                onDetails: _showSummary,
+              ),
         currentPage: _page?.page ?? 1,
         totalPages: _page?.totalPages ?? 1,
         paginationScope: (

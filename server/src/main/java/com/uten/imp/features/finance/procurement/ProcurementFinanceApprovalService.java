@@ -834,7 +834,8 @@ public class ProcurementFinanceApprovalService {
                        CAST(item.value -> 'sources' AS text) AS source_allocations,
                        CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id,
                        c.display_complete,
-                       CAST(item.value -> 'extraColumns' AS text) AS extra_columns
+                       CAST(item.value -> 'extraColumns' AS text) AS extra_columns,
+                       CAST(item.value ->> 'totalAmountInput' AS numeric) AS total_amount_input
                 FROM selected_case c
                 CROSS JOIN LATERAL jsonb_array_elements(c.submission_snapshot -> 'items') item
                 LEFT JOIN goods g ON g.id = CAST(item.value ->> 'goodsId' AS uuid)
@@ -873,7 +874,7 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("source_allocations"),
                         rs.getObject("currency_id", UUID.class),
                         rs.getBoolean("display_complete"),
-                        parseExtraColumns(rs.getString("extra_columns"))),
+                        parseExtraColumns(rs.getString("extra_columns")), rs.getBigDecimal("total_amount_input")),
                 caseId);
     }
 

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/dashboard/providers/workbench_layout_provider.dart';
 import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
@@ -33,6 +34,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         sessionProvider.overrideWith(() => _StubSession()),
+        apiBaseUrlProvider.overrideWithValue('https://workbench.test/api'),
         sharedPreferencesProvider.overrideWithValue(preferences),
         currentPermissionsProvider.overrideWithValue(const <String>{
           // 报销审批归入钱流 hub；组内还有工资条生成与审核。

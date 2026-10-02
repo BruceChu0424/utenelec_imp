@@ -8,6 +8,7 @@ import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/unit_node.dart';
 import 'package:uten_imp/features/basic_data/providers/color_unit_dict.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
@@ -76,7 +77,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('货品编辑态不再出现生产 BOM 策略字段', (tester) async {
+  testWidgets('货品编辑态无生产 BOM 策略字段，且表单随可用宽度扩展', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1200, 900);
     addTearDown(() {
@@ -127,6 +128,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_productionBomPolicyField(), findsNothing);
+    final form = find.byType(MasterEditForm);
+    expect(form, findsOneWidget);
+    final initialWidth = tester.getSize(form).width;
+    expect(initialWidth, greaterThan(960));
+    final nameField = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.controller?.text == '测试货品',
+    );
+    await tester.enterText(nameField, '窗口变宽后保留名称');
+
+    tester.view.physicalSize = const Size(1600, 900);
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(form).width, closeTo(initialWidth + 400, 0.01));
+    expect(find.text('窗口变宽后保留名称'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

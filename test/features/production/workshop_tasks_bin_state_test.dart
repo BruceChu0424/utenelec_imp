@@ -21,6 +21,8 @@ import 'package:uten_imp/features/production/models/production_execution_plannin
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_material_discovery_request_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_material_increment_repository.dart';
 import 'package:uten_imp/features/production/repositories/workshop_material_choice_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
@@ -35,6 +37,11 @@ Map<String, dynamic> _task(
   bool needsStartConfirmation = false,
   bool canStart = false,
   bool canConfirmRoute = false,
+  bool discoveryRequired = false,
+  bool canRequestDiscovery = false,
+  bool canRequestDraw = false,
+  bool canSplitBatch = false,
+  bool zeroMaterial = true,
   List<String> allowedActions = const [],
 }) => {
   'segmentId': id,
@@ -58,13 +65,18 @@ Map<String, dynamic> _task(
   'materialReady': true,
   'warehouseReady': true,
   'issued': true,
-  'zeroMaterial': true,
+  'zeroMaterial': zeroMaterial,
+  'materialKindCount': zeroMaterial ? 0 : 1,
   'canStart': canStart,
   'canReport': status == 'IN_PROGRESS',
   'canBatchReport': status == 'IN_PROGRESS',
   'lockVersion': 1,
   'startRoute': startRoute,
   'canConfirmRoute': canConfirmRoute,
+  'materialDiscoveryRequired': discoveryRequired,
+  'canRequestMaterialDiscovery': canRequestDiscovery,
+  'canRequestDraw': canRequestDraw,
+  'canSplitBatch': canSplitBatch,
   'binMaterialState': ?binState,
   'needsStartConfirmation': needsStartConfirmation,
   'allowedActions': allowedActions,
@@ -77,9 +89,18 @@ final _waitingRows = [
     'READY',
     binState: 'NEED_CHOICE',
     needsStartConfirmation: true,
+    discoveryRequired: true,
+    canRequestDiscovery: true,
     allowedActions: const ['CHOOSE'],
   ),
-  _task('segment-n', '产品 N', 'READY', binState: 'NEED_BIN'),
+  _task(
+    'segment-n',
+    '产品 N',
+    'READY',
+    binState: 'NEED_BIN',
+    discoveryRequired: true,
+    canRequestDiscovery: true,
+  ),
   _task(
     'segment-r',
     '产品 R',
@@ -102,7 +123,9 @@ final _inProgressRows = [
   _task('segment-c', '产品 C', 'IN_PROGRESS', binState: 'KNOWN'),
 ];
 
-ProductionExecutionWorkbenchRepository _repository() {
+ProductionExecutionWorkbenchRepository _repository({
+  List<Map<String, dynamic>>? preparingRows,
+}) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -111,7 +134,7 @@ ProductionExecutionWorkbenchRepository _repository() {
         if (request.path == '/production/workshop-tasks') {
           final items = request.queryParameters['status'] == 'IN_PROGRESS'
               ? _inProgressRows
-              : _waitingRows;
+              : preparingRows ?? _waitingRows;
           data = {
             'items': items,
             'page': 1,
@@ -272,6 +295,18 @@ class _FakePlanRepository extends ProductionPlanRepository {
   }
 }
 
+class _FakeDiscoveryRepository
+    extends ProductionMaterialDiscoveryRequestRepository {
+  _FakeDiscoveryRepository(this.calls) : super(ApiClient(Dio()));
+
+  final List<String> calls;
+
+  @override
+  Future<void> cancel(String requestId) async {
+    calls.add('cancel:$requestId');
+  }
+}
+
 GoRouter _router() => GoRouter(
   initialLocation: '/',
   routes: [
@@ -282,12 +317,26 @@ GoRouter _router() => GoRouter(
         body: Text('领料汇总 ${state.uri.queryParameters['segmentIds']}'),
       ),
     ),
+    GoRoute(
+      path: '/production/material-discovery-request',
+      builder: (_, state) => Scaffold(
+        body: Text('按单领料申请 ${state.uri.queryParameters['segmentIds']}'),
+      ),
+    ),
+    GoRoute(
+      path: '/workshop-material/bin',
+      builder: (_, state) => Scaffold(
+        body: Text('内料仓 ${state.uri.queryParameters['workshopId']}'),
+      ),
+    ),
   ],
 );
 
 Future<List<String>> _mount(
   WidgetTester tester, {
-  String category = '等待物料',
+  String category = '开工准备',
+  List<Map<String, dynamic>>? preparingRows,
+  Set<String> extraPermissions = const {},
 }) async {
   // 用 view 尺寸 (而不是 setSurfaceSize): 侧板宽度按 MediaQuery 算, 两者要一致。
   tester.view
@@ -301,18 +350,22 @@ Future<List<String>> _mount(
     ProviderScope(
       overrides: [
         isSuperAdminProvider.overrideWithValue(false),
-        currentPermissionsProvider.overrideWithValue(const {
+        currentPermissionsProvider.overrideWithValue({
           Perm.productionExecutionView,
           Perm.productionExecutionStart,
+          ...extraPermissions,
         }),
         productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-          _repository(),
+          _repository(preparingRows: preparingRows),
         ),
         productionPlanRepositoryProvider.overrideWithValue(
           _FakePlanRepository(calls),
         ),
         workshopMaterialChoiceRepositoryProvider.overrideWithValue(
           _FakeChoiceRepository(calls),
+        ),
+        productionMaterialDiscoveryRequestRepositoryProvider.overrideWithValue(
+          _FakeDiscoveryRepository(calls),
         ),
       ],
       child: MaterialApp.router(
@@ -425,6 +478,7 @@ void main() {
     final calls = await _mount(tester);
     await _selectRow(tester, '产品 A');
     expect(find.text('批量开工(1)'), findsOneWidget);
+    expect(find.text('批量领料(0)'), findsOneWidget);
     await tester.tap(find.text('批量开工(1)'));
     await tester.pumpAndSettle();
 
@@ -442,6 +496,212 @@ void main() {
       container.read(appNotificationProvider).last.message,
       contains('已开工 1 个工单'),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('choice state opens confirmation instead of the old discovery '
+      'entry even when both server discovery flags are true', (tester) async {
+    await _mount(tester);
+    expect(
+      find.byKey(const ValueKey('workshop-request-draw-segment-a')),
+      findsNothing,
+    );
+    await _rightClick(tester, find.text('产品 A').first);
+    expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('workshop-confirm-material-segment-a')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('开工前确认用料'), findsOneWidget);
+    expect(find.textContaining('按单领料申请'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('mixed selection sends only order materials to discovery', (
+    tester,
+  ) async {
+    await _mount(
+      tester,
+      preparingRows: [
+        _waitingRows.first,
+        _task(
+          'segment-order',
+          '按单产品',
+          'READY',
+          binState: 'ORDER_ONLY',
+          discoveryRequired: true,
+          canRequestDiscovery: true,
+        ),
+        _task(
+          'segment-insert',
+          '嵌件产品',
+          'READY',
+          binState: 'KNOWN',
+          discoveryRequired: true,
+          canRequestDiscovery: true,
+        ),
+      ],
+    );
+    await _selectRow(tester, '产品 A');
+    await _selectRow(tester, '按单产品');
+    await _selectRow(tester, '嵌件产品');
+    expect(find.text('批量开工(1)'), findsOneWidget);
+    expect(find.text('批量领料(2)'), findsOneWidget);
+    await tester.tap(find.text('批量领料(2)'));
+    await tester.pumpAndSettle();
+    final destination = find.textContaining('按单领料申请 ');
+    expect(destination, findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(destination)
+          .data!
+          .substring('按单领料申请 '.length)
+          .split(','),
+      unorderedEquals(['segment-order', 'segment-insert']),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an unconfigured store never offers ordinary or batch issue', (
+    tester,
+  ) async {
+    await _mount(
+      tester,
+      preparingRows: [
+        _task(
+          'segment-n',
+          '产品 N',
+          'READY',
+          startRoute: 'BATCH',
+          binState: 'NEED_BIN',
+          canSplitBatch: true,
+          discoveryRequired: true,
+          canRequestDiscovery: true,
+        ),
+      ],
+    );
+    await _rightClick(tester, find.text('产品 N').first);
+    expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
+    expect(_menuEntry('分批生产领料'), findsNothing);
+    expect(_menuEntry('为什么不能开工'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('missing CHOOSE cannot be bypassed through stale start or '
+      'discovery flags', (tester) async {
+    await _mount(
+      tester,
+      preparingRows: [
+        _task(
+          'segment-a',
+          '产品 A',
+          'READY',
+          binState: 'NEED_CHOICE',
+          canStart: true,
+          needsStartConfirmation: true,
+          discoveryRequired: true,
+          canRequestDiscovery: true,
+        ),
+      ],
+    );
+    expect(
+      find.descendant(
+        of: _frozenRowOf('产品 A'),
+        matching: find.byType(Checkbox),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('workshop-confirm-material-segment-a')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('workshop-request-draw-segment-a')),
+      findsNothing,
+    );
+    await _rightClick(tester, find.text('产品 A').first);
+    expect(_menuEntry('开工'), findsNothing);
+    expect(_menuEntry('去领料(查看领料汇总)'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('pure bin materials hide order increment while mixed products '
+      'keep it', (tester) async {
+    await _mount(
+      tester,
+      extraPermissions: {productionMaterialIncrementPermission},
+      preparingRows: [
+        _task('segment-pure', '纯颗粒产品', 'READY', binState: 'KNOWN'),
+        _task(
+          'segment-mixed',
+          '含嵌件产品',
+          'READY',
+          binState: 'KNOWN',
+          zeroMaterial: false,
+        ),
+      ],
+    );
+    await _rightClick(tester, find.text('纯颗粒产品').first);
+    expect(_menuEntry('申请追加用料'), findsNothing);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+    await _rightClick(tester, find.text('含嵌件产品').first);
+    expect(_menuEntry('申请追加用料'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recognized material can still cancel its old pending order '
+      'discovery request', (tester) async {
+    final calls = await _mount(
+      tester,
+      preparingRows: [
+        _task('segment-pure', '已认料产品', 'READY', binState: 'KNOWN')..addAll({
+          'materialDiscoveryStatus': 'PENDING',
+          'materialDiscoveryRequestId': 'request-old',
+        }),
+      ],
+    );
+    await _rightClick(tester, find.text('已认料产品').first);
+    expect(_menuEntry('撤回待登记领料申请'), findsOneWidget);
+    await tester.tap(_menuEntry('撤回待登记领料申请'));
+    await tester.pumpAndSettle();
+    expect(calls, ['cancel:request-old']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('NO_BIN discovery explains bulk configuration and opens the '
+      'matching workshop without suppressing order issue', (tester) async {
+    await _mount(
+      tester,
+      extraPermissions: {Perm.workshopMaterialView},
+      preparingRows: [
+        _task(
+          'segment-no-bin',
+          '未配置产品',
+          'READY',
+          binState: 'NO_BIN',
+          discoveryRequired: true,
+          canRequestDiscovery: true,
+        ),
+      ],
+    );
+    await tester.tap(find.text('未配置产品').first);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('未配置产品').first);
+    await tester.pumpAndSettle();
+    expect(find.text('车间任务详情'), findsOneWidget);
+    expect(find.textContaining('若原料会提前整批放在车间使用'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('workshop-detail-draw-segment-no-bin')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('workshop-detail-material-bin-segment-no-bin')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('内料仓 workshop-1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

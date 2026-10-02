@@ -480,8 +480,7 @@ class _FinanceSalesOrderReviewPageState
                   )
                 : _review == null
                 ? const SizedBox.shrink()
-                // 2026-09-15 表格宽度口径二修（用户反馈）：上午收进 narrow(1120) 后两侧
-                // 大留白，弃 narrow 改默认容器（1600 钳制），对齐新建销售订货单页；
+                // 默认容器不设固定最大宽度，正文随导航收起和窗口加宽扩展；
                 // 滚动仍为折叠头+表内滚：上滑先收卡片区，明细标题吸顶后在表格内部滚。
                 : UtenContentContainer(
                     child: UtenCollapsingHeaderScrollView(

@@ -17,7 +17,13 @@ public record WeightParamsRequest(
      * @param key        客户端行 key (原样返回, 用于对上表格行)
      * @param goodsId    货品
      * @param supplierId 供应商 (可空; 有该供应商自己的单重时优先用)
+     * @param warehouseId 实物仓库 (可空; 提供时附带该仓库、货品、颜色的库存重量快照)
+     * @param colorId     颜色 (可空表示无色, 不表示任意颜色)
      */
-    public record Line(@NotBlank @Size(max = 100) String key, @NotNull UUID goodsId, UUID supplierId) {
+    public record Line(@NotBlank @Size(max = 100) String key, @NotNull UUID goodsId, UUID supplierId,
+                       UUID warehouseId, UUID colorId) {
+        public Line(String key, UUID goodsId, UUID supplierId) {
+            this(key, goodsId, supplierId, null, null);
+        }
     }
 }

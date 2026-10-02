@@ -27,6 +27,8 @@ import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart' show SubcontractSourceApplicationRef;
 import 'subcontract_link_picker.dart' show LinkedItem;
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/pricing/line_pricing_controller.dart';
+import '../../../shared/pricing/line_pricing_amount_cell.dart';
 
 /// 委外明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier，仅 itemHasPrice 时有意义）。
@@ -38,10 +40,19 @@ class SubcontractGridRow extends EditableGridRow
         CommercialTermsRowMixin,
         RemarkRowMixin,
         BusinessColumnsRow {
-  SubcontractGridRow({this.sourceLocked = false}) {
-    qty.addListener(_recalc);
-    extraColumnsChanged.addListener(_recalc);
-    price.addListener(_recalc);
+  SubcontractGridRow({
+    this.sourceLocked = false,
+    this.supportsTotalInput = false,
+  }) {
+    pricing = LinePricingController(
+      qty: qty,
+      price: price,
+      supportsTotalInput: supportsTotalInput,
+      extraColumns: () => extraColumnSnapshots,
+      extraColumnsChanged: extraColumnsChanged,
+      canCalculatePrice: () => supportsTotalInput || upstreamItemId == null,
+      canCalculateQuantity: () => supportsTotalInput || upstreamItemId == null,
+    )..addListener(_recalc);
     // 查重标红（保存前查重被拦回时标记）：改动货品/数量/单价/委外商即消除，
     // 下次保存重新判定。
     goodsNotifier.addListener(_clearFlagged);
@@ -131,14 +142,22 @@ class SubcontractGridRow extends EditableGridRow
   set supplierId(String? v) => supplierIdNotifier.value = v;
 
   /// 从上游引入项构造（货品/数量/单价/upstream/颜色/单位 预填）。
-  factory SubcontractGridRow.fromLinked(LinkedItem li, GoodsOption goods) {
-    final r = SubcontractGridRow(sourceLocked: li.upstreamItemId != null)
-      ..goods = goods
-      ..upstreamItemId = li.upstreamItemId
-      ..maxQty = li.maxQty
-      ..colorId = li.colorId
-      ..unitId = li.unitId
-      ..unitRate = li.unitRate;
+  factory SubcontractGridRow.fromLinked(
+    LinkedItem li,
+    GoodsOption goods, {
+    bool supportsTotalInput = false,
+  }) {
+    final r =
+        SubcontractGridRow(
+            sourceLocked: li.upstreamItemId != null,
+            supportsTotalInput: supportsTotalInput,
+          )
+          ..goods = goods
+          ..upstreamItemId = li.upstreamItemId
+          ..maxQty = li.maxQty
+          ..colorId = li.colorId
+          ..unitId = li.unitId
+          ..unitRate = li.unitRate;
     r.upstreamItemIds = [
       if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
         li.upstreamItemId!,
@@ -150,15 +169,44 @@ class SubcontractGridRow extends EditableGridRow
     return r;
   }
 
-  /// 行金额预览(十进制精确乘积, ADR-112); 数量或单价未填时为空。只用于显示, 保存不上送金额。
+  /// 原币总金额预览：按单价派生，或采用原始总额；来源分摊认服务端记录。
   final ValueNotifier<String?> amountExactNotifier = ValueNotifier<String?>(
     null,
   );
+  final bool supportsTotalInput;
+  late final LinePricingController pricing;
+
+  String? _sourceAmount;
+  String? _sourceQty;
+  String? _sourcePrice;
+  String? _sourceColumns;
+  bool get hasSourceAmount => !supportsTotalInput && upstreamItemId != null;
+  bool get sourceAmountPending =>
+      hasSourceAmount &&
+      (_sourceAmount == null ||
+          _sourceQty != financeExactTrimmed(qty.text) ||
+          _sourcePrice != financeExactTrimmed(price.text) ||
+          (_sourceColumns != null && _sourceColumns != extraColumnsSignature));
+
+  /// Source amounts are allocated by the server; a reference price is not a valuation basis.
+  void recordSourceAmount(String? amount) {
+    _sourceAmount = financeExactDecimal(amount);
+    _sourceQty = financeExactTrimmed(qty.text);
+    _sourcePrice = financeExactTrimmed(price.text);
+    _sourceColumns = extraColumnsSignature;
+    _recalc();
+  }
 
   void _recalc() {
-    amountExactNotifier.value = applyExtraColumnAmount(
-      exactLineAmountText(qty.text, price.text),
-    );
+    if (pricing.mode != LinePricingMode.calculateAmount &&
+        termsAutofilled.contains('price')) {
+      clearTermsAutofilled('price');
+    }
+    amountExactNotifier.value = sourceAmountPending
+        ? null
+        : hasSourceAmount
+        ? _sourceAmount
+        : pricing.amountExact;
     recalcAmount(() => double.tryParse(amountExactNotifier.value ?? '') ?? 0);
   }
 
@@ -177,6 +225,7 @@ class SubcontractGridRow extends EditableGridRow
   };
 
   Iterable<Listenable> get draftListenables => [
+    pricing,
     ..._draftTextControllers.values,
     ...extraColumnListenables,
     goodsNotifier,
@@ -190,6 +239,12 @@ class SubcontractGridRow extends EditableGridRow
   ];
 
   Map<String, dynamic> exportDraft() => {
+    'sourceAmount': _sourceAmount,
+    'sourceQty': _sourceQty,
+    'sourcePrice': _sourcePrice,
+    'sourceColumns': _sourceColumns,
+    'pricing': pricing.exportState(),
+    'supportsTotalInput': supportsTotalInput,
     'text': draftTextValues(_draftTextControllers),
     'extraColumns': exportExtraColumns(),
     'documentItemId': documentItemId,
@@ -216,18 +271,26 @@ class SubcontractGridRow extends EditableGridRow
     ],
   };
 
-  factory SubcontractGridRow.fromDraft(Map<String, dynamic> data) {
-    final row = SubcontractGridRow(sourceLocked: data['sourceLocked'] == true)
-      ..documentItemId = data['documentItemId'] as String?
-      ..goods = restoreDraftGoods(data['goods'])
-      ..stockPlaceNotifier.value = data['stockPlace'] as String?
-      ..unitRate = (data['unitRate'] as num?)?.toDouble()
-      ..upstreamItemId = data['upstreamItemId'] as String?
-      ..planItemId = data['planItemId'] as String?
-      ..colorId = data['colorId'] as String?
-      ..unitId = data['unitId'] as String?
-      ..sourceDocNo = data['sourceDocNo'] as String?
-      ..supplierId = data['supplierId'] as String?;
+  factory SubcontractGridRow.fromDraft(
+    Map<String, dynamic> data, {
+    bool supportsTotalInput = false,
+  }) {
+    final row =
+        SubcontractGridRow(
+            sourceLocked: data['sourceLocked'] == true,
+            supportsTotalInput:
+                supportsTotalInput || data['supportsTotalInput'] == true,
+          )
+          ..documentItemId = data['documentItemId'] as String?
+          ..goods = restoreDraftGoods(data['goods'])
+          ..stockPlaceNotifier.value = data['stockPlace'] as String?
+          ..unitRate = (data['unitRate'] as num?)?.toDouble()
+          ..upstreamItemId = data['upstreamItemId'] as String?
+          ..planItemId = data['planItemId'] as String?
+          ..colorId = data['colorId'] as String?
+          ..unitId = data['unitId'] as String?
+          ..sourceDocNo = data['sourceDocNo'] as String?
+          ..supplierId = data['supplierId'] as String?;
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
     row.restoreExtraColumns(data['extraColumns']);
     row.maxQty = (data['maxQty'] as num?)?.toDouble();
@@ -246,6 +309,12 @@ class SubcontractGridRow extends EditableGridRow
     if (row.termsAutofilled.contains('allowedLoss')) {
       row.markAllowedLossAutofilled(row.allowedLossPct.text);
     }
+    row.pricing.restoreState(data['pricing']);
+    row._sourceAmount = data['sourceAmount'] as String?;
+    row._sourceQty = data['sourceQty'] as String?;
+    row._sourcePrice = data['sourcePrice'] as String?;
+    row._sourceColumns = data['sourceColumns'] as String?;
+    row._recalc();
     return row;
   }
 
@@ -253,7 +322,7 @@ class SubcontractGridRow extends EditableGridRow
   /// 单价/重量/围数/胶箱数/行委外商/行级商业条款/备注/损耗单四列）与主档透传；
   /// 不拷上游 id、planItemId、来源谱系、数量门控 maxQty 与 sourceLocked。
   SubcontractGridRow clone() {
-    final c = SubcontractGridRow()
+    final c = SubcontractGridRow(supportsTotalInput: supportsTotalInput)
       ..goods = goods
       ..stockPlaceNotifier.value = stockPlaceNotifier.value
       ..colorId = colorId
@@ -281,11 +350,13 @@ class SubcontractGridRow extends EditableGridRow
       currentUnitId: () => c.unitId,
     );
     c.remark.text = remark.text;
+    pricing.copyStateTo(c.pricing);
     return c;
   }
 
   @override
   void dispose() {
+    pricing.dispose();
     goodsNotifier.dispose();
     amountExactNotifier.dispose();
     qty.dispose();
@@ -526,17 +597,30 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
     if (cfg.itemHasPrice)
       EditableGridColumn<SubcontractGridRow>(
         key: 'amount',
-        label: '金额',
-        width: 110,
+        label: '总金额',
+        width: 190,
         numeric: true,
+        headerInfo: linePricingAmountHeaderHint,
+        textOf: (r) => r.hasSourceAmount
+            ? (r.amountExactNotifier.value ?? '')
+            : r.pricing.totalAmount.text,
+        listenableOf: (r) => r.pricing,
         frozenTextOf: (r) => r.amountExactNotifier.value == null
             ? ''
             : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
-        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
-          valueListenable: row.amountExactNotifier,
-          builder: (_, v, _) =>
-              Text(v == null ? '—' : '¥${financeExactMoneyDisplay(v)}'),
-        ),
+        cellBuilder: (context, row) => row.hasSourceAmount
+            ? ValueListenableBuilder<String?>(
+                valueListenable: row.amountExactNotifier,
+                builder: (_, amount, _) => Tooltip(
+                  message: '按来源单据总金额分摊，保存时由服务端计算',
+                  child: Text(
+                    amount == null
+                        ? '保存后按来源计算'
+                        : financeExactMoneyDisplay(amount),
+                  ),
+                ),
+              )
+            : LinePricingAmountCell(controller: row.pricing),
       ),
     if (cfg.itemHasGirth)
       EditableGridColumn<SubcontractGridRow>(

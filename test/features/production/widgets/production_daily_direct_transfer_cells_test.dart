@@ -1,8 +1,10 @@
 // 报工页「产出去向」「去向数量」两格(V584/V595/V736, ADR-127)，用真实列定义驱动：
-// - 成品行：一个可送的上层工单都没有时红字写「无法转到下一道工序：<服务端原因>」(整句在悬停提示)，
-//   否则写本行去向摘要；候选读取失败红字提示刷新，不当成「没有上层工单」；
+// - 成品行：一个可送的上层工单都没有时写仓库去向摘要，原因放在整格悬停提示里，
+//   未分配数量也显示「送入仓库」；候选读取失败仍红字提示刷新，不当成「没有上层工单」；
 // - 去向分配子行：下拉按先急后缓列出可送的上层工单(还差 N)，本张报工已分满的置灰「已分满」，
-//   结构上是上层但不能收的置灰红字写原因，最后是「送入仓库」；一个都不能送时只显示「送入仓库」。
+//   结构上是上层但不能收的置灰红字写原因，最后是「送入仓库」；一个都不能送时只读显示「送入仓库」，
+//   整格悬停可看原因；原来已选的失效工单保留，并允许人手修改。
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
@@ -81,7 +83,7 @@ void main() {
     expect(outputAllocationOptions(warehouse).first.label, endsWith('本行已分给它'));
     expect(outputAllocationSummary(product), '转下一道工序 1 个工单 4 · 送入仓库 10');
     expect(showsOutputAllocations(product), isTrue);
-    // 只有一条送入仓库、也没有可送的上层工单：不另占一行，成品行写摘要或红字。
+    // 只有一条送入仓库、也没有可送的上层工单：不另占一行，成品行写摘要。
     final top = DailyGridRow();
     final only = _allocation(top, null, '10');
     addTearDown(top.dispose);
@@ -112,7 +114,7 @@ void main() {
     expect(picked, ['A']);
   });
 
-  testWidgets('一个都不能送：成品行红字写明服务端原因，去向子行只显示送入仓库', (tester) async {
+  testWidgets('一个都不能送：只读显示仓库去向，整格悬停才展示服务端原因', (tester) async {
     final result = DirectTransferCandidatesResult.fromJson(const {
       'candidates': <dynamic>[],
       'unavailableReasonCode': 'SUBCONTRACT_ROUTE',
@@ -125,21 +127,69 @@ void main() {
     final warehouse = _allocation(product, null, '10');
     addTearDown(product.dispose);
     addTearDown(warehouse.dispose);
-    await _pump(tester, [product, warehouse]);
+    final picked = <String?>[];
+    final columnTexts = await _pump(tester, [
+      product,
+      warehouse,
+    ], onDestinationChanged: (_, demand) => picked.add(demand));
 
     expect(
       find.byType(UtenDropdownField),
       findsNothing,
       reason: '不能转时不给下拉，只能送入仓库',
     );
+    expect(columnTexts, ['送入仓库 10', '送入仓库'], reason: '列测宽与复制使用去向摘要');
+    expect(find.text('送入仓库 10'), findsOneWidget);
     expect(find.text('送入仓库'), findsOneWidget);
     const full = '无法转到下一道工序：$_subcontractReason';
-    final red = tester.widget<Text>(find.text(full));
-    expect(red.style?.color, buildLightTheme().colorScheme.error);
-    expect(red.maxLines, 1);
-    expect(find.byTooltip(full), findsOneWidget, reason: '整句放悬停提示，防截断');
+    expect(find.text(full), findsNothing, reason: '日常展示的是去向，不直接展示不可转原因');
+    for (final label in ['送入仓库 10', '送入仓库']) {
+      final text = tester.widget<Text>(find.text(label));
+      expect(text.style?.color, isNot(buildLightTheme().colorScheme.error));
+      expect(text.maxLines, 1);
+    }
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: const Offset(790, 590));
+    for (final row in [product, warehouse]) {
+      final cell = find.byKey(
+        ValueKey('test-destination-${identityHashCode(row)}'),
+      );
+      // 在文字右侧的空白位置悬停，验证提示覆盖整格，而非仅覆盖文字。
+      final blank = tester.getTopRight(cell) + const Offset(-4, 20);
+      await mouse.moveTo(blank);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text(full), findsOneWidget);
+      await mouse.moveTo(const Offset(790, 590));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.text(full), findsNothing);
+      await tester.tapAt(blank);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenDropdownField), findsNothing);
+    }
+    expect(picked, isEmpty, reason: '仓库只读单元格不会触发改去向');
+    expect(warehouse.allocationDemandId, isNull);
+    expect(warehouse.allocationQty.text, '10');
     expect(find.textContaining('无同车间上层工单'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('一个都不能送且尚未分配数量：成品行和去向子行默认显示送入仓库', (tester) async {
+    final product = DailyGridRow()
+      ..directTransferBlockedText = '无法转到下一道工序：$_subcontractReason';
+    final warehouse = _allocation(product, null, '');
+    addTearDown(product.dispose);
+    addTearDown(warehouse.dispose);
+    final columnTexts = await _pump(tester, [product, warehouse]);
+
+    expect(columnTexts, ['送入仓库', '送入仓库']);
+    expect(find.text('送入仓库'), findsNWidgets(2));
+    expect(find.text('—'), findsNothing);
+    expect(find.textContaining('无法转到下一道工序'), findsNothing);
+    expect(find.byType(UtenDropdownField), findsNothing);
+    expect(warehouse.allocationQty.text, isEmpty);
   });
 
   testWidgets('候选读取失败：成品行提示刷新重试，不当成没有上层工单', (tester) async {
@@ -151,9 +201,12 @@ void main() {
     final chosen = _allocation(product, 'A', '4');
     addTearDown(product.dispose);
     addTearDown(chosen.dispose);
-    await _pump(tester, [product, chosen]);
+    final columnTexts = await _pump(tester, [product, chosen]);
 
     expect(find.text('转给工单候选读取失败，请刷新后重试'), findsOneWidget);
+    final failed = tester.widget<Text>(find.text(directTransferLoadFailedText));
+    expect(failed.style?.color, buildLightTheme().colorScheme.error);
+    expect(columnTexts.first, directTransferLoadFailedText);
     expect(find.textContaining('无法转到下一道工序'), findsNothing);
     expect(
       find.byType(UtenDropdownField),
@@ -167,6 +220,47 @@ void main() {
     ).firstWhere((item) => item.value == 'A');
     expect(kept.label, '原来选的上层工单(候选读取失败，暂时无法核对)');
     expect(kept.error, isFalse);
+    expect(chosen.allocationDemandId, 'A');
+    expect(chosen.allocationQty.text, '4');
+  });
+
+  testWidgets('原来选的工单失效：保留原去向与数量，仍可下拉改为送入仓库', (tester) async {
+    final product = DailyGridRow()
+      ..directTransferBlockedText = '无法转到下一道工序：$_crossReason'
+      ..directTransferBlockedTargets = const [
+        ProductionDirectTransferBlockedTarget(
+          demandId: 'C',
+          executionSegmentCode: 'ZX-C',
+          reasonCode: 'DIFFERENT_WORKSHOP',
+          reason: _crossReason,
+        ),
+      ];
+    final chosen = _allocation(product, 'C', '4');
+    addTearDown(product.dispose);
+    addTearDown(chosen.dispose);
+    final picked = <String?>[];
+    final columnTexts = await _pump(tester, [
+      product,
+      chosen,
+    ], onDestinationChanged: (_, demand) => picked.add(demand));
+
+    expect(columnTexts, ['转下一道工序 1 个工单 4', 'ZX-C · $_crossReason']);
+    expect(find.text('转下一道工序 1 个工单 4'), findsOneWidget);
+    expect(find.text('送入仓库'), findsNothing);
+    expect(find.byType(UtenDropdownField), findsOneWidget);
+    expect(chosen.allocationDemandId, 'C');
+    expect(chosen.allocationQty.text, '4');
+    expect(picked, isEmpty, reason: '候选失效不会静默修改去向');
+    final kept = outputAllocationOptions(chosen).first;
+    expect(kept.value, 'C');
+    expect(kept.enabled, isFalse);
+    expect(kept.error, isTrue);
+
+    await tester.tap(find.byType(UtenDropdownField));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('送入仓库').last);
+    await tester.pumpAndSettle();
+    expect(picked, [null], reason: '工人仍能明确选择改送仓库');
   });
 
   testWidgets('去向数量：输入即回调，问题用红框写在格内', (tester) async {
@@ -250,12 +344,13 @@ void main() {
   });
 }
 
-Future<void> _pump(
+Future<List<String>> _pump(
   WidgetTester tester,
   List<DailyGridRow> rows, {
   void Function(DailyGridRow row, String? demand)? onDestinationChanged,
   void Function(DailyGridRow row)? onQtyChanged,
 }) async {
+  var destinationTexts = <String>[];
   await tester.pumpWidget(
     MaterialApp(
       theme: buildLightTheme(),
@@ -275,7 +370,14 @@ Future<void> _pump(
               onAllocationDestinationChanged: onDestinationChanged,
               onAllocationQtyChanged: onQtyChanged,
             );
+            final destination = columns.firstWhere(
+              (column) => column.key == 'destination',
+            );
+            destinationTexts = [
+              for (final row in rows) destination.textOf!(row),
+            ];
             Widget cell(String key, DailyGridRow row) => SizedBox(
+              key: ValueKey('test-$key-${identityHashCode(row)}'),
               width: 300,
               height: 40,
               child: columns
@@ -296,4 +398,5 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  return destinationTexts;
 }

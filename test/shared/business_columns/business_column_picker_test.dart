@@ -189,6 +189,7 @@ void main() {
                       unitEntries: const {},
                     );
                     return UtenEditableGrid<SalesGridRow>(
+                      columnEditingEnabled: true,
                       controller: controller,
                       columns: columns,
                       showAddRow: false,

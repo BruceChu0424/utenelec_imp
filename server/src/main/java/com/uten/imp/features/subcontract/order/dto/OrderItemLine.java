@@ -53,6 +53,8 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private BigDecimal qty;
 
     private BigDecimal price;
+    /** Agreed original-currency total before extra-column adjustments; null means unit-price pricing. */
+    private BigDecimal totalAmountInput;
 
     /**
      * 申请明细真FK（申请分解行必填；审核订货时回写 ordered_qty）。

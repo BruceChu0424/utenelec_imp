@@ -30,7 +30,7 @@ public class WorkshopMachineController {
     }
 
     @GetMapping("/machines")
-    @PreAuthorize("hasAuthority('workshop_material:view')")
+    @PreAuthorize("hasAnyAuthority('workshop_material:view','workshop_material:setup')")
     public MachineList list(@RequestParam UUID workshopId) {
         return machines.list(workshopId);
     }

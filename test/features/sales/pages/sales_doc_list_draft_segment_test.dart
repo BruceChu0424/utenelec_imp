@@ -25,6 +25,7 @@ Future<_RecordingApi> _pumpOrderList(
   WidgetTester tester, {
   String? initialStatus,
   DraftCounts counts = const DraftCounts(salesOrder: 2),
+  Set<String> permissions = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(1500, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -54,7 +55,7 @@ Future<_RecordingApi> _pumpOrderList(
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
         ),
-        currentPermissionsProvider.overrideWithValue(const <String>{}),
+        currentPermissionsProvider.overrideWithValue(permissions),
         draftCountsProvider.overrideWith((ref) => counts),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -104,13 +105,23 @@ void main() {
   });
 
   testWidgets('草稿段下隐藏状态小类行（草稿本身就是状态）', (tester) async {
-    await _pumpOrderList(tester);
+    await _pumpOrderList(
+      tester,
+      permissions: const {
+        Perm.salesOrderCreate,
+        Perm.salesQuoteConvert,
+        Perm.salesShipmentCreate,
+      },
+    );
 
     // 先点链路大类：小类行出现（草稿/已审/红冲/历史记录）。
     await tester.tap(find.text('待生产'));
     await tester.pumpAndSettle();
     expect(find.text('已审'), findsOneWidget);
     expect(find.text('历史记录'), findsOneWidget);
+    expect(find.text('新建'), findsOneWidget);
+    expect(find.text('从报价引入'), findsOneWidget);
+    expect(find.text('批量发货'), findsOneWidget);
 
     // 切到大类「草稿」段（.first = 大类行；.last 会命中小类行里的同名段）。
     await tester.tap(find.text('草稿').first);
@@ -118,6 +129,9 @@ void main() {
     expect(find.text('已审'), findsNothing);
     expect(find.text('历史记录'), findsNothing);
     expect(find.text('可发货置顶'), findsNothing);
+    expect(find.text('新建'), findsNothing);
+    expect(find.text('从报价引入'), findsNothing);
+    expect(find.text('批量发货'), findsNothing);
   });
 
   testWidgets('?status=draft 深链直接落在草稿段并加载', (tester) async {

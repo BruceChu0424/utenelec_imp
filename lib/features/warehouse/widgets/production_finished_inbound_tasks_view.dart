@@ -424,8 +424,8 @@ class _ProductionFinishedInboundTasksViewState
           total: 0,
           totalPages: 1,
         );
-    // 2026-09-24 用户口径「表格完全置顶」：工具行/流程提示/错误行进折叠头
-    // 随页滚走，body 只剩表格（primary 拾取联动控制器）。
+    // 2026-09-24 用户口径「表格完全置顶」：工具行/错误行进折叠头随页滚走，
+    // body 只剩表格（primary 拾取联动控制器）。
     return UtenCollapsingHeaderScrollView(
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -435,8 +435,6 @@ class _ProductionFinishedInboundTasksViewState
             const SizedBox(height: UtenSpacing.s12),
           ],
           _buildToolbar(result),
-          const SizedBox(height: UtenSpacing.s8),
-          const _ProcessHint(),
           if (_error != null && result.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
             Semantics(
@@ -681,32 +679,6 @@ class _ProductionFinishedInboundTasksViewState
       value: (task) => ChinaDateTime.formatInstant(task.createdAt),
     ),
   ];
-}
-
-class _ProcessHint extends StatelessWidget {
-  const _ProcessHint();
-
-  @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(
-        Icons.info_outline_rounded,
-        size: 18,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-      const SizedBox(width: UtenSpacing.s8),
-      const Expanded(
-        child: Text(
-          '双击行直达下一步(待登记入库→登记入库仓库与库位)；'
-          '「待登记入库」多选「先入库后质检」：登记的同时逐行按库位上架，品质部到库位检验，'
-          '合格由系统自动入库；多选「先质检后入库」：登记后送品质部检验，放行后再按实物最终点收；'
-          '进批量登记页后只显示所选这一条路线的提交按钮。'
-          '品质通过的任务可多选批量全量点收；短收、拒收仍须逐单进入确认。',
-        ),
-      ),
-    ],
-  );
 }
 
 String _taskStageLabel(ProductionFinishedInboundTask task) =>

@@ -184,22 +184,40 @@ class _ProcurementIqcRejectionListPageState
       ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
     }
     final result = _result;
+    // 加载/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
+    // 整条分类栏不得消失），数据到位后照常走折叠容器。
+    final transient = result == null && (_loading || _error != null);
+    final Widget fallback;
+    if (_loading && transient) {
+      fallback = Center(
+        child: Semantics(
+          label: '正在加载 IQC 不合格任务',
+          child: const CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      );
+    } else if (_error != null && transient) {
+      fallback = UtenEmpty.error(
+        message: '无法加载 IQC 不合格任务',
+        description: _error,
+        actionLabel: '重新加载',
+        onAction: () => _load(1),
+      );
+    } else {
+      fallback = _buildContent();
+    }
     final body = SafeArea(
-      child: _loading && result == null
-          ? Center(
-              child: Semantics(
-                label: '正在加载 IQC 不合格任务',
-                child: const CircularProgressIndicator(strokeWidth: 2.5),
-              ),
+      child: transient
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.externalHeader != null) ...[
+                  widget.externalHeader!,
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+                Expanded(child: fallback),
+              ],
             )
-          : _error != null && result == null
-          ? UtenEmpty.error(
-              message: '无法加载 IQC 不合格任务',
-              description: _error,
-              actionLabel: '重新加载',
-              onAction: () => _load(1),
-            )
-          : _buildContent(),
+          : fallback,
     );
     if (widget.embedded) return body;
     return Scaffold(

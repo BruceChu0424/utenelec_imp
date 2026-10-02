@@ -1,12 +1,12 @@
-// 车间内料仓: 认料与段级换料 (ADR-131 §5.4、§5.5)。
+// 车间内料仓: 认料、段级换料与工单库存提示 (ADR-131 §5.4、§5.5)。
 //
-// 生产侧只用这三个接口: 开工确认表读「待确认的产品」、一次写入认料, 以及
-// 车间任务行菜单「这张工单改用别的料」。内料仓的其它接口 (领料、盘点、结算)
-// 在 features/warehouse/materialbin 下, 生产页面不直接调用。
+// 开工确认表读待确认的产品并写认料，行菜单办理换料，详情读取库存提示。
+// 整批补料仍复用 features/warehouse/materialbin 的申请面板和仓储。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../models/workshop_task_stock_readiness.dart';
 
 /// 认料种类: 用内料仓里的料。
 const workshopMaterialChoiceKindMaterial = 'MATERIAL';
@@ -338,6 +338,15 @@ class WorkshopMaterialChoiceRepository {
   WorkshopMaterialChoiceRepository(this._api);
 
   final ApiClient _api;
+
+  /// 库存足量是提示，不参与工单开工门；基本单位换算和未知状态由服务端给出。
+  Future<WorkshopTaskStockReadiness> stockReadiness(
+    String segmentId,
+  ) async => WorkshopTaskStockReadiness.fromJson(
+    await _api.get(
+      '${ApiEndpoints.workshopMaterialBase}/segments/$segmentId/stock-readiness',
+    ),
+  );
 
   /// 开工确认表的行 (按车间 + 产品聚合); 不需要确认的段不出现。
   Future<List<WorkshopMaterialPendingChoice>> pending(

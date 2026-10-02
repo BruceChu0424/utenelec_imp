@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_dialog.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -121,8 +122,10 @@ class StockCountInlineController extends ChangeNotifier {
   bool _submitting = false;
   bool _disposed = false;
   int _generation = 0;
+  int _session = 0;
   String _nonce = '';
   bool get active => warehouse != null;
+  int get session => _session;
   int get changedCount => rows.values.where((row) => row.changed).length;
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -137,6 +140,7 @@ class StockCountInlineController extends ChangeNotifier {
 
   void clear() {
     _generation++;
+    _session++;
     for (final row in rows.values) {
       row.dispose();
     }
@@ -151,9 +155,24 @@ class StockCountInlineController extends ChangeNotifier {
   }
 
   void add(CountStockRow snapshot) {
-    if (!active || !snapshot.canEdit || busy) return;
-    rows.putIfAbsent(snapshot.key, () => StockCountEditRow(snapshot, _notify));
-    addedRows[snapshot.key] = snapshot;
+    addAll([snapshot]);
+  }
+
+  void addAll(Iterable<CountStockRow> snapshots, {int? expectedSession}) {
+    if (!active ||
+        busy ||
+        (expectedSession != null && expectedSession != _session)) {
+      return;
+    }
+    for (final snapshot in snapshots) {
+      if (!snapshot.canEdit) continue;
+      final row = rows.putIfAbsent(
+        snapshot.key,
+        () => StockCountEditRow(snapshot, _notify),
+      );
+      // Repeat selection must preserve both the edited values and their basis.
+      addedRows.putIfAbsent(snapshot.key, () => row.snapshot);
+    }
     _notify();
   }
 
@@ -220,8 +239,8 @@ class StockCountInlineController extends ChangeNotifier {
         throw FormatException('${row.snapshot.goodsName}：${row.validation}');
       }
     }
+    // 2026-10-02 用户口径：盘点说明选填（例行盘点常无话可说）；长度上限交服务端把关。
     final explanation = reason.text.trim();
-    if (explanation.isEmpty) throw const FormatException('请填写盘点说明');
     final lines = [for (final row in changed) row.payload(selected.isWorkshop)];
     final key = businessIdempotencyKey(
       'stock-count',
@@ -324,7 +343,7 @@ class StockCountInlineCell extends StatelessWidget {
 }
 
 /// One toolbar shared by both existing inventory tables; no replacement table or separate count layout.
-class StockCountModeToolbar extends StatefulWidget {
+class StockCountModeToolbar extends ConsumerStatefulWidget {
   const StockCountModeToolbar({
     super.key,
     required this.controller,
@@ -334,19 +353,27 @@ class StockCountModeToolbar extends StatefulWidget {
     required this.onSubmitted,
     this.warehouseId,
     this.fixedWarehouse = false,
+    this.floating = false,
+    this.inactiveActionsBuilder,
   });
   final StockCountInlineController controller;
   final bool allowed;
   final String? warehouseId;
   final bool fixedWarehouse;
+
+  /// Hosts that keep the count summary/reason in their header can place the actions in the standard FAB group.
+  final bool floating;
+  final List<Widget> Function(VoidCallback? start, VoidCallback history)?
+  inactiveActionsBuilder;
   final Iterable<String> Function() goodsIds;
   final Future<void> Function(StockCountWarehouse warehouse) onStart;
   final Future<void> Function() onSubmitted;
   @override
-  State<StockCountModeToolbar> createState() => _StockCountModeToolbarState();
+  ConsumerState<StockCountModeToolbar> createState() =>
+      _StockCountModeToolbarState();
 }
 
-class _StockCountModeToolbarState extends State<StockCountModeToolbar> {
+class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
   bool _starting = false;
   Future<void> _start() async {
     if (_starting || !widget.allowed) return;
@@ -355,7 +382,7 @@ class _StockCountModeToolbarState extends State<StockCountModeToolbar> {
       final scope = await widget.controller.repository.scope(
         warehouseId: widget.fixedWarehouse ? widget.warehouseId : null,
       );
-      if (!mounted) return;
+      if (!mounted || !widget.allowed) return;
       if (!scope.canSubmit) {
         context.appWarning('当前没有提交盘点的权限');
         return;
@@ -386,9 +413,10 @@ class _StockCountModeToolbarState extends State<StockCountModeToolbar> {
           ],
         ),
       );
-      if (!mounted || selected == null) return;
+      if (!mounted || !widget.allowed || selected == null) return;
       widget.controller.begin(selected);
       await widget.onStart(selected);
+      if (!mounted || !widget.allowed) return;
       await widget.controller.ensureRows(widget.goodsIds());
     } catch (error) {
       if (mounted) {
@@ -439,6 +467,55 @@ class _StockCountModeToolbarState extends State<StockCountModeToolbar> {
     }
   }
 
+  void _history() {
+    if (!mounted || !widget.allowed) return;
+    context.push(RouteName.stockCountRequests);
+  }
+
+  List<Widget> _activeActions(StockCountInlineController controller) => [
+    UtenButton(
+      key: const Key('stock-count-add'),
+      size: widget.floating ? UtenButtonSize.large : UtenButtonSize.medium,
+      type: UtenButtonType.secondary,
+      onPressed: controller.busy
+          ? null
+          : () async {
+              if (!widget.allowed || !controller.active) return;
+              final session = controller.session;
+              final rows = await showStockCountCandidatePicker(
+                context,
+                ref,
+                warehouse: controller.warehouse!,
+              );
+              if (mounted &&
+                  widget.allowed &&
+                  controller.active &&
+                  rows.isNotEmpty) {
+                controller.addAll(rows, expectedSession: session);
+              }
+            },
+      child: Text(widget.floating ? '添加物料' : '添加零库存物料'),
+    ),
+    UtenButton(
+      key: const Key('stock-count-save'),
+      size: widget.floating ? UtenButtonSize.large : UtenButtonSize.medium,
+      onPressed: controller.busy || controller.changedCount == 0 ? null : _save,
+      child: const Text('保存并送审'),
+    ),
+    if (widget.floating)
+      UtenButton(
+        size: UtenButtonSize.large,
+        type: UtenButtonType.secondary,
+        onPressed: controller.busy ? null : _exit,
+        child: const Text('退出盘点'),
+      )
+    else
+      TextButton(
+        onPressed: controller.busy ? null : _exit,
+        child: const Text('退出盘点'),
+      ),
+  ];
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.controller,
@@ -446,21 +523,29 @@ class _StockCountModeToolbarState extends State<StockCountModeToolbar> {
       if (!widget.allowed) return const SizedBox.shrink();
       final controller = widget.controller;
       if (!controller.active) {
-        return Wrap(
-          spacing: UtenSpacing.s8,
-          children: [
-            UtenButton(
-              key: const Key('stock-count-mode'),
-              type: UtenButtonType.secondary,
-              icon: Icons.fact_check_outlined,
-              onPressed: _starting ? null : _start,
-              child: Text(_starting ? '正在开启盘点…' : '盘点模式'),
-            ),
-            TextButton(
-              onPressed: () => context.push(RouteName.stockCountRequests),
-              child: const Text('我的盘点'),
-            ),
-          ],
+        final actions = widget.floating && widget.inactiveActionsBuilder != null
+            ? widget.inactiveActionsBuilder!(
+                _starting ? null : _start,
+                _history,
+              )
+            : <Widget>[
+                UtenButton(
+                  key: const Key('stock-count-mode'),
+                  type: UtenButtonType.secondary,
+                  icon: Icons.fact_check_outlined,
+                  onPressed: _starting ? null : _start,
+                  child: Text(_starting ? '正在开启盘点…' : '盘点模式'),
+                ),
+                TextButton(onPressed: _history, child: const Text('我的盘点')),
+              ];
+        return widget.floating
+            ? UtenFloatingActionGroup(children: actions)
+            : Wrap(spacing: UtenSpacing.s8, children: actions);
+      }
+      if (widget.floating) {
+        final actions = _activeActions(controller);
+        return UtenFloatingActionGroup(
+          children: [actions[2], actions[0], actions[1]],
         );
       }
       return Wrap(
@@ -468,9 +553,7 @@ class _StockCountModeToolbarState extends State<StockCountModeToolbar> {
         runSpacing: UtenSpacing.s8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Text(
-            '${controller.warehouse!.name} · ${controller.warehouse!.reviewerLabel}审核 · 已改 ${controller.changedCount} 项',
-          ),
+          // 2026-10-02 用户口径：盘点说明放最左、选填；「已改 N 项」计数退役。
           SizedBox(
             width: 240,
             child: TextField(
@@ -479,38 +562,15 @@ class _StockCountModeToolbarState extends State<StockCountModeToolbar> {
               enabled: !controller.busy,
               decoration: const InputDecoration(
                 isDense: true,
-                labelText: '盘点说明',
+                labelText: '盘点说明（选填）',
                 hintText: '例如上线清点或例行盘点',
               ),
             ),
           ),
-          UtenButton(
-            key: const Key('stock-count-add'),
-            type: UtenButtonType.secondary,
-            onPressed: controller.busy
-                ? null
-                : () async {
-                    final row = await showStockCountCandidatePicker(
-                      context,
-                      warehouse: controller.warehouse!,
-                    );
-                    if (mounted && row != null && controller.active) {
-                      controller.add(row);
-                    }
-                  },
-            child: const Text('添加零库存物料'),
+          Text(
+            '${controller.warehouse!.name} · ${controller.warehouse!.reviewerLabel}审核',
           ),
-          UtenButton(
-            key: const Key('stock-count-save'),
-            onPressed: controller.busy || controller.changedCount == 0
-                ? null
-                : _save,
-            child: const Text('保存并送审'),
-          ),
-          TextButton(
-            onPressed: controller.busy ? null : _exit,
-            child: const Text('退出盘点'),
-          ),
+          ..._activeActions(controller),
           if (controller.error != null)
             TextButton(
               onPressed: controller.busy

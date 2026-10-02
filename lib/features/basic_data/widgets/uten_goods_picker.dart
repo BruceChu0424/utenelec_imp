@@ -25,6 +25,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
@@ -251,16 +252,37 @@ Future<GoodsListItem?> showUtenGoodsPicker(
 
 /// 多选货品选择器：点货品行勾选/取消，底部「确定(N)」返回所选列表；取消返回空列表。
 /// 供 BOM 组装信息「一个层级添加多个组件」批量录入用。
+/// 业务候选可提供独立数据源，复用分类树、多选清单与分页交互。
+abstract class UtenGoodsPickerDataSource {
+  Future<List<ProductCategoryNode>> tree();
+  Future<PagedResult<GoodsListItem>> list(
+    String categoryId, {
+    required int page,
+    String? keyword,
+  });
+  Future<PagedResult<GoodsListItem>> search(
+    String keyword, {
+    required int page,
+  });
+  Future<Set<String>> searchCategoryIds(String keyword);
+  bool isSelectable(GoodsListItem goods) => true;
+  String? subtitleOf(GoodsListItem goods) => null;
+}
+
 Future<List<GoodsListItem>> showUtenGoodsPickerMulti(
   BuildContext context,
   WidgetRef ref, {
   UtenGoodsPickerScope scope = UtenGoodsPickerScope.component,
+  UtenGoodsPickerDataSource? dataSource,
+  String title = '选择货品',
 }) async {
   final r = await _presentSheet<List<GoodsListItem>>(
     context,
     ref,
     scope,
     multiSelect: true,
+    dataSource: dataSource,
+    title: title,
   );
   return r ?? const <GoodsListItem>[];
 }
@@ -271,10 +293,14 @@ Future<T?> _presentSheet<T>(
   UtenGoodsPickerScope scope, {
   required bool multiSelect,
   bool requireConfirm = false,
+  UtenGoodsPickerDataSource? dataSource,
+  String title = '选择货品',
 }) async {
   List<ProductCategoryNode> tree;
   try {
-    final raw = await ref.read(productCategoryRepositoryProvider).tree();
+    final raw =
+        await (dataSource?.tree() ??
+            ref.read(productCategoryRepositoryProvider).tree());
     tree = switch (scope) {
       UtenGoodsPickerScope.sellable => _filterExcludedTree(raw),
       UtenGoodsPickerScope.material => _keepMaterialTree(raw),
@@ -292,7 +318,7 @@ Future<T?> _presentSheet<T>(
   if (!context.mounted) return null;
   // 单根提升：整库只有一个「货品资料」包装根时不占一层，直接列其子类
   //（2026-09-24 用户口径：左边显示原材料/半成品/成品，不显示货品资料本身）。
-  tree = hoistSingleRootTree(tree);
+  if (dataSource == null) tree = hoistSingleRootTree(tree);
   if (tree.isEmpty) {
     context.appWarning('当前业务范围没有可选择的货品分类');
     return null;
@@ -302,6 +328,8 @@ Future<T?> _presentSheet<T>(
     scope: scope,
     multiSelect: multiSelect,
     requireConfirm: requireConfirm,
+    dataSource: dataSource,
+    title: title,
   );
   // 滑窗宽度跟屏幕自适应：约占屏宽 50%，下限保持旧款 720（再窄装不下左树+右表）。
   final screenWidth = MediaQuery.sizeOf(context).width;
@@ -318,10 +346,14 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
     required this.scope,
     this.multiSelect = false,
     this.requireConfirm = false,
+    this.dataSource,
+    this.title = '选择货品',
   });
   final List<ProductCategoryNode> tree;
   final UtenGoodsPickerScope scope;
   final bool multiSelect;
+  final UtenGoodsPickerDataSource? dataSource;
+  final String title;
 
   /// 单选模式下是否需要底部「确定」二次确认（而非点行即关闭）。多选模式恒需确认，此项无效。
   final bool requireConfirm;
@@ -387,6 +419,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     final categoryKeyword = _keywordForCategoryBranch(node.id);
     setState(() {
       _selectedCategoryId = node.id;
+      _paged = null;
       _showingGlobalResults = false;
       _searchLoading = false;
       _searchError = null;
@@ -402,6 +435,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     final query = v.trim();
     setState(() {
       _query = query;
+      _paged = null;
       _page = 1;
       _visibleFilterIds = query.isEmpty
           ? null
@@ -482,6 +516,50 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         : null;
   }
 
+  Future<PagedResult<GoodsListItem>> _categoryPage(
+    String categoryId, {
+    int page = 1,
+    String? keyword,
+  }) =>
+      widget.dataSource?.list(categoryId, page: page, keyword: keyword) ??
+      ref
+          .read(goodsRepositoryProvider)
+          .list(
+            categoryId,
+            page: page,
+            keyword: keyword,
+            sort: _goodsPickerSort,
+            order: _goodsPickerOrder,
+            excludeDisabled: true,
+            excludeStub: true,
+          );
+
+  Future<PagedResult<GoodsListItem>> _searchPage(String query, int page) =>
+      widget.dataSource?.search(query, page: page) ??
+      ref
+          .read(goodsRepositoryProvider)
+          .search(
+            query,
+            page: page,
+            size: 100,
+            categoryRootIds: _scopeRootIds,
+            excludeDisabled: true,
+            excludeStub: true,
+            sort: _goodsPickerSort,
+            order: _goodsPickerOrder,
+          );
+
+  Future<Set<String>> _searchCategoryIds(String query) =>
+      widget.dataSource?.searchCategoryIds(query) ??
+      ref
+          .read(goodsRepositoryProvider)
+          .searchCategoryIds(
+            query,
+            categoryRootIds: _scopeRootIds,
+            excludeDisabled: true,
+            excludeStub: true,
+          );
+
   Future<void> _reloadCategory({String? keyword}) async {
     final categoryId = _selectedCategoryId;
     final requestedPage = _page;
@@ -500,17 +578,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       _error = null;
     });
     try {
-      final result = await ref
-          .read(goodsRepositoryProvider)
-          .list(
-            categoryId,
-            page: requestedPage,
-            keyword: keyword,
-            sort: _goodsPickerSort,
-            order: _goodsPickerOrder,
-            excludeDisabled: true,
-            excludeStub: true,
-          );
+      final result = await _categoryPage(
+        categoryId,
+        page: requestedPage,
+        keyword: keyword,
+      );
       if (!mounted ||
           requestVersion != _requestVersion ||
           categoryId != _selectedCategoryId ||
@@ -543,27 +615,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       _searchError = null;
     });
     try {
-      final repo = ref.read(goodsRepositoryProvider);
       final needsLocation =
           _globalResolutionQuery != query || _globalResolution == null;
       final responses = await Future.wait<Object>([
-        repo.search(
-          query,
-          page: requestedPage,
-          size: 100,
-          categoryRootIds: _scopeRootIds,
-          excludeDisabled: true,
-          excludeStub: true,
-          sort: _goodsPickerSort,
-          order: _goodsPickerOrder,
-        ),
-        if (needsLocation)
-          repo.searchCategoryIds(
-            query,
-            categoryRootIds: _scopeRootIds,
-            excludeDisabled: true,
-            excludeStub: true,
-          ),
+        _searchPage(query, requestedPage),
+        if (needsLocation) _searchCategoryIds(query),
       ]);
       final result = responses.first as PagedResult<GoodsListItem>;
       if (!mounted ||
@@ -612,13 +668,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           resolution.selectedId != null) {
         final categoryId = resolution.selectedId!;
         // 只命中分类名称/编号时，右侧展示该分类内容；分类词不强行套到货品字段上。
-        final categoryPage = await repo.list(
-          categoryId,
-          sort: _goodsPickerSort,
-          order: _goodsPickerOrder,
-          excludeDisabled: true,
-          excludeStub: true,
-        );
+        final categoryPage = await _categoryPage(categoryId);
         if (!mounted ||
             requestVersion != _requestVersion ||
             query != _query ||
@@ -660,11 +710,13 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     }
   }
 
-  void _reloadCurrentPage() {
+  Future<void> _reloadCurrentPage() async {
     if (_query.isNotEmpty && _showingGlobalResults) {
-      _reloadGlobalSearch(allowCategoryFallback: false);
+      await _reloadGlobalSearch(allowCategoryFallback: false);
     } else {
-      _reloadCategory(keyword: _keywordForCategoryBranch(_selectedCategoryId));
+      await _reloadCategory(
+        keyword: _keywordForCategoryBranch(_selectedCategoryId),
+      );
     }
   }
 
@@ -720,7 +772,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                 children: [
                   Expanded(
                     child: Text(
-                      '选择货品',
+                      widget.title,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -759,75 +811,85 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   /// 多选底栏：左侧「已选 N 项」胶囊点开已选清单滑层；右侧 清空/取消/确定(N)。
   Widget _buildMultiSelectBar(ThemeData theme) {
     final count = _selected.length;
-    return UtenBottomActionBar(
-      child: Row(
-        children: [
-          InkWell(
-            key: const Key('goods-picker-selected-summary'),
-            borderRadius: BorderRadius.circular(8),
-            onTap: count == 0
-                ? null
-                : () => setState(() => _selectedPanelOpen = true),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
+    final summary = InkWell(
+      key: const Key('goods-picker-selected-summary'),
+      borderRadius: BorderRadius.circular(8),
+      onTap: count == 0
+          ? null
+          : () => setState(() => _selectedPanelOpen = true),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: count > 0
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
+              : theme.colorScheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              count > 0 ? Icons.checklist_rounded : Icons.checklist_outlined,
+              size: 18,
+              color: count > 0
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              count > 0 ? '已选 $count 项' : '未选择',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
                 color: count > 0
-                    ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
-                    : theme.colorScheme.surfaceContainerHigh,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    count > 0
-                        ? Icons.checklist_rounded
-                        : Icons.checklist_outlined,
-                    size: 18,
-                    color: count > 0
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    count > 0 ? '已选 $count 项' : '未选择',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: count > 0
-                          ? theme.colorScheme.onSurface
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(
-                    Icons.keyboard_arrow_up_rounded,
-                    size: 18,
-                    color: count > 0
-                        ? theme.colorScheme.primary
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
-                ],
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          ),
-          const Spacer(),
-          TextButton(
-            onPressed: count > 0 ? () => setState(_selected.clear) : null,
-            child: const Text('清空'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            key: const Key('goods-picker-multi-confirm'),
-            onPressed: count > 0
-                ? () => Navigator.of(context).pop(_selected.values.toList())
-                : null,
-            child: Text('确定($count)'),
-          ),
-        ],
+            const SizedBox(width: 2),
+            Icon(
+              Icons.keyboard_arrow_up_rounded,
+              size: 18,
+              color: count > 0
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+    final actions = <Widget>[
+      TextButton(
+        onPressed: count > 0 ? () => setState(_selected.clear) : null,
+        child: const Text('清空'),
+      ),
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('取消'),
+      ),
+      const SizedBox(width: 8),
+      FilledButton(
+        key: const Key('goods-picker-multi-confirm'),
+        onPressed: count > 0
+            ? () => Navigator.of(context).pop(_selected.values.toList())
+            : null,
+        child: Text('确定($count)'),
+      ),
+    ];
+    return UtenBottomActionBar(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 520) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Align(alignment: Alignment.centerLeft, child: summary),
+                Wrap(alignment: WrapAlignment.end, children: actions),
+              ],
+            );
+          }
+          return Row(children: [summary, const Spacer(), ...actions]);
+        },
       ),
     );
   }
@@ -973,14 +1035,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}'
       '${g.colorName != null && g.colorName!.isNotEmpty ? ' · ${g.colorName}' : ''}';
 
-  Widget _buildRightPane(ThemeData theme) {
-    return Column(
-      children: [
-        Expanded(child: _buildGoodsList(theme)),
-        if (_paged != null && _paged!.totalPages > 1) _buildPager(theme),
-      ],
-    );
-  }
+  Widget _buildRightPane(ThemeData theme) => _buildGoodsList(theme);
 
   Widget _buildUnifiedSearch() {
     return Padding(
@@ -1001,47 +1056,41 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   Widget _buildGoodsList(ThemeData theme) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            _error!,
-            style: TextStyle(color: theme.colorScheme.error),
-            textAlign: TextAlign.center,
-          ),
-        ),
-      );
-    }
-    final page = _paged;
-    if (page == null) {
-      return Center(
-        child: Text(
-          widget.tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-        ),
-      );
-    }
-    if (page.items.isEmpty) {
-      return Center(
-        child: Text(
-          _query.isEmpty ? '该分类暂无可选货品' : '未找到匹配「$_query」的货品',
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-        ),
-      );
-    }
-    return ListView.separated(
-      itemCount: page.items.length,
+    return UtenPagedPickerList<GoodsListItem>(
+      key: const Key('goods-picker-paged-list'),
+      items: _paged?.items ?? const [],
+      idOf: (goods) => goods.id,
+      currentPage: _paged?.page ?? 1,
+      totalPages: _paged?.totalPages ?? 1,
+      paginationScope: (
+        widget.scope,
+        _query,
+        _showingGlobalResults,
+        // Global search relocates the tree highlight on every returned page;
+        // that highlight is not a change to the global search request.
+        _showingGlobalResults ? null : _selectedCategoryId,
+        _showingGlobalResults
+            ? null
+            : _keywordForCategoryBranch(_selectedCategoryId),
+      ),
+      onPageChange: (page) {
+        setState(() => _page = page);
+        return _reloadCurrentPage();
+      },
+      loading: _loading || _searchLoading,
+      error: _error,
+      onRetry: _reloadCurrentPage,
+      emptyMessage: _paged == null
+          ? (widget.tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品')
+          : (_query.isEmpty ? '该分类暂无可选货品' : '未找到匹配「$_query」的货品'),
       separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (ctx, i) {
-        final g = page.items[i];
+      itemBuilder: (ctx, g) {
         final picked = _selected.containsKey(g.id);
+        final customSubtitle = widget.dataSource?.subtitleOf(g);
         final showPicked =
             (widget.multiSelect || widget.requireConfirm) && picked;
         return ListTile(
+          enabled: widget.dataSource?.isSelectable(g) ?? true,
           selected: showPicked,
           // 选中行淡绿背景（全站表格统一口径 utenTableSelectedRowColor，
           // 2026-09-13 起全站统一、2026-09-22 加深后的同一份色值）。
@@ -1053,11 +1102,16 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          subtitle:
-              [
-                g.code,
-                g.colorName,
-              ].where((v) => v != null && v.isNotEmpty).join(' · ').isEmpty
+          subtitle: customSubtitle != null
+              ? Text(
+                  customSubtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : [
+                  g.code,
+                  g.colorName,
+                ].where((v) => v != null && v.isNotEmpty).join(' · ').isEmpty
               ? null
               : Text(
                   [
@@ -1095,37 +1149,6 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           },
         );
       },
-    );
-  }
-
-  Widget _buildPager(ThemeData theme) {
-    final page = _paged!;
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.chevron_left_rounded),
-            onPressed: page.page > 1
-                ? () {
-                    setState(() => _page = page.page - 1);
-                    _reloadCurrentPage();
-                  }
-                : null,
-          ),
-          Text('${page.page} / ${page.totalPages}'),
-          IconButton(
-            icon: const Icon(Icons.chevron_right_rounded),
-            onPressed: page.page < page.totalPages
-                ? () {
-                    setState(() => _page = page.page + 1);
-                    _reloadCurrentPage();
-                  }
-                : null,
-          ),
-        ],
-      ),
     );
   }
 }

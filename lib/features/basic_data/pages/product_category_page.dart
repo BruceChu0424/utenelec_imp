@@ -809,6 +809,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final clips = ref.read(goodsClipboardProvider).goodsList;
     if (clips.isEmpty) return;
     final bomRepo = ref.read(goodsBomRepositoryProvider);
+    final createdIds = <String>{};
     // 逐个货品两请求，多份粘贴期间全程遮罩；结果弹窗等遮罩撤下后再弹。
     final outcome = await _withGoodsBusyOverlay(
       clips.length * copies > 1
@@ -837,6 +838,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
             final label = newName.isNotEmpty ? newName : (d.name ?? '货品');
             try {
               final created = await repo.create(body);
+              createdIds.add(created.id);
               results.add(
                 MasterBatchItemResult(id: '${seq++}', label: label, ok: true),
               );
@@ -893,7 +895,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     );
     if (outcome == null || !mounted) return;
     await showMasterBatchOutcome(context, outcome, action: '粘贴', noun: '货品');
-    if (mounted && outcome.succeeded > 0) await _reloadToLastPage(pane);
+    if (mounted && createdIds.isNotEmpty) {
+      await _reloadToLastPage(pane);
+      pane.selectIds(createdIds);
+    }
   }
 
   /// 重载并跳到最后一页末行：新建/粘贴的货品编号在其分类族内最大，按编号正序通常
@@ -1252,12 +1257,14 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         label: '粘贴货品',
         icon: Icons.content_paste_rounded,
         enabled: enabled,
+        preserveSelectionAfterAction: true,
         onTap: () => _pasteGoodsCopies(pane, copies: 1),
       ),
       UtenMenuItem(
         label: '批量粘贴…', // TODO(l10n): 补 arb
         icon: Icons.content_copy_rounded,
         enabled: enabled,
+        preserveSelectionAfterAction: true,
         onTap: () => _batchPasteGoodsMulti(pane),
       ),
     ];

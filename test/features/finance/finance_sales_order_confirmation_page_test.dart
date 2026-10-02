@@ -297,6 +297,7 @@ void main() {
               find.byWidgetPredicate(
                 (widget) =>
                     widget is UtenSegmentBadgeLabel && widget.label == '待确认',
+                skipOffstage: false,
               ),
             );
         expect(
@@ -312,6 +313,15 @@ void main() {
         await tester.enterText(search, 'XD-ONE');
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pumpAndSettle();
+        // Searching may scroll the collapsible filter header out of view.
+        await tester.ensureVisible(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenSegmentBadgeLabel && widget.label == '待确认',
+            skipOffstage: false,
+          ),
+        );
+        await tester.pumpAndSettle();
         expect(
           pendingBadge().count,
           2,
@@ -325,6 +335,7 @@ void main() {
           find.byWidgetPredicate(
             (widget) =>
                 widget is UtenSegmentBadgeLabel && widget.label == '已驳回',
+            skipOffstage: false,
           ),
         );
         // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数; ADR-100 起已驳回段
@@ -626,10 +637,21 @@ void main() {
     expect(
       find.ancestor(
         of: find.text('预收有余 美金 200.00'),
-        matching: find.byType(Tooltip),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip && (widget.message?.isNotEmpty ?? false),
+        ),
       ),
       findsNothing,
       reason: '没有补充说明时不挂提示',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('sales-order-finance-desktop-table')),
+        matching: find.byIcon(Icons.info_outline_rounded),
+      ),
+      findsNothing,
+      reason: '客户应收的说明图标仅在表头，金额格保留悬停说明',
     );
   });
 

@@ -79,6 +79,9 @@ MasterDataTableView<GoodsListItem>(
   替换为仅该行，已勾选则保留多选——标准文件管理器行为）。
 - 选择可用条目后，`MasterDataTableView` 会等待该动作(含后续确认框/异步回执)结束，再清空
   单选或受控多选；只点外部取消菜单时保留当前选择，避免误清用户主动勾选的多行。
+- 若动作需要选中它新建的结果（如粘贴货品），该 `UtenMenuItem` 设
+  `preserveSelectionAfterAction: true`，行菜单和卡片操作菜单均跳过通用清选。
+  业务回调负责设置成功结果的选择集；默认值为 false，其他动作维持原清选行为。
 - 条目在每次手势时重新构建，可按行数据（状态=使用/禁用）、权限（`Perm.goodsEdit` 等）、
   剪贴板（`goodsClipboardProvider`）实时决定 label 与 `enabled`。
 - 触屏无右键 → 长按出菜单；菜单首项通常是「查看详情」，弥补触屏双击打开不直观的短板。

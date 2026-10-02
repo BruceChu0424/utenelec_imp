@@ -231,7 +231,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                               ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const Spacer(),
-                        if (canApply)
+                        if (canApply && filter != ExpenseFilter.draft)
                           UtenButton(
                             type: UtenButtonType.tonal,
                             icon: Icons.add_rounded,

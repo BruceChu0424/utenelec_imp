@@ -89,8 +89,10 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
   // 车间内料仓 (ADR-131): 这里只管能不能进页面, 页内按钮一律看服务端下发的 allowedActions。
   // 设置页在 /warehouse/ 下, 须先于下方 /warehouse/:code 单据段兜底。
-  if (location == RouteName.workshopMaterialBin ||
-      location == RouteName.workshopMaterialReports) {
+  if (location == RouteName.workshopMaterialBin) {
+    return const [Perm.workshopMaterialView, Perm.workshopMaterialSetup];
+  }
+  if (location == RouteName.workshopMaterialReports) {
     return const [Perm.workshopMaterialView];
   }
   if (location == RouteName.workshopMaterialIssue) {
@@ -421,6 +423,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   // 未知子段继续落入 /warehouse/:code 回退（fail-closed）。
   if (location == RouteName.warehouseTasks) {
     return const [
+      Perm.stockCountWarehouseReview,
       Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
       Perm.stockDocView,
@@ -644,7 +647,12 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.productionWhereUsedView];
   }
   if (location == RoutePath.productionPlanNew()) {
-    return const [Perm.productionMaterialAnalysisCreate];
+    // 2026-10-01 恢复空白手工新建页：计划员(analysis:create)或直接创建码
+    // (production_plan:create，V714) 都能进；与服务端 @PreAuthorize 同口径。
+    return const [
+      Perm.productionMaterialAnalysisCreate,
+      Perm.productionPlanCreate,
+    ];
   }
   if (location.startsWith('/production/plans')) {
     if (location.endsWith('/edit')) return const [Perm.productionPlanEdit];
@@ -809,8 +817,9 @@ List<String> requiredAllPermsFor(String rawLocation) {
   }
 
   // 物料分析所有首屏查询都要求 view；manage/route 等只是附加动作。
+  // （/production/plans/new 2026-10-01 起是计划编辑页，不读分析数据，
+  //  只按上面 requiredAnyPermFor 的 create 码放行。）
   if (location == RouteName.productionMaterialAnalysis ||
-      location == RoutePath.productionPlanNew() ||
       location.startsWith('/production/material-analyses/') &&
           location.endsWith('/summary')) {
     return const [Perm.productionMaterialAnalysisView];

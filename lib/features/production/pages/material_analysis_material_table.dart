@@ -91,6 +91,11 @@ abstract class _MaterialAnalysisMaterialTableState
   late final _aggregateTable = _MaterialAggregateTableController(this);
   late final _draftBudget = _MaterialPreparationDraftBudgetController(this);
   final Set<String> _tableLastReseedRoots = {};
+  bool? _preparationUseAvailableQty;
+  Future<bool?>? _preparationUsageQuestion;
+
+  String get _preparationUsageLabel =>
+      _preparationUseAvailableQty == false ? '保留余量，额外下单' : '优先使用可用余量';
 
   @override
   void _applyAnalysisKeepingPreparationEditing(
@@ -205,7 +210,34 @@ abstract class _MaterialAnalysisMaterialTableState
   @override
   bool get _materialAggregateWorking => _aggregateTable.saving;
   @override
-  Widget? _materialAggregateToolbarAction() => _aggregateTable.toolbarAction();
+  Widget? _materialAggregateToolbarAction() {
+    final aggregateAction = _aggregateTable.toolbarAction();
+    final usageAction = _preparationSupplyUsageAction();
+    if (usageAction == null) return aggregateAction;
+    return Wrap(
+      spacing: UtenSpacing.s8,
+      children: [usageAction, ?aggregateAction],
+    );
+  }
+
+  Widget? _preparationSupplyUsageAction() => _preparationUseAvailableQty == null
+      ? null
+      : TextButton.icon(
+          key: const Key('material-preparation-supply-usage'),
+          onPressed:
+              _busy || _preparationSubmissionActive || _aggregateTable.uncertain
+              ? null
+              : () => unawaited(
+                  _askClaimableSupplyUsage(
+                    _selectedIssuableGroups().visible,
+                    null,
+                    forceChoice: true,
+                  ),
+                ),
+          icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+          label: Text('下单方式：$_preparationUsageLabel'),
+        );
+
   @override
   void _materialAggregateAnalysisChanged() => _aggregateTable.analysisChanged();
   @override
@@ -1484,7 +1516,7 @@ abstract class _MaterialAnalysisMaterialTableState
               );
       },
     ),
-    // 可用 = 本行私有份额 + 公共余量；有效选中输入只临时预占公共部分。
+    // 可用只含公共余量；优先使用余量时，有效选中输入临时预占公共部分。
     // 正式下达后的库存、已下单和在途事实仍由服务端返回。
     MasterColumnDef(
       key: 'publicAvailableQty',
@@ -1503,7 +1535,7 @@ abstract class _MaterialAnalysisMaterialTableState
           final material = row.material ?? row.aggregate?.representative;
           final budget = _tableBudgetOf(row);
           final tooltip = budget != null
-              ? '本次选中量预占后，公共可用余额 $text。'
+              ? '${_preparationUseAvailableQty == false ? '本次保留余量、额外下单，不预扣公共可用量。' : '本次选中量预占后，'}公共可用余额 $text。'
                     '本行本次预占 ${_qty(budget.reservedSharedQty)}；取消勾选即恢复。已归属各订单的私有份额不再加入公共可用。'
                     '这是本次编辑预算，正式下达后按实际结果更新。'
               : material?.preparationAvailableQty != null
@@ -2332,6 +2364,7 @@ abstract class _MaterialAnalysisMaterialTableState
     _disposeMaterialTableInputs();
     _preparationPlanResults.clear();
     _preparationApproveChoice = null;
+    _preparationUseAvailableQty = null;
     _tableSeededQtyTexts.clear();
     _tableUserTypedQty.clear();
     _tableAutoSelectedKeys.clear();
@@ -4411,6 +4444,7 @@ abstract class _MaterialAnalysisMaterialTableState
       // 读不到而被静默剔掉。两格共用同一个提交单元键，所以这里必须走
       // _onTableAppendQtyTyped，让它按「下单格 + 追加格」的合计写那一个键。
       onTyped: (text) => _onTableAppendQtyTyped(group, text),
+      onFinished: _finishPreparationQuantityEditing,
       invalid: () => _tableAppendQtyInvalid(group),
     );
   }
@@ -4425,23 +4459,35 @@ abstract class _MaterialAnalysisMaterialTableState
     required String hintText,
     required bool Function() invalid,
     ValueChanged<String>? onTyped,
-  }) => RequiredCellFrame(
-    listenable: Listenable.merge([controller, _tableEstimateTick]),
-    isEmpty: invalid,
-    child: TextField(
-      key: ValueKey(key),
-      controller: controller,
-      enabled: enabled,
-      textAlign: TextAlign.right,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      style: theme.textTheme.bodySmall,
-      decoration: UtenInputDecoration(
-        InputDecoration(isDense: true, hintText: hintText),
+    ValueChanged<BuildContext>? onFinished,
+  }) => Builder(
+    builder: (fieldContext) => Focus(
+      skipTraversal: true,
+      onFocusChange: (focused) {
+        if (!focused && fieldContext.mounted) onFinished?.call(fieldContext);
+      },
+      child: RequiredCellFrame(
+        listenable: Listenable.merge([controller, _tableEstimateTick]),
+        isEmpty: invalid,
+        child: TextField(
+          key: ValueKey(key),
+          controller: controller,
+          enabled: enabled,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: theme.textTheme.bodySmall,
+          decoration: UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: hintText),
+          ),
+          // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
+          // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
+          onChanged: onTyped,
+          onSubmitted: (_) {
+            setState(() {});
+            onFinished?.call(fieldContext);
+          },
+        ),
       ),
-      // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
-      // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
-      onChanged: onTyped,
-      onSubmitted: (_) => setState(() {}),
     ),
   );
 
@@ -4586,40 +4632,100 @@ abstract class _MaterialAnalysisMaterialTableState
     return double.tryParse(controller.text.trim()) ?? double.nan;
   }
 
-  /// 这一行的下单/追加会不会被服务端「自动认领公共供给」冲减下单量：
-  /// 有可认领的同主仓公共在途（「可用数量」的在途段）、且还有归本需求的余量
-  /// （纯公共备货追加不吃认领），并且走会认领的通道——采购/直接外发委外走
-  /// notify；车间通道里顶层自制产品行（issue-plans 顶层认领）与「先自制再外发」
-  /// 的委外候选（ARRANGE 腿认领）会认领，普通自制子件不认领。
-  bool _tableClaimChoiceMatters(_MaterialGroup group, double? typedQty) {
-    if (group.representative.sharedFutureClaimableQty <= 0.0001) return false;
-    if (_tableGroupResidual(group) <= 0.0001) return false;
-    if (typedQty != null && typedQty <= 0.0001) return false;
-    if (!_tableIssueTarget(group).viaWorkshop) return true;
-    return _tableRootMakePlanLineId(group) != null ||
-        _tableSubcontractNeedsPreparation(group);
+  /// 用未被本轮输入预扣的公共余额判断，不能拿编辑后变成 0 的余额反过来
+  /// 隐藏选择。新服务端的共享池同时覆盖现货、待办理、自制和外部在途。
+  double _tableSharedAvailableBeforeEditing(_MaterialGroup group) {
+    final material = group.representative;
+    return material.preparationSharedAvailableQty ??
+        material.preparationAvailableQty ??
+        (material.mainWarehousePublicAvailableQty +
+            material.sharedFutureClaimableQty);
   }
 
-  /// 2026-09-29 用户口径：所选行有可认领的公共在途时，提交前问一次「本次是否
-  /// 用可用数量抵扣」。愿意用 = 原行为（服务端先自动认领公共在途与自制公共超产，
-  /// 只为余量新下单，可用数量相应减少）；本次下单/追加就是为了多备料的选
-  /// 「足额下单」——不扣可用数量，按填写数量直接下给车间/采购/委外。
-  ///
-  /// 返回 null = 用户取消本次提交；true = 用可用数量抵扣（原样）；false = 足额下单。
+  bool _tableClaimChoiceMatters(_MaterialGroup group, double? typedQty) {
+    final draft =
+        _aggregateTable.drafts[_aggregateTable._draftByLine[group
+            .representative
+            .materialLineId]];
+    final quantity =
+        typedQty ??
+        (draft == null
+            ? _tableSubmitQtyOf(group)
+            : double.tryParse(draft.totalText) ?? 0);
+    return quantity.isFinite &&
+        quantity > 0 &&
+        _tableSharedAvailableBeforeEditing(group) > 0;
+  }
+
+  /// 完成追加输入后询问；失焦和提交按钮可能同帧发生，提交器接管时不另开弹窗。
+  void _finishPreparationQuantityEditing(BuildContext fieldContext) {
+    final analysisId = _analysis?.analysisId;
+    final route = ModalRoute.of(fieldContext);
+    unawaited(
+      Future<void>(() async {
+        if (!mounted ||
+            !fieldContext.mounted ||
+            route?.isCurrent == false ||
+            _analysis?.analysisId != analysisId ||
+            _busy ||
+            _preparationSubmissionActive ||
+            _preparationUseAvailableQty != null) {
+          return;
+        }
+        await _askClaimableSupplyUsage(_selectedIssuableGroups().visible, null);
+      }),
+    );
+  }
+
+  void _setPreparationSupplyUsage(bool? useAvailable) {
+    if (!mounted) return;
+    setState(() {
+      _preparationUseAvailableQty = useAvailable;
+      _draftBudget.invalidate();
+      _tableEstimateTick.value++;
+      _aggregateTable._revision++;
+    });
+    if (!_preparationSubmissionActive) _aggregateTable.schedulePreview();
+  }
+
+  @override
+  void _completePreparationSupplyUsage() => _setPreparationSupplyUsage(null);
+
+  /// 一次编辑/提交共用一个选择；取消不发单，失败保留选择，成功后下一轮重新问。
   @override
   Future<bool?> _askClaimableSupplyUsage(
     Iterable<_MaterialGroup> groups,
-    Map<_MaterialGroup, double>? pending,
-  ) async {
+    Map<_MaterialGroup, double>? pending, {
+    bool forceChoice = false,
+  }) {
+    final active = _preparationUsageQuestion;
+    if (active != null) return active;
+    if (_aggregateTable.uncertain) {
+      return Future.value(
+        !(_aggregateTable._submittedRequest?.skipAutoClaim ?? false),
+      );
+    }
+    if (!forceChoice && _preparationUseAvailableQty != null) {
+      return Future.value(_preparationUseAvailableQty);
+    }
     final relevant = [
       for (final group in groups)
         if (_tableClaimChoiceMatters(group, pending?[group])) group,
     ];
-    if (relevant.isEmpty) return true;
-    final claimable = relevant
-        .map((group) => group.representative.sharedFutureClaimableQty)
-        .reduce((sum, value) => sum + value);
-    var useAvailable = true;
+    if (relevant.isEmpty && !forceChoice) return Future.value(true);
+    late final Future<bool?> question;
+    question = _showPreparationSupplyUsageChoice().whenComplete(() {
+      if (identical(_preparationUsageQuestion, question)) {
+        _preparationUsageQuestion = null;
+      }
+    });
+    _preparationUsageQuestion = question;
+    return question;
+  }
+
+  Future<bool?> _showPreparationSupplyUsageChoice() async {
+    final analysisId = _analysis?.analysisId;
+    var useAvailable = _preparationUseAvailableQty ?? true;
     final confirmed = await UtenDialog.show(
       context,
       title: '本次下单是否使用可用数量抵扣？',
@@ -4628,35 +4734,36 @@ abstract class _MaterialAnalysisMaterialTableState
           groupValue: useAvailable,
           onChanged: (value) =>
               setDialogState(() => useAvailable = value ?? true),
-          child: Column(
+          child: const Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '所选 ${relevant.length} 行有可认领的同主仓公共在途'
-                '（「可用数量」的在途段，合计 ${_qty(claimable)}）。'
-                '默认先用它抵扣，只为余量新下单。',
-              ),
-              const SizedBox(height: 12),
-              const RadioListTile<bool>(
+              Text('所选物料有可用余量。本次是先使用这些余量，还是保留余量、继续下单备货？'),
+              SizedBox(height: 12),
+              RadioListTile<bool>(
                 value: true,
-                title: Text('使用可用数量抵扣（原样）'),
-                subtitle: Text('自动认领公共在途与自制公共超产，只为余量新下单；可用数量相应减少'),
+                title: Text('优先使用可用余量'),
+                subtitle: Text('按本次需求使用可采用的余量，不足部分再下单；页面继续按选中数量预扣可用量。'),
               ),
-              const RadioListTile<bool>(
+              RadioListTile<bool>(
                 value: false,
-                title: Text('足额下单，不扣可用数量'),
-                subtitle: Text('本次下单/追加就是为了多备料：按填写数量直接下给车间/采购/委外，可用数量保持不动'),
+                title: Text('保留余量，额外下单'),
+                subtitle: Text('不预扣现有余量，按填写数量新增下单；超出需求的部分成为公共备货，增加计划可用量。'),
               ),
-              const SizedBox(height: 4),
-              const Text('本选择只影响这一次提交，可在每次下单时按需选择。'),
+              SizedBox(height: 4),
+              Text(
+                '应用于本次所选行，可在表格上方切换。需求已满足的追加量按公共备货办理，不重复占用需求。正式可用量以下单结果为准，未入库的备货不能直接领用。',
+              ),
             ],
           ),
         ),
       ),
       confirmLabel: '继续',
     );
-    if (confirmed != true) return null;
+    if (confirmed != true || !mounted || _analysis?.analysisId != analysisId) {
+      return null;
+    }
+    _setPreparationSupplyUsage(useAvailable);
     return useAvailable;
   }
 
@@ -4807,8 +4914,7 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return false;
     }
-    // 2026-09-29 用户口径：有可认领公共在途时提交前问一次「是否扣可用数量」——
-    // 足额下单 = 后面所有段（车间 / 委外 / 采购 / 同料合并汇总）都不再自动认领。
+    // 编辑时未选择的在此补问；额外下单贯穿车间、委外、采购和汇总各段。
     final claimUsage = await _askClaimableSupplyUsage(pending.keys, pending);
     if (claimUsage == null) return false;
     final skipAutoClaim = !claimUsage;
@@ -5006,6 +5112,7 @@ abstract class _MaterialAnalysisMaterialTableState
     });
     _reportMaterialTableSubmit(steps, blocked);
     final allOk = steps.isNotEmpty && steps.every((step) => step.ok);
+    if (allOk) _setPreparationSupplyUsage(null);
     // 下达成功事实与整轮结果分开：根计划或聚合内部前层已经落地时，后层失败
     // 仍须核对剩余子料和催办。完全失败则不触发；失败通知、输入和返回值保留。
     if (_orderedSince(issuedBefore)) {
@@ -5197,6 +5304,8 @@ abstract class _MaterialAnalysisMaterialTableState
       content: SingleChildScrollView(
         child: Text(
           [
+            if (_preparationUseAvailableQty != null)
+              '本次下单方式：$_preparationUsageLabel。',
             if (combined.isNotEmpty) ...[
               '同货品填写合计（仅本次选中行）：',
               for (final entries in combined.take(8))

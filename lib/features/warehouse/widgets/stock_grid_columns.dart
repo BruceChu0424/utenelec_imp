@@ -13,12 +13,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_autofill_text_controller.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import 'inbound_registration_widgets.dart' show WarehouseQtyInputField;
 
 /// 仓库明细行。
@@ -49,6 +51,14 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   String? goodsStockPlace;
   String? colorName;
   String? unitName;
+
+  /// 行级仓库（V787 2026-10-01「仓库不放表头放表格里」）：null = 未选（红框）。
+  final ValueNotifier<String?> warehouseNotifier = ValueNotifier<String?>(null);
+  String? get warehouseId => warehouseNotifier.value;
+  set warehouseId(String? v) => warehouseNotifier.value = v;
+
+  /// 本次实际库位（V787）：选品/改仓后按 仓×货品 记忆与主档通用库位预填，可改。
+  final TextEditingController place = TextEditingController();
 
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
@@ -115,14 +125,21 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
       ..goodsStockPlace = goodsStockPlace
       ..colorName = colorName
       ..unitName = unitName
+      ..warehouseId = warehouseId
       ..bookWeightEstimated = bookWeightEstimated;
     c.qty.text = qty.text;
-    c.weight.setKg(weight.kg, qtyFromWeight: weight.qtyFromWeight);
+    c.place.text = place.text;
+    c.weight.setKg(
+      weight.kg,
+      qtyFromWeight: weight.qtyFromWeight,
+      userEdited: weight.userEdited,
+    );
     c.bookQty.text = bookQty.text;
     c.checkQty.text = checkQty.text;
     c.countWeight.setKg(
       countWeight.kg,
       qtyFromWeight: countWeight.qtyFromWeight,
+      userEdited: countWeight.userEdited,
     );
     c.bookWeightKg.value = bookWeightKg.value;
     return c;
@@ -132,6 +149,8 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
   void dispose() {
     goodsNotifier.dispose();
     qty.dispose();
+    place.dispose();
+    warehouseNotifier.dispose();
     weight.dispose();
     bookQty.dispose();
     checkQty.dispose();
@@ -139,6 +158,37 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
     bookWeightKg.dispose();
     super.dispose();
   }
+}
+
+/// 行级仓库接线（V787 2026-10-01「仓库不放表头，放表格里」）：编辑页提供层级
+/// 字典与变化回调；不给（盘点/调拨）时表格保持只读主档库位列、仓库仍在表头。
+class StockGridWarehouseWiring {
+  const StockGridWarehouseWiring({
+    required this.entries,
+    this.label = '仓库',
+    this.onWarehouseChanged,
+  });
+
+  /// 层级有序仓库列表（names.warehouseHierarchy）：父仓置灰分组，行仓落叶子仓。
+  final List<WarehouseDictEntry> entries;
+
+  /// 列头文案（出库类传「发出仓」、入库类传「入库仓」由页面决定）。
+  final String label;
+
+  /// 行仓库变化回调（编辑页刷新库位建议/单重参数/默认仓记忆）。
+  final void Function(StockGridRow row)? onWarehouseChanged;
+}
+
+/// 层级字典里解析仓库名（找不到返回 null）。
+String? stockGridWarehouseLabel(
+  List<WarehouseDictEntry> entries,
+  String? warehouseId,
+) {
+  if (warehouseId == null) return null;
+  for (final entry in entries) {
+    if (entry.id == warehouseId) return entry.name;
+  }
+  return null;
 }
 
 /// 仓库单据明细的重量接线(编辑页提供)。
@@ -179,7 +229,10 @@ class StockGridWeightWiring {
 }
 
 /// 仓库明细列。
-/// - isCheck=false：货品 / 编码 / 颜色 / 系列 / 库位 / 单位 / 数量 / 实称重量。
+/// - isCheck=false + warehouse 接线：货品 / 编码 / 颜色 / 系列 / 仓库(行内选) /
+///   库位号(可编辑，按建议预填) / 单位 / 数量 / 实称重量（V787 行级仓库）。
+/// - isCheck=false 无接线（盘点/调拨）：货品 / 编码 / 颜色 / 系列 / 库位(主档只读) /
+///   单位 / 数量 / 实称重量。
 /// - isCheck=true：货品 / 编码 / 颜色 / 系列 / 库位 / 单位 / 账面 / 实盘 / 账面重量 /
 ///   实盘重量 / 盘盈亏(自动)。
 ///
@@ -188,6 +241,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
   Future<void> Function(StockGridRow row) onPickGoods, {
   bool isCheck = false,
   required StockGridWeightWiring weight,
+  StockGridWarehouseWiring? warehouse,
 }) {
   WeightQtyAutofill<StockGridRow>? autofill() => weight.autofillQty
       ? WeightQtyAutofill<StockGridRow>(
@@ -274,16 +328,66 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ),
-    EditableGridColumn<StockGridRow>(
-      key: 'stockPlace',
-      label: '库位号',
-      width: 80,
-      textOf: (r) => r.goodsStockPlace ?? '',
-      cellBuilder: (context, row) => Text(
-        row.goodsStockPlace ?? '—',
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+    if (warehouse != null) ...[
+      // V787 行级仓库：同单可跨仓逐行选（对齐销售出库 V631 / 委外批量拣货的行内
+      // 发出仓下拉）；未选红框由 RequiredCellFrame 提示。
+      EditableGridColumn<StockGridRow>(
+        key: 'warehouse',
+        label: warehouse.label,
+        width: 210,
+        required: true,
+        textOf: (r) =>
+            stockGridWarehouseLabel(warehouse.entries, r.warehouseId) ?? '',
+        cellBuilder: (context, row) => RequiredCellFrame(
+          listenable: row.warehouseNotifier,
+          isEmpty: () => row.warehouseId == null,
+          child: WarehouseHierarchyDropdown(
+            key: ValueKey('stock-grid-warehouse-${row.hashCode}'),
+            entries: warehouse.entries,
+            value: row.warehouseId,
+            labelText: null,
+            onChanged: (v) {
+              row.warehouseId = v;
+              warehouse.onWarehouseChanged?.call(row);
+            },
+          ),
+        ),
       ),
-    ),
+      // 本次实际库位：选品/改仓后按 仓×货品 记忆与主档通用库位预填，可改可清空。
+      EditableGridColumn<StockGridRow>(
+        key: 'place',
+        exactValueOf: (r) => r.place.text,
+        exactListenableOf: (r) => r.place,
+        label: '库位号',
+        width: 150,
+        headerInfo: '已按该仓历史入库记忆与货品资料通用库位预填；请按本次实际位置修改，无固定库位可清空。',
+        textOf: (r) => r.place.text,
+        cellBuilder: (context, row) => TextField(
+          key: ValueKey('stock-grid-place-${row.hashCode}'),
+          controller: row.place,
+          maxLength: 100,
+          decoration: const UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              counterText: '',
+              hintText: '按本次实际填写',
+            ),
+          ),
+        ),
+      ),
+    ] else
+      EditableGridColumn<StockGridRow>(
+        key: 'stockPlace',
+        label: '库位号',
+        width: 80,
+        textOf: (r) => r.goodsStockPlace ?? '',
+        cellBuilder: (context, row) => Text(
+          row.goodsStockPlace ?? '—',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
     EditableGridColumn<StockGridRow>(
       key: 'unit',
       label: '单位',
@@ -323,7 +427,6 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         width: 110,
         numeric: true,
         required: true,
-        // 按称重推算的黄标 ⓘ(44)计入量宽。
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.checkQty,
           isEmpty: () => row.checkQty.text.trim().isEmpty,
@@ -391,7 +494,6 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         width: 110,
         numeric: true,
         required: true,
-        // 按称重推算的黄标 ⓘ(44)计入量宽。
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.qty,
           isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,

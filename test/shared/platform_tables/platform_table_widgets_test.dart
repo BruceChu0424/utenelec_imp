@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -54,6 +55,8 @@ class _MemoryLayout extends PlatformTableLayoutNotifier {
 class _Repository extends PlatformTableRepository {
   _Repository() : super(ApiClient(Dio()));
   final writes = <Map<String, dynamic>>[];
+  final searches = <String>[];
+  final creates = <PlatformColumnDefinition>[];
   bool rowWritable = true;
   bool existingWriteAllowed = true;
   @override
@@ -70,7 +73,31 @@ class _Repository extends PlatformTableRepository {
     String scope,
     String query, {
     List<String>? ids,
-  }) async => [_note];
+  }) async {
+    searches.add(query);
+    return [_note];
+  }
+
+  @override
+  Future<PlatformColumnDefinition> create(
+    String scope, {
+    required String name,
+    required String type,
+    bool priceProtected = false,
+    PlatformFormula? formula,
+  }) async {
+    final column = PlatformColumnDefinition(
+      id: 'created-${creates.length}',
+      scope: scope,
+      name: name,
+      type: type,
+      priceProtected: priceProtected,
+      formula: formula,
+    );
+    creates.add(column);
+    return column;
+  }
+
   @override
   Future<void> recordUse(String scope, String id) async {}
   @override
@@ -246,6 +273,7 @@ void main() {
                   container = ProviderScope.containerOf(context, listen: false);
                   controller.configure(
                     context,
+                    columnEditingEnabled: true,
                     descriptor: PlatformTableDescriptor<_Row>(
                       kind: 'master',
                       tableKey: 'test.items',
@@ -452,6 +480,269 @@ void main() {
     },
   );
 
+  for (final historical in [false, true]) {
+    testWidgets(
+      '${historical ? "historical review with explicit opt-in" : "default review"} only restores existing hidden columns for a writable account',
+      (tester) async {
+        final repo = _Repository();
+        final row = _Row('record');
+        addTearDown(row.dispose);
+        final binding = PlatformTableBinding<_Row>(
+          tableKey: 'test.items',
+          scope: 'resource',
+          recordIdOf: (row) => row.id,
+          canEditValues: true,
+          snapshotOf: historical ? (_) => _permissionRow('record', true) : null,
+        );
+        final columns = [
+          MasterColumnDef<_Row>(
+            key: 'name',
+            label: '货品名称',
+            width: 180,
+            value: (_) => '产品',
+          ),
+        ];
+        // The live review deliberately omits the new option so its safe
+        // default is covered even when the account and record allow writes.
+        final table = historical
+            ? MasterDataTableView<_Row>(
+                tableKey: 'test.items',
+                columnEditingEnabled: true,
+                embedded: true,
+                platformBinding: binding,
+                columns: columns,
+                items: [row],
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+              )
+            : MasterDataTableView<_Row>(
+                tableKey: 'test.items',
+                embedded: true,
+                platformBinding: binding,
+                columns: columns,
+                items: [row],
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+              );
+        await _pump(
+          tester,
+          repo,
+          table,
+          seed: const PlatformTableLayout(
+            order: ['name', 'platform:note', 'platform:hidden'],
+            hidden: {'platform:note'},
+          ),
+        );
+        expect(find.text('原记录'), findsNothing);
+        expect(find.byIcon(Icons.edit_outlined), findsNothing);
+        final displayColumns = find.byKey(
+          const Key('platform-table-add-column'),
+        );
+        expect(tester.widget<IconButton>(displayColumns).tooltip, '显示列');
+        await tester.tap(displayColumns);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('platform-column-new')), findsNothing);
+        expect(find.byKey(const Key('platform-column-create')), findsNothing);
+        expect(find.text('复用已有列'), findsNothing);
+        expect(repo.searches, isEmpty);
+        await tester.tap(find.text('补充说明'));
+        await tester.pumpAndSettle();
+        expect(find.text('原记录'), findsOneWidget);
+        await tester.tap(find.text('原记录'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('platform-column-value')), findsNothing);
+        expect(repo.writes, isEmpty);
+        expect(repo.creates, isEmpty);
+      },
+    );
+  }
+
+  testWidgets('default editable grid does not stage or edit review fields', (
+    tester,
+  ) async {
+    final repo = _Repository();
+    final row = _Row();
+    final grid = UtenEditableGridController<_Row>(initial: [row]);
+    addTearDown(grid.dispose);
+    await _pump(
+      tester,
+      repo,
+      UtenEditableGrid<_Row>(
+        tableKey: 'test.items',
+        platformBinding: PlatformTableBinding(
+          tableKey: 'test.items',
+          scope: 'resource',
+          recordIdOf: (row) => row.id,
+          canEditValues: true,
+        ),
+        controller: grid,
+        columns: [
+          EditableGridColumn(
+            key: 'name',
+            label: '货品名称',
+            width: 180,
+            cellBuilder: (_, _) => const Text('产品'),
+          ),
+        ],
+        showAddRow: false,
+        showRowDelete: false,
+      ),
+      seed: const PlatformTableLayout(added: [_note, _calculation]),
+    );
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(row.platformFields.savePayload(), isNull);
+    final displayColumns = find.byKey(const Key('editable-grid-add-column'));
+    expect(tester.widget<IconButton>(displayColumns).tooltip, '显示列');
+    repo.searches.clear();
+    await tester.tap(displayColumns);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('platform-column-new')), findsNothing);
+    expect(repo.searches, isEmpty);
+    expect(repo.writes, isEmpty);
+  });
+
+  testWidgets('new grid explicitly enables column creation and staged input', (
+    tester,
+  ) async {
+    final repo = _Repository();
+    final row = _Row();
+    final grid = UtenEditableGridController<_Row>(initial: [row]);
+    addTearDown(grid.dispose);
+    await _pump(
+      tester,
+      repo,
+      UtenEditableGrid<_Row>(
+        tableKey: 'test.items',
+        columnEditingEnabled: true,
+        platformBinding: PlatformTableBinding(
+          tableKey: 'test.items',
+          scope: 'resource',
+          recordIdOf: (row) => row.id,
+          canEditValues: true,
+        ),
+        controller: grid,
+        columns: [
+          EditableGridColumn(
+            key: 'name',
+            label: '货品名称',
+            width: 180,
+            cellBuilder: (_, _) => const Text('新产品'),
+          ),
+        ],
+        showAddRow: false,
+        showRowDelete: false,
+      ),
+    );
+    await tester.tap(find.byKey(const Key('editable-grid-add-column')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('platform-column-new')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('platform-column-name')),
+      '新单据说明',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('platform-column-create')));
+    await tester.pumpAndSettle();
+    expect(repo.creates.single.name, '新单据说明');
+    expect(repo.creates.single.type, 'TEXT');
+    expect(find.text('新单据说明'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('platform-column-value')),
+      '待提交说明',
+    );
+    await tester.tap(find.byKey(const Key('platform-column-value-save')));
+    await tester.pumpAndSettle();
+    expect(row.platformFields.savePayload()!['cells'], [
+      {'columnId': repo.creates.single.id, 'value': '待提交说明'},
+    ]);
+    expect(repo.writes, isEmpty);
+  });
+
+  testWidgets(
+    'switching out of edit mode fences open editors and direct writes',
+    (tester) async {
+      final repo = _Repository();
+      final row = _Row('record');
+      addTearDown(row.dispose);
+      final editing = ValueNotifier(true);
+      addTearDown(editing.dispose);
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      await _pump(
+        tester,
+        repo,
+        ValueListenableBuilder<bool>(
+          valueListenable: editing,
+          builder: (context, enabled, _) {
+            controller.configure(
+              context,
+              columnEditingEnabled: enabled,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'master',
+                tableKey: 'test.items',
+                columnKeys: const ['name'],
+                rows: [row],
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: 'test.items',
+                scope: 'resource',
+                recordIdOf: (row) => row.id,
+                canEditValues: true,
+              ),
+            );
+            return TextButton(
+              onPressed: () =>
+                  showPlatformCellEditor(context, controller, row, _note),
+              child: const Text('编辑说明'),
+            );
+          },
+        ),
+      );
+      expect(controller.canEdit(row, _note), isTrue);
+      expect(controller.canDefineColumns, isTrue);
+      await tester.tap(find.text('编辑说明'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('platform-column-value')),
+        '审核时不能保存',
+      );
+      editing.value = false;
+      await tester.pumpAndSettle();
+      expect(controller.columnEditingEnabled, isFalse);
+      expect(controller.canDefineColumns, isFalse);
+      expect(controller.canEdit(row, _note), isFalse);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const Key('platform-column-value')))
+            .enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('platform-column-value-save')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await expectLater(
+        controller.saveCell(row, _note, '绕过界面写入'),
+        throwsFormatException,
+      );
+      expect(() => controller.select(_calculation), throwsFormatException);
+      expect(controller.layout.added, isEmpty);
+      expect(controller.value(row, _note), '原记录');
+      expect(repo.writes, isEmpty);
+    },
+  );
+
   testWidgets(
     'master table reads persisted fields and saves a complete CAS payload',
     (tester) async {
@@ -465,6 +756,7 @@ void main() {
         repo,
         MasterDataTableView<_Row>(
           tableKey: 'test.items',
+          columnEditingEnabled: true,
           embedded: true,
           platformBinding: PlatformTableBinding(
             tableKey: 'test.items',
@@ -527,6 +819,7 @@ void main() {
       repo,
       UtenEditableGrid<_Row>(
         tableKey: 'test.items',
+        columnEditingEnabled: true,
         platformBinding: PlatformTableBinding(
           tableKey: 'test.items',
           scope: 'resource',
@@ -576,6 +869,7 @@ void main() {
       repo,
       MasterDataTableView<_Row>(
         tableKey: 'test.items',
+        columnEditingEnabled: true,
         embedded: true,
         platformBinding: PlatformTableBinding(
           tableKey: 'test.items',
@@ -615,6 +909,7 @@ void main() {
           repo,
           UtenEditableGrid<_Row>(
             tableKey: 'test.items',
+            columnEditingEnabled: true,
             platformBinding: PlatformTableBinding(
               tableKey: 'test.items',
               scope: 'resource',

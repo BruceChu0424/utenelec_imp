@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -172,6 +173,10 @@ void main() {
       tester.widget<MasterDataTableView<GoodsListItem>>(_table).items.single.id,
       'copy-1',
     );
+    expect(
+      tester.widget<MasterDataTableView<GoodsListItem>>(_table).selectedIds,
+      {'copy-1'},
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -229,6 +234,10 @@ void main() {
     ]);
     expect(find.text('测试插座(1)'), findsOneWidget);
     expect(find.text('测试插座(2)'), findsOneWidget);
+    expect(
+      tester.widget<MasterDataTableView<GoodsListItem>>(_table).selectedIds,
+      {'copy-1', 'copy-2'},
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -250,6 +259,8 @@ void main() {
     expect(table.currentPage, 2);
     expect(table.totalPages, 2);
     expect(table.items.single.id, 'copy-1');
+    // The row menu completion must not clear the new selection after paste.
+    expect(table.selectedIds, {'copy-1'});
     expect(goods.mainPageRequests.last, (
       categoryId: 'target-category',
       page: 2,
@@ -287,6 +298,13 @@ void main() {
     expect(table.currentPage, 2);
     expect(table.items, hasLength(20));
     expect(table.items.last.id, 'copy-5');
+    expect(table.selectedIds, {
+      'copy-1',
+      'copy-2',
+      'copy-3',
+      'copy-4',
+      'copy-5',
+    });
     expect(goods.mainPageRequests.last, (
       categoryId: 'target-category',
       page: 2,
@@ -296,6 +314,62 @@ void main() {
     // No tester drag/ensureVisible: the product must scroll its own viewport.
     expect(find.text('测试插座(5)').hitTestable(), findsOneWidget);
     expect(find.text('已有货品 21').hitTestable(), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('跨页批量粘贴默认选中所有成功副本且不包含原右键行', (tester) async {
+    final goods = _GoodsRepository(targetCount: 39);
+    await _pumpPage(tester, goods, _BomRepository(), withClipboard: true);
+    await tester.tap(find.text('新分类(DST)'));
+    await tester.pumpAndSettle();
+    await _rightClickAt(tester, tester.getCenter(find.text('已有货品 1')));
+    await tester.tap(find.text('批量粘贴…'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.byIcon(Icons.add_circle_outline_rounded));
+      await tester.pump();
+    }
+    await tester.tap(find.widgetWithText(FilledButton, '粘贴'));
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
+    expect(table.currentPage, 3);
+    expect(table.items.map((item) => item.id), ['copy-2', 'copy-3']);
+    expect(table.selectedIds, {'copy-1', 'copy-2', 'copy-3'});
+    expect(find.text('测试插座(3)').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('批量粘贴中途创建失败时只选中成功副本并保留逐条失败提示', (tester) async {
+    final goods = _GoodsRepository(failCreateAttempt: 2);
+    final bom = _BomRepository();
+    await _pumpPage(tester, goods, bom, withClipboard: true);
+    await tester.tap(find.text('新分类(DST)'));
+    await tester.pumpAndSettle();
+    await _rightClickBlank(tester);
+    await tester.tap(find.text('批量粘贴…'));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 2; i++) {
+      await tester.tap(find.byIcon(Icons.add_circle_outline_rounded));
+      await tester.pump();
+    }
+    await tester.tap(find.widgetWithText(FilledButton, '粘贴'));
+    await tester.pumpAndSettle();
+    expect(find.text('测试插座(2)'), findsOneWidget);
+    expect(find.text('测试中第二份创建失败'), findsOneWidget);
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
+    expect(goods.created, hasLength(2));
+    expect(table.items.map((item) => item.id), ['copy-1', 'copy-3']);
+    expect(table.selectedIds, {'copy-1', 'copy-3'});
+    expect(bom.pasted.map((call) => call.targets.single.goodsId), [
+      'copy-1',
+      'copy-3',
+    ]);
+    expect(find.text('测试插座(2)'), findsNothing);
+    expect(find.text('测试插座(3)').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -332,9 +406,12 @@ class _Categories implements ProductCategoryRepository {
 }
 
 class _GoodsRepository implements GoodsRepository {
-  _GoodsRepository({this.targetCount = 0});
+  _GoodsRepository({this.targetCount = 0, this.failCreateAttempt});
 
   final int targetCount;
+  final int? failCreateAttempt;
+  var _createAttempts = 0;
+  final _createdNumbers = <int>[];
   final detailCalls = <String>[];
   final created = <Map<String, dynamic>>[];
   final mainPageRequests =
@@ -351,11 +428,16 @@ class _GoodsRepository implements GoodsRepository {
 
   @override
   Future<GoodsDetail> create(Map<String, dynamic> body) async {
+    _createAttempts++;
+    if (_createAttempts == failCreateAttempt) {
+      throw ApiException('CONFLICT', '测试中第二份创建失败', httpStatus: 409);
+    }
     created.add(Map<String, dynamic>.from(body));
+    _createdNumbers.add(_createAttempts);
     return GoodsDetail.fromJson({
       ...body,
-      'id': 'copy-${created.length}',
-      'code': _copyCode(created.length),
+      'id': 'copy-$_createAttempts',
+      'code': _copyCode(_createAttempts),
     });
   }
 
@@ -405,8 +487,8 @@ class _GoodsRepository implements GoodsRepository {
               if (created[i]['categoryId'] == categoryId)
                 GoodsListItem.fromJson({
                   ...created[i],
-                  'id': 'copy-${i + 1}',
-                  'code': _copyCode(i + 1),
+                  'id': 'copy-${_createdNumbers[i]}',
+                  'code': _copyCode(_createdNumbers[i]),
                 }),
           ];
     return PagedResult(

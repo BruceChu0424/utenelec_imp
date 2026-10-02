@@ -48,7 +48,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await selectFilterSegment(tester, '等待物料');
+    await selectFilterSegment(tester, '开工准备');
     await tester.pumpAndSettle();
 
     double topOf(String text) => tester.getTopLeft(find.text(text)).dy;

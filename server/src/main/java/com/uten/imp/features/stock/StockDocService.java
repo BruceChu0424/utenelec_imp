@@ -68,6 +68,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -102,6 +103,15 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     /** movement_type：1-12 共用，13/14 本模块（成品入/出）。 */
     private static final short T_OTHER_IN = 11, T_OTHER_OUT = 12;
     private static final short T_DRAW = 5, T_WDRAW = 6;
+
+    /**
+     * 行级仓库适用的单据类型（V787）：单仓语义的手工出入库单。TRANSFER（调出/调入
+     * 两腿都在表头）与 CHECK（账面按表头仓快照）不逐行选仓；服务端链路生成的行
+     * 不带行仓，自动回落表头，行为不变。
+     */
+    private static final Set<String> LINE_WAREHOUSE_TYPES =
+            Set.of("OTHER_IN", "OTHER_OUT", "WASTE", "FINISHED_IN",
+                    "FINISHED_OUT", "DRAW", "WDRAW");
     private static final short T_FINISHED_IN = 13, T_FINISHED_OUT = 14;
     private static final short T_TRANSFER_OUT = 8, T_TRANSFER_IN = 7;
     private static final short T_CHECK_GAIN = 9, T_CHECK_LOSS = 10;
@@ -1281,6 +1291,28 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         validatePositiveStockItems(d, items, "审核");
+        // 行级仓库复核（V787）：保存后行仓可能被停用/改线边，审核前重验；
+        // 出库类还要守住「不能从车间直送料位置普通出库」的运营红线。
+        if (LINE_WAREHOUSE_TYPES.contains(d.getDocType())) {
+            boolean outboundDoc = Set.of("OTHER_OUT", "WASTE", "FINISHED_OUT", "DRAW")
+                    .contains(d.getDocType());
+            for (StockDocumentItem it : items) {
+                UUID rowWarehouse = it.getWarehouseId();
+                if (rowWarehouse == null) continue;
+                if (warehouseScopes != null) {
+                    warehouseScopes.requireActiveLeafWarehouse(rowWarehouse, "行仓库");
+                }
+                if (outboundDoc
+                        && lane != FinishedInLane.WORKSHOP_MATERIAL_BIN
+                        && Boolean.TRUE.equals(
+                        em.createNativeQuery("SELECT is_line_side FROM warehouses WHERE id=:id")
+                                .setParameter("id", rowWarehouse).getSingleResult())) {
+                    throw new ApiException(ErrorCode.CONFLICT,
+                            "第 " + it.getLineNo() + " 行不能从车间直送料位置出库；"
+                                    + "请从原生产任务办理领料、退料或正式反向");
+                }
+            }
+        }
         captureGoodsSnapshots(
                 items,
                 StockGoodsSnapshot.MASTER_AT_APPROVAL,
@@ -1308,23 +1340,35 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             //（缺料静默返回；路线门在段锁查询里复核）。必须挂在事务提交之后：本事务已持有
             // 库存维度锁，齐套提升的履约足迹要求商业来源前缀先于库存锁，同事务内调用会
             // 撞锁阶段冲突；afterCommit 同步执行，approve() 返回前即完成，用户无感延迟。
+            // V787 行级仓库：按「表头仓 ∪ 各行仓」逐仓登记（同仓只跑一次）。
+            Set<UUID> inboundWarehouses = new LinkedHashSet<>();
+            inboundWarehouses.add(d.getWarehouseId());
+            for (StockDocumentItem it : items) {
+                if (it.getWarehouseId() != null) inboundWarehouses.add(it.getWarehouseId());
+            }
             UUID inboundDocId = d.getId();
-            UUID inboundWarehouseId = d.getWarehouseId();
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    try {
-                        productionReadiness.onOtherInboundApproved(inboundDocId, inboundWarehouseId);
-                    } catch (RuntimeException error) {
-                        org.slf4j.LoggerFactory.getLogger(StockDocService.class)
-                                .warn("其它入库到货即提升未完成，单据 {}，错误类型 {}，等待齐套对账兜底",
-                                        inboundDocId, error.getClass().getSimpleName());
+            for (UUID inboundWarehouseId : inboundWarehouses) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            productionReadiness.onOtherInboundApproved(inboundDocId, inboundWarehouseId);
+                        } catch (RuntimeException error) {
+                            org.slf4j.LoggerFactory.getLogger(StockDocService.class)
+                                    .warn("其它入库到货即提升未完成，单据 {}，错误类型 {}，等待齐套对账兜底",
+                                            inboundDocId, error.getClass().getSimpleName());
+                        }
                     }
-                }
-            });
+                });
+            }
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
             applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty
+        }
+        // V787 库位记忆：其它入库/产成品进仓审核成功后按 仓×货品×颜色 学习本次库位，
+        // 供下次登记/制单的建议库位带出（红冲不撤销——偏好只是未来默认）。
+        if ("OTHER_IN".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType())) {
+            learnStockDocPlaces(d, items);
         }
         d.setStatus(STATUS_APPROVED);
         d.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（服务端权威，忽略客户端值）
@@ -3341,6 +3385,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         residual.setGiftQty(proportional(
                 source.getGiftQty(), residualQty, proposed));
         residual.setPlace(source.getPlace());
+        residual.setWarehouseId(source.getWarehouseId());
         residual.setUpstreamItemId(source.getUpstreamItemId());
         residual.setExecutionSegmentId(source.getExecutionSegmentId());
         residual.setExecutionSegmentSalesAllocationId(
@@ -3548,7 +3593,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         BigDecimal baseQty = issueQty.multiply(rate);
 
-        if (d.getWarehouseId() == null
+        if (lineWarehouse(d, it) == null
                 || it.getGoodsId() == null
                 || it.getUnitId() == null
                 || it.getQty() == null
@@ -3578,7 +3623,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         return stockService.recordMovement(new StockService.MovementRequest(
                 ts, T_DRAW, SRC_STOCK_DOC, d.getId(), it.getId(),
-                it.getGoodsId(), it.getColorId(), d.getWarehouseId(), (short) (DIR_OUT * sign), baseQty,
+                it.getGoodsId(), it.getColorId(), lineWarehouse(d, it), (short) (DIR_OUT * sign), baseQty,
                 it.getUnitId(), it.getUnitRate(), amount, it.getRemark(), weight,
                 issueEventId == null ? null : new com.uten.imp.application.port.InventoryMovementCostReference.ProductionMaterialEvent(issueEventId)));
     }
@@ -4301,12 +4346,14 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             // 带着本行实称重量的那笔流水(调拨是调出腿), 审核时据它登记称重观测。
             StockService.PostedMovement weighed = null;
             switch (d.getDocType()) {
-                case "OTHER_IN" -> weighed = move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "OTHER_OUT", "WASTE" -> weighed = move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign, outbound);
-                case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "WDRAW" -> materialMovements.put(it.getId(),movementIdOf(move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign)));
-                case "FINISHED_IN" -> weighed = move(d, it, T_FINISHED_IN, DIR_IN, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
-                case "FINISHED_OUT" -> weighed = move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign);
+                // 行级仓库（V787）：单仓语义类型按行走（空沿用表头）；TRANSFER 两腿与
+                // CHECK 账面保持表头口径不变。
+                case "OTHER_IN" -> weighed = move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
+                case "OTHER_OUT", "WASTE" -> weighed = move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, lineWarehouse(d, it), ts, sign, outbound);
+                case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
+                case "WDRAW" -> materialMovements.put(it.getId(),movementIdOf(move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, lineWarehouse(d, it), ts, sign)));
+                case "FINISHED_IN" -> weighed = move(d, it, T_FINISHED_IN, DIR_IN, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
+                case "FINISHED_OUT" -> weighed = move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
                 case "TRANSFER" -> {
                     if (d.getWarehouseId() != null)
                         weighed = move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign, outbound);
@@ -4538,6 +4585,114 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         return posted == null ? null : posted.movementId();
     }
 
+    /** 行级仓库（V787）：行上指定则用行的，否则沿用表头仓。 */
+    private static UUID lineWarehouse(StockDocument d, StockDocumentItem it) {
+        return it.getWarehouseId() == null ? d.getWarehouseId() : it.getWarehouseId();
+    }
+
+    private record PlaceLearnDimension(UUID warehouseId, UUID goodsId, UUID colorId) {
+    }
+
+    /**
+     * 其它入库/产成品进仓审核后的库位学习（V787）：按 仓库×货品×颜色 把本次填写的
+     * 实际库位 upsert 进 warehouse_goods_place_preferences（source_kind=STOCK_DOC）。
+     * 同维度本次出现多个不同库位不学（与 IQC / 产成品登记同口径，防误记）；货品主档
+     * 通用库位与本次不同才回写，货架标签/即时库存等按主档展示的页面同步最新建议。
+     */
+    private void learnStockDocPlaces(StockDocument d, List<StockDocumentItem> items) {
+        Map<PlaceLearnDimension, LinkedHashSet<String>> places = new LinkedHashMap<>();
+        Map<UUID, LinkedHashSet<String>> goodsPlaces = new LinkedHashMap<>();
+        for (StockDocumentItem it : items) {
+            String place = it.getPlace() == null ? "" : it.getPlace().strip();
+            UUID warehouseId = lineWarehouse(d, it);
+            if (place.isEmpty() || place.length() > 100 || it.getGoodsId() == null
+                    || warehouseId == null) {
+                continue;
+            }
+            places.computeIfAbsent(
+                    new PlaceLearnDimension(warehouseId, it.getGoodsId(), it.getColorId()),
+                    ignored -> new LinkedHashSet<>()).add(place);
+            goodsPlaces.computeIfAbsent(it.getGoodsId(), ignored -> new LinkedHashSet<>()).add(place);
+        }
+        if (places.isEmpty()) return;
+        UUID userId = currentUser.requireId();
+        UUID employeeId = currentUser.requireEmployeeId();
+        OffsetDateTime approvedAt = OffsetDateTime.now();
+        for (Map.Entry<PlaceLearnDimension, LinkedHashSet<String>> entry : places.entrySet()) {
+            if (entry.getValue().size() != 1) continue;
+            upsertStockDocPlacePreference(
+                    entry.getKey(), entry.getValue().iterator().next(), userId, employeeId, approvedAt);
+        }
+        goodsPlaces.entrySet().stream().sorted(Map.Entry.comparingByKey(
+                        com.uten.imp.common.util.PostgresUuidOrder.INSTANCE)).forEach(entry -> {
+            if (entry.getValue().size() == 1) learnGoodsMasterPlace(entry.getKey(),
+                    entry.getValue().iterator().next(), userId);
+        });
+    }
+
+    private void upsertStockDocPlacePreference(
+            PlaceLearnDimension dimension, String place,
+            UUID userId, UUID employeeId, OffsetDateTime approvedAt) {
+        em.createNativeQuery("""
+                        INSERT INTO warehouse_goods_place_preferences(
+                            id, warehouse_id, goods_id, color_id, place,
+                            selection_count, version,
+                            source_kind, source_registration_id, source_iqc_batch_id,
+                            source_registered_at,
+                            last_selected_by, last_selected_at, created_by, updated_by)
+                        VALUES (
+                            gen_random_uuid(), :warehouseId, :goodsId, :colorId, :place,
+                            1, 0,
+                            'STOCK_DOC', NULL, NULL,
+                            :approvedAt,
+                            :employeeId, now(), :userId, :userId)
+                        ON CONFLICT ON CONSTRAINT
+                            warehouse_goods_place_preference_dimension_uk
+                        DO UPDATE SET
+                            place = EXCLUDED.place,
+                            selection_count =
+                                warehouse_goods_place_preferences.selection_count + 1,
+                            version = warehouse_goods_place_preferences.version + 1,
+                            source_kind = EXCLUDED.source_kind,
+                            source_registration_id = NULL,
+                            source_iqc_batch_id = NULL,
+                            source_registered_at = EXCLUDED.source_registered_at,
+                            last_selected_by = EXCLUDED.last_selected_by,
+                            last_selected_at = now(),
+                            updated_by = EXCLUDED.updated_by,
+                            updated_at = now()
+                        WHERE warehouse_goods_place_preferences.source_registered_at
+                            <= EXCLUDED.source_registered_at
+                        """)
+                .setParameter("warehouseId", dimension.warehouseId())
+                .setParameter("goodsId", dimension.goodsId())
+                .setParameter("colorId", dimension.colorId())
+                .setParameter("place", place)
+                .setParameter("approvedAt", approvedAt)
+                .setParameter("employeeId", employeeId)
+                .setParameter("userId", userId)
+                .executeUpdate();
+    }
+
+    /** 主档建议库位只有实际改变才更新，与本次审核同事务提交。 */
+    private void learnGoodsMasterPlace(UUID goodsId, String place, UUID userId) {
+        em.createNativeQuery("""
+                        UPDATE goods
+                        SET stock_place = :place,
+                            version = version + 1,
+                            updated_at = now(),
+                            updated_by = :userId
+                        WHERE id = :goodsId
+                          AND is_deleted = FALSE
+                          AND COALESCE(NULLIF(BTRIM(stock_place), ''), '')
+                              IS DISTINCT FROM :place
+                        """)
+                .setParameter("place", place)
+                .setParameter("userId", userId)
+                .setParameter("goodsId", goodsId)
+                .executeUpdate();
+    }
+
     // ===== 私有映射 =====
 
     private void applyHeader(StockDocSaveRequest req, StockDocument d) {
@@ -4616,6 +4771,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             it.setCountWeight(l.getCountWeight());
             it.setBookWeight(check ? bookWeights.get(new InventoryKey(l.getGoodsId(), l.getColorId())) : null);
             it.setPlace(l.getPlace());
+            it.setWarehouseId(l.getWarehouseId());
             it.setUpstreamItemId(l.getUpstreamItemId());
             it.setExecutionSegmentId(l.getExecutionSegmentId());
             it.setExecutionSegmentSalesAllocationId(
@@ -4893,6 +5049,18 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "第 " + lineNo + " 行数量必须大于 0");
         }
+        // 行级仓库（V787，2026-10-01「仓库放表格里」）：单仓语义的手工单据可逐行
+        // 指定；TRANSFER 两腿与 CHECK 账面按表头，传了视为客户端口径错误。
+        if (line.getWarehouseId() != null) {
+            if (!LINE_WAREHOUSE_TYPES.contains(document.getDocType())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "第 " + lineNo + " 行该单据类型不支持逐行指定仓库，请在表头选择");
+            }
+            if (warehouseScopes != null) {
+                warehouseScopes.requireActiveLeafWarehouse(
+                        line.getWarehouseId(), "第 " + lineNo + " 行仓库");
+            }
+        }
     }
 
     private BigDecimal baseQtyOf(StockDocItemLine l) {
@@ -4934,7 +5102,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getReportedQty(),
                 it.getBaseQty(), it.getPrice(),
                 it.getAmountOriginal(), it.getAmountLocal(), it.getWeight(), it.getGiftQty(),
-                it.getSurplusQty(), it.getCountQty(), it.getPlace(), it.getUpstreamItemId(),
+                it.getSurplusQty(), it.getCountQty(), it.getPlace(), it.getWarehouseId(), it.getUpstreamItemId(),
                 it.getExecutionSegmentId(),
                 it.getExecutionSegmentSalesAllocationId(),
                 it.getSourceDailyReportItemId(), it.getSourceDocNo(), it.getRemark(),
@@ -5017,7 +5185,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 item.getGoodsSnapshotSource(), item.getGoodsSnapshotLockedAt(), item.getColorId(),
                 item.getUnitId(), item.getUnitRate(), item.getQty(), item.getReportedQty(),
                 item.getBaseQty(), null, null, null, item.getWeight(), item.getGiftQty(),
-                item.getSurplusQty(), item.getCountQty(), item.getPlace(), item.getUpstreamItemId(),
+                item.getSurplusQty(), item.getCountQty(), item.getPlace(), item.getWarehouseId(), item.getUpstreamItemId(),
                 item.getExecutionSegmentId(), item.getExecutionSegmentSalesAllocationId(),
                 item.getSourceDailyReportItemId(), item.getSourceDocNo(), item.getRemark(),
                 item.getBillDate(), item.getIssuedQty(), true, item.getRequestedQty(),

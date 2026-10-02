@@ -7,7 +7,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../basic_data/models/goods_issue_method.dart';
 import '../../../basic_data/repositories/goods_issue_method_repository.dart';
-import 'workshop_material_labels.dart';
+import '../../../../shared/warehouse/workshop_material_first_use_impact.dart';
 
 /// 首次发到内料仓的用途确认。这里只有预览与本次确认，不单独修改货品；
 /// 返回的配置必须与仓库发料放进同一个 fulfil 命令。
@@ -54,22 +54,15 @@ class _WorkshopMaterialFirstUseCardState
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadPreview());
   }
 
-  bool get _canConfirm {
-    final preview = _preview;
-    return widget.enabled &&
-        widget.canConfigure &&
-        !_loading &&
-        preview != null &&
-        preview.goodsId == widget.goodsId &&
-        preview.matches('PERIODIC', _basis) &&
-        preview.version != null &&
-        (widget.expectedVersion == null ||
-            preview.version == widget.expectedVersion) &&
-        preview.massUnit &&
-        preview.canSwitch &&
-        preview.blockers.isEmpty &&
-        !preview.bomRows.any((row) => row.mustFixFirst);
-  }
+  bool get _canConfirm => canConfirmWorkshopMaterialFirstUse(
+    preview: _preview,
+    goodsId: widget.goodsId,
+    basis: _basis,
+    expectedVersion: widget.expectedVersion,
+    enabled: widget.enabled,
+    canConfigure: widget.canConfigure,
+    loading: _loading,
+  );
 
   Future<void> _loadPreview() async {
     if (!mounted) return;
@@ -119,105 +112,19 @@ class _WorkshopMaterialFirstUseCardState
     );
   }
 
-  String _qty(double? value) =>
-      value == null ? '未知' : wmQty(value, maxDecimals: 6);
-
-  Widget _details(String title, List<String> details) => ExpansionTile(
-    tilePadding: EdgeInsets.zero,
-    childrenPadding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-    expandedCrossAxisAlignment: CrossAxisAlignment.start,
-    title: Text(title),
-    children: [
-      for (final detail in details)
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-          child: Text('· $detail'),
-        ),
-    ],
-  );
-
-  Widget _impact(GoodsIssueMethodPreview preview) {
-    final unit = preview.unitName ?? '';
-    final changed = preview.bomRows
-        .where((row) => row.action != GoodsIssueMethodBomRow.actionKeep)
-        .length;
-    final blockers = <String>{
-      ...preview.blockers,
-      if (!preview.massUnit) '该材料基本单位不是重量单位，不能整批发到车间内料仓',
-      if (preview.version == null) '没有读到货品版本，请重新核对',
-      if (widget.expectedVersion != null &&
-          preview.version != widget.expectedVersion)
-        '申请后货品版本已变化，请退回重新盘点，不能沿用旧的用途确认',
-      if (!preview.canSwitch && preview.blockers.isEmpty) '当前条件不允许切换，请先处理后重新核对',
-      if (preview.bomRows.any((row) => row.mustFixFirst))
-        '有 BOM 行需要先处理，详情见下方影响清单',
-    };
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (blockers.isNotEmpty)
-          UtenInlineNotice(
-            key: ValueKey('wm-first-use-blockers-${widget.goodsId}'),
-            level: UtenInlineNoticeLevel.error,
-            title: '暂不能按此用途发料，申请继续保留',
-            message: blockers.join('\n'),
-          ),
-        _details('关联 BOM ${preview.bomRows.length} 行，其中 $changed 行将调整', [
-          for (final row in preview.bomRows)
-            '${[row.productCode, row.productName].whereType<String>().join(' ')}：'
-                '${row.actionLabel}'
-                '${row.qty == null ? '' : '；当前用量 ${_qty(row.qty)} $unit'}'
-                '${row.unitWeightGrams == null ? '' : '；单个重量 ${_qty(row.unitWeightGrams)} 克'}'
-                '${row.note == null ? '' : '；${row.note}'}',
-        ]),
-        if (preview.unclearedDemands.isNotEmpty)
-          _details('未清账的按单领料 ${preview.unclearedDemands.length} 项', [
-            for (final demand in preview.unclearedDemands)
-              '${demand.orderLabel} ${demand.productName ?? ''}：'
-                  '${_qty(demand.unclearedQty)} $unit 未清账'
-                  '${demand.note == null ? '' : '；${demand.note}'}',
-          ]),
-        if (preview.binBalances.isNotEmpty)
-          _details('现有内料仓余额 ${preview.binBalances.length} 项', [
-            for (final balance in preview.binBalances)
-              '${balance.warehouseName ?? '内料仓'}：${_qty(balance.qty)} $unit',
-          ]),
-        if (preview.openPeriods.isNotEmpty)
-          _details('尚未结算期间 ${preview.openPeriods.length} 项', [
-            for (final period in preview.openPeriods)
-              '${period.binName ?? '内料仓'} 第 ${period.periodNo ?? '—'} 期：'
-                  '${period.startDate ?? ''} 至 ${period.endDate ?? '尚未截止'}',
-          ]),
-        if (preview.unsettledTheory.isNotEmpty)
-          _details('未结算理论用量 ${preview.unsettledTheory.length} 项', [
-            for (final theory in preview.unsettledTheory)
-              '${theory.binName ?? '内料仓'}：${theory.productCount} 个产品，'
-                  '${_qty(theory.theoryQty)} $unit',
-          ]),
-        if (preview.inProgressSegments.isNotEmpty)
-          _details('涉及在产工单 ${preview.inProgressSegments.length} 张', [
-            for (final segment in preview.inProgressSegments)
-              [
-                segment.segmentCode,
-                segment.productCode,
-                segment.productName,
-              ].whereType<String>().join(' '),
-          ]),
-        if (preview.activeChoices.isNotEmpty)
-          _details('切换后需要重新认料的产品 ${preview.activeChoices.length} 个', [
-            for (final choice in preview.activeChoices)
-              [
-                choice.productCode,
-                choice.productName,
-              ].whereType<String>().join(' '),
-          ]),
-      ],
-    );
-  }
+  Widget _impact(GoodsIssueMethodPreview preview) =>
+      WorkshopMaterialFirstUseImpact(
+        preview: preview,
+        goodsId: widget.goodsId,
+        basis: _basis,
+        expectedVersion: widget.expectedVersion,
+        approvalContext: widget.approvalContext,
+      );
 
   @override
   Widget build(BuildContext context) {
     final preview = _preview;
+    if (widget.approvalContext) return _approvalCard(preview);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
       child: Column(
@@ -294,4 +201,74 @@ class _WorkshopMaterialFirstUseCardState
       ),
     );
   }
+
+  Widget _approvalCard(GoodsIssueMethodPreview? preview) => Card(
+    margin: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+    child: Padding(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.goodsName,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              IconButton(
+                key: ValueKey('wm-first-use-refresh-${widget.goodsId}'),
+                tooltip: '重新核对用途影响',
+                onPressed: widget.enabled && !_loading ? _loadPreview : null,
+                icon: const Icon(Icons.refresh, size: 20),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: UtenDropdownField(
+                key: ValueKey('wm-first-use-basis-${widget.goodsId}'),
+                label: '首次用途',
+                value: _basis,
+                enabled: false,
+                allowClear: false,
+                items: const [
+                  UtenDropdownItem(value: 'OWN', label: '主料：按产品用量分摊'),
+                  UtenDropdownItem(value: 'SHARED', label: '辅料：按主料用量分摊'),
+                  UtenDropdownItem(value: 'EXPENSE', label: '记车间费用'),
+                ],
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+          if (!widget.canConfigure)
+            const UtenInlineNotice(
+              level: UtenInlineNoticeLevel.warning,
+              message: '首次用途确认需货品及 BOM 编辑权限。',
+            ),
+          if (_loading)
+            const LinearProgressIndicator()
+          else if (_error != null)
+            UtenInlineNotice(
+              level: UtenInlineNoticeLevel.error,
+              message: _error!,
+            )
+          else if (preview != null)
+            _impact(preview),
+          CheckboxListTile(
+            key: ValueKey('wm-first-use-confirm-${widget.goodsId}'),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: _confirmed,
+            onChanged: _canConfirm ? _confirm : null,
+            title: const Text('确认用途及关联 BOM 调整'),
+            subtitle: const Text('审核通过后，对所有使用该材料的 BOM 生效。'),
+          ),
+        ],
+      ),
+    ),
+  );
 }

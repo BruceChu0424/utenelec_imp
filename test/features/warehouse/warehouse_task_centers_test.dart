@@ -128,6 +128,27 @@ void main() {
     );
   }
 
+  testWidgets('盘点审核快捷入口已退役，审核人从「车间内料仓」分类办理', (tester) async {
+    await tester.pumpWidget(
+      app(const WarehouseTaskCenterPage(), const {Perm.stockDocView}),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('warehouse-count-review-entry')), findsNothing);
+    await tester.pumpWidget(
+      app(const WarehouseTaskCenterPage(), const {
+        Perm.stockCountWarehouseReview,
+      }),
+    );
+    await tester.pumpAndSettle();
+    // 2026-10-01 用户口径：右上角快捷按钮删除，盘点审核并入「车间内料仓」大类。
+    expect(find.byKey(const Key('warehouse-count-review-entry')), findsNothing);
+    expect(
+      requiredAnyPermFor(RouteName.warehouseTasks),
+      contains(Perm.stockCountWarehouseReview),
+    );
+    expect(find.text('车间内料仓'), findsOneWidget);
+  });
+
   group('route permission contract', () {
     test('task centers accept any of their business view permissions', () {
       expect(requiredAnyPermFor(RouteName.warehouseOutboundTasks), const [
@@ -161,6 +182,7 @@ void main() {
       expect(requiredAnyPermFor('/warehouse/tasks/unknown'), isEmpty);
       // 2026-09-24 合并页：六大类业务域任一可看即可进入（页内再按大类显隐）。
       expect(requiredAnyPermFor(RouteName.warehouseTasks), const [
+        Perm.stockCountWarehouseReview,
         Perm.warehouseSalesOutboundView,
         Perm.subcontractOutboundView,
         Perm.stockDocView,
@@ -418,6 +440,19 @@ void main() {
     );
     await tester.pump();
     await tester.tap(find.text('其它出库'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('新建其它出库'), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('stock-doc-segment-status-OTHER_OUT')),
+        matching: find.text('草稿'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('新建其它出库'), findsNothing);
+    await tester.tap(find.text('已审'));
     await tester.pump();
     await tester.pump();
     expect(find.text('新建其它出库'), findsOneWidget);

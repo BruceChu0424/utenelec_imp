@@ -133,6 +133,7 @@ Future<(_FakeApi, _Harness)> _open(
 }
 
 Future<void> _type(WidgetTester tester, String key, String text) async {
+  await _reveal(tester, key);
   final f = find.byKey(ValueKey(key));
   await tester.ensureVisible(f);
   await tester.enterText(f, text);
@@ -143,13 +144,121 @@ UtenButton _button(WidgetTester tester, String key) =>
     tester.widget<UtenButton>(find.byKey(ValueKey(key)));
 
 Future<void> _tapButton(WidgetTester tester, String key) async {
+  await _reveal(tester, key);
   final f = find.byKey(ValueKey(key));
   await tester.ensureVisible(f);
   await tester.tap(f);
   await tester.pumpAndSettle();
 }
 
+Future<void> _reveal(WidgetTester tester, String key) async {
+  if (find.byKey(ValueKey(key)).evaluate().isNotEmpty) return;
+  final section = key.contains('sample-')
+      ? 'weigh-count-sampling-options'
+      : 'weigh-count-packaging-options';
+  final tile = find.byKey(ValueKey(section));
+  await tester.ensureVisible(tile);
+  await tester.tap(
+    find.descendant(of: tile, matching: find.byType(ListTile)).first,
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets('出库默认只填实际读数，预估20kg不冒充实称，1kg黄色提醒仍可确认', (tester) async {
+    final (_, harness) = await _open(
+      tester,
+      const WeighCountRequest(
+        mode: WeighCountContext.outbound,
+        goodsId: 'g1',
+        goodsTitle: 'V5开铁架',
+        params: _red,
+        currentQty: 1000,
+        baseUnitName: '个',
+        expectedWeightKg: 20,
+      ),
+    );
+    expect(find.text('出库称重核对 · V5开铁架'), findsOneWidget);
+    expect(find.byKey(const ValueKey('weigh-count-red-banner')), findsNothing);
+    expect(find.byKey(const ValueKey('weigh-count-tare')), findsNothing);
+    expect(find.byKey(const ValueKey('weigh-count-sample-qty')), findsNothing);
+    expect(_button(tester, 'weigh-count-primary').onPressed, isNull);
+    expect(find.textContaining('预计净重约 20 kg'), findsOneWidget);
+    await _type(tester, 'weigh-count-gross-0', '1');
+    expect(
+      find.byKey(const ValueKey('weigh-count-reference-warning')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('数值可能有问题'), findsOneWidget);
+    expect(_button(tester, 'weigh-count-primary').onPressed, isNotNull);
+    await _tapButton(tester, 'weigh-count-primary');
+    expect(harness.result!.netKg, 1);
+    expect(harness.result!.qty, isNull);
+  });
+
+  testWidgets('多次称重任一读数非法时不悄悄忽略该批，修正后可填入', (tester) async {
+    await _open(
+      tester,
+      const WeighCountRequest(
+        mode: WeighCountContext.outbound,
+        goodsId: 'g1',
+        goodsTitle: '螺丝',
+        params: _learned,
+        currentQty: 1000,
+      ),
+    );
+    await _type(tester, 'weigh-count-gross-0', '2');
+    await _tapButton(tester, 'weigh-count-add-gross');
+    await _type(tester, 'weigh-count-gross-1', 'bad');
+    expect(_button(tester, 'weigh-count-primary').onPressed, isNull);
+    await _type(tester, 'weigh-count-gross-1', '1');
+    expect(_button(tester, 'weigh-count-primary').onPressed, isNotNull);
+  });
+
+  testWidgets('375宽出库称重可录入和确认且无布局异常', (tester) async {
+    await _open(
+      tester,
+      const WeighCountRequest(
+        mode: WeighCountContext.outbound,
+        goodsId: 'g1',
+        goodsTitle: 'V5开铁架',
+        params: _red,
+        currentQty: 1000,
+        expectedWeightKg: 20,
+      ),
+    );
+    tester.view.physicalSize = const Size(375, 780);
+    await tester.pumpAndSettle();
+    await _type(tester, 'weigh-count-gross-0', '20');
+    expect(_button(tester, 'weigh-count-primary').onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('现场抽样可修正参考重量，切换抽样单位保持同一重量事实', (tester) async {
+    await _open(
+      tester,
+      const WeighCountRequest(
+        mode: WeighCountContext.outbound,
+        goodsId: 'g1',
+        goodsTitle: '螺丝',
+        params: WeightParams(key: 'g1|', goodsId: 'g1'),
+        currentQty: 1000,
+        expectedWeightKg: 20,
+      ),
+    );
+    await _type(tester, 'weigh-count-sample-qty', '20');
+    await _type(tester, 'weigh-count-sample-weight', '200');
+    expect(find.textContaining('预计净重约 10 kg'), findsOneWidget);
+    await _tapButton(tester, 'weigh-count-sample-unit');
+    await tester.tap(find.text('千克').last);
+    await tester.pumpAndSettle();
+    final sample = tester.widget<TextField>(
+      find.byKey(const ValueKey('weigh-count-sample-weight')),
+    );
+    expect(sample.controller!.text, '0.2');
+    expect(find.textContaining('预计净重约 10 kg'), findsOneWidget);
+  });
+
   testWidgets('未学准: 填入数量禁用, 录入 >= 10 件抽样后放开并存 SAMPLE', (tester) async {
     final (api, harness) = await _open(
       tester,
@@ -163,7 +272,7 @@ void main() {
         baseUnitName: '个',
       ),
     );
-    expect(find.text('称重计数 · 螺丝 M3 黑'), findsOneWidget);
+    expect(find.text('称重算数量 · 螺丝 M3 黑'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('weigh-count-red-banner')),
       findsOneWidget,
@@ -322,11 +431,11 @@ void main() {
     await _type(tester, 'weigh-count-pieces', '1');
     final target = find.byKey(const ValueKey('weigh-count-outbound-target'));
     expect(target, findsOneWidget);
-    expect(find.textContaining('需要 10,000个 → 净重约 19.993 kg'), findsOneWidget);
+    expect(find.textContaining('本次出库 10,000个，预计净重约 19.993 kg'), findsOneWidget);
     expect(find.textContaining('秤上应显示约 21.193 kg'), findsOneWidget);
 
     await _type(tester, 'weigh-count-gross-0', '21.5');
-    expect(find.textContaining('比应发多约'), findsOneWidget);
+    expect(find.textContaining('比应发多约'), findsNothing);
 
     await _tapButton(tester, 'weigh-count-primary');
     expect(harness.result!.netKg, 20.3);

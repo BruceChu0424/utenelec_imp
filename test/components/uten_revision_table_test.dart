@@ -67,6 +67,17 @@ void main() {
     final cleared = tester.widget<Text>(find.text('未填写'));
     expect(cleared.style!.color, UtenColors.errorText);
     expect(cleared.style!.fontWeight, FontWeight.w800);
+    await tester.tap(
+      find.byKey(const Key('platform-table-add-column')).hitTestable().last,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('显示列'), findsWidgets);
+    expect(find.byKey(const Key('platform-column-new')), findsNothing);
+    expect(find.text('复用已有列'), findsNothing);
+    await tester.tap(find.text('默认隐藏'));
+    await tester.pumpAndSettle();
+    expect(find.text('隐藏值'), findsWidgets);
+    expect(find.text('原说明'), findsOneWidget);
   });
   testWidgets('清空字段在新行里显示可见的红粗空值提示', (tester) async {
     await tester.pumpWidget(

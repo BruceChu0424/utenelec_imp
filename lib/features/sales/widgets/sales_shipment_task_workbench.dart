@@ -599,26 +599,34 @@ class _SalesShipmentTaskWorkbenchState
     final allowed =
         ref.watch(isSuperAdminProvider) ||
         permissions.contains(_requiredPermission);
+    final Widget main;
+    if (!allowed) {
+      main = _pinHostHeader(
+        UtenEmpty.error(
+          message: '无权查看$_title',
+          description: '请联系负责人或超级管理员开通这项查看权限。',
+        ),
+      );
+    } else if (_loading && _result == null) {
+      main = _pinHostHeader(const UtenSkeletonList());
+    } else if (_error != null && _result == null) {
+      main = _pinHostHeader(
+        UtenEmpty.error(
+          message: _error,
+          actionLabel: '重新加载',
+          onAction: () => _load(1),
+        ),
+      );
+    } else {
+      main = _body();
+    }
     // 局部 SelectionArea：销售发货审核工作台文字可框选复制（准则 §3.4；
     // 仅搜索防抖无周期轮询，可包）。
     final body = SelectionArea(
       child: SafeArea(
         child: Stack(
           children: [
-            !allowed
-                ? UtenEmpty.error(
-                    message: '无权查看$_title',
-                    description: '请联系负责人或超级管理员开通这项查看权限。',
-                  )
-                : _loading && _result == null
-                ? const UtenSkeletonList()
-                : _error != null && _result == null
-                ? UtenEmpty.error(
-                    message: _error,
-                    actionLabel: '重新加载',
-                    onAction: () => _load(1),
-                  )
-                : _body(),
+            main,
             // 2026-09-12 口径：批量提交等一段必须屏幕中央加载动画（跟随网络段）。
             if (_busyDecision)
               const Positioned.fill(
@@ -649,6 +657,20 @@ class _SalesShipmentTaskWorkbenchState
       body: body,
     );
   }
+
+  /// 骨架/错误/无权态钉住宿主分类栏：分类栏在、内容区给 [child]（数据到位后由
+  /// [_body] 接管，分类栏随页滚走）。2026-10-01 用户口径：点击子分类的瞬间
+  /// 整条分类栏不得消失。
+  Widget _pinHostHeader(Widget child) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (widget.externalHeader != null) ...[
+        widget.externalHeader!,
+        const SizedBox(height: UtenSpacing.s12),
+      ],
+      Expanded(child: child),
+    ],
+  );
 
   Widget _body() {
     final result =
@@ -806,6 +828,11 @@ class _SalesShipmentTaskWorkbenchState
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
         children: [
+          // 宿主大类行随页滚走（与 _table 同款；窄屏卡片形态对齐大屏口径）。
+          if (widget.externalHeader != null) ...[
+            widget.externalHeader!,
+            const SizedBox(height: UtenSpacing.s12),
+          ],
           _summary(result.total),
           const SizedBox(height: UtenSpacing.s12),
           _filters(),

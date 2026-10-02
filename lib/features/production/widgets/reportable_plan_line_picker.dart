@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -55,8 +54,15 @@ class _ReportablePlanLineSheet extends ConsumerStatefulWidget {
 class _ReportablePlanLineSheetState
     extends ConsumerState<_ReportablePlanLineSheet> {
   final _search = TextEditingController();
+  final _tableRows = MasterDataTableRowsController<ReportablePlanLine>();
   List<ReportablePlanLine>? _items;
   String? _error;
+  String _keyword = '';
+  bool _loading = true;
+  int _requestGeneration = 0;
+  int _page = 1;
+  int _retryPage = 1;
+  int _totalPages = 1;
   int _total = 0;
 
   /// 已点选（高亮）的计划行，**按点选先后保序**；底部「确定」才 pop 返回
@@ -89,30 +95,56 @@ class _ReportablePlanLineSheetState
     super.dispose();
   }
 
-  Future<void> _load() async {
+  void _onSearchInput(String value) {
+    // Invalidate immediately, before the search debounce can fire.
+    _requestGeneration++;
     setState(() {
-      _error = null;
+      _keyword = value.trim();
       _items = null;
+      _page = 1;
+      _retryPage = 1;
+      _totalPages = 1;
+      _total = 0;
+      _loading = true;
+      _error = null;
+    });
+  }
+
+  Future<void> _load({int? page}) async {
+    if (!mounted) return;
+    final generation = ++_requestGeneration;
+    final requestedPage = page ?? _page;
+    final keyword = _search.text.trim();
+    setState(() {
+      _keyword = keyword;
+      _retryPage = requestedPage;
+      _error = null;
+      _loading = true;
     });
     try {
-      final page = await ref
+      final result = await ref
           .read(productionDailyReportRepositoryProvider)
           .reportablePlanLines(
             executionSegmentId: widget.executionSegmentId,
+            page: requestedPage,
             size: 100,
-            keyword: _search.text,
+            keyword: keyword,
             departmentId: widget.departmentId,
           );
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
-        _items = page.items;
-        _total = page.total;
+        _items = result.items;
+        _page = result.page;
+        _totalPages = result.totalPages;
+        _total = result.total;
+        _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
-      setState(
-        () => _error = productionErrorMessage(error, fallback: '加载可报工任务失败'),
-      );
+      if (!mounted || generation != _requestGeneration) return;
+      setState(() {
+        _error = productionErrorMessage(error, fallback: '加载可报工任务失败');
+        _loading = false;
+      });
     }
   }
 
@@ -199,8 +231,9 @@ class _ReportablePlanLineSheetState
                     child: UtenSearchBar(
                       controller: _search,
                       hint: '计划号 / 产品 / 订单号 / 客户',
-                      onChanged: (_) => _load(),
-                      onSubmitted: (_) => _load(),
+                      onInputChanged: _onSearchInput,
+                      onChanged: (_) => _load(page: 1),
+                      onSubmitted: (_) => _load(page: 1),
                     ),
                   ),
                 ],
@@ -218,11 +251,7 @@ class _ReportablePlanLineSheetState
                               picked.executionSegmentCode ?? picked.planNo,
                         )
                         .join('、'),
-              hint: _picked.isEmpty
-                  ? (_total > 100
-                        ? '共 $_total 条，当前展示前 100 条，可继续搜索缩小范围'
-                        : '共 $_total 条报工/恢复任务；可勾选多条，一条一行')
-                  : null,
+              hint: _picked.isEmpty ? '共 $_total 条报工/恢复任务；可勾选多条，一条一行' : null,
               onConfirm: () => Navigator.of(
                 context,
               ).pop(List<ReportablePlanLine>.unmodifiable(_picked)),
@@ -234,34 +263,30 @@ class _ReportablePlanLineSheetState
   }
 
   Widget _body(ThemeData theme) {
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline_rounded, color: theme.colorScheme.error),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenButton(
-              type: UtenButtonType.tonal,
-              onPressed: _load,
-              child: const Text('重试'),
-            ),
-          ],
-        ),
-      );
-    }
-    final items = _items;
-    if (items == null) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
+    final items = _items ?? const <ReportablePlanLine>[];
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: MasterDataTableView<ReportablePlanLine>(
         tableKey:
             'features.production.widgets.reportable_plan_line_picker.ReportablePlanLineSheetState._body.1',
-        embedded: true,
+        virtualized: true,
+        showFullscreenToggle: false,
+        singleTapRows: true,
+        rowsController: _tableRows,
+        rowKeyOf: _lineKey,
+        currentPage: _page,
+        totalPages: _totalPages,
+        onPageChange: (page) => _load(page: page),
+        paginationScope: (
+          widget.departmentId,
+          widget.executionSegmentId,
+          _keyword,
+        ),
+        paginationRevision: _items,
+        isLoading: _loading && _items == null,
+        loadingMore: _loading && _items != null,
+        error: _error,
+        onRetry: () => _load(page: _retryPage),
         columns: [
           MasterColumnDef(
             key: 'planNo',
@@ -377,7 +402,7 @@ class _ReportablePlanLineSheetState
         nullCounts: const {},
         filters: const {},
         onFilterChanged: (_, _) {},
-        // embedded 表单击 = selectRow()（表格自己切勾选）+ onRowTap。
+        // 取件器单击 = selectRow()（表格自己切勾选）+ onRowTap。
         // 所以这里**只负责提示**，不再自己 _toggle，否则一次点击切两下。
         onRowTap: (item) {
           if (!item.canReport) {
@@ -394,7 +419,7 @@ class _ReportablePlanLineSheetState
         selectedIds: {for (final picked in _picked) _lineKey(picked)},
         onSelectedIdsChanged: (next) => setState(() {
           _picked.removeWhere((picked) => !next.contains(_lineKey(picked)));
-          for (final item in items) {
+          for (final item in _tableRows.items) {
             if (next.contains(_lineKey(item)) && !_isPicked(item)) {
               _picked.add(item);
             }

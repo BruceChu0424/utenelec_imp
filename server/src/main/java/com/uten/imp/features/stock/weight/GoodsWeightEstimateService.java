@@ -11,8 +11,10 @@ import com.uten.imp.features.stock.weight.EstimateResult.Evidence;
 import com.uten.imp.features.stock.weight.EstimateResult.Row;
 import com.uten.imp.features.stock.weight.GoodsWeightFacts.EstimateRow;
 import com.uten.imp.features.stock.weight.GoodsWeightFacts.Profile;
+import com.uten.imp.features.stock.weight.GoodsWeightFactsStore.BalanceKey;
 import com.uten.imp.features.stock.weight.dto.BalanceWeightView;
 import com.uten.imp.features.stock.weight.dto.GoodsWeightView;
+import com.uten.imp.features.stock.weight.dto.StockWeightBalance;
 import com.uten.imp.features.stock.weight.dto.WeightObservationRow;
 import com.uten.imp.features.stock.weight.dto.WeightParams;
 import com.uten.imp.features.stock.weight.dto.WeightParamsRequest;
@@ -234,13 +236,16 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
         }
         Map<UUID, GoodsWeightFacts> byGoods = facts.loadAll(goodsIds);
         Map<String, EstimateRow> supplierRows = facts.supplierRows(goodsIds, supplierIds);
+        Map<BalanceKey, StockWeightBalance> balances = facts.stockBalances(lines);
         Instant now = Instant.now();
         List<WeightParams> items = new ArrayList<>(lines.size());
         for (WeightParamsRequest.Line line : lines) {
             GoodsWeightFacts goods = byGoods.getOrDefault(line.goodsId(), GoodsWeightFacts.missing(line.goodsId()));
             EstimateRow supplierRow = line.supplierId() == null ? null
                     : supplierRows.get(GoodsWeightFactsStore.supplierKey(line.goodsId(), line.supplierId()));
-            items.add(WeightParamsResolver.resolve(goods, supplierRow, line.key(), now, scaleResKg).params());
+            WeightParams resolved = WeightParamsResolver.resolve(goods, supplierRow, line.key(), now, scaleResKg)
+                    .params();
+            items.add(resolved.withStockBalance(goods.exists() ? balances.get(BalanceKey.of(line)) : null));
         }
         return items;
     }

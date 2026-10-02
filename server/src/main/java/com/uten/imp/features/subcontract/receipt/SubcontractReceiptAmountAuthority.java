@@ -44,7 +44,7 @@ public class SubcontractReceiptAmountAuthority {
                            source_order.settlement_method_id, source_order.tax_rate,
                            source_order.status,
                            COALESCE(source_item.arrival_overage_posted_qty,0),
-                           source_item.qty, source_item.amount_original, source_item.amount_local
+                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input
                     FROM subcontract_order_items source_item
                     JOIN subcontract_orders source_order ON source_order.id=source_item.order_id
                     WHERE source_item.id=:itemId
@@ -95,7 +95,7 @@ public class SubcontractReceiptAmountAuthority {
                     ? BigDecimal.ZERO : decimal(currentAllowance.getFirst());
             AuthorizedSource authorized = authorizedSource(
                     sourceQty, sourceOriginal, sourceLocal, sourcePrice, sourceRate,
-                    postedOverageQty, currentApproved);
+                    postedOverageQty, currentApproved, decimal(source[11]));
             Object[] prior = (Object[]) em.createNativeQuery("""
                     SELECT COALESCE(SUM(receipt_item.qty),0),
                            COALESCE(SUM(receipt_item.amount_original),0),
@@ -181,6 +181,14 @@ public class SubcontractReceiptAmountAuthority {
             BigDecimal baseQty, BigDecimal baseOriginal, BigDecimal baseLocal,
             BigDecimal sourcePrice, BigDecimal sourceRate,
             BigDecimal postedOverageQty, BigDecimal currentApprovedOverageQty) {
+        return authorizedSource(baseQty, baseOriginal, baseLocal, sourcePrice, sourceRate,
+                postedOverageQty, currentApprovedOverageQty, null);
+    }
+
+    static AuthorizedSource authorizedSource(
+            BigDecimal baseQty, BigDecimal baseOriginal, BigDecimal baseLocal,
+            BigDecimal sourcePrice, BigDecimal sourceRate,
+            BigDecimal postedOverageQty, BigDecimal currentApprovedOverageQty, BigDecimal totalInput) {
         if (baseQty == null || baseQty.signum() <= 0
                 || baseOriginal == null || baseOriginal.signum() < 0
                 || baseLocal == null || baseLocal.signum() < 0
@@ -191,7 +199,7 @@ public class SubcontractReceiptAmountAuthority {
             throw conflict("委外到货授权数量或金额快照无效");
         }
         BigDecimal overageQty = postedOverageQty.add(currentApprovedOverageQty);
-        BigDecimal overageOriginal = MoneyPolicy.exactProduct(overageQty, sourcePrice);
+        BigDecimal overageOriginal = MoneyPolicy.orderOverageAmount(overageQty, sourcePrice, totalInput, baseQty);
         BigDecimal overageLocal = MoneyPolicy.local(overageOriginal, sourceRate);
         return new AuthorizedSource(baseQty.add(overageQty),
                 baseOriginal.add(overageOriginal), baseLocal.add(overageLocal));

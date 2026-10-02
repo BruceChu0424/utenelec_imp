@@ -9,6 +9,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/stock/counts/models/stock_count_request.dart';
 import 'package:uten_imp/features/stock/counts/repositories/stock_count_request_repository.dart';
 import 'package:uten_imp/features/stock/counts/widgets/stock_count_inline_editor.dart';
@@ -51,6 +52,7 @@ CountStockRow _row(
       ? 'PP 颗粒'
       : '零库存物料',
   goodsCode: goodsId,
+  categoryId: 'raw',
   unitId: 'unit-1',
   unitName: factor == null ? '个' : '克',
   qty: qty,
@@ -71,6 +73,18 @@ class _CountRepo extends StockCountRequestRepository {
       <({String warehouse, List<Map<String, dynamic>> lines, String key})>[];
   Future<PagedResult<CountStockRow>> Function(String, List<String>)? deferred;
   @override
+  Future<List<ProductCategoryNode>> candidateCategories(
+    String warehouseId,
+  ) async => [
+    ProductCategoryNode(
+      id: 'raw',
+      code: '',
+      name: '原材料',
+      level: 0,
+      children: [],
+    ),
+  ];
+  @override
   Future<StockCountScope> scope({String? warehouseId}) async => StockCountScope(
     warehouses: warehouses
         .where((w) => warehouseId == null || w.id == warehouseId)
@@ -81,6 +95,7 @@ class _CountRepo extends StockCountRequestRepository {
   Future<PagedResult<CountStockRow>> candidates({
     required String warehouseId,
     String? keyword,
+    String? categoryId,
     List<String> goodsIds = const [],
     int page = 1,
     int size = 50,
@@ -431,9 +446,11 @@ void main() {
       expect(find.text('盘点请选择具体仓库'), findsNothing);
       await tester.tap(find.byKey(const Key('stock-count-add')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('stock-count-candidate-pp|')));
+      await tester.tap(find.text('原材料'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('PP 颗粒'));
       await tester.pump();
-      await tester.tap(find.text('确定').last);
+      await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
       await tester.pumpAndSettle();
       final table = tester.widget<MasterDataTableView<WmPositionRow>>(
         find.byType(MasterDataTableView<WmPositionRow>),

@@ -543,6 +543,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final total = _page?.total ?? 0;
     return Scaffold(
@@ -607,6 +608,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<WarehouseListItem>(
+                    columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.warehouse_page.WarehousePageState._buildDraftHost.1',
                     columns: _columns,

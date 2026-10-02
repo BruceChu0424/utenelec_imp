@@ -108,7 +108,7 @@ String _number(double value) => value == value.roundToDouble()
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
 
-/// 不能转时红字的统一开头(与服务端审核报错、数据库守卫同一句)。
+/// 不能转时悬停提示的统一开头(与服务端审核报错、数据库守卫同一句)。
 const directTransferUnavailablePrefix = '无法转到下一道工序：';
 
 /// 候选读取失败时的提示：读取失败不等于「没有上层工单」。
@@ -209,7 +209,7 @@ class DirectTransferCandidatesResult {
 
   final bool loadFailed;
 
-  /// 「产出去向」格要显示的红字：读取失败或一个可送的都没有时给出，否则为空。
+  /// 「产出去向」格的提示：不可转原因用于悬停，读取失败直接报错；有候选时为空。
   String? get blockedText {
     if (loadFailed) return directTransferLoadFailedText;
     if (candidates.isNotEmpty) return null;

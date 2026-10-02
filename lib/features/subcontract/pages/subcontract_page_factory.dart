@@ -352,7 +352,9 @@ class SubcontractExecutionCreateBlockedPage extends StatelessWidget {
         child: UtenContentContainer(
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 680),
+              constraints: const BoxConstraints.tightFor(
+                width: double.infinity,
+              ),
               child: Semantics(
                 container: true,
                 label: '$title。$description',

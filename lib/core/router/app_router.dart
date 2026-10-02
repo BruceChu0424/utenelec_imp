@@ -90,6 +90,7 @@ import '../../features/purchase/widgets/purchase_draft_task_category.dart';
 import '../../features/purchase/config/purchase_report_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
 import '../../features/stock/pages/instant_inventory_page.dart';
+import '../../features/stock/pages/instant_inventory_overview_page.dart';
 import '../../features/stock/pages/stock_item_detail_page.dart';
 import '../../features/warehouse/models/stock_check_prefill.dart';
 import '../../features/warehouse/models/stock_doc.dart';
@@ -896,6 +897,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   ? RouteName.stockInstantInventory
                   : RouteName.stockItemDetail(goodsId, tab: 'ledger');
             },
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.stockInstantInventoryOverview,
+            name: 'stock-instant-inventory-overview',
+            builder: (_, state) => InstantInventoryOverviewPage(
+              scope: InstantInventoryScope.fromQuery(state.uri.queryParameters),
+              scopeLabel: state.uri.queryParameters['scopeLabel'],
+            ),
           ),
           DraftAwareGoRoute(
             path: RouteName.stockInstantInventory,

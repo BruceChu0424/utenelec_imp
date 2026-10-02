@@ -15,7 +15,7 @@ public final class StockCountDtos {
             @NotNull @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal targetQty,
             @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal targetWeightKg,
             boolean weightChanged, String materialSetupBasis, @NotNull Long goodsVersion) {}
-    public record Submit(@NotNull UUID warehouseId, @NotBlank @Size(max=500) String reason,
+    public record Submit(@NotNull UUID warehouseId, @Size(max=500) String reason,
             @NotBlank @Pattern(regexp="[A-Za-z0-9._:-]{8,128}") String idempotencyKey,
             @NotEmpty @Size(max=500) List<@Valid LineInput> lines) {}
     public record Decision(@NotNull @PositiveOrZero Long expectedVersion,

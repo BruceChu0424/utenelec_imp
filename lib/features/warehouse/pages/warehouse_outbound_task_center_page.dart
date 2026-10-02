@@ -276,12 +276,12 @@ class _SubcontractOutboundSegmentState
       ),
       _historyMode => WarehouseHistoryGate(
         timeKey: const Key('subcontract-outbound-history-time'),
+        externalHeader: combined,
         builder: (time) => WarehouseDocumentHistoryView(
           type: WarehouseDocumentHistoryType.subcontractMaterialIssue,
           keyword: widget.keyword,
           refreshTick: widget.refreshTick,
           embedded: true,
-          externalHeader: combined,
           dateFrom: time.range == null
               ? null
               : ChinaDateTime.formatDate(time.range!.start),

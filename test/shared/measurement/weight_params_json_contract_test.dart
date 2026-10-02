@@ -5,6 +5,94 @@ import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';
 
 void main() {
+  test('库存参数请求按仓库与颜色隔离，旧缓存键保持兼容', () {
+    const a = WeightParamsLine(
+      goodsId: 'g',
+      supplierId: 's',
+      warehouseId: 'w1',
+      colorId: 'red',
+    );
+    const b = WeightParamsLine(
+      goodsId: 'g',
+      supplierId: 's',
+      warehouseId: 'w2',
+      colorId: 'red',
+    );
+    const c = WeightParamsLine(
+      goodsId: 'g',
+      supplierId: 's',
+      warehouseId: 'w1',
+      colorId: 'blue',
+    );
+    expect(a.key, 'g|s|w1|red');
+    expect({a.key, b.key, c.key}.length, 3);
+    expect(const WeightParamsLine(goodsId: 'g', supplierId: 's').key, 'g|s');
+    expect(a.toJson(), {
+      'key': a.key,
+      'goodsId': 'g',
+      'supplierId': 's',
+      'warehouseId': 'w1',
+      'colorId': 'red',
+    });
+  });
+
+  test('同仓色库存余额可在学习前按数量比例给出参考并识别离谱重量', () {
+    final params = WeightParams.fromJson({
+      'key': 'g||w|red',
+      'goodsId': 'g',
+      'basis': 'NONE',
+      'stockBalance': {
+        'warehouseId': 'w',
+        'colorId': 'red',
+        'qtyBase': 1000,
+        'weightKg': 20,
+        'estimated': false,
+      },
+    });
+    final stock = params.stockBalance!;
+    expect(stock.colorId, 'red');
+    expect(stock.expectedKgFor(500), 10);
+    final suggestion = params.suggestionFor(
+      1000,
+      mode: WeightCaptureMode.outbound,
+    )!;
+    expect(suggestion.kg, 20);
+    expect(suggestion.differsFrom(1), isTrue);
+    expect(suggestion.differsFrom(20.2), isFalse);
+    for (final qty in [null, 0.0, -1.0, double.nan, double.infinity]) {
+      expect(params.suggestionFor(qty), isNull);
+    }
+  });
+
+  test('未知或非法库存不估重，入库可信历史优先、出库对应库存优先', () {
+    final params = WeightParams.fromJson({
+      'key': 'g||w|',
+      'goodsId': 'g',
+      'basis': 'LEARNED',
+      'logMean': -6.214608098422191,
+      'lotPrior': 0.0004,
+      'tier': 'GREEN',
+      'stockBalance': {'warehouseId': 'w', 'qtyBase': 1000, 'weightKg': 20},
+    });
+    expect(params.suggestionFor(1000)!.kg, closeTo(2, 0.0001));
+    expect(
+      params.suggestionFor(1000, mode: WeightCaptureMode.outbound)!.kg,
+      20,
+    );
+    for (final weight in [null, 0, -1, 'NaN', 'Infinity']) {
+      final unknown = WeightParams.fromJson({
+        'key': 'g',
+        'goodsId': 'g',
+        'stockBalance': {
+          'warehouseId': 'w',
+          'qtyBase': 1000,
+          'weightKg': weight,
+        },
+      });
+      expect(unknown.suggestionFor(1000), isNull);
+    }
+  });
+
   test('params carry the server scale resolution into predictions', () {
     final params = WeightParams.fromJson({
       'key': 'g1|',

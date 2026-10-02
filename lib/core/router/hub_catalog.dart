@@ -30,7 +30,6 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     // 2026-09-24 三段式：任务中心一张卡（合并页）+ 新建单据六卡（creator-only）。
     // 调拨/盘点列表卡与委外两张历史只读卡撤下（浏览并入任务中心大类）。
     RouteName.warehouseTasks,
-    RouteName.warehouseStockCountReview,
     RoutePath.stockDocNew('OTHER_OUT'),
     RoutePath.stockDocNew('FINISHED_OUT'),
     RoutePath.stockDocNew('OTHER_IN'),
@@ -73,13 +72,15 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     // ADR-131 车间内料仓用量与结算 (塑料用量附表的数据来源)。
     RouteName.workshopMaterialReports,
   ],
-  RouteName.production: const [
+  RouteName.production: [
     // 2026-09-24 三段式：任务中心置顶（调度台更名生产任务中心）+ 两个审批队列；
     // 计划/日报列表卡撤下（浏览走任务中心与既有深链），新建卡直达分析/新建页。
+    // 2026-10-01 新建生产计划单恢复空白手工新建页 /production/plans/new
+    // （原重定向到物料分析，与「新建单据进去都是默认新建页」口径冲突）。
     RouteName.productionSchedule,
     RouteName.productionOverproductionRateRequests,
     RouteName.productionMaterialIncrementRequests,
-    RouteName.productionMaterialAnalysis,
+    RoutePath.productionPlanNew(),
     '/production/daily-reports/new',
     '/production/reports/plan-detail',
     '/production/reports/plan-summary',

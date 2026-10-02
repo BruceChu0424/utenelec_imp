@@ -1181,8 +1181,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       context.replace('/finance/${_cfg.type.pathSegment}/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+    } catch (error, stack) {
+      // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
+      debugPrint('保存钱流单据失败: $error\n$stack');
+      if (mounted) {
+        context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -2473,6 +2477,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                               ),
                               _savedFields(
                                 UtenEditableGrid<FinanceGridRow>(
+                                  columnEditingEnabled:
+                                      !_loading &&
+                                      !_saving &&
+                                      _initializationError == null &&
+                                      _createdDocId == null,
                                   tableKey:
                                       'finance.${widget.docType.name}.items',
                                   controller: _grid,

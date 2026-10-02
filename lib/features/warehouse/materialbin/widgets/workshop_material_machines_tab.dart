@@ -235,6 +235,8 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
     ),
     EditableGridColumn<WmMachineRow>(
       key: 'tonnage',
+      exactValueOf: (row) => row.tonnage.text,
+      exactListenableOf: (row) => row.tonnage,
       label: '吨位',
       width: 90,
       numeric: true,
@@ -282,6 +284,8 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
     ),
     EditableGridColumn<WmMachineRow>(
       key: 'sortOrder',
+      exactValueOf: (row) => row.sortOrder.text,
+      exactListenableOf: (row) => row.sortOrder,
       label: '排序',
       width: 80,
       numeric: true,

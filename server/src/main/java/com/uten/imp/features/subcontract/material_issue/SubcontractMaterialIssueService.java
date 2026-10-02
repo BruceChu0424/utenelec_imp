@@ -240,10 +240,13 @@ public class SubcontractMaterialIssueService {
         }
         mutationGuard.verifyUnchanged();
         canonicalizePlanLines(req.getItems(), existingPlanItemIds, !existingPlanItemIds.isEmpty());
+        MaterialIssueDraftRows.Reconciled reconciled = MaterialIssueDraftRows.reconcile(id,
+                itemRepo.findByIssueIdOrderByLineNoAsc(id), req.getItems());
         applyHeader(req, r);
-        itemRepo.deleteByIssueId(id);
+        if (!reconciled.removed().isEmpty()) itemRepo.deleteAll(reconciled.removed());
         itemRepo.flush();
-        List<MaterialIssueItemDto> items = saveItems(r, req.getItems());
+        List<MaterialIssueItemDto> items = saveItems(r, req.getItems(), reconciled.targets());
+        itemRepo.flush();
         planService.reserveDraft(r.getId(), r.getWarehouseId());
         applyTotals(r, items);
         return toDetail(r, items);
@@ -695,7 +698,8 @@ public class SubcontractMaterialIssueService {
         issue.setApproverName(nameResolver.nameOf(issue.getApproverId()));
     }
 
-    private List<MaterialIssueItemDto> saveItems(SubcontractMaterialIssue r, List<MaterialIssueItemLine> lines) {
+    private List<MaterialIssueItemDto> saveItems(SubcontractMaterialIssue r, List<MaterialIssueItemLine> lines,
+                                                List<SubcontractMaterialIssueItem> targets) {
         List<MaterialIssueItemDto> out = new ArrayList<>(lines.size());
         Map<UUID, SubcontractGoodsSnapshot> orderSnapshots =
                 SubcontractGoodsSnapshot.fromOrderItems(
@@ -712,7 +716,7 @@ public class SubcontractMaterialIssueService {
         List<BigDecimal> weights = capturedWeights(lines);
         int autoLine = 1;
         for (MaterialIssueItemLine l : lines) {
-            SubcontractMaterialIssueItem it = new SubcontractMaterialIssueItem();
+            SubcontractMaterialIssueItem it = targets.get(autoLine - 1);
             it.setIssueId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());

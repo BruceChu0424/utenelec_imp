@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -112,6 +113,59 @@ Future<void> _pumpApp(
 }
 
 void main() {
+  testWidgets(
+    'continues downward without removing rows and selects an earlier row',
+    (tester) async {
+      final nextPage = Completer<Map<String, dynamic>>();
+      final api = _FakeApiClient((query) async {
+        if (query['page'] == 2) return nextPage.future;
+        return _page(
+          items: [_item(id: 'first', code: 'MAT-1', name: '首屏物料')],
+          totalPages: 2,
+          total: 2,
+        );
+      });
+      GoodsListItem? selected;
+      await _pumpApp(
+        tester,
+        api,
+        size: const Size(1200, 900),
+        onSelected: (value) => selected = value,
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('where-used-material-search')),
+        'MAT',
+      );
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      final list = find.byKey(const Key('where-used-material-paged-list'));
+      final originalElement = tester.element(list);
+
+      await _wheelMaterial(tester, '首屏物料(MAT-1)', 100);
+      expect(api.queries.map((query) => query['page']), [1, 2]);
+      expect(find.text('首屏物料(MAT-1)'), findsOneWidget);
+      expect(tester.element(list), same(originalElement));
+      nextPage.complete(
+        _page(
+          items: [_item(id: 'second', code: 'MAT-2', name: '续页物料')],
+          page: 2,
+          totalPages: 2,
+          total: 2,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('首屏物料(MAT-1)'), findsOneWidget);
+      expect(find.text('续页物料(MAT-2)'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('where-used-material-first')));
+      await tester.pumpAndSettle();
+      expect(selected?.id, 'first');
+      expect(find.byKey(const Key('where-used-material-picker')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('empty keyword never requests and clearing restores the prompt', (
     tester,
   ) async {
@@ -341,7 +395,13 @@ void main() {
       );
     });
 
-    await _pumpApp(tester, api, size: const Size(390, 844), onSelected: (_) {});
+    GoodsListItem? selected;
+    await _pumpApp(
+      tester,
+      api,
+      size: const Size(390, 844),
+      onSelected: (value) => selected = value,
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(Dialog), findsNothing);
@@ -355,12 +415,43 @@ void main() {
     await tester.tap(find.byKey(const Key('where-used-material-retry')));
     await tester.pumpAndSettle();
     expect(find.text('第 1 页物料(MAT-1)'), findsOneWidget);
-    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('/ 2'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('where-used-material-next')));
+    await tester.tap(find.text('下一页'));
     await tester.pumpAndSettle();
     expect(api.queries.last, containsPair('page', 2));
     expect(find.text('第 2 页物料(MAT-2)'), findsOneWidget);
+    final oldRowTop = tester.getTopLeft(find.text('第 2 页物料(MAT-2)')).dy;
+    await _wheelMaterial(tester, '第 2 页物料(MAT-2)', -100);
+    await tester.pumpAndSettle();
+    expect(api.queries.map((query) => query['page']), [1, 1, 2, 1]);
+    expect(
+      tester.getTopLeft(find.text('第 2 页物料(MAT-2)')).dy,
+      closeTo(oldRowTop, 0.5),
+    );
+    // The old row stays anchored; continue upward to expose the prepended row.
+    await _wheelMaterial(tester, '第 2 页物料(MAT-2)', -200);
+    await tester.pumpAndSettle();
+    expect(api.queries.map((query) => query['page']), [1, 1, 2, 1]);
+    expect(find.text('第 1 页物料(MAT-1)'), findsOneWidget);
+    expect(find.text('第 2 页物料(MAT-2)'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('where-used-material-page-1')));
+    await tester.pumpAndSettle();
+    expect(selected?.id, 'page-1');
     expect(tester.takeException(), isNull);
   });
+}
+
+Future<void> _wheelMaterial(
+  WidgetTester tester,
+  String name,
+  double delta,
+) async {
+  final pointer = TestPointer(1, PointerDeviceKind.mouse);
+  await tester.sendEventToBinding(
+    pointer.hover(tester.getCenter(find.text(name))),
+  );
+  await tester.sendEventToBinding(pointer.scroll(Offset(0, delta)));
+  await tester.pump();
+  await tester.pump();
 }

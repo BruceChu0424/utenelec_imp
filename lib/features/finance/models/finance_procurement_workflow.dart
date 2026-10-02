@@ -400,6 +400,7 @@ class FinanceProcurementReviewLine {
     this.unitRate,
     this.qty,
     this.price,
+    this.totalAmountInput,
     this.amountOriginal,
     this.amountLocal,
     this.deliverDate,
@@ -431,6 +432,9 @@ class FinanceProcurementReviewLine {
   final String? unitRate;
   final String? qty;
   final String? price;
+
+  /// 填写总金额计价时，单价仅是反算参考值。
+  final String? totalAmountInput;
   final String? amountOriginal;
   final String? amountLocal;
   final String? deliverDate;
@@ -461,6 +465,7 @@ class FinanceProcurementReviewLine {
       unitRate: _firstNullableString([json['unitRate']]),
       qty: _firstNullableString([json['qty']]),
       price: _firstNullableString([json['price']]),
+      totalAmountInput: _firstNullableString([json['totalAmountInput']]),
       amountOriginal: _firstNullableString([json['amountOriginal']]),
       amountLocal: _firstNullableString([json['amountLocal']]),
       deliverDate: _firstNullableString([json['deliverDate']]),

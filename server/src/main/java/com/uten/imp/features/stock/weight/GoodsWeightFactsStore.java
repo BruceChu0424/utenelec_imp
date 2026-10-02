@@ -2,6 +2,8 @@ package com.uten.imp.features.stock.weight;
 
 import com.uten.imp.features.stock.weight.GoodsWeightFacts.EstimateRow;
 import com.uten.imp.features.stock.weight.GoodsWeightFacts.Profile;
+import com.uten.imp.features.stock.weight.dto.StockWeightBalance;
+import com.uten.imp.features.stock.weight.dto.WeightParamsRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -17,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.UUID;
 
 /**
@@ -41,6 +44,56 @@ public class GoodsWeightFactsStore {
     /** 一个货品的事实; 货品不存在时 exists=false。 */
     public GoodsWeightFacts load(UUID goodsId) {
         return loadAll(List.of(goodsId)).getOrDefault(goodsId, GoodsWeightFacts.missing(goodsId));
+    }
+
+    /** 库存账的精确维度; null 颜色只匹配无色余额。 */
+    public record BalanceKey(UUID warehouseId, UUID goodsId, UUID colorId) {
+        static BalanceKey of(WeightParamsRequest.Line line) {
+            return new BalanceKey(line.warehouseId(), line.goodsId(), line.colorId());
+        }
+    }
+
+    /**
+     * 按请求维度批量读库存均重依据, 不把不同仓库/颜色交叉汇总。
+     * 不传仓库时不查余额, 未知、零数、负数或零重量不构成比例预填依据。
+     */
+    public Map<BalanceKey, StockWeightBalance> stockBalances(Collection<WeightParamsRequest.Line> lines) {
+        Set<BalanceKey> unique = new LinkedHashSet<>();
+        for (WeightParamsRequest.Line line : lines) {
+            if (line.warehouseId() != null) unique.add(BalanceKey.of(line));
+        }
+        List<BalanceKey> keys = new ArrayList<>(unique);
+        Map<BalanceKey, StockWeightBalance> result = new HashMap<>();
+        for (int offset = 0; offset < keys.size(); offset += CHUNK) {
+            List<BalanceKey> chunk = keys.subList(offset, Math.min(offset + CHUNK, keys.size()));
+            StringJoiner requested = new StringJoiner(", ");
+            MapSqlParameterSource args = new MapSqlParameterSource();
+            for (int i = 0; i < chunk.size(); i++) {
+                BalanceKey key = chunk.get(i);
+                requested.add("(CAST(:warehouse" + i + " AS uuid), CAST(:goods" + i
+                        + " AS uuid), CAST(:color" + i + " AS uuid))");
+                args.addValue("warehouse" + i, key.warehouseId())
+                        .addValue("goods" + i, key.goodsId()).addValue("color" + i, key.colorId());
+            }
+            db.query("""
+                    SELECT b.warehouse_id, b.goods_id, b.color_id, b.qty, b.weight, b.weight_estimated
+                    FROM stock_balances b
+                    JOIN goods g ON g.id = b.goods_id AND NOT g.is_deleted
+                    JOIN (VALUES
+                    """ + requested + """
+                    ) requested(warehouse_id, goods_id, color_id)
+                      ON b.warehouse_id = requested.warehouse_id
+                     AND b.goods_id = requested.goods_id
+                     AND b.color_id IS NOT DISTINCT FROM requested.color_id
+                    WHERE b.qty > 0 AND b.weight > 0
+                    """, args, rs -> {
+                BalanceKey key = new BalanceKey(rs.getObject("warehouse_id", UUID.class),
+                        rs.getObject("goods_id", UUID.class), rs.getObject("color_id", UUID.class));
+                result.put(key, new StockWeightBalance(key.warehouseId(), key.colorId(),
+                        rs.getBigDecimal("qty"), rs.getBigDecimal("weight"), rs.getBoolean("weight_estimated")));
+            });
+        }
+        return result;
     }
 
     /** 多个货品的事实 (不存在的货品不在结果里)。 */

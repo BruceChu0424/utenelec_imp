@@ -53,6 +53,20 @@ void main() {
       expect(weighCount?.surfaceKey, 'warehouse.stock-item');
       expect(weighCount?.title, '库存详情');
     });
+
+    test(
+      'inventory overview reuses the current inventory permission surface',
+      () {
+        final list = pagePermissionScopeFor('/stock/instant-inventory');
+        final overview = pagePermissionScopeFor(
+          '/stock/instant-inventory/overview?warehouseId=warehouse-1&includeDefective=false',
+        );
+
+        expect(overview?.surfaceKey, 'warehouse.instant-inventory');
+        expect(overview?.surfaceKey, list?.surfaceKey);
+        expect(overview?.title, list?.title);
+      },
+    );
   });
 
   group('pagePermissionScopeFor', () {
@@ -250,6 +264,8 @@ Iterable<String> _businessPaths() sync* {
     '/stock/balance',
     '/stock/movement',
     '/stock/instant-inventory',
+    '/stock/instant-inventory/overview',
+    '/stock/instant-inventory/overview?categoryId=category-1',
     '/stock/item/item-1',
     '/warehouse',
     '/warehouse/tasks/outbound',

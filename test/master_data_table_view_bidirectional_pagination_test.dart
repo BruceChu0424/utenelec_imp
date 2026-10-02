@@ -276,7 +276,8 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(host.rows.items.map(_rowId), _idsForPages([2, 3]));
-          expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+          // Page 2 was fetched above the anchor; page 3 is still under the eyes.
+          expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
           expect(_anchor(3), findsOneWidget);
           expect(
             tester.getTopLeft(_anchor(3)).dy,
@@ -287,6 +288,8 @@ void main() {
           expect(_vertical(tester).position.pixels, greaterThan(0));
 
           await _top(tester);
+          await tester.pumpAndSettle();
+          expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
           expect(host.requests, [
             2,
           ], reason: 'programmatic motion does not load');
@@ -298,10 +301,12 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(host.rows.items.map(_rowId), _idsForPages([1, 2, 3]));
-          expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
+          expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
           expect(_anchor(2), findsOneWidget);
           expect(tester.getTopLeft(_anchor(2)).dy, closeTo(secondPageTop, 1));
           await _top(tester);
+          await tester.pumpAndSettle();
+          expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
           await _wheel(tester, -150);
           await _wheel(tester, -150);
           expect(host.requests, [2, 1], reason: 'page one has no predecessor');
@@ -332,7 +337,14 @@ void main() {
       host.responses.last.complete(_pageRows('A', 4));
       await tester.pumpAndSettle();
       expect(host.rows.items.map(_rowId), _idsForPages([2, 3, 4]));
+      expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
+      await _bottom(tester);
+      await tester.pumpAndSettle();
       expect(find.widgetWithText(TextFormField, '4'), findsOneWidget);
+      expect(host.requests, [
+        2,
+        4,
+      ], reason: 'visible page changes do not fetch');
       expect(host.rows.items.map(_rowId).toSet(), hasLength(60));
     },
   );
@@ -367,7 +379,7 @@ void main() {
       host.responses.last.complete(_pageRows('A', 2));
       await tester.pumpAndSettle();
       expect(host.rows.items.map(_rowId), _idsForPages([2, 3]));
-      expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -421,7 +433,7 @@ void main() {
     host.responses.last.complete(_pageRows('B', 2));
     await tester.pumpAndSettle();
     expect(host.rows.items.map(_rowId), _idsForPages([1, 2], scope: 'B'));
-    expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -523,7 +535,11 @@ void main() {
     expect(host.rows.items.map(_rowId), _idsForPages([2, 3]));
     expect(_anchor(3), findsOneWidget);
     expect(tester.getTopLeft(_anchor(3)).dy, closeTo(oldRowTop, 1));
+    expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
+    await _top(tester);
+    await tester.pumpAndSettle();
     expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+    expect(host.requests, [2]);
     expect(tester.takeException(), isNull);
   });
 
@@ -612,7 +628,7 @@ void main() {
         reason:
             'rows sorted after the visible anchor add no leading scroll extent',
       );
-      expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -661,7 +677,7 @@ void main() {
       expect(host.rows.items.map(_rowId), _idsForPages([2, 3]));
       expect(_anchor(3), findsOneWidget);
       expect(tester.getTopLeft(_anchor(3)).dy, closeTo(oldScreenTop, 1));
-      expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

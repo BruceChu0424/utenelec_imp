@@ -8,6 +8,10 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialCountService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPeriodService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialSettingsService;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionService;
+import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.stock.dto.StockDocSaveRequest;
+import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.*;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.AfterEach;
@@ -25,6 +29,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -53,10 +58,86 @@ class WorkshopApprovedStockCountPostgresTest {
     @Autowired WorkshopMaterialSettingsService settings;
     @Autowired WorkshopMaterialPeriodService periods;
     @Autowired WorkshopMaterialCountService counts;
+    @Autowired WorkshopMaterialRequisitionService requisitions;
+    @Autowired StockDocService stockDocuments;
     FullChainEndToEndTest fixture;
     record Shop(FullChainEndToEndTest.World world,UUID workshop,UUID unit,UUID goods,UUID bin,UUID period) {}
     record Request(UUID id,UUID line,UUID event) {}
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    @Test void firstInventoryApprovalWithdrawsAnUntouchedCycleCountInTheSameTransaction() {
+        Shop shop=shop(false);
+        var started=periods.startCount(shop.period(),new StartCountRequest(0L,null,key()));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM workshop_material_count_lines WHERE count_id=?",Integer.class,started.count().id()));
+        Request initial=request(shop,"0",null,"100","100",null);
+        approve(shop,initial);
+        equal("100",qty(shop));
+        assertEquals("OPENING",kind(initial));
+        assertEquals("OPEN",periodStatus(shop.period()));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM workshop_material_periods WHERE bin_warehouse_id=?",Integer.class,shop.bin()));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM workshop_material_counts WHERE id=?",Integer.class,started.count().id()));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM workshop_material_commands WHERE command_kind='COUNT_WITHDRAW' AND idempotency_key=?",
+                Integer.class,"COUNT-APPROVAL-RECOVER:"+initial.event()),"正式撤回命令留下审核人、请求键和结果证据");
+        assertEquals(shop.period(),db.queryForObject("SELECT period_id FROM workshop_material_count_adjustment_postings WHERE line_id=?",UUID.class,initial.line()));
+    }
+
+    @Test void untouchedCountStillRecoversTheInitialPeriodAfterTheBusinessDateRollsOver() {
+        Shop shop=shop(false,BusinessTime.today().minusDays(1));
+        periods.startCount(shop.period(),new StartCountRequest(0L,BusinessTime.today().minusDays(1),key()));
+        Request initial=request(shop,"0",null,"100","100",null);
+        approve(shop,initial);
+        assertEquals("OPENING",kind(initial),"过了截止日也不能把未录入的上线期初误记为第二期账面修正");
+        assertEquals(shop.period(),db.queryForObject("SELECT period_id FROM workshop_material_count_adjustment_postings WHERE line_id=?",UUID.class,initial.line()));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM workshop_material_periods WHERE bin_warehouse_id=?",Integer.class,shop.bin()));
+        equal("100",qty(shop));
+    }
+
+    @Test void recordedCycleCountCannotBeDiscardedByInventoryApproval() {
+        Shop shop=shop(false);
+        var started=periods.startCount(shop.period(),new StartCountRequest(0L,null,key()));
+        counts.saveLine(started.count().id(),"actual-record",new CountLineInput(null,"WEIGHED","LOOSE",shop.goods(),null,
+                null,null,new BigDecimal("5"),null,null,null));
+        Request initial=request(shop,"0",null,"100","100",null);
+        assertTrue(assertThrows(ApiException.class,()->approve(shop,initial)).getMessage().contains("已有盘点录入"));
+        assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_count_requests WHERE id=?",String.class,initial.id()));
+        assertEquals("COUNTING",periodStatus(shop.period()));
+        equal("0",qty(shop));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM workshop_material_count_lines WHERE count_id=?",Integer.class,started.count().id()));
+        // 用户明确选择撤回旧周期盘点后, 仍可用原库存申请继续审核。
+        periods.withdrawCount(shop.period(),new VersionRequest(started.period().rowVersion(),key()));
+        approve(shop,initial);
+        equal("100",qty(shop));
+    }
+
+    @Test void failedInventoryApprovalRollsBackTheAutomaticWithdrawalToo() {
+        Shop shop=shop(false);
+        var started=periods.startCount(shop.period(),new StartCountRequest(0L,null,key()));
+        Request invalid=request(shop,"0",null,"10","10000",null);
+        assertThrows(ApiException.class,()->approve(shop,invalid));
+        assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_count_requests WHERE id=?",String.class,invalid.id()));
+        assertEquals("COUNTING",periodStatus(shop.period()));
+        assertEquals("OPEN",periodStatus(started.nextPeriod().id()));
+        assertEquals("DRAFT",db.queryForObject("SELECT status FROM workshop_material_counts WHERE id=?",String.class,started.count().id()));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM workshop_material_commands WHERE idempotency_key=?",Integer.class,
+                "COUNT-APPROVAL-RECOVER:"+invalid.event()));
+        equal("0",qty(shop));
+    }
+
+    @Test void successorReceiptsPreventAutomaticAndManualWithdrawal() {
+        Shop shop=shop(false);
+        var item=new StockDocItemLine(); item.setGoodsId(shop.goods());item.setUnitId(shop.unit());item.setUnitRate(BigDecimal.ONE);
+        item.setQty(new BigDecimal("100"));item.setPrice(BigDecimal.TEN);item.setAmountLocal(new BigDecimal("1000"));item.setAmountOriginal(new BigDecimal("1000"));
+        var incoming=new StockDocSaveRequest();incoming.setDocType("OTHER_IN");incoming.setWarehouseId(shop.world().warehouseId());
+        incoming.setBillDate(BusinessTime.today());incoming.setItems(List.of(item));stockDocuments.approve(stockDocuments.create(incoming).getId());
+        var started=periods.startCount(shop.period(),new StartCountRequest(0L,null,key()));
+        Request initial=request(shop,"0",null,"100","100",null);
+        requisitions.directIssue(new DirectIssueRequest(shop.workshop(),shop.world().employeeId(),
+                List.of(new DirectIssueLine(shop.goods(),null,null,BigDecimal.TEN,shop.world().warehouseId())),null,key()));
+        assertTrue(assertThrows(ApiException.class,()->approve(shop,initial)).getMessage().contains("下一期已有"));
+        assertThrows(ApiException.class,()->periods.withdrawCount(shop.period(),new VersionRequest(started.period().rowVersion(),key())));
+        assertEquals("COUNTING",periodStatus(shop.period()));
+        equal("10",qty(shop));
+    }
 
     @Test void approvedOpeningAndLaterAdjustmentAreNotIssuedOrConsumedAgain() {
         Shop shop=shop(false);
@@ -142,6 +223,10 @@ class WorkshopApprovedStockCountPostgresTest {
     }
 
     private Shop shop(boolean order) {
+        return shop(order,BusinessTime.today());
+    }
+
+    private Shop shop(boolean order,LocalDate goLive) {
         fixture=new FullChainEndToEndTest(); beans.autowireBean(fixture);
         String tag="approved-count-"+UUID.randomUUID().toString().substring(0,8);
         var world=fixture.seedWorld(tag); fixture.loginAs(world.superAdminUserId());
@@ -155,7 +240,7 @@ class WorkshopApprovedStockCountPostgresTest {
                 INSERT INTO goods(id,code,name,source_type,status,unit_id,unit_legacy_id,price,code_sequence,issue_method,periodic_cost_basis,min_qty)
                 VALUES (?,?,?,'采购','使用',?,?,10,(SELECT coalesce(max(code_sequence),0)+1 FROM goods),?,?,0)
                 """,goods,"COUNT-"+tag,"期初颗粒",unit,legacy,order?"ORDER":"PERIODIC",order?null:"OWN");
-        var enabled=settings.update(workshop,new SettingsRequest(0L,true,world.warehouseId(),BusinessTime.today(),List.of(),key()));
+        var enabled=settings.update(workshop,new SettingsRequest(0L,true,world.warehouseId(),goLive,List.of(),key()));
         return new Shop(world,workshop,unit,goods,enabled.binWarehouseId(),enabled.currentPeriod().id());
     }
 
@@ -188,6 +273,7 @@ class WorkshopApprovedStockCountPostgresTest {
         });
     }
     private BigDecimal qty(Shop shop) { return db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",BigDecimal.class,shop.bin(),shop.goods()); }
+    private String periodStatus(UUID period) { return db.queryForObject("SELECT status FROM workshop_material_periods WHERE id=?",String.class,period); }
     private String kind(Request request) { return db.queryForObject("SELECT kind FROM workshop_material_count_adjustment_postings WHERE line_id=?",String.class,request.line()); }
     private static String key() { return "approved-count-"+UUID.randomUUID(); }
     private static void equal(String expected,BigDecimal actual) { assertNotNull(actual); assertEquals(0,new BigDecimal(expected).compareTo(actual)); }

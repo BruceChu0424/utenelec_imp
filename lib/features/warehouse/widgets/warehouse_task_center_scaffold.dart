@@ -210,10 +210,7 @@ class _WarehouseTaskCenterScaffoldState
           widget.externalHeader!,
           const SizedBox(height: UtenSpacing.s12),
         ],
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-          child: toolbar,
-        ),
+        toolbar,
       ],
     );
     final body = _segment == null

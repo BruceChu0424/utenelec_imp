@@ -71,7 +71,7 @@ public final class WorkshopMaterialDtos {
 
     // ------------------------------------------------------------------ 领料单 / 退回单 / 其它耗用
 
-    /** qty 为公斤 (基本单位); 只给袋数时按每袋净重折算。 */
+    /** qty 为货品基本单位数量; 只给袋数时按每袋净重折算。 */
     public record RequisitionLineInput(UUID goodsId, UUID colorId, BigDecimal qty, BigDecimal bags) {}
 
     public record RequisitionCreate(String kind, UUID workshopDepartmentId, List<RequisitionLineInput> lines,
@@ -82,8 +82,14 @@ public final class WorkshopMaterialDtos {
     /** 漏录补录: 补到指定的"盘点中"或"已盘点、还没结算"的那一期, 必须写原因。 */
     public record Supplement(UUID periodId, String reason) {}
 
+    public record MaterialSetup(UUID goodsId, Long expectedVersion, String periodicCostBasis) {}
+
     public record FulfilRequest(Long expectedVersion, List<FulfilLine> lines, Supplement supplement,
-                                String idempotencyKey) {}
+                                String idempotencyKey, List<MaterialSetup> materialSetup) {
+        public FulfilRequest(Long expectedVersion, List<FulfilLine> lines, Supplement supplement, String idempotencyKey) {
+            this(expectedVersion, lines, supplement, idempotencyKey, null);
+        }
+    }
 
     public record CancelRequest(Long expectedVersion, String reason, String idempotencyKey) {}
 
@@ -98,7 +104,15 @@ public final class WorkshopMaterialDtos {
                                       UUID colorId, String colorName, UUID unitId, String unitName,
                                       BigDecimal requestedQty, BigDecimal requestedBags, BigDecimal bulkPackageQty,
                                       UUID suggestedLeafWarehouseId, String suggestedLeafWarehouseName,
-                                      BigDecimal fulfilledQty) {}
+                                      BigDecimal fulfilledQty, String issueMethod) {
+        public RequisitionLineView(UUID id, int lineNo, UUID goodsId, String goodsCode, String goodsName,
+                UUID colorId, String colorName, UUID unitId, String unitName, BigDecimal requestedQty,
+                BigDecimal requestedBags, BigDecimal bulkPackageQty, UUID suggestedLeafWarehouseId,
+                String suggestedLeafWarehouseName, BigDecimal fulfilledQty) {
+            this(id, lineNo, goodsId, goodsCode, goodsName, colorId, colorName, unitId, unitName, requestedQty,
+                    requestedBags, bulkPackageQty, suggestedLeafWarehouseId, suggestedLeafWarehouseName, fulfilledQty, null);
+        }
+    }
 
     /** 一张调拨单 (一个叶仓一张) 及其所属期间。 */
     public record RequisitionDocumentView(UUID documentId, String billNo, UUID leafWarehouseId,

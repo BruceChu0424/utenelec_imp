@@ -149,10 +149,6 @@ public class SalesQuoteTemplateService {
             Map<String,String> values=new LinkedHashMap<>(display.getOrDefault(item.getId(),Map.of())); GoodsRow g=goods.get(item.getGoodsId());
             if (item.getExtraColumns() != null) for (var column : item.getExtraColumns()) {
                 if (column.name() == null) continue;
-                String key = QuoteTemplateWorkbook.normalize(column.name());
-                values.put("extra-label:" + key, column.name());
-                if ("ADD".equals(column.operation()) || "SUBTRACT".equals(column.operation())) values.put("extra-money:" + key, "true");
-                if (column.value() != null) values.put("extra:" + key, column.value());
                 values.put("EXTRA_ID:" + column.columnId(), column.value());
             }
             values.put("GOODS_NAME", first(item.getGoodsNameSnapshot(), g == null ? null : g.name()));
@@ -167,7 +163,7 @@ public class SalesQuoteTemplateService {
             values.put("UNIT_PRICE_NET", item.getPrice() == null ? null : com.uten.imp.common.util.DecimalText.of(
                     item.getPrice().multiply(item.getDiscount() == null ? java.math.BigDecimal.ONE : item.getDiscount())));
             values.put("DISCOUNT",item.getDiscountExact()); values.put("AMOUNT",item.getAmountOriginalExact()); values.put("REMARK",item.getRemark());
-            out.add(new QuoteTemplateWorkbook.ExportLine(values));
+            out.add(new QuoteTemplateWorkbook.ExportLine(values, item.getExtraColumns()));
         }
         return out;
     }

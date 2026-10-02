@@ -129,6 +129,35 @@ void main() {
         .map((column) => column.label)
         .toList();
     expect(labels[labels.indexOf('本次实收') + 1], '放行重量');
+    final columns = tester
+        .widget<UtenEditableGrid<WarehouseQualityMergedRow>>(
+          find.byType(UtenEditableGrid<WarehouseQualityMergedRow>),
+        )
+        .columns;
+    final quantity = columns.singleWhere((column) => column.key == 'quantity');
+    final weight = columns.singleWhere(
+      (column) => column.key == 'releasedWeight',
+    );
+    final firstRow = controller.rows.first;
+    expect(quantity.exactValueOf!(firstRow), weighed.quantity.text);
+    expect(quantity.exactListenableOf!(firstRow), same(weighed.quantity));
+    expect(weight.exactValueOf!(firstRow), '1.5');
+    expect(weight.exactListenableOf!(firstRow), same(weighed.quantity));
+    expect(weight.exactValueOf!(controller.rows.last), isNull);
+    expect(
+      quantity.exactValueOf!(
+        WarehouseQualityMergedRow(line: _line('readonly')),
+      ),
+      isNull,
+    );
+    for (final key in ['remaining', 'received', 'passed', 'failed']) {
+      expect(
+        columns.singleWhere((column) => column.key == key).exactValueOf!(
+          firstRow,
+        ),
+        key == 'failed' ? '0.0' : '3.0',
+      );
+    }
 
     Finder weightOf(String id) =>
         find.byKey(ValueKey('quality-slice-released-weight-$id'));
@@ -142,6 +171,8 @@ void main() {
     // 改小本次实收 → 按份额重算 (1 / 3 × 1.5 = 0.5 kg)。
     await tester.enterText(find.byKey(const Key('quality-slice-qty-a')), '1');
     await tester.pump();
+    expect(quantity.exactValueOf!(firstRow), '1');
+    expect(weight.exactValueOf!(firstRow), '0.5');
     expect(
       tester.widget<Text>(weightOf('a')).data,
       formatWeight(0.5, display: WeightDisplay.kg),

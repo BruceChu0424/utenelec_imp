@@ -69,6 +69,13 @@ public interface ProcurementOrderApprovalPort {
             BigDecimal price,
             BigDecimal amountOriginal,
             BigDecimal amountLocal,
-            LocalDate deliverDate) {
+            LocalDate deliverDate,
+            BigDecimal totalAmountInput) {
+        public ItemSnapshot(UUID itemId, Integer lineNo, UUID sourceItemId, UUID goodsId,
+                UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal price,
+                BigDecimal amountOriginal, BigDecimal amountLocal, LocalDate deliverDate) {
+            this(itemId, lineNo, sourceItemId, goodsId, colorId, unitId, unitRate, qty, price,
+                    amountOriginal, amountLocal, deliverDate, null);
+        }
     }
 }

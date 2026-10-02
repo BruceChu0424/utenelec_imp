@@ -57,6 +57,7 @@ import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/providers/master_name_provider.dart' show GoodsOption;
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../basic_data/models/goods_node.dart' show GoodsListItem;
 import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
@@ -72,6 +73,7 @@ import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
 import '../services/subcontract_save_workflow.dart';
 import '../widgets/subcontract_grid_columns.dart';
+import '../widgets/subcontract_goods_picker.dart';
 import '../widgets/subcontract_link_picker.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -343,8 +345,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
             ..goods = ref
                 .read(mn.masterNameServiceProvider)
                 .goodsOptionOf(it.goodsId)
-            ..qty.text = financeExactTrimmed(it.qty?.toString()) ?? ''
-            ..price.text = financeExactTrimmed(it.price?.toString()) ?? ''
+            ..qty.text =
+                financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? ''
+            ..price.text =
+                financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? ''
             ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
             ..upstreamItemId = upstreamItemId
             ..planItemId = it.planItemId
@@ -352,6 +356,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
             ..unitId = it.unitId
             ..unitRate = it.unitRate
             ..sourceDocNo = it.sourceDocNo;
+          row.recordSourceAmount(it.amountOriginalText);
           row.remark.text = it.remark ?? '';
           row.endingQty.text =
               financeExactTrimmed(it.endingQty?.toString()) ?? '';
@@ -463,13 +468,30 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
 
   Future<void> _pickGoods(SubcontractGridRow row) async {
     if (row.sourceLocked) return;
-    final g = await showUtenGoodsPicker(context, ref, scope: _pickerScope);
-    if (g == null) return;
-    row
-      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = g.colorId
-      ..unitId = g.unitId
-      ..stockPlaceNotifier.value = g.stockPlace;
+    final picked = await ref.read(subcontractGridGoodsPickerProvider)(
+      context,
+      ref,
+      _pickerScope,
+    );
+    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    void fill(SubcontractGridRow target, GoodsListItem goods) {
+      target
+        ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)
+        ..colorId = goods.colorId
+        ..unitId = goods.unitId
+        ..unitRate = 1
+        ..stockPlaceNotifier.value = goods.stockPlace;
+    }
+
+    fill(row, picked.first);
+    final added = <SubcontractGridRow>[];
+    for (final goods in picked.skip(1)) {
+      final next = SubcontractGridRow();
+      fill(next, goods);
+      added.add(next);
+    }
+    if (added.isNotEmpty) _grid.addRows(added);
+    setState(() {});
   }
 
   /// 表头委外商展示名（启用商显名称；编辑旧单遇禁用商标注「已禁用」）。
@@ -554,7 +576,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       (r) =>
           r.goods == null &&
           r.qty.text.trim().isEmpty &&
-          r.price.text.trim().isEmpty,
+          r.price.text.trim().isEmpty &&
+          r.pricing.totalAmount.text.trim().isEmpty,
     );
     _grid.addRows(rows);
     // 表头未选委外商 → 以上游单据委外商回填；结算方式未选时按上游单据结算方式
@@ -644,6 +667,15 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         return;
       }
       final price = double.tryParse(r.price.text);
+      if (r.upstreamItemId == null &&
+          (r.price.text.trim().isNotEmpty ||
+              r.pricing.totalAmount.text.trim().isNotEmpty)) {
+        final pricingError = r.pricing.validate();
+        if (pricingError != null) {
+          context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+          return;
+        }
+      }
       final priceError = validateSubcontractOrderPrice(
         docType: widget.docType,
         goodsName: r.goods!.name ?? r.goods!.code ?? '该货品',
@@ -667,12 +699,12 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       final remarkText = r.remark.text.trim();
       final line = <String, dynamic>{
         'goodsId': r.goods!.id,
-        'qty': qty,
+        'qty': r.qty.text.trim(),
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.unitRate != null) 'unitRate': r.unitRate,
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
-        if (_cfg.itemHasPrice && price != null) 'price': price,
+        if (_cfg.itemHasPrice && price != null) 'price': r.price.text.trim(),
         if (_cfg.itemHasWeight && w != null) 'weight': w,
         if (_cfg.itemHasGirth) 'girthQty': double.tryParse(r.girth.text),
         if (_cfg.itemHasBoxQty) 'boxQty': double.tryParse(r.boxQty.text),
@@ -770,8 +802,12 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       }
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+    } catch (error, stack) {
+      // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
+      debugPrint('保存委外单据失败: $error\n$stack');
+      if (mounted) {
+        context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -866,6 +902,11 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                                 subcontractApplicationGridColumnPrefsProvider,
                               )[widget.docType.name];
                               return UtenEditableGrid<SubcontractGridRow>(
+                                columnEditingEnabled:
+                                    !_loading &&
+                                    !_saving &&
+                                    _draftCreatedId == null &&
+                                    (widget.id == null || _existingEditable),
                                 tableKey:
                                     'subcontract.${widget.docType.name}.items',
                                 controller: _grid,
@@ -965,11 +1006,13 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                       )
                     : null,
               ),
-              financeExactMoneyDisplay(
-                exactAmountSumText(
-                  _grid.rows.map((r) => r.amountExactNotifier.value),
-                ),
-              ),
+              _grid.rows.any((r) => r.goods != null && r.sourceAmountPending)
+                  ? '保存后按来源计算'
+                  : financeExactMoneyDisplay(
+                      exactAmountSumText(
+                        _grid.rows.map((r) => r.amountExactNotifier.value),
+                      ),
+                    ),
               danger: true,
             ),
           ];

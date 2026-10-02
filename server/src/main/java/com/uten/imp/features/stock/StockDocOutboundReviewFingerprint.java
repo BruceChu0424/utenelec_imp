@@ -35,7 +35,8 @@ final class StockDocOutboundReviewFingerprint {
                     item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getQty(),
                     item.getUnitRate(), item.getBaseQty(), item.getWeight(), item.isQtyFromWeight(),
                     item.getCountWeight(), item.getGiftQty(),
-                    item.getPlace(), item.getUpstreamItemId(), item.getExecutionSegmentId(),
+                    item.getPlace(), item.getWarehouseId(), item.getUpstreamItemId(),
+                    item.getExecutionSegmentId(),
                     item.getExecutionSegmentSalesAllocationId(), item.getSourceDailyReportItemId(),
                     item.getSourceDocNo(), item.getRemark(), item.isDeleted(), item.getUpdatedAt());
         }

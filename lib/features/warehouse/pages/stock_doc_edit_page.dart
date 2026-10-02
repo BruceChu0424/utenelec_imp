@@ -10,6 +10,11 @@
 // 推算(黄框、qtyFromWeight)；出库类单据的 ⚖ 称重计数反推「秤上应显示多少」。
 // 新建盘点可带 [StockCheckPrefill](库存分析「生成盘点单」经 GoRouter extra 传入)：预填仓库与
 // 明细行(未保存)，账面数量/重量照常按仓库读取。
+// 行级仓库(V787 2026-10-01「仓库不放表头，放表格里」，对齐销售出库 V631/委外批量拣货)：
+// 其它/产成品出入库与领料把仓库挪进明细行内逐行选（同单可跨仓），库位号列改为可编辑、
+// 按仓×货品记忆与主档通用库位预填；调拨(两腿)/盘点(账面)仍按表头仓。表头仓库字段随之只在
+// 调拨/盘点显示；「本类型最近一张单的仓库」预填转为新行的默认行仓。
+// 货品选择是多选(与新建销售同款)：选中的第一个填当前行，其余各自追加一行。
 // 保存组装 body 调 create/update，成功后跳详情。
 import 'dart:async';
 
@@ -63,6 +68,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/task_claim_badge.dart';
 import '../../../shared/widgets/task_claim_handle.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../basic_data/models/goods_node.dart' show GoodsListItem;
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../stock/repositories/stock_query_repository.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -72,6 +78,7 @@ import '../models/stock_check_prefill.dart';
 import '../models/stock_doc.dart';
 import '../models/warehouse_form_draft_codec.dart';
 import '../repositories/stock_doc_repository.dart';
+import '../repositories/warehouse_place_suggestion_repository.dart';
 import '../widgets/inbound_registration_widgets.dart';
 import '../widgets/stock_grid_columns.dart';
 
@@ -92,9 +99,41 @@ class StockDocEditPage extends ConsumerStatefulWidget {
   ConsumerState<StockDocEditPage> createState() => _StockDocEditPageState();
 }
 
+/// 明细「选货品」滑窗(多选，与新建销售同款)。测试可替换成直接返回货品列表。
+typedef StockGridGoodsPicker =
+    Future<List<GoodsListItem>> Function(BuildContext context, WidgetRef ref);
+
+/// 选货品范围：领料/退料=材料；产成品进/出仓=成品；调拨/其它出入库/盘点=全部。
+UtenGoodsPickerScope stockDocPickerScope(StockDocType type) => switch (type) {
+  StockDocType.draw || StockDocType.wdraw => UtenGoodsPickerScope.material,
+  StockDocType.finishedIn ||
+  StockDocType.finishedOut => UtenGoodsPickerScope.sellable,
+  _ => UtenGoodsPickerScope.all,
+};
+
+final stockGridGoodsPickerProvider =
+    Provider.family<StockGridGoodsPicker, StockDocType>((ref, type) {
+      return (context, ref) => showUtenGoodsPickerMulti(
+        context,
+        ref,
+        scope: stockDocPickerScope(type),
+      );
+    });
+
 class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     with FormDraftMixin<StockDocEditPage> {
   bool get _isCheck => widget.docType == StockDocType.check;
+
+  /// 行级仓库类型（V787）：出库 = 其它/产成品/领料，入库 = 其它/产成品。
+  /// 调拨（调出/调入两腿）与盘点（账面按仓快照）仍走表头。
+  bool get _usesLineWarehouse => switch (widget.docType) {
+    StockDocType.otherIn ||
+    StockDocType.otherOut ||
+    StockDocType.finishedIn ||
+    StockDocType.finishedOut ||
+    StockDocType.draw => true,
+    _ => false,
+  };
 
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
@@ -157,6 +196,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     _pendingFiles,
     for (final row in _grid.rows) ...[
       row.goodsNotifier,
+      row.warehouseNotifier,
+      row.place,
       row.qty,
       row.weight,
       row.bookQty,
@@ -195,6 +236,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
               row.executionSegmentSalesAllocationId,
           'colorId': row.colorId,
           'unitId': row.unitId,
+          'warehouseId': row.warehouseId,
+          'place': row.place.text,
           'goodsCode': row.goodsCode,
           'goodsSeries': row.goodsSeries,
           'goodsStockPlace': row.goodsStockPlace,
@@ -231,6 +274,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
               item['executionSegmentSalesAllocationId'] as String?;
           row.colorId = item['colorId'] as String?;
           row.unitId = item['unitId'] as String?;
+          row.warehouseId = item['warehouseId'] as String?;
+          row.place.text = draftText(item, 'place');
           row.goodsCode = item['goodsCode'] as String?;
           row.goodsSeries = item['goodsSeries'] as String?;
           row.goodsStockPlace = item['goodsStockPlace'] as String?;
@@ -272,11 +317,24 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     StockDocType.finishedOut => WeightCaptureMode.outbound,
   };
 
-  WeightParams? _paramsOf(StockGridRow row) => _weightCache.of(row.goods?.id);
+  /// 行生效仓库（V787）：行级仓库类型看行，其余看表头。
+  String? _rowWarehouseOf(StockGridRow row) =>
+      _usesLineWarehouse ? row.warehouseId ?? _warehouseId : _warehouseId;
+
+  WeightParams? _paramsOf(StockGridRow row) => _weightCache.of(
+    row.goods?.id,
+    warehouseId: _rowWarehouseOf(row),
+    colorId: row.colorId,
+  );
 
   Iterable<WeightParamsLine> _weightParamsLines() => [
     for (final row in _grid.rows)
-      if (row.goods case final goods?) WeightParamsLine(goodsId: goods.id),
+      if (row.goods case final goods?)
+        WeightParamsLine(
+          goodsId: goods.id,
+          warehouseId: _rowWarehouseOf(row),
+          colorId: row.colorId,
+        ),
   ];
 
   void _ensureWeightParams() {
@@ -319,7 +377,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         goodsId: goods.id,
         goodsTitle: _goodsTitle(row),
         params: _paramsOf(row),
-        warehouseId: _warehouseId,
+        warehouseId: _rowWarehouseOf(row),
         baseUnitName: row.isCheck || row.unitRate == 1 ? row.unitName : null,
         lineUnitName: row.unitName,
         unitRate: row.isCheck ? 1 : row.unitRate,
@@ -345,7 +403,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       goodsId: goods.id,
       goodsTitle: _goodsTitle(row),
       baseUnitName: row.isCheck || row.unitRate == 1 ? row.unitName : null,
-      warehouseId: _warehouseId,
+      warehouseId: _rowWarehouseOf(row),
       params: _paramsOf(row),
       remark: widget.docType.label,
     );
@@ -515,9 +573,16 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..unitRate = it.unitRate ?? 1
+            // 行级仓库类型回显行仓（空沿用表头）；调拨/盘点行不带仓。
+            ..warehouseId = _usesLineWarehouse
+                ? it.warehouseId ?? d.warehouseId
+                : null
             ..executionSegmentId = it.executionSegmentId
             ..executionSegmentSalesAllocationId =
                 it.executionSegmentSalesAllocationId;
+          if (_usesLineWarehouse) {
+            row.place.text = it.place ?? '';
+          }
           // 主档展示列：编号/系列/库位号（lookup 详情）+ 颜色/单位名（字典）。
           final info = ref
               .read(masterNameServiceProvider)
@@ -577,61 +642,132 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     bool qtyFromWeight,
   ) {
     qty.text = qtyText;
-    weight.setKg(kg, qtyFromWeight: qtyFromWeight);
+    weight.setKg(kg, qtyFromWeight: qtyFromWeight, userEdited: kg != null);
     if (qtyFromWeight && qtyText.isNotEmpty) {
       qty.setAutomaticText(qtyText);
       weight.markQtyDerived(qtyText, note: '保存时按称重折算的数量');
     }
   }
 
-  /// 选货品范围：领料/退料=材料；产成品进/出仓=成品；调拨/其它出入库/盘点=全部。
-  UtenGoodsPickerScope get _pickerScope => switch (widget.docType) {
-    StockDocType.draw || StockDocType.wdraw => UtenGoodsPickerScope.material,
-    StockDocType.finishedIn ||
-    StockDocType.finishedOut => UtenGoodsPickerScope.sellable,
-    _ => UtenGoodsPickerScope.all,
-  };
-
   Future<void> _pickGoods(StockGridRow row) async {
     if (_isCheck && _warehouseId == null) {
       context.appWarning('请先选择盘点仓库，再添加货品');
       return;
     }
-    final g = await showUtenGoodsPicker(context, ref, scope: _pickerScope);
-
-    if (g == null) return;
-    row
-      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = g.colorId
-      ..unitId = g.unitId
-      ..unitRate = 1
-      ..goodsCode = g.code
-      ..goodsSeries = g.series
-      ..colorName = g.colorName
-      ..unitName = g.unitName;
-    // 其它入库的回收料 (水口料、破碎料，ADR-131)：金额预填 0，按 0 成本进仓。
-    if (_isOtherIn && g.recycledMaterial) {
-      _zeroCostGoodsIds.add(g.id);
-      if (!mounted) return;
-      context.appInfo('「${g.name ?? g.code ?? ''}」是回收料，水口料按 0 成本进仓');
+    // 多选（与新建销售同款）：选中的第一个填当前行，其余各自追加一行——
+    // 一次选完不用逐个重复「加行→选货品」。
+    final picked = await ref.read(stockGridGoodsPickerProvider(widget.docType))(
+      context,
+      ref,
+    );
+    if (!mounted || picked.isEmpty) return;
+    final filled = <StockGridRow>[];
+    void fill(StockGridRow target, GoodsListItem g) {
+      target
+        ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
+        ..colorId = g.colorId
+        ..unitId = g.unitId
+        ..unitRate = 1
+        ..goodsCode = g.code
+        ..goodsSeries = g.series
+        ..colorName = g.colorName
+        ..unitName = g.unitName;
+      // 其它入库的回收料 (水口料、破碎料，ADR-131)：金额预填 0，按 0 成本进仓。
+      if (_isOtherIn && g.recycledMaterial) {
+        _zeroCostGoodsIds.add(g.id);
+        context.appInfo('「${g.name ?? g.code ?? ''}」是回收料，水口料按 0 成本进仓');
+      }
+      // 行级仓库（V787）：新选的行带上默认行仓（本类型最近一张单的仓库/用户刚改的仓）。
+      if (_usesLineWarehouse && target.warehouseId == null) {
+        target.warehouseId = _warehouseId;
+      }
+      filled.add(target);
     }
-    // 库位号不在选择器返回里：按需补全详情（名称缓存命中也会拉取）。
-    await ref.read(masterNameServiceProvider).loadGoodsDetails([g.id]);
+
+    fill(row, picked.first);
+    final extraRows = <StockGridRow>[];
+    if (picked.length > 1) {
+      for (final g in picked.skip(1)) {
+        final r = StockGridRow(isCheck: _isCheck);
+        fill(r, g);
+        extraRows.add(r);
+      }
+      _grid.addRows(extraRows);
+    }
+    // 主档展示列：编号/系列已在选项里；库位号不在选择器返回里，按需补全详情
+    // （名称缓存命中也会拉取）。
+    await ref.read(masterNameServiceProvider).loadGoodsDetails([
+      for (final g in picked) g.id,
+    ]);
     if (!mounted) return;
-    row.goodsStockPlace = ref
-        .read(masterNameServiceProvider)
-        .goodsInfo(g.id)
-        ?.stockPlace;
+    for (final target in filled) {
+      final id = target.goods?.id;
+      if (id == null) continue;
+      target.goodsStockPlace = ref
+          .read(masterNameServiceProvider)
+          .goodsInfo(id)
+          ?.stockPlace;
+    }
     if (mounted) setState(() {});
     _ensureWeightParams();
+    await _refreshPlaceSuggestions();
     if (_isCheck) {
-      await _loadCheckBookQty(row);
+      for (final target in filled) {
+        await _loadCheckBookQty(target);
+      }
     }
+  }
+
+  /// 行级库位建议（V787「库位号要有记忆」）：按行仓库分组建议（仓库×货品×颜色的
+  /// 历史入库记忆 → 货品资料通用库位），只预填还没手填的行；失败静默（可手填，不拦保存）。
+  Future<void> _refreshPlaceSuggestions() async {
+    if (!_usesLineWarehouse) return;
+    final byWarehouse = <String, List<StockGridRow>>{};
+    for (final row in _grid.rows) {
+      final goods = row.goods;
+      final warehouseId = row.warehouseId;
+      if (goods == null || warehouseId == null) continue;
+      byWarehouse.putIfAbsent(warehouseId, () => []).add(row);
+    }
+    for (final entry in byWarehouse.entries) {
+      try {
+        final suggestions = await ref
+            .read(warehousePlaceSuggestionRepositoryProvider)
+            .suggest(
+              warehouseId: entry.key,
+              goods: [
+                for (final row in entry.value)
+                  (goodsId: row.goods!.id, colorId: row.colorId),
+              ],
+            );
+        if (!mounted) return;
+        for (final row in entry.value) {
+          // 只填空格：用户已手填（或建议先到）的不覆盖。
+          if (row.place.text.trim().isNotEmpty) continue;
+          final suggestion =
+              suggestions[inboundGoodsColorKey(row.goods!.id, row.colorId)];
+          final place = suggestion?.place;
+          if (place != null && place.isNotEmpty) row.place.text = place;
+        }
+        if (mounted) setState(() {});
+      } catch (_) {
+        // 建议失败不拦录单：库位可直接手填。
+      }
+    }
+  }
+
+  /// 行仓库变化（V787）：记住本次选择作为后续新行默认仓，并刷新该行的库位建议与单重参数。
+  void _onRowWarehouseChanged(StockGridRow row) {
+    if (_usesLineWarehouse) _warehouseId = row.warehouseId;
+    setState(() {});
+    _ensureWeightParams();
+    unawaited(_refreshPlaceSuggestions());
   }
 
   Future<void> _loadCheckBookQty(StockGridRow row) async {
     final warehouseId = _warehouseId;
     final goods = row.goods;
+    final colorId = row.colorId;
     if (!_isCheck || warehouseId == null || goods == null) {
       row.bookQty.clear();
       row.bookWeightKg.value = null;
@@ -641,6 +777,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       final result = await ref
           .read(stockQueryRepositoryProvider)
           .balances(size: 100, warehouseId: warehouseId, goodsId: goods.id);
+      if (!mounted ||
+          !_grid.rows.contains(row) ||
+          _warehouseId != warehouseId ||
+          row.goods?.id != goods.id ||
+          row.colorId != colorId) {
+        return;
+      }
       // 没有余额行 = 账面 0 个、0 重量。
       var qty = 0.0;
       double? weightKg = 0;
@@ -667,7 +810,15 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       // 账面重量只作核对展示；保存时服务端按锁定的余额重新快照。
       row.bookWeightEstimated = estimated;
       row.bookWeightKg.value = weightKg;
+      _ensureWeightParams();
     } catch (error) {
+      if (!mounted ||
+          !_grid.rows.contains(row) ||
+          _warehouseId != warehouseId ||
+          row.goods?.id != goods.id ||
+          row.colorId != colorId) {
+        return;
+      }
       row.bookQty.clear();
       row.bookWeightKg.value = null;
       if (mounted) {
@@ -736,8 +887,26 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     }
 
     final rows = _grid.rows;
-    if (_warehouseId == null) {
+    if (!_usesLineWarehouse && _warehouseId == null) {
       return context.appError('请选择仓库');
+    }
+    // 行级仓库（V787）：整表扫完一起报，多行时不用改一行存一次才看到下一行。
+    if (_usesLineWarehouse) {
+      final missingWarehouse = <String>[];
+      for (var index = 0; index < rows.length; index++) {
+        final r = rows[index];
+        if (r.goods == null) continue;
+        if (r.warehouseId == null) {
+          missingWarehouse.add(
+            '第 ${index + 1} 行（${r.goods!.name ?? r.goods!.code ?? ''}）',
+          );
+        }
+      }
+      if (missingWarehouse.isNotEmpty) {
+        return context.appError(
+          '${missingWarehouse.join('、')}未选择仓库，请在表格的仓库列逐行选择',
+        );
+      }
     }
     if (widget.docType == StockDocType.transfer && _toWarehouseId == null) {
       return context.appError('请选择调入仓');
@@ -748,6 +917,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       return context.appError('请至少添加一条明细');
     }
+    // 行级仓库类型的表头仓 = 首条明细的行仓（列表/汇总列仍需一个仓展示）。
+    final String? headerWarehouseId = _usesLineWarehouse
+        ? rows
+              .firstWhere((r) => r.goods != null, orElse: () => rows.first)
+              .warehouseId
+        : _warehouseId;
     final items = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
@@ -758,6 +933,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       if (r.colorId != null) m['colorId'] = r.colorId;
       if (r.unitId != null) m['unitId'] = r.unitId;
       m['unitRate'] = r.unitRate;
+      if (_usesLineWarehouse) {
+        m['warehouseId'] = r.warehouseId;
+        final place = r.place.text.trim();
+        if (place.isNotEmpty) m['place'] = place;
+      }
       // 重量(ADR-135)：可选，千克 4 位；看不懂的输入拦下，没称不带，货品按重量计不带。
       if (r.activeWeight.hasError) {
         return context.appError(
@@ -811,7 +991,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     final body = <String, dynamic>{
       'docType': widget.docType.code,
       'billDate': _fmt(_billDate),
-      'warehouseId': _warehouseId,
+      'warehouseId': headerWarehouseId,
       if (widget.docType == StockDocType.transfer)
         'toWarehouseId': _toWarehouseId,
       if (widget.docType == StockDocType.draw) ...{
@@ -970,21 +1150,29 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                                 setState(() => _billDate = d),
                                           ),
                                           // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
-                                          UtenDropdownField(
-                                            label: '仓库',
-                                            value: _warehouseId,
-                                            required: true,
-                                            items: warehouseHierarchyItems(
-                                              names.warehouseHierarchy,
-                                              currentValue: _warehouseId,
+                                          // V787 行级仓库类型不再放表头——仓库在明细
+                                          // 表格里逐行选（同单可跨仓），此处只剩调拨/盘点。
+                                          if (!_usesLineWarehouse)
+                                            UtenDropdownField(
+                                              label: '仓库',
+                                              value: _warehouseId,
+                                              required: true,
+                                              items: warehouseHierarchyItems(
+                                                names.warehouseHierarchy,
+                                                currentValue: _warehouseId,
+                                              ),
+                                              onChanged: (v) {
+                                                setState(
+                                                  () => _warehouseId = v,
+                                                );
+                                                _ensureWeightParams();
+                                                if (_isCheck) {
+                                                  unawaited(
+                                                    _refreshCheckBooks(),
+                                                  );
+                                                }
+                                              },
                                             ),
-                                            onChanged: (v) {
-                                              setState(() => _warehouseId = v);
-                                              if (_isCheck) {
-                                                unawaited(_refreshCheckBooks());
-                                              }
-                                            },
-                                          ),
                                           if (widget.docType ==
                                               StockDocType.transfer)
                                             UtenDropdownField(
@@ -1101,6 +1289,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                             // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：本页无右侧入口，整行删除。
                             _savedFields(
                               UtenEditableGrid<StockGridRow>(
+                                columnEditingEnabled:
+                                    !_loading &&
+                                    !_saving &&
+                                    _createdDocId == null &&
+                                    (widget.id == null || _loadedCanEdit),
                                 tableKey:
                                     'warehouse.${widget.docType.name}.items',
                                 controller: _grid,
@@ -1108,6 +1301,19 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                 columns: stockGridColumns(
                                   _pickGoods,
                                   isCheck: _isCheck,
+                                  // V787 行级仓库：出库/入库类单据在表格里逐行选仓。
+                                  warehouse: _usesLineWarehouse
+                                      ? StockGridWarehouseWiring(
+                                          entries: names.warehouseHierarchy,
+                                          label: switch (widget.docType) {
+                                            StockDocType.otherIn ||
+                                            StockDocType.finishedIn => '入库仓',
+                                            _ => '发出仓',
+                                          },
+                                          onWarehouseChanged:
+                                              _onRowWarehouseChanged,
+                                        )
+                                      : null,
                                   weight: StockGridWeightWiring(
                                     entryUnit: weightUnits.entry,
                                     mode: _weightMode,

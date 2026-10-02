@@ -358,6 +358,7 @@ class _WarehouseQualityPreStockInPageState
       ),
       EditableGridColumn(
         key: 'received',
+        exactValueOf: (row) => row.line.receivedBaseQty.toString(),
         label: '待检量',
         width: 120,
         numeric: true,

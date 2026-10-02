@@ -37,7 +37,7 @@ class WorkshopMaterialCountReviewPermissionTest {
         assertThat(views.view(id).allowedActions()).contains("EDIT_COUNT").doesNotContain("SUBMIT_COUNT");
         when(permission.has(WorkshopMaterialPermissions.COUNT)).thenReturn(false);
         when(permission.has(WorkshopMaterialPermissions.COUNT_REVIEW)).thenReturn(true);
-        assertThat(views.view(id).allowedActions()).contains("SUBMIT_COUNT").doesNotContain("EDIT_COUNT");
+        assertThat(views.view(id).allowedActions()).contains("SUBMIT_COUNT", "WITHDRAW_COUNT").doesNotContain("EDIT_COUNT");
     }
 
     @Test void actualPostingEndpointRequiresWarehouseReviewInsteadOfTheOldRecordingPermission() throws Exception {
@@ -52,9 +52,11 @@ class WorkshopMaterialCountReviewPermissionTest {
             SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("reviewer", "unused",
                     List.of(new SimpleGrantedAuthority("stock:count:warehouse_review"))));
             controller.periods(id); controller.period(id); controller.count(id);
+            controller.withdrawCount(id,new WorkshopMaterialDtos.VersionRequest(0L,"reviewer-withdraw-test"));
             verify(context.getBean(WorkshopMaterialPeriodService.class)).list(id);
             verify(context.getBean(WorkshopMaterialPeriodService.class)).detail(id);
             verify(context.getBean(WorkshopMaterialCountService.class)).detail(id);
+            verify(context.getBean(WorkshopMaterialPeriodService.class)).withdrawCount(eq(id),any());
             SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("viewer", "unused", List.of()));
             assertThatThrownBy(() -> controller.count(id)).isInstanceOf(AccessDeniedException.class);
             assertThatThrownBy(() -> controller.periods(id)).isInstanceOf(AccessDeniedException.class);

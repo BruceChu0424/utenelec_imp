@@ -66,11 +66,19 @@ class PlatformTableController<T> extends ChangeNotifier {
   List<PlatformColumnDefinition> get definitions =>
       _definitions.values.map(_visibleDefinition).toList(growable: false);
   bool get historical => binding?.snapshotOf != null;
+  bool _columnEditingEnabled = false;
+
+  /// A page must explicitly opt into authoring. Account permissions alone do
+  /// not turn review/detail tables into editors, including for administrators.
+  bool get columnEditingEnabled => _columnEditingEnabled && !historical;
+  bool get canDefineColumns =>
+      columnEditingEnabled && (!bound || capabilities?.canDefine == true);
 
   void configure(
     BuildContext context, {
     required PlatformTableDescriptor<T> descriptor,
     PlatformTableBinding<T>? explicitBinding,
+    bool columnEditingEnabled = false,
     Map<String, String?> Function(T)? factsOf,
     Iterable<Listenable> Function(T)? factListenablesOf,
     PlatformRowDraft? Function(T)? stagedDraftOf,
@@ -102,7 +110,10 @@ class PlatformTableController<T> extends ChangeNotifier {
         key != _tableKey ||
         next?.scope != binding?.scope ||
         !identical(repository, repo);
+    final wasEditing = this.columnEditingEnabled;
     binding = next;
+    _columnEditingEnabled = columnEditingEnabled;
+    if (wasEditing != this.columnEditingEnabled) _emit();
     repository = repo;
     fallbackFactsOf = factsOf;
     fallbackFactListenablesOf = factListenablesOf;
@@ -401,6 +412,9 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   void select(PlatformColumnDefinition column) {
+    if (!columnEditingEnabled) {
+      throw const FormatException('当前页面只能显示已有列，请在单据录入页添加列');
+    }
     if (layout.added.every((d) => d.id != column.id) &&
         layout.added.length >= 32) {
       throw const FormatException('最多添加 32 个扩展列');
@@ -617,7 +631,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   bool _canWriteFields(T item) =>
-      !historical &&
+      columnEditingEnabled &&
       binding?.canEditValues == true &&
       (binding?.canEditRow?.call(item) ?? true) &&
       capabilities?.supportsValues == true &&

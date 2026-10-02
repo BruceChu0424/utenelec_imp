@@ -80,6 +80,7 @@ import '../widgets/production_material_settlement_sheet.dart';
 import '../widgets/segment_material_change_dialog.dart';
 import '../widgets/start_confirmation_sheet.dart';
 import '../widgets/workshop_task_material_table.dart';
+import '../widgets/workshop_task_material_bin_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 /// 一块跑批遮罩的画面: 测试锚点 key + 标题 + 说明。标题在同一次动作里可换
@@ -183,10 +184,28 @@ class _ProductionWorkshopTasksPageState
           .read(currentPermissionsProvider)
           .contains(productionMaterialIncrementPermission);
 
+  bool _usesOnlyMaterialBin(ProductionExecutionWorkbenchSegment task) =>
+      task.binMaterialState ==
+          ProductionExecutionWorkbenchSegment.binStateKnown &&
+      task.zeroMaterial &&
+      task.materialKindCount == 0 &&
+      !task.materialDiscoveryRequired;
+
+  bool _canRequestMaterialIncrementTask(
+    ProductionExecutionWorkbenchSegment task,
+  ) =>
+      _canRequestMaterialIncrement &&
+      !task.needsMaterialChoice &&
+      !task.needsMaterialBin &&
+      !_usesOnlyMaterialBin(task) &&
+      !task.materialDiscoveryRequired &&
+      task.segmentStatus != 'COMPLETED' &&
+      task.segmentStatus != 'CANCELLED';
+
   Future<void> _openMaterialIncrement(
     ProductionExecutionWorkbenchSegment task,
   ) async {
-    if (_navigating || !_canRequestMaterialIncrement) return;
+    if (_navigating || !_canRequestMaterialIncrementTask(task)) return;
     setState(() => _navigating = true);
     try {
       await context.push(
@@ -338,7 +357,7 @@ class _ProductionWorkshopTasksPageState
     return l10n.productionMaterialViewUsage;
   }
 
-  /// 当前分类是否「等待物料」（未开工段：等料 + 齐套可开工）。
+  /// 当前分类是否「开工准备」（未开工段：认料、等料、领料或可开工）。
   bool get _isPreparing => _status == 'PREPARING';
 
   /// 路线只决定「什么时候可以开工」；仓库领取、同车间直送是每种物料各自的来源，
@@ -571,10 +590,7 @@ class _ProductionWorkshopTasksPageState
           enabled: !busy,
           onTap: () => _cancelMaterialDiscovery(task),
         ),
-      if (_canRequestMaterialIncrement &&
-          !task.materialDiscoveryRequired &&
-          task.segmentStatus != 'COMPLETED' &&
-          task.segmentStatus != 'CANCELLED')
+      if (_canRequestMaterialIncrementTask(task))
         UtenMenuItem(
           label: '申请追加用料',
           icon: Icons.playlist_add_outlined,
@@ -612,10 +628,7 @@ class _ProductionWorkshopTasksPageState
           enabled: !busy,
           onTap: () => _requestDraw([task]),
         ),
-      if (_isPreparing &&
-          _canStart &&
-          task.startRoute == 'BATCH' &&
-          task.canSplitBatch)
+      if (_isPreparing && _canStart && _canRequestBatchDrawTask(task))
         UtenMenuItem(
           label: '分批生产领料',
           icon: Icons.call_split_rounded,
@@ -905,6 +918,8 @@ class _ProductionWorkshopTasksPageState
 
   /// 服务端同时复核已确认路线、实际投料及共同可支持产量。
   bool _canStartTask(ProductionExecutionWorkbenchSegment task) =>
+      !task.needsMaterialChoice &&
+      !task.needsMaterialBin &&
       _routeAllowsKitActions(task) &&
       task.canStart &&
       (task.segmentStatus == 'READY' || task.segmentStatus == 'DISPATCHED');
@@ -917,19 +932,46 @@ class _ProductionWorkshopTasksPageState
   /// 还要服务端给了认料动作(CHOOSE)；其余行照旧要求路线放行且服务端复核可开工。
   /// 勾选、行菜单、详情按钮、批量开工共用。
   bool _canEnterStart(ProductionExecutionWorkbenchSegment task) =>
-      (task.needsStartConfirmation &&
-          (!task.needsMaterialChoice || task.canChooseMaterial)) ||
-      (_routeAllowsKitActions(task) && _canStartTask(task));
+      !task.needsMaterialBin &&
+      ((task.needsStartConfirmation &&
+              (!task.needsMaterialChoice || task.canChooseMaterial)) ||
+          (_routeAllowsKitActions(task) && _canStartTask(task)));
 
+  /// 认料/开启内料仓先于按单领料。旧响应可能同时带着领料发现门，不能把该门
+  /// 当成「去领料」动作；已认料后仍需领嵌件及 ORDER_ONLY 的行照常办理。
   /// 服务端确认的续领包括持续到料和齐套开工后的真实退料补领，不依赖历史 issued 标志。
   bool _canRequestDrawTask(ProductionExecutionWorkbenchSegment task) =>
-      task.canRequestMaterialDiscovery ||
-      (_routeAllowsKitActions(task) &&
-          task.canRequestDraw &&
-          !task.zeroMaterial &&
-          (task.segmentStatus == 'READY' ||
-              task.segmentStatus == 'DISPATCHED' ||
-              task.segmentStatus == 'IN_PROGRESS'));
+      !task.needsMaterialChoice &&
+      !task.needsMaterialBin &&
+      (task.canRequestMaterialDiscovery ||
+          (_routeAllowsKitActions(task) &&
+              task.canRequestDraw &&
+              !task.zeroMaterial &&
+              (task.segmentStatus == 'READY' ||
+                  task.segmentStatus == 'DISPATCHED' ||
+                  task.segmentStatus == 'IN_PROGRESS')));
+
+  bool _canRequestBatchDrawTask(ProductionExecutionWorkbenchSegment task) =>
+      !task.needsMaterialChoice &&
+      !task.needsMaterialBin &&
+      task.startRoute == 'BATCH' &&
+      task.canSplitBatch;
+
+  bool _canOpenMaterialBin() => locationAllowedFor(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+    RouteName.workshopMaterialBin,
+  );
+
+  /// NO_BIN 也包含正常按单领料的车间，只说明可选择的整批模式，不自动跳过领料。
+  bool _showMaterialBinSetupHint(ProductionExecutionWorkbenchSegment task) =>
+      task.binMaterialState ==
+          ProductionExecutionWorkbenchSegment.binStateNoBin &&
+      task.materialDiscoveryRequired;
+
+  static const _materialBinSetupHint =
+      '本车间尚未开启整批领料，当前按工单领料。若原料会提前整批放在车间使用，'
+      '请先由仓库在「车间内料仓设置」完成配置；开启后首次开工选用料，后续同一产品自动带出。';
 
   /// 产品的料要从车间内料仓领、本车间却还没开启整批领料(开工会被拒)。
   static String _materialBinMissingText(
@@ -957,6 +999,7 @@ class _ProductionWorkshopTasksPageState
     }
     if (task.materialDiscoveryRequired) {
       final l10n = AppLocalizations.of(context);
+      if (_showMaterialBinSetupHint(task)) return _materialBinSetupHint;
       if (task.startRoute == 'BATCH') {
         return l10n.materialDiscoveryBatchHelp;
       }
@@ -1482,8 +1525,7 @@ class _ProductionWorkshopTasksPageState
 
   Future<void> _prepareBatch(ProductionExecutionWorkbenchSegment task) async {
     if (!_canStart ||
-        task.startRoute != 'BATCH' ||
-        !task.canSplitBatch ||
+        !_canRequestBatchDrawTask(task) ||
         _navigating ||
         _loading) {
       return;
@@ -1685,13 +1727,16 @@ class _ProductionWorkshopTasksPageState
   }
 
   /// 顶栏「车间内料仓」：带上表头已选的生产车间(没选时由内料仓页自己定)。
-  Future<void> _openMaterialBin() async {
+  Future<void> _openMaterialBin({String? workshopId}) async {
     if (_navigating) return;
     setState(() => _navigating = true);
     try {
       await context.push(
-        RoutePath.workshopMaterialBin(workshopId: _workshopDepartmentId),
+        RoutePath.workshopMaterialBin(
+          workshopId: workshopId ?? _workshopDepartmentId,
+        ),
       );
+      if (mounted) await _reloadAfterChange();
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1955,6 +2000,15 @@ class _ProductionWorkshopTasksPageState
                     segmentId: task.segmentId,
                   ),
                 ],
+                if (task.binMaterialState ==
+                        ProductionExecutionWorkbenchSegment.binStateKnown &&
+                    const {
+                      'READY',
+                      'DISPATCHED',
+                      'IN_PROGRESS',
+                    }.contains(task.segmentStatus) &&
+                    _canOpenMaterialBin())
+                  WorkshopTaskMaterialBinPanel(segmentId: task.segmentId),
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
                   task.needsMaterialBin && _isPreparing
@@ -1967,9 +2021,14 @@ class _ProductionWorkshopTasksPageState
                       ? _blockedReasonOf(task)
                       : task.startRoute == null
                       ? '请先确认路线。齐套或持续生产共用原工单；只有各批独立管理时才选择分批。'
+                      : _showMaterialBinSetupHint(task)
+                      ? _materialBinSetupHint
+                      : _usesOnlyMaterialBin(task)
+                      ? '原料由车间内料仓供给，不用按工单领料；正常开工、报工，'
+                            '生产中可按实际需要提前整批补料。'
                       : task.startRoute == 'CONTINUOUS'
                       ? '每种必需物料共同支持部分产量后即可开工；仓库料分次领取，直送料按实际交接投入，后续均在本任务继续。'
-                      : task.startRoute == 'BATCH' && task.canSplitBatch
+                      : _canRequestBatchDrawTask(task)
                       ? '现有合格物料能配齐多少，就可以先安排多少。点击“分批领料”核对本次数量；剩余任务继续等待补料。'
                       : _canRequestDrawTask(task)
                       ? '可以选择本次物料并填写领料数量。确认提交后由仓库发料，实际领齐本批后再开工。'
@@ -1998,6 +2057,14 @@ class _ProductionWorkshopTasksPageState
               onPressed: () => Navigator.of(dialogContext).pop('material'),
               child: Text(_materialUsageLabel(task)),
             ),
+          if ((task.needsMaterialBin || _showMaterialBinSetupHint(task)) &&
+              _canOpenMaterialBin())
+            TextButton.icon(
+              key: ValueKey('workshop-detail-material-bin-${task.segmentId}'),
+              onPressed: () => Navigator.of(dialogContext).pop('material-bin'),
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('车间内料仓'),
+            ),
           if (_canStart && _isPreparing && _canEnterStart(task))
             FilledButton.icon(
               key: ValueKey('workshop-detail-start-${task.segmentId}'),
@@ -2012,10 +2079,7 @@ class _ProductionWorkshopTasksPageState
               icon: const Icon(Icons.move_to_inbox_outlined),
               label: Text(task.segmentStatus == 'IN_PROGRESS' ? '继续领料' : '去领料'),
             ),
-          if (_canStart &&
-              _isPreparing &&
-              task.startRoute == 'BATCH' &&
-              task.canSplitBatch)
+          if (_canStart && _isPreparing && _canRequestBatchDrawTask(task))
             FilledButton.icon(
               key: ValueKey('workshop-detail-batch-${task.segmentId}'),
               onPressed: () => Navigator.of(dialogContext).pop('batch'),
@@ -2027,6 +2091,9 @@ class _ProductionWorkshopTasksPageState
     );
     if (!mounted || action == null) return;
     switch (action) {
+      case 'material-bin':
+        await _openMaterialBin(workshopId: task.workshopDepartmentId);
+        break;
       case 'draw':
         await _requestDraw([task]);
       case 'batch':
@@ -2581,10 +2648,9 @@ class _ProductionWorkshopTasksPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 分类（等待物料=等料+齐套可开工｜生产中=正在生产可报工｜历史任务）
+                // 开工准备汇总认料、等料、领料和可开工；数量不是必须领料的工单数。
                 // 与搜索：全站标准工具条。车间筛选在表格「生产车间」列表头。
-                // 计数形态(ADR-100 三形态, 2026-09-21): 「等待物料」红徽章 ——
-                // 料没到位, 要车间工去催料/领料, 不动手这批工单就一直卡着;
+                // 「开工准备」红徽章：等待认料、领料、确认开工等下一步办理；
                 // 「生产中」黄徽章 —— 活已经在机台上跑, 报工是做完以后的事,
                 // 此刻没人在等谁动手, 跟着红色一起喊就是假警报。
                 // 历史任务不传 count: 已结束的东西不数(准则 §四之七)。
@@ -2601,7 +2667,7 @@ class _ProductionWorkshopTasksPageState
                     ),
                     UtenFilterSegment(
                       value: 'PREPARING',
-                      label: '等待物料',
+                      label: '开工准备',
                       count: counts.preparing,
                       countForm: UtenSegmentCountForm.actionable,
                     ),
@@ -2661,7 +2727,7 @@ class _ProductionWorkshopTasksPageState
                   child: _status == null
                       ? const UtenFilterPlaceholder(
                           message: '在上方选择分类后查看任务',
-                          description: '分类默认不选中；等待物料 / 生产中 / 历史任务',
+                          description: '开工准备包含待认料、等待物料和可开工任务；生产中可报工',
                         )
                       : _status == 'DRAFT'
                       ? WorkshopDraftSegment(
@@ -2815,7 +2881,7 @@ class _ProductionWorkshopTasksPageState
                               Tooltip(
                                 message: _blockedReasonOf(task),
                                 child: Icon(
-                                  task.canSplitBatch
+                                  _canRequestBatchDrawTask(task)
                                       ? Icons.call_split_rounded
                                       : task.segmentStatus == 'IN_PROGRESS' &&
                                             _remainingReportOf(task) <= 0.000001
@@ -2929,7 +2995,7 @@ class _ProductionWorkshopTasksPageState
                           error: _error,
                           onRetry: _load,
                           emptyMessage: _isPreparing
-                              ? '当前车间没有等待物料的工单'
+                              ? '当前车间没有待开工的工单'
                               : _status == 'IN_PROGRESS'
                               ? (_items.isEmpty
                                     ? '当前车间没有生产中的工单'
@@ -3000,6 +3066,22 @@ class _ProductionWorkshopTasksPageState
             ),
           ],
         );
+        if (_isPreparing &&
+            _canStart &&
+            task.needsMaterialChoice &&
+            _canEnterStart(task)) {
+          return Tooltip(
+            message: '开工前选用车间内料仓里的料',
+            child: InkWell(
+              key: ValueKey('workshop-confirm-material-${task.segmentId}'),
+              onTap: _navigating || _loading ? null : () => _startTasks([task]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                child: badge,
+              ),
+            ),
+          );
+        }
         if (_isPreparing &&
             _canStart &&
             _routeAllowsKitActions(task) &&

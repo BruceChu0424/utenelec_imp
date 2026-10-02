@@ -99,6 +99,7 @@ class FormDraftCategoryTable<T> extends ConsumerStatefulWidget {
     this.search = '',
     this.localPredicate,
     this.includeConfirmedWithoutRecord = false,
+    this.standalone = false,
   });
   final FormDraftCategoryScope scope;
   final MasterDataTableView<T> table;
@@ -107,6 +108,12 @@ class FormDraftCategoryTable<T> extends ConsumerStatefulWidget {
   final String search;
   final bool Function(FormDraft)? localPredicate;
   final bool includeConfirmedWithoutRecord;
+
+  /// 纯草稿列表（宿主没有自家业务表，[FormDraftCategoryList]）：恒渲染包装表，
+  /// 「已选 N 项」胶囊与删除按钮的右下悬浮组在空表/筛选空态也常驻（2026-10-01
+  /// 用户口径：任务中心各分类的草稿里胶囊不得滞留表头工具条）。业务列表保持
+  /// 早退——无草稿可合并时原样返回宿主表。
+  final bool standalone;
   @override
   ConsumerState<FormDraftCategoryTable<T>> createState() =>
       _FormDraftCategoryTableState<T>();
@@ -716,6 +723,7 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
     final table = FormDraftCategoryTable<Object>(
       scope: widget.scope,
       search: search,
+      standalone: true,
       localPredicate: (draft) => _filters.entries.every((filter) {
         final expected = filter.value;
         if (expected == null || expected.isEmpty) return true;

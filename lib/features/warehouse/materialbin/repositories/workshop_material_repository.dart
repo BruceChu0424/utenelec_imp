@@ -13,6 +13,7 @@ import '../../../../core/network/api_endpoints.dart';
 import '../../../../core/utils/idempotency_key.dart';
 import '../../../../shared/models/paged_result.dart';
 import '../models/workshop_material_models.dart';
+import '../models/workshop_main_warehouse_option.dart';
 
 /// 一次用户动作的幂等键: `wm-<动作>-<16 位指纹>`; [nonce] 为页面 (或对话框) 会话随机串。
 String wmIdempotencyKey(String action, String nonce, Object? payload) =>
@@ -39,6 +40,14 @@ class WorkshopMaterialRepository {
   Future<List<WmSetting>> settings() async {
     final list = await api.getList(ApiEndpoints.workshopMaterialSettings);
     return list.map(WmSetting.fromJson).toList(growable: false);
+  }
+
+  /// SETUP-only metadata: active, accountable top-level warehouses, without exposing stock or the full dictionary.
+  Future<List<WmMainWarehouseOption>> setupMainWarehouses() async {
+    final rows = await api.getList(
+      '${ApiEndpoints.workshopMaterialSettings}/main-warehouses',
+    );
+    return rows.map(WmMainWarehouseOption.fromJson).toList(growable: false);
   }
 
   /// 开启 / 停用整批领料 (一个原子命令; 开启时同一事务写在产产品的认料)。

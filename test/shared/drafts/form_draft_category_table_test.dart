@@ -327,7 +327,7 @@ void main() {
   );
 
   testWidgets(
-    'empty standalone draft category opens without table assertions',
+    'empty standalone draft category keeps the floating selection group',
     (tester) async {
       await tester.pumpWidget(
         ProviderScope(
@@ -339,6 +339,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('暂无草稿'), findsOneWidget);
+      // 2026-10-01 用户口径：空草稿列表也渲染包装表——「已选 N 项」胶囊与删除
+      // 按钮的右下悬浮组常驻，不再滞留表头工具条。
+      expect(
+        find.byType(MasterDataTableView<FormDraftCategoryRow<Object>>),
+        findsOneWidget,
+      );
+      expect(find.text('已选 0 项'), findsOneWidget);
+      expect(find.text('删除填写草稿 (0)'), findsOneWidget);
       expect(find.text('本机草稿历史'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

@@ -4,12 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
+import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
@@ -155,6 +157,107 @@ void main() {
   );
 
   testWidgets(
+    'direct customer total amount reverses exact price and submits decimal strings',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.customerShipment,
+        id: 'direct-total',
+        detail: _directTotal,
+      );
+      final row = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller
+          .rows
+          .single;
+      row.qty.text = '10000';
+      row.discount.text = '0.8';
+      row.pricing.totalAmount.text = '100';
+      await tester.pump();
+      expect(row.price.text, '0.0125');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final line = (api.lastPutBody!['items'] as List).single as Map;
+      expect(line['qty'], '10000');
+      expect(line['price'], '0.0125');
+      expect(line['discount'], '0.8');
+      expect(line.containsKey('totalAmountInput'), isFalse);
+      expect(line.containsKey('amountOriginal'), isFalse);
+    },
+  );
+
+  testWidgets(
+    'direct customer inexact total blocks save without silently rounding price',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.customerShipment,
+        id: 'direct-total',
+        detail: _directTotal,
+      );
+      final row = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller
+          .rows
+          .single;
+      row.qty.text = '3';
+      row.pricing.totalAmount.text = '1';
+      await tester.pump();
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody, isNull);
+      expect(row.price.text, isEmpty);
+      expect(row.pricing.totalAmount.text, '1');
+      expect(row.pricing.error.value, contains('精确单价'));
+    },
+  );
+
+  testWidgets(
+    'unlinked sales return includes its stored discount when reversing total',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        type: SalesDocType.returnDoc,
+        id: 'return-total',
+        detail: {
+          ..._directTotal,
+          'id': 'return-total',
+          'items': [
+            {
+              'id': 'return-line',
+              'goodsId': 'goods-1',
+              'qty': 10,
+              'price': 2,
+              'discount': 0.8,
+            },
+          ],
+        },
+      );
+      final row = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller
+          .rows
+          .single;
+      expect(row.amountExactNotifier.value, '16');
+      row.pricing.totalAmount.text = '8';
+      await tester.pump();
+      expect(row.price.text, '1');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final line = (api.lastPutBody!['items'] as List).single as Map;
+      expect(line['qty'], '10');
+      expect(line['price'], '1');
+      expect(line['discount'], '0.8');
+    },
+  );
+
+  testWidgets(
     'explicit free dispatch hides unnecessary price and currency inputs',
     (tester) async {
       final api = await _pumpEditor(
@@ -239,7 +342,7 @@ void main() {
       );
       expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
       expect(_textFieldWithLabel('汇率'), findsNothing);
-      expect(find.text('金额(订单币种)'), findsOneWidget);
+      expect(find.text('总金额(订单币种)'), findsOneWidget);
       // 表尾合计条（UtenTotalsSummaryBar）：标签与数值分两个 Text 渲染。
       // 2026-09-11 底部固定操作条改成右下角悬浮「取消/保存」后，原来那条
       //「合计(订单币种) 0.00」已删除——明细表下方本来就有合计，底部再报一遍是重复。
@@ -598,6 +701,33 @@ const _prefillOrder = {
       'price': 2,
       'unitId': 'unit-box',
       'unitRate': 1,
+    },
+  ],
+};
+
+const _directTotal = {
+  'id': 'direct-total',
+  'shipmentKind': 'DIRECT_CUSTOMER',
+  'billingMode': 'CHARGED',
+  'directPurpose': 'SAMPLE',
+  'reviewRevision': 0,
+  'status': 0,
+  'writable': true,
+  'clientId': 'client-1',
+  'currencyId': 'currency-usd',
+  'warehouseId': 'warehouse-1',
+  'shipAddr': '客户收货处',
+  'linkPhone': '1234567',
+  'warehouseWorkStatus': 'PENDING_PICK',
+  'items': [
+    {
+      'id': 'direct-line',
+      'goodsId': 'goods-1',
+      'unitId': 'unit-box',
+      'unitRate': 1,
+      'qty': 2,
+      'price': 1,
+      'discount': 1,
     },
   ],
 };

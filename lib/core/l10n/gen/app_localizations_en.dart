@@ -2160,7 +2160,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productionHubPlanSub =>
-      'Reference a sales order or create manually; history';
+      'Create a plan manually, optionally referencing a sales order';
 
   @override
   String get productionHubPlanHistory => 'Production plan history';

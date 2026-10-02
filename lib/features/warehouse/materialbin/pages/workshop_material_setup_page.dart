@@ -16,7 +16,6 @@ import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/feedback/uten_empty.dart';
-import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
@@ -181,6 +180,12 @@ class _WorkshopMaterialSetupPageState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final isSuperAdmin = ref.watch(isSuperAdminProvider);
+    final canPrepare =
+        isSuperAdmin ||
+        (permissions.contains(Perm.workshopMaterialSetup) &&
+            permissions.contains(Perm.goodsView));
     _myLocation ??= currentLocationOr(context, RouteName.workshopMaterialSetup);
     ref.onPageResume(_myLocation!, _load);
     return Scaffold(
@@ -206,7 +211,7 @@ class _WorkshopMaterialSetupPageState
             UtenContentContainer.wide(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-                child: _body(l10n),
+                child: _body(l10n, canPrepare: canPrepare),
               ),
             ),
             if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),
@@ -216,7 +221,7 @@ class _WorkshopMaterialSetupPageState
     );
   }
 
-  Widget _body(AppLocalizations l10n) {
+  Widget _body(AppLocalizations l10n, {required bool canPrepare}) {
     if (_loading && _settings == null) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -229,6 +234,8 @@ class _WorkshopMaterialSetupPageState
     }
     final settings = _settings ?? const <WmSetting>[];
     final current = _current;
+    // 深链和会话撤权也走同一门控，不能只把页签藏起来后继续请求货品资料。
+    final tab = _tab == tabPrep && !canPrepare ? tabEnable : _tab;
     if (_workshopId != null && current == null) {
       return UtenEmpty(
         message: '指定车间当前不可用或无权查看',
@@ -250,23 +257,18 @@ class _WorkshopMaterialSetupPageState
                 label: l10n.wmEnableWorkshopTab,
               ),
               UtenFilterSegment(value: tabMachines, label: l10n.wmMachines),
-              UtenFilterSegment(value: tabPrep, label: l10n.wmGoLivePrep),
+              if (canPrepare)
+                UtenFilterSegment(value: tabPrep, label: l10n.wmGoLivePrep),
             ],
-            selected: {_tab},
-            onSelectionChanged: (value) => setState(() => _tab = value),
+            selected: {tab},
+            onSelectionChanged: (value) {
+              if (value == tabPrep && !canPrepare) return;
+              setState(() => _tab = value);
+            },
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        if (_tab == tabEnable) ...[
-          const UtenInlineNotice(
-            key: Key('wm-setup-flow-guide'),
-            title: '首次认料即可开工，补料按车间办理',
-            message:
-                '开启对应车间后，申请直接选择原料和数量；首次使用的原料由仓库发料时在同页确认用途。'
-                '产品第一次只确认用哪种料，不必按工单领料；进行中的任务可随时申请整批补料。'
-                '上线前清点车间已有余料，核对原库存归属后登记，避免重复计入。',
-          ),
-          const SizedBox(height: UtenSpacing.s8),
+        if (tab == tabEnable) ...[
           Wrap(
             spacing: UtenSpacing.s8,
             runSpacing: UtenSpacing.s8,
@@ -297,7 +299,7 @@ class _WorkshopMaterialSetupPageState
           ),
           const SizedBox(height: UtenSpacing.s8),
         ],
-        if (_tab != tabEnable && settings.isNotEmpty) ...[
+        if (tab != tabEnable && settings.isNotEmpty) ...[
           Align(
             alignment: Alignment.centerLeft,
             child: SizedBox(
@@ -322,7 +324,7 @@ class _WorkshopMaterialSetupPageState
           ),
           const SizedBox(height: UtenSpacing.s8),
         ],
-        Expanded(child: _tabBody(l10n, settings, current)),
+        Expanded(child: _tabBody(l10n, settings, current, tab)),
       ],
     );
   }
@@ -331,6 +333,7 @@ class _WorkshopMaterialSetupPageState
     AppLocalizations l10n,
     List<WmSetting> settings,
     WmSetting? current,
+    String tab,
   ) {
     if (settings.isEmpty) {
       return const UtenEmpty(
@@ -338,14 +341,14 @@ class _WorkshopMaterialSetupPageState
         description: '车间是生产部下面的部门; 请先在部门管理里建好车间',
       );
     }
-    if (_tab == tabEnable) {
+    if (tab == tabEnable) {
       return _enableTable(
         l10n,
         widget.initialWorkshopId == null ? settings : [current!],
       );
     }
     if (current == null) return const UtenEmpty(message: '请先选车间');
-    if (_tab == tabMachines) {
+    if (tab == tabMachines) {
       return WmMachinesTab(
         key: ValueKey('machines-${current.workshopDepartmentId}'),
         workshopId: current.workshopDepartmentId,

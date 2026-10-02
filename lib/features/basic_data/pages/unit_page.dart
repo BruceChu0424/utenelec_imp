@@ -459,6 +459,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final total = _page?.total ?? 0;
     return Scaffold(
@@ -523,6 +524,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<UnitListItem>(
+                    columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',
                     columns: _columns,

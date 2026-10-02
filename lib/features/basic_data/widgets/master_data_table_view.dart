@@ -337,6 +337,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.cardBelowWidth,
     this.tableKey,
     this.platformBinding,
+    this.columnEditingEnabled = false,
     this.platformCellDecorator,
     this.scrollingHeader,
     this.errorKey,
@@ -394,6 +395,10 @@ class MasterDataTableView<T> extends StatefulWidget {
 
   final String? tableKey;
   final PlatformTableBinding<T>? platformBinding;
+
+  /// Enable in document entry forms or master-data maintenance lists, gated by
+  /// their edit permission. Detail and approval pages remain read-only.
+  final bool columnEditingEnabled;
   final Widget Function(
     BuildContext context,
     T row,
@@ -687,6 +692,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   late List<T> _items;
   int? _appendPage;
   int _acceptedPage = 1;
+  int? _visiblePage;
+  final _rowPages = <Object, int>{};
+  bool _visiblePageScheduled = false;
+  bool _settlingPageLayout = false;
+  int _pageLayoutGeneration = 0;
+  RenderBox? _externalPageViewport;
   String? _appendError;
   int _appendGeneration = 0;
   bool _appendScheduled = false;
@@ -709,9 +720,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.isLoading || widget.loadingMore || _appendPage != null;
   bool get _loadingMore =>
       !_prepending && (widget.loadingMore || _appendPage != null);
-  int get _currentPage => _acceptedPage;
-  int get _firstPage => _pages.isEmpty ? _currentPage : _pages.firstKey()!;
-  int get _lastPage => _pages.isEmpty ? _currentPage : _pages.lastKey()!;
+  int get _currentPage => _visiblePage ?? _acceptedPage;
+  int get _firstPage => _pages.isEmpty ? _acceptedPage : _pages.firstKey()!;
+  int get _lastPage => _pages.isEmpty ? _acceptedPage : _pages.lastKey()!;
   bool get _automaticPagination =>
       widget.onPageChange != null && widget.onLoadMore == null;
 
@@ -838,6 +849,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   void _syncRows() {
     _items = _collectRows(_pages);
+    if (_visiblePage != null && !_pages.containsKey(_visiblePage)) {
+      _visiblePage = null;
+    }
+    _rowPages.clear();
+    for (final entry in _pages.entries) {
+      for (final row in entry.value) {
+        // The first occurrence is the visible position after de-duplication;
+        // newer snapshots may update the value but do not move that position.
+        _rowPages.putIfAbsent(('data', _paginationRowId(row)), () => entry.key);
+      }
+    }
     _retainSelectedRows();
     final liveIds = _items.map((row) => widget.idOf?.call(row)).toSet();
     widget.rowsController?.update([
@@ -853,7 +875,87 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _loadNextFromController,
     _busy,
     loadPrevious: _loadPreviousFromController,
+    updateVisiblePage: (viewport) {
+      _externalPageViewport = viewport;
+      _scheduleVisiblePage();
+    },
   );
+
+  /// Fetch position and reading position are separate. Wait for insertion /
+  /// eviction compensation before resolving the actual visible business page.
+  void _acceptPageIndicator(int page, {bool reset = false}) {
+    _acceptedPage = page;
+    if (reset) _visiblePage = null;
+    _settlingPageLayout = true;
+    final generation = ++_pageLayoutGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && generation == _pageLayoutGeneration) {
+          _settlingPageLayout = false;
+          _scheduleVisiblePage();
+        }
+      });
+      WidgetsBinding.instance.ensureVisualUpdate();
+    });
+  }
+
+  void _scheduleVisiblePage() {
+    if (_visiblePageScheduled ||
+        !_automaticPagination ||
+        _busy ||
+        _settlingPageLayout ||
+        _pages.isEmpty) {
+      return;
+    }
+    _visiblePageScheduled = true;
+    final generation = _pageLayoutGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visiblePageScheduled = false;
+      if (!mounted ||
+          generation != _pageLayoutGeneration ||
+          _busy ||
+          _settlingPageLayout) {
+        return;
+      }
+      int? page;
+      double? firstTop;
+      for (final entry in _mountedPaginationRows.entries) {
+        if (!entry.value.paged) continue;
+        final rowPage = _rowPages[entry.key];
+        final box = entry.value.box;
+        if (rowPage == null || !box.attached || !box.hasSize) continue;
+        final viewportObject = widget.embedded && !_fullscreen
+            ? _externalPageViewport
+            : RenderAbstractViewport.maybeOf(box);
+        if (viewportObject is! RenderBox) continue;
+        final viewport = viewportObject;
+        if (!viewport.attached || !viewport.hasSize) continue;
+        final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
+        final bottom = box
+            .localToGlobal(Offset(0, box.size.height), ancestor: viewport)
+            .dy;
+        // Kept-alive offscreen cells can remain attached with a singular paint
+        // transform. They have no visible position and must not win the anchor.
+        if (!top.isFinite ||
+            !bottom.isFinite ||
+            bottom <= 0.5 ||
+            top >= viewport.size.height) {
+          continue;
+        }
+        if (firstTop == null || top < firstTop) {
+          firstTop = top;
+          page = rowPage;
+        }
+      }
+      if (page == null || (page == _currentPage && _visiblePage != null)) {
+        return;
+      }
+      setState(() => _visiblePage = page);
+      if (!_pageFocus.hasFocus) _pageCtrl.text = '$page';
+      if (_fullscreen) _fsTick.value++;
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
 
   void _resetPages() {
     if (_queryChanged) {
@@ -872,7 +974,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _removeMeasureItems = const [];
     _prependBottomSpace = 0;
     _prependAnchor.reset();
-    _acceptedPage = widget.currentPage;
+    _acceptPageIndicator(widget.currentPage, reset: true);
     _pages
       ..clear()
       ..[widget.currentPage] = widget.items;
@@ -924,7 +1026,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           }
         }
         _acceptPage(widget.currentPage, widget.items);
-        _acceptedPage = widget.currentPage;
+        _acceptPageIndicator(widget.currentPage);
         _appendPage = null;
         _appendError = null;
         _syncRows();
@@ -1056,8 +1158,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ? child
       : _PaginationRowMarker(
           key: ValueKey(('pagination-row', id)),
-          register: (box) =>
-              _mountedPaginationRows[id] = (box: box, paged: paged),
+          register: (box) {
+            _mountedPaginationRows[id] = (box: box, paged: paged);
+            _scheduleVisiblePage();
+          },
           unregister: (box) {
             if (identical(_mountedPaginationRows[id]?.box, box)) {
               _mountedPaginationRows.remove(id);
@@ -1076,7 +1180,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       final viewport = viewportObject as RenderBox;
       if (!viewport.hasSize) continue;
       final top = box.localToGlobal(Offset.zero, ancestor: viewport).dy;
-      if (top + box.size.height <= 0.5 || top >= viewport.size.height) {
+      if (!top.isFinite ||
+          top + box.size.height <= 0.5 ||
+          top >= viewport.size.height) {
         continue;
       }
       if (anchor == null || top < anchor.top) {
@@ -1176,6 +1282,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           ? removedBox.size.height
           : 0.0;
       _prependAnchor.prepareChange(insertedExtent - removedExtent);
+      // Replacing equal-height pages at opposite edges can leave the total
+      // scroll extent unchanged. Still run the pending measured correction in
+      // the next layout instead of silently skipping it with unchanged metrics.
+      if (_prependAnchor.pending && position != null) position.correctBy(0);
       setState(() {
         if (position != null &&
             position.maxScrollExtent <= 0.5 &&
@@ -1249,7 +1359,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   void _commitPrepend() {
     setState(() {
-      _acceptedPage = _appendPage!;
+      _acceptPageIndicator(_appendPage!);
       _acceptPage(_acceptedPage, _prependPageItems!);
       _appendPage = null;
       _appendError = null;
@@ -1258,7 +1368,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _removeMeasureItems = const [];
       _syncRows();
     });
-    _pageCtrl.text = '$_currentPage';
+    if (!_pageFocus.hasFocus) _pageCtrl.text = '$_currentPage';
     _configurePlatform();
     if (_fullscreen) _fsTick.value++;
   }
@@ -1392,6 +1502,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ],
       ),
       explicitBinding: widget.platformBinding,
+      columnEditingEnabled: widget.columnEditingEnabled,
       exactFactKeys: widget.columns
           .where((column) => column.exactValueOf != null)
           .map((column) => column.key)
@@ -1570,9 +1681,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _platformAddButton() => IconButton(
     key: const Key('platform-table-add-column'),
-    tooltip: '添加列',
+    tooltip: _platform.columnEditingEnabled ? '添加列' : '显示列',
     onPressed: _addPlatformColumn,
-    icon: const Icon(Icons.add_rounded),
+    icon: Icon(
+      _platform.columnEditingEnabled
+          ? Icons.add_rounded
+          : Icons.view_column_outlined,
+    ),
   );
   void _publishProjection() {
     if (_projectionScheduled || _projection == null) return;
@@ -1664,6 +1779,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _overlaySyncing = false;
   // 分页跳转输入框：填数字回车跳页；外部翻页（上一页/下一页/跳页）时同步回当前页。
   late final TextEditingController _pageCtrl;
+  final FocusNode _pageFocus = FocusNode();
   bool _syncing = false;
 
   // —— 本地取值筛选 / 本地排序（filterFromRows 列；2026-09-25）——
@@ -2241,6 +2357,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _pendingScrollToEnd = widget.scrollToEndRequest;
     }
     _pageCtrl = TextEditingController(text: '${widget.currentPage}');
+    _pageFocus.addListener(() {
+      if (!_pageFocus.hasFocus && mounted) _pageCtrl.text = '$_currentPage';
+    });
     if (widget.stickyHeaderPinned != null) {
       _sticky = UtenStickyHeaderTracker(
         stackKey: _stickyStackKey,
@@ -2437,7 +2556,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       });
     }
     // 外部翻页后，跳页输入框同步回当前页（用户未提交的输入被放弃，符合直觉）。
-    if (_pageCtrl.text != '$_currentPage') {
+    if (!_pageFocus.hasFocus && _pageCtrl.text != '$_currentPage') {
       if (_fullscreen) {
         // The pager lives in a different route during fullscreen. Updating its
         // controller in this route's build would mark that TextFormField dirty.
@@ -2690,6 +2809,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _overlayH.dispose();
     _hBarY.dispose();
     _pageCtrl.dispose();
+    _pageFocus.dispose();
     _stickyPagePos?.removeListener(_onStickyPageScroll);
     _sticky?.dispose();
     super.dispose();
@@ -3257,6 +3377,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     final controller = _verticalScrollController;
     if (controller == null || !controller.hasClients) return;
+    _scheduleVisiblePage();
     // At a clamped edge Flutter may emit no ScrollNotification at all. Observe
     // the wheel without claiming it from the normal scroll/zoom machinery.
     final prepend = event.scrollDelta.dy < 0;
@@ -3275,7 +3396,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       behavior: HitTestBehavior.translucent,
       child: NotificationListener<ScrollMetricsNotification>(
         onNotification: (notification) {
-          if (notification.metrics.axis == Axis.vertical) _scheduleHBarUpdate();
+          if (notification.metrics.axis == Axis.vertical) {
+            _scheduleHBarUpdate();
+            _scheduleVisiblePage();
+          }
           return false;
         },
         child: NotificationListener<ScrollNotification>(
@@ -3283,6 +3407,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             if (notification.metrics.axis == Axis.vertical) {
               _scheduleHBarUpdate();
               _maybeTriggerLoadMore(notification.metrics);
+              if (notification is ScrollUpdateNotification ||
+                  notification is OverscrollNotification ||
+                  notification is ScrollEndNotification) {
+                _scheduleVisiblePage();
+              }
               final forward =
                   notification is ScrollUpdateNotification &&
                       notification.dragDetails != null &&
@@ -4861,6 +4990,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       child: TextFormField(
                         errorBuilder: utenTextFieldErrorBuilder,
                         controller: _pageCtrl,
+                        focusNode: _pageFocus,
                         enabled: !_busy,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
@@ -4888,6 +5018,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                           } else {
                             _pageCtrl.text = '$target';
                           }
+                          _pageFocus.unfocus();
                         },
                       ),
                     ),

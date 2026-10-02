@@ -5,6 +5,8 @@ import com.uten.imp.common.web.ErrorCode;
 
 import com.uten.imp.features.stock.dto.StockBalanceAdjustmentRequest;
 import com.uten.imp.features.stock.dto.StockBalanceAdjustmentResult;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -29,6 +31,6 @@ public class StockBalanceAdjustmentController {
     @PreAuthorize("hasAuthority('stock:balance:adjust')")
     public StockBalanceAdjustmentResult adjust(
             @Valid @RequestBody StockBalanceAdjustmentRequest request) {
-        throw new ApiException(ErrorCode.CONFLICT, "库存快捷调整已退役，请通过库存盘点提交财务审核");
+        throw new ApiException(ErrorCode.CONFLICT, "库存调整已改为盘点审批，请通过盘点模式录入并提交财务审核");
     }
 }

@@ -117,6 +117,13 @@ public class StockDocumentItem extends SoftDeletableEntity {
 
     private String place;
 
+    /**
+     * 行级仓库（V787，2026-10-01 手工出入库单逐行选仓）。空 = 沿用表头仓；
+     * TRANSFER/CHECK 不使用（两腿/账面仍按表头）。
+     */
+    @Column(name = "warehouse_id")
+    private UUID warehouseId;
+
     @Column(name = "upstream_item_id")
     private UUID upstreamItemId;
 

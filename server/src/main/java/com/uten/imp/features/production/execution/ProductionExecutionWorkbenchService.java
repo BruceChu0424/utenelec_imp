@@ -436,6 +436,8 @@ public class ProductionExecutionWorkbenchService {
                 JOIN production_execution_segments segment ON segment.id = event.execution_segment_id
                 WHERE event.action = 'ROUTE_CONFIRMED' AND event.created_by = :userId
                   AND segment.start_route IS NOT NULL
+                  AND segment.is_deleted = FALSE
+                  AND segment.status NOT IN ('CANCELLED', 'REVERSED')
                 ORDER BY event.created_at DESC
                 LIMIT 1
                 """).setParameter("userId", userId), String.class);

@@ -148,6 +148,34 @@ class SalesQuoteTemplateServiceTest {
         verifyNoInteractions(audit);
     }
 
+    @Test void customerTemplateRetainsItsColumnsEvenWhenTheCurrentScreenHasAProjection() throws Exception {
+        var candidate = QuoteTemplateWorkbook.defaultTemplate(); UUID template = UUID.randomUUID();
+        when(templates.list(clientId)).thenReturn(List.of(view(template)));
+        when(templates.load(clientId, template)).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(), candidate.mapping(),
+                candidate.features(), candidate.fingerprint(), "customer.xlsx"));
+        var requested = projection(Map.of("scope", "sales_quote", "columns", List.of(Map.of("key", "qty", "label", "ONLY QTY"))));
+        var result = service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(template), false, null, requested));
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.bytes()))) {
+            var row = workbook.getSheetAt(0).getRow(5);
+            assertThat(row.getCell(0).getStringCellValue()).isEqualTo("历史货品");
+            assertThat(row.getCell(6).getNumericCellValue()).isEqualTo(10);
+            assertThat(row.getCell(8).getNumericCellValue()).isEqualTo(19.25);
+            assertThat(row.getLastCellNum()).isGreaterThan((short) 1);
+        }
+    }
+
+    @Test void learningRequiresWriteScopeAndExportPermissionsBeforeAccessingCandidate() {
+        assertThatThrownBy(() -> service.learningContext(quoteId)).hasMessageContaining("权限");
+        verifyNoInteractions(quotes, templates);
+        allow(Set.of("sales_quote:view", "sales_quote:export", "sales_order:price:view", "sales_quote:edit"));
+        when(master.canLearnClientDocument(clientId)).thenReturn(false);
+        assertThatThrownBy(() -> service.adopt(quoteId, new SalesQuoteTemplateService.AdoptRequest(UUID.randomUUID())))
+                .hasMessageContaining("此客户");
+        verifyNoInteractions(templates);
+        when(master.canLearnClientDocument(clientId)).thenReturn(true);
+        assertThat(service.learningContext(quoteId).clientId()).isEqualTo(clientId);
+    }
+
     @Test void allTwentyOneLearnedTemplatesCanBeDownloadedWithoutTruncation() throws Exception {
         var candidate = QuoteTemplateWorkbook.defaultTemplate();
         List<SalesQuoteTemplateStore.TemplateView> all = new ArrayList<>();

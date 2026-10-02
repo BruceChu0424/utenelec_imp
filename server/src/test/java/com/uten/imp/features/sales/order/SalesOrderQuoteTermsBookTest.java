@@ -48,7 +48,7 @@ class SalesOrderQuoteTermsBookTest {
                 List.of(matchLine(1, goodsA, "1", "10", "1")));
         assertThat(absent.allLinesMatch()).isFalse();
         var matching = new SalesOrderFinanceConfirmService.QuoteMatchLine(1, goodsA, null, unit,
-                BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ONE, List.of(fee));
+                BigDecimal.ONE, BigDecimal.TEN, BigDecimal.ONE, List.of(fee), BigDecimal.ONE);
         assertThat(SalesOrderFinanceConfirmService.matchQuote(List.of(quote), "XB1", List.of(matching)).allLinesMatch()).isTrue();
     }
 
@@ -132,6 +132,7 @@ class SalesOrderQuoteTermsBookTest {
         item.setGoodsId(goods);
         item.setUnitId(unit);
         item.setUnitRate(new BigDecimal("1.000000"));
+        item.setQty(BigDecimal.ONE);
         item.setPrice(price == null ? null : new BigDecimal(price));
         item.setDiscount(new BigDecimal(discount));
         return item;
@@ -140,7 +141,20 @@ class SalesOrderQuoteTermsBookTest {
     private SalesOrderFinanceConfirmService.QuoteMatchLine matchLine(
             int lineNo, UUID goods, String unitRate, String price, String discount) {
         return new SalesOrderFinanceConfirmService.QuoteMatchLine(lineNo, goods, null, unit,
-                new BigDecimal(unitRate), new BigDecimal(price), new BigDecimal(discount));
+                new BigDecimal(unitRate), new BigDecimal(price), new BigDecimal(discount), List.of(), BigDecimal.ONE);
+    }
+
+    @Test
+    void changedQuantityAndOmittedQuotedLinesNeverClaimTheOrderMatchesTheQuote() {
+        SalesQuoteItem first = quoteLine(1, goodsA, "10", "0.9");
+        SalesQuoteItem second = quoteLine(2, goodsB, "10", "0.9");
+        var increased = new SalesOrderFinanceConfirmService.QuoteMatchLine(1, goodsA, null, unit,
+                BigDecimal.ONE, BigDecimal.TEN, new BigDecimal("0.9"), List.of(), new BigDecimal("2"));
+        assertThat(SalesOrderFinanceConfirmService.matchQuote(List.of(first), "XB1", List.of(increased)).allLinesMatch()).isFalse();
+        var omitted = SalesOrderFinanceConfirmService.matchQuote(List.of(first, second), "XB1",
+                List.of(matchLine(1, goodsA, "1", "10", "0.9")));
+        assertThat(omitted.matches()).containsExactly(true);
+        assertThat(omitted.allLinesMatch()).isFalse();
     }
 
     private OrderItemLine orderLine(int lineNo, UUID goods) {

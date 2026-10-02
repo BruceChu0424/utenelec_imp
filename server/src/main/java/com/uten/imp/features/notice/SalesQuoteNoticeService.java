@@ -48,7 +48,7 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
         QuoteRef quote = quote(quoteId);
         if (quote == null) return;
         UUID submitterUser = userOfEmployee(quote.submittedBy());
-        boolean resubmission = quote.reviewRevision() > 1;
+        boolean resubmission = quote.resubmission();
         for (UUID reviewer : reviewers.eligibleUserIds()) {
             if (reviewer.equals(submitterUser)) continue;
             noticeService.publishForUser(
@@ -56,8 +56,8 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
                     (resubmission ? "报价重新提交, 待核价：" : "报价待核价：") + quote.billNo(),
                     quote.sellerLabel() + " 提交了客户 " + quote.clientName() + " 的报价单 " + quote.billNo()
                             + "(" + quote.lineCount() + " 行货品)"
-                            + (resubmission ? ", 这是修改后重新提交的版本, 请对照上次确认的折扣核对。" : "。")
-                            + "请认领后核对折扣和成交单价, 确认或退回。",
+                            + (resubmission ? ", 这是修改后重新提交的版本, 请对照修订记录核对价格、折扣、数量与删除行。" : "。")
+                            + "请认领后核对报价明细, 确认或退回。",
                     TYPE_APPROVAL, PUBLISHER,
                     "/finance/quote-review/" + quoteId,
                     EVENT_PENDING_REVIEW, "normal", quoteId);
@@ -91,10 +91,10 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
         if (owner == null) return;
         noticeService.publishForUser(
                 owner,
-                "报价已核价, 可以转订货单了：" + quote.billNo(),
+                "报价已核价, 待客户确认：" + quote.billNo(),
                 "客户 " + quote.clientName() + " 的报价单 " + quote.billNo() + " 已由财务"
                         + (quote.confirmedByName().isBlank() ? "" : " " + quote.confirmedByName())
-                        + " 核价确认。客户确认下单后, 在报价详情点「转订货单」即可, 折扣会按财务核定的带入。",
+                        + " 核价确认。请与客户核对当前版本，在报价详情记录「客户已同意」后生成订货单；客户不同意时可重新议价或取消报价。",
                 TYPE_TASK, PUBLISHER,
                 "/sales/quotes/" + quoteId,
                 EVENT_CONFIRMED, "normal", null);
@@ -123,7 +123,9 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
 
     private QuoteRef quote(UUID quoteId) {
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT quote.bill_no, quote.maker_id, quote.submitted_by, quote.review_revision,
+                SELECT quote.bill_no, quote.maker_id, quote.submitted_by,
+                       (SELECT COUNT(*) FROM sales_quote_revision_logs history
+                        WHERE history.quote_id = quote.id AND history.action = 'SUBMIT') > 1 AS resubmission,
                        quote.finance_return_reason,
                        COALESCE(client.name, '') AS client_name,
                        COALESCE(seller.full_name, maker.full_name, '') AS seller_name,
@@ -144,7 +146,7 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
                 Objects.toString(row.get("bill_no"), ""),
                 (UUID) row.get("maker_id"),
                 (UUID) row.get("submitted_by"),
-                row.get("review_revision") instanceof Number number ? number.intValue() : 0,
+                Boolean.TRUE.equals(row.get("resubmission")),
                 (String) row.get("finance_return_reason"),
                 Objects.toString(row.get("client_name"), ""),
                 Objects.toString(row.get("seller_name"), ""),
@@ -164,7 +166,7 @@ public class SalesQuoteNoticeService implements SalesQuoteNoticePort {
         return users.isEmpty() ? null : users.getFirst();
     }
 
-    private record QuoteRef(String billNo, UUID makerId, UUID submittedBy, int reviewRevision,
+    private record QuoteRef(String billNo, UUID makerId, UUID submittedBy, boolean resubmission,
                             String returnReason, String clientName, String sellerName,
                             String returnedByName, String confirmedByName, long lineCount) {
         String sellerLabel() {

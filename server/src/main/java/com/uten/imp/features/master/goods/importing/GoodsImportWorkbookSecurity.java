@@ -8,6 +8,7 @@ import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -15,7 +16,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.zip.CRC32;
 
 /** Fail-closed resource and active-content boundary for goods-import OOXML. */
 final class GoodsImportWorkbookSecurity {
@@ -59,9 +60,11 @@ final class GoodsImportWorkbookSecurity {
         int entryCount = 0;
         byte[] buffer = new byte[16 * 1024];
 
-        try (ZipInputStream archive = new ZipInputStream(new ByteArrayInputStream(xlsx))) {
-            ZipEntry entry;
-            while ((entry = archive.getNextEntry()) != null) {
+        // SXSSF 直接导出的 OOXML 使用 ZIP64 数据描述符；JDK ZipInputStream 会把合法文件
+        // 误判为 invalid entry size。使用 POI 同源 ZIP 解析器，下面所有资源/活动内容限制不变。
+        try (ZipArchiveInputStream archive = new ZipArchiveInputStream(new ByteArrayInputStream(xlsx))) {
+            ZipEntry entry = archive.getNextEntry();
+            while (entry != null) {
                 entryCount++;
                 if (entryCount > MAX_ARCHIVE_ENTRIES) {
                     throw rejected("Excel 压缩包条目过多，请仅保留商品导入工作表");
@@ -77,8 +80,10 @@ final class GoodsImportWorkbookSecurity {
                 }
 
                 long entryExpanded = 0;
+                CRC32 checksum = new CRC32();
                 int read;
                 while ((read = archive.read(buffer)) != -1) {
+                    checksum.update(buffer, 0, read);
                     entryExpanded += read;
                     totalExpanded += read;
                     if (entryExpanded > MAX_ENTRY_EXPANDED_BYTES
@@ -89,7 +94,12 @@ final class GoodsImportWorkbookSecurity {
                         throw rejected("Excel 压缩比例异常，已拒绝解析");
                     }
                 }
-                archive.closeEntry();
+                // 下一条读取会完成当前 ZIP64 数据描述符；显式保留 JDK 流原有的 CRC/长度校验。
+                ZipEntry next = archive.getNextEntry();
+                if (entry.getCrc() != checksum.getValue() || entry.getSize() != entryExpanded) {
+                    throw rejected("Excel 压缩包校验失败，请重新导出文件后重试");
+                }
+                entry = next;
             }
         } catch (ApiException error) {
             throw error;

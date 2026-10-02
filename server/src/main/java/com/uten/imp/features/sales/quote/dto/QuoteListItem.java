@@ -36,6 +36,10 @@ public class QuoteListItem extends com.uten.imp.common.history.DocumentHistoryMe
     private OffsetDateTime submittedAt;
     private OffsetDateTime financeConfirmedAt;
     private int reviewRevision;
+    private OffsetDateTime customerAcceptedAt;
+    private Integer customerAcceptedRevision;
+    private String cancelReason;
+    private OffsetDateTime cancelledAt;
     private UUID convertedOrderId;
     private String convertedOrderNo;
     private String clientFileCurrency;

@@ -12,6 +12,8 @@ bool isDeletableSalesDraftRow(SalesDocListItem row, SalesDocType type) =>
     !row.stopped &&
     !row.financeRejected &&
     !row.rejected &&
+    (type != SalesDocType.quote ||
+        row.quoteWorkflow.allows(SalesQuoteAction.delete)) &&
     (!type.isShipment ||
         (!row.shipmentWorkflow.salesConfirmed &&
             salesShipmentStageOf(row) == SalesShipmentStage.draft));
@@ -21,6 +23,7 @@ Future<void> deleteSalesDraft(
   SalesRepository repository,
   SalesDocType type,
   String id, {
+  int? expectedRevision,
   bool Function()? stillCurrent,
   Future<void> Function()? beforeDelete,
 }) async {
@@ -29,6 +32,11 @@ Future<void> deleteSalesDraft(
     throw ApiException('DRAFT_DELETE_CONTEXT_CHANGED', '当前身份或选择范围已变化，请重新选择草稿');
   }
   final workflow = detail.shipmentWorkflow;
+  if (type == SalesDocType.quote &&
+      (expectedRevision == null ||
+          detail.quoteWorkflow.reviewRevision != expectedRevision)) {
+    throw ApiException('DRAFT_DELETE_VERSION_CHANGED', '报价已被修改，请刷新后重新选择要删除的草稿');
+  }
   if (type == SalesDocType.otherShipment ||
       !detail.writable ||
       detail.status != kSalesStatusDraft ||
@@ -37,6 +45,8 @@ Future<void> deleteSalesDraft(
       detail.stopped ||
       detail.financeRejected ||
       detail.rejected ||
+      (type == SalesDocType.quote &&
+          !detail.quoteWorkflow.allows(SalesQuoteAction.delete)) ||
       (type.isShipment &&
           (workflow.kind == 'LEGACY' ||
               workflow.salesConfirmed ||
@@ -49,5 +59,9 @@ Future<void> deleteSalesDraft(
   if (stillCurrent != null && !stillCurrent()) {
     throw ApiException('DRAFT_DELETE_CONTEXT_CHANGED', '当前身份或选择范围已变化，请重新选择草稿');
   }
-  await repository.delete(id);
+  if (type == SalesDocType.quote) {
+    await repository.deleteQuote(id, expectedRevision!);
+  } else {
+    await repository.delete(id);
+  }
 }

@@ -223,6 +223,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       ref.read(salesRepositoryProvider(type)),
       type,
       id,
+      expectedRevision: type == SalesDocType.quote
+          ? _list.page?.items
+                .where((row) => row.id == id)
+                .firstOrNull
+                ?.quoteWorkflow
+                .reviewRevision
+          : null,
       stillCurrent: () =>
           mounted &&
           widget.docType == type &&
@@ -362,7 +369,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       switch (stage) {
         SalesQuoteStage.draft ||
         SalesQuoteStage.financeRejected ||
-        SalesQuoteStage.approved => UtenSegmentCountForm.actionable,
+        SalesQuoteStage.awaitingCustomer ||
+        SalesQuoteStage.awaitingConversion => UtenSegmentCountForm.actionable,
         SalesQuoteStage.pendingFinance => UtenSegmentCountForm.inProgress,
         _ => UtenSegmentCountForm.browsing,
       };
@@ -470,7 +478,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     final order = await context.guardAction(
       () => ref
           .read(salesRepositoryProvider(SalesDocType.quote))
-          .convertToOrder(quote.id),
+          .convertToOrder(
+            quote.id,
+            expectedRevision: quote.quoteWorkflow.reviewRevision,
+          ),
       errorFallback: '转入失败，请稍后重试',
     );
     if (order == null || !mounted) return;
@@ -636,6 +647,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         l10n,
         stage: salesQuoteStageOf(it),
         converted: it.quoteWorkflow.isConverted,
+        customerAccepted: it.quoteWorkflow.customerAccepted,
       );
       return it.writable ? text : l10n.salesQuoteStatusReadOnly(text);
     }
@@ -798,6 +810,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     final seg = _statusSeg;
     // 报价分段/状态文字走 arb(ADR-134)；其它单据沿用原有文案。
     final l10n = _quoteStaged ? AppLocalizations.of(context) : null;
+    final quoteToConfirm = _quoteStaged
+        ? ref.watch(
+            badgeEntryTodoProvider(
+              BadgeEntry.salesQuoteAwaitingCustomerConfirmation,
+            ),
+          )
+        : null;
     final quoteToConvert = _quoteStaged
         ? ref.watch(
             badgeEntryTodoProvider(BadgeEntry.salesQuoteAwaitingConversion),
@@ -957,7 +976,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                                 UtenFilterSegment(
                                   value: _SalesDocSeg.shipment(stage),
                                   label: salesQuoteStageLabel(l10n, stage),
-                                  count: stage == SalesQuoteStage.approved
+                                  count:
+                                      stage == SalesQuoteStage.awaitingCustomer
+                                      ? quoteToConfirm
+                                      : stage ==
+                                            SalesQuoteStage.awaitingConversion
                                       ? quoteToConvert
                                       : statusCounts?[stage],
                                   countForm: _quoteStageCountForm(stage),

@@ -155,6 +155,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   String? _directPurpose;
   final _freeReason = TextEditingController();
   int _shipmentRevision = 0;
+  int _quoteRevision = 0;
 
   /// 与服务端一致：适用折扣的商业单据按数量 × 单价 × 折扣计算。
   bool get _amountUsesDiscount =>
@@ -166,8 +167,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   bool get _allowPricingInput =>
       _isCustomerShipment || widget.docType == SalesDocType.returnDoc;
 
-  /// 单价由货品资料标价锁定(服务端权威)的单据：订货、报价(ADR-134)。
-  bool get _lockedPrice =>
+  /// 报价和订货共用的客户文件、商业条款和精确计价字段。
+  bool get _hasClientPricing =>
       widget.docType == SalesDocType.order ||
       widget.docType == SalesDocType.quote;
 
@@ -175,7 +176,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 客户零星发货/退货借用同一条识别链只取货品+数量行(价格语义按各自单据口径)。
   /// 销售出货必须从订货单引入、历史其它出货是只读遗留，都不提供识别。
   bool get _aiIntakeSupported =>
-      _lockedPrice ||
+      _hasClientPricing ||
       widget.docType == SalesDocType.customerShipment ||
       widget.docType == SalesDocType.returnDoc;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
@@ -308,7 +309,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   /// 服务端脱敏与当前权限取交集，旧单据响应或草稿不能恢复已撤销的价格权限。
   bool get _priceMasked {
-    if (!_lockedPrice) return false;
+    if (!_hasClientPricing) return false;
     if (!_salesPriceVisible(ref.read(currentPermissionsProvider))) return true;
     final document = _attachmentDocument;
     if (document != null) return document.priceMasked;
@@ -628,6 +629,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         }
         _loadedCustomerShipment = d.shipmentWorkflow.isDirect;
         _shipmentRevision = d.shipmentWorkflow.revision;
+        _quoteRevision = d.quoteWorkflow.reviewRevision;
         _billingMode = d.shipmentWorkflow.billingMode;
         _directPurpose = d.shipmentWorkflow.purpose;
         _freeReason.text = d.shipmentWorkflow.freeReason ?? '';
@@ -768,7 +770,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             // 绝不默认 1(否则会把财务/服务端算好的折扣改回原价)。
             row.discount.clear();
           }
-          if (_lockedPrice) {
+          if (_hasClientPricing) {
             row
               ..clientPrice = financeExactTrimmed(
                 it.exactDecimals['clientPrice'] ?? it.clientPrice?.toString(),
@@ -946,12 +948,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         ..unitRate = 1
         ..stockPlaceNotifier.value = g.stockPlace;
       // 订单/报价/出货：单价由货品主档自动带入、锁定(出货亦可由来源订货单引入)。
-      if (_lockedPrice || widget.docType == SalesDocType.shipment) {
+      if (_hasClientPricing || widget.docType == SalesDocType.shipment) {
         target.applyLockedPricePreview(g.price);
       }
       // 订单/报价折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整；
       // 看不到价格的账号留空(保存时服务端按文件单价计算)。
-      if (_lockedPrice) {
+      if (_hasClientPricing) {
         // 英文名称由基础列直接显示。文件品名只保留客户文件或用户明确输入，
         // 不把主档英文名称写进客户原文，避免未上传文件也展开文件列。
         String? pricingReason;
@@ -1436,15 +1438,23 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           }
         }
         final qtyOk = (double.tryParse(r.qty.text.trim()) ?? 0) > 0;
+        final quotePrice = r.price.text.trim();
+        final quotePriceOk =
+            widget.docType != SalesDocType.quote ||
+            masked ||
+            quotePrice.isEmpty ||
+            (RegExp(r'^\d+(?:\.\d+)?$').hasMatch(quotePrice));
         final priceOk =
-            !priceRequired ||
-            (r.price.text.trim().isNotEmpty &&
-                double.tryParse(r.price.text.trim()) != null);
+            quotePriceOk &&
+            (!priceRequired ||
+                (r.price.text.trim().isNotEmpty &&
+                    double.tryParse(r.price.text.trim()) != null));
         if (!qtyOk || !priceOk) {
           r.invalidNotifier.value = true;
           badRow = badRow == 0 ? i + 1 : badRow;
         }
-        if (_lockedPrice && r.requiresOrderPriceRefresh) {
+        if (widget.docType == SalesDocType.order &&
+            r.requiresOrderPriceRefresh) {
           r.invalidNotifier.value = true;
           copiedPriceRow = copiedPriceRow == 0 ? i + 1 : copiedPriceRow;
         }
@@ -1472,7 +1482,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       } else if (pricingError != null) {
         fail('items', pricingError);
       } else if (badRow > 0) {
-        fail('items', '第 $badRow 行明细：数量须大于 0${priceRequired ? '，单价必填' : ''}');
+        fail(
+          'items',
+          '第 $badRow 行明细：数量须大于 0${priceRequired
+              ? '，单价必填'
+              : widget.docType == SalesDocType.quote
+              ? '，已填写的单价须为非负数'
+              : ''}',
+        );
       } else if (badDiscountRow > 0) {
         fail(
           'items',
@@ -1640,15 +1657,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       }
 
       final body = <String, dynamic>{
-        if ((_lockedPrice || widget.docType.isShipment) &&
+        if ((_hasClientPricing || widget.docType.isShipment) &&
             (r.documentItemId?.isNotEmpty ?? false))
           'id': r.documentItemId,
         'goodsId': r.goods!.id,
-        if (_lockedPrice)
+        if (_hasClientPricing)
           'extraColumns': r.extraColumnsPayload(priceMasked: _priceMasked),
         'qty': r.qty.text.trim(),
         // 只送单价原文; 金额由服务端按 数量 × 单价 × 折扣 精确派生(ADR-112), 请求不带金额。
-        if (price != null && !_freeCustomerShipment)
+        if (price != null && !_freeCustomerShipment && !_priceMasked)
           'price': r.price.text.trim(),
         if (r.orderItemId != null) 'orderItemId': r.orderItemId,
         if (r.outItemId != null) 'outItemId': r.outItemId,
@@ -1660,7 +1677,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         // 行备注：5 类单据通用（空文本不传，后端按 null 处理）。
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       };
-      if (_lockedPrice) body.addAll(_clientLineFields(r));
+      if (_hasClientPricing) body.addAll(_clientLineFields(r));
       switch (widget.docType) {
         case SalesDocType.order:
           final mp = parseExtra(r.machiningPrice);
@@ -1704,6 +1721,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       'billDate': _fmt(_billDate),
       if (widget.docType.isShipment && widget.id != null)
         'expectedRevision': _shipmentRevision,
+      if (widget.docType == SalesDocType.quote && widget.id != null)
+        'expectedRevision': _quoteRevision,
       if (_isCustomerShipment) ...{
         'shipmentKind': 'DIRECT_CUSTOMER',
         'billingMode': _billingMode,
@@ -1754,10 +1773,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       if (widget.docType == SalesDocType.returnDoc &&
           _returnReason.text.trim().isNotEmpty)
         'returnReason': _returnReason.text.trim(),
-      if (_lockedPrice && _clientFileCurrency != null)
+      if (_hasClientPricing && _clientFileCurrency != null)
         'clientFileCurrency': _clientFileCurrency,
       // 导入后换了表头客户：文件里的客户信息只补给识别时的那个客户，换了就不补。
-      if (_lockedPrice && (_aiIntake?.isValid ?? false))
+      if (_hasClientPricing && (_aiIntake?.isValid ?? false))
         'aiIntake': _aiIntake!.toSaveJson(currentClientId: _clientId),
       'items': itemsBody,
     };
@@ -2443,7 +2462,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       (row) => row.clientPrice?.trim().isNotEmpty ?? false,
     );
     if (!replace &&
-        _lockedPrice &&
+        _hasClientPricing &&
         existingFilePrices &&
         incomingFilePrices &&
         (_clientFileCurrency ?? '').toUpperCase() !=
@@ -2462,7 +2481,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
     // Resolve reusable definitions before replacing any user-entered lines.
     final intakeColumns = <String, BusinessColumn>{};
-    if (_lockedPrice && patch.extraColumns.isNotEmpty) {
+    if (_hasClientPricing && patch.extraColumns.isNotEmpty) {
       try {
         final repository = ref.read(businessColumnsRepositoryProvider);
         final scope = widget.docType == SalesDocType.quote
@@ -2545,7 +2564,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         }
       }
       // 报价/订货专属的识别会话与文件币种(其它单据没有折扣/标价语义，不参与)。
-      if (_lockedPrice) {
+      if (_hasClientPricing) {
         if (replace || !existingFilePrices) {
           _clientFileCurrency = patch.clientFileCurrency;
         }
@@ -2646,7 +2665,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 明细表底部合计条的金额项标签：订单/客户出货按单据币种，其余内部出库为本币。
   String _totalAmountLabel(SalesMasterNameService names) {
     const base = '总金额';
-    if (_freeCustomerShipment || (!_lockedPrice && !_isCustomerShipment)) {
+    if (_freeCustomerShipment || (!_hasClientPricing && !_isCustomerShipment)) {
       return base;
     }
     final resolved = names.currency(_currencyId);
@@ -3509,7 +3528,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                           _uncertainShipmentBody == null,
                                       tableKey:
                                           'sales.${widget.docType.name}.items',
-                                      onAddColumn: !_lockedPrice
+                                      onAddColumn: !_hasClientPricing
                                           ? null
                                           : (hidden) => addBusinessGridColumn(
                                               context,
@@ -3574,7 +3593,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                             _grid.rows,
                                           ),
                                       cloneRow: (r) => r.clone(
-                                        requireOrderPriceRefresh: _lockedPrice,
+                                        requireOrderPriceRefresh:
+                                            widget.docType ==
+                                            SalesDocType.order,
                                       ),
                                       toolbarActions: [
                                         if (_cfg.hasUpstreamLink)

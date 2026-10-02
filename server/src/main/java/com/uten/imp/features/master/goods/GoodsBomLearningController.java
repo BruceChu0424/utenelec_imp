@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /**
  * 「BOM 学习记录」(ADR-129)：
- * - GET  /api/master/goods/{id}/bom-learning         → 父件档案 + 逐组件设计/真实使用数量 + canRelearn(goods:view)
+ * - GET  /api/master/goods/{id}/bom-learning         → 父件档案 + 设计/真实使用数量 + 选料证据 + canRelearn(goods:view)
  * - POST /api/master/goods/{id}/bom-learning/relearn → 某组件从现在起重新学习，返回同一份记录(goods:bom:edit)
  */
 @RestController

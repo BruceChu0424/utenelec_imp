@@ -178,6 +178,69 @@ Future<void> _tapAndConfirm(WidgetTester tester, String buttonKey) async {
 }
 
 void main() {
+  testWidgets(
+    'customer acceptance records the displayed revision before conversion',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _quote(
+          status: 1,
+          actions: const ['customerConfirm', 'reopen', 'cancel'],
+        ),
+      );
+      expect(find.byKey(const ValueKey('sales-quote-convert')), findsNothing);
+      api.afterPost = _quote(
+        status: 1,
+        actions: const ['convert', 'reopen', 'cancel'],
+        extra: const {
+          'customerAcceptedAt': '2026-10-02T10:00:00Z',
+          'customerAcceptedRevision': 5,
+          'reviewRevision': 5,
+        },
+      );
+      await _tapAndConfirm(tester, 'sales-quote-customer-confirm');
+      expect(api.postBodies['/sales/quotes/quote-1/customer-confirm'], {
+        'expectedRevision': 4,
+      });
+      expect(
+        find.byKey(const ValueKey('sales-quote-customer-confirm')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('sales-quote-convert')), findsOneWidget);
+      expect(find.textContaining('已登记客户同意'), findsOneWidget);
+    },
+  );
+
+  testWidgets('cancel requires a reason and keeps revision history', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      _quote(status: 1, actions: const ['cancel']),
+    );
+    await tester.tap(find.byKey(const ValueKey('sales-quote-cancel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sales-quote-cancel-submit')));
+    await tester.pumpAndSettle();
+    expect(api.postPaths, isEmpty);
+    expect(find.text('请填写取消原因'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('sales-quote-cancel-reason')),
+      '客户未接受报价',
+    );
+    api.afterPost = _quote(
+      status: -1,
+      extra: const {'cancelReason': '客户未接受报价'},
+    );
+    await tester.tap(find.byKey(const ValueKey('sales-quote-cancel-submit')));
+    await tester.pumpAndSettle();
+    expect(api.postBodies['/sales/quotes/quote-1/cancel'], {
+      'expectedRevision': 4,
+      'reason': '客户未接受报价',
+    });
+    expect(find.textContaining('历史记录保留：客户未接受报价'), findsOneWidget);
+  });
+
   testWidgets('draft quote: submit for finance pricing, no self-approval', (
     tester,
   ) async {
@@ -269,7 +332,7 @@ void main() {
         },
       ),
     );
-    expect(find.textContaining('财务已核价(王会计'), findsOneWidget);
+    expect(find.textContaining('财务已核价，请与客户确认'), findsOneWidget);
     expect(find.text('核价人'), findsOneWidget);
     expect(
       find.byKey(const Key('sales-quote-revision-timeline')),
@@ -283,6 +346,9 @@ void main() {
 
     await _tapAndConfirm(tester, 'sales-quote-convert');
     expect(api.postPaths, contains('/sales/quotes/quote-1/convert'));
+    expect(api.postBodies['/sales/quotes/quote-1/convert'], {
+      'expectedRevision': 4,
+    });
     expect(find.text('order-edit-order-9'), findsOneWidget);
   });
 

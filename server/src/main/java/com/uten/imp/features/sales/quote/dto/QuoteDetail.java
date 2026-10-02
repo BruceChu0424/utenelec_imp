@@ -61,6 +61,12 @@ public class QuoteDetail extends com.uten.imp.common.history.DocumentHistoryMeta
     private String financeConfirmedByName;
     private String financeRemark;
     private int reviewRevision;
+    private OffsetDateTime customerAcceptedAt;
+    private String customerAcceptedByName;
+    private Integer customerAcceptedRevision;
+    private String cancelReason;
+    private OffsetDateTime cancelledAt;
+    private UUID originQuoteId;
     private UUID convertedOrderId;
     private String convertedOrderNo;
     private List<String> allowedActions;

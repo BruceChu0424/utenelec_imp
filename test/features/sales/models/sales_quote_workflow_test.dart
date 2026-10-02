@@ -57,6 +57,8 @@ void main() {
         'DRAFT',
         'FINANCE_REJECTED',
         'PENDING_FINANCE',
+        'AWAITING_CUSTOMER',
+        'AWAITING_CONVERSION',
         'APPROVED',
         'REVERSED',
       ]);
@@ -65,6 +67,23 @@ void main() {
     test('status 2 has a generic label and colour for pickers', () {
       expect(salesStatusLabel(kSalesStatusPendingFinance), '待财务核价');
     });
+  });
+
+  test('customer acceptance is tied to the current revision', () {
+    final accepted = SalesQuoteWorkflow.fromJson({
+      'reviewRevision': 4,
+      'customerAcceptedAt': '2026-10-02',
+      'customerAcceptedRevision': 4,
+      'allowedActions': ['customerConfirm', 'cancel', 'requote'],
+    });
+    expect(accepted.customerAccepted, isTrue);
+    expect(accepted.allows(SalesQuoteAction.cancel), isTrue);
+    final stale = SalesQuoteWorkflow.fromJson({
+      'reviewRevision': 5,
+      'customerAcceptedAt': '2026-10-02',
+      'customerAcceptedRevision': 4,
+    });
+    expect(stale.customerAccepted, isFalse);
   });
 
   group('SalesQuoteWorkflow parsing', () {

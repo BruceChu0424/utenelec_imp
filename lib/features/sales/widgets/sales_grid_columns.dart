@@ -8,7 +8,7 @@
 // 单位列紧跟数量。折扣列表头 ⓘ 悬停说明「1 = 原价；0.9 = 9折」。
 // salesGridColumns：货品/颜色/数量/单位/单价/金额 + 补列（条件）。
 // 2026-09-27(ADR-134)：报价/订货加「文件型号 / 文件品名 / 文件单价」三列(客户文件原文,
-// 识别客户文件导入或手填; 文件单价只读、仅有值时出现); 报价单价同订货一样锁定、
+// 识别客户文件导入或手填; 文件单价只读、仅有值时出现); 报价单价可议价，订货锁定、
 // 折扣可编辑(可留空交财务核价); 识别结果里需要核对的行货品格黄框提醒。
 import 'package:flutter/material.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
@@ -739,12 +739,11 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                     priceRequired &&
                     (row.price.text.trim().isEmpty ||
                         double.tryParse(row.price.text.trim()) == null),
-                // 订单/出货/报价：单价由货品主档或受信任来源单据带入、锁定不可改。
+                // 订货/出货锁价；报价可协商单据价格，保存不改变货品主档。
                 // 复制订单行会清空冻结价；重新选择货品即可取得当前主档价。
                 child:
                     (docType == SalesDocType.order ||
-                        docType == SalesDocType.shipment ||
-                        isQuote)
+                        docType == SalesDocType.shipment)
                     ? _lockedCell(
                         context,
                         row.price,
@@ -763,6 +762,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                             : null,
                       )
                     : TextField(
+                        key: ValueKey(
+                          'sales-price-${row.documentItemId ?? row.goods?.id ?? 'new'}',
+                        ),
                         controller: row.price,
                         textAlign: TextAlign.right,
                         keyboardType: const TextInputType.numberWithOptions(

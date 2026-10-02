@@ -13,8 +13,8 @@ import java.util.UUID;
 /**
  * 销售报价保存请求中的明细行。
  *
- * <p>单价不是写入来源: 新行取货品资料售价(未维护则为空, 标「待财务定价」), 同一草稿的既有行保留已冻结的
- * 单价(含财务设定的成交单价); price 只是页面预览, 与权威价不一致按冲突拒绝。金额由服务端计算。
+ * <p>有价格查看权限的销售可填写本报价的单价和折扣，不回写货品资料。单价未填写时，既有行保留原价，
+ * 新行采用货品标价；尚无单价的行留待财务定价。金额由服务端精确计算。
  * 看不到价格的人保存时 discount 必须为空: 既有行保留原折扣, 新行按文件单价反推。
  */
 @Getter
@@ -36,7 +36,7 @@ public class QuoteItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     @NotNull
     private BigDecimal qty;
 
-    /** 页面预览单价(只校验, 不写入)。 */
+    /** 本报价单价；空值保留既有单价或采用新行的货品标价。 */
     private BigDecimal price;
     /** 折扣倍率: 0 < 折扣 <= 1, 最多 4 位小数; 空/0 = 原价。 */
     private BigDecimal discount;

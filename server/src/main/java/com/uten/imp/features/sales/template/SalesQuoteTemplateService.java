@@ -34,6 +34,9 @@ public class SalesQuoteTemplateService {
     private final WorkbookDownloadService download;
     private final AuditService audit;
     private com.uten.imp.common.platformcolumns.PlatformColumnService platformColumns;
+    private org.springframework.context.ApplicationEventPublisher events;
+    @org.springframework.beans.factory.annotation.Autowired
+    void setEvents(org.springframework.context.ApplicationEventPublisher events) { this.events = events; }
     @org.springframework.beans.factory.annotation.Autowired
     void setPlatformColumns(com.uten.imp.common.platformcolumns.PlatformColumnService service) { this.platformColumns = service; }
     public SalesQuoteTemplateService(SalesQuoteService quotes, SalesQuoteTemplateStore templates, MasterIntakeLookupPort master,
@@ -46,6 +49,41 @@ public class SalesQuoteTemplateService {
         public ExportRequest(List<UUID> templateIds, boolean all, String password) { this(templateIds, all, password, null); }
     }
     public record Download(byte[] bytes, String fileName, String contentType, int templateCount, int rowCount) { }
+    public record LearningContext(UUID clientId, String clientName) { }
+    public record AdoptRequest(UUID jobId) { }
+
+    @Transactional(readOnly=true)
+    public LearningContext learningContext(UUID quoteId) {
+        requireLearningPermission();
+        QuoteDetail quote = readable(quoteId);
+        if (quote.getClientId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先为报价选择客户并保存");
+        if (!master.canLearnClientDocument(quote.getClientId())) throw new ApiException(ErrorCode.FORBIDDEN, "你没有此客户的模板学习权限");
+        ClientProfile client = master.clientProfile(quote.getClientId());
+        return new LearningContext(quote.getClientId(), first(client.name(), client.fullName(), client.nameEn()));
+    }
+
+    @Transactional
+    public SalesQuoteTemplateStore.TemplateView adopt(UUID quoteId, AdoptRequest request) {
+        requireLearningPermission();
+        if (request == null || request.jobId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择已识别的模板");
+        // Hold the document identity stable through client/owner authorization and candidate adoption.
+        jdbc.query("SELECT id FROM sales_quotes WHERE id=:id AND NOT is_deleted FOR UPDATE", Map.of("id", quoteId), rs -> null);
+        LearningContext context = learningContext(quoteId);
+        UUID id = templates.adoptUploaded(quoteId, context.clientId(), request.jobId());
+        if (events != null) events.publishEvent(new SalesQuoteTemplateAdoptedEvent(request.jobId(),
+                currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getId(), quoteId, context.clientId()));
+        return templates.list(context.clientId()).stream().filter(template -> template.id().equals(id)).findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "模板保存后未找到，请重试"));
+    }
+
+    private void requireLearningPermission() {
+        AuthUser actor = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        Set<String> permissions = actor.getPermissions();
+        if (actor.isVisitor() || permissions == null
+                || !permissions.containsAll(Set.of("sales_quote:view", "sales_quote:export", "sales_order:price:view"))
+                || !(permissions.contains("sales_quote:create") || permissions.contains("sales_quote:edit")))
+            throw new ApiException(ErrorCode.FORBIDDEN, "你没有学习客户报价模板的权限");
+    }
 
     @Transactional(readOnly=true)
     public List<SalesQuoteTemplateStore.TemplateView> list(UUID quoteId) {
@@ -83,7 +121,8 @@ public class SalesQuoteTemplateService {
         header.put("currencyCode", currencyCodes.getFirst().strip().toUpperCase(Locale.ROOT));
         header.put("docNo",quote.getBillNo()); header.put("docDate",quote.getBillDate()==null ? "" : quote.getBillDate().toString());
         List<QuoteTemplateWorkbook.ExportLine> lines=exportLines(quote);
-        List<QuoteTemplateWorkbook.DisplayColumn> projection = projection(quote, req.columnProjection(), lines);
+        // The user's customer format owns its column order. Current UI projection applies to standard export only.
+        List<QuoteTemplateWorkbook.DisplayColumn> projection = ids.isEmpty() ? projection(quote, req.columnProjection(), lines) : null;
         LinkedHashMap<String,byte[]> files=new LinkedHashMap<>();
         String bill=quote.getBillNo()==null ? "报价单" : quote.getBillNo().replaceAll("[\\\\/\\p{Cntrl}:*?\"<>|]","_");
         if (ids.isEmpty()) {

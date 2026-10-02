@@ -144,7 +144,9 @@ enum WorkbenchBadgeCatalog {
     salesShipmentFinanceRejected(Module.sales, facts("financeRejected.salesShipment"), none()),
     /** 销售报价「财务已退回」(ADR-134): 退回待修改的报价(不再计入报价草稿)。 */
     salesQuoteFinanceRejected(Module.sales, facts("financeRejected.salesQuote"), none()),
-    /** 销售报价已核价、还没转订货单(ADR-134): 下一步轮到负责销售转单。 */
+    /** 财务已核价、等待销售向客户确认当前版本。 */
+    salesQuoteAwaitingCustomerConfirmation(Module.sales, facts("salesQuote.awaitingCustomerConfirmation"), none()),
+    /** 财务与客户已同意当前版、还没转订货单: 下一步轮到负责销售转单。 */
     salesQuoteAwaitingConversion(Module.sales, facts("salesQuote.awaitingConversion"), none()),
     /** 销售草稿: 订货/发货/退货/报价(报价草稿不含财务退回件)。 */
     salesDrafts(Module.sales, facts("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn", "drafts.salesQuote"), none()),

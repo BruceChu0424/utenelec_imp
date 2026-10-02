@@ -29,7 +29,8 @@ import java.util.function.Function;
  *
  * <ul>
  *   <li>单价只来自货品资料售价(新行, 批量 FOR SHARE 读取)、同一草稿已冻结的行价, 或财务核价
- *       设定的成交单价; 请求里的 price 只是页面预览, 与权威价不一致一律 409。销售从不改价。</li>
+ *       设定的成交单价。订货请求里的 price 只是预览，不一致一律 409；报价另允许销售填写待财务核定的单据价，
+ *       由 SalesQuoteService 保存，绝不写回主档。</li>
  *   <li>折扣是 0 < 折扣 <= 1 的 4 位倍率; 空/0 是「不打折」的旧写法, 保存时归一为 1。</li>
  *   <li>看不到价格的人(无 {@code sales_order:price:view})保存时, 按客户文件单价反推折扣:
  *       {@link #deriveDiscountFromClientPrice}, 取位只在 {@link MoneyPolicy#discountFromUnitPrice}。</li>

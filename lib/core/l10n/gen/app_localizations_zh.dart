@@ -5528,7 +5528,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesQuoteStatusConvertConfirmBody =>
-      '会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?';
+      '根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。';
 
   @override
   String get salesQuoteStatusConfirm => '确定';
@@ -6726,7 +6726,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesIntakeQuotePriceHint =>
-      '单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。';
+      '单价由货品标价带入，可修改本次报价的单价和折扣，不改变货品资料。提交后由财务核价；没有单价可留空交财务填写。';
 
   @override
   String get salesIntakeFinancePriced => '财务定价';
@@ -7779,4 +7779,74 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get costMaterialPriceNotApplied => '汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。';
+
+  @override
+  String get salesQuoteCustomerConfirm => '登记客户同意';
+
+  @override
+  String get salesQuoteCustomerConfirmBody =>
+      '确认客户已同意当前版本的货品、数量、单价、折扣与商业条款。登记后可生成订货单草稿；报价再次修改后须重新核价并取得客户同意。';
+
+  @override
+  String get salesQuoteCustomerConfirmed => '已登记客户同意，可生成订货单';
+
+  @override
+  String get salesQuoteAwaitingCustomer => '待客户同意';
+
+  @override
+  String get salesQuoteAwaitingConversion => '待生成订货单';
+
+  @override
+  String get salesQuoteAwaitingCustomerBody =>
+      '财务已核价，请与客户确认当前报价；客户同意后登记确认并生成订货单，也可重新修改报价或取消。';
+
+  @override
+  String get salesQuoteCancelQuote => '取消报价';
+
+  @override
+  String get salesQuoteCancelReason => '取消原因（如客户未接受报价、订单未取得）';
+
+  @override
+  String get salesQuoteCancelReasonRequired => '请填写取消原因';
+
+  @override
+  String get salesQuoteCancelledDone => '报价已取消，历史记录保留';
+
+  @override
+  String get quoteTemplateMissingTitle => '此客户还没有报价模板';
+
+  @override
+  String get quoteTemplateMissingHint =>
+      '上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。';
+
+  @override
+  String get quoteTemplateUpload => '上传并学习模板';
+
+  @override
+  String get quoteTemplateReviewTitle => '核对客户模板';
+
+  @override
+  String get quoteTemplateReviewHint =>
+      '核对工作表和字段后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。';
+
+  @override
+  String get quoteTemplateSaveDownload => '保存模板并下载';
+
+  @override
+  String get quoteTemplateSheet => '工作表';
+
+  @override
+  String get quoteTemplateReference => '参考列（仅填本单同名信息）';
+
+  @override
+  String get quoteTemplateFileRequired => '请上传 15 MB 以内的 xlsx 或 xls 文件';
+
+  @override
+  String get quoteTemplateUnreadable => '无法读取可回填模板，请检查 Excel 表头';
+
+  @override
+  String get quoteTemplateSaved => '客户报价模板已保存';
+
+  @override
+  String get quoteTemplateLearningTitle => '学习客户报价模板';
 }

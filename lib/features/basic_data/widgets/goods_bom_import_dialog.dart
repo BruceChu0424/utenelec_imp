@@ -4,7 +4,7 @@
 // 「真实使用数量」列只读，导入时忽略(由生产学习累计，不能靠导入改)。
 //
 // 交互仿货品导入（选文件 → 检测报告 → 提交），但更轻：
-// - 不需要 planId：提交时服务端重新解析全量复检；
+// - 检测返回绑定文件和BOM状态的版本，提交锁定后复核；发生变化保留文件并重新检测；
 // - 提交方式二选一：按文件为准（替换各级现有组件，与「粘贴-替换」同语义，需
 //   goods:bom:delete）/ 在现有组件后追加（与「粘贴-同级追加」同语义）；
 // - 检测报告列出逐行错误（第几行/哪列/为什么）与提醒（名称不一致等，不拦提交）。
@@ -55,11 +55,25 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
   BomImportReport? _report;
   BomImportResult? _result;
   Uint8List? _bytes;
+  String? _detectionMessage;
+  bool _commitUncertain = false;
 
   BomImportMode _mode = BomImportMode.replace;
 
+  void _beginDetection() {
+    setState(() {
+      _detecting = true;
+      _bytes = null;
+      _report = null;
+      _result = null;
+      _detectionMessage = null;
+      _commitUncertain = false;
+    });
+  }
+
   Future<void> _pickAndDetect() async {
-    setState(() => _detecting = true);
+    if (_detecting || _committing) return;
+    _beginDetection();
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -83,9 +97,9 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
   /// 检测一个工作簿（文件选择框与拖入共用）。
   Future<void> _detectFile(PlatformFile f) async {
     if (!mounted) return;
-    setState(() => _detecting = true);
+    _beginDetection();
     try {
-      final bytes = await readGoodsImportFile(f);
+      final bytes = await readGoodsImportFile(f, maxBytes: 10 * 1024 * 1024);
       final report = await ref
           .read(goodsBomImportRepositoryProvider)
           .detect(widget.goodsId, bytes);
@@ -113,23 +127,76 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
 
   Future<void> _commit() async {
     final bytes = _bytes;
-    if (bytes == null) return;
+    final fingerprint = _report?.stateFingerprint;
+    if (_detecting ||
+        _committing ||
+        bytes == null ||
+        _report == null ||
+        _report!.hasErrors ||
+        fingerprint == null) {
+      return;
+    }
     setState(() => _committing = true);
     try {
       final result = await ref
           .read(goodsBomImportRepositoryProvider)
-          .commit(widget.goodsId, bytes, mode: _mode);
+          .commit(
+            widget.goodsId,
+            bytes,
+            mode: _mode,
+            stateFingerprint: fingerprint,
+          );
       if (!mounted) return;
       setState(() => _result = result);
       widget.onImported();
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (e.code == 'CONFLICT') {
+        setState(() {
+          _report = null;
+          _detectionMessage = e.message;
+          _commitUncertain = false;
+        });
+      } else if (e.code == 'NETWORK' ||
+          e.code == 'NETWORK_TIMEOUT' ||
+          (e.httpStatus ?? 0) >= 500) {
+        _markUncertain();
+      }
       context.appError(e.message);
     } catch (_) {
       if (!mounted) return;
-      context.appError('导入失败，请稍后重试'); // TODO(l10n): 补 arb
+      _markUncertain();
+      context.appError('提交结果暂未确认，请先核对BOM；重试会沿用上次检测，防止重复写入');
     } finally {
       if (mounted) setState(() => _committing = false);
+    }
+  }
+
+  void _markUncertain() {
+    setState(() => _commitUncertain = true);
+    widget.onImported();
+  }
+
+  Future<void> _redetectCurrentFile() async {
+    final bytes = _bytes;
+    if (bytes == null || _detecting || _committing) return;
+    setState(() => _detecting = true);
+    try {
+      final report = await ref
+          .read(goodsBomImportRepositoryProvider)
+          .detect(widget.goodsId, bytes);
+      if (!mounted) return;
+      setState(() {
+        _report = report;
+        _detectionMessage = null;
+        _commitUncertain = false;
+      });
+    } on ApiException catch (e) {
+      if (mounted) context.appError(e.message);
+    } catch (_) {
+      if (mounted) context.appError('检测失败，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _detecting = false);
     }
   }
 
@@ -137,30 +204,42 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // 弹窗整块都是拖放接收区（Web/桌面端）：xlsx 直接拖进来检测。
-    return UtenDropTarget(
-      enabled: !_detecting && !_committing,
-      hint: '松开鼠标检测 Excel',
-      onFiles: (files) => _detectFile(files.first),
-      child: AlertDialog(
-        title: const Text('导入组件'), // TODO(l10n): 补 arb
-        content: SizedBox(
-          width: 520,
-          child: SingleChildScrollView(child: _body(theme)),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: (_committing || _detecting)
-                ? null
-                : () => Navigator.pop(context),
-            child: const Text('关闭'), // TODO(l10n): 补 arb
+    return PopScope(
+      canPop: !_detecting && !_committing,
+      child: UtenDropTarget(
+        enabled: !_detecting && !_committing,
+        hint: '松开鼠标检测 Excel',
+        onFiles: (files) => _detectFile(files.first),
+        child: AlertDialog(
+          title: const Text('导入组件'), // TODO(l10n): 补 arb
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(child: _body(theme)),
           ),
-          if (_result == null && _report != null && !_report!.hasErrors)
-            FilledButton(
-              onPressed: _committing ? null : _commit,
-              child: Text(_committing ? '正在导入…' : '导入'), // TODO(l10n): 补 arb
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: (_committing || _detecting)
+                  ? null
+                  : () => Navigator.pop(context),
+              child: const Text('关闭'), // TODO(l10n): 补 arb
             ),
-        ],
+            if (_result == null &&
+                _report != null &&
+                !_report!.hasErrors &&
+                _report!.stateFingerprint != null)
+              FilledButton(
+                onPressed: (_committing || _detecting) ? null : _commit,
+                child: Text(
+                  _committing
+                      ? '正在导入…'
+                      : _commitUncertain
+                      ? '重试上次提交'
+                      : '导入',
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -201,6 +280,19 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     if (_report != null) {
       return _reportView(theme, _report!);
     }
+    if (_bytes != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_detectionMessage ?? '请重新检测当前文件后再提交'),
+          TextButton(
+            onPressed: _redetectCurrentFile,
+            child: const Text('重新检测当前文件'),
+          ),
+          TextButton(onPressed: _pickAndDetect, child: const Text('重新选择文件')),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -234,6 +326,10 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (_commitUncertain)
+          const Text('上次提交结果尚未确认，请先核对BOM；重试将沿用上次检测，防止重复写入。'),
+        if (!r.hasErrors && r.stateFingerprint == null)
+          const Text('服务端未返回有效检测版本，请升级服务端后重新检测。'),
         Text(
           r.hasErrors
               ? '共 ${r.totalRows} 行，发现 ${r.errors.length} 个问题，请修正后重传'
@@ -275,8 +371,11 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
           Text('导入方式：', style: theme.textTheme.titleSmall), // TODO(l10n): 补 arb
           RadioGroup<BomImportMode>(
             groupValue: _mode,
-            onChanged: (v) =>
-                setState(() => _mode = v ?? BomImportMode.replace),
+            onChanged: (v) {
+              if (!_commitUncertain) {
+                setState(() => _mode = v ?? BomImportMode.replace);
+              }
+            },
             child: const Column(
               children: [
                 RadioListTile<BomImportMode>(

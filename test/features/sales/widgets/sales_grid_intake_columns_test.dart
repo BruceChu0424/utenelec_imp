@@ -208,9 +208,9 @@ void main() {
     row.dispose();
   });
 
-  testWidgets('复制出来的报价行单价已清空: 提示重新选货取价, 不显示待财务定价', (tester) async {
+  testWidgets('复制报价保留议价单价且可编辑；无主档价也可填写', (tester) async {
     final source = SalesGridRow.fromIntake(_patchRow);
-    final copy = source.clone(requireOrderPriceRefresh: true);
+    final copy = source.clone();
     source.dispose();
     final unpriced = SalesGridRow.fromIntake(
       const SalesIntakePatchRow(goodsId: 'g-2', qty: '1', discount: ''),
@@ -249,9 +249,9 @@ void main() {
     TextField priceOf(SalesGridRow r) => tester.widget<TextField>(
       find.byWidgetPredicate((w) => w is TextField && w.controller == r.price),
     );
-    expect(copy.price.text, isEmpty);
-    expect(priceOf(copy).decoration?.hintText, '重新选货取价');
-    expect(priceOf(unpriced).decoration?.hintText, '待财务定价');
+    expect(copy.price.text, '21');
+    expect(priceOf(copy).readOnly, isFalse);
+    expect(priceOf(unpriced).readOnly, isFalse);
   });
 
   test('看不到价格/待财务定价的行: 折扣留空', () {
@@ -325,11 +325,11 @@ void main() {
     );
   });
 
-  testWidgets('报价: 单价不再手填, 折扣列可空(非必填); 订货折扣仍必填', (tester) async {
+  testWidgets('报价: 单价可议价, 折扣列可空(非必填); 订货折扣仍必填', (tester) async {
     final quote = await _columns(tester, SalesDocType.quote);
     final price = quote.singleWhere((c) => c.key == 'price');
     expect(price.required, isFalse);
-    expect(price.headerInfo, contains('销售不能修改'));
+    expect(price.headerInfo, contains('不改变货品资料'));
     expect(quote.singleWhere((c) => c.key == 'discount').required, isFalse);
 
     final order = await _columns(tester, SalesDocType.order);
@@ -343,7 +343,7 @@ void main() {
     expect(masked.singleWhere((c) => c.key == 'price').required, isFalse);
   });
 
-  testWidgets('报价单价格只读; 财务定价行显示标记; 看不到价格时折扣只读', (tester) async {
+  testWidgets('报价单价格可编辑; 看不到价格时折扣只读', (tester) async {
     final row = SalesGridRow.fromIntake(_patchRow)..priceSource = 'FINANCE';
     final masked = SalesGridRow.fromIntake(
       const SalesIntakePatchRow(goodsId: 'g-2', qty: '1'),
@@ -386,8 +386,14 @@ void main() {
         (w) => w is TextField && w.controller == row.price,
       ),
     );
-    expect(priceField.readOnly, isTrue);
-    expect(find.text('财务定价'), findsOneWidget);
+    expect(priceField.readOnly, isFalse);
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.controller == row.price,
+      ),
+      '24.50',
+    );
+    expect(row.price.text, '24.50');
     final discountField = tester.widget<TextField>(
       find.byWidgetPredicate(
         (w) => w is TextField && w.controller == row.discount,

@@ -64,6 +64,102 @@ public class GoodsBomPasteService {
     @PreAuthorize("hasAuthority('goods:bom:create')")
     @Transactional
     public BomPasteResult paste(BomPasteRequest request) {
+        return paste(request, null, Map.of());
+    }
+
+    /** 导入只有展示列：替换已有组件时未提供的字段保留，不能清颜色/供应商或重置生产控制规则。 */
+    @PreAuthorize("hasAuthority('goods:bom:create')")
+    @Transactional
+    public BomPasteResult pasteImported(BomPasteRequest request, Set<String> columns,
+                                        Map<UUID, String> colorNames) {
+        if (request.targets().size() != 1) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次导入分组只能对应一个父件");
+        }
+        return paste(request, columns, colorNames);
+    }
+
+    /** 检测阶段用同一颜色解析规则逐行报错；只操作脱离持久化的候选行。提交仍在锁内复检。 */
+    @PreAuthorize("hasAuthority('goods:bom:create')")
+    @Transactional(readOnly = true)
+    public Map<UUID, String> importedColorProblems(UUID parentId, Map<UUID, String> colorNames) {
+        references.requireVisibleGoods(parentId);
+        Map<UUID, GoodsBomItem> existing = bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parentId)
+                .stream().collect(Collectors.toMap(row -> row.getComponent().getId(), row -> row));
+        Predicate<UUID> visible = access.visibleGoodsOwner();
+        Map<UUID, String> errors = new HashMap<>();
+        for (Goods component : goodsRepo.findAllById(colorNames.keySet())) {
+            if (!colorNames.containsKey(component.getId())) continue;
+            if (!visible.test(component.getOwnerEmployeeId())) {
+                errors.put(component.getId(), "组件货品不存在或你看不到它");
+                continue;
+            }
+            GoodsBomItem row = new GoodsBomItem();
+            GoodsBomItem prior = existing.get(component.getId());
+            if (prior != null) row.takeContentFrom(prior);
+            row.setComponent(component);
+            try {
+                bom.applyImportedColor(row, component, colorNames.get(component.getId()));
+            } catch (ApiException error) {
+                errors.put(component.getId(), error.getMessage());
+            }
+        }
+        return errors;
+    }
+
+    /** 一个数据库快照覆盖全部待改父件、现有边、学习用量和相关主档；返回值只参与哈希、不发给客户端。 */
+    @PreAuthorize("hasAuthority('goods:bom:create')")
+    @Transactional(readOnly = true)
+    public String importStateSnapshot(Set<UUID> parents, Set<UUID> goodsIds, Set<String> colorNames) {
+        return String.valueOf(em.createNativeQuery("""
+                WITH edges AS (
+                    SELECT * FROM goods_bom_items WHERE goods_id IN (:parents) AND NOT is_deleted
+                ), involved AS (
+                    SELECT id,version,updated_at,code,name,status,is_deleted,auto_created,owner_employee_id,
+                           unit_id,unit_legacy_id,color_id,color_legacy_id,issue_method,periodic_cost_basis,
+                           price,source_type,m_weight,m_weight_unit_id,m_weight_unit_legacy_id
+                    FROM goods WHERE id IN (:goodsIds) OR id IN (SELECT component_goods_id FROM edges)
+                )
+                SELECT CAST(jsonb_build_object(
+                    'goods', (SELECT jsonb_agg(to_jsonb(g) ORDER BY g.id) FROM involved g),
+                    'edges', (SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM edges e),
+                    'colors', (SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id) FROM colors c
+                        WHERE c.id IN (SELECT color_id FROM involved UNION SELECT color_id FROM edges)
+                           OR c.legacy_id IN (SELECT color_legacy_id FROM involved UNION SELECT color_legacy_id FROM edges)
+                           OR lower(btrim(c.name)) IN (:colorNames)),
+                    'units', (SELECT jsonb_agg(to_jsonb(u) ORDER BY u.id) FROM units u
+                        WHERE u.id IN (SELECT unit_id FROM involved UNION SELECT m_weight_unit_id FROM involved)
+                           OR u.legacy_id IN (SELECT unit_legacy_id FROM involved UNION SELECT m_weight_unit_legacy_id FROM involved)),
+                    'suppliers', (SELECT jsonb_agg(jsonb_build_object('id',s.id,'updatedAt',s.updated_at,
+                        'isDeleted',s.is_deleted,'code',s.code,'name',s.name,'status',s.status) ORDER BY s.id) FROM suppliers s
+                        WHERE s.id IN (SELECT default_supplier_id FROM edges)
+                           OR s.legacy_id IN (SELECT vend_legacy_id FROM edges)),
+                    'actualUsage', (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.goods_id,a.component_goods_id,a.unit_id)
+                        FROM goods_bom_actual_usages a WHERE a.goods_id IN (:parents))
+                ) AS text)
+                """).setParameter("parents", parents).setParameter("goodsIds", goodsIds)
+                .setParameter("colorNames", colorNames.isEmpty() ? Set.of("") : colorNames).getSingleResult());
+    }
+
+    /** 即使文件内容未变化，成功导入也推进父件已有版本，旧检测令牌不能再次产生副作用。 */
+    @PreAuthorize("hasAuthority('goods:bom:create')")
+    @Transactional
+    public void markImportApplied(Set<UUID> parents) {
+        for (Goods parent : goodsRepo.findAllById(parents)) {
+            em.lock(parent, jakarta.persistence.LockModeType.OPTIMISTIC_FORCE_INCREMENT);
+        }
+    }
+
+    /** 父件先锁，再锁全部引用与数量基准；丢弃锁前解析加载的实体，后续必须重新读最新状态。 */
+    @PreAuthorize("hasAuthority('goods:bom:create')")
+    @Transactional
+    public void prepareImportReferences(Set<UUID> involved) {
+        goodsRepo.lockForReference(involved);
+        references.lockGoodsQuantityBasis(involved);
+        em.clear();
+    }
+
+    private BomPasteResult paste(BomPasteRequest request, Set<String> importColumns,
+                                 Map<UUID, String> colorNames) {
         tx.bind();
         boolean replace = request.mode() == BomPasteRequest.Mode.REPLACE;
         if (replace) {
@@ -115,6 +211,18 @@ public class GoodsBomPasteService {
             }
         }
 
+        Map<UUID, Map<UUID, GoodsBomItem>> kept = new HashMap<>();
+        if (replace) {
+            List<UUID> keeping = existing.values().stream().flatMap(List::stream)
+                    .filter(edge -> componentIds.contains(edge.componentId())).map(Edge::itemId).toList();
+            if (!keeping.isEmpty()) {
+                for (GoodsBomItem row : bomRepo.findAllById(keeping)) {
+                    kept.computeIfAbsent(row.getGoods().getId(), ignored -> new HashMap<>())
+                            .put(row.getComponent().getId(), row);
+                }
+            }
+        }
+
         // ---- 组件行 ----
         Set<UUID> seenComponents = new HashSet<>();
         Map<Integer, Goods> lineComponents = new LinkedHashMap<>();
@@ -137,7 +245,9 @@ public class GoodsBomPasteService {
                 continue;
             }
             try {
-                bom.apply(item, new GoodsBomItem(), component);
+                GoodsBomItem prior = importColumns == null || targets.isEmpty() ? null
+                        : kept.getOrDefault(targets.getFirst().getId(), Map.of()).get(component.getId());
+                preparedRow(item, component, prior, importColumns, colorNames);
             } catch (ApiException invalid) {
                 if (!GoodsPeriodicMaterialRules.isConfirmation(invalid)) {
                     problems.add(problem(line, invalid.getMessage()));
@@ -173,22 +283,19 @@ public class GoodsBomPasteService {
         Set<UUID> pastedComponents = lineComponents.values().stream().map(Goods::getId)
                 .collect(Collectors.toSet());
         List<UUID> removing = new ArrayList<>();
-        List<UUID> keeping = new ArrayList<>();
         if (replace) {
             for (Goods target : targets) {
                 for (Edge edge : existing.getOrDefault(target.getId(), List.of())) {
-                    (pastedComponents.contains(edge.componentId()) ? keeping : removing).add(edge.itemId());
+                    if (!pastedComponents.contains(edge.componentId())) removing.add(edge.itemId());
                 }
             }
         }
-        Map<UUID, Map<UUID, GoodsBomItem>> kept = new HashMap<>();
-        if (!keeping.isEmpty()) {
-            for (GoodsBomItem row : bomRepo.findAllById(keeping)) {
-                kept.computeIfAbsent(row.getGoods().getId(), ignored -> new HashMap<>())
-                        .put(row.getComponent().getId(), row);
-            }
-        }
         if (!removing.isEmpty()) {
+            if (bomRepo.findAllById(removing).stream()
+                    .anyMatch(row -> !visible.test(row.getComponent().getOwnerEmployeeId()))) {
+                throw new ApiException(ErrorCode.FORBIDDEN,
+                        "替换范围包含你无权查看的现有组件，现有BOM未改动，请联系有完整权限的人员处理");
+            }
             // 原生 UPDATE 立即执行：新行插入(提交前 flush)时部分唯一索引已看不到旧行。
             em.createNativeQuery("""
                             UPDATE goods_bom_items
@@ -208,11 +315,11 @@ public class GoodsBomPasteService {
             int sort = replace ? 0 : current.stream()
                     .mapToInt(edge -> edge.sortOrder() == null ? 0 : edge.sortOrder()).max().orElse(0);
             for (var entry : lineComponents.entrySet()) {
-                GoodsBomItem row = new GoodsBomItem();
-                row.setGoods(target);
-                bom.apply(items.get(entry.getKey()), row, entry.getValue());
-                row.setSortOrder(++sort);
                 GoodsBomItem existingRow = same.get(entry.getValue().getId());
+                GoodsBomItem row = preparedRow(items.get(entry.getKey()), entry.getValue(),
+                        existingRow, importColumns, colorNames);
+                row.setGoods(target);
+                row.setSortOrder(++sort);
                 if (existingRow == null) {
                     created.add(row);
                     continue;
@@ -243,6 +350,30 @@ public class GoodsBomPasteService {
         int replaced = results.stream().mapToInt(BomPasteResult.Target::removed).sum();
         int written = results.stream().mapToInt(BomPasteResult.Target::added).sum();
         return new BomPasteResult(targets.size(), written, replaced, results, List.copyOf(warnings));
+    }
+
+    private GoodsBomItem preparedRow(BomItemSaveRequest item, Goods component, GoodsBomItem prior,
+                                      Set<String> importColumns, Map<UUID, String> colorNames) {
+        GoodsBomItem row = new GoodsBomItem();
+        if (importColumns != null && prior != null) {
+            row.takeContentFrom(prior);
+            row.setComponent(prior.getComponent());
+        }
+        bom.apply(item, row, component);
+        if (importColumns != null) {
+            if (prior != null && !importColumns.contains("summary")) row.setSummary(prior.getSummary());
+            // 导入没有单价列，原行未设价也必须保持未设价，不能借此自动换成货品现价。
+            if (prior != null) {
+                row.setPrice(prior.getPrice());
+                if (prior.getPrice() == null) row.setTotal(null);
+            }
+            // 设计用量不变时也保留历史金额精度；变了才由统一 apply 按保留的行价重算。
+            if (prior != null && prior.getQty().compareTo(row.getQty()) == 0) row.setTotal(prior.getTotal());
+            if (importColumns.contains("color")) {
+                bom.applyImportedColor(row, component, colorNames.get(component.getId()));
+            }
+        }
+        return row;
     }
 
     /**

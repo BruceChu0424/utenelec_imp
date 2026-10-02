@@ -11,11 +11,11 @@ import java.util.UUID;
  * 识别任务参数: {@code docType}(quote|order, 必填)、{@code clientId}(已选客户, 可选)、{@code docId}(正在编辑的草稿, 可选)、
  * {@code sheet}(指定工作表序号 0-7, 可选; 界面「也识别其他工作表」时用)。不认识的参数一律拒绝。
  */
-record IntakeParams(String docType, UUID clientId, UUID docId, Integer sheetIndex) {
+record IntakeParams(String docType, UUID clientId, UUID docId, Integer sheetIndex, boolean templateOnly) {
 
     static final String QUOTE = "quote";
     static final String ORDER = "order";
-    private static final Set<String> KNOWN = Set.of("docType", "clientId", "docId", "sheet");
+    private static final Set<String> KNOWN = Set.of("docType", "clientId", "docId", "sheet", "templateOnly");
 
     static IntakeParams parse(Map<String, String> params) {
         Map<String, String> p = params == null ? Map.of() : params;
@@ -42,7 +42,12 @@ record IntakeParams(String docType, UUID clientId, UUID docId, Integer sheetInde
                 throw bad("工作表序号不正确");
             }
         }
-        return new IntakeParams(docType, clientId, docId, sheet);
+        String template = p.get("templateOnly");
+        if (template != null && !Set.of("true", "false").contains(template)) throw bad("模板学习参数不正确");
+        boolean templateOnly = "true".equals(template);
+        if (templateOnly && (!QUOTE.equals(docType) || clientId == null || docId == null))
+            throw bad("学习客户报价模板需要已保存的报价单和客户");
+        return new IntakeParams(docType, clientId, docId, sheet, templateOnly);
     }
 
     boolean isOrder() {

@@ -18,7 +18,7 @@ class _LearningRepo extends Fake implements GoodsBomRepository {
   _LearningRepo(this.summary, {this.afterRelearn});
 
   /// 打开面板时读到的学习记录。
-  final Map<String, dynamic> summary;
+  Map<String, dynamic> summary;
 
   /// 重新学习接口返回的学习记录。
   final Map<String, dynamic>? afterRelearn;
@@ -190,6 +190,102 @@ Map<String, dynamic> _learned({
 };
 
 void main() {
+  testWidgets(
+    'recognized material is visible before the first learning sample',
+    (tester) async {
+      await _pump(
+        tester,
+        _LearningRepo({
+          'materialEvidence': [
+            {
+              'source': 'PERIODIC_CHOICE',
+              'status': 'CONFIRMED',
+              'componentGoodsId': 'plastic',
+              'componentCode': 'PC01',
+              'componentName': 'PC颗粒',
+              'colorId': 'white',
+              'colorName': '白色',
+              'unitId': 'kg',
+              'unitName': '千克',
+              'inBom': false,
+              'sourceCount': 1,
+            },
+          ],
+        }),
+      );
+      expect(find.text('PC颗粒'), findsOneWidget);
+      expect(find.text('白色'), findsOneWidget);
+      expect(find.text('尚未加入 BOM'), findsOneWidget);
+      expect(find.textContaining('在组装信息补设计单重'), findsOneWidget);
+      expect(find.text('真实使用数量'), findsNothing);
+      expect(find.text('还没有组件，也没有实际用过的料'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('refresh replaces a relearn response with new server evidence', (
+    tester,
+  ) async {
+    final repo = _LearningRepo(
+      _learned(canRelearn: true),
+      afterRelearn: _learned(
+        canRelearn: true,
+        sampleCount: 0,
+        actualQty: null,
+        actualPerUnitQty: null,
+        actualStatus: 'NO_DATA',
+        usageBasis: 'DESIGN',
+      ),
+    );
+    await _pump(tester, repo);
+    await tester.tap(find.byKey(const ValueKey('goods-bom-relearn-plastic')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认'));
+    await tester.pumpAndSettle();
+    expect(repo.relearnCalls, [('shell', 'plastic')]);
+    final firstReads = repo.reads;
+    repo.summary = {
+      'materialEvidence': [
+        {
+          'source': 'DISCOVERY_REQUEST',
+          'status': 'PENDING',
+          'componentGoodsId': 'insert',
+          'componentName': '铜嵌件',
+          'sourceCount': 2,
+          'inBom': false,
+        },
+      ],
+    };
+    await tester.tap(find.byKey(const Key('bom-learning-refresh')));
+    await tester.pumpAndSettle();
+    expect(repo.reads, greaterThan(firstReads));
+    expect(find.text('铜嵌件'), findsOneWidget);
+    expect(find.textContaining('申请量不作为真实耗用'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test(
+    'evidence keeps color and unit identity, old summaries stay compatible',
+    () {
+      final old = GoodsBomLearningSummary.fromJson(_learned());
+      expect(old.materialEvidence, isEmpty);
+      final evidence = GoodsBomMaterialEvidence.fromJson({
+        'source': 'DISCOVERY_CONFIGURED',
+        'status': 'CONFIGURED',
+        'componentGoodsId': 'm',
+        'colorId': 'red',
+        'unitId': 'kg',
+        'sourceCount': 2,
+        'inBom': true,
+        'updatedAt': '2026-10-02T00:00:00Z',
+      });
+      expect(evidence.colorId, 'red');
+      expect(evidence.unitId, 'kg');
+      expect(evidence.inBom, isTrue);
+      expect(evidence.sourceCount, 2);
+    },
+  );
+
   testWidgets('no profile yet explains when accumulation begins', (
     tester,
   ) async {

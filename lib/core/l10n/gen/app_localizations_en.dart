@@ -5813,7 +5813,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesQuoteStatusConvertConfirmBody =>
-      'An order draft will be created with the price and discount set by finance. Those cannot be changed; quantity and delivery details can still be completed on the order. Convert now?';
+      'Create an order draft from the accepted version, carrying approved prices, discounts and terms. Review the information, save and submit the order for finance approval.';
 
   @override
   String get salesQuoteStatusConfirm => 'OK';
@@ -7134,7 +7134,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesIntakeQuotePriceHint =>
-      'The unit price comes from the goods list price and sales cannot change it; goods without a list price are priced by finance. The discount is worked out from the customer\'s file price, or can be left empty for finance to decide.';
+      'The list price is the starting point. Edit this quote’s price and discount without changing goods master data. Finance reviews submitted quotes and can fill in missing prices.';
 
   @override
   String get salesIntakeFinancePriced => 'Finance price';
@@ -8234,4 +8234,80 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get costMaterialPriceNotApplied =>
       'Summary assemblies and customer-supplied material do not carry a separate material price; see row evidence.';
+
+  @override
+  String get salesQuoteCustomerConfirm => 'Record customer acceptance';
+
+  @override
+  String get salesQuoteCustomerConfirmBody =>
+      'Confirm that the customer accepts the goods, quantities, prices, discounts and terms in this version. You can then create an order draft. Further changes require finance review and fresh customer acceptance.';
+
+  @override
+  String get salesQuoteCustomerConfirmed =>
+      'Customer acceptance recorded; ready to create an order';
+
+  @override
+  String get salesQuoteAwaitingCustomer => 'Awaiting customer acceptance';
+
+  @override
+  String get salesQuoteAwaitingConversion => 'Ready to create order';
+
+  @override
+  String get salesQuoteAwaitingCustomerBody =>
+      'Finance has priced this quote. Confirm this version with the customer, record acceptance and create an order, or revise or cancel the quote.';
+
+  @override
+  String get salesQuoteCancelQuote => 'Cancel quote';
+
+  @override
+  String get salesQuoteCancelReason =>
+      'Reason (for example, customer declined or opportunity lost)';
+
+  @override
+  String get salesQuoteCancelReasonRequired => 'Enter a cancellation reason';
+
+  @override
+  String get salesQuoteCancelledDone => 'Quote cancelled; history retained';
+
+  @override
+  String get quoteTemplateMissingTitle =>
+      'No quotation template for this customer';
+
+  @override
+  String get quoteTemplateMissingHint =>
+      'Upload the customer\'s Excel template and review the field mapping before saving, or download the standard format.';
+
+  @override
+  String get quoteTemplateUpload => 'Upload and learn template';
+
+  @override
+  String get quoteTemplateReviewTitle => 'Review customer template';
+
+  @override
+  String get quoteTemplateReviewHint =>
+      'Review the worksheet and fields before saving. Similar layouts update the template; different layouts remain selectable.';
+
+  @override
+  String get quoteTemplateSaveDownload => 'Save template and download';
+
+  @override
+  String get quoteTemplateSheet => 'Worksheet';
+
+  @override
+  String get quoteTemplateReference =>
+      'Reference column (matching quotation fields only)';
+
+  @override
+  String get quoteTemplateFileRequired =>
+      'Upload an xlsx or xls file up to 15 MB';
+
+  @override
+  String get quoteTemplateUnreadable =>
+      'Unable to read a reusable template. Check the Excel headers.';
+
+  @override
+  String get quoteTemplateSaved => 'Customer quotation template saved';
+
+  @override
+  String get quoteTemplateLearningTitle => 'Learn customer quotation template';
 }

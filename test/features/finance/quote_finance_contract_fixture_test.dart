@@ -401,6 +401,13 @@ void main() {
           SalesQuoteFinanceLineEdit.dealPrice(itemId: 'a', dealPrice: '1'),
           SalesQuoteFinanceLineEdit.giftZeroPrice(itemId: 'a'),
           SalesQuoteFinanceLineEdit.useMasterPrice(itemId: 'a'),
+          SalesQuoteFinanceLineEdit.commercial(
+            itemId: 'a',
+            qty: '2',
+            price: '4',
+            discount: '0.9',
+          ),
+          SalesQuoteFinanceLineEdit.remove(itemId: 'a'),
         ])
           ...line.toJson().keys,
       };

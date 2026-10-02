@@ -68,7 +68,7 @@ final class MasterReferenceCatalog {
      * 以及旧流程销售自审的历史报价(没有财务确认时间, 也永远不会再转)不算, 否则会永久挡住主档删除。
      */
     static final String QUOTE_OPEN = LIVE + " AND (h.status IN (0, 2) OR (h.status = 1 AND h.finance_confirmed_at IS NOT NULL"
-            + " AND NOT EXISTS (SELECT 1 FROM sales_orders qo WHERE qo.source_quote_id = h.id AND NOT qo.is_deleted)))";
+            + " AND NOT EXISTS (SELECT 1 FROM sales_orders qo WHERE qo.source_quote_id = h.id)))";
     /** 出货单审核即已出库(V632 财务闸)：未审核且没作废/冲回的才算在办。 */
     static final String SHIPMENT_OPEN = DRAFT_OPEN
             + " AND COALESCE(h.warehouse_work_status, '') NOT IN ('CANCELLED', 'REVERSED')";

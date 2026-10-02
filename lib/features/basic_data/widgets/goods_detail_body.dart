@@ -53,6 +53,7 @@ import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
 import 'goods_issue_method_dialog.dart';
 import 'goods_name_en_field.dart';
+import 'goods_quote_history_tab.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
 import 'mould_picker_field.dart';
@@ -69,7 +70,8 @@ enum GoodsDetailTab {
   bom('bom', '组装信息'),
   cost('cost', '成本预算'),
   files('files', '图片和文件'),
-  stock('stock', '库存与出入库');
+  stock('stock', '库存与出入库'),
+  quotes('quotes', '报价记录');
 
   const GoodsDetailTab(this.key, this.label);
 
@@ -815,6 +817,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
                       GoodsDetailTab.cost => _buildCostTab(theme),
                       GoodsDetailTab.files => _buildFilesTab(),
                       GoodsDetailTab.stock => _buildStockTab(),
+                      GoodsDetailTab.quotes => GoodsQuoteHistoryTab(
+                        goodsId: _goodsId!,
+                      ),
                     },
                 ],
               ),
@@ -846,6 +851,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         GoodsDetailTab.files,
       if (saved && (isAdmin || permissions.contains(Perm.stockView)))
         GoodsDetailTab.stock,
+      if (saved &&
+          (isAdmin ||
+              (permissions.contains(Perm.goodsView) &&
+                  permissions.contains(Perm.salesQuoteFinanceView))))
+        GoodsDetailTab.quotes,
     ];
   }
 

@@ -93,8 +93,8 @@ abstract final class SalesQuoteStage {
   static const approved = 'APPROVED';
   static const reversed = 'REVERSED';
 
-  /// 只用于查询(不是列表分段): 已核价、还没转订货单(与徽章事实 salesQuote.awaitingConversion
-  /// 同口径)，「从报价引入」弹窗用它在服务端筛掉已转单的报价。
+  /// 财务已核价未转单：分别等待客户同意或等待生成订货；与徽章同一口径。
+  static const awaitingCustomer = 'AWAITING_CUSTOMER';
   static const awaitingConversion = 'AWAITING_CONVERSION';
 
   /// 列表分段顺序: 两个要本人动手的红段在前, 在财务手上的黄段居中, 终态殿后
@@ -103,6 +103,8 @@ abstract final class SalesQuoteStage {
     draft,
     financeRejected,
     pendingFinance,
+    awaitingCustomer,
+    awaitingConversion,
     approved,
     reversed,
   ];

@@ -44,6 +44,7 @@ class DraftWorkspaceRow {
     this.deletable = false,
     this.stockType,
     this.local,
+    this.expectedRevision,
   });
   final DraftDocKind? kind;
   final String id;
@@ -56,6 +57,7 @@ class DraftWorkspaceRow {
   final bool deletable;
   final StockDocType? stockType;
   final FormDraft? local;
+  final int? expectedRevision;
   String get key => kind == null ? 'local:$id' : '${kind!.name}:$id';
 
   DraftWorkspaceRow withRecovery(FormDraft draft) => DraftWorkspaceRow(
@@ -70,6 +72,7 @@ class DraftWorkspaceRow {
     deletable: deletable && !draft.hasUnknownSubmission,
     stockType: stockType,
     local: draft,
+    expectedRevision: expectedRevision,
   );
 }
 
@@ -414,6 +417,9 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
                 party: salesNames.client(row.clientId),
                 amount: money(row.totalLocal, row.priceMasked),
                 deletable: isDeletableSalesDraftRow(row, sales),
+                expectedRevision: sales == SalesDocType.quote
+                    ? row.quoteWorkflow.reviewRevision
+                    : null,
               ),
         ];
       }
@@ -532,6 +538,7 @@ Future<void> deleteDraftWorkspaceRow(
       ref.read(salesRepositoryProvider(sales)),
       sales,
       row.id,
+      expectedRevision: row.expectedRevision,
       stillCurrent: current,
       beforeDelete: beforeDispatch,
     );

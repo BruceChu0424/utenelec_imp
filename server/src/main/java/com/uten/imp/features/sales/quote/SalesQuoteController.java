@@ -129,15 +129,15 @@ public class SalesQuoteController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_quote:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
+    public void delete(@PathVariable UUID id, @RequestParam Integer expectedRevision) {
+        service.delete(id, expectedRevision);
     }
 
     /** 提交财务核价; body 可选(带 expectedRevision 时校验)。 */
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail submit(@PathVariable UUID id,
-                              @Valid @RequestBody(required = false) QuoteActionRequest req) {
+                              @Valid @RequestBody QuoteActionRequest req) {
         return service.submit(id, req);
     }
 
@@ -161,11 +161,30 @@ public class SalesQuoteController {
         return service.reverse(id);
     }
 
+    @PostMapping("/{id}/customer-confirm")
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    public QuoteDetail customerConfirm(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.customerConfirm(id, req);
+    }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('sales_quote:edit') or hasAuthority('sales_quote:reverse')")
+    public QuoteDetail cancel(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.cancel(id, req);
+    }
+
+    @PostMapping("/{id}/requote")
+    @PreAuthorize("hasAuthority('sales_quote:create') and hasAuthority('sales_quote:edit')")
+    public QuoteDetail requote(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.requote(id, req);
+    }
+
     /** 报价转订货(SOP §三1)：财务已核价的报价一键生成订货草稿(表头+行+核定折扣带入，来源回联)。 */
     @PostMapping("/{id}/convert")
     @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
-    public com.uten.imp.features.sales.order.dto.OrderDetail convert(@PathVariable UUID id) {
-        return service.convertToOrder(id);
+    public com.uten.imp.features.sales.order.dto.OrderDetail convert(@PathVariable UUID id,
+            @Valid @RequestBody QuoteActionRequest req) {
+        return service.convertToOrder(id, req);
     }
 
     @GetMapping("/{id}/history/rows")

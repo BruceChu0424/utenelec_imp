@@ -110,5 +110,6 @@ public class SalesQuoteItem extends com.uten.imp.common.columns.ExtraColumnEntit
     private BigDecimal clientPrice;
 
     public static final String PRICE_SOURCE_MASTER = "MASTER";
+    public static final String PRICE_SOURCE_SALES = "SALES";
     public static final String PRICE_SOURCE_FINANCE = "FINANCE";
 }

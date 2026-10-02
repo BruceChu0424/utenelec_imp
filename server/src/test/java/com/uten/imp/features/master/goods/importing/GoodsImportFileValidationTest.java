@@ -97,6 +97,35 @@ class GoodsImportFileValidationTest {
     }
 
     @Test
+    void archiveGuard_acceptsRawStreamingExportWithoutResavingIt() {
+        byte[] rawExport = new com.uten.imp.common.export.XlsxExportService().build(
+                java.util.List.of(new com.uten.imp.common.export.ExportColumn("code", "编号", "text")),
+                java.util.List.of(java.util.Map.of("code", "BOM-001")));
+
+        assertDoesNotThrow(() -> GoodsImportWorkbookSecurity.inspectArchive(rawExport));
+    }
+
+    @Test
+    void archiveGuard_stillRejectsIncorrectDataDescriptorChecksum() throws Exception {
+        byte[] archive = zipWithEntries(
+                new Entry("[Content_Types].xml", new byte[]{1}),
+                new Entry("_rels/.rels", new byte[]{1}),
+                new Entry("xl/workbook.xml", new byte[]{1}),
+                new Entry("xl/_rels/workbook.xml.rels", new byte[]{1}));
+        boolean corrupted = false;
+        for (int i = 0; i < archive.length - 8; i++) {
+            if (archive[i] == 0x50 && archive[i + 1] == 0x4b && archive[i + 2] == 7 && archive[i + 3] == 8) {
+                archive[i + 4] ^= 1;
+                corrupted = true;
+                break;
+            }
+        }
+        assertTrue(corrupted);
+
+        assertThrows(ApiException.class, () -> GoodsImportWorkbookSecurity.inspectArchive(archive));
+    }
+
+    @Test
     void archiveGuard_rejectsExternalLinksAndEmbeddedActiveContent() throws Exception {
         byte[] archive = zipWithEntries(
                 new Entry("[Content_Types].xml", new byte[]{1}),

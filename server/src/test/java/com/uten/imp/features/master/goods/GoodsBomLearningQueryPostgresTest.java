@@ -141,7 +141,8 @@ class GoodsBomLearningQueryPostgresTest {
         MasterObjectAccess access=mock(MasterObjectAccess.class);
         when(access.visibleGoodsOwner()).thenReturn(owner->true);
         return new GoodsBomLearningQueryService(em,mock(MasterReferenceValidationPort.class),access,
-                mock(TxSessionVars.class),mock(SecurityContextCurrentUser.class));
+                mock(TxSessionVars.class),mock(SecurityContextCurrentUser.class),
+                mock(GoodsBomMaterialEvidenceQuery.class));
     }
 
     /** 服务的原生 SQL 原样执行：命名参数按出现顺序换成 JDBC 占位符(:: 类型转换不动)。 */

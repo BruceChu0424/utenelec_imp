@@ -342,6 +342,50 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         }
     }
 
+    @Test
+    void operatorRouteMemorySkipsCancelledReversedAndDeletedTasksAndFallsBackToValidHistory() {
+        UUID task = new UUID(0, 1), goods = UUID.randomUUID(), userId = UUID.randomUUID();
+        UUID older = UUID.randomUUID(), newest = UUID.randomUUID();
+        com.uten.imp.security.AuthUser me = mock(com.uten.imp.security.AuthUser.class);
+        when(me.getId()).thenReturn(userId);
+        when(currentUser.get()).thenReturn(Optional.of(me));
+        when(access.hasAuthority("production_execution:start")).thenReturn(true);
+        jdbc.update("UPDATE production_execution_segments SET product_goods_id=?,start_route=NULL WHERE id=?", goods, task);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=? WHERE segment_id=?", goods, task);
+        try {
+            for (UUID history : List.of(older, newest)) {
+                jdbc.update("""
+                        INSERT INTO production_execution_segments(id,status,plan_id,package_id,workshop_department_id,
+                            product_goods_id,start_route,route_confirmed_at,is_deleted)
+                        VALUES (?,'IN_PROGRESS',?,?,?,?,?,now(),false)
+                        """, history, UUID.randomUUID(), UUID.randomUUID(), OTHER_WORKSHOP, UUID.randomUUID(),
+                        history.equals(older) ? "CONTINUOUS" : "BATCH");
+            }
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now()-interval '1 hour')",
+                    older, userId);
+            jdbc.update("INSERT INTO production_execution_segment_events(action,execution_segment_id,created_by,created_at) VALUES ('ROUTE_CONFIRMED',?,?,now())",
+                    newest, userId);
+            assertThat(row(task).suggestedStartRoute()).isEqualTo("BATCH");
+
+            for (String invalidStatus : List.of("CANCELLED", "REVERSED")) {
+                jdbc.update("UPDATE production_execution_segments SET status=? WHERE id=?", invalidStatus, newest);
+                assertThat(row(task).suggestedStartRoute()).as(invalidStatus).isEqualTo("CONTINUOUS");
+                assertThat(row(task).suggestedStartRouteSource()).isEqualTo("OPERATOR");
+            }
+            jdbc.update("UPDATE production_execution_segments SET status='IN_PROGRESS',is_deleted=true WHERE id=?", newest);
+            assertThat(row(task).suggestedStartRoute()).isEqualTo("CONTINUOUS");
+            jdbc.update("UPDATE production_execution_segments SET status='REVERSED' WHERE id=?", older);
+            assertThat(row(task).suggestedStartRoute()).isNull();
+            assertThat(row(task).suggestedStartRouteSource()).isNull();
+        } finally {
+            when(currentUser.get()).thenReturn(Optional.empty());
+            jdbc.update("DELETE FROM production_execution_segment_events WHERE execution_segment_id IN (?,?)", older, newest);
+            jdbc.update("DELETE FROM production_execution_segments WHERE id IN (?,?)", older, newest);
+            jdbc.update("UPDATE production_execution_segments SET product_goods_id=NULL,start_route='FULL_KIT' WHERE id=?", task);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET product_goods_id=NULL WHERE segment_id=?", task);
+        }
+    }
+
     private ProductionExecutionWorkbenchSegment row(UUID task) {
         return service.workshopTasks(1, 50, null, "PREPARING", null, null, null)
                 .getItems().stream().filter(row -> row.segmentId().equals(task)).findFirst().orElseThrow();

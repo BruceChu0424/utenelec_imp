@@ -38,6 +38,7 @@ class SalesQuoteTemplateStorePostgresTest {
     private TransactionTemplate tx;
     private SalesQuoteTemplateStore store;
     private MasterIntakeLookupPort lookup;
+    private SecurityContextCurrentUser current;
     private UUID actor;
     private UUID client;
     private UUID otherClient;
@@ -55,7 +56,7 @@ class SalesQuoteTemplateStorePostgresTest {
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",
                 actor, employee, "template-" + actor);
         client = client(employee); otherClient = client(employee);
-        var current = mock(SecurityContextCurrentUser.class); when(current.id()).thenReturn(Optional.of(actor));
+        current = mock(SecurityContextCurrentUser.class); when(current.id()).thenReturn(Optional.of(actor));
         lookup = mock(MasterIntakeLookupPort.class); when(lookup.canLearnClientDocument(any())).thenReturn(true);
         var properties = new StorageProperties(); properties.setLocalDir(files.toString());
         var local = new LocalDiskStorageService(properties); ReflectionTestUtils.invokeMethod(local, "init");
@@ -112,6 +113,31 @@ class SalesQuoteTemplateStorePostgresTest {
         UUID template = store.list(client).getFirst().id();
         assertThatThrownBy(() -> jdbc.update("UPDATE sales_quote_template_versions SET source_name='overwrite' WHERE template_id=?", template))
                 .hasMessageContaining("不可覆盖");
+    }
+
+    @Test void explicitTemplateAdoptionIsBoundToActorCustomerQuoteAndPurposeAndIsIdempotent() throws Exception {
+        UUID quote = UUID.randomUUID(), job = job();
+        stage(job, QuoteTemplateWorkbook.defaultTemplate()); succeed(job);
+        String params = new ObjectMapper().writeValueAsString(Map.of("docType", "quote", "templateOnly", "true",
+                "docId", quote.toString(), "clientId", client.toString()));
+        jdbc.update("UPDATE ai_jobs SET params=CAST(? AS jsonb) WHERE id=?", params, job);
+        when(current.id()).thenReturn(Optional.of(UUID.randomUUID()));
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, client, job))).hasMessageContaining("不属于");
+        when(current.id()).thenReturn(Optional.of(actor));
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(UUID.randomUUID(), client, job))).hasMessageContaining("不属于");
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, otherClient, job))).hasMessageContaining("不属于");
+        jdbc.update("UPDATE ai_jobs SET params=params-'templateOnly' WHERE id=?", job);
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, client, job))).hasMessageContaining("不属于");
+        jdbc.update("UPDATE ai_jobs SET params=CAST(? AS jsonb) WHERE id=?", params, job);
+        when(lookup.canLearnClientDocument(client)).thenReturn(false);
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, client, job))).hasMessageContaining("权限");
+        when(lookup.canLearnClientDocument(client)).thenReturn(true);
+        UUID saved = tx.execute(s -> store.adoptUploaded(quote, client, job));
+        UUID repeated = tx.execute(s -> store.adoptUploaded(quote, client, job));
+        assertThat(repeated).isEqualTo(saved);
+        assertThat(store.list(client)).hasSize(1);
+        assertThat(store.list(client).getFirst().useCount()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_evidence WHERE job_id=?", Integer.class, job)).isEqualTo(1);
     }
 
     @Test void expiryQueuesExactObjectButAdoptionKeepsReferencedObjectAndDoesNotCapTwentyTemplates() {

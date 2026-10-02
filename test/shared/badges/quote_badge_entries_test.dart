@@ -19,6 +19,10 @@ void main() {
     expect(BadgeEntry.financeQuoteReview.module, BadgeModule.finance);
     expect(BadgeEntry.salesQuoteFinanceRejected.module, BadgeModule.sales);
     expect(BadgeEntry.salesQuoteAwaitingConversion.module, BadgeModule.sales);
+    expect(
+      BadgeEntry.salesQuoteAwaitingCustomerConfirmation.module,
+      BadgeModule.sales,
+    );
   });
 
   test('summary parses the new entries and rolls them into containers', () {
@@ -27,18 +31,23 @@ void main() {
         'financeQuoteReview': {'todo': 4, 'inProgress': 0},
         'salesQuoteFinanceRejected': {'todo': 1, 'inProgress': 0},
         'salesQuoteAwaitingConversion': {'todo': 2, 'inProgress': 0},
+        'salesQuoteAwaitingCustomerConfirmation': {'todo': 3, 'inProgress': 0},
       },
       'modules': {
         'finance': {'todo': 4, 'inProgress': 0},
-        'sales': {'todo': 3, 'inProgress': 0},
+        'sales': {'todo': 6, 'inProgress': 0},
       },
-      'total': {'todo': 7, 'inProgress': 0},
+      'total': {'todo': 10, 'inProgress': 0},
       'facts': {'financeRejected.salesQuote': 1},
     });
     expect(summary.entryTodo(BadgeEntry.financeQuoteReview), 4);
     expect(summary.entryTodo(BadgeEntry.salesQuoteFinanceRejected), 1);
     expect(summary.entryTodo(BadgeEntry.salesQuoteAwaitingConversion), 2);
-    expect(summary.moduleTodo(BadgeModule.sales), 3);
+    expect(
+      summary.entryTodo(BadgeEntry.salesQuoteAwaitingCustomerConfirmation),
+      3,
+    );
+    expect(summary.moduleTodo(BadgeModule.sales), 6);
     expect(summary.fact(BadgeFact.financeRejected('salesQuote')), 1);
   });
 

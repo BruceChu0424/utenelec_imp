@@ -2562,7 +2562,7 @@
   "salesQuoteStatusReopenConfirmBody": "Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?",
   "salesQuoteStatusReverseConfirmBody": "A voided quote can no longer be converted and cannot be restored. Void it?",
   "salesQuoteStatusDeleteConfirmBody": "Delete this draft quote? This cannot be undone.",
-  "salesQuoteStatusConvertConfirmBody": "An order draft will be created with the price and discount set by finance. Those cannot be changed; quantity and delivery details can still be completed on the order. Convert now?",
+  "salesQuoteStatusConvertConfirmBody": "Create an order draft from the accepted version, carrying approved prices, discounts and terms. Review the information, save and submit the order for finance approval.",
   "salesQuoteStatusConfirm": "OK",
   "salesQuoteStatusCancel": "Cancel",
   "salesQuoteStatusSubmitted": "Submitted for finance pricing",
@@ -2895,7 +2895,7 @@
   "salesIntakeColClientPrice": "File price",
   "salesIntakeColClientPriceWithCurrency": "File price ({currency})",
   "salesIntakeColClientPriceInfo": "The unit price on the customer's file (in the file currency), for reference only. The unit price always comes from the goods list price; the discount is worked out from this price.",
-  "salesIntakeQuotePriceHint": "The unit price comes from the goods list price and sales cannot change it; goods without a list price are priced by finance. The discount is worked out from the customer's file price, or can be left empty for finance to decide.",
+  "salesIntakeQuotePriceHint": "The list price is the starting point. Edit this quote’s price and discount without changing goods master data. Finance reviews submitted quotes and can fill in missing prices.",
   "salesIntakeFinancePriced": "Finance price",
   "salesIntakePendingFinancePrice": "Finance to price",
   "salesIntakeQuoteDiscountPending": "Finance fills in",
@@ -3299,5 +3299,27 @@
         "type": "String"
       }
     }
-  }
+  },
+  "salesQuoteCustomerConfirm": "Record customer acceptance",
+  "salesQuoteCustomerConfirmBody": "Confirm that the customer accepts the goods, quantities, prices, discounts and terms in this version. You can then create an order draft. Further changes require finance review and fresh customer acceptance.",
+  "salesQuoteCustomerConfirmed": "Customer acceptance recorded; ready to create an order",
+  "salesQuoteAwaitingCustomer": "Awaiting customer acceptance",
+  "salesQuoteAwaitingConversion": "Ready to create order",
+  "salesQuoteAwaitingCustomerBody": "Finance has priced this quote. Confirm this version with the customer, record acceptance and create an order, or revise or cancel the quote.",
+  "salesQuoteCancelQuote": "Cancel quote",
+  "salesQuoteCancelReason": "Reason (for example, customer declined or opportunity lost)",
+  "salesQuoteCancelReasonRequired": "Enter a cancellation reason",
+  "salesQuoteCancelledDone": "Quote cancelled; history retained",
+  "quoteTemplateMissingTitle": "No quotation template for this customer",
+  "quoteTemplateMissingHint": "Upload the customer's Excel template and review the field mapping before saving, or download the standard format.",
+  "quoteTemplateUpload": "Upload and learn template",
+  "quoteTemplateReviewTitle": "Review customer template",
+  "quoteTemplateReviewHint": "Review the worksheet and fields before saving. Similar layouts update the template; different layouts remain selectable.",
+  "quoteTemplateSaveDownload": "Save template and download",
+  "quoteTemplateSheet": "Worksheet",
+  "quoteTemplateReference": "Reference column (matching quotation fields only)",
+  "quoteTemplateFileRequired": "Upload an xlsx or xls file up to 15 MB",
+  "quoteTemplateUnreadable": "Unable to read a reusable template. Check the Excel headers.",
+  "quoteTemplateSaved": "Customer quotation template saved",
+  "quoteTemplateLearningTitle": "Learn customer quotation template"
 }

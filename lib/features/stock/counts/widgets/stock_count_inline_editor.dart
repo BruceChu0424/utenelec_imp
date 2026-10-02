@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
@@ -332,10 +334,14 @@ class StockCountInlineCell extends StatelessWidget {
         controller: weight ? row.weight : row.qty,
         enabled: !controller.busy,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: weight ? row.snapshot.weightKg ?? '未称' : row.snapshot.qty,
-          errorText: row.validation == null ? null : '请核对',
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText: weight ? row.snapshot.weightKg ?? '未称' : row.snapshot.qty,
+            error: row.validation == null
+                ? null
+                : const UtenFieldMessage.error('请核对'),
+          ),
         ),
       );
     },
@@ -560,10 +566,12 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
               key: const Key('stock-count-reason'),
               controller: controller.reason,
               enabled: !controller.busy,
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: '盘点说明（选填）',
-                hintText: '例如上线清点或例行盘点',
+              decoration: const UtenInputDecoration(
+                InputDecoration(
+                  isDense: true,
+                  labelText: '盘点说明（选填）',
+                  hintText: '例如上线清点或例行盘点',
+                ),
               ),
             ),
           ),

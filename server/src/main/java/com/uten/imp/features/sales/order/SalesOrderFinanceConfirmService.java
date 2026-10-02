@@ -536,7 +536,7 @@ public class SalesOrderFinanceConfirmService {
                         r[18] == null ? null : (BigDecimal) r[18],
                         r[10] == null ? null : (BigDecimal) r[10],
                         r[11] == null ? null : (BigDecimal) r[11],
-                        r.length > 19 ? businessColumns.parse(r[19]) : List.of()))
+                        r.length > 19 ? businessColumns.parse(r[19]) : List.of(), (BigDecimal) r[8]))
                 .toList();
         List<com.uten.imp.features.sales.quote.SalesQuoteItem> quoteItems =
                 quoteItemsByQuote(List.of(order.getSourceQuoteId()))
@@ -556,7 +556,7 @@ public class SalesOrderFinanceConfirmService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT i.order_id, i.line_no, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
-                               i.price, i.discount, CAST(i.extra_columns AS text)
+                               i.price, i.discount, CAST(i.extra_columns AS text), i.qty
                         FROM sales_order_items i
                         WHERE i.order_id IN (:ids) AND i.is_deleted = FALSE
                         ORDER BY i.order_id, i.line_no NULLS LAST, i.id
@@ -569,7 +569,7 @@ public class SalesOrderFinanceConfirmService {
                     r[1] == null ? null : ((Number) r[1]).intValue(),
                     (UUID) r[2], (UUID) r[3], (UUID) r[4],
                     (BigDecimal) r[5], (BigDecimal) r[6], (BigDecimal) r[7],
-                    r.length > 8 ? businessColumns.parse(r[8]) : List.of()));
+                    r.length > 8 ? businessColumns.parse(r[8]) : List.of(), (BigDecimal) r[9]));
         }
         Map<UUID, List<com.uten.imp.features.sales.quote.SalesQuoteItem>> quoteItems =
                 quoteItemsByQuote(quoteByOrder.values());
@@ -599,10 +599,15 @@ public class SalesOrderFinanceConfirmService {
     /** 一行订单明细的配对键与单价/折扣(对照来源报价用)。 */
     record QuoteMatchLine(Integer lineNo, UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
                           BigDecimal price, BigDecimal discount,
-                          List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {
+                          List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns, BigDecimal qty) {
         QuoteMatchLine(Integer lineNo, UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
                        BigDecimal price, BigDecimal discount) {
-            this(lineNo, goodsId, colorId, unitId, unitRate, price, discount, List.of());
+            this(lineNo, goodsId, colorId, unitId, unitRate, price, discount, List.of(), null);
+        }
+        QuoteMatchLine(Integer lineNo, UUID goodsId, UUID colorId, UUID unitId, BigDecimal unitRate,
+                       BigDecimal price, BigDecimal discount,
+                       List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {
+            this(lineNo, goodsId, colorId, unitId, unitRate, price, discount, extraColumns, null);
         }
     }
 
@@ -631,9 +636,11 @@ public class SalesOrderFinanceConfirmService {
             matches.add(quoted != null && line.price() != null && discount != null
                     && quoted.price().compareTo(line.price()) == 0
                     && quoted.discount().compareTo(discount) == 0
+                    && quoted.qty() != null && line.qty() != null && quoted.qty().compareTo(line.qty()) == 0
                     && financialColumns(quoted.extraColumns()).equals(financialColumns(line.extraColumns())));
         }
-        return new QuoteMatch(terms, matches, matches.stream().allMatch(Boolean::booleanValue));
+        return new QuoteMatch(terms, matches, quoteItems.size() == lines.size()
+                && matches.stream().allMatch(Boolean::booleanValue));
     }
 
     private static List<com.uten.imp.common.columns.ExtraColumnSnapshot> financialColumns(

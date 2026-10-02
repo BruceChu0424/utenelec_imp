@@ -33,6 +33,8 @@ class _DraftApi extends ApiClient {
         'billDate': '2026-09-26',
         'status': status,
         'writable': writable,
+        'reviewRevision': 4,
+        'allowedActions': ['delete'],
         'items': <Object>[],
       };
 

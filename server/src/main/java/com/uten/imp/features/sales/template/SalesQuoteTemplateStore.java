@@ -148,6 +148,28 @@ public class SalesQuoteTemplateStore {
         for (String f : b) if (semantic(f)) rolesB.add(f);
         return rolesA.equals(rolesB) && QuoteTemplateWorkbook.similarity(a, b) >= 0.92;
     }
+
+    /** Explicit adoption from a saved quotation's download flow; no document/master values are imported. */
+    @Transactional
+    public UUID adoptUploaded(UUID quoteId, UUID clientId, UUID jobId) {
+        UUID actor = currentUser.id().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        Map<String, Object> p = Map.of("job", jobId, "actor", actor, "doc", quoteId, "client", clientId);
+        lockJob(p);
+        boolean owned = Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM ai_jobs j WHERE j.id=:job AND j.submitted_by_user=:actor
+                  AND j.kind='SALES_DOCUMENT_INTAKE' AND j.status='SUCCEEDED'
+                  AND j.params->>'templateOnly'='true' AND j.params->>'docType'='quote'
+                  AND j.params->>'docId'=CAST(:doc AS text) AND j.params->>'clientId'=CAST(:client AS text))
+                """, p, Boolean.class));
+        if (!owned) throw new ApiException(ErrorCode.CONFLICT, "模板识别任务不属于当前报价或客户，请重新上传");
+        if (!lookup.canLearnClientDocument(clientId)) throw new ApiException(ErrorCode.FORBIDDEN, "你没有此客户的模板学习权限");
+        adopt(new SalesIntakeUsedEvent(jobId, actor, "quote", quoteId, clientId));
+        return jdbc.query("""
+                SELECT template_id FROM sales_quote_template_evidence
+                WHERE job_id=:job AND client_id=:client AND doc_type='quote' AND doc_id=:doc
+                """, p, (rs, row) -> rs.getObject(1, UUID.class)).stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "模板候选已失效或无法保存，请重新上传"));
+    }
     private static boolean semantic(String feature) {
         return feature.startsWith("role:") || feature.startsWith("extra:") || feature.startsWith("header:")
                 || feature.startsWith("field:") || feature.startsWith("block:");

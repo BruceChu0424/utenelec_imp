@@ -34,12 +34,30 @@ class GoodsBomLearningQueryServiceTest {
     final MasterObjectAccess access=mock(MasterObjectAccess.class);
     final TxSessionVars tx=mock(TxSessionVars.class);
     final SecurityContextCurrentUser currentUser=mock(SecurityContextCurrentUser.class);
-    final GoodsBomLearningQueryService service=new GoodsBomLearningQueryService(em,references,access,tx,currentUser);
+    final GoodsBomMaterialEvidenceQuery evidence=mock(GoodsBomMaterialEvidenceQuery.class);
+    final GoodsBomLearningQueryService service=new GoodsBomLearningQueryService(em,references,access,tx,currentUser,evidence);
 
     @Test void invisibleParentIsRejectedBeforeAnyLearningQuery() {
         UUID parent=UUID.randomUUID();
         doThrow(new ApiException(ErrorCode.NOT_FOUND,"货品不存在")).when(references).requireVisibleGoods(parent);
-        assertThrows(ApiException.class,()->service.summary(parent));verifyNoInteractions(em,access);
+        assertThrows(ApiException.class,()->service.summary(parent));verifyNoInteractions(em,access,evidence);
+    }
+
+    @Test void noLearningProfileStillIncludesVisibleMaterialEvidence() {
+        UUID parent=UUID.randomUUID(), material=UUID.randomUUID();
+        Query empty=query(List.of());
+        when(em.createNativeQuery(anyString())).thenReturn(empty);
+        java.util.function.Predicate<UUID> visible=ignored->true;
+        when(access.visibleGoodsOwner()).thenReturn(visible);
+        var choice=new GoodsBomMaterialEvidenceQuery.Evidence("PERIODIC_CHOICE","CONFIRMED",material,
+                "PC01","PC颗粒",null,null,UUID.randomUUID(),"千克",false,1L,null);
+        when(evidence.list(parent,visible)).thenReturn(List.of(choice));
+
+        var summary=service.summary(parent);
+
+        assertNull(summary.profile());assertTrue(summary.components().isEmpty());
+        assertEquals(List.of(choice),summary.materialEvidence());
+        verify(references).requireVisibleGoods(parent);
     }
 
     @Test void goodsWithoutSamplesStillListsItsBomEdgesWithDesignUsageOnly() {

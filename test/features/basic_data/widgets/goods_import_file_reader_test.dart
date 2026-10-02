@@ -6,6 +6,24 @@ import 'package:uten_imp/features/basic_data/widgets/goods_import_file_reader.da
 
 void main() {
   group('readGoodsImportFile', () {
+    test(
+      'BOM limit is enforced on bytes even with incorrect metadata',
+      () async {
+        final bytes = Uint8List(10 * 1024 * 1024 + 1);
+        final file = PlatformFile(name: 'bom.xlsx', size: 1, bytes: bytes);
+        await expectLater(
+          readGoodsImportFile(file, maxBytes: 10 * 1024 * 1024),
+          throwsA(
+            isA<GoodsImportFileException>().having(
+              (error) => error.message,
+              'message',
+              contains('10MB'),
+            ),
+          ),
+        );
+      },
+    );
+
     test('returns valid direct OOXML bytes', () async {
       final bytes = Uint8List.fromList(const [0x50, 0x4B, 0x03, 0x04]);
       final file = PlatformFile(

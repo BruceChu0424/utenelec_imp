@@ -180,6 +180,10 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -405,6 +409,10 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -573,6 +581,10 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -691,6 +703,10 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -991,6 +1007,10 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -1224,6 +1244,10 @@ void main() {
             ),
             employeeRepositoryProvider.overrideWithValue(employees),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -1487,6 +1511,10 @@ void main() {
             _FakeEmployeeRepository(),
           ),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.productionDailyReportCreate,
+            Perm.productionDailyReportView,
+          }),
           formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
           sessionProvider.overrideWith(_ExactSegmentSession.new),
           authenticatedScopeProvider.overrideWithValue(
@@ -1573,6 +1601,10 @@ void main() {
           ),
           employeeRepositoryProvider.overrideWithValue(employees),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.productionDailyReportCreate,
+            Perm.productionDailyReportView,
+          }),
           formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
           sessionProvider.overrideWith(_ExactSegmentSession.new),
           authenticatedScopeProvider.overrideWithValue(
@@ -1657,6 +1689,10 @@ void main() {
                 _FakeEmployeeRepository(),
               ),
               sharedPreferencesProvider.overrideWithValue(preferences),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.productionDailyReportCreate,
+                Perm.productionDailyReportView,
+              }),
               formDraftStorageProvider.overrideWithValue(
                 MemoryFormDraftStorage(),
               ),
@@ -1756,6 +1792,10 @@ void main() {
                 _FakeEmployeeRepository(),
               ),
               sharedPreferencesProvider.overrideWithValue(preferences),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.productionDailyReportCreate,
+                Perm.productionDailyReportView,
+              }),
               formDraftStorageProvider.overrideWithValue(
                 MemoryFormDraftStorage(),
               ),
@@ -1998,6 +2038,10 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
             formDraftStorageProvider.overrideWithValue(
               MemoryFormDraftStorage(),
             ),
@@ -2211,6 +2255,10 @@ Future<void> _pumpNewReport(WidgetTester tester, ApiClient api) async {
         ),
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionDailyReportCreate,
+          Perm.productionDailyReportView,
+        }),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_ExactSegmentSession.new),
         authenticatedScopeProvider.overrideWithValue(
@@ -2218,6 +2266,10 @@ Future<void> _pumpNewReport(WidgetTester tester, ApiClient api) async {
         ),
         sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
         apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionDailyReportCreate,
+          Perm.productionDailyReportView,
+        }),
       ],
       child: const MaterialApp(
         home: Column(
@@ -2312,6 +2364,10 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
         ),
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionDailyReportCreate,
+          Perm.productionDailyReportView,
+        }),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_ExactSegmentSession.new),
         authenticatedScopeProvider.overrideWithValue(
@@ -2319,9 +2375,6 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
         ),
         sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
         apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.productionDailyReportCreate,
-        }),
       ],
       child: const MaterialApp(
         home: Column(

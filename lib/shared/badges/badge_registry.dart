@@ -144,7 +144,10 @@ enum BadgeEntry {
   /// 报价被财务退回(本人的报价, status 0 且带退回原因; 事实数 financeRejected.salesQuote)。
   salesQuoteFinanceRejected(BadgeModule.sales),
 
-  /// 报价已核价、还没转订货单(本人的报价, status 1 且没有生效的来源订货单;
+  /// 财务已核价、等待销售向客户确认当前版本。
+  salesQuoteAwaitingCustomerConfirmation(BadgeModule.sales),
+
+  /// 财务与客户已同意当前版、还没转订货单(可办范围, status 1 且无来源订货单;
   /// 事实数 salesQuote.awaitingConversion)。入口键与服务端 WorkbenchBadgeCatalog 逐字一致。
   salesQuoteAwaitingConversion(BadgeModule.sales),
 

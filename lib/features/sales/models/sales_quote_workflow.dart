@@ -19,6 +19,9 @@ enum SalesQuoteAction {
   withdraw('withdraw'),
   reopen('reopen'),
   convert('convert'),
+  customerConfirm('customerConfirm'),
+  cancel('cancel'),
+  requote('requote'),
   reverse('reverse'),
   financeReview('financeReview');
 
@@ -53,6 +56,7 @@ class SalesQuoteRevision {
     this.reason,
     this.summary,
     this.createdAt,
+    this.snapshot,
   });
 
   /// [SalesQuoteRevisionAction] 之一; 未知值原样保留(界面按「其它记录」显示)。
@@ -69,6 +73,7 @@ class SalesQuoteRevision {
   /// 服务端给出的一句话变化摘要(例如「改了 3 行折扣」), 可空。
   final String? summary;
   final String? createdAt;
+  final Map<String, dynamic>? snapshot;
 
   factory SalesQuoteRevision.fromJson(Map<String, dynamic> json) =>
       SalesQuoteRevision(
@@ -79,6 +84,9 @@ class SalesQuoteRevision {
         reason: _text(json['reason']),
         summary: _text(json['summary']),
         createdAt: _text(json['createdAt'] ?? json['occurredAt']),
+        snapshot: json['snapshot'] is Map
+            ? Map<String, dynamic>.from(json['snapshot'] as Map)
+            : null,
       );
 
   /// 解析 revisions 数组; 非数组或元素不是对象时跳过, 不抛错。
@@ -103,6 +111,11 @@ class SalesQuoteWorkflow {
     this.financeConfirmedByName,
     this.financeRemark,
     this.reviewRevision = 0,
+    this.customerAcceptedAt,
+    this.customerAcceptedByName,
+    this.customerAcceptedRevision,
+    this.cancelReason,
+    this.cancelledAt,
     this.convertedOrderId,
     this.convertedOrderNo,
     this.allowedActions = const {},
@@ -127,6 +140,13 @@ class SalesQuoteWorkflow {
 
   /// 乐观锁版本: 提交/撤回/重新修改时原样带回。
   final int reviewRevision;
+  final String? customerAcceptedAt;
+  final String? customerAcceptedByName;
+  final int? customerAcceptedRevision;
+  final String? cancelReason;
+  final String? cancelledAt;
+  bool get customerAccepted =>
+      customerAcceptedAt != null && customerAcceptedRevision == reviewRevision;
   final String? convertedOrderId;
   final String? convertedOrderNo;
 
@@ -157,6 +177,11 @@ class SalesQuoteWorkflow {
       financeConfirmedByName: _text(json['financeConfirmedByName']),
       financeRemark: _text(json['financeRemark']),
       reviewRevision: _int(json['reviewRevision']) ?? 0,
+      customerAcceptedAt: _text(json['customerAcceptedAt']),
+      customerAcceptedByName: _text(json['customerAcceptedByName']),
+      customerAcceptedRevision: _int(json['customerAcceptedRevision']),
+      cancelReason: _text(json['cancelReason']),
+      cancelledAt: _text(json['cancelledAt']),
       convertedOrderId: _text(json['convertedOrderId']),
       convertedOrderNo: _text(json['convertedOrderNo']),
       hasAllowedActions: rawActions is List,

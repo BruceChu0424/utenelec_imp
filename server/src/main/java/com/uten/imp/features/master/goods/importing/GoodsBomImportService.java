@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.Goods;
 import com.uten.imp.features.master.goods.GoodsBomPasteService;
+import com.uten.imp.features.master.goods.GoodsBomFileLimits;
 import com.uten.imp.features.master.goods.GoodsPeriodicMaterialRules;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
@@ -65,9 +66,11 @@ public class GoodsBomImportService {
     private final GoodsBomPasteService pasteService;
 
     /** 文件侧硬上限：BOM 是树平铺，2000 行远超真实使用；防误传大文件撑爆内存。 */
-    private static final int MAX_ROWS = 2000;
+    private static final int MAX_ROWS = GoodsBomFileLimits.MAX_ROWS;
 
     private static final Pattern SEQ_PATTERN = Pattern.compile("^\\d+(\\.\\d+)*$");
+    private static final Pattern NUMBER_PATTERN = Pattern.compile(
+            "[+-]?(?:(?:\\d+|\\d{1,3}(?:,\\d{3})+)(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?");
 
     /** 表头别名（与导出列名一致，另认几个顺手的叫法）。 */
     private static final Map<String, String> HEADER_ALIASES = new HashMap<>();
@@ -111,9 +114,12 @@ public class GoodsBomImportService {
     // ============================================================
 
     @PreAuthorize("hasAuthority('goods:bom:create')")
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public BomImportReport detect(UUID goodsId, byte[] xlsx) {
-        return parseAndValidate(goodsId, xlsx).report();
+        Parsed parsed = parseAndValidate(goodsId, xlsx);
+        BomImportReport report = parsed.report();
+        return new BomImportReport(report.totalRows(), report.errors(), report.warnings(), report.levelCounts(),
+                report.readyToImport(), report.hasErrors() ? null : fingerprint(goodsId, xlsx, parsed));
     }
 
     // ============================================================
@@ -122,7 +128,10 @@ public class GoodsBomImportService {
 
     @PreAuthorize("hasAuthority('goods:bom:create')")
     @Transactional
-    public BomImportResult commit(UUID goodsId, byte[] xlsx, BomPasteRequest.Mode mode) {
+    public BomImportResult commit(UUID goodsId, byte[] xlsx, BomPasteRequest.Mode mode, String stateFingerprint) {
+        if (stateFingerprint == null || !stateFingerprint.startsWith("v1:")) {
+            throw new ApiException(ErrorCode.CONFLICT, "缺少有效的导入检测凭据，请重新检测文件后提交（旧版客户端请先升级）");
+        }
         if (mode == BomPasteRequest.Mode.REPLACE) {
             // 替换会删掉文件外的现有组件，与粘贴命令同口径要删除权(paste 内也会再查)。
             CurrentAuthorityGuard.requireAll("goods:bom:delete");
@@ -134,18 +143,23 @@ public class GoodsBomImportService {
         }
         // 先按 id 顺序一次锁住本次要写的所有父件，再写任何一行：与粘贴命令、学习引擎同一锁序
         // (父件行在前、组装图锁在后)，多层导入不会与报工审核的学习发布互相等待。
-        Set<UUID> parents = new LinkedHashSet<>();
-        parents.add(goodsId);
-        for (int level = 1; level < parsed.levels.size(); level++) {
-            for (ParsedRow row : parsed.levels.get(level)) {
-                parents.add(parsed.bySeq().get(row.parentSeq).goodsId);
-            }
-        }
+        Set<UUID> parents = parentsOf(goodsId, parsed);
         goodsRepo.lockBomParents(parents);
+        Set<UUID> involved = new LinkedHashSet<>(parents);
+        for (ParsedRow row : parsed.rows()) involved.add(row.goodsId);
+        pasteService.prepareImportReferences(involved);
+        parsed = parseAndValidate(goodsId, xlsx);
+        if (!parsed.errors().isEmpty() || !parents.equals(parentsOf(goodsId, parsed))) {
+            throw new ApiException(ErrorCode.CONFLICT, "相关货品或组件结构在检测后已变化，请重新检测文件");
+        }
+        if (!stateFingerprint.equals(fingerprint(goodsId, xlsx, parsed))) {
+            throw new ApiException(ErrorCode.CONFLICT, "BOM、学习用量或相关货品资料已变化，或文件与检测时不同；现有BOM未改动，请重新检测后提交");
+        }
         int targets = 0;
         int added = 0;
         int removed = 0;
         List<String> warnings = new ArrayList<>();
+        Set<UUID> writtenParents = new HashSet<>();
         // 按层写入：层 0 粘到目标货品；层 L(≥1) 按父序号分组粘到对应组件货品。
         // 父行一定在更浅的层（校验保证父序号存在），所以按层序写入时父货品 id 已解析。
         for (int level = 0; level < parsed.levels.size(); level++) {
@@ -157,33 +171,64 @@ public class GoodsBomImportService {
                 UUID parentId = level == 0
                         ? goodsId
                         : parsed.bySeq().get(group.getKey()).goodsId;
+                // BOM 是共享有向图，导出按路径展开。同一父件的相同子表只写一次。
+                if (!writtenParents.add(parentId)) continue;
                 List<BomItemSaveRequest> items = new ArrayList<>();
+                Map<UUID, String> colorNames = new HashMap<>();
                 for (ParsedRow row : group.getValue()) {
                     BomItemSaveRequest item = new BomItemSaveRequest();
                     item.setComponentGoodsId(row.goodsId);
                     item.setQty(row.qty);
-                    item.setConsumptionBasis(row.basisCode);
-                    item.setBasisOutputQty(row.basisOutputQty);
-                    if ("PER_PACKAGE".equals(row.basisCode)) {
+                    if (parsed.columns().contains("consumptionBasis")) item.setConsumptionBasis(row.basisCode);
+                    if (parsed.columns().contains("basisOutputQty")) item.setBasisOutputQty(row.basisOutputQty);
+                    if (parsed.columns().contains("allowPartialPackage") && row.allowPartialPackage != null) {
                         item.setAllowPartialPackage(row.allowPartialPackage);
                     }
                     item.setSummary(row.summary);
+                    colorNames.put(row.goodsId, row.colorName);
                     // 整批领料的料的异常单重、双料已在检测报告里逐行提醒, 提交即确认 (ADR-131)。
                     item.setConfirmUnusualWeight(true);
                     item.setConfirmSecondPeriodicMaterial(true);
                     items.add(item);
                 }
-                BomPasteResult result = pasteService.paste(new BomPasteRequest(
+                BomPasteResult result = pasteService.pasteImported(new BomPasteRequest(
                         mode,
                         List.of(new BomPasteRequest.Target(parentId, null)),
-                        items));
+                        items), parsed.columns(), colorNames);
                 targets += result.targets();
                 added += result.added();
                 removed += result.removed();
                 warnings.addAll(result.warnings());
             }
         }
+        pasteService.markImportApplied(parents);
         return new BomImportResult(targets, added, removed, parsed.levels.size(), List.copyOf(warnings));
+    }
+
+    private Set<UUID> parentsOf(UUID goodsId, Parsed parsed) {
+        Set<UUID> parents = new LinkedHashSet<>();
+        parents.add(goodsId);
+        for (int level = 1; level < parsed.levels.size(); level++) {
+            for (ParsedRow row : parsed.levels.get(level)) parents.add(parsed.bySeq().get(row.parentSeq).goodsId);
+        }
+        return parents;
+    }
+
+    private String fingerprint(UUID goodsId, byte[] xlsx, Parsed parsed) {
+        Set<UUID> parents = parentsOf(goodsId, parsed);
+        Set<UUID> involved = new LinkedHashSet<>(parents);
+        Set<String> colors = new LinkedHashSet<>();
+        for (ParsedRow row : parsed.rows()) if (row.goodsId != null) involved.add(row.goodsId);
+        for (ParsedRow row : parsed.rows()) {
+            if (row.colorName != null && !row.colorName.isBlank()) colors.add(row.colorName.trim().toLowerCase(java.util.Locale.ROOT));
+        }
+        try {
+            String fileHash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(xlsx));
+            return "v1:" + com.uten.imp.common.util.HashUtil.sha256(goodsId + "\n" + fileHash + "\n"
+                    + pasteService.importStateSnapshot(parents, involved, colors));
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 
     // ============================================================
@@ -204,6 +249,7 @@ public class GoodsBomImportService {
         List<GoodsImportError> errors = new ArrayList<>();
         List<GoodsImportError> warnings = new ArrayList<>();
         List<ParsedRow> rows = new ArrayList<>();
+        Set<String> columns = new HashSet<>();
         try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(xlsx))) {
             GoodsImportWorkbookSecurity.inspectWorkbook(wb);
             if (wb.getNumberOfSheets() == 0) {
@@ -213,16 +259,17 @@ public class GoodsBomImportService {
             Row header = sheet.getRow(0);
             if (header == null) {
                 errors.add(new GoodsImportError(1, "表头", "首个工作表无表头行"));
-                return parsedOf(rows, errors, warnings);
+                return parsedOf(rows, errors, warnings, columns);
             }
             Map<String, Integer> col = mapHeaders(header);
+            columns.addAll(col.keySet());
             for (String required : new String[]{"seq", "code", "qty"}) {
                 if (!col.containsKey(required)) {
                     errors.add(new GoodsImportError(1, "表头", "缺少必填列：" + labelOf(required)));
                 }
             }
             if (!errors.isEmpty()) {
-                return parsedOf(rows, errors, warnings);
+                return parsedOf(rows, errors, warnings, columns);
             }
             DataFormatter df = new DataFormatter();
             for (int ri = 1; ri <= sheet.getLastRowNum(); ri++) {
@@ -254,18 +301,42 @@ public class GoodsBomImportService {
 
         // ---- 树与匹配校验 ----
         validateTree(target, rows, errors, warnings);
-        return parsedOf(rows, errors, warnings);
+        if (columns.contains("color")) validateColors(goodsId, rows, errors);
+        return parsedOf(rows, errors, warnings, columns);
+    }
+
+    private void validateColors(UUID goodsId, List<ParsedRow> rows, List<GoodsImportError> errors) {
+        Map<String, ParsedRow> bySeq = new HashMap<>();
+        for (ParsedRow row : rows) bySeq.putIfAbsent(row.seq, row);
+        Map<UUID, List<ParsedRow>> byParent = new LinkedHashMap<>();
+        for (ParsedRow row : rows) {
+            ParsedRow parent = bySeq.get(row.parentSeq);
+            UUID parentId = row.parentSeq == null ? goodsId : parent == null ? null : parent.goodsId;
+            if (row.goodsId != null && parentId != null) {
+                byParent.computeIfAbsent(parentId, ignored -> new ArrayList<>()).add(row);
+            }
+        }
+        for (var entry : byParent.entrySet()) {
+            Map<UUID, String> names = new HashMap<>();
+            for (ParsedRow row : entry.getValue()) names.put(row.goodsId, row.colorName);
+            Map<UUID, String> problems = pasteService.importedColorProblems(entry.getKey(), names);
+            for (ParsedRow row : entry.getValue()) {
+                if (problems.containsKey(row.goodsId)) {
+                    errors.add(new GoodsImportError(row.rowNum, "颜色", problems.get(row.goodsId)));
+                }
+            }
+        }
     }
 
     /** 组装中间态：按序号索引供按层写入时找父行（序号重复时以首行为准，错误已另行报出）。 */
     private Parsed parsedOf(List<ParsedRow> rows, List<GoodsImportError> errors,
-                            List<GoodsImportError> warnings) {
+                            List<GoodsImportError> warnings, Set<String> columns) {
         Map<String, ParsedRow> bySeq = new LinkedHashMap<>();
         for (ParsedRow row : rows) {
             if (row.seq != null) bySeq.putIfAbsent(row.seq, row);
         }
         List<List<ParsedRow>> levels = groupByLevel(rows);
-        return new Parsed(rows, errors, warnings, levels, bySeq,
+        return new Parsed(rows, errors, warnings, levels, bySeq, Set.copyOf(columns),
                 reportOf(rows, errors, warnings));
     }
 
@@ -284,6 +355,10 @@ public class GoodsBomImportService {
                     "序号「" + seq + "」不是有效的级联序号（应为 1 / 2 / 2.1 这样的编号）"));
         } else {
             parsed.level = seq.split("\\.").length - 1;
+            if (parsed.level >= GoodsBomFileLimits.MAX_LEVELS) {
+                errors.add(new GoodsImportError(rowNum, "序号", "BOM 文件最多支持 "
+                        + GoodsBomFileLimits.MAX_LEVELS + " 层，请从下层组件分别导入"));
+            }
             parsed.parentSeq = parsed.level == 0
                     ? null : seq.substring(0, seq.lastIndexOf('.'));
         }
@@ -295,6 +370,8 @@ public class GoodsBomImportService {
             } else if (parsed.qty.signum() <= 0) {
                 errors.add(new GoodsImportError(rowNum, qtyLabel, qtyLabel + "必须大于 0"));
             }
+        } catch (NumericRangeException e) {
+            errors.add(new GoodsImportError(rowNum, qtyLabel, qtyLabel + e.getMessage()));
         } catch (NumberFormatException e) {
             errors.add(new GoodsImportError(rowNum, qtyLabel,
                     qtyLabel + "「" + trim(df, row, col, "qty") + "」不是有效数字"));
@@ -312,6 +389,9 @@ public class GoodsBomImportService {
         try {
             BigDecimal basisOutputQty = number(df, row, col, "basisOutputQty");
             parsed.basisOutputQty = basisOutputQty == null ? BigDecimal.ONE : basisOutputQty;
+        } catch (NumericRangeException e) {
+            errors.add(new GoodsImportError(rowNum, "基准产量", "基准产量" + e.getMessage()));
+            parsed.basisOutputQty = BigDecimal.ONE;
         } catch (NumberFormatException e) {
             errors.add(new GoodsImportError(rowNum, "基准产量",
                     "基准产量「" + trim(df, row, col, "basisOutputQty") + "」不是有效数字"));
@@ -322,7 +402,7 @@ public class GoodsBomImportService {
         }
         String partialRaw = trim(df, row, col, "allowPartialPackage");
         if (isBlank(partialRaw) || "—".equals(partialRaw) || "-".equals(partialRaw)) {
-            parsed.allowPartialPackage = true;
+            parsed.allowPartialPackage = null;
         } else if ("允许".equals(partialRaw)) {
             parsed.allowPartialPackage = true;
         } else if ("整包".equals(partialRaw)) {
@@ -332,6 +412,7 @@ public class GoodsBomImportService {
         }
         parsed.summary = blankToNull(trim(df, row, col, "summary"));
         parsed.name = blankToNull(trim(df, row, col, "name"));
+        parsed.colorName = trim(df, row, col, "color");
         return parsed;
     }
 
@@ -391,6 +472,32 @@ public class GoodsBomImportService {
             }
         }
         validatePeriodicEdges(target, rows, bySeq, codeIndex, errors, warnings);
+        validateSharedParents(rows, errors);
+    }
+
+    /** 不同展开路径指向同一货品时，只能描述同一套直接组件，不能按最后一条路径静默覆盖。 */
+    private void validateSharedParents(List<ParsedRow> rows, List<GoodsImportError> errors) {
+        Map<String, List<ParsedRow>> children = new HashMap<>();
+        for (ParsedRow row : rows) {
+            if (row.parentSeq != null) children.computeIfAbsent(row.parentSeq, ignored -> new ArrayList<>()).add(row);
+        }
+        Map<UUID, List<List<Object>>> definitions = new HashMap<>();
+        for (ParsedRow parent : rows) {
+            if (parent.goodsId == null) continue;
+            List<List<Object>> definition = children.getOrDefault(parent.seq, List.of()).stream()
+                    .map(row -> java.util.Arrays.<Object>asList(row.goodsId, normalized(row.qty), row.basisCode,
+                            normalized(row.basisOutputQty), row.allowPartialPackage, row.colorName, row.summary))
+                    .toList();
+            List<List<Object>> previous = definitions.putIfAbsent(parent.goodsId, definition);
+            if (previous != null && !previous.equals(definition)) {
+                errors.add(new GoodsImportError(parent.rowNum, "序号", "共享组件「" + parent.code
+                        + "」在不同层级路径中的子组件、顺序或用量不一致，或文件缺少一处完整子表，请统一后导入"));
+            }
+        }
+    }
+
+    private static BigDecimal normalized(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros();
     }
 
     /**
@@ -428,6 +535,10 @@ public class GoodsBomImportService {
                     || row.basisOutputQty.signum() <= 0) continue;
             BigDecimal perUnit = row.qty.divide(row.basisOutputQty, GoodsPeriodicMaterialRules.QTY_SCALE,
                     RoundingMode.HALF_UP);
+            if (perUnit.precision() - perUnit.scale() > 13) {
+                errors.add(new GoodsImportError(row.rowNum, "数量", "折算后的每件用量超出可保存范围"));
+                continue;
+            }
             BigDecimal grams = GoodsPeriodicMaterialRules.toGrams(perUnit,
                     GoodsPeriodicMaterialRules.gramsPerUnit(component.getUnit()));
             if (perUnit.signum() <= 0) {
@@ -469,7 +580,7 @@ public class GoodsBomImportService {
                 .map(List::size).toList();
         int errorRows = (int) errors.stream().map(GoodsImportError::rowNum).distinct().count();
         return new BomImportReport(rows.size(), errors, warnings, levelCounts,
-                Math.max(0, rows.size() - errorRows));
+                Math.max(0, rows.size() - errorRows), null);
     }
 
     private Map<String, Integer> mapHeaders(Row header) {
@@ -497,7 +608,7 @@ public class GoodsBomImportService {
 
     /**
      * 数值单元格按存的值读(不按「#,##0.00」之类的显示格式，否则 0.03125 会读成 0.03)；
-     * 文本单元格照旧宽松解析(去掉千分位等杂字符)。留空返回 null，不是数字抛 NumberFormatException。
+     * 文本只接受完整数字、规范千分位和科学计数法，不删除单位/百分号等字符后悄悄改义。
      * 公式单元格到不了这里：文件检查(GoodsImportWorkbookSecurity)已整份拒收。
      */
     private static BigDecimal number(DataFormatter df, Row row, Map<String, Integer> col, String key) {
@@ -506,10 +617,28 @@ public class GoodsBomImportService {
         if (cell == null) return null;
         if (cell.getCellType() == CellType.NUMERIC) {
             // BigDecimal.valueOf 取 double 的最短十进制写法(0.03125、1.0E-5)；不能再过下面的字符过滤。
-            return BigDecimal.valueOf(cell.getNumericCellValue());
+            return boundedNumber(BigDecimal.valueOf(cell.getNumericCellValue()), key);
         }
         String raw = trim(df, row, col, key);
-        return isBlank(raw) ? null : new BigDecimal(raw.replaceAll("[^0-9.\\-]", ""));
+        if (isBlank(raw)) return null;
+        if (!NUMBER_PATTERN.matcher(raw).matches()) throw new NumberFormatException("Invalid numeric cell");
+        return boundedNumber(new BigDecimal(raw.replace(",", "")), key);
+    }
+
+    private static BigDecimal boundedNumber(BigDecimal value, String key) {
+        int scale = "basisOutputQty".equals(key) ? 6 : 5;
+        // 先查表示范围，再做去尾零/乘除，阻断科学计数法的极端指数导致巨大内存分配。
+        if (value.precision() > 64 || value.scale() < -18 || value.scale() > 64
+                || (long) value.precision() - value.scale() > 18 - scale
+                || value.stripTrailingZeros().scale() > scale) {
+            throw new NumericRangeException("最多支持 " + (18 - scale) + " 位整数和 " + scale
+                    + " 位小数，请修正数值（不能把正用量舍入为零）");
+        }
+        return value;
+    }
+
+    private static final class NumericRangeException extends NumberFormatException {
+        NumericRangeException(String message) { super(message); }
     }
 
     private static boolean isBlank(String value) {
@@ -539,6 +668,7 @@ public class GoodsBomImportService {
                           List<GoodsImportError> warnings,
                           List<List<ParsedRow>> levels,
                           Map<String, ParsedRow> bySeq,
+                          Set<String> columns,
                           BomImportReport report) {}
 
     /** 一行组件（含解析出的层级/父序号与解析到的货品 id）。 */
@@ -553,7 +683,8 @@ public class GoodsBomImportService {
         BigDecimal qty;
         String basisCode;
         BigDecimal basisOutputQty;
-        boolean allowPartialPackage;
+        Boolean allowPartialPackage;
+        String colorName;
         String summary;
     }
 }

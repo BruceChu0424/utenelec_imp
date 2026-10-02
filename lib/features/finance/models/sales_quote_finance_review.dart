@@ -50,6 +50,7 @@ enum SalesQuoteFinanceAction {
 abstract final class QuotePriceSource {
   static const master = 'MASTER';
   static const finance = 'FINANCE';
+  static const sales = 'SALES';
 }
 
 /// 核价队列一行(服务端 QuoteFinanceListItem)。
@@ -477,31 +478,66 @@ class SalesQuoteFinanceReview {
 class SalesQuoteFinanceLineEdit {
   const SalesQuoteFinanceLineEdit.discount({
     required this.itemId,
+    this.qty,
     required String this.discount,
-  }) : dealPrice = null,
+  }) : price = null,
+       removed = false,
+       dealPrice = null,
        giftZeroPrice = false,
        useMasterPrice = false;
 
   const SalesQuoteFinanceLineEdit.dealPrice({
     required this.itemId,
     required String this.dealPrice,
-  }) : discount = null,
+    this.qty,
+  }) : price = null,
+       removed = false,
+       discount = null,
        giftZeroPrice = false,
        useMasterPrice = false;
 
-  const SalesQuoteFinanceLineEdit.giftZeroPrice({required this.itemId})
-    : discount = null,
-      dealPrice = null,
-      giftZeroPrice = true,
-      useMasterPrice = false;
+  const SalesQuoteFinanceLineEdit.giftZeroPrice({
+    required this.itemId,
+    this.qty,
+  }) : price = null,
+       removed = false,
+       discount = null,
+       dealPrice = null,
+       giftZeroPrice = true,
+       useMasterPrice = false;
 
-  const SalesQuoteFinanceLineEdit.useMasterPrice({required this.itemId})
-    : discount = null,
+  const SalesQuoteFinanceLineEdit.useMasterPrice({
+    required this.itemId,
+    this.qty,
+  }) : price = null,
+       removed = false,
+       discount = null,
+       dealPrice = null,
+       giftZeroPrice = false,
+       useMasterPrice = true;
+
+  const SalesQuoteFinanceLineEdit.commercial({
+    required this.itemId,
+    this.qty,
+    this.price,
+    this.discount,
+  }) : removed = false,
+       dealPrice = null,
+       giftZeroPrice = false,
+       useMasterPrice = false;
+  const SalesQuoteFinanceLineEdit.remove({required this.itemId})
+    : removed = true,
+      qty = null,
+      price = null,
+      discount = null,
       dealPrice = null,
       giftZeroPrice = false,
-      useMasterPrice = true;
+      useMasterPrice = false;
 
   final String itemId;
+  final String? qty;
+  final String? price;
+  final bool removed;
   final String? discount;
   final String? dealPrice;
   final bool giftZeroPrice;
@@ -509,6 +545,9 @@ class SalesQuoteFinanceLineEdit {
 
   Map<String, dynamic> toJson() => {
     'itemId': itemId,
+    'qty': ?qty,
+    'price': ?price,
+    if (removed) 'removed': true,
     'discount': ?discount,
     'dealPrice': ?dealPrice,
     if (giftZeroPrice) 'giftZeroPrice': true,

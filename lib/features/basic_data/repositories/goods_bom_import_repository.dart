@@ -1,6 +1,6 @@
-// 组装信息导入（2026-09-25）：格式 = 「导出组件」的 13 列，序号级联段（1/2/2.1）
+// 组装信息导入：格式 = 「导出组件」的 14 列，序号级联段（1/2/2.1）
 // 表达层级——导出改完可直接导回。两段式「先检测后提交」（与货品导入同口径），
-// 但不需要 planId：提交时服务端重新解析全量复检，一切以提交时刻状态为准。
+// 检测返回绑定文件与全部父件状态的版本指纹；提交锁定后复核，拒绝覆盖检测后的变更。
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +17,7 @@ class BomImportReport {
     required this.warnings,
     required this.levelCounts,
     required this.readyToImport,
+    this.stateFingerprint,
   });
 
   final int totalRows;
@@ -26,6 +27,7 @@ class BomImportReport {
 
   /// 无错时可导入行数。
   final int readyToImport;
+  final String? stateFingerprint;
 
   bool get hasErrors => errors.isNotEmpty;
 
@@ -45,6 +47,7 @@ class BomImportReport {
             (n as num).toInt(),
         ],
         readyToImport: (json['readyToImport'] as num?)?.toInt() ?? 0,
+        stateFingerprint: json['stateFingerprint'] as String?,
       );
 }
 
@@ -88,6 +91,7 @@ abstract interface class GoodsBomImportRepository {
     String goodsId,
     Uint8List bytes, {
     required BomImportMode mode,
+    required String stateFingerprint,
   });
 }
 
@@ -109,11 +113,15 @@ class DioGoodsBomImportRepository implements GoodsBomImportRepository {
     String goodsId,
     Uint8List bytes, {
     required BomImportMode mode,
+    required String stateFingerprint,
   }) async {
     final json = await api.postBytes(
       ApiEndpoints.goodsBomImportCommit(goodsId),
       bytes,
-      query: {'mode': mode == BomImportMode.replace ? 'REPLACE' : 'APPEND'},
+      query: {
+        'mode': mode == BomImportMode.replace ? 'REPLACE' : 'APPEND',
+        'stateFingerprint': stateFingerprint,
+      },
     );
     return BomImportResult.fromJson(json);
   }

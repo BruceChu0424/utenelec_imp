@@ -10262,7 +10262,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusConvertConfirmBody.
   ///
   /// In zh, this message translates to:
-  /// **'会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?'**
+  /// **'根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。'**
   String get salesQuoteStatusConvertConfirmBody;
 
   /// No description provided for @salesQuoteStatusConfirm.
@@ -12265,7 +12265,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesIntakeQuotePriceHint.
   ///
   /// In zh, this message translates to:
-  /// **'单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。'**
+  /// **'单价由货品标价带入，可修改本次报价的单价和折扣，不改变货品资料。提交后由财务核价；没有单价可留空交财务填写。'**
   String get salesIntakeQuotePriceHint;
 
   /// No description provided for @salesIntakeFinancePriced.
@@ -14325,6 +14325,138 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。'**
   String get costMaterialPriceNotApplied;
+
+  /// No description provided for @salesQuoteCustomerConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记客户同意'**
+  String get salesQuoteCustomerConfirm;
+
+  /// No description provided for @salesQuoteCustomerConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认客户已同意当前版本的货品、数量、单价、折扣与商业条款。登记后可生成订货单草稿；报价再次修改后须重新核价并取得客户同意。'**
+  String get salesQuoteCustomerConfirmBody;
+
+  /// No description provided for @salesQuoteCustomerConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已登记客户同意，可生成订货单'**
+  String get salesQuoteCustomerConfirmed;
+
+  /// No description provided for @salesQuoteAwaitingCustomer.
+  ///
+  /// In zh, this message translates to:
+  /// **'待客户同意'**
+  String get salesQuoteAwaitingCustomer;
+
+  /// No description provided for @salesQuoteAwaitingConversion.
+  ///
+  /// In zh, this message translates to:
+  /// **'待生成订货单'**
+  String get salesQuoteAwaitingConversion;
+
+  /// No description provided for @salesQuoteAwaitingCustomerBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务已核价，请与客户确认当前报价；客户同意后登记确认并生成订货单，也可重新修改报价或取消。'**
+  String get salesQuoteAwaitingCustomerBody;
+
+  /// No description provided for @salesQuoteCancelQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消报价'**
+  String get salesQuoteCancelQuote;
+
+  /// No description provided for @salesQuoteCancelReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消原因（如客户未接受报价、订单未取得）'**
+  String get salesQuoteCancelReason;
+
+  /// No description provided for @salesQuoteCancelReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写取消原因'**
+  String get salesQuoteCancelReasonRequired;
+
+  /// No description provided for @salesQuoteCancelledDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价已取消，历史记录保留'**
+  String get salesQuoteCancelledDone;
+
+  /// No description provided for @quoteTemplateMissingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'此客户还没有报价模板'**
+  String get quoteTemplateMissingTitle;
+
+  /// No description provided for @quoteTemplateMissingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。'**
+  String get quoteTemplateMissingHint;
+
+  /// No description provided for @quoteTemplateUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传并学习模板'**
+  String get quoteTemplateUpload;
+
+  /// No description provided for @quoteTemplateReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对客户模板'**
+  String get quoteTemplateReviewTitle;
+
+  /// No description provided for @quoteTemplateReviewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对工作表和字段后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。'**
+  String get quoteTemplateReviewHint;
+
+  /// No description provided for @quoteTemplateSaveDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存模板并下载'**
+  String get quoteTemplateSaveDownload;
+
+  /// No description provided for @quoteTemplateSheet.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作表'**
+  String get quoteTemplateSheet;
+
+  /// No description provided for @quoteTemplateReference.
+  ///
+  /// In zh, this message translates to:
+  /// **'参考列（仅填本单同名信息）'**
+  String get quoteTemplateReference;
+
+  /// No description provided for @quoteTemplateFileRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请上传 15 MB 以内的 xlsx 或 xls 文件'**
+  String get quoteTemplateFileRequired;
+
+  /// No description provided for @quoteTemplateUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取可回填模板，请检查 Excel 表头'**
+  String get quoteTemplateUnreadable;
+
+  /// No description provided for @quoteTemplateSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户报价模板已保存'**
+  String get quoteTemplateSaved;
+
+  /// No description provided for @quoteTemplateLearningTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'学习客户报价模板'**
+  String get quoteTemplateLearningTitle;
 }
 
 class _AppLocalizationsDelegate

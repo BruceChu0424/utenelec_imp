@@ -2842,7 +2842,7 @@
   "salesQuoteStatusReopenConfirmBody": "财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?",
   "salesQuoteStatusReverseConfirmBody": "作废后这张报价不能再转订货单, 也不能恢复。确定作废?",
   "salesQuoteStatusDeleteConfirmBody": "确定删除这张报价草稿? 删除后不能恢复。",
-  "salesQuoteStatusConvertConfirmBody": "会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?",
+  "salesQuoteStatusConvertConfirmBody": "根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。",
   "salesQuoteStatusConfirm": "确定",
   "salesQuoteStatusCancel": "取消",
   "salesQuoteStatusSubmitted": "已提交财务核价",
@@ -3717,7 +3717,7 @@
     }
   },
   "salesIntakeColClientPriceInfo": "客户文件里的单价(文件币种), 只作核对参考; 单价以货品资料标价为准, 折扣按它计算。",
-  "salesIntakeQuotePriceHint": "单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。",
+  "salesIntakeQuotePriceHint": "单价由货品标价带入，可修改本次报价的单价和折扣，不改变货品资料。提交后由财务核价；没有单价可留空交财务填写。",
   "salesIntakeFinancePriced": "财务定价",
   "salesIntakePendingFinancePrice": "待财务定价",
   "salesIntakeQuoteDiscountPending": "财务核价时填写",
@@ -4121,5 +4121,27 @@
         "type": "String"
       }
     }
-  }
+  },
+  "salesQuoteCustomerConfirm": "登记客户同意",
+  "salesQuoteCustomerConfirmBody": "确认客户已同意当前版本的货品、数量、单价、折扣与商业条款。登记后可生成订货单草稿；报价再次修改后须重新核价并取得客户同意。",
+  "salesQuoteCustomerConfirmed": "已登记客户同意，可生成订货单",
+  "salesQuoteAwaitingCustomer": "待客户同意",
+  "salesQuoteAwaitingConversion": "待生成订货单",
+  "salesQuoteAwaitingCustomerBody": "财务已核价，请与客户确认当前报价；客户同意后登记确认并生成订货单，也可重新修改报价或取消。",
+  "salesQuoteCancelQuote": "取消报价",
+  "salesQuoteCancelReason": "取消原因（如客户未接受报价、订单未取得）",
+  "salesQuoteCancelReasonRequired": "请填写取消原因",
+  "salesQuoteCancelledDone": "报价已取消，历史记录保留",
+  "quoteTemplateMissingTitle": "此客户还没有报价模板",
+  "quoteTemplateMissingHint": "上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。",
+  "quoteTemplateUpload": "上传并学习模板",
+  "quoteTemplateReviewTitle": "核对客户模板",
+  "quoteTemplateReviewHint": "核对工作表和字段后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。",
+  "quoteTemplateSaveDownload": "保存模板并下载",
+  "quoteTemplateSheet": "工作表",
+  "quoteTemplateReference": "参考列（仅填本单同名信息）",
+  "quoteTemplateFileRequired": "请上传 15 MB 以内的 xlsx 或 xls 文件",
+  "quoteTemplateUnreadable": "无法读取可回填模板，请检查 Excel 表头",
+  "quoteTemplateSaved": "客户报价模板已保存",
+  "quoteTemplateLearningTitle": "学习客户报价模板"
 }

@@ -1,4 +1,6 @@
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
+import 'package:uten_imp/components/inputs/uten_field_message.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 // 销售单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
@@ -326,7 +328,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     try {
       final order = await ref
           .read(salesRepositoryProvider(SalesDocType.quote))
-          .convertToOrder(widget.id);
+          .convertToOrder(
+            widget.id,
+            expectedRevision: _detail!.quoteWorkflow.reviewRevision,
+          );
       if (!mounted || !ownsNative()) return;
       context.appSuccess(l10n.salesQuoteStatusConvertDone(order.billNo ?? ''));
       // 跨单据类型：转单生成的是订货草稿，bump 订货列表 key（非本报价 key），
@@ -457,6 +462,139 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     );
   }
 
+  Future<void> _requote() async {
+    if (!nativeReadCanWrite ||
+        !_quoteAllows(SalesQuoteAction.requote) ||
+        _busy) {
+      return;
+    }
+    final ownsNative = captureNativeOwnership();
+    final revision = _detail!.quoteWorkflow.reviewRevision;
+    setState(() => _busy = true);
+    try {
+      final quote = await ref
+          .read(salesRepositoryProvider(SalesDocType.quote))
+          .requote(widget.id, revision);
+      if (!mounted || !ownsNative()) return;
+      bumpListRefresh(ref, _cfg.refreshKey);
+      refreshBadges(ref);
+      context.push(
+        quote.quoteWorkflow.allows(SalesQuoteAction.edit)
+            ? SalesRoutePath.docEdit(SalesDocType.quote.pathSegment, quote.id)
+            : SalesRoutePath.docDetail(
+                SalesDocType.quote.pathSegment,
+                quote.id,
+              ),
+      );
+    } on ApiException catch (e) {
+      if (mounted && ownsNative()) context.appApiError(e);
+    } catch (_) {
+      if (mounted && ownsNative()) context.appError('新建报价失败，请重试');
+    } finally {
+      if (mounted && ownsNative()) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _confirmQuoteCustomer() {
+    final l10n = AppLocalizations.of(context);
+    return _runQuoteAction(
+      action: SalesQuoteAction.customerConfirm,
+      title: l10n.salesQuoteCustomerConfirm,
+      confirmBody: l10n.salesQuoteCustomerConfirmBody,
+      confirmLabel: l10n.salesQuoteCustomerConfirm,
+      call: (repo, revision) => repo.confirmQuoteCustomer(widget.id, revision),
+      success: l10n.salesQuoteCustomerConfirmed,
+    );
+  }
+
+  Future<void> _cancelQuote() async {
+    if (!nativeReadCanWrite ||
+        !_quoteAllows(SalesQuoteAction.cancel) ||
+        _busy) {
+      return;
+    }
+    final ownsNative = captureNativeOwnership();
+    final l10n = AppLocalizations.of(context);
+    var reason = '';
+    var attempted = false;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: Text(l10n.salesQuoteCancelQuote),
+            content: SizedBox(
+              width: 460,
+              child: TextField(
+                key: const ValueKey('sales-quote-cancel-reason'),
+                autofocus: true,
+                maxLines: 3,
+                maxLength: 500,
+                onChanged: (value) => setDialogState(() => reason = value),
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: l10n.salesQuoteCancelReason,
+                    error: attempted && reason.trim().isEmpty
+                        ? UtenFieldMessage.error(
+                            l10n.salesQuoteCancelReasonRequired,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(l10n.salesQuoteStatusCancel),
+              ),
+              UtenButton(
+                key: const ValueKey('sales-quote-cancel-submit'),
+                type: UtenButtonType.danger,
+                onPressed: () {
+                  if (reason.trim().isEmpty) {
+                    setDialogState(() => attempted = true);
+                    return;
+                  }
+                  Navigator.pop(ctx, reason.trim());
+                },
+                child: Text(l10n.salesQuoteCancelQuote),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (result == null ||
+        !mounted ||
+        !ownsNative() ||
+        !nativeReadCanWrite ||
+        !_quoteAllows(SalesQuoteAction.cancel)) {
+      return;
+    }
+    final revision = _detail!.quoteWorkflow.reviewRevision;
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(salesRepositoryProvider(SalesDocType.quote))
+          .cancelQuote(widget.id, revision, result);
+      if (!mounted || !ownsNative()) return;
+      context.appSuccess(l10n.salesQuoteCancelledDone);
+      bumpListRefresh(ref, _cfg.refreshKey);
+      refreshBadges(ref);
+      await _load();
+    } on ApiException catch (e) {
+      if (mounted && ownsNative()) context.appApiError(e);
+    } catch (_) {
+      if (mounted && ownsNative()) {
+        context.appError(l10n.salesQuoteStatusActionFailed);
+      }
+    } finally {
+      if (mounted && ownsNative()) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _reverseQuote() {
     final l10n = AppLocalizations.of(context);
     return _runQuoteAction(
@@ -477,7 +615,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       title: l10n.salesQuoteStatusActionDelete,
       confirmBody: l10n.salesQuoteStatusDeleteConfirmBody,
       confirmLabel: l10n.salesQuoteStatusActionDelete,
-      call: (repo, _) => repo.delete(widget.id),
+      call: (repo, revision) => repo.deleteQuote(widget.id, revision),
       success: l10n.salesQuoteStatusDeleted,
       danger: true,
       leaveAfter: true,
@@ -718,9 +856,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                labelText: '新数量',
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(
+                                  isDense: true,
+                                  labelText: '新数量',
+                                ),
                               ),
                             ),
                           ),
@@ -1391,17 +1531,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       SalesQuoteStage.approved => (
         UtenColors.success,
         AiTone.success(theme),
-        l10n.salesQuoteStatusBannerConfirmed(
-          wf.financeConfirmedByName ??
-              d.financeConfirmedByName ??
-              l10n.salesQuoteStatusFinanceFallback,
-          utenFmtIsoTime(wf.financeConfirmedAt ?? d.financeConfirmedAt),
-        ),
+        wf.customerAccepted
+            ? l10n.salesQuoteCustomerConfirmed
+            : l10n.salesQuoteAwaitingCustomerBody,
       ),
       SalesQuoteStage.reversed => (
         theme.colorScheme.outline,
         theme.colorScheme.onSurfaceVariant,
-        l10n.salesQuoteStatusBannerReversed,
+        wf.cancelReason == null
+            ? l10n.salesQuoteStatusBannerReversed
+            : '${l10n.salesQuoteCancelledDone}：${wf.cancelReason}',
       ),
       _ => (
         theme.colorScheme.outline,
@@ -1431,7 +1570,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             ),
           ),
           const SizedBox(width: UtenSpacing.s8),
-          SalesQuoteStatusChip(stage: stage, converted: converted),
+          SalesQuoteStatusChip(
+            stage: stage,
+            converted: converted,
+            customerAccepted: wf.customerAccepted,
+          ),
         ],
       ),
     );
@@ -1565,6 +1708,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             ? SalesQuoteStatusChip(
                 stage: quoteStage,
                 converted: quoteWf.isConverted,
+                customerAccepted: quoteWf.customerAccepted,
               )
             : SalesStatusBadge(
                 status: d.status,
@@ -2175,6 +2319,24 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           onPressed: _deleteQuote,
           child: Text(l10n.salesQuoteStatusActionDelete),
         ),
+      if (_quoteAllows(SalesQuoteAction.requote))
+        UtenButton(
+          key: const ValueKey('sales-quote-requote'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.copy_outlined,
+          onPressed: _requote,
+          child: const Text('重新报价'),
+        ),
+      if (_quoteAllows(SalesQuoteAction.cancel))
+        UtenButton(
+          key: const ValueKey('sales-quote-cancel'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.cancel_outlined,
+          onPressed: _cancelQuote,
+          child: Text(l10n.salesQuoteCancelQuote),
+        ),
       if (_quoteAllows(SalesQuoteAction.reverse))
         UtenButton(
           key: const ValueKey('sales-quote-reverse'),
@@ -2244,6 +2406,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           icon: Icons.send_outlined,
           onPressed: _submitQuote,
           child: Text(l10n.salesQuoteStatusActionSubmit),
+        ),
+      if (_quoteAllows(SalesQuoteAction.customerConfirm))
+        UtenButton(
+          key: const ValueKey('sales-quote-customer-confirm'),
+          size: UtenButtonSize.large,
+          icon: Icons.handshake_outlined,
+          onPressed: _confirmQuoteCustomer,
+          child: Text(l10n.salesQuoteCustomerConfirm),
         ),
       if (_quoteAllows(SalesQuoteAction.convert))
         UtenButton(

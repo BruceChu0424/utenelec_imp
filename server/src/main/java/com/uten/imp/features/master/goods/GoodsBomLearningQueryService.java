@@ -27,7 +27,8 @@ import java.util.function.Predicate;
  *
  * <p>组装边取自 v_goods_bom_item_usage，BOM 外实际用过的料取自 v_goods_bom_actual_usage(状态与
  * 重新学习后的窗口只在这个视图里定义)；两种行都经同一个映射 {@link BomItemUsage}，JSON 字段与组装信息
- * 页签一致。平均值由数据库算，Java 不重算。只读有界的主档聚合，不扫历史生产样本。
+ * 页签一致。平均值由数据库算，Java 不重算。用量只读主档聚合，不扫历史生产样本；
+ * 选料证据另沿父件索引读取，尚无学习样本时也能说明材料已记录在哪一步。
  */
 @Service
 @RequiredArgsConstructor
@@ -37,6 +38,7 @@ public class GoodsBomLearningQueryService {
     private final MasterObjectAccess access;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
+    private final GoodsBomMaterialEvidenceQuery materialEvidence;
 
     /** 「从现在起重新学习」要的权限：接口鉴权与下发给页面的 canRelearn 用同一个。 */
     static final String RELEARN_PERMISSION = "goods:bom:edit";
@@ -60,8 +62,10 @@ public class GoodsBomLearningQueryService {
     /**
      * profile 为 null = 该父件还没有任何学习样本(组装边照样列出，真实使用数量为没有数据)。
      * canRelearn = 当前账号能否「从现在起重新学习」，页面据此显示按钮。
+     * materialEvidence 是已保存的认料/申请/仓库配置，不代表实际耗用或正式 BOM 边。
      */
-    public record Summary(Profile profile, List<Component> components, boolean canRelearn) { }
+    public record Summary(Profile profile, List<Component> components, boolean canRelearn,
+                          List<GoodsBomMaterialEvidenceQuery.Evidence> materialEvidence) { }
 
     @Transactional(readOnly = true)
     public Summary summary(UUID goodsId) {
@@ -140,7 +144,7 @@ public class GoodsBomLearningQueryService {
             components.add(new Component((UUID) row[0], (String) row[1], (String) row[2], (UUID) row[3],
                     (String) row[4], false, null, Boolean.TRUE.equals(row[6]), null, BomItemUsage.of(row, 7)));
         }
-        return new Summary(profile, components, canRelearn());
+        return new Summary(profile, components, canRelearn(), materialEvidence.list(goodsId, visible));
     }
 
     /** 与 relearn 的 @PreAuthorize 同一规则：当前登录账号的权限里有 {@link #RELEARN_PERMISSION}。 */

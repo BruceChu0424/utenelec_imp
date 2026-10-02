@@ -5664,7 +5664,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get salesQuoteStatusConvertConfirmBody =>
-      '재무가 확정한 단가와 할인으로 주문 초안을 만듭니다. 단가와 할인은 바꿀 수 없고 수량과 납기 정보는 주문에서 보완할 수 있습니다. 전환할까요?';
+      '양측이 동의한 현재 견적의 단가, 할인율, 조건으로 주문 초안을 생성합니다. 정보를 확인하고 저장 및 검토 후 재무 승인에 제출하세요.';
 
   @override
   String get salesQuoteStatusConfirm => '확인';
@@ -6885,7 +6885,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get salesIntakeQuotePriceHint =>
-      '단가는 품목 표준가로 들어오며 영업은 바꿀 수 없습니다. 표준가가 없는 품목은 재무가 정합니다. 할인율은 고객 파일 단가로 계산하며 비워 두고 재무에 맡길 수도 있습니다.';
+      '품목 표준가가 초기값입니다. 품목 정보를 바꾸지 않고 이번 견적의 단가와 할인율을 수정할 수 있습니다. 제출 후 재무가 검토하며 빈 단가를 입력할 수 있습니다.';
 
   @override
   String get salesIntakeFinancePriced => '재무 가격';
@@ -7948,4 +7948,75 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get costMaterialPriceNotApplied =>
       '집계 조립품 또는 고객 지급 자재는 별도 자재 단가를 적용하지 않습니다. 행 계산 근거를 확인하세요.';
+
+  @override
+  String get salesQuoteCustomerConfirm => '고객 동의 등록';
+
+  @override
+  String get salesQuoteCustomerConfirmBody =>
+      '고객이 현재 버전의 품목, 수량, 단가, 할인율 및 조건에 동의했는지 확인합니다. 이후 주문 초안을 생성할 수 있습니다. 변경 시 재무 검토와 고객 동의가 다시 필요합니다.';
+
+  @override
+  String get salesQuoteCustomerConfirmed => '고객 동의가 등록되어 주문을 생성할 수 있습니다';
+
+  @override
+  String get salesQuoteAwaitingCustomer => '고객 동의 대기';
+
+  @override
+  String get salesQuoteAwaitingConversion => '주문 생성 대기';
+
+  @override
+  String get salesQuoteAwaitingCustomerBody =>
+      '재무 검토가 완료되었습니다. 고객에게 현재 견적을 확인받고 동의를 등록하여 주문을 생성하거나, 견적을 수정 또는 취소하세요.';
+
+  @override
+  String get salesQuoteCancelQuote => '견적 취소';
+
+  @override
+  String get salesQuoteCancelReason => '취소 사유 (고객 거절, 수주 실패 등)';
+
+  @override
+  String get salesQuoteCancelReasonRequired => '취소 사유를 입력하세요';
+
+  @override
+  String get salesQuoteCancelledDone => '견적이 취소되었으며 이력은 보존됩니다';
+
+  @override
+  String get quoteTemplateMissingTitle => '이 고객의 견적 양식이 없습니다';
+
+  @override
+  String get quoteTemplateMissingHint =>
+      '고객의 Excel 양식을 업로드하고 열 매핑을 확인한 후 저장하세요. 표준 형식으로 다운로드할 수도 있습니다.';
+
+  @override
+  String get quoteTemplateUpload => '양식 업로드 및 학습';
+
+  @override
+  String get quoteTemplateReviewTitle => '고객 양식 확인';
+
+  @override
+  String get quoteTemplateReviewHint =>
+      '워크시트와 필드를 확인한 후 저장하세요. 유사한 레이아웃은 버전을 갱신하고 다른 레이아웃은 선택할 수 있도록 보관됩니다.';
+
+  @override
+  String get quoteTemplateSaveDownload => '양식 저장 및 다운로드';
+
+  @override
+  String get quoteTemplateSheet => '워크시트';
+
+  @override
+  String get quoteTemplateReference => '참고 열 (견적의 동일한 필드만 입력)';
+
+  @override
+  String get quoteTemplateFileRequired => '15 MB 이하의 xlsx 또는 xls 파일을 업로드하세요';
+
+  @override
+  String get quoteTemplateUnreadable =>
+      '재사용 가능한 양식을 읽을 수 없습니다. Excel 머리글을 확인하세요.';
+
+  @override
+  String get quoteTemplateSaved => '고객 견적 양식이 저장되었습니다';
+
+  @override
+  String get quoteTemplateLearningTitle => '고객 견적 양식 학습';
 }

@@ -274,9 +274,19 @@ class SalesOrderExchangeRateAuthorityTest {
         SalesQuote source = new SalesQuote();
         source.setBillNo("XB202608080001");
         source.setMakerId(quoteOwner);
+        source.setStatus((short) 1);
+        source.setFinanceConfirmedAt(java.time.OffsetDateTime.now());
+        source.setCustomerAcceptedAt(java.time.OffsetDateTime.now());
+        source.setCustomerAcceptedBy(quoteOwner);
+        source.setCustomerAcceptedRevision(source.getReviewRevision());
         when(quoteRepo.findById(source.getId())).thenReturn(Optional.of(source));
         when(accessPolicy.hasAuthority("sales_quote:view")).thenReturn(true);
         OrderSaveRequest request = request(null, "999999");
+        source.setClientId(request.getClientId());
+        Query priorOrders = mock(Query.class);
+        when(em.createNativeQuery("SELECT COUNT(*) FROM sales_orders WHERE source_quote_id = :quoteId")).thenReturn(priorOrders);
+        when(priorOrders.setParameter("quoteId", source.getId())).thenReturn(priorOrders);
+        when(priorOrders.getSingleResult()).thenReturn(0L);
         request.setSourceDocNo(source.getBillNo());
         OrderItemLine requestLine = request.getItems().getFirst();
         requestLine.setPrice(new BigDecimal("10"));
@@ -312,6 +322,31 @@ class SalesOrderExchangeRateAuthorityTest {
                 request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("本位币 UUID 权威");
+    }
+
+    @Test
+    void internalQuoteConversionCannotBypassCustomerAcceptanceOrClosedState() {
+        UUID owner = UUID.randomUUID();
+        SalesQuote source = new SalesQuote();
+        source.setMakerId(owner);
+        source.setStatus((short) 1);
+        source.setFinanceConfirmedAt(java.time.OffsetDateTime.now());
+        source.setReviewRevision(2);
+        when(quoteRepo.findById(source.getId())).thenReturn(Optional.of(source));
+        when(accessPolicy.hasAuthority("sales_quote:view")).thenReturn(true);
+        OrderSaveRequest request = request(UUID.randomUUID(), "1");
+        assertThatThrownBy(() -> service.createFromQuote(request, source.getId(), owner))
+                .isInstanceOf(ApiException.class).hasMessageContaining("客户接受本版");
+        source.setCustomerAcceptedAt(java.time.OffsetDateTime.now());
+        source.setCustomerAcceptedBy(owner);
+        source.setCustomerAcceptedRevision(1);
+        assertThatThrownBy(() -> service.createFromQuote(request, source.getId(), owner))
+                .isInstanceOf(ApiException.class).hasMessageContaining("客户接受本版");
+        source.setCustomerAcceptedRevision(2);
+        source.setClosed(true);
+        assertThatThrownBy(() -> service.createFromQuote(request, source.getId(), owner))
+                .isInstanceOf(ApiException.class).hasMessageContaining("客户接受本版");
+        verify(orderRepo, never()).save(any());
     }
 
     @Test

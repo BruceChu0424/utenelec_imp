@@ -194,6 +194,57 @@ Map<String, dynamic> _draftSnapshot(WidgetTester tester) =>
         .captureFormDraft();
 
 void main() {
+  for (final masked in [false, true]) {
+    testWidgets(
+      'quote edit sends displayed revision and ${masked ? 'omits hidden prices' : 'keeps negotiated price and discount'}',
+      (tester) async {
+        final detail = {
+          ..._orderDetail(
+            priceMasked: masked,
+            items: [
+              {
+                'id': 'it-1',
+                'goodsId': 'goods-1',
+                'unitId': 'unit-pcs',
+                'unitRate': 1,
+                'qty': 10,
+                'price': masked ? null : 100,
+                'discount': masked ? null : 0.95,
+              },
+            ],
+          ),
+          'id': 'quote-1',
+          'validUntil': '2026-12-31',
+          'reviewRevision': 17,
+        };
+        final env = await _pump(
+          tester,
+          docType: SalesDocType.quote,
+          id: 'quote-1',
+          detail: detail,
+        );
+        final row = tester
+            .widget<UtenEditableGrid<SalesGridRow>>(
+              find.byType(UtenEditableGrid<SalesGridRow>),
+            )
+            .controller
+            .rows
+            .first;
+        // Simulate an old recovered price in memory after price access was revoked.
+        row.price.text = '80.25';
+        row.discount.text = '0.9';
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        expect(env.api.lastPutBody?['expectedRevision'], 17);
+        final item = (env.api.lastPutBody!['items'] as List).single as Map;
+        expect(item['id'], 'it-1');
+        expect(item['price'], masked ? null : '80.25');
+        expect(item['discount'], masked ? null : '0.9');
+        if (masked) expect(item.containsKey('price'), isFalse);
+      },
+    );
+  }
+
   testWidgets(
     'batch stops after first extra-column failure without launching next file',
     (tester) async {

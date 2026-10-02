@@ -10,6 +10,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/progress_timeline_event.dart';
 import '../models/sales_doc.dart';
+import 'sales_quote_revision_comparison.dart';
 
 /// 分桶文案。
 String salesQuoteStageLabel(AppLocalizations l10n, String? stage) =>
@@ -17,6 +18,8 @@ String salesQuoteStageLabel(AppLocalizations l10n, String? stage) =>
       SalesQuoteStage.draft => l10n.salesQuoteStatusDraft,
       SalesQuoteStage.financeRejected => l10n.salesQuoteStatusReturned,
       SalesQuoteStage.pendingFinance => l10n.salesQuoteStatusPendingFinance,
+      SalesQuoteStage.awaitingCustomer => l10n.salesQuoteAwaitingCustomer,
+      SalesQuoteStage.awaitingConversion => l10n.salesQuoteAwaitingConversion,
       SalesQuoteStage.approved => l10n.salesQuoteStatusConfirmed,
       SalesQuoteStage.reversed => l10n.salesQuoteStatusReversed,
       _ => '—',
@@ -44,8 +47,13 @@ String salesQuoteStatusText(
   AppLocalizations l10n, {
   required String? stage,
   bool converted = false,
+  bool customerAccepted = false,
 }) => stage == SalesQuoteStage.approved && converted
     ? l10n.salesQuoteStatusConverted
+    : stage == SalesQuoteStage.approved
+    ? customerAccepted
+          ? l10n.salesQuoteAwaitingConversion
+          : l10n.salesQuoteAwaitingCustomer
     : salesQuoteStageLabel(l10n, stage);
 
 /// 报价状态徽章(列表状态列 / 详情表头)。
@@ -54,18 +62,25 @@ class SalesQuoteStatusChip extends StatelessWidget {
     super.key,
     required this.stage,
     this.converted = false,
+    this.customerAccepted = false,
     this.size = UtenStatusBadgeSize.medium,
   });
 
   final String? stage;
   final bool converted;
+  final bool customerAccepted;
   final UtenStatusBadgeSize size;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return UtenStatusBadge(
-      label: salesQuoteStatusText(l10n, stage: stage, converted: converted),
+      label: salesQuoteStatusText(
+        l10n,
+        stage: stage,
+        converted: converted,
+        customerAccepted: customerAccepted,
+      ),
       type: salesQuoteStageBadgeType(stage),
       icon: salesQuoteStageIcon(stage),
       size: size,
@@ -147,7 +162,9 @@ class SalesQuoteRevisionTimeline extends StatelessWidget {
     return Card(
       key: const Key('sales-quote-revision-timeline'),
       child: ExpansionTile(
-        initiallyExpanded: revisions.length <= 3,
+        initiallyExpanded:
+            revisions.length <= 3 ||
+            revisions.where((r) => r.snapshot != null).length >= 2,
         leading: Icon(Icons.history_rounded, color: theme.colorScheme.primary),
         title: Text(
           '${title ?? l10n.salesQuoteStatusTimelineTitle} (${revisions.length})',
@@ -162,6 +179,7 @@ class SalesQuoteRevisionTimeline extends StatelessWidget {
           UtenSpacing.s12,
         ),
         children: [
+          SalesQuoteRevisionComparison(revisions: revisions),
           UtenProgressTimeline(
             events: salesQuoteRevisionEvents(l10n, revisions),
             emptyText: l10n.salesQuoteStatusTimelineEmpty,

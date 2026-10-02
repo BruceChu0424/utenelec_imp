@@ -1062,6 +1062,9 @@ public class SalesOrderService {
             req.setCurrencyId(resolveQuoteConversionCurrencyId());
         }
         var sourceQuote = resolveSourceQuote(sourceQuoteId, expectedQuoteOwner);
+        if (sourceQuote != null && !java.util.Objects.equals(sourceQuote.getClientId(), req.getClientId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "订货客户必须与客户已确认的报价一致");
+        }
         SalesOrder o = new SalesOrder();
         applyHeader(req, o);
         if (sourceQuote != null) {
@@ -1164,10 +1167,24 @@ public class SalesOrderService {
         if (source == null) {
             throw new ApiException(ErrorCode.CONFLICT, "来源报价不存在或已删除");
         }
+        em.refresh(source, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (!accessPolicy.hasAuthority("sales_quote:view")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售报价单");
         }
         accessPolicy.requireWritable(source.getMakerId(), "无权引用该销售报价单");
+        if (source.isDeleted() || source.isClosed() || source.getStatus() == null || source.getStatus() != 1
+                || source.getFinanceConfirmedAt() == null
+                || !com.uten.imp.features.sales.quote.SalesQuoteService.customerAccepted(source)) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价须经财务核价并由销售确认客户接受本版后才能转订货单");
+        }
+        if (source.getValidUntil() != null && source.getValidUntil().isBefore(BusinessTime.today())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价已过有效期，请重新议价");
+        }
+        Number previous = (Number) em.createNativeQuery("SELECT COUNT(*) FROM sales_orders WHERE source_quote_id = :quoteId")
+                .setParameter("quoteId", sourceQuoteId).getSingleResult();
+        if (previous.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价已经生成过订货单；原订单终止后请重新议价");
+        }
         if (expectedQuoteOwner != null && !java.util.Objects.equals(expectedQuoteOwner, source.getMakerId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源报价归属已变化，请刷新后重试");
         }
@@ -2729,8 +2746,12 @@ public class SalesOrderService {
     static final class TrustedQuotePriceBook {
         /** 报价核定条款: 单价与 4 位折扣。 */
         record Terms(BigDecimal price, BigDecimal discount,
-                     List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns, String goodsNameEn) {
-            Terms(BigDecimal price, BigDecimal discount) { this(price, discount, List.of(), null); }
+                     List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns, String goodsNameEn, BigDecimal qty) {
+            Terms(BigDecimal price, BigDecimal discount) { this(price, discount, List.of(), null, null); }
+            Terms(BigDecimal price, BigDecimal discount,
+                  List<com.uten.imp.common.columns.ExtraColumnSnapshot> columns, String goodsNameEn) {
+                this(price, discount, columns, goodsNameEn, null);
+            }
         }
 
         private static final class Entry {
@@ -2764,7 +2785,7 @@ public class SalesOrderService {
                         QuoteLinePriceIdentity.from(item),
                         com.uten.imp.features.sales.SalesPriceAuthority.identity(
                                 item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getUnitRate()),
-                        new Terms(item.getPrice(), normalizeOrderDiscountForWrite(item.getDiscount()), item.getExtraColumns(), item.getGoodsNameEnSnapshot())));
+                        new Terms(item.getPrice(), normalizeOrderDiscountForWrite(item.getDiscount()), item.getExtraColumns(), item.getGoodsNameEnSnapshot(), item.getQty())));
             }
         }
 

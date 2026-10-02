@@ -443,10 +443,12 @@ class GoodsBomLearningSummary {
     this.profile,
     this.components = const [],
     this.canRelearn = false,
+    this.materialEvidence = const [],
   });
 
   final GoodsBomLearningProfile? profile;
   final List<GoodsBomLearningComponent> components;
+  final List<GoodsBomMaterialEvidence> materialEvidence;
 
   /// 当前账号能否「从现在起重新学习」(服务端按权限算好下发，页面不自己判)。
   final bool canRelearn;
@@ -455,6 +457,12 @@ class GoodsBomLearningSummary {
     final profile = json['profile'];
     return GoodsBomLearningSummary(
       canRelearn: json['canRelearn'] as bool? ?? false,
+      materialEvidence: [
+        for (final row in json['materialEvidence'] as List? ?? const [])
+          GoodsBomMaterialEvidence.fromJson(
+            Map<String, dynamic>.from(row as Map),
+          ),
+      ],
       profile: profile is Map
           ? GoodsBomLearningProfile.fromJson(Map<String, dynamic>.from(profile))
           : null,
@@ -466,6 +474,53 @@ class GoodsBomLearningSummary {
       ],
     );
   }
+}
+
+/// 已保存的选料事实，数量还未核清时也可见；不冒充正式 BOM 边或实测单耗。
+class GoodsBomMaterialEvidence {
+  const GoodsBomMaterialEvidence({
+    required this.source,
+    required this.status,
+    required this.componentGoodsId,
+    this.componentCode,
+    this.componentName,
+    this.colorId,
+    this.colorName,
+    this.unitId,
+    this.unitName,
+    this.inBom = false,
+    this.sourceCount = 0,
+    this.updatedAt,
+  });
+
+  final String source;
+  final String status;
+  final String componentGoodsId;
+  final String? componentCode;
+  final String? componentName;
+  final String? colorId;
+  final String? colorName;
+  final String? unitId;
+  final String? unitName;
+  final bool inBom;
+  final int sourceCount;
+  final DateTime? updatedAt;
+
+  factory GoodsBomMaterialEvidence.fromJson(Map<String, dynamic> json) =>
+      GoodsBomMaterialEvidence(
+        source: json['source'] as String,
+        status: json['status'] as String,
+        componentGoodsId: json['componentGoodsId'] as String,
+        componentCode: json['componentCode'] as String?,
+        componentName: json['componentName'] as String?,
+        colorId: json['colorId'] as String?,
+        colorName: json['colorName'] as String?,
+        unitId: json['unitId'] as String?,
+        unitName: json['unitName'] as String?,
+        inBom: json['inBom'] as bool? ?? false,
+        sourceCount: (json['sourceCount'] as num?)?.toInt() ?? 0,
+        updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? ''),
+      );
 }
 
 /// 质量单位名 → 每 1 基本单位是多少克 (ADR-131 期间边「按克输入显示」)。

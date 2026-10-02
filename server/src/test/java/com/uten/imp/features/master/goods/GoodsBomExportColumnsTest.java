@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.mock;
@@ -35,6 +36,7 @@ class GoodsBomExportColumnsTest {
 
     private final GoodsRepository goodsRepo = mock(GoodsRepository.class);
     private final GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
+    private final com.uten.imp.features.master.lifecycle.MasterObjectAccess access = accessAllowingAll();
 
     private final GoodsBomService service = new GoodsBomService(
             goodsRepo, bomRepo, mock(ColorRepository.class), mock(UnitRepository.class),
@@ -43,7 +45,7 @@ class GoodsBomExportColumnsTest {
             mock(MasterReferenceValidationPort.class),
             mock(GoodsMasterRelationshipResolver.class),
             mock(com.uten.imp.application.port.BusinessEventPublisher.class),
-            accessAllowingAll());
+            access);
 
     private static com.uten.imp.features.master.lifecycle.MasterObjectAccess accessAllowingAll() {
         com.uten.imp.features.master.lifecycle.MasterObjectAccess access =
@@ -121,6 +123,75 @@ class GoodsBomExportColumnsTest {
         assertEquals(new BigDecimal("1.85"), bySeq.get("1").get("actualQty"));
         assertNull(bySeq.get("2").get("actualQty"));
         assertNull(bySeq.get("2.1").get("actualQty"));
+    }
+
+    @Test
+    void anOverDeepTreeIsRejectedInsteadOfDownloadingATruncatedRecipe() {
+        List<Goods> chain = new java.util.ArrayList<>();
+        for (int i = 0; i < 13; i++) chain.add(goods("DEPTH-" + i, "组件" + i));
+        for (int i = 0; i < chain.size() - 1; i++) {
+            Goods parent = chain.get(i);
+            when(goodsRepo.findById(parent.getId())).thenReturn(Optional.of(parent));
+            when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId()))
+                    .thenReturn(List.of(bomRow(parent, chain.get(i + 1), "1")));
+        }
+        when(bomRepo.findGoodsWithOperationalRows(anyCollection()))
+                .thenReturn(chain.subList(1, chain.size() - 1).stream().map(Goods::getId).toList());
+
+        var error = assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> service.exportPayload(chain.getFirst().getId()));
+
+        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("完整导出"));
+    }
+
+    @Test
+    void lastSupportedLevelIsIncludedAndSharedDagExpansionIsBounded() {
+        Goods root = goods("ROOT", "根");
+        List<Goods> parents = List.of(root);
+        List<UUID> withChildren = new java.util.ArrayList<>();
+        for (int depth = 0; depth < GoodsBomFileLimits.MAX_LEVELS; depth++) {
+            Goods first = goods("A-" + depth, "A"), second = goods("B-" + depth, "B");
+            for (Goods parent : parents) {
+                when(goodsRepo.findById(parent.getId())).thenReturn(Optional.of(parent));
+                when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId()))
+                        .thenReturn(List.of(bomRow(parent, first, "1"), bomRow(parent, second, "1")));
+                withChildren.add(parent.getId());
+            }
+            parents = List.of(first, second);
+        }
+        when(bomRepo.findGoodsWithOperationalRows(anyCollection())).thenReturn(withChildren);
+        var error = assertThrows(com.uten.imp.common.web.ApiException.class, () -> service.exportPayload(root.getId()));
+        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("2000 行"));
+    }
+
+    @Test
+    void exactlyElevenLevelsCanBeExportedWithoutTruncation() {
+        List<Goods> chain = new java.util.ArrayList<>();
+        for (int i = 0; i <= GoodsBomFileLimits.MAX_LEVELS; i++) chain.add(goods("OK-" + i, "组件"));
+        for (int i = 0; i < chain.size() - 1; i++) {
+            Goods parent = chain.get(i);
+            when(goodsRepo.findById(parent.getId())).thenReturn(Optional.of(parent));
+            when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(parent.getId()))
+                    .thenReturn(List.of(bomRow(parent, chain.get(i + 1), "1")));
+        }
+        when(bomRepo.findGoodsWithOperationalRows(anyCollection()))
+                .thenReturn(chain.subList(1, chain.size() - 1).stream().map(Goods::getId).toList());
+        assertEquals(11, service.exportPayload(chain.getFirst().getId()).rows().size());
+    }
+
+    @Test
+    void invisibleComponentPreventsPartialExportInsteadOfCreatingAReplacementRecipe() {
+        Goods root = goods("P", "产品"), hidden = goods("H", "不可见");
+        UUID hiddenOwner = UUID.randomUUID();
+        hidden.setOwnerEmployeeId(hiddenOwner);
+        when(access.visibleGoodsOwner()).thenReturn(owner -> !hiddenOwner.equals(owner));
+        when(goodsRepo.findById(root.getId())).thenReturn(Optional.of(root));
+        when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(root.getId()))
+                .thenReturn(List.of(bomRow(root, hidden, "1")));
+
+        var error = assertThrows(com.uten.imp.common.web.ApiException.class, () -> service.exportPayload(root.getId()));
+        assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN, error.getCode());
+        assertFalse(error.getMessage().contains("H"));
     }
 
     /** v_goods_bom_item_usage 一行：[行 id, BomItemUsage.COLUMNS...]。 */

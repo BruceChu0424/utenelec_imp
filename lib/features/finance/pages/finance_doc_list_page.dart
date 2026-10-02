@@ -28,6 +28,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/models/paged_result.dart';
@@ -304,7 +305,12 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         width: 120,
         type: 'date',
         sortable: true,
-        value: (it) => (it.billDate ?? '').substring(0, 10),
+        value: (it) {
+          final date = it.billDate;
+          return date == null || date.length <= 10
+              ? date
+              : date.substring(0, 10);
+        },
       ),
       if (_cfg.type == FinanceDocType.receipt)
         MasterColumnDef(
@@ -337,7 +343,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         width: 140,
         type: 'money',
         sortable: true,
-        value: (it) => it.amountLocal?.toStringAsFixed(2),
+        value: (it) => financeExactMoneyDisplay(
+          it.amountLocalText ?? financeDecimalText(it.amountLocal),
+        ),
       ),
       MasterColumnDef(
         key: 'recordOrigin',

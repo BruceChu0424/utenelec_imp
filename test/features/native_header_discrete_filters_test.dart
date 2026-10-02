@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_list_page.dart';
 import 'package:uten_imp/features/finance/repositories/finance_repository.dart';
@@ -42,7 +43,12 @@ class _Drafts extends FormDraftsNotifier {
   List<FormDraft> build() => const [];
 }
 
-Future<void> _pumpPage(WidgetTester tester, _Api api, Widget page) async {
+Future<void> _pumpPage(
+  WidgetTester tester,
+  _Api api,
+  Widget page, {
+  Set<String>? extraPermissions,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1100));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({'performancePreference': 'lite'});
@@ -62,6 +68,7 @@ Future<void> _pumpPage(WidgetTester tester, _Api api, Widget page) async {
         currentPermissionsProvider.overrideWithValue({
           Perm.financeReceiptView,
           Perm.subcontractReturnView,
+          ...?extraPermissions,
         }),
         isSuperAdminProvider.overrideWithValue(false),
         formDraftsProvider.overrideWith(_Drafts.new),
@@ -74,7 +81,8 @@ Future<void> _pumpPage(WidgetTester tester, _Api api, Widget page) async {
 }
 
 class _Api extends ApiClient {
-  _Api() : super(Dio());
+  _Api({this.financeRows = const []}) : super(Dio());
+  final List<Map<String, dynamic>> financeRows;
   final calls = <({String path, Map<String, dynamic> query})>[];
   @override
   Future<Map<String, dynamic>> get(
@@ -82,9 +90,19 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     calls.add((path: path, query: {...?query}));
+    final rows =
+        {
+          '/finance/receipts',
+          '/finance/payments',
+          '/finance/expenses',
+          '/finance/incomes',
+          '/finance/bank-transfers',
+        }.contains(path)
+        ? financeRows
+        : const <Map<String, dynamic>>[];
     return path.endsWith('/facets')
         ? {'billNo': <Object>[]}
-        : {'items': <Object>[], 'page': 1, 'total': 0, 'totalPages': 1};
+        : {'items': rows, 'page': 1, 'total': rows.length, 'totalPages': 1};
   }
 
   @override
@@ -95,6 +113,104 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  for (final type in FinanceDocType.values) {
+    testWidgets(
+      'finance $type list preserves exact amount beyond double cents',
+      (tester) async {
+        final payload = <String, dynamic>{
+          'id': 'exact-amount',
+          'billNo': 'EXACT-001',
+          'billDate': '2026-10-02',
+          'status': 1,
+          'amountLocal': 90071992547409.93,
+          'amountLocalExact': '90071992547409.93',
+        };
+        await _pumpPage(
+          tester,
+          _Api(financeRows: [payload]),
+          FinanceDocListPage(docType: type),
+          extraPermissions: {FinanceDocConfig.by(type).listPerm},
+        );
+        final table = tester.widget<MasterDataTableView<FinanceDocListItem>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<FinanceDocListItem>,
+          ),
+        );
+        final amount = table.columns.singleWhere(
+          (column) => column.key == 'amountLocal',
+        );
+        expect(table.items, hasLength(1));
+        final item = table.items.single;
+        expect(item.amountLocal!.toStringAsFixed(2), '90071992547409.94');
+        expect(amount.value(item), '90071992547409.93');
+        expect(
+          amount.value(
+            FinanceDocListItem.fromJson({
+              'id': 'unknown-amount',
+              'billNo': 'UNKNOWN-001',
+              'status': 1,
+            }),
+          ),
+          '—',
+        );
+        expect(
+          amount.value(
+            FinanceDocListItem.fromJson({
+              'id': 'zero-amount',
+              'billNo': 'ZERO-001',
+              'status': 1,
+              'amountLocal': 0,
+              'amountLocalExact': '0',
+            }),
+          ),
+          '0.00',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+    testWidgets(
+      'finance $type list keeps missing and partial historical dates readable',
+      (tester) async {
+        final samples = <String?, String?>{
+          null: null,
+          '': '',
+          '2026': '2026',
+          '2026-10-02': '2026-10-02',
+          '2026-10-02T23:30:00Z': '2026-10-02',
+        };
+        await _pumpPage(
+          tester,
+          _Api(
+            financeRows: [
+              for (final (index, sample) in samples.entries.indexed)
+                {
+                  'id': 'date-$index',
+                  'billNo': 'DATE-$index',
+                  'status': 1,
+                  'billDate': sample.key,
+                },
+            ],
+          ),
+          FinanceDocListPage(docType: type),
+          extraPermissions: {FinanceDocConfig.by(type).listPerm},
+        );
+        final table = tester.widget<MasterDataTableView<FinanceDocListItem>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<FinanceDocListItem>,
+          ),
+        );
+        final date = table.columns.singleWhere(
+          (column) => column.key == 'billDate',
+        );
+        expect(table.items, hasLength(samples.length));
+        for (final item in table.items) {
+          expect(date.value(item), samples[item.billDate]);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'finance source header reloads page one and its bill-number facet together',
     (tester) async {

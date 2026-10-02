@@ -29,10 +29,19 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = 1
+# 选择性门控：测试类用 @EnabledIfEnvironmentVariable 声明、只能由专用运行器或
+# 本机操作员提供输入（私有负载库 / 本地恢复清单），普通全量套件不设置它们，
+# 其缺席触发的 skip 是设计内行为，审计放行。新增门控必须在此登记。
 OPTIONAL_GATES = {
     "UTEN_RUN_PRODUCTION_STRESS",
     "UTEN_RUN_SALES_MONEY_PRESSURE",
     "UTEN_RUN_REHEARSAL_DB_TESTS",
+    # ControlledLoadSmokeTest / ControlledLoadWindowTest：专用负载容器
+    # (jdbc:postgresql://uten-load-*:5432/uten_load) 与冻结输入，见测试类头注。
+    "UTEN_CONTROLLED_LOAD",
+    "UTEN_CONTROLLED_LOAD_WINDOW",
+    # RestoredLocalOriginalsTest：指向本机恢复目录的清单路径，只读不改源数据。
+    "UTEN_RECOVERY_MANIFEST",
 }
 EXPORTER = "com.uten.imp.migration.FlywayChecksumManifestExporterTest#exportsCanonicalFlywayChecksumsOnlyWhenExplicitlyRequested"
 WORKBOOK_PROPERTY = "uten.cost.companyWorkbook"

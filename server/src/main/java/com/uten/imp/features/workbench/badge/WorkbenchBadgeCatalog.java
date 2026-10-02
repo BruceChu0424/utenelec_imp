@@ -46,6 +46,8 @@ enum WorkbenchBadgeCatalog {
     expenseFinance(Module.finance, facts("expense.pendingApprovalCount", "expense.pendingPaymentCount"), none()),
     /** 销售报价核价(ADR-134): 待核价的报价(只算有核价权限的人的待办)。挂在财务「销售报价核价」卡。 */
     financeQuoteReview(Module.finance, facts("salesQuoteFinance.pending"), none()),
+    /** 财务侧盘点审核: 待财务复核的盘点差异。 */
+    financeStockCountReview(Module.finance, facts("stockCountFinance.count"), none()),
     /** 钱流草稿: 收款/付款/费用/其它收入/银行转账。 */
     financeDrafts(Module.finance, facts(
             "drafts.financeReceipt",
@@ -93,6 +95,8 @@ enum WorkbenchBadgeCatalog {
     warehouseWorkshopMaterial(Module.warehouse,
             facts("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
             facts("workshopMaterial.counting")),
+    /** 仓库侧盘点审核: 待仓库复盘确认的盘点任务。 */
+    warehouseStockCountReview(Module.warehouse, facts("stockCountWarehouse.count"), none()),
     /** 品质部检查结果: 红 = 轮到仓库动手(待入库 + 部分合格 + 需退回); 黄 = 等待检查结果。 */
     warehouseQualityResult(Module.warehouse, facts("qualityResult.actionable.*"), facts("qualityResult.inProgress.*")),
     /** 仓库草稿: stock_documents 全类型合计(不能用调拨/盘点切片, 会双计)。 */

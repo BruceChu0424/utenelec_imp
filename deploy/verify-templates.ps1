@@ -215,7 +215,11 @@ if (([regex]::Matches($text.WebsiteInquiryController, '@(?:Get|Post|Put|Patch|De
 # 复核网关策略——两条都落在通用 location /api/（不限方法、同一限流区），
 # 不需要像 presign/confirm（内网部署一律 404）或 raw（只放行 GET/HEAD）那样单开 location；
 # 因此上面「恰好两个已评审的 attachment location」的计数保持 2 不变。
-if (([regex]::Matches($text.AttachmentController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 11) {
+# 11 -> 13（2026-10-02）：GET /reconciliation/findings 与 POST /reconciliation/findings/{id}/approve-delete。
+# 复核结论同上——两者是登录 ERP 内部的对账台端点（@PreAuthorize attachment:reconcile:view /
+# attachment:reconcile:approve_delete），走通用 location /api/ 的既有鉴权与限流，
+# 不是公网上传入口，presign/confirm/raw 三个专项 location 口径不变，attachment location 计数仍为 2。
+if (([regex]::Matches($text.AttachmentController, '@(?:Get|Post|Put|Patch|Delete)Mapping')).Count -ne 13) {
     throw 'Forbidden deployment contract: attachment Controller route inventory changed without gateway review'
 }
 Assert-Contains $text.InternalTestGuide '<!-- INTERNAL-TEST-SINGLE-NVME-NOT-PRODUCTION -->' 'internal-test production boundary'

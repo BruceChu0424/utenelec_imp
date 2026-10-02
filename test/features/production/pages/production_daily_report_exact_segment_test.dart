@@ -57,6 +57,19 @@ part 'production_daily_report_draft_identity_cases.dart';
 part 'production_daily_report_create_recovery_cases.dart';
 part 'production_daily_report_attachment_late_ack_cases.dart';
 
+class _ExactSegmentSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'report-user', code: 'E001', name: '测试员工'),
+  );
+}
+
+class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
+
 void main() {
   registerDailyReportDraftIdentityTests();
   registerDailyReportCreateRecoveryTests();
@@ -167,6 +180,15 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
               Perm.productionDailyReportView,
@@ -383,8 +405,18 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
             }),
           ],
           child: MaterialApp(
@@ -541,8 +573,18 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
             }),
           ],
           child: const MaterialApp(
@@ -649,8 +691,18 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
             }),
           ],
           child: const MaterialApp(
@@ -939,6 +991,15 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportEdit,
             }),
@@ -1163,6 +1224,15 @@ void main() {
             ),
             employeeRepositoryProvider.overrideWithValue(employees),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
           ],
           child: const MaterialApp(
             home: ProductionDailyReportEditPage(
@@ -1417,6 +1487,13 @@ void main() {
             _FakeEmployeeRepository(),
           ),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          sessionProvider.overrideWith(_ExactSegmentSession.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'report-user'),
+          ),
+          sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+          apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         ],
         child: const MaterialApp(
           home: Column(
@@ -1496,6 +1573,13 @@ void main() {
           ),
           employeeRepositoryProvider.overrideWithValue(employees),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+          sessionProvider.overrideWith(_ExactSegmentSession.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'report-user'),
+          ),
+          sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+          apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         ],
         child: const MaterialApp(
           home: Column(
@@ -1573,6 +1657,17 @@ void main() {
                 _FakeEmployeeRepository(),
               ),
               sharedPreferencesProvider.overrideWithValue(preferences),
+              formDraftStorageProvider.overrideWithValue(
+                MemoryFormDraftStorage(),
+              ),
+              sessionProvider.overrideWith(_ExactSegmentSession.new),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'report-user'),
+              ),
+              sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+              apiBaseUrlProvider.overrideWith(
+                (ref) => 'https://test-server/api',
+              ),
             ],
             child: const MaterialApp(
               home: ProductionDailyReportEditPage(
@@ -1661,6 +1756,17 @@ void main() {
                 _FakeEmployeeRepository(),
               ),
               sharedPreferencesProvider.overrideWithValue(preferences),
+              formDraftStorageProvider.overrideWithValue(
+                MemoryFormDraftStorage(),
+              ),
+              sessionProvider.overrideWith(_ExactSegmentSession.new),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'report-user'),
+              ),
+              sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+              apiBaseUrlProvider.overrideWith(
+                (ref) => 'https://test-server/api',
+              ),
             ],
             child: const MaterialApp(
               home: ProductionDailyReportEditPage(
@@ -1892,8 +1998,18 @@ void main() {
               _FakeEmployeeRepository(),
             ),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
             }),
           ],
           child: const MaterialApp(
@@ -2095,6 +2211,13 @@ Future<void> _pumpNewReport(WidgetTester tester, ApiClient api) async {
         ),
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_ExactSegmentSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'report-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
       ],
       child: const MaterialApp(
         home: Column(
@@ -2189,6 +2312,13 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
         ),
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_ExactSegmentSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'report-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         currentPermissionsProvider.overrideWithValue({
           Perm.productionDailyReportCreate,
         }),

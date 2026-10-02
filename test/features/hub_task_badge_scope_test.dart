@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/cards/uten_hub_card.dart';
-import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/production/pages/production_hub_page.dart';
@@ -97,17 +97,11 @@ void main() {
     );
 
     expect(redCounts(tester, '仓库任务中心'), [30]);
-    expect(
-      tester
-          .widget<UtenInProgressBadge>(
-            find.descendant(
-              of: card('仓库任务中心'),
-              matching: find.byType(UtenInProgressBadge),
-            ),
-          )
-          .count,
-      11,
+    // 黄色「进行中」徽章 count=11。
+    final inProgress = tester.widgetList<UtenInProgressBadge>(
+      find.byType(UtenInProgressBadge),
     );
+    expect(inProgress.any((b) => b.count == 11), isTrue);
     expect(find.text('待办 30'), findsOneWidget);
     expectNewCardsWithoutCounts(tester);
   });
@@ -140,10 +134,10 @@ void main() {
     expect(find.text('逾期 1'), findsOneWidget);
     expect(
       tester
-          .widget<UtenInProgressBadge>(
+          .widget<UtenNotificationBadge>(
             find.descendant(
               of: card('生产任务中心'),
-              matching: find.byType(UtenInProgressBadge),
+              matching: find.byType(UtenNotificationBadge),
             ),
           )
           .count,

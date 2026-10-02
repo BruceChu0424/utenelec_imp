@@ -31,10 +31,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false","uten.concurrency.verify-nested-footprint=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
-        // 50 单一批量收尾在 CI 共享 runner 上单事务耗时超过生产默认 40s，
-        // 被 FulfillmentHttpDeadline 以「user request」取消语句。极端批量是
-        // 本测试的意图本身，放宽到 10 分钟（CI 实测 844s 仍在跑 SQL）。
-        "spring.transaction.default-timeout=600s",
+        // 50 单一批量收尾在 CI 共享 runner 上单条 SQL 超 60s 被 PG statement_timeout
+        // 取消、事务超 40s 被 HTTP deadline 取消。极端批量是本测试的意图本身：
+        // 放宽语句上限到 10 分钟、事务上限到 12 分钟（CI 实测整体 1453s 仍在跑 SQL）。
+        "spring.transaction.default-timeout=720s",
+        "uten.database.statement-timeout=600s",
+        "uten.database.idle-in-transaction-session-timeout=600s",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",

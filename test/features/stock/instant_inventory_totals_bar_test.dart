@@ -101,8 +101,7 @@ void main() {
     final tableFinder = find.byType(MasterDataTableView<InstantInventoryRow>);
     tester
         .widget<MasterDataTableView<InstantInventoryRow>>(tableFinder)
-        .onFilterChanged
-        ?.call('series', 'GD');
+        .onFilterChanged('series', 'GD');
     await tester.pumpAndSettle();
     final originalState = tester.state(find.byType(InstantInventoryPage));
 

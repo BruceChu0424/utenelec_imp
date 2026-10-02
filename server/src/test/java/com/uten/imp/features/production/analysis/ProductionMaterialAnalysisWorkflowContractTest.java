@@ -47,8 +47,11 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         String service = source("features/production/plan/ProductionPlanService.java");
         String schedule = source("features/production/schedule/ProductionScheduleController.java");
 
+        // 2026-10-01 用户口径恢复手工空白新建：直接 create 走 either-of 创建权限
+        // （analysis:create 或 production_plan:create，V714/V716），不再是整体 409。
         assertThat(controller).contains("public PlanDetail create(");
-        assertThat(controller).contains("ErrorCode.CONFLICT");
+        assertThat(controller).contains(
+                "hasAuthority('production_material_analysis:create') or hasAuthority('production_plan:create')");
         assertThat(controller).doesNotContain("legacy-direct-plan-create");
         assertThat(controller).contains("hasAuthority('production_plan:approve')");
         assertThat(service).contains("access.requireWritable(p.getMakerId()");

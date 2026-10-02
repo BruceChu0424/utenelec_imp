@@ -819,19 +819,7 @@ class _FinanceProcurementApprovalTasksPageState
           initialSearchValue: _keyword,
           onSearchInputChanged: (_) => _requestVersion++,
           onSearchChanged: _applyKeyword,
-          trailing: Builder(
-            builder: (context) {
-              final compact = MediaQuery.sizeOf(context).width < 840;
-              return Text(
-                compact
-                    ? '单击选择，双击或长按打开审核详情'
-                    : '共 ${result.total} 笔 · 单击选择，双击打开审核详情',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              );
-            },
-          ),
+          // 2026-10-02 用户口径：「共 N 笔」/操作说明提示文字退役（全站提示卡口径）。
         ),
         const SizedBox(height: UtenSpacing.s8),
         Row(

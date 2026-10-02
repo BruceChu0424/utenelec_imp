@@ -399,7 +399,8 @@ void main() {
     await tester.tap(find.text('PO-2026-001'));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('已选 1 项'), findsOneWidget);
-    expect(find.text('单击选择，双击或长按打开审核详情'), findsOneWidget);
+    // 2026-10-02 用户口径：「共 N 笔」/操作说明提示文字退役。
+    expect(find.textContaining('单击选择'), findsNothing);
     final approve = find.byKey(const Key('finance-approval-batch-approve'));
     final reject = find.byKey(const Key('finance-approval-batch-reject'));
     // 2026-09-24 折叠联动改版（对齐物料分析页）后，窄屏走整页滚动回退：
@@ -487,6 +488,100 @@ void main() {
     expect(table.columns.map((column) => column.key), contains('status'));
     expect(find.text('改后待复核 · 改量 2 处'), findsOneWidget);
     expect(find.text('待财务复核'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 2026-10-02 用户口径：业务审核中心里点子分类（采购订货/委外订货）时，
+  // 宿主大类栏（externalHeader）任何瞬间都不得消失——嵌入态全链路锁定。
+  testWidgets('subcategory clicks keep the host category bar (embedded)', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1500, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'case-1',
+        orderId: 'order-1',
+        orderType: 'PURCHASE',
+        billNo: 'PO-2026-001',
+      ),
+      _task(
+        caseId: 'case-2',
+        orderId: 'order-2',
+        orderType: 'SUBCONTRACT',
+        billNo: 'SO-2026-002',
+      ),
+    ]);
+
+    final router = GoRouter(
+      initialLocation: '/host',
+      routes: [
+        GoRoute(
+          path: '/host',
+          builder: (_, _) => Scaffold(
+            body: FinanceProcurementApprovalTasksPage(
+              embedded: true,
+              externalHeader: Container(
+                key: const Key('host-category-bar'),
+                color: Colors.teal,
+                height: 40,
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/finance/procurement-approvals/:caseId',
+          builder: (_, state) =>
+              Scaffold(body: Text('审核详情 ${state.pathParameters['caseId']}')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          isSuperAdminProvider.overrideWithValue(false),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.financeOrderApprovalView,
+            Perm.financeOrderApprovalApprove,
+            Perm.financeOrderApprovalReject,
+          }),
+          sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
+          taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
+          financeProcurementWorkflowRepositoryProvider.overrideWithValue(
+            repository,
+          ),
+        ],
+        child: MaterialApp.router(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+          routerConfig: router,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('host-category-bar')), findsOneWidget);
+
+    Finder segment(String label) => find.descendant(
+      of: find.byKey(const Key('finance-approval-type-segments')),
+      matching: find.text(label),
+    );
+    await tester.tap(segment('采购订货'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('host-category-bar')), findsOneWidget);
+    expect(
+      find.byKey(const Key('finance-approval-type-segments')),
+      findsOneWidget,
+    );
+
+    await tester.tap(segment('委外订货'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('host-category-bar')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

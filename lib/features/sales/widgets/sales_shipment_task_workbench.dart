@@ -730,8 +730,7 @@ class _SalesShipmentTaskWorkbenchState
           widget.externalHeader!,
           const SizedBox(height: UtenSpacing.s12),
         ],
-        _summary(result.total),
-        const SizedBox(height: UtenSpacing.s12),
+        // 2026-10-02 用户口径：「共 N 笔」说明卡退役（与全站提示卡口径一致）。
         _filters(),
         if (_error != null) ...[
           const SizedBox(height: UtenSpacing.s8),
@@ -833,8 +832,7 @@ class _SalesShipmentTaskWorkbenchState
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
           ],
-          _summary(result.total),
-          const SizedBox(height: UtenSpacing.s12),
+          // 2026-10-02 用户口径：「共 N 笔」说明卡退役（与 _table 同款）。
           _filters(),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s8),
@@ -877,59 +875,6 @@ class _SalesShipmentTaskWorkbenchState
               onPage: _load,
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _summary(int total) {
-    final theme = Theme.of(context);
-    final description = _isFinance
-        ? '默认只看待审核。双击进入审核详情逐张核对本单结账方式、应收、铺底和可用预收(真实已审到账)后再人工放行；也可多选后批量放行/退回（整批原子提交）。'
-        : '固定只看财务已放行的出货。仓库核对后一步确认出库，届时才正式扣库存并形成应收。';
-    return Semantics(
-      container: true,
-      label: '$_title，共 $total 笔。$description',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.34),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.18),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              _isFinance
-                  ? Icons.fact_check_outlined
-                  : Icons.inventory_2_outlined,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '共 $total 笔',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    description,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -983,13 +928,11 @@ class _SalesShipmentTaskWorkbenchState
                 Expanded(child: chips),
               ],
             ),
-            if (_isFinance)
+            if (_isFinance && _financeRejected)
               Padding(
                 padding: const EdgeInsets.only(top: UtenSpacing.s4),
                 child: Text(
-                  _financeRejected
-                      ? '共 ${_result?.total ?? 0} 笔 · 已退回销售处理；双击进入可「撤回退回」恢复审核'
-                      : '共 ${_result?.total ?? 0} 笔 · 单击选择，双击打开审核详情',
+                  '已退回销售处理；双击进入可「撤回退回」恢复审核',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),

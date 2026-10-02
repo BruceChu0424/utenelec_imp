@@ -2553,6 +2553,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         }
         final controller = _verticalScrollController;
         if (controller != null && controller.hasClients) controller.jumpTo(0);
+        // 2026-10-02 用户口径「点分类/筛选后分类栏不得消失」：表体随翻页/换筛选
+        // 回顶时，联动页（UtenCollapsingHeaderScrollView 的 NestedScrollView）的
+        // 外层一起回顶。否则内容替换的滚动校正会被 NestedScrollView 转嫁成外层
+        // 塌陷，宿主分类栏/工具条整条滚出视口，看起来就是「分类栏消失」。
+        if (!_usesPrimaryScroll) return;
+        final nested = context
+            .findAncestorWidgetOfExactType<NestedScrollView>()
+            ?.controller;
+        if (nested != null && nested.hasClients && nested.position.pixels > 0) {
+          nested.jumpTo(0);
+        }
       });
     }
     // 外部翻页后，跳页输入框同步回当前页（用户未提交的输入被放弃，符合直觉）。

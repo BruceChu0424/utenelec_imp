@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
@@ -12,7 +15,13 @@ import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   test(
     'report config and route use exact endpoint and compound permissions',
     () {
@@ -111,6 +120,10 @@ void main() {
 
 Widget _reportApp(_ReportApi api) => ProviderScope(
   overrides: [
+    localServerReachableProvider.overrideWith(
+      (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+    ),
+    sharedPreferencesProvider.overrideWithValue(_preferences),
     apiClientProvider.overrideWithValue(api),
     currentPermissionsProvider.overrideWithValue(const {
       Perm.financeReportView,
@@ -125,6 +138,10 @@ Widget _reportApp(_ReportApi api) => ProviderScope(
 
 Widget _hubApp(Set<String> permissions) => ProviderScope(
   overrides: [
+    localServerReachableProvider.overrideWith(
+      (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+    ),
+    sharedPreferencesProvider.overrideWithValue(_preferences),
     currentPermissionsProvider.overrideWithValue(permissions),
     isSuperAdminProvider.overrideWithValue(false),
   ],

@@ -56,7 +56,7 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                     is_deleted boolean DEFAULT false, is_line_side boolean DEFAULT false, is_accountable boolean DEFAULT true);
                 CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, color_id uuid, unit_id uuid,
                     status text DEFAULT '使用', is_deleted boolean DEFAULT false, issue_method text DEFAULT 'ORDER',
-                    bulk_package_qty numeric, periodic_cost_basis text, owning_warehouse_id uuid, min_qty numeric DEFAULT 0);
+                    bulk_package_qty numeric, periodic_cost_basis text, owning_warehouse_id uuid, min_qty float8 DEFAULT 0);
                 CREATE TABLE stock_balances(warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric);
                 CREATE TABLE stock_reservations(warehouse_id uuid, goods_id uuid, color_id uuid, qty numeric,
                     consumed_qty numeric DEFAULT 0, released_qty numeric DEFAULT 0,

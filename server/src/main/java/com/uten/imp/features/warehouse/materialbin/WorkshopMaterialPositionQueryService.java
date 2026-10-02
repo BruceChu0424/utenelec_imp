@@ -271,9 +271,11 @@ public class WorkshopMaterialPositionQueryService {
         for (Map.Entry<MaterialKey, Map<String, Object>> entry : heads.entrySet()) {
             List<LeafStockView> stock = leaves.get(entry.getKey());
             UUID owning = (UUID) entry.getValue().get("owning_warehouse_id");
-            boolean owningInList = owning != null && stock != null
-                    && stock.stream().anyMatch(leaf -> owning.equals(leaf.warehouseId()));
-            if ((stock == null || stock.isEmpty()) && !owningInList) {
+            // 兜底只在「原规则下一个可选叶仓都没有」时触发：没有存货叶仓、且
+            // 归属仓也给不出候选（无归属或归属即内料仓本身）。归属仓可用的料
+            // 仍只列「有货叶仓 + 归属仓」，保持发料指引不发散。
+            boolean owningUsable = owning != null && !owning.equals(bin);
+            if ((stock == null || stock.isEmpty()) && !owningUsable) {
                 if (allActiveLeaves == null) {
                     allActiveLeaves = new ArrayList<>();
                     for (Map<String, Object> row : db.queryForList("""

@@ -7,6 +7,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../support/filter_segment_tap.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
@@ -31,7 +33,13 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   discoveryMaterialTests();
   materialUsageEntryTests();
   routeConfirmationTests();
@@ -102,6 +110,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -193,6 +202,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -244,6 +254,7 @@ void main() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              sharedPreferencesProvider.overrideWithValue(_preferences),
               isSuperAdminProvider.overrideWithValue(false),
               currentPermissionsProvider.overrideWithValue(const {
                 Perm.productionExecutionView,
@@ -318,6 +329,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -368,6 +380,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
               Perm.productionExecutionStart,
@@ -456,6 +469,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
             Perm.productionExecutionStart,
@@ -509,6 +523,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
               Perm.productionExecutionStart,
@@ -562,6 +577,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
             Perm.productionDailyReportView,
@@ -607,6 +623,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
               Perm.productionDailyReportView,
@@ -661,6 +678,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
             Perm.productionDailyReportView,
@@ -723,6 +741,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
           }),
@@ -760,6 +779,8 @@ void main() {
     await tester.pump();
     expect(find.text('新筛选结果'), findsOneWidget);
     expect(find.text('迟到旧结果'), findsNothing);
+    // 排空页面的筛选去抖计时器，避免「Timer is still pending」假红。
+    await tester.pump(const Duration(seconds: 1));
   });
 
   testWidgets(
@@ -773,6 +794,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             // V541/V543 车间默认包：有车间任务 + 报工三码，没有 production_plan:view。
             currentPermissionsProvider.overrideWithValue(const {
@@ -842,6 +864,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
           }),
@@ -912,6 +935,7 @@ void batchBusyOverlayTests() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
             Perm.productionExecutionStart,
@@ -1146,6 +1170,7 @@ void routeConfirmationTests() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           isSuperAdminProvider.overrideWithValue(false),
           currentPermissionsProvider.overrideWithValue({
             Perm.productionExecutionView,
@@ -1757,6 +1782,7 @@ void materialUsageEntryTests() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             isSuperAdminProvider.overrideWithValue(false),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionExecutionView,
@@ -1806,6 +1832,7 @@ void materialUsageEntryTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              sharedPreferencesProvider.overrideWithValue(_preferences),
               isSuperAdminProvider.overrideWithValue(false),
               currentPermissionsProvider.overrideWithValue({
                 Perm.productionExecutionView,
@@ -1914,6 +1941,7 @@ void materialUsageEntryTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              sharedPreferencesProvider.overrideWithValue(_preferences),
               isSuperAdminProvider.overrideWithValue(false),
               currentPermissionsProvider.overrideWithValue({
                 Perm.productionExecutionView,
@@ -1991,6 +2019,7 @@ void reportSourceSelectionTests() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue({
             Perm.productionExecutionView,
             Perm.productionDailyReportView,
@@ -2741,6 +2770,7 @@ void discoveryMaterialTests() {
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
+              sharedPreferencesProvider.overrideWithValue(_preferences),
               currentPermissionsProvider.overrideWithValue(const {
                 Perm.productionExecutionView,
                 Perm.productionExecutionStart,

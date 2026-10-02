@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
@@ -22,7 +25,13 @@ import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 import 'outbound_weight_fakes.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   final summary = WarehouseSalesOutboundSummary.fromJson(_detailJson);
   final detail = WarehouseSalesOutboundDetail.fromJson(_detailJson);
 
@@ -229,6 +238,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
         ],
         child: const MaterialApp(home: WarehouseSalesOutboundPage()),
@@ -248,6 +261,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
         ],
         child: const MaterialApp(
@@ -305,6 +322,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
           ],
           child: const MaterialApp(
@@ -368,6 +389,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
             fakeWeightRepositoryOverride(weights),
           ],
@@ -436,6 +461,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             warehouseSalesOutboundRepositoryProvider.overrideWithValue(
               _SalesGateway(shipped.header, shipped),
             ),

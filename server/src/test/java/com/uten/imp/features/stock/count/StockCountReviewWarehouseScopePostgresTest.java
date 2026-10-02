@@ -73,6 +73,9 @@ class StockCountReviewWarehouseScopePostgresTest {
         as(actorA,StockCountRequestService.SUBMIT,StockCountRequestService.FINANCE,StockCountRequestService.WAREHOUSE);
         workshop=mock(WorkshopStockCountPostingPort.class);
         for(UUID bin:List.of(binA,binB,unassigned))when(workshop.canAccessWarehouse(bin)).thenReturn(true);
+        // 列表通道走批量 accessibleWarehouses(默认方法逐个调 canAccessWarehouse); mock
+        // 不打这针会拿到 Mockito 的空集合默认答案，把全部内料仓过滤成 0 行。
+        doCallRealMethod().when(workshop).accessibleWarehouses(any());
         var tx=mock(TxSessionVars.class);
         service=new StockCountRequestService(new NamedParameterJdbcTemplate(db),user,workshop,mock(StockDocService.class),
                 mock(DocNumberService.class),mock(BusinessEventPublisher.class),tx,new ObjectMapper(),mock(Validator.class));

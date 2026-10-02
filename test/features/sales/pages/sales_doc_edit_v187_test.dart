@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -14,7 +17,13 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets(
     'selected order products prefill partial shipment and save without warehouse',
     (tester) async {
@@ -565,6 +574,10 @@ Future<_EditorApi> _pumpEditor(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

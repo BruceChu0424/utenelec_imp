@@ -146,6 +146,8 @@ class WorkbenchBadgeSummaryPostgresTest {
                 "procurementApproval.count", "financeArrivalException.count",
                 "iqcRejection.open"), List.of());
         legacy("financeQuoteReview", List.of("salesQuoteFinance.pending"), List.of());
+        // 2026-10-02 盘点审批(ADR/库存盘点)：普通仓交财务审核的入口（红=待审）。
+        legacy("financeStockCountReview", List.of("stockCountFinance.count"), List.of());
         legacy("expenseFinance", List.of("expense.pendingApprovalCount", "expense.pendingPaymentCount"), List.of());
         legacy("financeDrafts", List.of("drafts.financeReceipt", "drafts.financePayment", "drafts.financeExpense",
                 "drafts.financeOtherIncome", "drafts.financeBankTransfer"), List.of());
@@ -167,6 +169,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("warehouseWorkshopMaterial", List.of("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
                 List.of("workshopMaterial.counting"));
         legacy("warehouseQualityResult", List.of("qualityResult.actionable.*"), List.of("qualityResult.inProgress.*"));
+        // 2026-10-02 盘点审批(ADR/库存盘点)：内料仓/仓库侧审核入口（红=待审）。
+        legacy("warehouseStockCountReview", List.of("stockCountWarehouse.count"), List.of());
         legacy("warehouseDrafts", List.of("drafts.stockDocument"), List.of());
         legacy("purchaseTaskCenter", List.of("purchaseTask.pending"), List.of("purchaseTask.inProgress"));
         legacy("purchaseSupplierReturn", List.of("purchaseSupplierReturn.count"), List.of());

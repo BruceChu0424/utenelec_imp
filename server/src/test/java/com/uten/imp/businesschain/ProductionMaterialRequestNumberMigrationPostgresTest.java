@@ -84,14 +84,17 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
             // 当前 Java 的实体与查询需要后续迁移给既有表加的列/对象; 与 V731 编号回填互相独立、
             // 且不触碰 V730 库上尚不存在的对象(整段 V733..V743 连放会在跳版本的库上断), 按需逐个
             // verbatim 应用: V739 BOM 用量、V735 draw_batch_no、V740 issue_method/内料仓、
-            // V742 AI 列、V743 重量账列、V744 商业扩展列、V748 销售英文名称快照、V752 别名证据。
+            // V742 AI 列、V743 重量账列、V744 商业扩展列、V748 销售英文名称快照、V752 别名证据、
+            // V787 手工出入库单行级仓库(StockDocumentItem ORM 新增 warehouse_id 字段; 其库位
+            // 学习约束只动 V431/V451 已存在的 warehouse_goods_place_preferences, 与编号无关)。
             // V744/V748 为当前 SalesOrderItem ORM 的无关新增字段; V752 让实际 afterSave 挂钩
             // 读取空的客户别名证据。三者均不读取或改变物料发现请求、编号注册/序列或数量事实。
             // V731 延后到测试中段单独验证; V732 保持上述旧视图桥。
             for(String suffix:new String[]{"__bom_design_and_actual_usage.sql","__draw_batch_no.sql",
                     "__workshop_material_periodic_costing.sql","__ai_platform_sales_intake_learning.sql",
                     "__warehouse_weight_ledger_and_learning.sql","__business_document_extra_columns.sql",
-                    "__sales_document_english_name_snapshot.sql","__sales_alias_document_evidence.sql"}){
+                    "__sales_document_english_name_snapshot.sql","__sales_alias_document_evidence.sql",
+                    "__stock_document_item_line_warehouse_and_place_learning.sql"}){
                 java.nio.file.Path bridge=migrationFiles.stream()
                         .filter(file->file.getFileName().toString().endsWith(suffix))
                         .findFirst().orElseThrow();

@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
@@ -11,7 +14,13 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pages.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('order stages filter the server aggregate and reset pagination', (
     tester,
   ) async {
@@ -227,6 +236,10 @@ Future<_RecordingApi> _mount(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
         apiClientProvider.overrideWithValue(api),
       ],

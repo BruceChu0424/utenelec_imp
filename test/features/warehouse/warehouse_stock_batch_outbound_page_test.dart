@@ -303,7 +303,8 @@ void main() {
         await tester.tap(find.text('草稿'));
         await tester.pumpAndSettle();
         final key = Key('stock-doc-segment-table-${type.code}');
-        final table = tester.widget<MasterDataTableView<StockDocListItem>>(
+        // 草稿段经 FormDraftCategoryTable 渲染合并表，按 key 直接取 dynamic。
+        final table = tester.widget<MasterDataTableView<dynamic>>(
           find.byKey(key),
         );
         expect(table.selectable, isTrue);
@@ -316,13 +317,13 @@ void main() {
         expect(repo.lastFilter?.keyword, 'second');
         expect(
           tester
-              .widget<MasterDataTableView<StockDocListItem>>(find.byKey(key))
+              .widget<MasterDataTableView<dynamic>>(find.byKey(key))
               .selectedIds,
           isEmpty,
         );
         await tester.tap(find.text('已审'));
         await tester.pumpAndSettle();
-        final updated = tester.widget<MasterDataTableView<StockDocListItem>>(
+        final updated = tester.widget<MasterDataTableView<dynamic>>(
           find.byKey(key),
         );
         expect(updated.selectedIds, isEmpty);

@@ -9,6 +9,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/features/production/models/production_flow_stage.dart';
 import 'package:uten_imp/features/production/widgets/production_flow_stage_cell.dart';
@@ -349,6 +352,10 @@ Future<List<String>> _mount(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.productionExecutionView,
@@ -439,7 +446,13 @@ Color _cellBackgroundColor(WidgetTester tester, String label) {
   return found!;
 }
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('a task waiting for a material choice shows 待认料 in waiting', (
     tester,
   ) async {

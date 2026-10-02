@@ -12,6 +12,9 @@ import 'package:uten_imp/shared/models/party_open_balance.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -198,6 +201,10 @@ Future<GoRouter> _pumpPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
@@ -254,6 +261,10 @@ Future<void> _pumpReview(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
@@ -281,7 +292,13 @@ Future<void> _pumpReview(
   }
 }
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   for (final size in [const Size(1200, 900), const Size(390, 844)]) {
     testWidgets(
       'pending category owns the full queue badge without the summary card at $size',
@@ -904,6 +921,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           isSuperAdminProvider.overrideWithValue(false),
           currentPermissionsProvider.overrideWithValue({
             Perm.salesOrderFinanceView,

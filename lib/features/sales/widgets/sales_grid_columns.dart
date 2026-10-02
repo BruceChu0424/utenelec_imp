@@ -137,7 +137,7 @@ class SalesGridRow extends EditableGridRow
   set responsible(String? v) => responsibleNotifier.value = v;
 
   // 报表补列：成本分项/包装派生/折扣。空文本不随 body 提交（后端按 nullable 处理）。
-  // order：机加价/围数/进仓数量（inNo/outNo 是系统字段，不入录）。
+  // order：机加价/围数；进仓数量仅保留旧数据参考，不入录或提交。
   // other_shipment：材料价/压铸价/机加价/围数/折扣；shipment 已精简，不展示这些补列。
   // return：折扣。
   final machiningPrice = TextEditingController();
@@ -426,6 +426,21 @@ class SalesGridRow extends EditableGridRow
   }
 }
 
+/// 已填写的可选业务列必须随草稿重开显现；仍使用原有列布局和真实行字段。
+Set<String> filledSalesOptionalColumnKeys(Iterable<SalesGridRow> rows) => {
+  ...filledBusinessColumnKeys(rows),
+  for (final row in rows) ...{
+    if (row.clientModel.text.trim().isNotEmpty) 'clientModel',
+    if (row.clientGoodsName.text.trim().isNotEmpty) 'clientGoodsName',
+    if (row.clientPrice != null) 'clientPrice',
+    if (row.machiningPrice.text.trim().isNotEmpty) 'machiningPrice',
+    if (row.circumference.text.trim().isNotEmpty) 'circumference',
+    if (row.inboundQty.text.trim().isNotEmpty) 'inboundQty',
+    if (row.materialPrice.text.trim().isNotEmpty) 'materialPrice',
+    if (row.dieCastPrice.text.trim().isNotEmpty) 'dieCastPrice',
+  },
+};
+
 /// 销售明细列：货品（点选）/ 颜色 / 单位 / 数量 / 单价 / 金额（自动）+ 报表补列（按
 /// [docType] 条件追加）。[onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [colorEntries]/[unitEntries] 由编辑页从 SalesMasterNameService 注入（单元格下拉用）。
@@ -501,7 +516,11 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                       UtenInputDecoration(
                         InputDecoration(
                           isDense: true,
-                          helper: UtenFieldMessage.autofill(review),
+                          helper: UtenFieldMessage.autofill(
+                            priceMasked
+                                ? intakeText.salesIntakeStatusReview
+                                : review,
+                          ),
                         ),
                       ),
                       Theme.of(context),
@@ -658,46 +677,49 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         required: priceRequired,
         // 锁定/可编辑两种分支共用表头说明（锁定口径 + 录入口径按 docType 择一）。
         headerInfo: priceHint,
-        frozenTextOf: (r) => r.price.text,
-        cellBuilder: (context, row) => RequiredCellFrame(
-          listenable: row.price,
-          isEmpty: () =>
-              priceRequired &&
-              (row.price.text.trim().isEmpty ||
-                  double.tryParse(row.price.text.trim()) == null),
-          // 订单/出货/报价：单价由货品主档或受信任来源单据带入、锁定不可改。
-          // 复制订单行会清空冻结价；重新选择货品即可取得当前主档价。
-          child:
-              (docType == SalesDocType.order ||
-                  docType == SalesDocType.shipment ||
-                  isQuote)
-              ? _lockedCell(
-                  context,
-                  row.price,
-                  // 复制出来的报价行单价已清空、须重新选货取价: 不显示「待财务定价」误导。
-                  hint: priceMasked
-                      ? '***'
-                      : isQuote &&
-                            row.goods != null &&
-                            !row.requiresOrderPriceRefresh
-                      ? intakeText.salesIntakePendingFinancePrice
-                      : null,
-                  tag: row.priceSource == 'FINANCE'
-                      ? intakeText.salesIntakeFinancePriced
-                      : null,
-                  info: isQuote ? intakeText.salesIntakeQuotePriceHint : null,
-                )
-              : TextField(
-                  controller: row.price,
-                  textAlign: TextAlign.right,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(isDense: true, hintText: '0'),
-                  ),
-                ),
-        ),
+        frozenTextOf: (r) => priceMasked ? '***' : r.price.text,
+        cellBuilder: (context, row) => priceMasked
+            ? const Text('***', textAlign: TextAlign.right)
+            : RequiredCellFrame(
+                listenable: row.price,
+                isEmpty: () =>
+                    priceRequired &&
+                    (row.price.text.trim().isEmpty ||
+                        double.tryParse(row.price.text.trim()) == null),
+                // 订单/出货/报价：单价由货品主档或受信任来源单据带入、锁定不可改。
+                // 复制订单行会清空冻结价；重新选择货品即可取得当前主档价。
+                child:
+                    (docType == SalesDocType.order ||
+                        docType == SalesDocType.shipment ||
+                        isQuote)
+                    ? _lockedCell(
+                        context,
+                        row.price,
+                        // 复制出来的报价行单价已清空、须重新选货取价: 不显示「待财务定价」误导。
+                        hint:
+                            isQuote &&
+                                row.goods != null &&
+                                !row.requiresOrderPriceRefresh
+                            ? intakeText.salesIntakePendingFinancePrice
+                            : null,
+                        tag: row.priceSource == 'FINANCE'
+                            ? intakeText.salesIntakeFinancePriced
+                            : null,
+                        info: isQuote
+                            ? intakeText.salesIntakeQuotePriceHint
+                            : null,
+                      )
+                    : TextField(
+                        controller: row.price,
+                        textAlign: TextAlign.right,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(isDense: true, hintText: '0'),
+                        ),
+                      ),
+              ),
       ),
     // 订单/报价折扣：紧跟单价；货品主档 zk 或按文件单价反推的值作为初始建议，销售可调整
     //(报价可留空交财务核价)。看不到价格的账号只读(保存时服务端按文件单价计算)；
@@ -716,16 +738,17 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         required: !isQuote && !priceMasked,
         // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）；格内不再重复 ⓘ。
         headerInfo: l10n.workflowDiscountHint,
-        frozenTextOf: (r) => r.quoteDiscountLocked
+        frozenTextOf: (r) => priceMasked
+            ? '***'
+            : r.quoteDiscountLocked
             ? '${r.discount.text} ${intakeText.salesIntakeQuoteLockedDiscount}'
             : r.discount.text,
         cellBuilder: (context, row) {
           if (priceMasked) {
-            return _lockedCell(
-              context,
-              row.discount,
-              hint: intakeText.salesIntakeMaskedDiscount,
-              info: intakeText.salesIntakeMaskedDiscount,
+            // 不能把旧草稿控制器挂到只读框：hint 不会遮住已有文字。
+            return Tooltip(
+              message: intakeText.salesIntakeMaskedDiscount,
+              child: const Text('***', textAlign: TextAlign.right),
             );
           }
           if (row.quoteDiscountLocked) {
@@ -805,43 +828,81 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             : '金额',
         width: 110,
         numeric: true,
-        frozenTextOf: (r) => r.amountExactNotifier.value == null
+        frozenTextOf: (r) => priceMasked
+            ? '***'
+            : r.amountExactNotifier.value == null
             ? ''
             : docType == SalesDocType.order ||
                   docType == SalesDocType.customerShipment ||
                   isQuote
             ? financeExactMoneyDisplay(r.amountExactNotifier.value!)
             : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
-        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
-          valueListenable: row.amountExactNotifier,
-          builder: (_, v, _) => Text(
-            v == null
-                ? '—'
-                : docType == SalesDocType.order ||
-                      docType == SalesDocType.customerShipment ||
-                      isQuote
-                ? financeExactMoneyDisplay(v)
-                : '¥${financeExactMoneyDisplay(v)}',
-          ),
-        ),
+        cellBuilder: (context, row) => priceMasked
+            ? const Text('***', textAlign: TextAlign.right)
+            : ValueListenableBuilder<String?>(
+                valueListenable: row.amountExactNotifier,
+                builder: (_, v, _) => Text(
+                  v == null
+                      ? '—'
+                      : docType == SalesDocType.order ||
+                            docType == SalesDocType.customerShipment ||
+                            isQuote
+                      ? financeExactMoneyDisplay(v)
+                      : '¥${financeExactMoneyDisplay(v)}',
+                ),
+              ),
       ),
     // 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
     // 出货单(shipment)只留 货品/颜色/单位/数量/单价/金额/备注：成本分项/折扣等补列不展示
     //（出货是发货履约，价格/折扣沿用订货单）。隐藏列的字段仍在行模型里，编辑既有出货单时
     // 回填并随保存回写，不丢数据。
     if (docType == SalesDocType.order || docType == SalesDocType.otherShipment)
-      _extraNumericColumn('机加价', 'machiningPrice', (r) => r.machiningPrice),
+      _extraNumericColumn(
+        '机加价',
+        'machiningPrice',
+        (r) => r.machiningPrice,
+        priceMasked: priceMasked,
+      ),
     if (docType == SalesDocType.order || docType == SalesDocType.otherShipment)
       _extraNumericColumn('围数', 'circumference', (r) => r.circumference),
     if (docType == SalesDocType.order)
-      _extraNumericColumn('进仓数量', 'inboundQty', (r) => r.inboundQty),
+      EditableGridColumn<SalesGridRow>(
+        key: 'inboundQty',
+        label: '进仓数量(历史参考)',
+        width: 160,
+        numeric: true,
+        defaultVisible: false,
+        headerInfo:
+            '保留历史单据或旧草稿的参考值；实际进仓数量以入库事实为准，'
+            '不在销售订单录入，也不随订单保存。',
+        frozenTextOf: (row) => row.inboundQty.text,
+        cellBuilder: (context, row) => Text(
+          row.inboundQty.text.isEmpty ? '—' : row.inboundQty.text,
+          textAlign: TextAlign.right,
+        ),
+      ),
     if (docType == SalesDocType.otherShipment)
-      _extraNumericColumn('材料价', 'materialPrice', (r) => r.materialPrice),
+      _extraNumericColumn(
+        '材料价',
+        'materialPrice',
+        (r) => r.materialPrice,
+        priceMasked: priceMasked,
+      ),
     if (docType == SalesDocType.otherShipment)
-      _extraNumericColumn('压铸价', 'dieCastPrice', (r) => r.dieCastPrice),
+      _extraNumericColumn(
+        '压铸价',
+        'dieCastPrice',
+        (r) => r.dieCastPrice,
+        priceMasked: priceMasked,
+      ),
     if (docType == SalesDocType.otherShipment ||
         docType == SalesDocType.returnDoc)
-      _extraNumericColumn('折扣', 'discount', (r) => r.discount),
+      _extraNumericColumn(
+        '折扣',
+        'discount',
+        (r) => r.discount,
+        priceMasked: priceMasked,
+      ),
     // 退货专属：处理方案 / 责任单位（无字典端点，用预置业务选项）。
     if (docType == SalesDocType.returnDoc) ...[
       EditableGridColumn<SalesGridRow>(
@@ -962,21 +1023,24 @@ Widget _lockedCell(
 EditableGridColumn<SalesGridRow> _extraNumericColumn(
   String label,
   String key,
-  TextEditingController Function(SalesGridRow row) controller,
-) {
+  TextEditingController Function(SalesGridRow row) controller, {
+  bool priceMasked = false,
+}) {
   return EditableGridColumn<SalesGridRow>(
     key: key,
     label: label,
     width: 100,
     numeric: true,
     defaultVisible: false,
-    frozenTextOf: (row) => controller(row).text,
-    cellBuilder: (context, row) => TextField(
-      controller: controller(row),
-      textAlign: TextAlign.right,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: const InputDecoration(isDense: true, hintText: '0'),
-    ),
+    frozenTextOf: (row) => priceMasked ? '***' : controller(row).text,
+    cellBuilder: (context, row) => priceMasked
+        ? const Text('***', textAlign: TextAlign.right)
+        : TextField(
+            controller: controller(row),
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(isDense: true, hintText: '0'),
+          ),
   );
 }
 

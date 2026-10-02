@@ -7,10 +7,12 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import 'attachment.dart';
 import 'attachment_file_rules.dart';
 import 'attachment_service.dart';
+import 'attachment_upload_attempt.dart';
 
 class PendingAttachment {
   PendingAttachment({
@@ -18,7 +20,15 @@ class PendingAttachment {
     required this.contentType,
     required this.bytes,
     this.category,
-  });
+    String? localUploadId,
+    this.legacyUntracked = false,
+  }) : localUploadId = localUploadId ?? const Uuid().v4();
+
+  final String localUploadId;
+  final bool legacyUntracked;
+  final Map<String, AttachmentUploadAttempt> uploadAttempts = {};
+  final Map<String, String> confirmedAttachmentIds = {};
+  final Set<String> confirmedDeletedOwners = {};
 
   final String name;
   final String contentType;
@@ -61,13 +71,59 @@ class PendingAttachmentController extends ChangeNotifier {
   final int maxTotalBytes;
   final List<PendingAttachment> _items = [];
   bool _flushing = false;
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   List<PendingAttachment> get items => List.unmodifiable(_items);
   int get length => _items.length;
   bool get isEmpty => _items.isEmpty;
   bool get isNotEmpty => _items.isNotEmpty;
   bool get isFlushing => _flushing;
+  bool hasPendingFor(String ownerId) =>
+      _items.any((item) => !item.uploadedTo.contains(ownerId));
+  bool needsReceiptFor(String ownerId) => _items.any(
+    (item) =>
+        !item.uploadedTo.contains(ownerId) &&
+        (item.legacyUntracked || item.uploadAttempts.containsKey(ownerId)),
+  );
+
   int get totalBytes => _items.fold(0, (sum, item) => sum + item.sizeBytes);
+
+  /// Receipt adoption may change acknowledgements, never replace local file
+  /// input with another tab's newer attachments or silently drop unsaved files.
+  bool sameOriginalFiles(Map<String, dynamic> checkpoint) {
+    final values = checkpoint['items'] ?? const <Object?>[];
+    if (values is! List || values.length != _items.length) return false;
+    final originals = <String, Map<String, dynamic>>{};
+    for (final value in values) {
+      if (value is! Map || value['localUploadId'] is! String) return false;
+      final id = value['localUploadId'] as String;
+      if (originals.containsKey(id)) return false;
+      originals[id] = Map<String, dynamic>.from(value);
+    }
+    for (final item in _items) {
+      final saved = originals[item.localUploadId];
+      if (saved == null ||
+          saved['name'] != item.name ||
+          saved['contentType'] != item.contentType ||
+          saved['bytes'] != item.draftBytes ||
+          saved['category'] != item.category ||
+          jsonEncode(saved['uploadAttempts'] ?? <String, dynamic>{}) !=
+              jsonEncode({
+                for (final entry in item.uploadAttempts.entries)
+                  entry.key: entry.value.toJson(),
+              })) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   int get failedCount => _items.where((i) => i.lastError != null).length;
 
   /// Keep original bytes and confirmed upload targets across interrupted editing.
@@ -76,6 +132,15 @@ class PendingAttachmentController extends ChangeNotifier {
     'items': [
       for (final item in _items)
         {
+          'localUploadId': item.localUploadId,
+          'uploadTrackingVersion': 1,
+          'legacyUntracked': item.legacyUntracked,
+          'uploadAttempts': {
+            for (final entry in item.uploadAttempts.entries)
+              entry.key: entry.value.toJson(),
+          },
+          'confirmedAttachmentIds': item.confirmedAttachmentIds,
+          'confirmedDeletedOwners': item.confirmedDeletedOwners.toList(),
           'name': item.name,
           'contentType': item.contentType,
           'bytes': item.draftBytes,
@@ -100,10 +165,31 @@ class PendingAttachmentController extends ChangeNotifier {
         contentType: data['contentType'] as String,
         bytes: file,
         category: data['category'] as String?,
+        localUploadId: data['localUploadId'] as String?,
+        legacyUntracked:
+            data['uploadTrackingVersion'] != 1 ||
+            data['legacyUntracked'] == true,
       )..lastError = data['lastError'] as String?;
       item.uploadedTo.addAll(
         (data['uploadedTo'] as List? ?? const []).cast<String>(),
       );
+      final attempts = data['uploadAttempts'];
+      if (attempts is Map) {
+        for (final entry in attempts.entries) {
+          item.uploadAttempts[entry.key
+              as String] = AttachmentUploadAttempt.restore(
+            Map<String, dynamic>.from(entry.value as Map),
+          );
+        }
+      }
+      item.confirmedAttachmentIds.addAll(
+        (data['confirmedAttachmentIds'] as Map?)?.cast<String, String>() ??
+            const {},
+      );
+      item.confirmedDeletedOwners.addAll(
+        (data['confirmedDeletedOwners'] as List? ?? const []).cast<String>(),
+      );
+
       restored.add(item);
     }
     _items
@@ -180,6 +266,9 @@ class PendingAttachmentController extends ChangeNotifier {
     AttachmentService service, {
     required String ownerType,
     required List<String> ownerIds,
+    bool Function()? canContinue,
+    AttachmentUploadIdentity? uploadIdentity,
+    Future<void> Function()? persistCheckpoint,
   }) async {
     if (_items.isEmpty || ownerIds.isEmpty) {
       return const PendingUploadReport(uploaded: [], failed: []);
@@ -194,23 +283,99 @@ class PendingAttachmentController extends ChangeNotifier {
         final done = item.uploadedTo;
         String? error;
         for (final ownerId in ownerIds) {
-          if (done.contains(ownerId)) continue;
+          if (done.contains(ownerId)) {
+            continue;
+          }
           try {
-            uploaded.add(
-              await service.upload(
-                ownerType: ownerType,
-                ownerId: ownerId,
-                fileName: item.name,
-                contentType: item.contentType,
-                bytes: item.bytes,
-                category: item.category,
-              ),
-            );
+            if (uploadIdentity != null &&
+                (item.legacyUntracked ||
+                    item.uploadAttempts.containsKey(ownerId))) {
+              throw StateError('原附件上传结果待只读核对，不能重新上传');
+            }
+            if (uploadIdentity != null &&
+                (canContinue == null || persistCheckpoint == null)) {
+              throw StateError('原附件上传缺少持久化或身份保护');
+            }
+            if (canContinue != null && !canContinue()) {
+              throw StateError('身份或上传权限已变化，原附件保留在本机');
+            }
+            final bytes = Uint8List.fromList(item.bytes);
+            final attachment = uploadIdentity != null
+                ? await service.uploadCheckpointed(
+                    ownerType: ownerType,
+                    ownerId: ownerId,
+                    fileName: item.name,
+                    contentType: item.contentType,
+                    bytes: bytes,
+                    category: item.category,
+                    canContinue: canContinue!,
+                    onPresigned: (grant) async {
+                      final attempt = AttachmentUploadAttempt.capture(
+                        grant: grant,
+                        identity: uploadIdentity,
+                        ownerType: ownerType,
+                        ownerId: ownerId,
+                        name: item.name,
+                        contentType: item.contentType,
+                        bytes: bytes,
+                      );
+                      if (!attempt.matchesFile(
+                        name: item.name,
+                        contentType: item.contentType,
+                        bytes: item.bytes,
+                      )) {
+                        throw StateError('原附件在上传准备期间变化，未发送字节');
+                      }
+                      item.uploadAttempts[ownerId] = attempt;
+                      await persistCheckpoint!();
+                      if (!attempt.matchesFile(
+                        name: item.name,
+                        contentType: item.contentType,
+                        bytes: item.bytes,
+                      )) {
+                        throw StateError('原附件在保存检查点期间变化，未发送字节');
+                      }
+                    },
+                  )
+                : canContinue == null
+                ? await service.upload(
+                    ownerType: ownerType,
+                    ownerId: ownerId,
+                    fileName: item.name,
+                    contentType: item.contentType,
+                    bytes: item.bytes,
+                    category: item.category,
+                  )
+                : await service.uploadGuarded(
+                    ownerType: ownerType,
+                    ownerId: ownerId,
+                    fileName: item.name,
+                    contentType: item.contentType,
+                    bytes: item.bytes,
+                    category: item.category,
+                    canContinue: canContinue,
+                  );
+            if (uploadIdentity != null &&
+                !item.uploadAttempts[ownerId]!.matchesNativeReceipt(
+                  attachment,
+                )) {
+              throw StateError('原附件回执尚未与上传身份和文件指纹一致，保留待核对');
+            }
+            uploaded.add(attachment);
             done.add(ownerId);
+            if (uploadIdentity != null) {
+              item.confirmedAttachmentIds[ownerId] = attachment.id;
+              if (attachment.deleted) {
+                item.confirmedDeletedOwners.add(ownerId);
+              }
+            }
           } catch (e) {
             error = _describe(e);
             break;
           }
+        }
+        if (canContinue != null && !canContinue()) {
+          error = '身份或上传权限已变化，原附件和已返回回执仍保留';
         }
         if (error == null && done.containsAll(ownerIds)) {
           item.lastError = null;
@@ -222,7 +387,9 @@ class PendingAttachmentController extends ChangeNotifier {
       }
     } finally {
       _flushing = false;
-      notifyListeners();
+      if (!_disposed) {
+        notifyListeners();
+      }
     }
     return PendingUploadReport(uploaded: uploaded, failed: failed);
   }

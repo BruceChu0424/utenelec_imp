@@ -341,10 +341,16 @@ public class ProductionDailyReportService {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报创建请求");
             }
+            if (replay.createPayloadVersion() != null || replay.createPayloadHash() != null) {
+                if (!Integer.valueOf(1).equals(replay.createPayloadVersion())
+                        || !createFullPayloadHash(req).equals(replay.createPayloadHash())) {
+                    throw new ApiException(ErrorCode.CONFLICT, "原创建请求的完整字段证明不一致");
+                }
+            }
             return commandDetail(replay.reportId());
         }
-        // Only new CREATE freezes the proof before any domain mutation. The
-        // existing accepted POST replay never receives new extension rules.
+        // New commands freeze the complete proof before domain mutation. Legacy
+        // commands without that proof retain their original native-V3 replay contract.
         String fullPayloadHash = createFullPayloadHash(req);
         // ADR-131 §10 锁序：幂等顾问锁之后、写日报之前，锁住涉及的车间内料仓期间并核对日期。
         guardWorkshopMaterialPeriods(null, req.getBillDate(), requestSegmentIds(req.getItems()),

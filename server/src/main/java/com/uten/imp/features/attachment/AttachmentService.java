@@ -529,7 +529,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 attachment.getContentType(), attachment.getSizeBytes(),
                 attachment.getCreatedAt(), attachment.getCreatedBy(), null,
                 attachment.getCategory(), attachment.isAvatar(),deleted,attachment.getDeleteRequestedAt(),attachment.getDeleteRequestedBy(),name,
-                attachment.getDeleteReason(),history,available?"RETAINED":"LEGACY_UNAVAILABLE",available?"/api/attachments/"+attachment.getId()+"/history/download":null);
+                attachment.getDeleteReason(),history,available?"RETAINED":"LEGACY_UNAVAILABLE",available?"/api/attachments/"+attachment.getId()+"/history/download":null,attachment.getSha256());
     }
 
     private AttachmentOwnerAccessPolicy policy(String rawOwnerType) {

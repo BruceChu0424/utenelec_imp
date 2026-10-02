@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +21,12 @@ import 'package:uten_imp/features/department/repositories/department_repository.
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
+import 'package:uten_imp/features/production/models/production_daily_report_create_request.dart';
+import 'package:uten_imp/features/production/pages/production_daily_report_create_recovery_page.dart';
+import '../../../support/native_detail_reader_overrides.dart';
+import '../../../support/controlled_attachment_pipeline.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/features/production/pages/production_daily_report_edit_page.dart';
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
@@ -29,6 +37,7 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
@@ -45,9 +54,13 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/drafts/memory_form_draft_storage.dart';
 
 part 'production_daily_report_draft_identity_cases.dart';
+part 'production_daily_report_create_recovery_cases.dart';
+part 'production_daily_report_attachment_late_ack_cases.dart';
 
 void main() {
   registerDailyReportDraftIdentityTests();
+  registerDailyReportCreateRecoveryTests();
+  registerDailyReportLateAttachmentAckTests();
   for (final attachmentMode in ['none', 'upload', 'retry']) {
     testWidgets(
       'workshop save returns saved draft for review, never approves: attachments=$attachmentMode',
@@ -59,16 +72,38 @@ void main() {
         var creates = 0;
         var approvals = 0;
         String? savedId;
+        Map<String, dynamic>? submittedBody;
+        var receiptReads = 0;
         final api = _api(
           responseOverride: (request) {
             if (request.path.endsWith('/approve')) approvals++;
             if (request.method == 'POST' &&
                 request.path.endsWith('/daily-reports')) {
               creates++;
+              submittedBody = Map<String, dynamic>.from(request.data as Map);
+              return {
+                'id': 'saved-draft',
+                'makerId': 'employee-1',
+                'billNo': 'SR-DRAFT',
+                'status': 0,
+                'items': <dynamic>[],
+              };
+            }
+            if (request.path.endsWith('/daily-reports/create-receipt')) {
+              receiptReads++;
+              expect(request.data, submittedBody);
+              return _createProofBody(
+                Map<String, dynamic>.from(request.data as Map),
+                'saved-draft',
+              );
+            }
+            if (request.method == 'GET' &&
+                request.path.endsWith('/daily-reports/saved-draft')) {
               return {
                 'id': 'saved-draft',
                 'billNo': 'SR-DRAFT',
                 'status': 0,
+                'makerId': 'employee-1',
                 'items': <dynamic>[],
               };
             }
@@ -87,7 +122,9 @@ void main() {
               builder: (context, _) => Scaffold(
                 body: ElevatedButton(
                   onPressed: () async {
-                    savedId = await context.push<String>('/new');
+                    savedId = await context.push<String>(
+                      '/production/daily-reports/new',
+                    );
                     if (context.mounted && savedId != null) {
                       await context.push<void>('/review/$savedId');
                     }
@@ -97,7 +134,7 @@ void main() {
               ),
             ),
             GoRoute(
-              path: '/new',
+              path: '/production/daily-reports/new',
               builder: (_, _) => const ProductionDailyReportEditPage(
                 initialExecutionSegmentId: 'segment-1',
                 returnToWorkshopTasks: true,
@@ -113,6 +150,10 @@ void main() {
         addTearDown(router.dispose);
         final container = ProviderContainer(
           overrides: [
+            ...nativeDetailReaderOverrides(),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
             apiClientProvider.overrideWithValue(api),
             attachmentServiceProvider.overrideWithValue(attachments),
             departmentRepositoryProvider.overrideWithValue(
@@ -128,6 +169,8 @@ void main() {
             sharedPreferencesProvider.overrideWithValue(preferences),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+              Perm.productionDailyReportEdit,
               Perm.attachmentUpload,
             }),
           ],
@@ -155,6 +198,8 @@ void main() {
               .restoreDraft({
                 'items': [
                   {
+                    'localUploadId': 'fresh-report-fixture',
+                    'uploadTrackingVersion': 1,
                     'name': 'report.txt',
                     'contentType': 'text/plain',
                     'bytes': 'AQID',
@@ -175,6 +220,7 @@ void main() {
         expect(savedId, 'saved-draft');
         expect(find.text('待审核 saved-draft'), findsOneWidget);
         expect(creates, 1);
+        expect(receiptReads, 1);
         expect(approvals, 0);
         expect(
           attachments.attempts,
@@ -1945,6 +1991,67 @@ class _ReportSaveAttachments extends AttachmentService {
   var attempts = 0;
 
   @override
+  Future<Attachment> uploadCheckpointed({
+    required String ownerType,
+    required String ownerId,
+    required String fileName,
+    required String contentType,
+    required Uint8List bytes,
+    required bool Function() canContinue,
+    required Future<void> Function(PresignResult) onPresigned,
+    String? category,
+  }) async {
+    if (!canContinue()) throw StateError('scope changed');
+    if (failFirst && attempts == 0) {
+      attempts++;
+      throw StateError(
+        'fixture presign failed before a grant or bytes existed',
+      );
+    }
+    await onPresigned(
+      const PresignResult(
+        storageKey: 'report-file',
+        url: '/attachments/raw/report-file',
+        method: 'PUT',
+        contentType: 'text/plain',
+        headers: {},
+        formFields: {},
+        confirmToken: 'fixture',
+      ),
+    );
+    if (!canContinue()) throw StateError('scope changed');
+    return upload(
+      ownerType: ownerType,
+      ownerId: ownerId,
+      fileName: fileName,
+      contentType: contentType,
+      bytes: bytes,
+      category: category,
+    );
+  }
+
+  @override
+  Future<Attachment> uploadGuarded({
+    required String ownerType,
+    required String ownerId,
+    required String fileName,
+    required String contentType,
+    required Uint8List bytes,
+    required bool Function() canContinue,
+    String? category,
+  }) {
+    if (!canContinue()) throw StateError('scope changed before fixture upload');
+    return upload(
+      ownerType: ownerType,
+      ownerId: ownerId,
+      fileName: fileName,
+      contentType: contentType,
+      bytes: bytes,
+      category: category,
+    );
+  }
+
+  @override
   Future<Attachment> upload({
     required String ownerType,
     required String ownerId,
@@ -1959,6 +2066,8 @@ class _ReportSaveAttachments extends AttachmentService {
     }
     return Attachment(
       id: 'attachment',
+      uploadedBy: 'native-detail-reader',
+      sha256: crypto.sha256.convert(bytes).toString(),
       ownerType: ownerType,
       ownerId: ownerId,
       storageKey: 'report-file',
@@ -2155,6 +2264,10 @@ ApiClient _api({
           return;
         }
         final override = responseOverride?.call(request);
+        if (override is DioException) {
+          handler.reject(override);
+          return;
+        }
         if (override != null) {
           handler.resolve(
             Response(requestOptions: request, statusCode: 200, data: override),

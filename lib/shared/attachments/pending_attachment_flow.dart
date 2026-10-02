@@ -9,6 +9,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import 'attachment_service.dart';
+import 'attachment_upload_attempt.dart';
 import 'pending_attachment_controller.dart';
 
 /// 返回 true 表示可以继续跳转（没有待传文件，或全部上传成功）。
@@ -19,14 +20,20 @@ Future<bool> flushPendingAttachments(
   PendingAttachmentController controller, {
   required String ownerType,
   required List<String> ownerIds,
+  bool Function()? canContinue,
+  AttachmentUploadIdentity? uploadIdentity,
+  Future<void> Function()? persistCheckpoint,
 }) async {
   if (controller.isEmpty || ownerIds.isEmpty) return true;
   final report = await controller.flushToOwners(
     ref.read(attachmentServiceProvider),
     ownerType: ownerType,
     ownerIds: ownerIds,
+    canContinue: canContinue,
+    uploadIdentity: uploadIdentity,
+    persistCheckpoint: persistCheckpoint,
   );
-  if (!context.mounted) return false;
+  if (!context.mounted || (canContinue != null && !canContinue())) return false;
   if (report.allSucceeded) {
     if (report.uploadedCount > 0) {
       context.appSuccess(

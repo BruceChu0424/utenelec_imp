@@ -98,7 +98,7 @@ void main() {
               storage.beforeWrite = (value) async {
                 if (((jsonDecode(value) as Map)['data']
                         as Map?)?['_formDraftSubmissionPending'] ==
-                      true) {
+                    true) {
                   await gate.future;
                 }
               };

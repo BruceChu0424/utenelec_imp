@@ -27,7 +27,73 @@ class AttachmentService {
     required String contentType,
     required Uint8List bytes,
     String? category,
+  }) => _upload(
+    ownerType: ownerType,
+    ownerId: ownerId,
+    fileName: fileName,
+    contentType: contentType,
+    bytes: bytes,
+    category: category,
+  );
+
+  /// A caller-owned, sticky identity/permission fence checked before every
+  /// network phase. Keep upload's existing override contract for other callers.
+  Future<Attachment> uploadGuarded({
+    required String ownerType,
+    required String ownerId,
+    required String fileName,
+    required String contentType,
+    required Uint8List bytes,
+    required bool Function() canContinue,
+    String? category,
+  }) => _upload(
+    ownerType: ownerType,
+    ownerId: ownerId,
+    fileName: fileName,
+    contentType: contentType,
+    bytes: bytes,
+    category: category,
+    canContinue: canContinue,
+  );
+
+  /// Persist this unique attempt before any bytes can leave the client.
+  Future<Attachment> uploadCheckpointed({
+    required String ownerType,
+    required String ownerId,
+    required String fileName,
+    required String contentType,
+    required Uint8List bytes,
+    required bool Function() canContinue,
+    required Future<void> Function(PresignResult) onPresigned,
+    String? category,
+  }) => _upload(
+    ownerType: ownerType,
+    ownerId: ownerId,
+    fileName: fileName,
+    contentType: contentType,
+    bytes: bytes,
+    category: category,
+    canContinue: canContinue,
+    onPresigned: onPresigned,
+  );
+
+  Future<Attachment> _upload({
+    required String ownerType,
+    required String ownerId,
+    required String fileName,
+    required String contentType,
+    required Uint8List bytes,
+    String? category,
+    bool Function()? canContinue,
+    Future<void> Function(PresignResult)? onPresigned,
   }) async {
+    void checkScope() {
+      if (canContinue != null && !canContinue()) {
+        throw StateError('身份或上传权限已变化，原附件保留在本机');
+      }
+    }
+
+    checkScope();
     final presignResult = await presign(
       ownerType: ownerType,
       ownerId: ownerId,
@@ -35,7 +101,16 @@ class AttachmentService {
       contentType: contentType,
       sizeBytes: bytes.length,
     );
+    checkScope();
+    if (onPresigned != null) {
+      await onPresigned(presignResult);
+    }
+    checkScope();
     await uploadBytes(presignResult, bytes);
+    checkScope();
+    // Confirmation already dispatched under the original scope cannot be
+    // undone. Return its actual receipt; the controller retains the file and
+    // this acknowledgement if the scope changed while confirm was in flight.
     return confirm(
       storageKey: presignResult.storageKey,
       confirmToken: presignResult.confirmToken,
@@ -55,6 +130,23 @@ class AttachmentService {
     final rows = await _api.getList(
       _base,
       query: {'ownerType': ownerType, 'ownerId': ownerId},
+    );
+    return rows.map(Attachment.fromJson).toList();
+  }
+
+  /// Native current-owner history permission applies, including deleted receipts.
+  /// Absence does not authorize another upload attempt.
+  Future<List<Attachment>> listHistory({
+    required String ownerType,
+    required String ownerId,
+  }) async {
+    final rows = await _api.getList(
+      _base,
+      query: {
+        'ownerType': ownerType,
+        'ownerId': ownerId,
+        'includeDeleted': true,
+      },
     );
     return rows.map(Attachment.fromJson).toList();
   }

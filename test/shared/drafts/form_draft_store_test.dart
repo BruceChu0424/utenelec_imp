@@ -145,7 +145,10 @@ void main() {
         ),
         throwsA(isA<FormDraftConflict>()),
       );
-      expect(storage.records, isEmpty);
+      final retained = jsonDecode(storage.records.values.single) as Map;
+      expect(retained['completed'], isTrue);
+      expect(retained['historyAction'], 'deleted');
+      expect(retained['data'], saved.data);
     },
   );
   final pendingPayloads = <String, Map<String, dynamic>>{
@@ -382,7 +385,7 @@ void main() {
   );
 
   test(
-    'completion removes payload, survives restart, rejects stale resurrection',
+    'completion retains payload, survives restart, rejects stale resurrection',
     () async {
       final storage = MemoryDraftStorage();
       final first = _container(storage);
@@ -394,7 +397,7 @@ void main() {
       expect(first.read(formDraftsProvider), isEmpty);
       final marker = jsonDecode(storage.records.values.single) as Map;
       expect(marker['completed'], isTrue);
-      expect(marker.containsKey('data'), isFalse);
+      expect(marker['data'], initial.data);
       await expectLater(
         a.save(_draft('draft-1'), expectedRevision: initial.revision),
         throwsA(isA<FormDraftConflict>()),

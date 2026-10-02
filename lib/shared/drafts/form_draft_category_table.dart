@@ -16,6 +16,7 @@ import '../../features/basic_data/models/master_facet.dart';
 import 'form_draft_category.dart';
 import 'form_draft_store.dart';
 import 'form_draft_catalog.dart';
+import 'form_draft_history_view.dart';
 import 'draft_workspace_sources.dart' show formDraftCategoryLabel;
 
 export 'form_draft_category.dart';
@@ -44,7 +45,7 @@ Future<void> deleteFormDrafts(
     context: context,
     builder: (dialog) => AlertDialog(
       title: Text(drafts.length == 1 ? '删除草稿？' : '删除所选 ${drafts.length} 份草稿？'),
-      content: const Text('删除后将无法继续填写这些内容。'),
+      content: const Text('删除后将无法继续填写，原内容仍保留在本机草稿历史。'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialog, false),
@@ -192,10 +193,10 @@ class _FormDraftCategoryTableState<T>
     final paginated = table.onPageChange != null;
     final formalItems = table.error == null ? table.items : <T>[];
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
-    // Keep the wrapper's runtime type stable while a paginated table appends.
-    // Local drafts are outside server pagination and remain actionable above
-    // the complete loaded sequence, including after reaching page two.
-    if (drafts.isEmpty && table.onPageChange == null) return table;
+    // Keep the adapter and its history entry when the last active draft is
+    // completed/deleted or a filter hides it. History remains independently
+    // readable even when the formal list is empty, loading or unavailable.
+    final historyInHeader = table.isLoading || table.error != null;
     final recovering = <String, FormDraft>{
       for (final draft in drafts)
         for (final id in formDraftConfirmedIds(draft)) id: draft,
@@ -221,11 +222,6 @@ class _FormDraftCategoryTableState<T>
       for (final item in formalItems)
         FormDraftCategoryRow(record: item, draft: recovering[_id(item)]),
     ];
-    if (table.onPageChange == null &&
-        local.isEmpty &&
-        !table.items.any((item) => recovering.containsKey(_id(item)))) {
-      return table;
-    }
     final protectedFormalIds = {
       for (final entry in recovering.entries)
         if (entry.value.hasUnknownSubmission) entry.key,
@@ -299,7 +295,18 @@ class _FormDraftCategoryTableState<T>
               defaultColumnOrder: binding.defaultColumnOrder,
               revealPopulatedColumnKeys: binding.revealPopulatedColumnKeys,
             ),
-      scrollingHeader: table.scrollingHeader,
+      scrollingHeader: historyInHeader
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (table.scrollingHeader != null) table.scrollingHeader!,
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FormDraftHistoryButton(scope: widget.scope),
+                ),
+              ],
+            )
+          : table.scrollingHeader,
       platformCellDecorator: table.platformCellDecorator == null
           ? null
           : (context, row, key, value, child) => row.record == null
@@ -500,42 +507,48 @@ class _FormDraftCategoryTableState<T>
           : (ctx, row) => row.isLocal
                 ? null
                 : table.leadingOverlayBuilder!(ctx, row.record as T),
-      batchActionsBuilder: (ctx, ids) => [
-        ...?table.batchActionsBuilder?.call(
-          ctx,
-          ids
-              .where(
-                (id) =>
-                    !id.startsWith(_prefix) && !protectedFormalIds.contains(id),
-              )
-              .toSet(),
-        ),
-        // 纯草稿页（宿主表没有自家批量动作）删除按钮常驻：悬浮组（已选胶囊+
-        // 按钮）恒在右下角、未选时按钮禁用但可见——2026-09-27 用户口径「已选
-        // N 项放右下角悬浮」。业务列表保持原条件：选中草稿行才追加。
-        if (table.batchActionsBuilder == null || _localSelected.isNotEmpty)
-          UtenButton(
-            type: UtenButtonType.danger,
-            onPressed:
-                _localSelected.isEmpty ||
-                    local.any(
-                      (draft) =>
-                          _localSelected.contains('$_prefix${draft.id}') &&
-                          draft.hasUnknownSubmission,
+      batchActionsBuilder: table.batchActionsBuilder == null && local.isEmpty
+          ? null
+          : (ctx, ids) => [
+              ...?table.batchActionsBuilder?.call(
+                ctx,
+                ids
+                    .where(
+                      (id) =>
+                          !id.startsWith(_prefix) &&
+                          !protectedFormalIds.contains(id),
                     )
-                ? null
-                : () => deleteFormDrafts(
-                    context,
-                    ref,
-                    local.where(
-                      (d) => _localSelected.contains('$_prefix${d.id}'),
-                    ),
-                  ),
-            onDisabledTap: () =>
-                context.appWarning(formDraftUnknownSubmissionMessage),
-            child: Text('删除填写草稿 (${_localSelected.length})'),
-          ),
-      ],
+                    .toSet(),
+              ),
+              // 纯草稿页（宿主表没有自家批量动作）删除按钮常驻：悬浮组（已选胶囊+
+              // 按钮）恒在右下角、未选时按钮禁用但可见——2026-09-27 用户口径「已选
+              // N 项放右下角悬浮」。业务列表保持原条件：选中草稿行才追加。
+              if (table.batchActionsBuilder == null ||
+                  _localSelected.isNotEmpty)
+                UtenButton(
+                  type: UtenButtonType.danger,
+                  onPressed:
+                      _localSelected.isEmpty ||
+                          local.any(
+                            (draft) =>
+                                _localSelected.contains(
+                                  '$_prefix${draft.id}',
+                                ) &&
+                                draft.hasUnknownSubmission,
+                          )
+                      ? null
+                      : () => deleteFormDrafts(
+                          context,
+                          ref,
+                          local.where(
+                            (d) => _localSelected.contains('$_prefix${d.id}'),
+                          ),
+                        ),
+                  onDisabledTap: () =>
+                      context.appWarning(formDraftUnknownSubmissionMessage),
+                  child: Text('删除填写草稿 (${_localSelected.length})'),
+                ),
+            ],
       rowColor: table.rowColor == null
           ? null
           : (row) => row.isLocal ? null : table.rowColor!(row.record as T),
@@ -615,7 +628,10 @@ class _FormDraftCategoryTableState<T>
             )
           : table.summaryBar,
       summaryBarInline: table.summaryBarInline,
-      toolbarActions: table.toolbarActions,
+      toolbarActions: [
+        ...?table.toolbarActions,
+        if (!historyInHeader) FormDraftHistoryButton(scope: widget.scope),
+      ],
       toolbarLeadingActions: table.toolbarLeadingActions,
       embedded: table.embedded,
       singleTapRows: table.singleTapRows,

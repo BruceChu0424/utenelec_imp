@@ -1,5 +1,27 @@
 part of 'production_daily_report_exact_segment_test.dart';
 
+final _identityScope = StateProvider<AuthenticatedScope>(
+  (_) => const AuthenticatedScope(userId: 'draft-user'),
+);
+final _identityServer = StateProvider<String>(
+  (_) => 'https://identity-test.invalid/api',
+);
+final _identityPermissions = StateProvider<Set<String>>(
+  (_) => {Perm.productionDailyReportCreate, Perm.productionDailyReportView},
+);
+
+class _IdentityReaderSession extends SessionNotifier {
+  @override
+  SessionState build() => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: ref.watch(_identityScope).userId,
+      code: 'draft-user',
+      name: '原提交读者',
+    ),
+  );
+}
+
 const _identityField = PlatformColumnDefinition(
   id: 'batch-ref',
   scope: 'production_daily_report_item',
@@ -12,10 +34,49 @@ class _IdentityApi {
   final valueQueries = <List<String>>[];
   int detailReads = 0;
   bool failDetail = false;
+  bool successfulCreate = false;
+  int? createHttpError;
+  int? receiptHttpError;
+  String receiptStatus = 'COMMITTED';
+  String receiptReportId = 'created-report';
+  final receiptBodies = <Map<String, dynamic>>[];
   late final api = _api(
     sourceOverrides: const {'planId': 'plan-1', 'maxReportQty': 100},
     onCreate: creates.add,
     responseOverride: (request) {
+      if (request.method == 'POST' &&
+          request.path.endsWith('/daily-reports') &&
+          (successfulCreate || createHttpError != null)) {
+        creates.add(Map<String, dynamic>.from(request.data as Map));
+        if (createHttpError != null) {
+          return _createFixtureHttpError(request, createHttpError!);
+        }
+        return {
+          'id': 'created-report',
+          'billNo': 'SR-CREATED',
+          'status': 0,
+          'makerId': 'employee-1',
+          'items': <dynamic>[],
+        };
+      }
+      if (request.path.endsWith('/daily-reports/create-receipt')) {
+        final body = Map<String, dynamic>.from(request.data as Map);
+        receiptBodies.add(body);
+        if (receiptHttpError != null) {
+          return _createFixtureHttpError(request, receiptHttpError!);
+        }
+        return _createProofBody(body, receiptReportId, status: receiptStatus);
+      }
+      if (request.method == 'GET' &&
+          request.path.endsWith('/daily-reports/created-report')) {
+        return {
+          'id': 'created-report',
+          'billNo': 'SR-CREATED',
+          'status': 0,
+          'makerId': 'employee-1',
+          'items': <Object?>[],
+        };
+      }
       if (request.path.endsWith('/material-usage-sources')) {
         return [
           {
@@ -116,22 +177,34 @@ Future<({GoRouter router, ProviderContainer container})> _openIdentityPage(
   MemoryFormDraftStorage storage,
   _IdentityApi fake, {
   String location = '/production/daily-reports/new',
+  AttachmentService? attachments,
+  Set<String>? initialPermissions,
+  String? initialServer,
+  bool settle = true,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   final container = ProviderContainer(
     overrides: [
+      if (initialPermissions != null)
+        _identityPermissions.overrideWith((_) => initialPermissions),
+      if (initialServer != null)
+        _identityServer.overrideWith((_) => initialServer),
+      ...nativeDetailReaderOverrides(
+        includeSession: false,
+        includeServer: false,
+      ),
+      sessionProvider.overrideWith(_IdentityReaderSession.new),
       apiClientProvider.overrideWithValue(fake.api),
-      apiBaseUrlProvider.overrideWith(
-        (_) => 'https://identity-test.invalid/api',
-      ),
+      apiBaseUrlProvider.overrideWith((ref) => ref.watch(_identityServer)),
       authenticatedScopeProvider.overrideWith(
-        (_) => const AuthenticatedScope(userId: 'draft-user'),
+        (ref) => ref.watch(_identityScope),
       ),
-      currentPermissionsProvider.overrideWithValue({
-        Perm.productionDailyReportCreate,
-        Perm.productionDailyReportView,
-      }),
+      currentPermissionsProvider.overrideWith(
+        (ref) => ref.watch(_identityPermissions),
+      ),
+      if (attachments != null)
+        attachmentServiceProvider.overrideWithValue(attachments),
       formDraftStorageProvider.overrideWithValue(storage),
       departmentRepositoryProvider.overrideWithValue(
         _FakeDepartmentRepository(),
@@ -155,6 +228,13 @@ Future<({GoRouter router, ProviderContainer container})> _openIdentityPage(
         ),
       ),
       GoRoute(
+        path: '/production/daily-reports/create-recovery',
+        builder: (_, state) => ProductionDailyReportCreateRecoveryPage(
+          draftId: state.uri.queryParameters['draftId']!,
+          returnToEditor: state.uri.queryParameters['returnToEditor'] == '1',
+        ),
+      ),
+      GoRoute(
         path: '/production/daily-reports/:id',
         builder: (_, state) =>
             Scaffold(body: Text('正式详情 ${state.pathParameters['id']}')),
@@ -174,7 +254,12 @@ Future<({GoRouter router, ProviderContainer container})> _openIdentityPage(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump();
+  }
   return (router: router, container: container);
 }
 

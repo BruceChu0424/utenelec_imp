@@ -76,7 +76,8 @@ class OperationsWorkbenchPage extends ConsumerStatefulWidget {
     BuildContext context, {
     required String search,
     required Widget externalHeader,
-  })? draftCategoryBuilder;
+  })?
+  draftCategoryBuilder;
 
   @override
   ConsumerState<OperationsWorkbenchPage> createState() =>

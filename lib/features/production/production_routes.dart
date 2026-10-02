@@ -10,6 +10,7 @@ import 'pages/production_board_page.dart';
 import 'pages/production_chain_health_page.dart';
 import 'pages/production_daily_report_detail_page.dart';
 import 'pages/production_daily_report_edit_page.dart';
+import 'pages/production_daily_report_create_recovery_page.dart';
 import 'pages/production_daily_report_list_page.dart';
 import 'pages/production_hub_page.dart';
 import 'pages/production_material_analysis_page.dart';
@@ -220,6 +221,14 @@ final List<RouteBase> productionRoutes = [
     // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
     builder: (_, state) => ProductionPlanListPage(
       initialStatus: state.uri.queryParameters['status'],
+    ),
+  ),
+  DraftAwareGoRoute(
+    path: '/production/daily-reports/create-recovery',
+    name: 'production-daily-report-create-recovery',
+    builder: (_, state) => ProductionDailyReportCreateRecoveryPage(
+      draftId: state.uri.queryParameters['draftId'] ?? '',
+      returnToEditor: state.uri.queryParameters['returnToEditor'] == '1',
     ),
   ),
   DraftAwareGoRoute(

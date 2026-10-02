@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 
@@ -40,6 +41,11 @@ import '../../../shared/drafts/identified_platform_drafts.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../models/production_daily_report_create_request.dart';
+import 'production_daily_report_create_recovery_page.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -47,6 +53,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/attachments/pending_attachment_controller.dart';
 import '../../../shared/attachments/pending_attachment_flow.dart';
+import '../../../shared/attachments/attachment_upload_attempt.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -164,6 +171,9 @@ class _ProductionDailyReportEditPageState
   String? _resumeNotice;
   int _rowVersion = 0;
   String _createIdempotencyKey = 'daily-report-create-${const Uuid().v4()}';
+  FrozenDailyReportCreate? _frozenCreate;
+  String? _createRequestState;
+  Map<String, dynamic>? _createReceiptCheckpoint;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -173,7 +183,84 @@ class _ProductionDailyReportEditPageState
   @override
   bool get formDraftBusy => _saving;
   @override
-  bool get formDraftCanReplaySubmission => true;
+  bool get formDraftCanReplaySubmission => false;
+
+  @override
+  bool get formDraftHasConfirmedExternalRecovery {
+    // Once this editor adopted the parent, its pending file edits still need
+    // normal save/exit protection; the parent's receipt cannot discard them.
+    if (_createdReportId != null && _pendingFiles.isNotEmpty) return false;
+    final original = _frozenCreate;
+    final localId = formDraftRecoveryId;
+    if (!formDraftIdentityIsCurrent || original == null || localId == null) {
+      return false;
+    }
+    final saved = ref
+        .read(formDraftsProvider)
+        .where((draft) => draft.id == localId)
+        .firstOrNull;
+    final receipt = saved?.data[dailyReportCreateReceiptKey];
+    final body = saved?.data[dailyReportCreateCommandKey];
+    return receipt is Map &&
+        body is Map &&
+        receipt['status'] == 'COMMITTED' &&
+        receipt['fullPayloadVersion'] == 1 &&
+        receipt['idempotencyKey'] == original.idempotencyKey &&
+        receipt['requestHash'] == original.requestHash &&
+        receipt['fullPayloadHash'] == original.fullPayloadHash &&
+        body['bodyHash'] == original.bodyHash &&
+        receipt['reportId'] is String &&
+        saved?.data['createdReportId'] == receipt['reportId'];
+  }
+
+  @override
+  Widget? get formDraftSubmissionRecoveryAction =>
+      formDraftRecoveryId != null && formDraftHasUnknownSubmission
+      ? FilledButton(
+          key: const Key('daily-report-open-create-recovery'),
+          onPressed: _openCreateRecovery,
+          child: const Text('只读核对原提交'),
+        )
+      : null;
+
+  Future<void> _openCreateRecovery() async {
+    final localId = formDraftRecoveryId;
+    final original = _frozenCreate;
+    if (localId == null || !formDraftIdentityIsCurrent) return;
+    final result = await context.push<DailyReportCreateRecoveryResult>(
+      RoutePath.productionDailyReportCreateRecovery(
+        localId,
+        returnToEditor: true,
+      ),
+    );
+    if (result == null || original == null || !formDraftIdentityIsCurrent) {
+      return;
+    }
+    result.resolution.verify(original);
+    final restored = FrozenDailyReportCreate.restore(
+      Map<String, dynamic>.from(
+        result.checkpoint.data[dailyReportCreateCommandKey] as Map,
+      ),
+    );
+    if (restored.bodyHash != original.bodyHash ||
+        result.checkpoint.id != localId) {
+      return;
+    }
+    if (!_pendingFiles.sameOriginalFiles(
+      draftMap(result.checkpoint.data['attachments']),
+    )) {
+      if (!mounted) return;
+      context.appWarning('本机附件已在另一页面变化。当前原文件继续保留，请先核对草稿版本。');
+      return;
+    }
+    _createdReportId = result.resolution.reportId;
+    _createRequestState = 'CONFIRMED';
+    _createReceiptCheckpoint = result.resolution.toCheckpoint();
+    _pendingFiles.restoreDraft(draftMap(result.checkpoint.data['attachments']));
+    _adoptAcceptedReport(result.resolution.detail!);
+    adoptFormDraftRecoveryCheckpoint(result.checkpoint);
+  }
+
   @override
   FormDraftSpec get formDraftSpec => FormDraftCatalog.dailyReport.spec(
     title: '新建生产日报',
@@ -230,6 +317,12 @@ class _ProductionDailyReportEditPageState
     'surplusReturnRequested': _surplusReturnRequested,
     'createdReportId': _createdReportId,
     'idempotencyKey': _createIdempotencyKey,
+    if (_frozenCreate != null)
+      dailyReportCreateCommandKey: _frozenCreate!.toJson(),
+    if (_createRequestState != null)
+      dailyReportCreateStateKey: _createRequestState,
+    if (_createReceiptCheckpoint != null)
+      dailyReportCreateReceiptKey: _createReceiptCheckpoint,
     'attachments': _pendingFiles.exportDraft(),
     'rows': [
       for (final row in _productRows)
@@ -310,6 +403,35 @@ class _ProductionDailyReportEditPageState
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    var rawCreate = data[dailyReportCreateCommandKey];
+    if (rawCreate is Map && rawCreate['bodyJson'] is! String) {
+      final id = formDraftRecoveryId;
+      final original = id == null
+          ? null
+          : await ref
+                .read(formDraftsProvider.notifier)
+                .readDailyReportCreateRecovery(id);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      rawCreate = original?.data[dailyReportCreateCommandKey];
+      if (rawCreate is! Map) throw StateError('原提交记录不可用，保留输入并只读核对');
+    }
+    _frozenCreate = rawCreate is Map
+        ? FrozenDailyReportCreate.restore(Map<String, dynamic>.from(rawCreate))
+        : null;
+    final owner = ref.read(authenticatedScopeProvider);
+    if (_frozenCreate != null &&
+        (owner == null ||
+            !_frozenCreate!.belongsTo(
+              server: ref.read(apiBaseUrlProvider),
+              userId: owner.userId,
+              actorId: owner.actorId,
+            ))) {
+      throw StateError('原提交所属身份已变化');
+    }
+    _createRequestState = data[dailyReportCreateStateKey] as String?;
+    _createReceiptCheckpoint = data[dailyReportCreateReceiptKey] is Map
+        ? Map<String, dynamic>.from(data[dailyReportCreateReceiptKey] as Map)
+        : null;
     _remark.text = draftText(data, 'remark');
     _billDate = DateTime.tryParse(draftText(data, 'billDate')) ?? _billDate;
     _departmentId = data['departmentId'] as String?;
@@ -496,6 +618,7 @@ class _ProductionDailyReportEditPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     _grid.addListener(_scheduleMaterialOwnershipRefresh);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
@@ -1991,25 +2114,150 @@ class _ProductionDailyReportEditPageState
 
   /// 把暂存附件上传到刚创建的日报；全部成功才跳详情，失败项留在页面供重试。
   Future<void> _finishCreatedReport(String createdId) async {
+    if (_pendingFiles.needsReceiptFor(createdId)) {
+      await _openCreateRecovery();
+      return;
+    }
+    if (!_pendingFiles.hasPendingFor(createdId)) {
+      await completeFormDraft();
+      if (!mounted || !formDraftIdentityIsCurrent) {
+        return;
+      }
+      _openSavedReport(createdId);
+      return;
+    }
+    final original = _frozenCreate;
+    if (original == null ||
+        _createReceiptCheckpoint?['status'] != 'COMMITTED' ||
+        _createReceiptCheckpoint?['reportId'] != createdId ||
+        _createReceiptCheckpoint?['fullPayloadHash'] !=
+            original.fullPayloadHash) {
+      context.appWarning('原父单证明尚未完整核对，附件保留并只读核对');
+      await _openCreateRecovery();
+      return;
+    }
+    final scope = ref.read(authenticatedScopeProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final generation = confirmedSessionSnapshot(
+      ref.read(sessionSnapshotProvider),
+    )?.generation;
+    var revoked = false;
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        ref.read(authenticatedScopeProvider) == scope &&
+        ref.read(apiBaseUrlProvider) == server;
+    bool hasUploadPermissions(Set<String> permissions) =>
+        permissions.contains(Perm.productionDailyReportView) &&
+        permissions.contains(Perm.productionDailyReportCreate) &&
+        permissions.contains(Perm.productionDailyReportEdit) &&
+        permissions.contains(Perm.attachmentUpload);
+    bool mayUpload() =>
+        current() &&
+        !revoked &&
+        scope != null &&
+        !scope.readOnly &&
+        generation != null &&
+        confirmedSessionSnapshot(
+              ref.read(sessionSnapshotProvider),
+            )?.generation ==
+            generation &&
+        hasUploadPermissions(ref.read(currentPermissionsProvider));
+    if (_pendingFiles.isNotEmpty && !mayUpload()) {
+      context.appWarning('当前仅可核对已创建日报，待上传附件仍保留在本机');
+      return;
+    }
+    // Sticky across permission A-B-A, including a lost view that is restored
+    // before the next network callback. Owner/server ABA is guarded by the form.
+    final permissionWatch = ref.listenManual(currentPermissionsProvider, (
+      _,
+      next,
+    ) {
+      if (!hasUploadPermissions(next)) {
+        revoked = true;
+      }
+    });
+    final snapshotWatch = ref.listenManual(sessionSnapshotProvider, (_, next) {
+      if (confirmedSessionSnapshot(next)?.generation != generation) {
+        revoked = true;
+      }
+    });
     setState(() => _saving = true);
     try {
+      if (_pendingFiles.isNotEmpty) {
+        final fresh = await ref
+            .read(productionDailyReportRepositoryProvider)
+            .detail(createdId);
+        if (!mounted || !current()) {
+          return;
+        }
+        if (fresh.id != createdId ||
+            fresh.status != 0 ||
+            fresh.closed ||
+            fresh.canceled) {
+          context.appWarning('当前单据状态不允许上传，附件仍保留在本机');
+          return;
+        }
+        final canWrite = await loadDocumentOwnerCanWrite(
+          ref,
+          DocumentDataScope.productionPlan,
+          fresh.makerId,
+        );
+        if (!mounted || !current()) {
+          return;
+        }
+        if (!canWrite || !mayUpload()) {
+          context.appWarning('当前写入范围不允许上传，附件仍保留在本机');
+          return;
+        }
+        await saveFormDraftNow();
+      }
+      if (!mounted || !current()) {
+        return;
+      }
       final ok = await flushPendingAttachments(
         context,
         ref,
         _pendingFiles,
         ownerType: 'PRODUCTION_DAILY_REPORT',
         ownerIds: [createdId],
+        canContinue: mayUpload,
+        uploadIdentity: AttachmentUploadIdentity(
+          server: original.server,
+          userId: original.userId,
+          actorId: original.actorId,
+          parentProofHash: original.fullPayloadHash,
+        ),
+        persistCheckpoint: () async {
+          try {
+            await saveFormDraftNow();
+          } catch (_) {
+            revoked = true;
+            rethrow;
+          }
+        },
       );
-      if (!mounted || !ok) return;
+      if (!mounted || !current() || !ok) {
+        return;
+      }
       await completeFormDraft();
-      if (!mounted) return;
+      if (!mounted || !current()) {
+        return;
+      }
       _openSavedReport(createdId);
+    } catch (_) {
+      if (mounted && current()) {
+        context.appError('附件尚未全部保存，原文件与已创建日报检查点继续保留');
+      }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      permissionWatch.close();
+      snapshotWatch.close();
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
-  /// 附件首次上传与失败后重试都走同一保存后导航，不能绕过详情审核。
   void _openSavedReport(String reportId) {
     final detailPath = '/production/daily-reports/$reportId';
     if (widget.returnToWorkshopTasks) {
@@ -2025,9 +2273,33 @@ class _ProductionDailyReportEditPageState
   }
 
   Future<void> _save() async {
-    if (_saving) return;
+    if (_saving || !formDraftIdentityIsCurrent) return;
+    if (widget.id == null &&
+        _createdReportId == null &&
+        formDraftHasUnknownSubmission) {
+      await _openCreateRecovery();
+      return;
+    }
     if (_createdReportId case final createdId?) {
       await _finishCreatedReport(createdId);
+      return;
+    }
+    final initialScope = ref.read(authenticatedScopeProvider);
+    final initialServer = ref.read(apiBaseUrlProvider);
+    final initialSnapshot = confirmedSessionSnapshot(
+      ref.read(sessionSnapshotProvider),
+    );
+    if (widget.id == null &&
+        (initialScope == null ||
+            initialScope.readOnly ||
+            initialSnapshot == null ||
+            !ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.productionDailyReportCreate) ||
+            !ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.productionDailyReportView))) {
+      context.appWarning('当前身份、创建或查看权限尚未确认，输入已保留');
       return;
     }
     if (_resumeBlocked) {
@@ -2340,23 +2612,130 @@ class _ProductionDailyReportEditPageState
     )) {
       return;
     }
+    if (!mounted || !formDraftIdentityIsCurrent) return;
+    final submissionScope = initialScope;
+    final submissionServer = initialServer;
+    if (widget.id == null &&
+        (submissionScope == null ||
+            submissionScope.readOnly ||
+            confirmedSessionSnapshot(ref.read(sessionSnapshotProvider)) ==
+                null ||
+            !ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.productionDailyReportCreate) ||
+            !ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.productionDailyReportView))) {
+      context.appWarning('当前身份、创建或查看权限尚未确认，输入已保留');
+      return;
+    }
+    bool ownsSubmission() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        ref.read(authenticatedScopeProvider) == submissionScope &&
+        ref.read(apiBaseUrlProvider) == submissionServer &&
+        (widget.id != null ||
+            confirmedSessionSnapshot(
+                  ref.read(sessionSnapshotProvider),
+                )?.generation ==
+                initialSnapshot?.generation);
+    if (!ownsSubmission()) return;
+    var dispatched = false;
+    var createAcknowledged = false;
+    bool mayTreatCreateAsRejected(ApiException error) =>
+        !createAcknowledged &&
+        ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.productionDailyReportCreate) &&
+        ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.productionDailyReportView) &&
+        (error.httpStatus == 400 || error.httpStatus == 422);
     setState(() => _saving = true);
     try {
-      if (_isCreate) await saveFormDraftNow();
+      if (widget.id == null) {
+        _frozenCreate = FrozenDailyReportCreate.capture(
+          body: body,
+          server: submissionServer,
+          userId: submissionScope!.userId,
+          actorId: submissionScope.actorId,
+        );
+        _createRequestState = 'UNKNOWN';
+      }
       final repo = ref.read(productionDailyReportRepositoryProvider);
       final d = widget.id == null
-          ? await runFormDraftSubmission(
-              () => repo.create(body, idempotencyKey: _createIdempotencyKey),
-            )
+          ? await runFormDraftSubmission(() async {
+              if (!ownsSubmission() ||
+                  !ref
+                      .read(currentPermissionsProvider)
+                      .contains(Perm.productionDailyReportCreate) ||
+                  !ref
+                      .read(currentPermissionsProvider)
+                      .contains(Perm.productionDailyReportView)) {
+                throw StateError('当前身份或创建权限已变化，本次未发送');
+              }
+              dispatched = true;
+              final accepted = await repo.create(
+                _frozenCreate!.requestBody,
+                idempotencyKey: _frozenCreate!.idempotencyKey,
+              );
+              createAcknowledged = true;
+              if (!ownsSubmission() ||
+                  !ref
+                      .read(currentPermissionsProvider)
+                      .contains(Perm.productionDailyReportView)) {
+                throw StateError('创建返回后的查看范围已变化');
+              }
+              if (accepted.id.trim().isEmpty) {
+                throw const FormatException('创建返回的单据身份无效');
+              }
+              final resolution = await repo.createReceipt(_frozenCreate!);
+              if (!ownsSubmission() ||
+                  !ref
+                      .read(currentPermissionsProvider)
+                      .contains(Perm.productionDailyReportView)) {
+                throw StateError('核对回执期间身份或查看范围已变化');
+              }
+              if (!resolution.committed || resolution.reportId != accepted.id) {
+                throw const FormatException('完整原请求尚未确认，不能采用当前单据作为本次保存结果');
+              }
+              _createReceiptCheckpoint = resolution.toCheckpoint();
+              return resolution.detail!;
+            }, isDefiniteRejection: mayTreatCreateAsRejected)
           : await repo.update(widget.id!, body, expectedVersion: _rowVersion);
-      if (!mounted) return;
-      context.appSuccess('报工草稿已保存，待审核');
+      if (!ownsSubmission()) {
+        if (widget.id == null) holdFormDraftForReadRecovery();
+        return;
+      }
+      if (widget.id == null) {
+        final localId = formDraftRecoveryId;
+        final revision = formDraftRecoveryRevision;
+        if (localId == null ||
+            revision == null ||
+            _createReceiptCheckpoint == null) {
+          throw StateError('原提交检查点尚未保存，暂不能继续处理附件');
+        }
+        final checkpoint = await ref
+            .read(formDraftsProvider.notifier)
+            .confirmDailyReportCreateRecovery(
+              localId,
+              expectedRevision: revision,
+              receipt: _createReceiptCheckpoint!,
+            );
+        if (!ownsSubmission()) return;
+        _createdReportId = d.id;
+        _createRequestState = 'CONFIRMED';
+        adoptFormDraftRecoveryCheckpoint(checkpoint);
+      }
+      if (!mounted || !ownsSubmission()) return;
+      context.appSuccess(
+        d.status == 0 ? '报工草稿已保存，待审核' : '已确认原提交对应的生产日报，请查看当前状态',
+      );
       // 同生产计划单：本页不走 bumpListRefresh，草稿计数在这里单独失效。
       refreshBadges(ref);
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdReportId = d.id);
         _adoptAcceptedReport(d);
-        await checkpointFormDraftAfterCreation();
         await _finishCreatedReport(d.id);
         return;
       }
@@ -2364,19 +2743,83 @@ class _ProductionDailyReportEditPageState
       if (!mounted) return;
       _openSavedReport(d.id);
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !ownsSubmission()) return;
+      if (widget.id == null && (!dispatched || mayTreatCreateAsRejected(e))) {
+        try {
+          if (!dispatched) {
+            _frozenCreate = null;
+            _createRequestState = null;
+            await releaseFormDraftBeforeDispatch();
+          } else {
+            final rejected = _frozenCreate;
+            final localId = formDraftRecoveryId;
+            final revision = formDraftRecoveryRevision;
+            if (rejected == null || localId == null || revision == null) {
+              throw StateError('这次原创建的本机身份尚未核对');
+            }
+            final released = await ref
+                .read(formDraftsProvider.notifier)
+                .releaseRejectedDailyReportCreate(
+                  localId,
+                  expectedRevision: revision,
+                  expectedOperationKey: rejected.idempotencyKey,
+                  expectedBodyHash: rejected.bodyHash,
+                  httpStatus: e.httpStatus!,
+                  createAcknowledged: createAcknowledged,
+                );
+            if (!mounted || !ownsSubmission()) return;
+            _frozenCreate = null;
+            _createRequestState = 'REJECTED';
+            _createReceiptCheckpoint = null;
+            adoptFormDraftRecoveryCheckpoint(released);
+          }
+        } catch (_) {
+          if (mounted && ownsSubmission()) {
+            context.appError('本次创建未保存；本机记录写入也未完成，请保留页面中的原输入');
+          }
+          return;
+        }
+      }
+      if (!mounted || !ownsSubmission()) return;
       if (e.code == 'CONFLICT' && widget.id != null) {
         context.appWarning(
           '保存冲突：该日报已被其他人修改。当前输入仍保留，请核对后重新进入最新草稿再编辑。',
           force: true,
         );
       } else {
+        if (widget.id == null && dispatched && !mayTreatCreateAsRejected(e)) {
+          holdFormDraftForReadRecovery();
+        }
         context.appError(e.message);
       }
     } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+      if (!mounted || !ownsSubmission()) return;
+      if (widget.id == null && !dispatched) {
+        _frozenCreate = null;
+        _createRequestState = null;
+        try {
+          await releaseFormDraftBeforeDispatch();
+        } catch (_) {
+          if (mounted && ownsSubmission()) {
+            context.appError('本次尚未发送创建请求；本机记录未写入，请保留页面中的原输入');
+          }
+          return;
+        }
+      }
+      if (!mounted || !ownsSubmission()) return;
+      if (widget.id == null && dispatched) holdFormDraftForReadRecovery();
+      context.appError(
+        dispatched && widget.id == null
+            ? '创建结果尚未确认，完整原提交已保留，请只读核对原提交'
+            : '保存失败，请保留输入后重试',
+      );
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted &&
+          formDraftIdentityIsCurrent &&
+          ref.read(authenticatedScopeProvider) == submissionScope &&
+          ref.read(apiBaseUrlProvider) == submissionServer) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -2875,11 +3318,21 @@ class _ProductionDailyReportEditPageState
                                 categories: const ['报工照片', '检验记录', '签认单', '其他'],
                               )
                             else ...[
-                              if (_createdReportId != null)
-                                PendingAttachmentRetryNotice(
-                                  documentLabel: '生产日报',
-                                  controller: _pendingFiles,
-                                ),
+                              if (_createdReportId != null) ...[
+                                if (_pendingFiles.needsReceiptFor(
+                                  _createdReportId!,
+                                )) ...[
+                                  const Text('原附件上传结果仍待核对，文件已保留；不会重新上传。'),
+                                  TextButton(
+                                    onPressed: _openCreateRecovery,
+                                    child: const Text('只读核对原附件上传'),
+                                  ),
+                                ] else
+                                  PendingAttachmentRetryNotice(
+                                    documentLabel: '生产日报',
+                                    controller: _pendingFiles,
+                                  ),
+                              ],
                               BusinessAttachmentSection.draft(
                                 key: const ValueKey(
                                   'daily-report-draft-attachments',

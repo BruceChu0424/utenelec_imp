@@ -23,6 +23,7 @@ import '../providers/master_name_provider.dart';
 import 'draft_workspace_sources.dart';
 import 'form_draft_category.dart';
 import 'form_draft_store.dart';
+import 'form_draft_history_view.dart';
 
 export 'draft_workspace_sources.dart';
 
@@ -547,12 +548,18 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
       if (widget.externalHeader != null) widget.externalHeader!,
       if (widget.showSearch)
         UtenFilterToolbar<String>(
+          trailing: FormDraftHistoryButton(scope: widget.localScope),
           searchHint: '搜索类别、单据、往来单位或部门',
           onSearchChanged: (value) {
             if (widget.selectionLocked || draftDeleteBusy) return;
             clearDraftSelection();
             setState(() => _search = value);
           },
+        )
+      else
+        Align(
+          alignment: Alignment.centerRight,
+          child: FormDraftHistoryButton(scope: widget.localScope),
         ),
       if (loading && rows.isNotEmpty)
         const LinearProgressIndicator(minHeight: 2),

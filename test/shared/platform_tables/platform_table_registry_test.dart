@@ -47,7 +47,10 @@ void main() {
         expect(binding.recordIdOf(row), isNull);
         expect(binding.canEditValues, isFalse);
         expect(binding.factValuesOf!(row)['amount'], '1.23456789');
-        expect(binding.factValuesOf!(row).containsKey('supplierSecret'), isFalse);
+        expect(
+          binding.factValuesOf!(row).containsKey('supplierSecret'),
+          isFalse,
+        );
       }
     },
   );

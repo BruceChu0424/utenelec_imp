@@ -32,6 +32,57 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// True only with a persisted server idempotency key or a confirmed created ID.
   bool get formDraftCanReplaySubmission => false;
 
+  /// A feature may provide a pure-read receipt action outside the blocked form.
+  Widget? get formDraftSubmissionRecoveryAction => null;
+  bool get formDraftHasConfirmedExternalRecovery => false;
+  String? get formDraftRecoveryId => _draftRevision == null ? null : _draftId;
+  String? get formDraftRecoveryRevision => _draftRevision;
+
+  void holdFormDraftForReadRecovery() {
+    if (!formDraftIdentityIsCurrent || !formDraftEnabled) return;
+    _draftSubmissionPending = true;
+    _draftSubmissionBlocked = true;
+    _draftStatus.value = '原提交需要在当前查看范围下重新核对，输入继续保留';
+    super.setState(() {});
+  }
+
+  /// Only for a feature that proves its send callback never crossed the API
+  /// boundary. A timeout, rejected receipt or missing response is not unsent.
+  Future<void> releaseFormDraftBeforeDispatch() async {
+    if (!formDraftIdentityIsCurrent || !formDraftEnabled) return;
+    _draftSubmissionPending = false;
+    _draftSubmissionBlocked = false;
+    await saveFormDraftNow();
+    if (mounted) super.setState(() {});
+  }
+
+  /// Adopt only a locally persisted, already confirmed checkpoint after the
+  /// feature validates its original command receipt. No business API is called.
+  void adoptFormDraftRecoveryCheckpoint(FormDraft checkpoint) {
+    if (!formDraftIdentityIsCurrent ||
+        checkpoint.id != _draftId ||
+        ref
+                .read(formDraftsProvider)
+                .where((draft) => draft.id == _draftId)
+                .firstOrNull
+                ?.revision !=
+            checkpoint.revision ||
+        checkpoint.hasUnknownSubmission ||
+        _draftStore?.ownerKey != _draftOwnerKey ||
+        !formDraftSpec.canRestore(checkpoint, currentRoute: _draftRoute)) {
+      throw StateError('原草稿身份或创建结果尚未核对');
+    }
+    _draftRevision = checkpoint.revision;
+    _draftSubmissionPending = false;
+    _draftSubmissionBlocked = false;
+    _draftRestoreBlocked = false;
+    _draftError = null;
+    _draftSavedJson = _captureDraftJson();
+    _draftPendingJson = null;
+    _draftStatus.value = '原创建已核对，未完成附件仍保留在本机';
+    if (mounted) super.setState(() {});
+  }
+
   /// A partially restored snapshot is not evidence for completion or replay.
   bool get formDraftRestorationBlocked => _draftRestoreBlocked;
 
@@ -602,6 +653,13 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   Future<bool> _confirmDraftExit() {
     if (_draftIdentityChanged) return Future.value(true);
+    if (formDraftHasConfirmedExternalRecovery) {
+      // A verified checkpoint for this exact command is already durable.
+      // Stop the old editor's autosaves without deleting that checkpoint.
+      _draftFinished = true;
+      _draftExitAllowed = true;
+      return Future.value(true);
+    }
     // The business operation already completed; its own navigation commonly
     // runs before the page's finally block clears _saving. Do not veto it.
     if (_draftFinished) return Future.value(true);
@@ -786,6 +844,11 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
                               : '这份草稿暂时无法恢复，原草稿已保留。',
                         ),
                         const SizedBox(height: 12),
+                        if (formDraftSubmissionRecoveryAction
+                            case final recovery?) ...[
+                          recovery,
+                          const SizedBox(height: 12),
+                        ],
                         if (_canReloadDraftSource) ...[
                           FilledButton(
                             onPressed: _reloadDraftSource,

@@ -181,17 +181,61 @@ class AttachmentRetainedHistoryPostgresTest {
         assertThat(processor.processNext()).isTrue();
         assertThat(jdbc.queryForObject("SELECT delete_reason FROM attachments WHERE id=?",String.class,alreadyReasoned.getId())).isEqualTo("OLDER_RECORDED_REASON");
     }
+    @Test void nativeHistoryGetExposesExactStoredShaToViewOnlyReaderWithoutWrites() throws Exception {
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(
+                new AttachmentController(service,mock(AttachmentReconciliationService.class),
+                        mock(AttachmentPreviewService.class),mock(com.uten.imp.audit.AuditDetailViewRecorder.class)))
+                .setControllerAdvice(new com.uten.imp.common.web.GlobalExceptionHandler()).build();
+        when(current.get()).thenReturn(Optional.of(new AuthUser(actor,UUID.randomUUID(),"view-only",
+                Set.of("attachment:view"),false,true,false)));
+        for (var state:List.of(AttachmentLifecycleState.CLEAN,AttachmentLifecycleState.RETAINED_HISTORY)) {
+            owner=UUID.randomUUID();
+            Attachment row=create(("proof-"+state).getBytes(StandardCharsets.UTF_8),state);
+            String before=jdbc.queryForObject("SELECT to_jsonb(a)::text FROM attachments a WHERE id=?",String.class,row.getId());
+            int sessions=jdbc.queryForObject("SELECT count(*) FROM attachment_upload_sessions",Integer.class);
+            int outbox=jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox",Integer.class);
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/attachments")
+                            .param("ownerType","SALES_QUOTE").param("ownerId",owner.toString()).param("includeDeleted","true"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].sha256").value(row.getSha256()))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].storageKey").value(row.getStorageKey()))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].uploadedBy").value(actor.toString()))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].deleted").value(state==AttachmentLifecycleState.RETAINED_HISTORY));
+            assertThat(jdbc.queryForObject("SELECT to_jsonb(a)::text FROM attachments a WHERE id=?",String.class,row.getId())).isEqualTo(before);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_upload_sessions",Integer.class)).isEqualTo(sessions);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox",Integer.class)).isEqualTo(outbox);
+        }
+        policy.historyDenied=true;
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/attachments")
+                        .param("ownerType","SALES_QUOTE").param("ownerId",owner.toString()).param("includeDeleted","true"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        policy.historyDenied=false;
+        when(current.get()).thenReturn(Optional.of(new AuthUser(actor,UUID.randomUUID(),"no-view",Set.of(),false,true,false)));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/attachments")
+                        .param("ownerType","SALES_QUOTE").param("ownerId",owner.toString()).param("includeDeleted","true"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+    }
+    @Test void nativeHistoryKeepsMissingLegacyShaNullInsteadOfInventingProof() throws Exception {
+        Attachment legacy=create("legacy-original".getBytes(StandardCharsets.UTF_8),AttachmentLifecycleState.LEGACY_UNVERIFIED,false);
+        var row=service.list("SALES_QUOTE",owner,true,false).getFirst();
+        assertThat(row.id()).isEqualTo(legacy.getId());assertThat(row.sha256()).isNull();
+        assertThat(service.history(legacy.getId()).sha256()).isNull();
+    }
+
     private long blockers(UUID id){return jdbc.queryForObject("SELECT count(*) FROM fn_business_attachment_reset_blockers() WHERE entity_type='ATTACHMENT' AND entity_id=?",Long.class,id);}
     private Attachment create(byte[] bytes,AttachmentLifecycleState state) throws Exception {
+        return create(bytes,state,true);
+    }
+    private Attachment create(byte[] bytes,AttachmentLifecycleState state,boolean withDigest) throws Exception {
         String key=UUID.randomUUID().toString().replace("-","")+".txt";
         storage.store(key,new ByteArrayInputStream(bytes),bytes.length,"text/plain");storage.promoteToFinal(key,storage.describe(key));
         var row=new Attachment();row.setOwnerType("SALES_QUOTE");row.setOwnerId(owner);row.setStorageKey(key);row.setStorageProvider("local");
         row.setOriginalName("原始报价.txt");row.setContentType("text/plain");row.setSizeBytes(bytes.length);
-        row.setSha256(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
+        row.setSha256(withDigest?HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)):null);
         row.setStoredSizeBytes((long)bytes.length);row.setStorageEncoding("IDENTITY");row.setLifecycleState(state);
         row.setScanEngine("test-private-clean");row.setScannedAt(Instant.now());row.setPromotedAt(Instant.now());
         row.setCreatedAt(Instant.now());row.setUpdatedAt(Instant.now());row.setCreatedBy(actor);
-        if(state!=AttachmentLifecycleState.CLEAN){row.setDeleteRequestedAt(Instant.now());row.setDeleteRequestedBy(actor);
+        if(state!=AttachmentLifecycleState.CLEAN&&state!=AttachmentLifecycleState.LEGACY_UNVERIFIED){row.setDeleteRequestedAt(Instant.now());row.setDeleteRequestedBy(actor);
             row.setDeleteReason(state==AttachmentLifecycleState.DELETE_PENDING?null:"PRIVATE_FIXTURE_HISTORY");}
         transactions.executeWithoutResult(status->repository.saveAndFlush(row));return row;
     }

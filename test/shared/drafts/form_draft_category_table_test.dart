@@ -46,28 +46,214 @@ typedef _Union = FormDraftCategoryRow<_Record>;
 const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
-  testWidgets('local category filter clears selection and keeps categories in the first column', (tester) async {
-    await tester.pumpWidget(ProviderScope(
-      overrides: [formDraftsProvider.overrideWith(() => _Drafts([
-        _draft('order'), _draft('quote', kind: 'salesQuote'),
-      ]))],
-      child: const MaterialApp(home: Scaffold(body: FormDraftCategoryList(
-        scope: FormDraftCategoryScope(module: BadgeModule.sales),
-      ))),
-    ));
-    await tester.pumpAndSettle();
-    MasterDataTableView<FormDraftCategoryRow<Object>> table() => tester.widget(
-      find.byType(MasterDataTableView<FormDraftCategoryRow<Object>>));
-    expect(table().columns.first.key, 'category');
-    table().onSelectedIdsChanged!({'form-draft:order', 'form-draft:quote'});
-    await tester.pump();
-    expect(table().selectedIds.length, 2);
-    table().onFilterChanged('category', '销售报价单');
-    await tester.pumpAndSettle();
-    expect(table().items.map((row) => row.draft?.id), ['quote']);
-    expect(table().selectedIds, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'history stays available with formal rows and no active local drafts',
+    (tester) async {
+      var hostActionCalls = 0;
+      await tester.binding.setSurfaceSize(const Size(480, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [formDraftsProvider.overrideWith(() => _Drafts([]))],
+          child: MaterialApp(
+            home: Scaffold(
+              body: FormDraftCategoryTable<_Record>(
+                scope: _scope,
+                table: MasterDataTableView<_Record>(
+                  columns: [
+                    MasterColumnDef(
+                      key: 'billNo',
+                      label: '单号',
+                      width: 180,
+                      value: (row) => row.number,
+                    ),
+                  ],
+                  items: const [_Record('formal', 'XD-已保存')],
+                  idOf: (row) => row.id,
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  toolbarActions: [
+                    TextButton(
+                      onPressed: () => hostActionCalls++,
+                      child: const Text('宿主动作'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('本机草稿历史'), findsOneWidget);
+      expect(find.text('XD-已保存'), findsOneWidget);
+      expect(find.text('宿主动作'), findsOneWidget);
+      await tester.tap(find.text('宿主动作'));
+      expect(hostActionCalls, 1);
+      final table = tester.widget<MasterDataTableView<_Union>>(
+        find.byType(MasterDataTableView<_Union>),
+      );
+      expect(table.batchActionsBuilder, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'search hiding local rows preserves history and host toolbar in empty state',
+    (tester) async {
+      var search = '';
+      var hostActionCalls = 0;
+      late StateSetter update;
+      await tester.binding.setSurfaceSize(const Size(480, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            formDraftsProvider.overrideWith(() => _Drafts([_draft('local')])),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (context, setState) {
+                  update = setState;
+                  return FormDraftCategoryTable<_Record>(
+                    scope: _scope,
+                    search: search,
+                    table: MasterDataTableView<_Record>(
+                      columns: [
+                        MasterColumnDef(
+                          key: 'billNo',
+                          label: '单号',
+                          width: 180,
+                          value: (row) => row.number,
+                        ),
+                      ],
+                      items: const [],
+                      idOf: (row) => row.id,
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      emptyMessage: '没有匹配草稿',
+                      toolbarActions: [
+                        TextButton(
+                          onPressed: () => hostActionCalls++,
+                          child: const Text('宿主动作'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('本机草稿历史'), findsOneWidget);
+      update(() => search = '完全不匹配的检索词');
+      await tester.pumpAndSettle();
+      expect(find.text('没有匹配草稿'), findsOneWidget);
+      expect(find.text('本机草稿历史'), findsOneWidget);
+      expect(find.text('宿主动作'), findsOneWidget);
+      await tester.tap(find.text('宿主动作'));
+      expect(hostActionCalls, 1);
+      final table = tester.widget<MasterDataTableView<_Union>>(
+        find.byType(MasterDataTableView<_Union>),
+      );
+      expect(table.items, isEmpty);
+      expect(table.batchActionsBuilder, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final loading in [true, false]) {
+    testWidgets(
+      'history is reachable while formal source is ${loading ? 'loading' : 'offline'}',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(480, 720));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [formDraftsProvider.overrideWith(() => _Drafts([]))],
+            child: MaterialApp(
+              home: Scaffold(
+                body: FormDraftCategoryTable<_Record>(
+                  scope: _scope,
+                  table: MasterDataTableView<_Record>(
+                    scrollingHeader: const Text('宿主标题'),
+                    columns: [
+                      MasterColumnDef(
+                        key: 'billNo',
+                        label: '单号',
+                        width: 180,
+                        value: (row) => row.number,
+                      ),
+                    ],
+                    items: const [],
+                    idOf: (row) => row.id,
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    isLoading: loading,
+                    error: loading ? null : '正式列表离线',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        // Loading keeps the progress animation alive; this check must not wait
+        // for that animation to settle before inspecting the local entry.
+        await tester.pump();
+        expect(find.text('本机草稿历史'), findsOneWidget);
+        expect(find.text('宿主标题'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'local category filter clears selection and keeps categories in the first column',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            formDraftsProvider.overrideWith(
+              () => _Drafts([
+                _draft('order'),
+                _draft('quote', kind: 'salesQuote'),
+              ]),
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: FormDraftCategoryList(
+                scope: FormDraftCategoryScope(module: BadgeModule.sales),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<FormDraftCategoryRow<Object>> table() =>
+          tester.widget(
+            find.byType(MasterDataTableView<FormDraftCategoryRow<Object>>),
+          );
+      expect(table().columns.first.key, 'category');
+      table().onSelectedIdsChanged!({'form-draft:order', 'form-draft:quote'});
+      await tester.pump();
+      expect(table().selectedIds.length, 2);
+      table().onFilterChanged('category', '销售报价单');
+      await tester.pumpAndSettle();
+      expect(table().items.map((row) => row.draft?.id), ['quote']);
+      expect(table().selectedIds, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'continuous pages keep typed business rows and live local drafts',
@@ -153,6 +339,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('暂无草稿'), findsOneWidget);
+      expect(find.text('本机草稿历史'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

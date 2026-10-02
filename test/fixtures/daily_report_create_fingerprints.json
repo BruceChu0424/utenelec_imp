@@ -1,0 +1,177 @@
+[ {
+  "name" : "full_unicode_extensions",
+  "body" : {
+    "idempotencyKey" : "daily-report-create-vector-0001",
+    "billDate" : "2026-10-01",
+    "departmentId" : "00000000-0000-0000-0000-000000000001",
+    "workshopName" : " 车间甲 ",
+    "workerId" : "00000000-0000-0000-0000-000000000002",
+    "workerIds" : [ "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000002" ],
+    "remark" : "原输入\n保留",
+    "items" : [ {
+      "goodsId" : "00000000-0000-0000-0000-000000000004",
+      "unitId" : "00000000-0000-0000-0000-000000000005",
+      "unitRate" : 1.25,
+      "qty" : 37,
+      "defectQty" : 0,
+      "planItemId" : "00000000-0000-0000-0000-000000000006",
+      "executionSegmentId" : "00000000-0000-0000-0000-000000000007",
+      "weight" : 1.0E-4,
+      "remark" : "第1行",
+      "allocations" : [ {
+        "directTransferDemandId" : "00000000-0000-0000-0000-000000000008",
+        "qty" : 30
+      }, {
+        "qty" : 7
+      } ],
+      "platformFields" : {
+        "expectedVersion" : 0,
+        "cells" : [ {
+          "columnId" : "00000000-0000-0000-0000-000000000012",
+          "value" : " 001 \t"
+        }, {
+          "columnId" : "00000000-0000-0000-0000-000000000011",
+          "value" : " 原值 "
+        } ]
+      }
+    } ],
+    "materialLines" : [ {
+      "demandId" : "00000000-0000-0000-0000-000000000009",
+      "qtyBase" : 12.5,
+      "countedLeftoverQty" : 0
+    } ],
+    "surplusReturnRequested" : true
+  },
+  "requestHash" : "c4765fa5d2ddaff22a64e850cd8a52f8991b63f757be8ed5c0e1ef933dbacb2e",
+  "fullPayloadHash" : "57ec998824f331a8de36ba93e70d53822b790d927aaef440a4a5bed495eb3866"
+}, {
+  "name" : "text_001_is_not_number_1",
+  "body" : {
+    "idempotencyKey" : "daily-report-create-vector-0001",
+    "billDate" : "2026-10-01",
+    "departmentId" : "00000000-0000-0000-0000-000000000001",
+    "workshopName" : " 车间甲 ",
+    "workerId" : "00000000-0000-0000-0000-000000000002",
+    "workerIds" : [ "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000002" ],
+    "remark" : "原输入\n保留",
+    "items" : [ {
+      "goodsId" : "00000000-0000-0000-0000-000000000004",
+      "unitId" : "00000000-0000-0000-0000-000000000005",
+      "unitRate" : 1.25,
+      "qty" : 37,
+      "defectQty" : 0,
+      "planItemId" : "00000000-0000-0000-0000-000000000006",
+      "executionSegmentId" : "00000000-0000-0000-0000-000000000007",
+      "weight" : 1.0E-4,
+      "remark" : "第1行",
+      "allocations" : [ {
+        "directTransferDemandId" : "00000000-0000-0000-0000-000000000008",
+        "qty" : 30
+      }, {
+        "qty" : 7
+      } ],
+      "platformFields" : {
+        "expectedVersion" : 0,
+        "cells" : [ {
+          "columnId" : "00000000-0000-0000-0000-000000000012",
+          "value" : "1"
+        }, {
+          "columnId" : "00000000-0000-0000-0000-000000000011",
+          "value" : " 原值 "
+        } ]
+      }
+    } ],
+    "materialLines" : [ {
+      "demandId" : "00000000-0000-0000-0000-000000000009",
+      "qtyBase" : 12.5,
+      "countedLeftoverQty" : 0
+    } ],
+    "surplusReturnRequested" : true
+  },
+  "requestHash" : "c4765fa5d2ddaff22a64e850cd8a52f8991b63f757be8ed5c0e1ef933dbacb2e",
+  "fullPayloadHash" : "bb3d053253d1bd2a0161a91cd06a1317e7878b469daf374f870daa6699c94cb6"
+}, {
+  "name" : "cell_set_and_decimal_equivalence",
+  "body" : {
+    "idempotencyKey" : "daily-report-create-vector-0001",
+    "billDate" : "2026-10-01",
+    "departmentId" : "00000000-0000-0000-0000-000000000001",
+    "workshopName" : " 车间甲 ",
+    "workerId" : "00000000-0000-0000-0000-000000000002",
+    "workerIds" : [ "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003", "00000000-0000-0000-0000-000000000002" ],
+    "remark" : "原输入\n保留",
+    "items" : [ {
+      "goodsId" : "00000000-0000-0000-0000-000000000004",
+      "unitId" : "00000000-0000-0000-0000-000000000005",
+      "unitRate" : 1.25,
+      "qty" : "37.0000",
+      "defectQty" : 0,
+      "planItemId" : "00000000-0000-0000-0000-000000000006",
+      "executionSegmentId" : "00000000-0000-0000-0000-000000000007",
+      "weight" : "1E-4",
+      "remark" : "第1行",
+      "allocations" : [ {
+        "directTransferDemandId" : "00000000-0000-0000-0000-000000000008",
+        "qty" : 30
+      }, {
+        "qty" : 7
+      } ],
+      "platformFields" : {
+        "expectedVersion" : 0,
+        "cells" : [ {
+          "columnId" : "00000000-0000-0000-0000-000000000011",
+          "value" : " 原值 "
+        }, {
+          "columnId" : "00000000-0000-0000-0000-000000000012",
+          "value" : " 001 \t"
+        } ]
+      }
+    } ],
+    "materialLines" : [ {
+      "demandId" : "00000000-0000-0000-0000-000000000009",
+      "qtyBase" : 12.5,
+      "countedLeftoverQty" : 0
+    } ],
+    "surplusReturnRequested" : true
+  },
+  "requestHash" : "c4765fa5d2ddaff22a64e850cd8a52f8991b63f757be8ed5c0e1ef933dbacb2e",
+  "fullPayloadHash" : "57ec998824f331a8de36ba93e70d53822b790d927aaef440a4a5bed495eb3866"
+}, {
+  "name" : "legacy_worker_and_absent_defaults",
+  "body" : {
+    "idempotencyKey" : "daily-report-create-vector-0002",
+    "billDate" : "2026-10-01",
+    "workerId" : "00000000-0000-0000-0000-000000000002",
+    "items" : [ {
+      "goodsId" : "00000000-0000-0000-0000-000000000004",
+      "qty" : 10,
+      "unitRate" : 1
+    } ]
+  },
+  "requestHash" : "5ba609e2fe3d9cb706381b41d8aa529a2efc01869876d33b9c5984152fd89c31",
+  "fullPayloadHash" : "4c9f44dc8445d579c662c83f340105240e0570fcf55901224a7e6a742776868e"
+}, {
+  "name" : "explicit_equivalent_defaults",
+  "body" : {
+    "idempotencyKey" : "daily-report-create-vector-0002",
+    "billDate" : "2026-10-01",
+    "workerId" : "00000000-0000-0000-0000-000000000002",
+    "items" : [ {
+      "goodsId" : "00000000-0000-0000-0000-000000000004",
+      "qty" : 10,
+      "unitRate" : 1,
+      "defectQty" : 0,
+      "allocations" : [ {
+        "qty" : 10
+      } ],
+      "platformFields" : {
+        "expectedVersion" : 0,
+        "cells" : [ ]
+      }
+    } ],
+    "workerIds" : [ "00000000-0000-0000-0000-000000000002" ],
+    "materialLines" : [ ]
+  },
+  "requestHash" : "5ba609e2fe3d9cb706381b41d8aa529a2efc01869876d33b9c5984152fd89c31",
+  "fullPayloadHash" : "4c9f44dc8445d579c662c83f340105240e0570fcf55901224a7e6a742776868e"
+} ]

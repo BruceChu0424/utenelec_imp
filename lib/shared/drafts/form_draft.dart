@@ -53,6 +53,10 @@ bool formDraftRouteIsLocal(String route) {
       !uri.path.contains('\\');
 }
 
+const dailyReportCreateCommandKey = '_dailyReportCreateRequest';
+const dailyReportCreateReceiptKey = '_dailyReportCreateReceipt';
+const dailyReportCreateStateKey = '_dailyReportCreateState';
+const dailyReportReadRecoveryOnlyKey = '_dailyReportReadRecoveryOnly';
 const formDraftUnknownSubmissionKey = '_formDraftHasUnknownSubmission';
 const formDraftUnknownSubmissionMessage = '提交结果待核对，请先核对提交，原记录不能删除';
 
@@ -99,6 +103,10 @@ bool hasUnknownFormDraftSubmission(
       }
     }
   }
+  if (Uri.tryParse(route)?.path == '/production/daily-reports/new' &&
+      data[dailyReportCreateStateKey] == 'UNKNOWN') {
+    return true;
+  }
   if (_isFqcDraftRoute(route)) {
     final rows = _fqcRows(data);
     if (rows.any(_fqcRowUnknown)) return true;
@@ -135,6 +143,15 @@ Set<String> unknownFormDraftCommandIdentities(
   Map<String, dynamic> data, {
   required String route,
 }) {
+  if (Uri.tryParse(route)?.path == '/production/daily-reports/new' &&
+      hasUnknownFormDraftSubmission(data, route: route)) {
+    final command = data[dailyReportCreateCommandKey];
+    return {
+      command is Map
+          ? 'daily-report-create:${command['idempotencyKey']}:${command['bodyHash']}'
+          : 'daily-report-create:${data['idempotencyKey']}',
+    };
+  }
   if (_isFqcDraftRoute(route)) {
     return {
       for (final row in _fqcRows(data))
@@ -149,6 +166,25 @@ Set<String> unknownFormDraftCommandIdentities(
   }
   return {};
 }
+
+/// Legacy active records omit lifecycle. Completed or retired history records
+/// are never eligible for recovery or a new local confirmation revision.
+bool isActiveFormDraftRecord(Map<String, dynamic> json) =>
+    json['completed'] != true &&
+    (json['lifecycle'] == null || json['lifecycle'] == 'ACTIVE');
+
+/// Only the original local daily-report submission gets a view-only recovery
+/// route. Arbitrary drafts do not gain create/edit permission through this gate.
+bool isDailyReportCreateRecoveryDraft(FormDraft draft) =>
+    formDraftRouteIsLocal(draft.route) &&
+    draft.module == BadgeModule.workshop &&
+    draft.draftKind == 'productionDailyReport' &&
+    draft.permission == 'production_daily_report:create' &&
+    Uri.tryParse(draft.route)?.path == '/production/daily-reports/new' &&
+    !Uri.parse(draft.route).queryParameters.containsKey('draftForm') &&
+    (draft.hasUnknownSubmission ||
+        draft.data[dailyReportCreateCommandKey] is Map ||
+        draft.data[dailyReportReadRecoveryOnlyKey] == true);
 
 class FormDraft {
   const FormDraft({
@@ -177,6 +213,9 @@ class FormDraft {
       hasUnknownFormDraftSubmission(data, route: route);
 
   String get resumeLocation {
+    if (isDailyReportCreateRecoveryDraft(this)) {
+      return RoutePath.productionDailyReportCreateRecovery(id);
+    }
     final uri = Uri.parse(route);
     return uri
         .replace(queryParameters: {...uri.queryParameters, 'draftId': id})

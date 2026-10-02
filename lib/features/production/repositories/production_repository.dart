@@ -33,6 +33,7 @@ import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/analysis_linked_sales_order.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_daily_report_create_request.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_analysis_projection.dart';
@@ -2200,6 +2201,20 @@ class ProductionDailyReportRepository {
       body: {...body, 'idempotencyKey': idempotencyKey},
     ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
+  }
+
+  /// Pure actor-owned observation. Always resends the frozen original body;
+  /// this POST is never a create or an automatic retry of an unknown create.
+  Future<DailyReportCreateResolution> createReceipt(
+    FrozenDailyReportCreate command,
+  ) async {
+    final json = await api.post(
+      '/production/daily-reports/create-receipt',
+      body: command.requestBody,
+    );
+    final result = DailyReportCreateResolution.fromJson(json);
+    result.verify(command);
+    return result;
   }
 
   Future<ProductionDailyReportDetail> update(

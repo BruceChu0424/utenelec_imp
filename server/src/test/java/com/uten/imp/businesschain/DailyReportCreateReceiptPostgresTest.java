@@ -181,6 +181,69 @@ class DailyReportCreateReceiptPostgresTest {
         assertEquals(originalProof,db.queryForObject("SELECT create_payload_hash FROM production_daily_report_commands WHERE report_id=?",String.class,c.id()));
     }
 
+    @Test void postReplayCannotUseLaterCurrentCellsAsOriginalCreateProof() throws Exception {
+        var c=request();
+        Authentication creator=SecurityContextHolder.getContext().getAuthentication();
+        var first=fields.create("production_daily_report_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition(
+                "回放编号-"+UUID.randomUUID(),"TEXT",false,null));
+        var second=fields.create("production_daily_report_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition(
+                "回放备注-"+UUID.randomUUID(),"TEXT",false,null));
+        var cells=List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(first.id(),"001"),
+                new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(second.id(),"原备注"));
+        c.request().getItems().getFirst().setPlatformFields(
+                new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,cells));
+        byte[] original=json.writeValueAsBytes(c.request());
+        var saved=reports.create(c.request());
+        var before=facts(saved.getId());var originalFields=fieldFacts(saved.getId());
+        DailyReportSaveRequest changed=json.readValue(original,DailyReportSaveRequest.class);
+        changed.getItems().getFirst().setPlatformFields(
+                new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,
+                        List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(first.id(),"1"),cells.getLast())));
+        assertEquals("CONFLICT",postCreateBody(json.writeValueAsBytes(changed),creator,409).path("code").asText());
+        assertEquals(before,facts(saved.getId()));assertEquals(originalFields,fieldFacts(saved.getId()));
+
+        changed.getItems().getFirst().setPlatformFields(
+                new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,List.of(cells.getLast(),cells.getFirst())));
+        assertEquals(saved.getId().toString(),postCreateBody(json.writeValueAsBytes(changed),creator,200).path("id").asText());
+        assertEquals(before,facts(saved.getId()));assertEquals(originalFields,fieldFacts(saved.getId()));
+
+        login(c.world().superAdminUserId());
+        UUID item=saved.getItems().getFirst().getId();
+        long version=db.queryForObject("SELECT version FROM platform_record_fields WHERE scope='production_daily_report_item' AND record_id=?",Long.class,item);
+        fields.write("production_daily_report_item",item,new com.uten.imp.common.platformcolumns.PlatformColumnContracts.Write(version,
+                List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(first.id(),"later"),cells.getLast())));
+        var laterFields=fieldFacts(saved.getId());
+        assertNotEquals(originalFields,laterFields);
+        // The original readonly receipt remains authoritative after a later edit.
+        assertEquals("COMMITTED",resolveBody(original,reader(c),200).path("status").asText());
+        assertEquals(before,facts(saved.getId()));assertEquals(laterFields,fieldFacts(saved.getId()));
+        // Current cells may now equal this altered CREATE body. That must not let
+        // the generic bridge substitute current values for the original proof.
+        changed.getItems().getFirst().setPlatformFields(
+                new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,
+                        List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(first.id(),"later"),cells.getLast())));
+        assertEquals("CONFLICT",postCreateBody(json.writeValueAsBytes(changed),creator,409).path("code").asText());
+        assertEquals(before,facts(saved.getId()));assertEquals(laterFields,fieldFacts(saved.getId()));
+    }
+
+    @Test void postReplayCannotOmitOriginallySubmittedExtensionFields() throws Exception {
+        var c=request();
+        Authentication creator=SecurityContextHolder.getContext().getAuthentication();
+        var definition=fields.create("production_daily_report_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition(
+                "回放原字段-"+UUID.randomUUID(),"TEXT",false,null));
+        c.request().getItems().getFirst().setPlatformFields(
+                new com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields(null,0,
+                        List.of(new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CellInput(definition.id(),"original"))));
+        byte[] original=json.writeValueAsBytes(c.request());
+        var saved=reports.create(c.request());
+        var before=facts(saved.getId());var beforeFields=fieldFacts(saved.getId());
+        c.request().getItems().getFirst().setPlatformFields(null);
+        assertEquals("CONFLICT",postCreateBody(json.writeValueAsBytes(c.request()),creator,409).path("code").asText());
+        assertEquals(before,facts(saved.getId()));assertEquals(beforeFields,fieldFacts(saved.getId()));
+        assertEquals(saved.getId().toString(),postCreateBody(original,creator,200).path("id").asText());
+        assertEquals(before,facts(saved.getId()));assertEquals(beforeFields,fieldFacts(saved.getId()));
+    }
+
     @Test void failureAtCommandInsertRollsBackTheReportAndBothProofsAndExactOriginalBytesCanThenSucceed() throws Exception {
         var c=request();String key="CREATE-PROOF-ROLLBACK-"+UUID.randomUUID();
         c.request().setIdempotencyKey(key);c.request().setRemark(key);byte[] original=json.writeValueAsBytes(c.request());
@@ -268,6 +331,23 @@ class DailyReportCreateReceiptPostgresTest {
         return json.readTree(result.getResponse().getContentAsByteArray());
     }
     private Authentication reader(Case c) { return auth(c.world().superAdminUserId(),c.world().employeeId(),Set.of("production_daily_report:view"),null); }
+    private JsonNode postCreateBody(byte[] body,Authentication actor,int expected) throws Exception {
+        var response=http.perform(post("/api/production/daily-reports").with(authentication(actor))
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().getResponse();
+        assertEquals(expected,response.getStatus(),response.getContentAsString());
+        return json.readTree(response.getContentAsByteArray());
+    }
+    private Map<String,Object> fieldFacts(UUID id) {
+        return db.queryForMap("""
+                SELECT COALESCE((SELECT jsonb_agg(jsonb_build_array(f.record_id,f.version,f.cells,f.xmin::text)
+                                                  ORDER BY f.record_id)::text
+                                  FROM platform_record_fields f JOIN production_daily_report_items i ON i.id=f.record_id
+                                  WHERE f.scope='production_daily_report_item' AND i.report_id=?),'[]') AS current_fields,
+                       (SELECT count(*) FROM platform_record_field_versions v
+                        JOIN production_daily_report_items i ON i.id=v.record_id
+                        WHERE v.scope='production_daily_report_item' AND i.report_id=?) AS history_versions
+                """,id,id);
+    }
     private Authentication auth(UUID user,UUID employee,Set<String> permissions,UUID impersonator) {
         var principal=new AuthUser(user,employee,"create-receipt-reader",permissions,false,true,false,false,impersonator);
         return new UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities());

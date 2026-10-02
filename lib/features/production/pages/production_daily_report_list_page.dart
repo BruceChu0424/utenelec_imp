@@ -59,7 +59,8 @@ class _ProductionDailyReportListPageState
     extends ConsumerState<ProductionDailyReportListPage>
     with DraftBulkDeleteMixin<ProductionDailyReportListPage> {
   final _list = PagedListController<ProductionDailyReportListItem>();
-  final _tableRows = MasterDataTableRowsController<ProductionDailyReportListItem>();
+  final _tableRows =
+      MasterDataTableRowsController<ProductionDailyReportListItem>();
   int _reloadGeneration = 0;
   int? _statusFilter;
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）

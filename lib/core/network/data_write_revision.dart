@@ -49,6 +49,11 @@ bool isBusinessWrite(RequestOptions options) {
   final method = options.method.toUpperCase();
   if (method == 'GET' || method == 'HEAD' || method == 'OPTIONS') return false;
   final path = options.uri.path;
+  if (method == 'POST' &&
+      (path == '/production/daily-reports/create-receipt' ||
+          path == '/api/production/daily-reports/create-receipt')) {
+    return false;
+  }
   return !_automaticWritePaths.any((pattern) => pattern.hasMatch(path));
 }
 

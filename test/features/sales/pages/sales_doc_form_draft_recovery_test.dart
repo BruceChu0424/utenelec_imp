@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -36,14 +37,180 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
 
+final _canViewPricesProvider = StateProvider<bool>((ref) => true);
+
+// The task center AppBar also has a "草稿" button. These tests select the
+// order-progress stage, not the separate all-drafts destination.
+Finder _orderDraftStageSegment() => find.descendant(
+  of: find.byKey(const Key('sales-order-progress-stages')),
+  matching: find.byWidgetPredicate(
+    (widget) => widget is UtenSegmentBadgeLabel && widget.label == '草稿',
+  ),
+);
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('价格撤权立即遮住已恢复的价格、固定列和合计，保留完整草稿', (tester) async {
+    final storage = MemoryFormDraftStorage();
+    final env = await _pump(tester, storage);
+    await _seedPartialOrder(tester, qty: '2');
+    UtenEditableGrid<SalesGridRow> grid() =>
+        tester.widget(find.byType(UtenEditableGrid<SalesGridRow>));
+    final row = grid().controller.rows.single;
+    final before = row.exportDraft();
+    env.container.read(_canViewPricesProvider.notifier).state = false;
+    await tester.pumpAndSettle();
+    for (final key in ['price', 'discount', 'amount']) {
+      expect(
+        grid().columns.singleWhere((c) => c.key == key).frozenTextOf!(row),
+        '***',
+      );
+    }
+    expect(
+      tester
+          .widget<UtenTotalsSummaryBar>(
+            find.byKey(const Key('sales-edit-totals')),
+          )
+          .entries
+          .last
+          .value,
+      '***',
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is TextField &&
+            (w.controller == row.price || w.controller == row.discount),
+      ),
+      findsNothing,
+    );
+    expect(row.exportDraft(), before);
+    env.container.read(_canViewPricesProvider.notifier).state = true;
+    await tester.pumpAndSettle();
+    expect(
+      grid().columns.singleWhere((c) => c.key == 'price').frozenTextOf!(row),
+      '10',
+    );
+    expect(
+      tester
+          .widget<UtenTotalsSummaryBar>(
+            find.byKey(const Key('sales-edit-totals')),
+          )
+          .entries
+          .last
+          .value,
+      '20.00',
+    );
+    expect(env.api.writes, 0);
+    await tester.pumpWidget(const SizedBox());
+    env.router.dispose();
+    env.container.dispose();
+  });
+
+  testWidgets('销售草稿重开显现已填可选列并向既有API保留精确业务字段', (tester) async {
+    final storage = MemoryFormDraftStorage();
+    var env = await _pump(tester, storage);
+    await _seedPartialOrder(tester, qty: '2.5000');
+    final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+      find.byType(UtenEditableGrid<SalesGridRow>),
+    );
+    final row = grid.controller.rows.single;
+    row.machiningPrice.text = '1.2300';
+    row.circumference.text = '3.50';
+    row.inboundQty.text = '2.0000';
+    row.weight.text = '4.5000';
+    row.unitRateExact = '1.00000001';
+    row.clientNo = '客户行号-1';
+    row.clientModel.text = '客户型号-1';
+    row.clientGoodsName.text = '客户原品名';
+    row.clientPrice = '7.50';
+    row.remark.text = '按客户包装';
+    row.restoreExtraColumns([
+      {
+        'columnId': 'package-spec',
+        'name': '包装规格',
+        'scope': 'sales_order',
+        'type': 'TEXT',
+        'operation': 'NONE',
+        'value': '每箱20',
+      },
+    ]);
+    await (tester.state(find.byType(SalesDocEditPage))
+            as FormDraftMixin<SalesDocEditPage>)
+        .saveFormDraftNow();
+    final draft = env.container.read(formDraftsProvider).single;
+    await tester.pumpWidget(const SizedBox());
+    env.router.dispose();
+    env.container.dispose();
+    final api = _Api(allowCreate: true);
+    env = await _pump(
+      tester,
+      storage,
+      location: draft.resumeLocation,
+      apiOverride: api,
+      canViewPrices: false,
+    );
+    final restored = tester.widget<UtenEditableGrid<SalesGridRow>>(
+      find.byType(UtenEditableGrid<SalesGridRow>),
+    );
+    expect(
+      restored.forceVisibleColumnKeys,
+      containsAll([
+        'machiningPrice',
+        'circumference',
+        'inboundQty',
+        'clientModel',
+        'clientGoodsName',
+        'clientPrice',
+        'extra:package-spec',
+      ]),
+    );
+    expect(
+      restored.columns
+          .singleWhere((c) => c.key == 'machiningPrice')
+          .frozenTextOf!(restored.controller.rows.single),
+      '***',
+    );
+    expect(restored.controller.rows.single.inboundQty.text, '2.0000');
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is TextField &&
+            w.controller == restored.controller.rows.single.inboundQty,
+      ),
+      findsNothing,
+    );
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+    expect(api.writes, 1);
+    final line = (api.lastBody!['items'] as List).single as Map;
+    expect(line, containsPair('qty', '2.5000'));
+    expect(line, containsPair('unitRate', '1.00000001'));
+    expect(line, containsPair('weight', '4.5000'));
+    expect(line, containsPair('machiningPrice', '1.2300'));
+    expect(line, containsPair('circumference', '3.50'));
+    expect(line, isNot(contains('inboundQty')));
+    expect(line, containsPair('clientNo', '客户行号-1'));
+    expect(line, containsPair('clientModel', '客户型号-1'));
+    expect(line, containsPair('clientGoodsName', '客户原品名'));
+    expect(line, containsPair('clientPrice', '7.50'));
+    expect(line, containsPair('discount', null));
+    expect(line, containsPair('remark', '按客户包装'));
+    expect(line['extraColumns'], [
+      {'columnId': 'package-spec', 'value': '每箱20'},
+    ]);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    env.router.dispose();
+    env.container.dispose();
+  });
   testWidgets(
     'sales progress draft category remains usable when formal list is offline',
     (tester) async {
       final storage = MemoryFormDraftStorage();
       var env = await _pump(tester, storage);
       await _seedPartialOrder(tester, qty: '2');
+      final draft = env.container.read(formDraftsProvider).single;
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
       env.container.dispose();
@@ -56,7 +223,9 @@ void main() {
       );
       await tester.tap(find.text('订货进度'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('草稿'));
+      final draftSegment = _orderDraftStageSegment();
+      expect(draftSegment, findsOneWidget);
+      await tester.tap(draftSegment);
       await tester.pumpAndSettle();
       final table = tester
           .widget<
@@ -66,10 +235,22 @@ void main() {
               MasterDataTableView<FormDraftCategoryRow<SalesOrderProgressRow>>,
             ),
           );
-      expect(table.items.single.isLocal, true);
-      expect(table.error, isNull);
+      // Server pagination and local recovery use separate public slots. Local
+      // rows stay visible above every server page, including an offline page.
+      expect(table.items, isEmpty);
+      expect(table.unpagedItems, hasLength(1));
+      final local = table.unpagedItems.single;
+      expect(local.isLocal, true);
+      expect(local.draft!.id, draft.id);
+      expect(
+        find.byKey(ValueKey('form-draft-row-${draft.id}')),
+        findsOneWidget,
+      );
+      // The paginated source retains its failure for retry while unpaged
+      // local rows remain rendered and recoverable above it.
+      expect(table.error, contains('simulated offline formal list'));
       expect(table.isLoading, false);
-      table.onRowTap!(table.items.single);
+      table.onRowTap!(local);
       await tester.pumpAndSettle();
       expect(find.byType(SalesDocEditPage), findsOneWidget);
       expect(api.writes, 0);
@@ -101,14 +282,12 @@ void main() {
         expect(find.text('未提交草稿'), findsNothing);
         await tester.tap(find.text('订货进度'));
         await tester.pumpAndSettle();
-        final draftBadge = tester.widget<UtenSegmentBadgeLabel>(
-          find.byWidgetPredicate(
-            (widget) => widget is UtenSegmentBadgeLabel && widget.label == '草稿',
-          ),
-        );
+        final draftSegment = _orderDraftStageSegment();
+        expect(draftSegment, findsOneWidget);
+        final draftBadge = tester.widget<UtenSegmentBadgeLabel>(draftSegment);
         expect(draftBadge.count, 3);
         expect(find.text('未提交草稿'), findsNothing);
-        await tester.tap(find.text('草稿'));
+        await tester.tap(draftSegment);
         await tester.pumpAndSettle();
         final table = tester
             .widget<
@@ -120,11 +299,17 @@ void main() {
                 >,
               ),
             );
-        expect(table.items, hasLength(3));
-        expect(table.items.where((row) => row.isLocal), hasLength(1));
-        expect(table.items.where((row) => !row.isLocal), hasLength(2));
-        final local = table.items.singleWhere((row) => row.isLocal);
+        expect(table.items, hasLength(2));
+        expect(table.items.every((row) => !row.isLocal), isTrue);
+        expect(table.unpagedItems, hasLength(1));
+        expect([...table.unpagedItems, ...table.items], hasLength(3));
+        final local = table.unpagedItems.single;
+        expect(local.isLocal, isTrue);
         expect(local.draft!.id, draft.id);
+        expect(
+          find.byKey(ValueKey('form-draft-row-${draft.id}')),
+          findsOneWidget,
+        );
         if (deleteLocal) {
           table.rowMenuBuilder!(local)
               .whereType<UtenMenuItem>()
@@ -396,6 +581,7 @@ Future<({ProviderContainer container, GoRouter router, _Api api})> _pump(
   String location = '/sales/orders/new',
   _Api? apiOverride,
   AttachmentService? files,
+  bool canViewPrices = true,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -410,14 +596,17 @@ Future<({ProviderContainer container, GoRouter router, _Api api})> _pump(
         const AuthenticatedScope(userId: 'sales-person'),
       ),
       formDraftStorageProvider.overrideWithValue(storage),
-      currentPermissionsProvider.overrideWithValue({
-        Perm.salesOrderCreate,
-        Perm.salesOrderEdit,
-        Perm.salesOrderView,
-        Perm.salesOrderPriceView,
-        Perm.attachmentView,
-        Perm.attachmentUpload,
-      }),
+      _canViewPricesProvider.overrideWith((ref) => canViewPrices),
+      currentPermissionsProvider.overrideWith(
+        (ref) => {
+          Perm.salesOrderCreate,
+          Perm.salesOrderEdit,
+          Perm.salesOrderView,
+          if (ref.watch(_canViewPricesProvider)) Perm.salesOrderPriceView,
+          Perm.attachmentView,
+          Perm.attachmentUpload,
+        },
+      ),
       sharedPreferencesProvider.overrideWithValue(prefs),
       salesMasterNameServiceProvider.overrideWithValue(
         SalesMasterNameService(api),

@@ -301,13 +301,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     return document.status == 0;
   }
 
-  /// 报价/订货当前账号看不到价格：已有单据以服务端 priceMasked 为准，新建单按权限判断。
+  /// 服务端脱敏与当前权限取交集，旧单据响应或草稿不能恢复已撤销的价格权限。
   bool get _priceMasked {
     if (!_lockedPrice) return false;
+    if (!_salesPriceVisible(ref.read(currentPermissionsProvider))) return true;
     final document = _attachmentDocument;
     if (document != null) return document.priceMasked;
     if (_aiIntake?.priceMasked ?? false) return true;
-    return !_salesPriceVisible(ref.read(currentPermissionsProvider));
+    return false;
   }
 
   /// 「识别客户文件」入口：报价/订货的新建单与草稿(含财务退回的草稿)；已审核订单、
@@ -1624,10 +1625,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         case SalesDocType.order:
           final mp = parseExtra(r.machiningPrice);
           final circ = parseExtra(r.circumference);
-          final inb = parseExtra(r.inboundQty);
           if (mp != null) body['machiningPrice'] = mp;
           if (circ != null) body['circumference'] = circ;
-          if (inb != null) body['inboundQty'] = inb;
+          // 进仓量来自下游入库事实；旧草稿参考值不能伪装成订单可写字段。
           break;
         case SalesDocType.shipment:
         case SalesDocType.customerShipment:
@@ -2622,6 +2622,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
 
   Widget _buildDraftPage(BuildContext context) {
+    // 页面保持打开时撤权也必须重建列、固定列快照和合计条。
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     final compact = MediaQuery.sizeOf(context).width < 600;
@@ -3469,25 +3471,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                               priceMasked: _priceMasked,
                                               onChanged: () => setState(() {}),
                                             ),
-                                      forceVisibleColumnKeys: {
-                                        ...filledBusinessColumnKeys(_grid.rows),
-                                        if (_grid.rows.any(
-                                          (r) => r.clientModel.text
-                                              .trim()
-                                              .isNotEmpty,
-                                        ))
-                                          'clientModel',
-                                        if (_grid.rows.any(
-                                          (r) => r.clientGoodsName.text
-                                              .trim()
-                                              .isNotEmpty,
-                                        ))
-                                          'clientGoodsName',
-                                        if (_grid.rows.any(
-                                          (r) => r.clientPrice != null,
-                                        ))
-                                          'clientPrice',
-                                      },
+                                      forceVisibleColumnKeys:
+                                          filledSalesOptionalColumnKeys(
+                                            _grid.rows,
+                                          ),
                                       controller: _grid,
                                       stickyHeaderPinned: _gridPinned,
                                       columns: salesGridColumns(
@@ -3589,6 +3576,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   _totalAmountLabel(names),
                                                   _freeCustomerShipment
                                                       ? '不收费（货款 0）'
+                                                      : _priceMasked
+                                                      ? '***'
                                                       : financeExactMoneyDisplay(
                                                           exactAmountSumText(
                                                             _grid.rows.map(

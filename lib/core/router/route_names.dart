@@ -791,6 +791,16 @@ abstract final class RoutePath {
       '/production/actual-output-supplements/$id';
   static String productionPlanEdit(String id) => '/production/plans/$id/edit';
   static String productionDailyReportNew() => '/production/daily-reports/new';
+  static String productionDailyReportCreateRecovery(
+    String draftId, {
+    bool returnToEditor = false,
+  }) => Uri(
+    path: '/production/daily-reports/create-recovery',
+    queryParameters: {
+      'draftId': draftId,
+      if (returnToEditor) 'returnToEditor': '1',
+    },
+  ).toString();
   static String productionDailyReportDetail(String id) =>
       '/production/daily-reports/$id';
   static String productionDailyReportEdit(String id) =>

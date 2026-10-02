@@ -219,9 +219,7 @@ void main() {
     await deleteSelected(tester);
     expect(api.deleted, ['draft-a']);
     final table = tester.widget<MasterDataTableView<Object>>(
-      find.byWidgetPredicate(
-        (w) => w is MasterDataTableView<Object>,
-      ),
+      find.byWidgetPredicate((w) => w is MasterDataTableView<Object>),
     );
     expect(table.selectedIds, {'draft-b'});
     expect(tester.takeException(), isNull);

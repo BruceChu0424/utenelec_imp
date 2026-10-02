@@ -152,7 +152,11 @@ void main() {
       expect(_rowIdentity<ProductionPlanListItem>(tester), 'draft-1');
       expect(_rowIdentity<ProductionPlanListItem>(tester, last: true), isNull);
       expect(
-        _rowIdentity<ProductionPlanListItem>(tester, last: true, stableKey: true),
+        _rowIdentity<ProductionPlanListItem>(
+          tester,
+          last: true,
+          stableKey: true,
+        ),
         'approved',
       );
       table.onSelectedIdsChanged!({'draft-1'});
@@ -233,10 +237,9 @@ void main() {
     expect(api.deletes, ['/production/daily-reports/draft-2']);
     // DraftBulkDeleteMixin 契约：逐条成功才移除选择，明确失败(CONFLICT 拒绝)保留，
     // 让用户看见哪张没删成；draft-1 状态已变被拒，应仍处于选中。
-    expect(
-      _table<ProductionDailyReportListItem>(tester).selectedIds,
-      {'draft-1'},
-    );
+    expect(_table<ProductionDailyReportListItem>(tester).selectedIds, {
+      'draft-1',
+    });
     expect(badges.refreshCalls, greaterThan(0));
     expect(tester.takeException(), isNull);
   });

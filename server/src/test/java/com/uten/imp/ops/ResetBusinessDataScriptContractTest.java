@@ -20,7 +20,7 @@ class ResetBusinessDataScriptContractTest {
                 .contains("confirm=CLEAR_BUSINESS","expected_database","expected_system_identifier",
                         "pg_control_system()","pg_stat_activity","pid <> pg_backend_pid()",
                         "backend_type = 'client backend'","current_database() IS DISTINCT FROM",
-                        "actual_system_identifier IS DISTINCT FROM","applied_max_version<782",
+                        "actual_system_identifier IS DISTINCT FROM","applied_max_version<784",
                         "public.fn_business_test_reset_active()");
         assertThat(sql.indexOf("END $offline_identity$;")).isLessThan(sql.indexOf("SELECT * FROM public.business_data_reset();"));
     }

@@ -13,7 +13,11 @@ class ForwardMigrationSequenceContractTest {
   private static final Pattern SCRIPT = Pattern.compile("V([0-9]+)__.+\\.sql");
 
   static void requireCompleteSequence(Collection<Integer> versions) {
-    var ordered=new TreeSet<>(versions);
+    var ordered=new TreeSet<Integer>();
+    for(int version:versions) {
+      if(!ordered.add(version)) throw new IllegalStateException(
+          "Duplicate migration V"+version+"; every migration version must be unique");
+    }
     if(ordered.isEmpty() || ordered.last()<FIRST_FORWARD_VERSION) return;
     for(int version=FIRST_FORWARD_VERSION;version<=ordered.last();version++) {
       if(!ordered.contains(version)) throw new IllegalStateException(
@@ -37,6 +41,16 @@ class ForwardMigrationSequenceContractTest {
   @Test void reproducesTheV774BeforeV773DeliveryFailure() {
     assertThatThrownBy(()->requireCompleteSequence(List.of(768,769,770,771,772,774)))
         .isInstanceOf(IllegalStateException.class).hasMessageContaining("V773");
+  }
+
+  @Test void rejectsTheTwoParallelV782FilesInsteadOfSilentlyDeduplicating() {
+    // V782__explicit_test_business_reset_with_history.sql and
+    // V782__stock_document_item_line_warehouse_and_place_learning.sql.
+    var versions=new ArrayList<Integer>();
+    for(int version=769;version<=782;version++) versions.add(version);
+    versions.add(782);
+    assertThatThrownBy(()->requireCompleteSequence(versions))
+        .isInstanceOf(IllegalStateException.class).hasMessageContaining("Duplicate migration V782");
   }
 
   @Test void historicalGapsRemainHistoricalButNewReservedGapsAreRejected() {

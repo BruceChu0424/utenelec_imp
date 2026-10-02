@@ -3,6 +3,7 @@
 import contextlib
 import copy
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -15,6 +16,7 @@ import textwrap
 import unittest
 import urllib.error
 import urllib.parse
+import zipfile
 from unittest.mock import patch
 
 import release_gate as gate
@@ -232,6 +234,18 @@ class ReleaseGateTest(unittest.TestCase):
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
+    def test_current_release_verifies_migrations_before_signed_inventory(self):
+        workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
+        build = workflow.split("      - name: Build server application and migrator\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("-Dtest=ForwardMigrationSequenceContractTest,FlywayChecksumManifestExporterTest", build)
+        self.assertIn("-Duten.exportFlywayChecksums=true test", build)
+        assembly = workflow.split("      - name: Assemble release directory\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("--flyway-dir server/src/main/resources/db/migration", assembly)
+        self.assertIn("--flyway-checksums server/target/uten-imp-flyway-checksums.tsv", assembly)
+        self.assertLess(assembly.index("verify-migrations"), assembly.index("sha256sum > SHA256SUMS"))
+        self.assertLess(workflow.index("verify-migrations"), workflow.index("${{ secrets.RELEASE_SIGNING_KEY }}"))
+        self.assertNotIn("continue-on-error", build + assembly)
+
     def test_application_identity_and_browser_metadata_share_the_release_checkout(self):
         workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
         build = workflow.split("      - name: Build Flutter Web\n", 1)[1].split("      - name:", 1)[0]
@@ -277,10 +291,24 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        for directory in ("server/target", "build/web", "deploy/release"):
+        for directory in ("server/target", "server/src/main/resources/db/migration", "build/web", "deploy/release"):
             (self.root / directory).mkdir(parents=True)
-        for jar in ("uten-imp-server-0.1.0.jar", "uten-imp-migrator.jar"):
-            (self.root / "server/target" / jar).write_bytes(b"fixture jar\n")
+        spec = importlib.util.spec_from_file_location("assembly_release_tools", ROOT / "deploy/release/release_tools.py")
+        tools = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tools)
+        self.migration_name = "V1__initial_schema.sql"
+        self.migration = self.root / "server/src/main/resources/db/migration" / self.migration_name
+        self.migration.write_text("create table fixture(id integer);\n", encoding="utf-8")
+        (self.root / "server/target/uten-imp-flyway-checksums.tsv").write_text(
+            tools.FLYWAY_CHECKSUM_HEADER + "\n1\t" + self.migration_name + "\t-1320745395\n", encoding="utf-8")
+        for name, prefix in (("uten-imp-server-0.1.0.jar", "BOOT-INF/classes/db/migration/"),
+                             ("uten-imp-migrator.jar", "db/migration/")):
+            with zipfile.ZipFile(self.root / "server/target" / name, "w") as jar:
+                jar.write(self.migration, prefix + self.migration_name)
+                if name == "uten-imp-migrator.jar":
+                    jar.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\r\nMain-Class: com.uten.imp.migration.UtenImpMigrator\r\n\r\n")
+                    for application_class in tools.MIGRATOR_APPLICATION_CLASSES:
+                        jar.writestr(application_class, b"fixture-bytecode")
         shutil.copyfile(ROOT / "web/index.html", self.root / "build/web/index.html")
         shutil.copyfile(ROOT / "deploy/release/release_tools.py", self.root / "deploy/release/release_tools.py")
         # This is the actual pinned Flutter 3.44.2 package output, before stamping.
@@ -324,6 +352,31 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("differs from the reviewed Flutter", result.stderr)
         self.assertFalse((self.root / "dist/SHA256SUMS").exists())
+
+    def test_duplicate_migration_blocks_actual_assembly_before_checksums(self):
+        (self.migration.parent / "V1__parallel_worker.sql").write_text("select 1;\n", encoding="utf-8")
+        result = self.assemble()
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse((self.root / "dist/SHA256SUMS").exists())
+
+    def test_missing_or_changed_sql_in_either_jar_blocks_actual_assembly(self):
+        for name, prefix in (("uten-imp-server-0.1.0.jar", "BOOT-INF/classes/db/migration/"),
+                             ("uten-imp-migrator.jar", "db/migration/")):
+            path = self.root / "server/target" / name
+            original = path.read_bytes()
+            for mutation in ("missing", "changed"):
+                with self.subTest(jar=name, mutation=mutation):
+                    with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(path, "w") as target:
+                        for item in source.infolist():
+                            if item.filename == prefix + self.migration_name:
+                                if mutation == "changed": target.writestr(item, b"select 'unreviewed';\n")
+                            else:
+                                target.writestr(item, source.read(item))
+                    result = self.assemble()
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn("migrations differ", result.stderr)
+                    self.assertFalse((self.root / "dist/SHA256SUMS").exists())
+                    path.write_bytes(original)
 
 
 if __name__ == "__main__":

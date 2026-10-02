@@ -308,15 +308,22 @@ class BusinessDataResetSparsePostgresTest {
         String oldBlock = forward.substring(forward.indexOf("$old$") + 5, forward.indexOf("$old$;"));
         String newBlock = forward.substring(forward.indexOf("$new$") + 5, forward.indexOf("$new$;"));
         assertThat(fragment(migration)).containsOnlyOnce(oldBlock);
-        assertThat(fragment(ops)).isEqualTo(fragment(migration).replace(oldBlock, newBlock));
+        String historicalExpected = fragment(migration).replace(oldBlock, newBlock);
+        // Current operator script delegates to the installed authoritative function, not a copied old algorithm.
+        assertThat(ops).contains("SELECT * FROM public.business_data_reset();")
+                .doesNotContain("    -- V558 sparse reset:");
         try (var statement = connection.createStatement(); var result = statement.executeQuery("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)")) {
             assertThat(result.next()).isTrue();
-            assertThat(fragment(result.getString(1))).isEqualTo(fragment(ops));
+            assertThat(fragment(result.getString(1))).isEqualTo(historicalExpected);
         }
     }
 
     private static String fragment(String sql) {
-        return sql.substring(sql.indexOf("    -- V558 sparse reset:"), sql.indexOf("    -- End V558 sparse reset.")).replace("\r\n", "\n");
+        int start = sql.indexOf("    -- V558 sparse reset:");
+        int end = sql.indexOf("    -- End V558 sparse reset.", start);
+        assertThat(start).as("Historical sparse reset start marker").isGreaterThanOrEqualTo(0);
+        assertThat(end).as("Historical sparse reset end marker").isGreaterThan(start);
+        return sql.substring(start, end).replace("\r\n", "\n");
     }
 
     private static String jdbcUrl() {

@@ -1398,7 +1398,6 @@ class _WarehouseArrivalReceiptPageState
         textOf: (line) => line.series.text,
         listenableOf: (line) => line.series,
         // 预填黄标 ⓘ(44)计入量宽。
-        chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
         cellBuilder: (context, line) => Semantics(
           textField: true,
           label: '${line.item.goodsName} 物料系列',

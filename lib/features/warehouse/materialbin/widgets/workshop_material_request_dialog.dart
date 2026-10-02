@@ -1,7 +1,7 @@
 // 车间申请领料 / 退回面板 (ADR-131 §5.2 按申请发、§5.3 退回)。
 //
-// 只列整批领料的料; 每行填公斤或袋数 (袋数按每袋净重自动算公斤), 同时显示
-// "仓库还有 X 公斤 / 内料仓估计还剩 Y 公斤"。提交只生成申请, 服务端通知该仓仓管。
+// 申请使用服务端分页物料清单，按物料原单位填数量或袋数；退回只列内料仓现有料。
+// 提交只生成申请，服务端通知该仓仓管。
 // 提交失败保留输入; 原样再点提交用同一个请求号, 服务端不会重复登记。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +19,7 @@ import '../../../../core/ui/app_notification.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import 'workshop_material_line_grid.dart';
+import 'workshop_request_material_picker.dart';
 
 /// 打开申请领料 ([kind] = ISSUE) 或退回 ([kind] = RETURN) 面板; 提交成功返回 true。
 Future<bool?> showWorkshopMaterialRequestSheet(
@@ -27,6 +28,7 @@ Future<bool?> showWorkshopMaterialRequestSheet(
   required String workshopId,
   required String workshopName,
   Map<String, WmPositionRow> positionByKey = const {},
+  Set<String> initialMaterialKeys = const {},
 }) => showUtenAdaptivePanel<bool>(
   context: context,
   drawerWidth: 960,
@@ -38,6 +40,7 @@ Future<bool?> showWorkshopMaterialRequestSheet(
     workshopId: workshopId,
     workshopName: workshopName,
     positionByKey: positionByKey,
+    initialMaterialKeys: initialMaterialKeys,
   ),
 );
 
@@ -48,6 +51,7 @@ class WorkshopMaterialRequestPanel extends ConsumerStatefulWidget {
     required this.workshopId,
     required this.workshopName,
     this.positionByKey = const {},
+    this.initialMaterialKeys = const {},
   });
 
   /// ISSUE 申请领料 / RETURN 退回。
@@ -55,6 +59,9 @@ class WorkshopMaterialRequestPanel extends ConsumerStatefulWidget {
   final String workshopId;
   final String workshopName;
   final Map<String, WmPositionRow> positionByKey;
+
+  /// 货品 + 颜色键；只采用服务端当前仍允许申请的物料。
+  final Set<String> initialMaterialKeys;
 
   @override
   ConsumerState<WorkshopMaterialRequestPanel> createState() =>
@@ -96,22 +103,52 @@ class _WorkshopMaterialRequestPanelState
       _loadError = null;
     });
     try {
-      var materials = await ref
-          .read(workshopMaterialRepositoryProvider)
-          .materials(widget.workshopId);
+      final repository = ref.read(workshopMaterialRepositoryProvider);
+      var materials = <WmMaterialOption>[];
       if (_isReturn) {
+        materials = await repository.materials(widget.workshopId);
         // 退回只列内料仓里有账的料。
         final inBin = {
           for (final row in widget.positionByKey.values)
             if (row.bookQty > 0) row.key,
         };
         materials = materials.where((m) => inBin.contains(m.key)).toList();
+      } else if (widget.initialMaterialKeys.isNotEmpty) {
+        final remaining = {...widget.initialMaterialKeys};
+        final goodsIds = remaining
+            .map((key) => key.split('|').first)
+            .toSet()
+            .toList();
+        var page = 1;
+        while (remaining.isNotEmpty) {
+          final result = await repository.requestMaterials(
+            widget.workshopId,
+            goodsIds: goodsIds,
+            page: page,
+          );
+          if (!mounted) return;
+          for (final material in result.items) {
+            if (remaining.remove(material.key)) materials.add(material);
+          }
+          if (page >= result.totalPages) break;
+          page++;
+        }
+        if (remaining.isNotEmpty) {
+          throw ApiException('MATERIAL_UNAVAILABLE', '部分所选物料当前不可申请，请重新选择');
+        }
       }
       if (!mounted) return;
       setState(() {
         _materials = materials;
         _loading = false;
-        if (_grid.isEmpty) _grid.addRow(_newRow());
+        if (_grid.isEmpty) {
+          for (final material in materials) {
+            if (widget.initialMaterialKeys.contains(material.key)) {
+              _grid.addRow(_newRow()..applyMaterial(material));
+            }
+          }
+          if (_grid.isEmpty) _grid.addRow(_newRow());
+        }
       });
     } on ApiException catch (e) {
       if (mounted) {
@@ -130,6 +167,21 @@ class _WorkshopMaterialRequestPanelState
     }
   }
 
+  Future<WmMaterialOption?> _pickMaterial(BuildContext context) async {
+    final material = await showWorkshopRequestMaterialPicker(
+      context,
+      workshopId: widget.workshopId,
+    );
+    if (!mounted || _saving || material == null) return null;
+    setState(() {
+      _materials = [
+        ..._materials.where((m) => m.key != material.key),
+        material,
+      ];
+    });
+    return material;
+  }
+
   String? _validate() {
     final rows = _grid.rows.where((r) => !r.isBlank).toList();
     if (rows.isEmpty) return '请至少填一种料';
@@ -138,7 +190,7 @@ class _WorkshopMaterialRequestPanelState
       final material = row.material.value;
       if (material == null) return '有一行还没选料';
       if ((row.qtyValue ?? 0) <= 0) {
-        return '「${material.displayName}」请填公斤数';
+        return '「${material.displayName}」请填数量';
       }
       if (!seen.add(material.key)) {
         return '「${material.displayName}」填了两行, 请合成一行';
@@ -249,17 +301,12 @@ class _WorkshopMaterialRequestPanelState
                         Text(
                           _isReturn
                               ? '只退没拆袋、没掺色母的料。仓库按实收确认后, 料从内料仓退回仓库。'
-                              : '填公斤或袋数 (袋数按每袋净重自动算公斤, 可再改)。提交后通知仓库发到本车间内料仓。',
+                              : '按物料单位填数量或袋数 (袋数按每袋净重自动算数量, 可再改)。提交后通知仓库发到本车间内料仓。',
                           style: theme.textTheme.bodyMedium,
                         ),
                         const SizedBox(height: UtenSpacing.s8),
-                        if (_materials.isEmpty)
-                          UtenEmpty(
-                            message: _isReturn ? '内料仓里现在没有可退的料' : '还没有整批领料的料',
-                            description: _isReturn
-                                ? null
-                                : '请先在基础资料里把颗粒等料的发料方式改为"${l10n.wmIssueMethodPeriodic}"。',
-                          )
+                        if (_isReturn && _materials.isEmpty)
+                          const UtenEmpty(message: '内料仓里现在没有可退的料')
                         else
                           UtenEditableGrid<WmIssueLineRow>(
                             tableKey:
@@ -272,6 +319,9 @@ class _WorkshopMaterialRequestPanelState
                               enabled: !_saving,
                               positionByKey: widget.positionByKey,
                               showWarehouseAvailable: !_isReturn,
+                              pickMaterial: _isReturn ? null : _pickMaterial,
+                              useMaterialUnit: !_isReturn,
+                              qtyLabel: _isReturn ? null : '数量',
                             ),
                             createBlankRow: _newRow,
                             showColumnSettings: false,
@@ -323,7 +373,8 @@ class _WorkshopMaterialRequestPanelState
                                   ? Icons.assignment_return_outlined
                                   : Icons.send_outlined,
                               isLoading: _saving,
-                              onPressed: _saving || _materials.isEmpty
+                              onPressed:
+                                  _saving || (_isReturn && _materials.isEmpty)
                                   ? null
                                   : _submit,
                               child: Text('提交$title'),

@@ -121,6 +121,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         // ADR-131 车间内料仓: 新入口, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
         ORIGINAL_ENDPOINTS.put("workshopMaterial", "/api/workshop-material/badge-counts");
         ORIGINAL_ENDPOINTS.put("serverStatus", "/api/admin/server-status");
+        ORIGINAL_ENDPOINTS.put("stockCountFinance", "/api/stock/count-review-badges/finance");
+        ORIGINAL_ENDPOINTS.put("stockCountWarehouse", "/api/stock/count-review-badges/warehouse");
         ORIGINAL_ENDPOINTS.put("notices", "/api/notices/unread-index");
     }
 
@@ -401,7 +403,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         long legacyStarted = System.nanoTime();
         try {
             for (String endpoint : ORIGINAL_ENDPOINTS.values()) {
-                http.perform(get(endpoint).with(authentication(admin))).andReturn();
+                var response = http.perform(get(endpoint).with(authentication(admin))).andReturn().getResponse();
+                assertThat(response.getStatus()).as("Original endpoint %s must execute its query", endpoint).isEqualTo(200);
             }
         } finally {
             ProductionJdbcMeasurement.end();

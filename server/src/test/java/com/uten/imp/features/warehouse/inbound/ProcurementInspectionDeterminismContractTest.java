@@ -24,12 +24,29 @@ class ProcurementInspectionDeterminismContractTest {
                 "\n    private void publishIqcStockInPending", dispositionStart);
         String disposition = source.substring(dispositionStart, dispositionEnd);
 
-        assertOrdered(source,
+        // The receipt query methods also read inspection rows before this helper is declared.
+        // Check the actual mutation path, not the first SELECT in the whole source file.
+        int lockStart = source.indexOf("private Map<UUID, Object[]> lockInspectionRows(");
+        int lockEnd = source.indexOf("\n    private static Object[] requireInspectionRow(", lockStart);
+        assertThat(lockStart).isGreaterThanOrEqualTo(0);
+        assertThat(lockEnd).isGreaterThan(lockStart);
+        String lockRows = source.substring(lockStart, lockEnd);
+        assertOrdered(disposition,
+                "lockInspectionRows(receiptType, receiptId, List.of(inspectionItemId));",
+                "replayRequiresWarehouseStockIn(");
+        assertOrdered(lockRows,
+                "mutationLocks.inspection(receiptType, receiptId, inspectionIds)",
+                "lockReceiptMutationDimensions(receiptType, receiptId);");
+        assertOrdered(lockRows,
                 "lockReceiptMutationDimensions(receiptType, receiptId);",
                 "FROM procurement_inspection_items");
-        assertThat(disposition)
+        assertOrdered(lockRows, "FOR UPDATE", "mutationGuard.verifyUnchanged();");
+        assertOrdered(lockRows, "mutationGuard.verifyUnchanged();",
+                "ProcurementReceiptOriginPolicy.requireNative(em,receiptType,List.of(receiptId));");
+        assertThat(lockRows)
                 .contains("WHERE receipt_type = :rt AND receipt_id = :rid")
-                .contains("ORDER BY id\n                        FOR UPDATE")
+                .contains("ORDER BY id\n                        FOR UPDATE");
+        assertThat(disposition)
                 .contains("Boolean replayRequiresWarehouseStockIn = replayRequiresWarehouseStockIn(")
                 .contains("switch (replayNotification(action, replayRequiresWarehouseStockIn))")
                 .contains("case NONE ->")

@@ -4,14 +4,18 @@ import com.uten.imp.features.purchase.request.PurchaseRequestController;
 import com.uten.imp.features.purchase.request.dto.DecompositionPreviewRequest;
 import com.uten.imp.features.subcontract.application.SubcontractApplicationController;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,24 +59,46 @@ class DemandDecompositionControllerContractTest {
                 com.uten.imp.features.subcontract.application.dto.DecompositionPreviewItem.class);
     }
 
-    private static void assertReadOnlySurface(Class<?> controllerType) {
+    private static void assertReadOnlySurface(Class<?> controllerType) throws NoSuchMethodException {
         Method facets = Arrays.stream(controllerType.getDeclaredMethods())
                 .filter(method -> method.getName().equals("facets")).findFirst().orElseThrow();
         assertThat(facets.getAnnotation(GetMapping.class).value()).containsExactly("/facets");
-        assertThat(facets.getAnnotation(PreAuthorize.class).value()).isEqualTo(
-                controllerType == PurchaseRequestController.class
-                        ? "hasAuthority('purchase_request:view')"
-                        : "hasAuthority('subcontract_application:view')");
-        assertThat(Arrays.stream(controllerType.getDeclaredMethods())
-                        .filter(method -> Modifier.isPublic(method.getModifiers()))
-                        .map(Method::getName))
+        String viewPermission = controllerType == PurchaseRequestController.class
+                ? "hasAuthority('purchase_request:view')"
+                : "hasAuthority('subcontract_application:view')";
+        assertThat(facets.getAnnotation(PreAuthorize.class).value()).isEqualTo(viewPermission);
+        Method detail = controllerType.getDeclaredMethod("detail", UUID.class);
+        Method history = controllerType.getDeclaredMethod("history", UUID.class);
+        assertThat(detail.getAnnotation(GetMapping.class).value()).containsExactly("/{id}");
+        assertThat(history.getAnnotation(GetMapping.class).value()).containsExactly("/{id}/history");
+        assertThat(detail.getAnnotation(PreAuthorize.class).value()).isEqualTo(viewPermission);
+        assertThat(history.getAnnotation(PreAuthorize.class).value()).isEqualTo(viewPermission);
+        assertThat(history.getReturnType()).isEqualTo(detail.getReturnType());
+        Method historyRows = controllerType.getDeclaredMethod("historyRows", UUID.class, Long.class, int.class);
+        assertThat(historyRows.getAnnotation(GetMapping.class).value()).containsExactly("/{id}/history/rows");
+        assertThat(historyRows.getAnnotation(PreAuthorize.class).value()).isEqualTo(viewPermission);
+        assertThat(historyRows.getReturnType()).isEqualTo(List.class);
+        if (controllerType == PurchaseRequestController.class) {
+            Method adjust = controllerType.getDeclaredMethod("adjustItemQty", UUID.class, UUID.class,
+                    PurchaseRequestController.ItemQtyAdjustRequest.class);
+            assertThat(adjust.getAnnotation(PutMapping.class).value())
+                    .containsExactly("/{id}/items/{itemId}/qty");
+            assertThat(adjust.getAnnotation(PreAuthorize.class).value())
+                    .isEqualTo("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')");
+        }
+        List<Method> endpoints = Arrays.stream(controllerType.getDeclaredMethods())
+                .filter(method -> AnnotatedElementUtils.hasAnnotation(method, RequestMapping.class))
+                .toList();
+        assertThat(endpoints).allSatisfy(method ->
+                assertThat(Modifier.isPublic(method.getModifiers())).as(method.getName()).isTrue());
+        assertThat(endpoints.stream().map(Method::getName))
                 .containsExactlyInAnyOrder(
                         // 2026-09-05 申请详情分解前行内改量（读+改量权限同族，
                         // 非 write 全开）：仅采购申请面有，委外申请面保持只读。
                         controllerType == PurchaseRequestController.class
-                                ? new String[]{"list", "detail", "facets",
+                                ? new String[]{"list", "detail", "history", "historyRows", "facets",
                                         "decompositionPreview", "adjustItemQty"}
-                                : new String[]{"list", "detail", "facets",
+                                : new String[]{"list", "detail", "history", "historyRows", "facets",
                                         "decompositionPreview"});
     }
 

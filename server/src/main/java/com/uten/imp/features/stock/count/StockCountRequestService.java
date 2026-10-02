@@ -62,7 +62,7 @@ public class StockCountRequestService {
         return warehouses(true);
     }
     private List<Map<String,Object>> warehouses(boolean activeOnly) {
-        return db.queryForList("""
+        var rows = db.queryForList("""
                 SELECT w.id,w.name,w.is_line_side,
                        CASE WHEN w.is_line_side THEN 'WORKSHOP' ELSE 'NORMAL' END AS kind,
                        CASE WHEN w.is_line_side THEN 'WAREHOUSE' ELSE 'FINANCE' END AS review_route
@@ -72,8 +72,12 @@ public class StockCountRequestService {
                   AND (fn_warehouse_is_active_accounting_leaf(w.id) OR
                        (w.is_line_side AND EXISTS(SELECT 1 FROM workshop_material_settings s
                          WHERE s.periodic_bin_warehouse_id=w.id AND s.periodic_enabled)))
-                """:"")+" ORDER BY w.code,w.id",Map.of()).stream().filter(w->!Boolean.TRUE.equals(w.get("is_line_side"))
-                    ||workshop.canAccessWarehouse((UUID)w.get("id"))).toList();
+                """:"")+" ORDER BY w.code,w.id",Map.of());
+        var lineSide = rows.stream().filter(w -> Boolean.TRUE.equals(w.get("is_line_side")))
+                .map(w -> (UUID)w.get("id")).toList();
+        var accessible = workshop.accessibleWarehouses(lineSide);
+        return rows.stream().filter(w -> !Boolean.TRUE.equals(w.get("is_line_side"))
+                || accessible.contains((UUID)w.get("id"))).toList();
     }
     private Map<String,Object> warehouse(UUID id) {
         return warehouses().stream().filter(w->id!=null&&id.equals(w.get("id"))).findFirst()
@@ -344,9 +348,19 @@ public class StockCountRequestService {
     }
     @Transactional(readOnly=true)
     public Map<String,Object> counts() {
-        return Map.of("financePending",has(FINANCE)?list("FINANCE","PENDING",null,1,1).getTotal():0,
-                "warehousePending",has(WAREHOUSE)?list("WAREHOUSE","PENDING",null,1,1).getTotal():0,
-                "myPending",has(SUBMIT)?list(null,"PENDING",null,1,1).getTotal():0,
-                "myRejected",has(SUBMIT)?list(null,"REJECTED",null,1,1).getTotal():0);
+        var allowed = warehouses(false).stream().map(w -> (UUID)w.get("id")).toList();
+        if (allowed.isEmpty()) return Map.of("financePending",0L,"warehousePending",0L,"myPending",0L,"myRejected",0L);
+        var params = new MapSqlParameterSource("warehouses",allowed).addValue("actor",user.requireId());
+        var counts = db.queryForMap("""
+                SELECT count(*) FILTER (WHERE r.review_route='FINANCE' AND r.status='PENDING') AS finance_pending,
+                       count(*) FILTER (WHERE r.review_route='WAREHOUSE' AND r.status='PENDING') AS warehouse_pending,
+                       count(*) FILTER (WHERE r.submitted_by=:actor AND r.status='PENDING') AS my_pending,
+                       count(*) FILTER (WHERE r.submitted_by=:actor AND r.status='REJECTED') AS my_rejected
+                FROM stock_count_requests r WHERE r.warehouse_id IN (:warehouses) AND r.status IN ('PENDING','REJECTED')
+                """,params);
+        return Map.of("financePending",has(FINANCE)?counts.get("finance_pending"):0L,
+                "warehousePending",has(WAREHOUSE)?counts.get("warehouse_pending"):0L,
+                "myPending",has(SUBMIT)?counts.get("my_pending"):0L,
+                "myRejected",has(SUBMIT)?counts.get("my_rejected"):0L);
     }
 }

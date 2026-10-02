@@ -1560,6 +1560,49 @@ void main() {
   }
 
   testWidgets(
+    'existing batch weight survives an unknown result and draft reopen',
+    (tester) async {
+      final storage = _Storage();
+      final tasks = _Tasks()..failure = NetworkTimeoutException();
+      await _pump(
+        tester,
+        tasks,
+        requests: [],
+        storage: storage,
+        scope: const AuthenticatedScope(userId: 'one'),
+        draftGuard: true,
+      );
+      _table(tester).issueWeights!['item-normal']!.weight.setKg(1.25);
+      await _submit(tester);
+      final saved = storage.draft;
+      final data = saved['data'] as Map;
+      expect((data['weights'] as Map)['item-normal'], {
+        'kg': 1.25,
+        'qtyFromWeight': false,
+        'qtyNote': null,
+      });
+      expect(tasks.ordinarySubmissions.single['weights'], [
+        {'itemId': 'item-normal', 'weightKg': 1.25, 'qtyFromWeight': false},
+      ]);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      await _pump(
+        tester,
+        tasks,
+        requests: [],
+        storage: storage,
+        scope: const AuthenticatedScope(userId: 'one', epoch: 2),
+        draftId: saved['id'] as String,
+        draftGuard: true,
+      );
+      expect(_table(tester).issueWeights!['item-normal']!.weight.kg, 1.25);
+      expect(_table(tester).issueSaving, isTrue);
+      expect(tasks.ordinaryCalls, 1, reason: 'reopening must not submit again');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'batch weights ride with the request: existing lines in weights, discovery rows in discoveries[].weights',
     (tester) async {
       final tasks = _Tasks()

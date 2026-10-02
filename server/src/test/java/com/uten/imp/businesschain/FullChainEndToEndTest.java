@@ -4452,7 +4452,7 @@ class FullChainEndToEndTest {
                         "ghost.png", contentType, (long) content.length, null, null)));
         assertEquals(ErrorCode.CONFLICT, conflict.getCode(), conflict.getMessage());
 
-        // 9) delete：删对象 + 删行 + 磁盘文件
+        // 9) ordinary delete hides the active row and retains authorized history plus exact original bytes
         attachmentService.delete(saved.id());
         while (attachmentOutbox.processNext()) {
             // deterministically drain staging and final delete intents
@@ -4461,10 +4461,25 @@ class FullChainEndToEndTest {
                 "select count(*) from attachments where owner_type=? and owner_id=? and lifecycle_state='CLEAN'",
                 "EXPENSE_CLAIM", ownerId));
         assertEquals(1, count(
-                "select count(*) from attachments where id=? and lifecycle_state='DELETED'",
+                "select count(*) from attachments where id=? and lifecycle_state='RETAINED_HISTORY'",
                 saved.id()));
-        assertFalse(java.nio.file.Files.exists(
+        assertTrue(java.nio.file.Files.exists(
                 ATTACH_TEST_DIR.resolve("final").resolve(pre.storageKey())));
+        assertTrue(attachmentService.list("EXPENSE_CLAIM", ownerId).isEmpty());
+        AttachmentDto history = attachmentService.history(saved.id());
+        assertTrue(history.deleted());
+        assertTrue(history.historyReadOnly());
+        assertEquals(1, attachmentService.list("EXPENSE_CLAIM", ownerId, true, false).size());
+        try (var original = attachmentService.openHistory(saved.id()).stream()) {
+            assertArrayEquals(content, original.readAllBytes());
+        }
+        UUID noAttachmentAuthority = createUserWithPerms(w, "att-history-denied", "expense:apply");
+        loginAs(noAttachmentAuthority);
+        assertEquals(ErrorCode.FORBIDDEN, assertThrows(ApiException.class,
+                () -> attachmentService.history(saved.id())).getCode());
+        assertEquals(ErrorCode.FORBIDDEN, assertThrows(ApiException.class,
+                () -> attachmentService.openHistory(saved.id())).getCode());
+        loginAs(user);
     }
 
     // ---------------------------------------------------------------------------------------------

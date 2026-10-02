@@ -108,6 +108,7 @@ class DocumentDirectLockTest {
     @Test
     void manualFinishedInboundReverseReopensCompletionBeforePersistingReverse() {
         EntityManager em = mock(EntityManager.class);
+        notAnApprovedCount(em);
         com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         StockDocumentRepository documents =
                 mock(StockDocumentRepository.class);
@@ -183,6 +184,7 @@ class DocumentDirectLockTest {
     @Test
     void finishedInboundDownstreamGuardLeavesDocumentApproved() {
         EntityManager em = mock(EntityManager.class);
+        notAnApprovedCount(em);
         com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         StockDocumentRepository documents =
                 mock(StockDocumentRepository.class);
@@ -261,6 +263,7 @@ class DocumentDirectLockTest {
     @Test
     void finishedInboundTransferredPreplanGuardRunsBeforeAnyReverseMutation() {
         EntityManager em = mock(EntityManager.class);
+        notAnApprovedCount(em);
         com.uten.imp.support.FulfillmentMutationLockTestSupport.emptyExecutionGraph(em);
         StockDocumentRepository documents = mock(StockDocumentRepository.class);
         StockDocumentItemRepository items = mock(StockDocumentItemRepository.class);
@@ -389,5 +392,13 @@ class DocumentDirectLockTest {
                 mock(ProductionStockTaskAccessPolicy.class);
         when(policy.canAccessWarehouseTasks()).thenReturn(true);
         return policy;
+    }
+
+    private static void notAnApprovedCount(EntityManager em) {
+        Query count = mock(Query.class);
+        when(em.createNativeQuery(contains("FROM stock_count_requests request JOIN stock_count_request_events event")))
+                .thenReturn(count);
+        when(count.setParameter(org.mockito.ArgumentMatchers.eq("document"), any(UUID.class))).thenReturn(count);
+        when(count.getSingleResult()).thenReturn(false);
     }
 }

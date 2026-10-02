@@ -1,5 +1,8 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+
 import com.uten.imp.features.stock.dto.StockBalanceAdjustmentRequest;
 import com.uten.imp.features.stock.dto.StockBalanceAdjustmentResult;
 import jakarta.validation.Valid;
@@ -11,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 高风险库存余额调整入口。
+ * 已退役的库存余额快捷入口；旧调用方必须改用送审盘点。
  *
  * <p>权限单独拆为 stock:balance:adjust，迁移不授予任何部门，只能由权限管理员明确授权。
  */
@@ -26,6 +29,6 @@ public class StockBalanceAdjustmentController {
     @PreAuthorize("hasAuthority('stock:balance:adjust')")
     public StockBalanceAdjustmentResult adjust(
             @Valid @RequestBody StockBalanceAdjustmentRequest request) {
-        return service.adjust(request);
+        throw new ApiException(ErrorCode.CONFLICT, "库存快捷调整已退役，请通过库存盘点提交财务审核");
     }
 }

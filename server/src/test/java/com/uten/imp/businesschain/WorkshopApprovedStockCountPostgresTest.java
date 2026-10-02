@@ -121,6 +121,26 @@ class WorkshopApprovedStockCountPostgresTest {
         assertEquals("PERIODIC",db.queryForObject("SELECT issue_method FROM goods WHERE id=?",String.class,shop.goods()));
     }
 
+    @Test void bulkWarehouseVisibilityMatchesSingleChecksForRestrictedAndAdminActors() {
+        Shop own=shop(false), other=shop(false);
+        fixture.loginAs(own.world().superAdminUserId());
+        UUID member=fixture.createUserWithPerms(own.world(),"scope-"+UUID.randomUUID(),"stock:count:warehouse_review");
+        db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",own.workshop(),member);
+        var ids=List.of(own.bin(),other.bin(),own.world().warehouseId(),UUID.randomUUID());
+        fixture.loginAs(member);
+        assertTrue(posting.canAccessWarehouse(own.bin()));
+        assertFalse(posting.canAccessWarehouse(other.bin()));
+        assertEquals(java.util.Set.of(own.bin()),posting.accessibleWarehouses(ids));
+        fixture.loginAs(own.world().superAdminUserId());
+        long version=db.queryForObject("SELECT row_version FROM workshop_material_settings WHERE workshop_department_id=?",Long.class,own.workshop());
+        settings.update(own.workshop(),new SettingsRequest(version,false,null,null,List.of(),key()));
+        for (UUID actor:List.of(member,own.world().superAdminUserId())) {
+            fixture.loginAs(actor);
+            assertEquals(ids.stream().filter(posting::canAccessWarehouse).collect(java.util.stream.Collectors.toSet()),posting.accessibleWarehouses(ids));
+        }
+        assertEquals(java.util.Set.of(),posting.accessibleWarehouses(List.of()));
+    }
+
     private Shop shop(boolean order) {
         fixture=new FullChainEndToEndTest(); beans.autowireBean(fixture);
         String tag="approved-count-"+UUID.randomUUID().toString().substring(0,8);

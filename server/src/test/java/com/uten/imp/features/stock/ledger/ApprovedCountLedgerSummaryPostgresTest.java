@@ -14,18 +14,10 @@ class ApprovedCountLedgerSummaryPostgresTest {
     @Test void approvedPositiveAndNegativeDeltasAppearOnTheirOwnSideWithoutBeingReversals() {
         try(var pg=new PostgreSQLContainer<>("postgres:16-alpine")) {
             pg.start();var db=new NamedParameterJdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
-            db.getJdbcTemplate().execute("""
-                    CREATE TABLE stock_balances(goods_id uuid,warehouse_id uuid,color_id uuid,qty numeric,weight numeric);
-                    CREATE TABLE stock_movements(id uuid,goods_id uuid,warehouse_id uuid,color_id uuid,
-                      transaction_date timestamptz,ledger_seq bigint,movement_type smallint,direction smallint,
-                      source_doc_type text,source_doc_id uuid,source_item_id uuid,qty numeric,weight numeric,
-                      weight_source text,remark text,created_by uuid,amount_local numeric);
-                    CREATE TABLE stock_weight_adjustments(id uuid,goods_id uuid,warehouse_id uuid,color_id uuid,
-                      transaction_date timestamptz,ledger_seq bigint,source_doc_type text,source_doc_id uuid,
-                      source_item_id uuid,delta_kg numeric,kind text,reason text,created_by uuid);
-                    """);
+            com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db.getJdbcTemplate(),
+                    "stock_balances", "stock_movements", "stock_weight_adjustments");
             UUID goods=UUID.randomUUID(),warehouse=UUID.randomUUID();
-            db.getJdbcTemplate().update("INSERT INTO stock_balances VALUES (?,?,NULL,80,80)",goods,warehouse);
+            db.getJdbcTemplate().update("INSERT INTO stock_balances(goods_id,warehouse_id,color_id,qty,weight) VALUES (?,?,NULL,80,80)",goods,warehouse);
             db.getJdbcTemplate().update("""
                     INSERT INTO stock_movements(id,goods_id,warehouse_id,transaction_date,ledger_seq,movement_type,
                       direction,source_doc_type,source_doc_id,qty,weight,weight_source)

@@ -306,6 +306,10 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
                 ("POST", "/api/attachments/confirm"),
                 ("GET", "/api/attachments"),
                 ("GET", "/api/attachments/{id}/download-grant"),
+                # Historical metadata and original bytes use the existing
+                # authenticated /api/ proxy, with separate native permissions.
+                ("GET", "/api/attachments/{id}/history"),
+                ("GET", "/api/attachments/{id}/history/download"),
                 ("DELETE", "/api/attachments/{id}"),
                 ("GET", "/api/attachments/reconciliation/findings"),
                 (
@@ -355,14 +359,26 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
             # 2026-09-11：+1 upload（PUT /{id}/category，整理自己传的文件，
             # 刻意不借用 delete 权限）、+1 download（GET /{id}/preview，读文件字节）。
             "attachment:upload": 4,
-            "attachment:view": 1,
-            "attachment:download": 3,
+            "attachment:view": 2,
+            "attachment:download": 4,
             "attachment:delete": 1,
             "attachment:reconcile:view": 1,
             "attachment:reconcile:approve_delete": 1,
         }.items():
             self.assertEqual(expected_count, attachment_controller.count(
                 f"hasAuthority('{permission}')"))
+        # Keep each historical route bound to its own permission: swapping
+        # metadata/view and original/download must not pass by preserving counts.
+        for suffix, permission in (
+            ("/{id}/history", "attachment:view"),
+            ("/{id}/history/download", "attachment:download"),
+        ):
+            self.assertRegex(
+                attachment_controller,
+                re.escape(f'@GetMapping("{suffix}")')
+                + r"\s*"
+                + re.escape(f"@PreAuthorize(\"hasAuthority('{permission}')\")"),
+            )
         self.assertNotIn("hasAuthority('attachment:manage')", attachment_controller)
         self.assertNotIn("hasAuthority('attachment:reconcile')", attachment_controller)
 

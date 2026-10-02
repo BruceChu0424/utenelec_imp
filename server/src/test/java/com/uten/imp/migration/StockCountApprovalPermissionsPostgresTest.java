@@ -25,24 +25,18 @@ class StockCountApprovalPermissionsPostgresTest {
     @BeforeAll static void setup() throws Exception {
         PG.start();
         db = new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword()));
+        com.uten.imp.support.MigratedProjectionSchema.createTables(db, "766",
+                "permissions", "permission_surfaces", "permission_surface_permissions",
+                "department_permissions", "user_permission_overrides", "manager_permission_delegations");
+        db.execute("ALTER TABLE permissions ADD CONSTRAINT permissions_code_format_chk CHECK (code ~ '^[a-z][a-z_]*(:[a-z][a-z_]*){1,2}$')");
         db.execute("""
-                CREATE TABLE permissions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), code text UNIQUE, name text,
-                    module text, category text, sort_order int, action_type text, description text,
-                    grant_policy text[], high_risk boolean DEFAULT false, baseline boolean DEFAULT false,
-                    CONSTRAINT permissions_code_format_chk CHECK (code ~ '^[a-z][a-z_]*(:[a-z][a-z_]*){1,2}$'));
-                CREATE TABLE permission_surfaces(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), surface_key text UNIQUE,
-                    name text, sort_order int, enabled boolean DEFAULT true);
-                CREATE TABLE permission_surface_permissions(surface_id uuid, permission_id uuid);
-                CREATE TABLE department_permissions(department_id uuid, permission_id uuid);
-                CREATE TABLE user_permission_overrides(user_id uuid, permission_id uuid, active boolean, effect text);
-                CREATE TABLE manager_permission_delegations(permission_id uuid, enabled boolean);
-                INSERT INTO permission_surfaces(surface_key) VALUES ('warehouse.stock-balance'), ('warehouse.stock-item'),
-                    ('production.workshop-material'), ('warehouse.workshop-material');
+                INSERT INTO permission_surfaces(id,surface_key) VALUES (gen_random_uuid(),'warehouse.stock-balance'), (gen_random_uuid(),'warehouse.stock-item'),
+                    (gen_random_uuid(),'production.workshop-material'), (gen_random_uuid(),'warehouse.workshop-material');
                 INSERT INTO permissions(code,grant_policy) VALUES ('stock:balance:adjust', ARRAY['INDIVIDUAL_ONLY']);
                 INSERT INTO permissions(code,grant_policy,baseline) VALUES ('workshop_material:count', ARRAY['NORMAL'], true);
-                INSERT INTO department_permissions SELECT gen_random_uuid(),id FROM permissions WHERE code='workshop_material:count';
-                INSERT INTO manager_permission_delegations SELECT id,true FROM permissions WHERE code='workshop_material:count';
-                INSERT INTO user_permission_overrides SELECT gen_random_uuid(),id,true,'grant' FROM permissions WHERE code='workshop_material:count';
+                INSERT INTO department_permissions(department_id,permission_id) SELECT gen_random_uuid(),id FROM permissions WHERE code='workshop_material:count';
+                INSERT INTO manager_permission_delegations(user_id,permission_id,department_id,enabled) SELECT gen_random_uuid(),id,gen_random_uuid(),true FROM permissions WHERE code='workshop_material:count';
+                INSERT INTO user_permission_overrides(user_id,permission_id,active,effect) SELECT gen_random_uuid(),id,true,'grant' FROM permissions WHERE code='workshop_material:count';
                 """);
         String governance = Files.readString(Path.of("src/main/resources/db/migration/V677__permission_catalog_single_source.sql"));
         int start = governance.indexOf("CREATE FUNCTION fn_guard_permission_grant_policy()");
@@ -73,11 +67,11 @@ class StockCountApprovalPermissionsPostgresTest {
 
     @Test void departmentAndManagerGrantsAreRejectedButExplicitPersonalGrantIsAllowed() {
         UUID permission = db.queryForObject("SELECT id FROM permissions WHERE code='stock:count:submit'", UUID.class);
-        assertThatThrownBy(() -> db.update("INSERT INTO department_permissions VALUES (?,?)", UUID.randomUUID(), permission))
+        assertThatThrownBy(() -> db.update("INSERT INTO department_permissions(department_id,permission_id) VALUES (?,?)", UUID.randomUUID(), permission))
                 .hasMessageContaining("只能逐人授予");
-        assertThatThrownBy(() -> db.update("INSERT INTO manager_permission_delegations VALUES (?,true)", permission))
+        assertThatThrownBy(() -> db.update("INSERT INTO manager_permission_delegations(user_id,permission_id,department_id,enabled) VALUES (gen_random_uuid(),?,gen_random_uuid(),true)", permission))
                 .hasMessageContaining("不能由负责人转授");
-        db.update("INSERT INTO user_permission_overrides VALUES (?,?,true,'grant')", UUID.randomUUID(), permission);
+        db.update("INSERT INTO user_permission_overrides(user_id,permission_id,active,effect) VALUES (?,?,true,'grant')", UUID.randomUUID(), permission);
         assertThat(db.queryForObject("SELECT count(*) FROM user_permission_overrides WHERE permission_id=?", Integer.class,
                 permission)).isEqualTo(1);
         db.update("DELETE FROM user_permission_overrides WHERE permission_id=?", permission);

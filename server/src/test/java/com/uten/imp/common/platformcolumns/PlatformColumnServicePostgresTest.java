@@ -148,18 +148,26 @@ class PlatformColumnServicePostgresTest {
         assertThat(declared).as("Display adapters must use real functional authorities").isEmpty();
     }
 
-    @Test void permanentResetRefusalRetainsCommercialAndMasterAnnotationsAndDefinitions() {
+    @Test void explicitTestResetClearsCommercialHistoryButRetainsMasterCellsAndImmutableDefinitions() {
         var masterColumn=define("goods","保留主档","TEXT",false,null);
         var docColumn=define("sales_order","保留单据","TEXT",false,null);
         tx(()->service.write("goods",record,new Write(0,List.of(new CellInput(masterColumn.id(),"主档备注")))));
         tx(()->service.write("sales_order",record,new Write(0,List.of(new CellInput(docColumn.id(),"业务原备注")))));
-        var before=sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields ORDER BY scope");
-        var historyBefore=sql.queryForList("SELECT id,scope,record_id,version,cells::text FROM platform_record_field_versions ORDER BY id");
-        assertThatThrownBy(()->transaction.execute(status->sql.queryForList("SELECT * FROM business_data_reset()")))
-            .isInstanceOf(org.springframework.dao.DataAccessException.class).hasMessageContaining("PERMANENT_RETAIN");
-        assertThat(sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields ORDER BY scope")).isEqualTo(before);
-        assertThat(sql.queryForList("SELECT id,scope,record_id,version,cells::text FROM platform_record_field_versions ORDER BY id")).isEqualTo(historyBefore);
+        var masterBefore=sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields WHERE scope='goods'");
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_field_versions",Integer.class)).isEqualTo(2);
+        // Ordinary destruction remains forbidden; only the authenticated whole testing reset has an exception.
+        assertThatThrownBy(()->sql.update("DELETE FROM platform_record_field_versions"))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class).hasMessageContaining("permanent");
+        assertThatThrownBy(()->sql.update("UPDATE platform_column_definitions SET name='changed' WHERE id=?",masterColumn.id()))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        transaction.execute(status->sql.queryForList("SELECT * FROM business_data_reset()"));
+        assertThat(sql.queryForList("SELECT scope,record_id,version,cells::text FROM platform_record_fields WHERE scope='goods'")).isEqualTo(masterBefore);
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_fields WHERE scope='sales_order'",Integer.class)).isZero();
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_field_versions",Integer.class)).isZero();
         assertThat(sql.queryForObject("SELECT count(*) FROM platform_column_definitions",Integer.class)).isEqualTo(2);
+        assertThat(sql.queryForObject("SELECT name FROM platform_column_definitions WHERE id=?",String.class,masterColumn.id())).isEqualTo("保留主档");
+        assertThatThrownBy(()->sql.update("DELETE FROM platform_column_definitions WHERE id=?",masterColumn.id()))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 
     @Test void saveBridgeRekeysMaskedFieldsTogetherWithTheRealBusinessRow() {

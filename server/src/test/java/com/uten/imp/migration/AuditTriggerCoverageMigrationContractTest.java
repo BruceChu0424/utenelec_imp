@@ -60,8 +60,8 @@ class AuditTriggerCoverageMigrationContractTest {
     private static final Pattern FULL_CALL = Pattern.compile(
             "(?s)fn_audit_track_table\\(t, 'FULL', '([a-z_]+)', (true|false)\\)\\s+FROM unnest\\(ARRAY\\[(.*?)]\\) AS t;");
     private static final Pattern SCOPED_CALL = Pattern.compile(
-            "(?s)fn_audit_track_table\\('([a-z_]+)', 'COLUMN_SCOPED', '([a-z_]+)', (true|false),\\s*"
-                    + "ARRAY\\[(.*?)], (true|false)\\);");
+            "(?s)fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'COLUMN_SCOPED'\\s*,\\s*'([a-z_]+)'\\s*,\\s*(true|false)\\s*,\\s*"
+                    + "ARRAY\\s*\\[(.*?)]\\s*,\\s*(true|false)\\s*\\);");
     private static final Pattern REGISTRATION = Pattern.compile(
             "fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'(FULL|COLUMN_SCOPED|NONE)'");
     private static final Pattern QUOTED = Pattern.compile("'([a-z_][a-z0-9_]*)'");
@@ -93,13 +93,13 @@ class AuditTriggerCoverageMigrationContractTest {
                     "系统设置与全局配置: 改动影响全平台运行口径",
                     Set.of(
                         "business_identifier_namespaces", "expense_claim_settings",
-                        "system_master_category_registry",
+                        "system_master_category_registry", "business_record_retention_registry",
                         "system_posting_style_roles", "system_settings",
                         "unit_measurement_profiles")),
             new FullGroup("master", "data_change", false,
                     "基础资料主档: 人工维护, 被所有单据引用",
                     Set.of(
-                        "accounts", "business_column_definitions", "platform_column_definitions", "platform_record_fields",
+                        "accounts", "business_column_definitions",
                         "sales_alias_document_evidence", "client_categories", "client_ship_addresses", "clients",
                         "colors", "currencies", "finance_payment_methods", "goods",
                         "goods_bom_items", "goods_cost_sheets", "goods_cost_snapshots", "goods_cost_templates",
@@ -114,6 +114,13 @@ class AuditTriggerCoverageMigrationContractTest {
                         // V740 (ADR-131): 车间整批领料设置、机台与容器、产品认料
                         "workshop_material_settings", "workshop_machines", "workshop_machine_containers",
                         "goods_periodic_material_choices")),
+            new FullGroup("count_decisions_and_lineage", "data_change", false,
+                    "V766/V768 的盘点申请、逐行计数、处理事件和过账关联是可追溯的业务决定，建表迁移明确 FULL；不以队列或派生名义免审",
+                    Set.of("stock_count_requests", "stock_count_request_lines", "stock_count_request_events",
+                            "workshop_material_count_adjustment_postings")),
+            new FullGroup("source_and_field_versions", "data_change", false,
+                    "正式 AI 原件绑定和扩展字段版本保留单据与操作者谱系；V773/V779 明确 FULL，字段原载荷由原生权限历史读取，通用审计投影屏蔽敏感载荷",
+                    Set.of("ai_input_original_bindings", "platform_record_field_versions")),
             new FullGroup("org_hr", "data_change", false,
                     "组织、人事与访客资料: 人工维护的敏感资料, 由脱敏函数去掉证件/联系方式/自由文本后整行审计",
                     Set.of(
@@ -240,6 +247,9 @@ class AuditTriggerCoverageMigrationContractTest {
                             "timeout_seconds", "enabled", "is_default"),
                     "AI 服务商配置(V742, ADR-133): 只记超管改的非密钥列; 不挂新增/删除触发器(整行会带上密钥密文), "
                             + "新建、删除、换密钥、设为默认由 AuditService 显式事件记录, 密文与尾号从不进审计"),
+            new ScopedTable("platform_column_definitions", "data_change", true,
+                    List.of("scope", "owner_user_id", "value_type", "price_protected"),
+                    "V779: 不可变定义只记范围、所有者、值类型和价格保护；名称/公式与值原载荷不进入通用审计，使用次数不是业务决定"),
             new ScopedTable("goods_weight_observations", "data_change", false,
                     List.of("excluded_reason"),
                     "称重观测(V743/ADR-135): 插入由仓库采集自动产生, 行内带称重人与来源; 红冲标记是系统随单据撤回写的; "
@@ -264,6 +274,11 @@ class AuditTriggerCoverageMigrationContractTest {
                         "visitor_sms_codes",
                         // V742 AI 调用技术记录: 只有用途/服务商/token/耗时, 不含提示词、回复与密钥。
                         "ai_call_logs")),
+            new NoneGroup("retained_private_evidence",
+                    "永久原件、私有 before-image 和清理授权是独立证据，保留原载荷/关联并由授权原生入口读取；通用行审计不再次复制密钥、原上传、值单元或历史证据",
+                    Set.of("ai_input_originals", "ai_provider_history", "business_record_history", "business_record_identities",
+                            "business_test_object_cleanup_intents", "notice_blessing_history",
+                            "sales_quote_template_candidate_history", "platform_record_fields")),
             new NoneGroup("notice",
                     "通知投递与互动机制: 人工发布、确认、祝福已有显式业务事件",
                     Set.of(
@@ -282,7 +297,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "stock_value_tasks", "subcontract_outbound_preparation_commands",
                         "task_claims", "warehouse_arrival_registration_commands",
                         "workshop_material_commands", "goods_cost_commands",
-                        // V742 AI 识别任务队列: 上传与结果只给提交人本人, 终态即清空文件。
+                        // AI 识别任务协调态；原上传独立永久保全，提交人及原生单据范围控制读取。
                         "ai_jobs")),
             new NoneGroup("reservation",
                     "编号终身预留、冲突证据与改号历史: 只追加, 行本身就是占用/改号记录",

@@ -236,6 +236,9 @@ class PurchaseRequestQuantityCasPostgresTest {
 
     private Case prepare(int count){
         var harness=new FullChainEndToEndTest();beans.autowireBean(harness);var world=harness.seedWorld("qty-cas-"+UUID.randomUUID());
+        // Each isolated world owns a real, active, explicitly authorized reviewer.
+        harness.createUserWithPerms(world,"QREV-"+UUID.randomUUID(),
+                "finance_order_approval:view","finance_order_approval:approve","finance_order_approval:reject");
         harness.loginAs(world.superAdminUserId());var request=new RequestSaveRequest();request.setBillDate(BusinessTime.today());request.setWarehouseId(world.warehouseId());
         request.setDepartmentId(world.departmentId());request.setApplicantId(world.employeeId());
         var lines=new ArrayList<RequestItemLine>();for(int i=0;i<count;i++){var line=new RequestItemLine();line.setLineNo(i+1);line.setGoodsId(world.goodsD());

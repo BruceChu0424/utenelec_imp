@@ -130,7 +130,7 @@ class SubcontractPreparationPaginationPostgresTest {
         jdbc.execute("CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric)");
         // ADR-098：委外「进行中」display_stage 的 LATERAL progress 子查询要读这四张表(最小列集)。
         jdbc.execute("CREATE TABLE subcontract_short_delivery_cases(id uuid PRIMARY KEY, order_id uuid, order_item_id uuid, status text, severity text, expected_complete_by date)");
-        jdbc.execute("CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, qty numeric, received_qty numeric, returned_qty numeric, is_deleted boolean DEFAULT false, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb)");
+        jdbc.execute("CREATE TABLE subcontract_order_items(total_amount_input numeric, id uuid PRIMARY KEY, order_id uuid, qty numeric, received_qty numeric, returned_qty numeric, is_deleted boolean DEFAULT false, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb)");
         // This pagination fixture has public inventory only. Exact entitlement handoff is
         // exercised against all real migrations by the component outbound integration tests.
         jdbc.execute("""

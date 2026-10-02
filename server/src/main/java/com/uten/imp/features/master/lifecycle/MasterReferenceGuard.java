@@ -85,6 +85,7 @@ public class MasterReferenceGuard {
         PRODUCTION_MATERIAL("还有生产计划没领完这个料", "请等领料完成，或取消对应的生产计划"),
         DAILY_REPORT("还有未审核的生产日报", "请先处理完这些日报"),
         STOCK_DOCUMENT("还有未完成的出入库单", "请先处理完这些出入库单"),
+        STOCK_COUNT_REQUEST("还有待审核的库存盘点申请", "请先完成审核、驳回或取消盘点申请"),
         FINANCE_RECEIPT("还有未审核的收款单", "请先处理完这些收款单"),
         FINANCE_PAYMENT("还有未审核的付款单", "请先处理完这些付款单"),
         RECEIVABLE("还有没收完的应收款", "请先收完或核销这些应收款"),

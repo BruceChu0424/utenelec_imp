@@ -568,7 +568,6 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
         controllerOf(line)?.text ?? readOnlyExactValueOf?.call(line),
     exactListenableOf: controllerOf,
     // 按称重预填的黄标 ⓘ(44)计入量宽。
-    chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
     cellBuilder: (context, line) {
       final controller = controllerOf(line);
       if (controller == null) {
@@ -807,7 +806,6 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     textOf: (line) => line.place.text,
     listenableOf: (line) => line.place,
     // 预填黄标 ⓘ(44)计入量宽。
-    chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
     cellBuilder: (context, line) {
       final canEdit = enabled(line) && !line.locked;
       final field = Semantics(

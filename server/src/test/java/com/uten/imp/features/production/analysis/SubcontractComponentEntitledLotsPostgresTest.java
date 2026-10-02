@@ -43,7 +43,7 @@ class SubcontractComponentEntitledLotsPostgresTest {
                     is_defective boolean DEFAULT false, is_line_side boolean DEFAULT false);
                 CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, goods_id uuid, color_id uuid,
                     qty numeric(18,4), unit_rate numeric(18,6) DEFAULT 1, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, unit_rate numeric(18,6) DEFAULT 1, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb);
+                CREATE TABLE subcontract_order_items(total_amount_input numeric, id uuid PRIMARY KEY, unit_rate numeric(18,6) DEFAULT 1, extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb);
                 CREATE TABLE subcontract_order_item_sources(order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4));
                 CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text,
                     status text, external_document_type text, public_surplus_external_item_id uuid, aggregate_allocation_check_revision bigint NOT NULL DEFAULT 0);

@@ -133,6 +133,33 @@ class StockCountApprovalPostgresTest {
         qty("10");
     }
 
+    @Test void aggregateCountsMatchScopedListsAcrossRolesAndFinalStates() {
+        fixture.loginAs(maker);
+        var line=input(world.goodsA(),"12",null,false);
+        var pending=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"pending",key(),List.of(line)));
+        var rejected=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"rejected",key(),List.of(line)));
+        var cancelled=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"cancelled",key(),List.of(line)));
+        controller.cancel((UUID)cancelled.get("id"),new StockCountDtos.Decision(0L,key(),null));
+        fixture.loginAs(finance);
+        controller.reject((UUID)rejected.get("id"),new StockCountDtos.Decision(0L,key(),"recheck"));
+        db.update("UPDATE warehouses SET status='禁用' WHERE id=?",world.warehouseId());
+        for (UUID actor:List.of(maker,finance,warehouseReviewer,world.superAdminUserId())) {
+            fixture.loginAs(actor);
+            var actual=controller.counts();
+            boolean admin=actor.equals(world.superAdminUserId());
+            assertEquals(admin||actor.equals(finance)?controller.list("FINANCE","PENDING",null,1,1).getTotal():0L,actual.get("financePending"));
+            assertEquals(admin||actor.equals(warehouseReviewer)?controller.list("WAREHOUSE","PENDING",null,1,1).getTotal():0L,actual.get("warehousePending"));
+            assertEquals(admin||actor.equals(maker)?controller.list(null,"PENDING",null,1,1).getTotal():0L,actual.get("myPending"));
+            assertEquals(admin||actor.equals(maker)?controller.list(null,"REJECTED",null,1,1).getTotal():0L,actual.get("myRejected"));
+        }
+        fixture.loginAs(maker);
+        assertEquals(1L,controller.counts().get("myPending"));
+        assertEquals(1L,controller.counts().get("myRejected"));
+        assertEquals("PENDING",controller.detail((UUID)pending.get("id")).get("status"));
+        fixture.loginAs(outsider);
+        assertThrows(AccessDeniedException.class,controller::counts);
+    }
+
     private StockCountDtos.LineInput input(UUID goods,String qty,String weight,boolean weightChanged){
         var rows=controller.candidates(world.warehouseId(),"",List.of(goods),1,50).getItems();
         var row=rows.stream().filter(r->r.get("colorId")==null).findFirst().orElseThrow();

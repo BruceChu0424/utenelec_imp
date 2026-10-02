@@ -227,11 +227,7 @@ class _ProductionDrawBatchIssuePageState
       for (final item in document.items) {
         final id = item.id;
         if (id == null || item.remainingQty <= 0) continue;
-        _issueWeights[id] = drawRemainingWeightEntry(
-          item,
-          unit: unit,
-          warehouseId: document.warehouseId,
-        );
+        _issueWeights[id] = drawRemainingWeightEntry(item, unit: unit);
       }
     }
   }
@@ -294,7 +290,7 @@ class _ProductionDrawBatchIssuePageState
     ],
     'weights': {
       for (final entry in _issueWeights.entries)
-        if (entry.value.weight.userEdited) entry.key: _weightDraft(entry.value),
+        entry.key: _weightDraft(entry.value),
     },
   };
   @override

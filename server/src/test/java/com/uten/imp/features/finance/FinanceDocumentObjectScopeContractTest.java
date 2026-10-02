@@ -30,8 +30,14 @@ class FinanceDocumentObjectScopeContractTest {
                     "var readScope = access.scope();",
                     "access.readablePredicate(root, cb, \"makerId\", readScope)");
             assertThat(method(source, " facets(")).contains(helper.group(1) + "(f)");
-            String detail = method(source, " detail(");
-            assertThat(detail).contains("access.requireReadable(");
+            assertThat(method(source, " detail("))
+                    .as("active detail delegates through the scoped reader in %s", relative)
+                    .contains("return readDetail(id, false);");
+            assertThat(method(source, " detailHistory("))
+                    .as("history detail delegates through the same scoped reader in %s", relative)
+                    .contains("return readDetail(id, true);");
+            String detail = method(source, " readDetail(");
+            assertThat(detail).contains("= require(id, historyRead);", "access.requireReadable(");
             int childLoad = firstIndexOf(detail, "lineRepo.findBy", "itemRepo.findBy");
             assertThat(childLoad).as("detail child load in %s", relative).isGreaterThanOrEqualTo(0);
             assertThat(detail.indexOf("access.requireReadable("))

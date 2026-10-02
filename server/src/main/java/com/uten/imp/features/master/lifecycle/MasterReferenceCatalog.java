@@ -234,6 +234,21 @@ final class MasterReferenceCatalog {
         lines(out, PRODUCTION_PLAN, "production_plan_items", "plan_id", with(GCU, new Col(GOODS, "mgoods_id")));
         lines(out, DAILY_REPORT, "production_daily_report_items", "report_id", GCU);
         lines(out, STOCK_DOCUMENT, "stock_document_items", "doc_id", GCU);
+        // Submitted counts still need these masters when reviewed. Terminal requests
+        // keep their frozen line names; completed postings are classified as history.
+        for (Col col : GCU) {
+            out.add(new Reference(col.target(), "stock_count_request_lines", col.column(), RefKind.STOCK_COUNT_REQUEST, """
+                    SELECT i.%1$s, 'STOCK_COUNT_REQUEST', CAST(h.id AS text),
+                           '待审核库存盘点申请', CAST(NULL AS uuid), 'public'
+                    FROM stock_count_requests h JOIN stock_count_request_lines i ON i.request_id=h.id
+                    WHERE i.%1$s %2$s AND h.status='PENDING'""".formatted(col.column(), TARGETS)));
+        }
+        out.add(new Reference(WAREHOUSE, "stock_count_requests", "warehouse_id", RefKind.STOCK_COUNT_REQUEST, """
+                SELECT h.warehouse_id, 'STOCK_COUNT_REQUEST', CAST(h.id AS text),
+                       '待审核库存盘点申请', CAST(NULL AS uuid), 'public'
+                FROM stock_count_requests h
+                WHERE h.warehouse_id %1$s AND h.status='PENDING'""".formatted(TARGETS)));
+
         lines(out, FINANCE_RECEIPT, "finance_receipt_lines", "receipt_id", List.of(new Col(CLIENT, "client_id")));
         lines(out, FINANCE_PAYMENT, "finance_payment_lines", "payment_id", List.of(new Col(SUPPLIER, "supplier_id")));
 
@@ -684,6 +699,8 @@ final class MasterReferenceCatalog {
                 "goods_id", "color_id", "unit_id", "bin_warehouse_id");
         exempt(out, ExemptReason.HISTORY, "内料仓结算理论行(按产品聚合的核算快照)",
                 "workshop_material_close_theory_lines", "product_goods_id");
+        exempt(out, ExemptReason.HISTORY, "已批准内料仓盘点的不可变过账身份；待审由盘点申请、现存量由库存余额守卫覆盖",
+                "workshop_material_count_adjustment_postings", "bin_warehouse_id", "goods_id", "color_id", "unit_id");
         // 货品的整批发料方式设置随主档保留失效(与称重设置同口径)。
         exempt(out, ExemptReason.OWN_CONFIG, "货品整批发料设置的目标内料仓",
                 "workshop_material_settings", "periodic_bin_warehouse_id");

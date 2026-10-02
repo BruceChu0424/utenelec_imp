@@ -29,21 +29,14 @@ class WorkshopApprovedCountSourcePostgresTest {
     @BeforeAll static void schema() throws Exception {
         PG.start(); var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source); transactions=new TransactionTemplate(new DataSourceTransactionManager(source));
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,
+                "goods", "stock_count_requests", "stock_count_request_lines", "stock_count_request_events",
+                "workshop_material_settings", "workshop_material_periods", "stock_movements",
+                "workshop_material_count_adjustment_postings");
+        // The projection helper intentionally omits generated expressions; this guard needs the exact V768 delta.
+        db.execute("ALTER TABLE workshop_material_count_adjustment_postings DROP COLUMN signed_qty");
+        db.execute("ALTER TABLE workshop_material_count_adjustment_postings ADD COLUMN signed_qty numeric GENERATED ALWAYS AS(target_qty-before_qty) STORED");
         db.execute("""
-                CREATE TABLE goods(id uuid,unit_id uuid,issue_method text,is_deleted boolean DEFAULT FALSE);
-                CREATE TABLE stock_count_requests(id uuid,warehouse_id uuid,reviewed_by uuid,approval_event_id uuid,
-                    status text,review_route text,row_version bigint);
-                CREATE TABLE stock_count_request_lines(id uuid,request_id uuid,goods_id uuid,color_id uuid,
-                    unit_id uuid,expected_qty numeric,target_qty numeric);
-                CREATE TABLE stock_count_request_events(id uuid,request_id uuid,actor_id uuid,action text,request_version bigint);
-                CREATE TABLE workshop_material_settings(periodic_bin_warehouse_id uuid,periodic_enabled boolean);
-                CREATE TABLE workshop_material_periods(id uuid,bin_warehouse_id uuid,period_no integer,status text,start_date date);
-                CREATE TABLE stock_movements(id uuid,warehouse_id uuid,goods_id uuid,color_id uuid,unit_id uuid,unit_rate numeric,
-                    source_doc_type text,source_doc_id uuid,source_item_id uuid,movement_type integer,direction integer,qty numeric);
-                CREATE TABLE workshop_material_count_adjustment_postings(id uuid PRIMARY KEY,request_id uuid,line_id uuid,
-                    approval_event_id uuid,period_id uuid,bin_warehouse_id uuid,goods_id uuid,color_id uuid,unit_id uuid,
-                    kind text,before_qty numeric,target_qty numeric,signed_qty numeric GENERATED ALWAYS AS(target_qty-before_qty) STORED,
-                    business_date date,movement_id uuid,created_by uuid);
                 CREATE VIEW v_workshop_material_bin_ledger AS SELECT bin_warehouse_id,goods_id,color_id FROM workshop_material_count_adjustment_postings;
                 """);
         String sql=Files.readString(Path.of("src/main/resources/db/migration/V768__approved_workshop_count_sources.sql"));
@@ -59,12 +52,12 @@ class WorkshopApprovedCountSourcePostgresTest {
         db.execute("TRUNCATE goods,stock_count_requests,stock_count_request_lines,stock_count_request_events,workshop_material_settings,workshop_material_periods,stock_movements,workshop_material_count_adjustment_postings");
         request=UUID.randomUUID();line=UUID.randomUUID();event=UUID.randomUUID();bin=UUID.randomUUID();
         goods=UUID.randomUUID();unit=UUID.randomUUID();actor=UUID.randomUUID();period=UUID.randomUUID();
-        db.update("INSERT INTO goods VALUES (?,?,'PERIODIC',FALSE)",goods,unit);
-        db.update("INSERT INTO stock_count_requests VALUES (?,?,?,?,'APPROVED','WAREHOUSE',1)",request,bin,actor,event);
-        db.update("INSERT INTO stock_count_request_lines VALUES (?,?,?,NULL,?,0,10)",line,request,goods,unit);
-        db.update("INSERT INTO stock_count_request_events VALUES (?,?,?,'APPROVE',1)",event,request,actor);
-        db.update("INSERT INTO workshop_material_settings VALUES (?,TRUE)",bin);
-        db.update("INSERT INTO workshop_material_periods VALUES (?,?,1,'OPEN',CURRENT_DATE)",period,bin);
+        db.update("INSERT INTO goods(id,unit_id,issue_method,is_deleted) VALUES (?,?,'PERIODIC',FALSE)",goods,unit);
+        db.update("INSERT INTO stock_count_requests(id,warehouse_id,reviewed_by,approval_event_id,status,review_route,row_version) VALUES (?,?,?,?,'APPROVED','WAREHOUSE',1)",request,bin,actor,event);
+        db.update("INSERT INTO stock_count_request_lines(id,request_id,goods_id,color_id,unit_id,expected_qty,target_qty) VALUES (?,?,?,NULL,?,0,10)",line,request,goods,unit);
+        db.update("INSERT INTO stock_count_request_events(id,request_id,actor_id,action,request_version) VALUES (?,?,?,'APPROVE',1)",event,request,actor);
+        db.update("INSERT INTO workshop_material_settings(workshop_department_id,periodic_bin_warehouse_id,periodic_enabled) VALUES (gen_random_uuid(),?,TRUE)",bin);
+        db.update("INSERT INTO workshop_material_periods(id,bin_warehouse_id,period_no,status,start_date) VALUES (?,?,1,'OPEN',CURRENT_DATE)",period,bin);
     }
     @AfterAll static void stop() { PG.stop(); }
 

@@ -152,6 +152,30 @@ class FixtureSchemaDriftGuardPostgresTest {
             // （真实列名是 requires_qualified_origin，V535）。
             "stock_reservations.qualified");
 
+    // New private probes are class-scoped; another fixture cannot reuse the name to evade real-schema checks.
+    private static final Set<String> CLASS_SCOPED_FIXTURE_RELATIONS = Set.of(
+            "com/uten/imp/application/concurrency/FulfillmentCommandDeadlinePostgresTest.java#deadline_evidence",
+            "com/uten/imp/businesschain/ProductionFqcPreStockBatchEndToEndTest.java#fqc_deadline_probe",
+            // V783 single-function oracle's parent table proves RESTRICT; it is not a business document.
+            "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#business_parent",
+            // Recursive history reader: private root/child/grandchild exact-decimal projections.
+            "com/uten/imp/features/expenseclaim/ExpenseClaimChainPostgresTest.java#history_reader_root",
+            "com/uten/imp/features/expenseclaim/ExpenseClaimChainPostgresTest.java#history_reader_line",
+            "com/uten/imp/features/expenseclaim/ExpenseClaimChainPostgresTest.java#history_reader_cost",
+            "com/uten/imp/features/stock/PreStockedInboundBatchScopePostgresTest.java#batch_scope_facts",
+            // Permanent before-image/identity/concurrency oracles deliberately use private parent/child names.
+            "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_parent",
+            "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_child",
+            "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_link",
+            "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_race_parent",
+            "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_race_child");
+    private static final Set<String> CLASS_SCOPED_FIXTURE_COLUMNS = Set.of(
+            // Exact V783 miniature source view: original task fact marker and trusted/unknown owner classification.
+            "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.history_note",
+            "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.owner_type",
+            // Only this oracle's FK points to its private business_parent; proves metadata deletion versus RESTRICT.
+            "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.parent_id");
+
     @Test
     void handWrittenFixtureSchemasStayReconciledWithTheRealMigrationDirectory() throws Exception {
         Map<String, Map<String, String>> realColumns = migrateAndReadRealColumns();
@@ -237,7 +261,8 @@ class FixtureSchemaDriftGuardPostgresTest {
         String table = fixtureTable.table().toLowerCase();
         Map<String, String> realForTable = realColumns.get(table);
         if (realForTable == null) {
-            if (!FIXTURE_ONLY_RELATIONS.contains(table)) {
+            if (!FIXTURE_ONLY_RELATIONS.contains(table)
+                    && !CLASS_SCOPED_FIXTURE_RELATIONS.contains(fixtureTable.file() + "#" + table)) {
                 violations.add("""
                         %s: 建表 %s 在真实迁移 schema（含视图）里不存在——表被改名/删除\
                         ，或纯测试关系未登记 FIXTURE_ONLY_RELATIONS。"""
@@ -248,7 +273,8 @@ class FixtureSchemaDriftGuardPostgresTest {
         for (Map.Entry<String, String> column : fixtureTable.columns().entrySet()) {
             String realColumnFamily = realForTable.get(column.getKey());
             if (realColumnFamily == null) {
-                if (!FIXTURE_ONLY_COLUMNS.contains("%s.%s".formatted(table, column.getKey()))) {
+                if (!FIXTURE_ONLY_COLUMNS.contains("%s.%s".formatted(table, column.getKey()))
+                        && !CLASS_SCOPED_FIXTURE_COLUMNS.contains(fixtureTable.file() + "#" + table + "." + column.getKey())) {
                     violations.add("""
                             %s: 表 %s 的列 %s 在真实 schema 里不存在（改名/删除/手误？）。\
                             fixture 与迁移目录必须同名同义；测试自有记账列须登记 \

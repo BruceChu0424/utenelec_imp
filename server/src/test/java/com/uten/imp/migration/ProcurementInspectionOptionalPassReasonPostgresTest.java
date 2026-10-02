@@ -31,7 +31,7 @@ class ProcurementInspectionOptionalPassReasonPostgresTest {
         POSTGRES.start();
         try (Connection connection = connection(); Statement statement = connection.createStatement()) {
             statement.execute("""
-                    CREATE TABLE procurement_inspection_events (
+                    CREATE TABLE procurement_inspection_events (actor_user_id uuid,
                         action TEXT NOT NULL CHECK (action IN (
                             'RECEIVED', 'PASS', 'FAIL', 'PRODUCTION_WOKEN', 'RECEIPT_REVERSED')),
                         reason TEXT,

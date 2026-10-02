@@ -56,6 +56,21 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
 
     @Override
     @Transactional(readOnly=true)
+    public java.util.Set<UUID> accessibleWarehouses(List<UUID> warehouseIds) {
+        if (warehouseIds.isEmpty()) return java.util.Set.of();
+        var params = new MapSqlParameterSource("warehouses", warehouseIds);
+        String predicate = scope.predicate("settings.workshop_department_id", params);
+        // Keep settingsByBin's existence/join rules, including disabled historical bins.
+        return java.util.Set.copyOf(db.queryForList("""
+                SELECT settings.periodic_bin_warehouse_id
+                FROM workshop_material_settings settings
+                JOIN departments workshop ON workshop.id = settings.workshop_department_id
+                WHERE settings.periodic_bin_warehouse_id IN (:warehouses) AND
+                """ + predicate, params, UUID.class));
+    }
+
+    @Override
+    @Transactional(readOnly=true)
     public boolean canAccessWarehouseForUser(UUID warehouseId, UUID userId) {
         if(warehouseId==null || userId==null) return false;
         var settings=bins.settingsByBin(warehouseId);

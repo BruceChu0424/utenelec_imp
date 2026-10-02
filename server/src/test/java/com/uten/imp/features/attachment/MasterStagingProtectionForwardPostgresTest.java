@@ -13,7 +13,7 @@ class MasterStagingProtectionForwardPostgresTest {
         try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
             database.start();try(var connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());var sql=connection.createStatement()) {
                 setup(sql);old(sql);
-                sql.execute("INSERT INTO attachments VALUES('GOODS','internal','goods-key','final-g'),('EMPLOYEE','internal','person-key','final-e'),('EMPLOYEE_CONTRACT','internal','contract-key','final-c'); INSERT INTO sales_quote_template_versions VALUES('internal','template-key','final-t'); INSERT INTO goods_cost_imports VALUES('internal','cost-key','final-cost')");
+                sql.execute("INSERT INTO attachments(owner_type,storage_provider,storage_key,storage_version) VALUES('GOODS','internal','goods-key','final-g'),('EMPLOYEE','internal','person-key','final-e'),('EMPLOYEE_CONTRACT','internal','contract-key','final-c'); INSERT INTO sales_quote_template_versions(storage_provider,storage_key,storage_version) VALUES('internal','template-key','final-t'); INSERT INTO goods_cost_imports(storage_provider,storage_key,storage_version) VALUES('internal','cost-key','final-cost')");
                 for(String key:new String[]{"goods-key","person-key","contract-key","template-key","cost-key"})assertThat(protectedObject(sql,"internal","STAGING",key,"different-staging")).isFalse();
                 forward(sql);
                 for(String key:new String[]{"goods-key","person-key","contract-key","template-key","cost-key"}) {
@@ -23,7 +23,7 @@ class MasterStagingProtectionForwardPostgresTest {
                 }
                 assertThat(protectedObject(sql,"internal","FINAL","cost-key","final-cost")).isTrue();
                 assertThat(protectedObject(sql,"internal","STAGING","unclassified-key","any")).isFalse();
-                sql.execute("INSERT INTO goods_cost_imports VALUES('internal','legacy-cost',NULL),('legacy_unknown','uncertain-cost',NULL)");
+                sql.execute("INSERT INTO goods_cost_imports(storage_provider,storage_key,storage_version) VALUES('internal','legacy-cost',NULL),('legacy_unknown','uncertain-cost',NULL)");
                 assertThat(protectedObject(sql,"internal","FINAL","legacy-cost","any")).isTrue();assertThat(protectedObject(sql,"internal","STAGING","uncertain-cost","any")).isTrue();
             }
         }
@@ -32,7 +32,7 @@ class MasterStagingProtectionForwardPostgresTest {
         try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
             database.start();try(var connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());var sql=connection.createStatement()) {
                 setup(sql);old(sql);
-                sql.execute("INSERT INTO goods_cost_imports VALUES('local','master-original',NULL); INSERT INTO attachment_object_outbox VALUES('11111111-1111-1111-1111-111111111111','DELETE_STAGING','local','master-original',NULL,'SUCCEEDED','permanent-master-fact','UNKNOWN',NULL),('22222222-2222-2222-2222-222222222222','DELETE_STAGING','local','unknown-key',NULL,'SUCCEEDED','unknown-fact','UNKNOWN',NULL)");
+                sql.execute("INSERT INTO goods_cost_imports(storage_provider,storage_key,storage_version) VALUES('local','master-original',NULL); INSERT INTO attachment_object_outbox(id,operation,storage_provider,storage_key,storage_version,status,history_note,owner_type,parent_id) VALUES('11111111-1111-1111-1111-111111111111','DELETE_STAGING','local','master-original',NULL,'SUCCEEDED','permanent-master-fact','UNKNOWN',NULL),('22222222-2222-2222-2222-222222222222','DELETE_STAGING','local','unknown-key',NULL,'SUCCEEDED','unknown-fact','UNKNOWN',NULL)");
                 assertThat(protectedObject(sql,"local","STAGING","master-original",null)).isFalse();forward(sql);
                 String before;try(var row=sql.executeQuery("SELECT to_jsonb(o)::text FROM attachment_object_outbox o WHERE storage_key='master-original'")){row.next();before=row.getString(1);}
                 assertThat(protectedObject(sql,"local","STAGING","master-original",null)).isTrue();assertThat(protectedObject(sql,"local","STAGING","unknown-key",null)).isFalse();
@@ -46,7 +46,7 @@ class MasterStagingProtectionForwardPostgresTest {
         try(var database=new PostgreSQLContainer<>("postgres:16-alpine")) {
             database.start();try(var connection=DriverManager.getConnection(database.getJdbcUrl(),database.getUsername(),database.getPassword());var sql=connection.createStatement()) {
                 setup(sql);old(sql);forward(sql);
-                sql.execute("INSERT INTO goods_cost_imports VALUES('local','shared-master',NULL); INSERT INTO business_parent VALUES('33333333-3333-3333-3333-333333333333'); INSERT INTO attachment_object_outbox VALUES('44444444-4444-4444-4444-444444444444','DELETE_STAGING','local','shared-master',NULL,'SUCCEEDED','business-task','SALES_QUOTE','33333333-3333-3333-3333-333333333333')");
+                sql.execute("INSERT INTO goods_cost_imports(storage_provider,storage_key,storage_version) VALUES('local','shared-master',NULL); INSERT INTO business_parent VALUES('33333333-3333-3333-3333-333333333333'); INSERT INTO attachment_object_outbox(id,operation,storage_provider,storage_key,storage_version,status,history_note,owner_type,parent_id) VALUES('44444444-4444-4444-4444-444444444444','DELETE_STAGING','local','shared-master',NULL,'SUCCEEDED','business-task','SALES_QUOTE','33333333-3333-3333-3333-333333333333')");
                 assertThat(protectedObject(sql,"local","STAGING","shared-master",null)).isTrue();
                 sql.execute("SELECT fn_clear_business_test_object_metadata()");
                 try(var result=sql.executeQuery("SELECT count(*) FROM business_parent")){result.next();assertThat(result.getLong(1)).isZero();}
@@ -56,7 +56,13 @@ class MasterStagingProtectionForwardPostgresTest {
         }
     }
     private void setup(java.sql.Statement sql)throws Exception {
-        sql.execute("CREATE TABLE attachments(owner_type text,storage_provider text,storage_key text,storage_version text); CREATE TABLE attachment_upload_sessions(owner_type text,storage_provider text,storage_key text); CREATE TABLE sales_quote_template_versions(storage_provider text,storage_key text,storage_version text); CREATE TABLE goods_cost_imports(storage_provider text,storage_key text,storage_version text); CREATE TABLE business_parent(id uuid PRIMARY KEY); CREATE TABLE attachment_object_outbox(id uuid,operation text,storage_provider text,storage_key text,storage_version text,status text,history_note text,owner_type text,parent_id uuid REFERENCES business_parent(id) ON DELETE RESTRICT); CREATE VIEW v_business_test_object_sources AS SELECT 'DELETE_OPERATION'::text source_type,id::text source_id,owner_type FROM attachment_object_outbox");
+        // Copy actual current column/default/PK shape; this oracle intentionally omits business checks/triggers.
+        var projection = new org.springframework.jdbc.core.JdbcTemplate(
+                new org.springframework.jdbc.datasource.SingleConnectionDataSource(sql.getConnection(), true));
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(projection,
+                "attachments", "attachment_upload_sessions", "sales_quote_template_versions", "goods_cost_imports", "attachment_object_outbox");
+        sql.execute("ALTER TABLE sales_quote_template_versions ALTER COLUMN template_id SET DEFAULT gen_random_uuid(), ALTER COLUMN version SET DEFAULT 1");
+        sql.execute("CREATE TABLE business_parent(id uuid PRIMARY KEY); ALTER TABLE attachment_object_outbox ADD COLUMN history_note text, ADD COLUMN owner_type text, ADD COLUMN parent_id uuid REFERENCES business_parent(id) ON DELETE RESTRICT; CREATE VIEW v_business_test_object_sources AS SELECT 'DELETE_OPERATION'::text source_type,id::text source_id,owner_type FROM attachment_object_outbox");
         sql.execute("CREATE FUNCTION fn_clear_business_test_object_metadata() RETURNS void LANGUAGE plpgsql AS $f$ BEGIN DELETE FROM public.attachment_object_outbox operation WHERE EXISTS(SELECT 1 FROM v_business_test_object_sources s WHERE s.source_type='DELETE_OPERATION' AND s.source_id=operation.id::text); DELETE FROM business_parent; END $f$");
     }
     private void old(java.sql.Statement sql)throws Exception {

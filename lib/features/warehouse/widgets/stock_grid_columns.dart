@@ -324,7 +324,6 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         numeric: true,
         required: true,
         // 按称重推算的黄标 ⓘ(44)计入量宽。
-        chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.checkQty,
           isEmpty: () => row.checkQty.text.trim().isEmpty,
@@ -393,7 +392,6 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         numeric: true,
         required: true,
         // 按称重推算的黄标 ⓘ(44)计入量宽。
-        chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
         cellBuilder: (context, row) => RequiredCellFrame(
           listenable: row.qty,
           isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,

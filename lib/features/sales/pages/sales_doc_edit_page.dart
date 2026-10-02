@@ -1665,8 +1665,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         case SalesDocType.order:
           final mp = parseExtra(r.machiningPrice);
           final circ = parseExtra(r.circumference);
+          final disc = parseExtra(r.discount);
           if (mp != null) body['machiningPrice'] = mp;
           if (circ != null) body['circumference'] = circ;
+          // 订单折扣是可写字段（数量 × 单价 × 折扣 精确派生金额，ADR-112）；
+          // 整改改版时误随进仓量一起删掉，订单折扣因此不再随保存提交。
+          if (disc != null) body['discount'] = disc;
           // 进仓量来自下游入库事实；旧草稿参考值不能伪装成订单可写字段。
           break;
         case SalesDocType.shipment:

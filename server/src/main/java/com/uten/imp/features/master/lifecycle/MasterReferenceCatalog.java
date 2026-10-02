@@ -704,6 +704,10 @@ final class MasterReferenceCatalog {
         // 货品的整批发料方式设置随主档保留失效(与称重设置同口径)。
         exempt(out, ExemptReason.OWN_CONFIG, "货品整批发料设置的目标内料仓",
                 "workshop_material_settings", "periodic_bin_warehouse_id");
+        // V787 行级仓库：手工出入库单逐行选的发货/收货仓。单据的库存移动由
+        // 表头仓库 + 行仓共同决定，行仓本身由库存余额守卫覆盖；这里只豁免引用登记。
+        exempt(out, ExemptReason.COVERED, "手工出入库单行级仓库(V787)；库存移动由库存余额守卫覆盖",
+                "stock_document_items", "warehouse_id");
         return List.copyOf(out);
     }
 

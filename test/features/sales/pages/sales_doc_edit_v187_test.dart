@@ -445,12 +445,17 @@ void main() {
         },
       );
 
-      final discountField = find.byWidgetPredicate(
-        (widget) =>
-            widget is TextField && widget.controller?.text.trim() == '0.8',
-      );
-      expect(discountField, findsOneWidget);
-      await tester.enterText(discountField, '0.75');
+      // 折扣列在横向虚拟化视口外时 TextField 未挂载，走控制器通道核对与修改
+      //（与同文件 direct customer total 用例一致）。
+      final row = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller
+          .rows
+          .single;
+      expect(row.discount.text.trim(), '0.8');
+      row.discount.text = '0.75';
       await tester.pump();
 
       await tester.tap(find.text('保存'));
@@ -574,10 +579,10 @@ Future<_EditorApi> _pumpEditor(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-            localServerReachableProvider.overrideWith(
-              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
-            ),
-            sharedPreferencesProvider.overrideWithValue(_preferences),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

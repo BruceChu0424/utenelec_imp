@@ -159,10 +159,10 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-            localServerReachableProvider.overrideWith(
-              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
-            ),
-            sharedPreferencesProvider.overrideWithValue(_preferences),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         apiClientProvider.overrideWithValue(api),
         currentPermissionsProvider.overrideWithValue({permission}),
         isSuperAdminProvider.overrideWithValue(false),

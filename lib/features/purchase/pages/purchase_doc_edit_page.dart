@@ -73,6 +73,8 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../widgets/purchase_grid_columns.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../warehouse/repositories/warehouse_place_suggestion_repository.dart'
+    show warehousePlaceSuggestionRepositoryProvider, inboundGoodsColorKey;
 
 String purchaseSaveActionLabel(
   PurchaseDocType docType, {
@@ -500,6 +502,33 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
             .goodsInfo(id)
             ?.stockPlace;
       }
+    }
+    // 2026-10-02 用户口径：优先「该仓×货品上次入库记住的库位」，主档值兜底；
+    // 建议接口无权限/失败时静默保持主档值。
+    final warehouseId = _warehouseId;
+    if (warehouseId == null || warehouseId.isEmpty) return;
+    try {
+      final suggestions = await ref
+          .read(warehousePlaceSuggestionRepositoryProvider)
+          .suggest(
+            warehouseId: warehouseId,
+            goods: [
+              for (final r in rows)
+                if ((r.goods?.id ?? '').isNotEmpty)
+                  (goodsId: r.goods!.id, colorId: r.colorId),
+            ],
+          );
+      if (!mounted) return;
+      for (final r in rows) {
+        final id = r.goods?.id;
+        if (id == null || id.isEmpty) continue;
+        final place = suggestions[inboundGoodsColorKey(id, r.colorId)]?.place;
+        if (place != null && place.isNotEmpty) {
+          r.stockPlaceNotifier.value = place;
+        }
+      }
+    } catch (_) {
+      // 建议接口无权限/失败：保持主档通用库位。
     }
   }
 

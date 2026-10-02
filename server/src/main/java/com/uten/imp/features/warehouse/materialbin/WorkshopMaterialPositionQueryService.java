@@ -241,6 +241,10 @@ public class WorkshopMaterialPositionQueryService {
             heads.put(new MaterialKey((UUID) row.get("goods_id"), (UUID) row.get("color_id")), row);
         }
         if (heads.isEmpty()) return List.of();
+        // 2026-10-02 用户口径「退到哪个仓库要能选」：候选叶仓为空的料（货全在
+        // 内料仓、归属仓即内料仓）此前把收退回/发料的仓库下拉钉死。兜底列出全部
+        // 有效核算叶仓（数量按 0 显示，仅供选择；提交仍由服务端校验）。
+        List<LeafStockView> allActiveLeaves = null;
         Map<MaterialKey, List<LeafStockView>> leaves = new LinkedHashMap<>();
         for (Map<String, Object> row : db.queryForList(PERIODIC_STOCK_CTES + """
                 SELECT stocked.goods_id, stocked.color_id, stocked.warehouse_id, warehouse.name AS warehouse_name,
@@ -263,6 +267,28 @@ public class WorkshopMaterialPositionQueryService {
             leaves.computeIfAbsent(key, ignored -> new ArrayList<>()).add(new LeafStockView(
                     (UUID) row.get("warehouse_id"), (String) row.get("warehouse_name"),
                     WorkshopMaterialBinSupport.zero(row.get("available"))));
+        }
+        for (Map.Entry<MaterialKey, Map<String, Object>> entry : heads.entrySet()) {
+            List<LeafStockView> stock = leaves.get(entry.getKey());
+            UUID owning = (UUID) entry.getValue().get("owning_warehouse_id");
+            boolean owningInList = owning != null && stock != null
+                    && stock.stream().anyMatch(leaf -> owning.equals(leaf.warehouseId()));
+            if ((stock == null || stock.isEmpty()) && !owningInList) {
+                if (allActiveLeaves == null) {
+                    allActiveLeaves = new ArrayList<>();
+                    for (Map<String, Object> row : db.queryForList("""
+                            SELECT warehouse.id, warehouse.name FROM warehouses warehouse
+                            WHERE fn_warehouse_is_active_accounting_leaf(warehouse.id)
+                              AND warehouse.id IS DISTINCT FROM CAST(:bin AS uuid)
+                              AND warehouse.is_deleted = FALSE
+                            ORDER BY warehouse.name
+                            """, params)) {
+                        allActiveLeaves.add(new LeafStockView(
+                                (UUID) row.get("id"), (String) row.get("name"), java.math.BigDecimal.ZERO));
+                    }
+                }
+                leaves.put(entry.getKey(), new ArrayList<>(allActiveLeaves));
+            }
         }
         List<MaterialStockOption> out = new ArrayList<>();
         for (Map.Entry<MaterialKey, Map<String, Object>> entry : heads.entrySet()) {

@@ -246,6 +246,10 @@ class WeightText extends ConsumerWidget {
     final child = Text(
       text,
       textAlign: textAlign,
+      // 表格默认数据格是单行省略（MasterDataTableView._dataCellText）；重量格
+      // 此前缺这两行，列窄时换行会把所在行撑高，出现同表行高不一（2026-10-02）。
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: unknown
           ? (style ?? const TextStyle()).copyWith(
               color: theme.colorScheme.onSurfaceVariant,

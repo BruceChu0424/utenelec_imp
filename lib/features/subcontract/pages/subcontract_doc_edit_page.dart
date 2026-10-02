@@ -80,6 +80,7 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../warehouse/repositories/warehouse_place_suggestion_repository.dart';
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
   const SubcontractDocEditPage({super.key, required this.docType, this.id});
@@ -504,8 +505,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     return names.isSupplierDisabled(id) ? '$name（已禁用）' : name;
   }
 
-  /// 实物出入库单据（进仓/发料/退货/材料退）：按货品主档补全各行库位号
-  /// （选择器已返回的不再二次拉取）。
+  /// 实物出入库单据（进仓/发料/退货/材料退）：库位号先按「该仓×货品上次入库
+  /// 记住的库位」预填（2026-10-02 用户口径：之前的出入库就是记忆来源），没有
+  /// 记忆或建议接口不可用时回落货品主档通用库位（选择器已返回的不再二次拉取）。
   Future<void> _fillStockPlaces(Iterable<SubcontractGridRow> rows) async {
     final pending = rows
         .map((r) => r.goods?.id)
@@ -523,6 +525,31 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
             .goodsInfo(id)
             ?.stockPlace;
       }
+    }
+    final warehouseId = _warehouseId;
+    if (warehouseId == null || warehouseId.isEmpty) return;
+    try {
+      final suggestions = await ref
+          .read(warehousePlaceSuggestionRepositoryProvider)
+          .suggest(
+            warehouseId: warehouseId,
+            goods: [
+              for (final r in rows)
+                if ((r.goods?.id ?? '').isNotEmpty)
+                  (goodsId: r.goods!.id, colorId: r.colorId),
+            ],
+          );
+      if (!mounted) return;
+      for (final r in rows) {
+        final id = r.goods?.id;
+        if (id == null || id.isEmpty) continue;
+        final place = suggestions[inboundGoodsColorKey(id, r.colorId)]?.place;
+        if (place != null && place.isNotEmpty) {
+          r.stockPlaceNotifier.value = place;
+        }
+      }
+    } catch (_) {
+      // 建议接口无权限/失败：保持主档通用库位。
     }
   }
 

@@ -134,3 +134,4 @@ e6a0fa14e16290239952d82abb3c7ee2cb7fd23a:docs/99-项目治理/全平台整改交
 e6a0fa14e16290239952d82abb3c7ee2cb7fd23a:docs/99-项目治理/全平台整改交接/r0-permission-audit-lifecycle-inventory.json:generic-api-key:836
 e6a0fa14e16290239952d82abb3c7ee2cb7fd23a:docs/99-项目治理/全平台整改交接/r0-permission-audit-lifecycle-inventory.json:generic-api-key:891
 e6a0fa14e16290239952d82abb3c7ee2cb7fd23a:docs/99-项目治理/全平台整改交接/r0-permission-audit-lifecycle-inventory.json:generic-api-key:93
+8d5a452f8b34b4fc21462ffa819dfb35b4dbec4b:server/src/test/java/com/uten/imp/features/ai/chat/AiChatAdversarialSecurityTest.java:generic-api-key:32

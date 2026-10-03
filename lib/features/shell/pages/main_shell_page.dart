@@ -216,10 +216,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
     return IdleTimeoutGuard(
-      child: AiChatOverlay(
-        currentRoute: routerState.uri.path,
-        child: shell,
-      ),
+      child: AiChatOverlay(currentRoute: routerState.uri.path, child: shell),
     );
   }
 

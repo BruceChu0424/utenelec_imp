@@ -3336,8 +3336,8 @@
   "aiChatLoadFailed": "The assistant could not connect. Please retry.",
   "aiChatRetry": "Retry",
   "aiChatLabel": "Message",
-  "aiChatHint": "Ask a question, or attach a quote to prepare an order…",
-  "aiChatHintNoUpload": "Enter your question…",
+  "aiChatHint": "Message…",
+  "aiChatHintNoUpload": "Message…",
   "aiChatSend": "Send",
   "aiChatAttach": "Attach a quotation",
   "aiChatRemoveFile": "Remove file",
@@ -3390,5 +3390,7 @@
   "aiChatReplyInterrupted": "Accepted, but the result could not be retrieved.",
   "aiChatWaitingStopped": "Stopped waiting for this reply.",
   "aiChatRetryMessage": "Retry this message",
-  "aiChatCheckReply": "Check the result again"
+  "aiChatCheckReply": "Check the result again",
+  "aiChatInfo": "About this assistant",
+  "aiChatInfoDone": "Got it"
 }

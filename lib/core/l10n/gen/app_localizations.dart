@@ -14545,13 +14545,13 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatHint.
   ///
   /// In zh, this message translates to:
-  /// **'输入问题，或上传报价文件生成订货单…'**
+  /// **'输入消息…'**
   String get aiChatHint;
 
   /// No description provided for @aiChatHintNoUpload.
   ///
   /// In zh, this message translates to:
-  /// **'输入你要查询的问题…'**
+  /// **'输入消息…'**
   String get aiChatHintNoUpload;
 
   /// No description provided for @aiChatSend.
@@ -14871,6 +14871,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'重新查看结果'**
   String get aiChatCheckReply;
+
+  /// No description provided for @aiChatInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 使用说明'**
+  String get aiChatInfo;
+
+  /// No description provided for @aiChatInfoDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'知道了'**
+  String get aiChatInfoDone;
 }
 
 class _AppLocalizationsDelegate

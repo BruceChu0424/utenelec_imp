@@ -8358,11 +8358,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatLabel => 'Message';
 
   @override
-  String get aiChatHint =>
-      'Ask a question, or attach a quote to prepare an order…';
+  String get aiChatHint => 'Message…';
 
   @override
-  String get aiChatHintNoUpload => 'Enter your question…';
+  String get aiChatHintNoUpload => 'Message…';
 
   @override
   String get aiChatSend => 'Send';
@@ -8543,4 +8542,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatCheckReply => 'Check the result again';
+
+  @override
+  String get aiChatInfo => 'About this assistant';
+
+  @override
+  String get aiChatInfoDone => 'Got it';
 }

@@ -79,6 +79,38 @@ void main() {
     },
   );
 
+  testWidgets(
+    'privacy information is available from the header without a permanent composer footer',
+    (tester) async {
+      await _pump(tester);
+      await _open(tester);
+      final l10n = AppLocalizationsEn();
+      expect(find.text(l10n.aiChatPrivacyNotice), findsNothing);
+      final panel = tester.getRect(find.byKey(const ValueKey('ai-chat-panel')));
+      final composer = tester.getRect(
+        find.byKey(const ValueKey('ai-chat-composer')),
+      );
+      expect(panel.bottom - composer.bottom, closeTo(12, 0.1));
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .decoration!
+            .hintText,
+        l10n.aiChatHint,
+      );
+      await tester.tap(find.byTooltip(l10n.aiChatInfo));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text(l10n.aiChatPrivacyNotice), findsOneWidget);
+      expect(find.text(l10n.aiChatBoundary), findsOneWidget);
+      expect(find.text(l10n.aiChatCancel), findsNothing);
+      await tester.tap(find.text(l10n.aiChatInfoDone));
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.aiChatPrivacyNotice), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('no signed-in identity leaves the business surface unchanged', (
     tester,
   ) async {

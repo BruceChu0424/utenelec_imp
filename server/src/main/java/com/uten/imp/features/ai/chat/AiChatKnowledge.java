@@ -1,6 +1,9 @@
 package com.uten.imp.features.ai.chat;
 
+import com.uten.imp.security.AuthUser;
+
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Reviewed workflow facts, isolated by the same domain gate as tools. No database schema or secrets. */
@@ -34,6 +37,38 @@ final class AiChatKnowledge {
         };
         return new Entry(id, domain, title, reply + "\n\n举例(假设数据，不是系统当前事实): " + example, List.of(keywords));
     }
-    static List<Entry> visible(Set<String> domains) { return ALL.stream().filter(value -> domains.contains(value.domain())).toList(); }
+    private static final Map<String, Set<String>> READ_PERMISSIONS = Map.of(
+            "SALES_ORDER", Set.of("sales_quote:view", "sales_order:view"),
+            "PRODUCTION_FLOW", Set.of("production_execution:view", "production_daily_report:view", "production_plan:view",
+                    "production_material_analysis:view", "workshop_material:view"),
+            "PURCHASE_FLOW", Set.of("purchase_request:view", "purchase_order:view", "purchase_receipt:view", "purchase_return:view"),
+            "WAREHOUSE_FLOW", Set.of("stock:view", "stock_doc:view", "warehouse_inbound:view"),
+            "QUALITY_FLOW", Set.of("production_quality_inspection:view", "procurement_inspection:view", "sales_return_quality:view"),
+            "SUBCONTRACT_FLOW", Set.of("subcontract_inquiry:view", "subcontract_application:view", "subcontract_order:view",
+                    "subcontract_receipt:view", "subcontract_material_issue:view", "subcontract_return:view",
+                    "subcontract_material_return:view", "subcontract_waste:view"),
+            "HR_FLOW", Set.of("employee:view", "department:view"));
+
+    /** The real department scope and this topic's read permission are independent requirements. */
+    static List<Entry> visible(Set<String> domains, AuthUser actor) {
+        if (domains == null || !chatActor(actor)) return List.of();
+        return ALL.stream().filter(entry -> domains.contains(entry.domain()) && allowed(entry, actor)).toList();
+    }
+
+    /** Closed catalog policy, also usable when revalidating a stored conversation topic. */
+    static boolean allowed(Entry entry, AuthUser actor) {
+        if (!chatActor(actor) || entry == null || !ALL.contains(entry)) return false;
+        Set<String> permissions = actor.getPermissions();
+        if ("ADMIN_GRANT".equals(entry.id())) return actor.isSuperAdmin() && permissions.contains("authorization:manage");
+        if (actor.isSuperAdmin() || "SELF_HELP".equals(entry.id())) return true;
+        if ("FINANCE_COST".equals(entry.id())) return permissions.containsAll(Set.of("goods:view", "goods:cost:view"));
+        return READ_PERMISSIONS.getOrDefault(entry.id(), Set.of()).stream().anyMatch(permissions::contains);
+    }
+
+    private static boolean chatActor(AuthUser actor) {
+        return actor != null && !actor.isVisitor() && actor.getEmployeeId() != null && actor.getImpersonatedBy() == null
+                && !actor.isMustChangePassword() && actor.isAccountNonLocked() && actor.getPermissions() != null
+                && (actor.isSuperAdmin() || actor.getPermissions().contains("ai:use"));
+    }
     private AiChatKnowledge() {}
 }

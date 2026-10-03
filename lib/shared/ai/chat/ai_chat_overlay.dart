@@ -623,9 +623,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   Future<bool?> _confirmForIdentity({
     required String title,
     required Widget content,
+    bool informationOnly = false,
   }) async {
     final identity = widget.identity;
-    final confirmLabel = _t('confirm');
+    final confirmLabel = _t(informationOnly ? 'infoDone' : 'confirm');
     final cancelLabel = _t('cancel');
     late final DialogRoute<bool> route;
     route = DialogRoute<bool>(
@@ -649,11 +650,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             ),
             actionsAlignment: MainAxisAlignment.center,
             actions: [
-              UtenButton(
-                type: UtenButtonType.ghost,
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: Text(cancelLabel),
-              ),
+              if (!informationOnly)
+                UtenButton(
+                  type: UtenButtonType.ghost,
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: Text(cancelLabel),
+                ),
               UtenButton(
                 onPressed: () => Navigator.of(dialogContext).pop(true),
                 child: Text(confirmLabel),
@@ -669,6 +671,24 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     } finally {
       _dialogs.remove(route);
     }
+  }
+
+  Future<void> _showHelp() async {
+    await _confirmForIdentity(
+      title: _t('info'),
+      informationOnly: true,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_t('privacy')),
+          const SizedBox(height: UtenSpacing.s16),
+          Text(_t('boundary')),
+          const SizedBox(height: UtenSpacing.s16),
+          Text(_t('pageHint')),
+        ],
+      ),
+    );
   }
 
   Widget _grantDetails(AiChatAction action) => Column(
@@ -810,7 +830,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     final colors = Theme.of(context).colorScheme;
     final tight = height < 400;
     final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-    // At large accessibility sizes the full disclosure + editor may exceed
+    // At large accessibility sizes the messages and editor may exceed
     // the space above the keyboard. Keep every word and control reachable in
     // one scroll surface instead of clipping content or shrinking the font.
     final scrollAll =
@@ -839,6 +859,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              IconButton(
+                key: const ValueKey('ai-chat-info'),
+                tooltip: _t('info'),
+                onPressed: _showHelp,
+                icon: const Icon(Icons.info_outline, size: 20),
               ),
               IconButton(
                 tooltip: _t('reset'),
@@ -1088,16 +1114,6 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
               ],
             ),
           ),
-          if (_capabilities?.canChat == true) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              _t('privacy'),
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colors.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
-          ],
         ],
       ),
     );

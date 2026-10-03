@@ -250,10 +250,7 @@ void main() {
     // 2026-09-04 起表单错误进字段内 ⓘ 披露（UtenInputDecoration）：
     // 必填校验不再渲染底部错误文本，断言错误图标 + 完整语义标签。
     expect(find.byIcon(Icons.error_outline), findsOneWidget);
-    expect(
-      find.bySemanticsLabel('请填写取消原因'),
-      findsOneWidget,
-    );
+    expect(find.bySemanticsLabel('请填写取消原因'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey('sales-quote-cancel-reason')),
       '客户未接受报价',

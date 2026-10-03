@@ -7893,10 +7893,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatLabel => '对话内容';
 
   @override
-  String get aiChatHint => '输入问题，或上传报价文件生成订货单…';
+  String get aiChatHint => '输入消息…';
 
   @override
-  String get aiChatHintNoUpload => '输入你要查询的问题…';
+  String get aiChatHintNoUpload => '输入消息…';
 
   @override
   String get aiChatSend => '发送';
@@ -8056,4 +8056,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiChatCheckReply => '重新查看结果';
+
+  @override
+  String get aiChatInfo => 'AI 使用说明';
+
+  @override
+  String get aiChatInfoDone => '知道了';
 }

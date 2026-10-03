@@ -116,8 +116,9 @@ public class AiChatJobHandler implements AiJobHandler {
             answer = pageHelp(request, page, AiChatLocalHelp.field(request, page).orElseThrow(), "OVERVIEW");
         } else {
             List<AiChatToolPort> allowedTools = tools.available();
-            List<AiChatKnowledge.Entry> knowledge = AiChatKnowledge.visible(access.domains());
-            var social = AiChatDialogueSupport.socialReply(request.message(), access.domains(),
+            List<AiChatKnowledge.Entry> knowledge = AiChatKnowledge.visible(access.domains(), access.requireChat());
+            var social = AiChatDialogueSupport.socialReply(request.message(),
+                    knowledge.stream().map(AiChatKnowledge.Entry::domain).collect(java.util.stream.Collectors.toSet()),
                     allowedTools.stream().map(AiChatToolPort::name).collect(java.util.stream.Collectors.toSet()));
             String followUp = AiChatDialogueSupport.followUpMode(request.message());
             JsonNode choice;
@@ -295,7 +296,7 @@ public class AiChatJobHandler implements AiJobHandler {
         return answer;
     }
     private AiChatKnowledge.Entry knowledgeEntry(String id) {
-        return AiChatKnowledge.visible(access.domains()).stream().filter(item -> item.id().equals(id))
+        return AiChatKnowledge.visible(access.domains(), access.requireChat()).stream().filter(item -> item.id().equals(id))
                 .findFirst().orElseThrow(AiChatJobHandler::forbidden);
     }
     private static String responseMode(JsonNode choice) {

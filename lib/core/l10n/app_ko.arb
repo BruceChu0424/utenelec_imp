@@ -3223,8 +3223,8 @@
   "aiChatLoadFailed": "도우미에 연결할 수 없습니다. 다시 시도하세요.",
   "aiChatRetry": "다시 시도",
   "aiChatLabel": "메시지",
-  "aiChatHint": "질문을 입력하거나 견적 파일을 첨부하여 주문서를 준비하세요…",
-  "aiChatHintNoUpload": "질문을 입력하세요…",
+  "aiChatHint": "메시지 입력…",
+  "aiChatHintNoUpload": "메시지 입력…",
   "aiChatSend": "보내기",
   "aiChatAttach": "견적 파일 첨부",
   "aiChatRemoveFile": "파일 제거",
@@ -3277,5 +3277,7 @@
   "aiChatReplyInterrupted": "접수되었지만 결과를 가져오지 못했습니다.",
   "aiChatWaitingStopped": "이 답변 기다리기를 중지했습니다.",
   "aiChatRetryMessage": "이 메시지 다시 시도",
-  "aiChatCheckReply": "결과 다시 확인"
+  "aiChatCheckReply": "결과 다시 확인",
+  "aiChatInfo": "AI 사용 안내",
+  "aiChatInfoDone": "확인"
 }

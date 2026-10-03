@@ -8064,10 +8064,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatLabel => '메시지';
 
   @override
-  String get aiChatHint => '질문을 입력하거나 견적 파일을 첨부하여 주문서를 준비하세요…';
+  String get aiChatHint => '메시지 입력…';
 
   @override
-  String get aiChatHintNoUpload => '질문을 입력하세요…';
+  String get aiChatHintNoUpload => '메시지 입력…';
 
   @override
   String get aiChatSend => '보내기';
@@ -8230,4 +8230,10 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiChatCheckReply => '결과 다시 확인';
+
+  @override
+  String get aiChatInfo => 'AI 사용 안내';
+
+  @override
+  String get aiChatInfoDone => '확인';
 }

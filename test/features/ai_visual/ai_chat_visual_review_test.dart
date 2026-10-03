@@ -126,6 +126,13 @@ void main() {
       }
       await capture(tester, 'chat-$variant');
       expect(find.text(AppLocalizationsZh().aiChatPageAware), findsOneWidget);
+      if (variant == 'mobile') {
+        await tester.tap(find.byKey(const ValueKey('ai-chat-info')));
+        await tester.pumpAndSettle();
+        await capture(tester, 'chat-mobile-info');
+        await tester.tap(find.text(AppLocalizationsZh().aiChatInfoDone));
+        await tester.pumpAndSettle();
+      }
       debugDisableShadows = true;
     }, skip: !kCaptureUi);
   }

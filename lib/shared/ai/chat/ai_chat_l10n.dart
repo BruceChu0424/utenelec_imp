@@ -10,6 +10,8 @@ String aiChatText(BuildContext context, String key) {
       Localizations.of<AppLocalizations>(context, AppLocalizations) ??
       _fallback;
   return switch (key) {
+    'info' => l10n.aiChatInfo,
+    'infoDone' => l10n.aiChatInfoDone,
     'received' => l10n.aiChatReceived,
     'requestRejected' => l10n.aiChatRequestRejected,
     'deliveryUnknown' => l10n.aiChatDeliveryUnknown,

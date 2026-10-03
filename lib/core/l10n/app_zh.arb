@@ -4158,8 +4158,8 @@
   "aiChatLoadFailed": "暂时无法连接 AI 助手，请重试。",
   "aiChatRetry": "重试",
   "aiChatLabel": "对话内容",
-  "aiChatHint": "输入问题，或上传报价文件生成订货单…",
-  "aiChatHintNoUpload": "输入你要查询的问题…",
+  "aiChatHint": "输入消息…",
+  "aiChatHintNoUpload": "输入消息…",
   "aiChatSend": "发送",
   "aiChatAttach": "上传报价文件",
   "aiChatRemoveFile": "移除文件",
@@ -4212,5 +4212,7 @@
   "aiChatReplyInterrupted": "消息已受理，暂未能读取结果。",
   "aiChatWaitingStopped": "已停止等待这条消息的回复。",
   "aiChatRetryMessage": "重试此消息",
-  "aiChatCheckReply": "重新查看结果"
+  "aiChatCheckReply": "重新查看结果",
+  "aiChatInfo": "AI 使用说明",
+  "aiChatInfoDone": "知道了"
 }

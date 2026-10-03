@@ -199,6 +199,23 @@ class BusinessTestObjectCleanupPostgresTest {
         assertThatThrownBy(()->internal.openFinal(key,object.versionId())).hasRootCauseInstanceOf(java.nio.file.NoSuchFileException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM attachments WHERE id=?",Long.class,id)).isEqualTo(1);
     }
+    @Test void selfContainedStagingDeleteTicketNeedsNoOwnerReconciliation() throws Exception {
+        // AiInputOriginalStore 入队的 DELETE_STAGING 清理票不挂 attachment/session（外键 RESTRICT
+        // 也保证了 UNKNOWN 属主的票必然双链接为空）：不得要求业务对账，物理缺席证明即完成。
+        String key=UUID.randomUUID().toString().replace("-","")+".txt";
+        jdbc.update("""
+            INSERT INTO attachment_object_outbox(operation,storage_provider,storage_key,storage_version,dedupe_key,status)
+            VALUES('DELETE_STAGING','local',?,NULL,?,'SUCCEEDED')
+            """,key,"local|DELETE_STAGING|"+key+"|<local>");
+        UUID attempt=prepare();while(cleanup.drain(attempt)){}
+        assertThat(cleanup.preview(actor).blockingCount()).isZero();
+        // 票据行本身由 business_data_reset() 在清库时删除（见其函数体）；清理编排
+        // 只负责把物理完成证明落账——此处断言证明已 SUCCEEDED 且不再阻塞。
+        assertThat(jdbc.queryForObject("""
+            SELECT count(*) FROM business_test_object_cleanup_intents
+            WHERE storage_key=? AND status='SUCCEEDED' AND completed_at IS NOT NULL
+            """,Long.class,key)).isEqualTo(1);
+    }
     @Test void internalSoleStagingAndMissingFinalConvergeWithoutGenericIoAsSuccess() throws Exception {
         InternalStorageService internal=useInternal();String key=StorageService.generateStorageKey("original.txt");
         internal.store(key,new ByteArrayInputStream(bytes),bytes.length,"text/plain");var object=internal.describe(key);

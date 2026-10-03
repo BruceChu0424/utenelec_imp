@@ -22,6 +22,14 @@ class ExportContextEpoch extends Notifier<int> {
   }
 }
 
+// dependencies: 本 notifier watch 了会被测试/子树覆盖的 provider（权限集合、
+// 服务器地址），声明依赖才能在 ProviderScope 覆盖作用域内合法读取
+// （Riverpod 作用域断言，见 master_header_column_filters_test）。
 final exportContextEpochProvider = NotifierProvider<ExportContextEpoch, int>(
   ExportContextEpoch.new,
+  dependencies: [
+    authenticatedScopeProvider,
+    apiBaseUrlProvider,
+    currentPermissionsProvider,
+  ],
 );

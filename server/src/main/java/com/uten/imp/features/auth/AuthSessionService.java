@@ -35,6 +35,7 @@ public class AuthSessionService {
 
     public static final String REASON_LOGOUT = "logout";
     public static final String REASON_IDLE = "idle_timeout";
+    public static final String REASON_REPLACED_BY_LOGIN = "replaced_by_new_login";
     public static final String REASON_PASSWORD_CHANGED = "password_changed";
     public static final String REASON_ACCOUNT_STATUS = "account_status_changed";
     public static final String REASON_PASSWORD_RESET = "password_reset";
@@ -88,11 +89,30 @@ public class AuthSessionService {
     }
 
     public OpenedSession openStaffSession(UUID userId) {
-        return open("user_id", userId);
+        OpenedSession session = open("user_id", userId);
+        // 单设备登录（2026-10-03 实装）：同一账号在新处登录即顶号——新会话落库后
+        // 撤销该账号其余未撤销会话，旧设备的访问令牌随会话失效被过滤为 401、刷新
+        // 令牌同时作废。踢号严格按 user_id 定向：同一台设备上其它账号的会话不受
+        // 影响。改密/停用/管理端踢下线等全量撤销语义不变。
+        revokeOthers("user_id", userId, session.sid(), REASON_REPLACED_BY_LOGIN);
+        return session;
     }
 
     public OpenedSession openVisitorSession(UUID visitorId) {
         return open("visitor_id", visitorId);
+    }
+
+    /** 单设备顶号：撤销同一主体的其余会话，保留刚开的这台。 */
+    private void revokeOthers(String subjectColumn, UUID subjectId, UUID keepSid, String reason) {
+        jdbc.update("""
+                UPDATE auth_sessions SET revoked_at = :now, revoked_reason = :reason
+                WHERE %s = :subject AND sid <> :keep AND revoked_at IS NULL
+                """.formatted(subjectColumn),
+                new MapSqlParameterSource()
+                        .addValue("subject", subjectId)
+                        .addValue("keep", keepSid)
+                        .addValue("now", ts(now()))
+                        .addValue("reason", reason));
     }
 
     private OpenedSession open(String subjectColumn, UUID subjectId) {

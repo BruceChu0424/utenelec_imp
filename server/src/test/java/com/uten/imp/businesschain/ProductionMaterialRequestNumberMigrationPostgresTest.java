@@ -89,6 +89,15 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
             // 学习约束只动 V431/V451 已存在的 warehouse_goods_place_preferences, 与编号无关)。
             // V744/V748 为当前 SalesOrderItem ORM 的无关新增字段; V752 让实际 afterSave 挂钩
             // 读取空的客户别名证据。三者均不读取或改变物料发现请求、编号注册/序列或数量事实。
+            // V792 重报价围栏的触发器依赖 V782 才有的 fn_business_test_reset_active，V730
+            // 桥不了整个文件；当前 SalesOrder ORM 只需要三个可空列，内联补列即可（围栏
+            // 行为由真实迁移在跳版回放时自建），与编号回填互不相干。
+            db.execute("""
+                    ALTER TABLE sales_orders
+                        ADD COLUMN IF NOT EXISTS requoted_to_id UUID REFERENCES sales_quotes(id) ON DELETE RESTRICT,
+                        ADD COLUMN IF NOT EXISTS requoted_at TIMESTAMPTZ,
+                        ADD COLUMN IF NOT EXISTS requoted_by UUID
+                    """);
             // V731 延后到测试中段单独验证; V732 保持上述旧视图桥。
             for(String suffix:new String[]{"__bom_design_and_actual_usage.sql","__draw_batch_no.sql",
                     "__workshop_material_periodic_costing.sql","__ai_platform_sales_intake_learning.sql",

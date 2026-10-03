@@ -176,12 +176,21 @@ final class BusinessTestObjectCleanup {
         if(source.provider()==null || !List.of("internal","local").contains(source.provider()))throw new ApiException(ErrorCode.CONFLICT,"历史存储来源需先对账");
         if(source.waitUntil()!=null&&source.waitUntil().isAfter(Instant.now()))throw new ApiException(ErrorCode.CONFLICT,"上传凭证仍有效，请到期后重试");
         if("DELETE_OPERATION".equals(source.type())&&"UNKNOWN".equals(source.ownerType())) {
-            Boolean known=jdbc.queryForObject("""
-                SELECT EXISTS(SELECT 1 FROM v_business_test_object_sources WHERE source_type<>'DELETE_OPERATION'
-                    AND storage_provider=? AND storage_key=? AND object_location=?
-                    AND (storage_version IS NULL OR storage_version IS NOT DISTINCT FROM ?))
-                """,Boolean.class,source.provider(),source.key(),source.location(),source.version());
-            if(!Boolean.TRUE.equals(known))throw new ApiException(ErrorCode.CONFLICT,"无业务来源的原件任务需先对账");
+            // 自包含清理票（attachment_id 与 upload_session_id 皆为空，如 AiInputOriginalStore
+            // 的 DELETE_STAGING 入队）本就没有业务属主可对账；其物理完成由 inspect 的
+            // 缺席证明兜底。只有「曾挂业务属主但链接断裂」的票才要求人工对账。
+            Boolean ownerLinked = jdbc.queryForObject("""
+                SELECT o.attachment_id IS NOT NULL OR o.upload_session_id IS NOT NULL
+                FROM attachment_object_outbox o WHERE o.id=CAST(? AS uuid)
+                """, Boolean.class, source.id());
+            if(Boolean.TRUE.equals(ownerLinked)) {
+                Boolean known=jdbc.queryForObject("""
+                    SELECT EXISTS(SELECT 1 FROM v_business_test_object_sources WHERE source_type<>'DELETE_OPERATION'
+                        AND storage_provider=? AND storage_key=? AND object_location=?
+                        AND (storage_version IS NULL OR storage_version IS NOT DISTINCT FROM ?))
+                    """,Boolean.class,source.provider(),source.key(),source.location(),source.version());
+                if(!Boolean.TRUE.equals(known))throw new ApiException(ErrorCode.CONFLICT,"无业务来源的原件任务需先对账");
+            }
         }
     }
     private Exact inspect(Source source,String pinnedVersion) {

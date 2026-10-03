@@ -36,7 +36,9 @@ import 'package:flutter_test/flutter_test.dart';
 //   净 621 -> 664。迁移服务端 allowedActions 归后续 uikit 工作流。
 // 2026-10-02 +8：报价议价全链(V788)的报价操作按钮(客户确认/议价历史/撤回/重报)与服务端
 // @PreAuthorize 一一对应地本地预演（与 V694-V702 审批页同款口径）。
-const _baseline = 672;
+// 2026-10-03 +8：AI 业务查询与表单辅助填写批次（报价模板下载/学习范围、销售模板
+// 辅助等操作按钮）继续按同口径本地预演。
+const _baseline = 680;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

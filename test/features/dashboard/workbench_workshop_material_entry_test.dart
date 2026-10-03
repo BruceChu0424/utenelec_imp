@@ -12,6 +12,13 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
@@ -63,6 +70,13 @@ Future<GoRouter> _pump(WidgetTester tester, Set<String> permissions) async {
       overrides: [
         sessionProvider.overrideWith(() => _StubSession()),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_TestSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'test-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_TestSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         fixedBadgeSummaryOverride(),
@@ -77,6 +91,19 @@ Future<GoRouter> _pump(WidgetTester tester, Set<String> permissions) async {
   );
   await tester.pumpAndSettle();
   return router;
+}
+
+class _TestSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'test-user', code: 'E001', name: '测试员工'),
+  );
+}
+
+class _TestSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
 void main() {

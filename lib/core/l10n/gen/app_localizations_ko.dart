@@ -8019,4 +8019,191 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get quoteTemplateLearningTitle => '고객 견적 양식 학습';
+
+  @override
+  String get aiChatTitle => 'AI 업무 도우미';
+
+  @override
+  String get aiChatOpen => '도우미 열기 (위아래로 이동 가능)';
+
+  @override
+  String get aiChatClose => '채팅 최소화';
+
+  @override
+  String get aiChatReset => '새 대화';
+
+  @override
+  String get aiChatResetTitle => '새 대화를 시작할까요?';
+
+  @override
+  String get aiChatResetHint => '이 창의 대화와 사용하지 않은 파일을 지웁니다. 완료된 업무 작업은 유지됩니다.';
+
+  @override
+  String get aiChatCancel => '취소';
+
+  @override
+  String get aiChatConfirm => '확인';
+
+  @override
+  String get aiChatWelcome => '어떤 업무를 도와드릴까요?';
+
+  @override
+  String get aiChatBoundary => '현재 계정 권한에 따라 답변하며, 조회와 작업마다 접근 권한을 확인합니다.';
+
+  @override
+  String get aiChatUnavailable =>
+      '지원되는 업무 조회를 위한 기본 도우미 모드입니다. 전체 대화 기능을 사용하려면 AI 서비스를 설정하세요.';
+
+  @override
+  String get aiChatLoadFailed => '도우미에 연결할 수 없습니다. 다시 시도하세요.';
+
+  @override
+  String get aiChatRetry => '다시 시도';
+
+  @override
+  String get aiChatLabel => '메시지';
+
+  @override
+  String get aiChatHint => '질문을 입력하거나 견적 파일을 첨부하여 주문서를 준비하세요…';
+
+  @override
+  String get aiChatHintNoUpload => '질문을 입력하세요…';
+
+  @override
+  String get aiChatSend => '보내기';
+
+  @override
+  String get aiChatAttach => '견적 파일 첨부';
+
+  @override
+  String get aiChatRemoveFile => '파일 제거';
+
+  @override
+  String get aiChatFileHint => 'Excel과 CSV를 지원합니다. 파일로 검토할 주문서를 준비합니다.';
+
+  @override
+  String get aiChatFileFailed => '파일을 읽을 수 없습니다. Excel 또는 CSV 파일을 다시 선택하세요.';
+
+  @override
+  String get aiChatFileLarge => '파일은 15MB 이하여야 합니다.';
+
+  @override
+  String get aiChatFileMemory => '대화 파일 용량이 가득 찼습니다. 새 대화를 시작하여 첨부하세요.';
+
+  @override
+  String get aiChatSending => '질문을 처리하는 중…';
+
+  @override
+  String get aiChatUploading => '견적 파일을 읽는 중…';
+
+  @override
+  String get aiChatStop => '중지';
+
+  @override
+  String get aiChatStopped => '처리가 중지되었습니다';
+
+  @override
+  String get aiChatFailed => '처리를 완료하지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get aiChatTimeout => '처리 시간이 초과되었습니다. 나중에 다시 시도하세요.';
+
+  @override
+  String get aiChatGone => '요청이 만료되었습니다. 새 대화를 시작하세요.';
+
+  @override
+  String get aiChatPermissionChanged =>
+      '권한 또는 세션이 변경되어 대화를 지웠습니다. 새로고침 후 다시 시도하세요.';
+
+  @override
+  String get aiChatOpenDraft => '검토 후 주문서 만들기';
+
+  @override
+  String get aiChatDraftHint => '주문 편집기에서 고객, 품목, 수량, 가격을 검토한 후 저장하세요.';
+
+  @override
+  String get aiChatUnsupported => '이 작업은 해당 업무 페이지에서 처리하세요.';
+
+  @override
+  String get aiChatEmptyReply => '답변이 반환되지 않았습니다. 질문을 다시 작성하세요.';
+
+  @override
+  String get aiChatYou => '나';
+
+  @override
+  String get aiChatAssistant => '도우미';
+
+  @override
+  String get aiChatDraftUnavailable => '초안을 열 수 없습니다. 파일을 다시 첨부하세요.';
+
+  @override
+  String get aiChatConfirmPermission => '권한 부여 검토';
+
+  @override
+  String get aiChatPermissionDone => '권한 부여 완료';
+
+  @override
+  String get aiChatMoveUp => '도우미 위로 이동';
+
+  @override
+  String get aiChatMoveDown => '도우미 아래로 이동';
+
+  @override
+  String get aiChatPageAware => '현재 페이지 도움말';
+
+  @override
+  String get aiChatPageOff => '현재 페이지 사용';
+
+  @override
+  String get aiChatPageHint => '입력 값을 읽지 않고 페이지와 필드 안내를 사용합니다.';
+
+  @override
+  String get aiChatPageQuestion => '이 페이지는 어떻게 작성하나요? 예를 보여주세요.';
+
+  @override
+  String get aiChatGrantDetails =>
+      '대상 직원, 권한, 범위를 검토하세요. 확인하려면 비밀번호 인증이 필요합니다.';
+
+  @override
+  String get aiChatGrantExpired => '권한 제안이 만료되었습니다. 다시 요청하세요.';
+
+  @override
+  String get aiChatGrantUnknown => '결과를 확인하지 못했습니다. 다시 시도하기 전에 권한 관리에서 확인하세요.';
+
+  @override
+  String get aiChatAttachmentQuestion => '이 견적 파일로 주문서를 준비해 주세요.';
+
+  @override
+  String get aiChatLimit => '대화가 길어졌습니다. 새 대화를 시작해 주세요.';
+
+  @override
+  String get aiChatPermissionTarget => '대상 직원';
+
+  @override
+  String get aiChatPermissionItem => '부여할 권한';
+
+  @override
+  String get aiChatPermissionScope => '데이터 범위';
+
+  @override
+  String get aiChatPermissionExpiry => '만료 시간';
+
+  @override
+  String get aiChatPendingGrant => '확인 대기 중';
+
+  @override
+  String get aiChatFileReady => '파일 준비 완료. 질문을 보내세요';
+
+  @override
+  String get aiChatSendAgain => '다시 보내기';
+
+  @override
+  String get aiChatDraftOpened => '검토 페이지 열림';
+
+  @override
+  String get aiChatFileMissing => '원본을 보존하려면 주문서를 만들기 전에 파일을 다시 첨부하세요.';
+
+  @override
+  String get aiChatPrivacyNotice =>
+      '대화는 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요.';
 }

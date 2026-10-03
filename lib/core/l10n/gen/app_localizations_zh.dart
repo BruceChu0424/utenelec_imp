@@ -7849,4 +7849,187 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quoteTemplateLearningTitle => '学习客户报价模板';
+
+  @override
+  String get aiChatTitle => 'AI 工作助手';
+
+  @override
+  String get aiChatOpen => '打开 AI 工作助手（可上下拖动）';
+
+  @override
+  String get aiChatClose => '收起对话';
+
+  @override
+  String get aiChatReset => '新对话';
+
+  @override
+  String get aiChatResetTitle => '开始新对话？';
+
+  @override
+  String get aiChatResetHint => '当前对话和未使用的文件将从此窗口清除。已执行的业务操作不会撤销。';
+
+  @override
+  String get aiChatCancel => '取消';
+
+  @override
+  String get aiChatConfirm => '确认';
+
+  @override
+  String get aiChatWelcome => '今天需要处理什么？';
+
+  @override
+  String get aiChatBoundary => '按当前账号权限回答；数据查询与操作由系统逐次校验。';
+
+  @override
+  String get aiChatUnavailable => '当前使用基础助手，可查询已支持的业务信息。配置 AI 服务后可获得更完整的对话能力。';
+
+  @override
+  String get aiChatLoadFailed => '暂时无法连接 AI 助手，请重试。';
+
+  @override
+  String get aiChatRetry => '重试';
+
+  @override
+  String get aiChatLabel => '对话内容';
+
+  @override
+  String get aiChatHint => '输入问题，或上传报价文件生成订货单…';
+
+  @override
+  String get aiChatHintNoUpload => '输入你要查询的问题…';
+
+  @override
+  String get aiChatSend => '发送';
+
+  @override
+  String get aiChatAttach => '上传报价文件';
+
+  @override
+  String get aiChatRemoveFile => '移除文件';
+
+  @override
+  String get aiChatFileHint => '支持 Excel、CSV；文件会用于生成待核对的订货单。';
+
+  @override
+  String get aiChatFileFailed => '无法读取文件，请重新选择 Excel 或 CSV 文件。';
+
+  @override
+  String get aiChatFileLarge => '文件不能超过 15 MB。';
+
+  @override
+  String get aiChatFileMemory => '本次对话的文件已达容量上限，请开始新对话后上传。';
+
+  @override
+  String get aiChatSending => '正在理解问题…';
+
+  @override
+  String get aiChatUploading => '正在读取报价文件…';
+
+  @override
+  String get aiChatStop => '停止';
+
+  @override
+  String get aiChatStopped => '已停止本次处理';
+
+  @override
+  String get aiChatFailed => '处理未完成，请稍后重试。';
+
+  @override
+  String get aiChatTimeout => '处理时间较长，已停止等待。请稍后重试。';
+
+  @override
+  String get aiChatGone => '这次处理已过期，请开始新对话。';
+
+  @override
+  String get aiChatPermissionChanged => '当前权限或会话已变化，对话已清除。请刷新后重试。';
+
+  @override
+  String get aiChatOpenDraft => '核对并新建订货单';
+
+  @override
+  String get aiChatDraftHint => '将进入订货单核对页，确认客户、货品、数量和价格后由你保存。';
+
+  @override
+  String get aiChatUnsupported => '此操作暂不支持，请到对应业务页面处理。';
+
+  @override
+  String get aiChatEmptyReply => '本次未返回可显示的答复，请重新描述你的问题。';
+
+  @override
+  String get aiChatYou => '你';
+
+  @override
+  String get aiChatAssistant => '助手';
+
+  @override
+  String get aiChatDraftUnavailable => '无法打开此草稿，请重新上传文件。';
+
+  @override
+  String get aiChatConfirmPermission => '核对授权内容';
+
+  @override
+  String get aiChatPermissionDone => '授权已完成';
+
+  @override
+  String get aiChatMoveUp => '向上移动助手';
+
+  @override
+  String get aiChatMoveDown => '向下移动助手';
+
+  @override
+  String get aiChatPageAware => '正在帮助：当前页面';
+
+  @override
+  String get aiChatPageOff => '结合当前页面回答';
+
+  @override
+  String get aiChatPageHint => '只使用页面与字段说明，不读取你的表单内容。';
+
+  @override
+  String get aiChatPageQuestion => '这个页面怎么填写？请举个例子。';
+
+  @override
+  String get aiChatGrantDetails => '请核对目标人员、权限和范围，确认后需重新验证密码。';
+
+  @override
+  String get aiChatGrantExpired => '授权建议已过期，请重新发起。';
+
+  @override
+  String get aiChatGrantUnknown => '授权结果暂未确认。请在权限管理页核查，再决定是否重试。';
+
+  @override
+  String get aiChatAttachmentQuestion => '请根据这份报价文件帮我生成订货单。';
+
+  @override
+  String get aiChatLimit => '本次对话较长，请开始新对话后继续。';
+
+  @override
+  String get aiChatPermissionTarget => '目标人员';
+
+  @override
+  String get aiChatPermissionItem => '授予权限';
+
+  @override
+  String get aiChatPermissionScope => '数据范围';
+
+  @override
+  String get aiChatPermissionExpiry => '有效期至';
+
+  @override
+  String get aiChatPendingGrant => '待你核对确认';
+
+  @override
+  String get aiChatFileReady => '已读取文件，可继续发送问题';
+
+  @override
+  String get aiChatSendAgain => '再次发送';
+
+  @override
+  String get aiChatDraftOpened => '已打开核对页面';
+
+  @override
+  String get aiChatFileMissing => '原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。';
+
+  @override
+  String get aiChatPrivacyNotice => '对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。';
 }

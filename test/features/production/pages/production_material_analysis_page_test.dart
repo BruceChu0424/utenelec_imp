@@ -8,6 +8,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
+
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -44,6 +53,19 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/list_refresh_provider.dart';
 import 'package:uten_imp/features/production/providers/production_execution_refresh.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+
+class _TestSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'test-user', code: 'E001', name: '测试员工'),
+  );
+}
+
+class _TestSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
 
 void main() {
   for (final empty in [true, false]) {
@@ -9197,6 +9219,13 @@ Future<_Harness> _pumpPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_TestSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'test-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_TestSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),

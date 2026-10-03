@@ -8310,4 +8310,209 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quoteTemplateLearningTitle => 'Learn customer quotation template';
+
+  @override
+  String get aiChatTitle => 'AI work assistant';
+
+  @override
+  String get aiChatOpen => 'Open assistant (drag vertically)';
+
+  @override
+  String get aiChatClose => 'Minimize chat';
+
+  @override
+  String get aiChatReset => 'New chat';
+
+  @override
+  String get aiChatResetTitle => 'Start a new chat?';
+
+  @override
+  String get aiChatResetHint =>
+      'This clears this window’s conversation and unused files. Completed business actions remain in effect.';
+
+  @override
+  String get aiChatCancel => 'Cancel';
+
+  @override
+  String get aiChatConfirm => 'Confirm';
+
+  @override
+  String get aiChatWelcome => 'What can I help with today?';
+
+  @override
+  String get aiChatBoundary =>
+      'Answers follow your account permissions. The system checks access for every query and action.';
+
+  @override
+  String get aiChatUnavailable =>
+      'Basic assistant mode is active for supported business queries. Configure an AI service for full conversation support.';
+
+  @override
+  String get aiChatLoadFailed =>
+      'The assistant could not connect. Please retry.';
+
+  @override
+  String get aiChatRetry => 'Retry';
+
+  @override
+  String get aiChatLabel => 'Message';
+
+  @override
+  String get aiChatHint =>
+      'Ask a question, or attach a quote to prepare an order…';
+
+  @override
+  String get aiChatHintNoUpload => 'Enter your question…';
+
+  @override
+  String get aiChatSend => 'Send';
+
+  @override
+  String get aiChatAttach => 'Attach a quotation';
+
+  @override
+  String get aiChatRemoveFile => 'Remove file';
+
+  @override
+  String get aiChatFileHint =>
+      'Excel and CSV supported. Files prepare an order for your review.';
+
+  @override
+  String get aiChatFileFailed =>
+      'Could not read the file. Choose an Excel or CSV file again.';
+
+  @override
+  String get aiChatFileLarge => 'The file must be 15 MB or smaller.';
+
+  @override
+  String get aiChatFileMemory =>
+      'This chat has reached its file capacity. Start a new chat to attach another file.';
+
+  @override
+  String get aiChatSending => 'Working on your question…';
+
+  @override
+  String get aiChatUploading => 'Reading the quotation…';
+
+  @override
+  String get aiChatStop => 'Stop';
+
+  @override
+  String get aiChatStopped => 'Processing stopped';
+
+  @override
+  String get aiChatFailed => 'Processing did not finish. Please try again.';
+
+  @override
+  String get aiChatTimeout =>
+      'Processing took too long. Please try again later.';
+
+  @override
+  String get aiChatGone => 'This request has expired. Start a new chat.';
+
+  @override
+  String get aiChatPermissionChanged =>
+      'Your access or session changed. This chat was cleared. Refresh and try again.';
+
+  @override
+  String get aiChatOpenDraft => 'Review and create order';
+
+  @override
+  String get aiChatDraftHint =>
+      'Review the customer, items, quantities and prices in the order editor, then save.';
+
+  @override
+  String get aiChatUnsupported =>
+      'Use the relevant business page to perform this action.';
+
+  @override
+  String get aiChatEmptyReply =>
+      'No answer was returned. Please rephrase your question.';
+
+  @override
+  String get aiChatYou => 'You';
+
+  @override
+  String get aiChatAssistant => 'Assistant';
+
+  @override
+  String get aiChatDraftUnavailable =>
+      'This draft cannot be opened. Attach the file again.';
+
+  @override
+  String get aiChatConfirmPermission => 'Review authorization';
+
+  @override
+  String get aiChatPermissionDone => 'Authorization completed';
+
+  @override
+  String get aiChatMoveUp => 'Move assistant up';
+
+  @override
+  String get aiChatMoveDown => 'Move assistant down';
+
+  @override
+  String get aiChatPageAware => 'Helping with this page';
+
+  @override
+  String get aiChatPageOff => 'Use the current page';
+
+  @override
+  String get aiChatPageHint =>
+      'Uses page and field guidance, without reading your form values.';
+
+  @override
+  String get aiChatPageQuestion =>
+      'How do I fill in this page? Show an example.';
+
+  @override
+  String get aiChatGrantDetails =>
+      'Review the person, permission and scope. Confirmation requires password verification.';
+
+  @override
+  String get aiChatGrantExpired => 'This proposal expired. Request a new one.';
+
+  @override
+  String get aiChatGrantUnknown =>
+      'The result could not be confirmed. Check permission management before retrying.';
+
+  @override
+  String get aiChatAttachmentQuestion =>
+      'Prepare a sales order from this quotation.';
+
+  @override
+  String get aiChatLimit =>
+      'This chat is getting long. Start a new chat to continue.';
+
+  @override
+  String get aiChatPermissionTarget => 'Person';
+
+  @override
+  String get aiChatPermissionItem => 'Permission';
+
+  @override
+  String get aiChatPermissionScope => 'Data scope';
+
+  @override
+  String get aiChatPermissionExpiry => 'Expires';
+
+  @override
+  String get aiChatPendingGrant => 'Awaiting your confirmation';
+
+  @override
+  String get aiChatFileReady => 'File ready; send your question';
+
+  @override
+  String get aiChatSendAgain => 'Send again';
+
+  @override
+  String get aiChatDraftOpened => 'Review page opened';
+
+  @override
+  String get aiChatFileMissing =>
+      'Attach the file again before creating the order so its source is preserved.';
+
+  @override
+  String get aiChatPrivacyNotice =>
+      'Your messages are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information.';
 }

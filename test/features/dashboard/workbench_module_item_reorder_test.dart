@@ -19,12 +19,31 @@ import 'package:uten_imp/features/dashboard/widgets/workbench_module_area.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
 class _StubSession extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
+}
+
+class _TestSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'test-user', code: 'E001', name: '测试员工'),
+  );
+}
+
+class _TestSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
 void main() {
@@ -36,6 +55,13 @@ void main() {
         sessionProvider.overrideWith(() => _StubSession()),
         apiBaseUrlProvider.overrideWithValue('https://workbench.test/api'),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_TestSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'test-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_TestSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         currentPermissionsProvider.overrideWithValue(const <String>{
           // 报销审批归入钱流 hub；组内还有工资条生成与审核。
           Perm.financeReportView,

@@ -7,6 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -142,6 +150,13 @@ Future<_QuoteApi> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_TestSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'test-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_TestSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         sessionProvider.overrideWith(_AuthenticatedSession.new),
         sessionSnapshotProvider.overrideWith(_ConfirmedSnapshot.new),
         apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
@@ -175,6 +190,19 @@ Future<void> _tapAndConfirm(WidgetTester tester, String buttonKey) async {
     find.descendant(of: dialog, matching: find.byType(UtenButton)).last,
   );
   await tester.pumpAndSettle();
+}
+
+class _TestSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'test-user', code: 'E001', name: '测试员工'),
+  );
+}
+
+class _TestSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
 }
 
 void main() {

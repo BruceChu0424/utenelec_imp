@@ -143,7 +143,7 @@ class SalesDocumentIntakeJobHandlerTest {
     @Test
     void resultIsMaskedForReadersWithoutPriceView() {
         Map<String, Object> candidate = new LinkedHashMap<>();
-        candidate.put("goodsId", "g");
+        candidate.put("goodsId", fixture.goods.stream().filter(g -> !fixture.invisibleGoods.contains(g.id())).findFirst().orElseThrow().id().toString());
         candidate.put("listPrice", 21);
         candidate.put("discount", 1);
         candidate.put("rateUsed", 1);
@@ -154,7 +154,7 @@ class SalesDocumentIntakeJobHandlerTest {
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("candidates", List.of(candidate));
         line.put("customerUnitPrice", 21);
-        line.put("bundleParts", List.of(Map.of("partNo", "A", "candidates", List.of(Map.of("goodsId", "x", "listPrice", 3)))));
+        line.put("bundleParts", List.of(Map.of("partNo", "A", "candidates", List.of(Map.of("goodsId", candidate.get("goodsId"), "listPrice", 3)))));
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("priceMasked", false);
         Map<String, Object> currency = new LinkedHashMap<>();

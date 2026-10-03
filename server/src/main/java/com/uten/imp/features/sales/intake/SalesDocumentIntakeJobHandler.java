@@ -113,6 +113,7 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
 
     @Override
     public Map<String, Object> filterResultForReader(Map<String, Object> result) {
+        IntakeResultReadScope.requireVisible(result, lookup);
         return IntakeResultFilter.filter(result, canViewPrices(), hasPermission(CLIENT_CREATE));
     }
 

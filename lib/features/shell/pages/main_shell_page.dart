@@ -48,6 +48,7 @@ import '../widgets/idle_timeout_guard.dart';
 import '../widgets/uten_side_nav_rail.dart';
 import '../widgets/uten_sliding_tab_view.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/ai/chat/ai_chat_overlay.dart';
 
 class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key, required this.child});
@@ -209,7 +210,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
             workbenchTodos: workbenchTodos,
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
-    return IdleTimeoutGuard(child: shell);
+    return IdleTimeoutGuard(
+      child: AiChatOverlay(currentRoute: location, child: shell),
+    );
   }
 
   /// compact 外壳：底部悬浮胶囊 overlay（与 v3 完全一致）

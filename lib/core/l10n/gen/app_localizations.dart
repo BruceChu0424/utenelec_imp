@@ -14457,6 +14457,372 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'学习客户报价模板'**
   String get quoteTemplateLearningTitle;
+
+  /// No description provided for @aiChatTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 工作助手'**
+  String get aiChatTitle;
+
+  /// No description provided for @aiChatOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开 AI 工作助手（可上下拖动）'**
+  String get aiChatOpen;
+
+  /// No description provided for @aiChatClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起对话'**
+  String get aiChatClose;
+
+  /// No description provided for @aiChatReset.
+  ///
+  /// In zh, this message translates to:
+  /// **'新对话'**
+  String get aiChatReset;
+
+  /// No description provided for @aiChatResetTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始新对话？'**
+  String get aiChatResetTitle;
+
+  /// No description provided for @aiChatResetHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前对话和未使用的文件将从此窗口清除。已执行的业务操作不会撤销。'**
+  String get aiChatResetHint;
+
+  /// No description provided for @aiChatCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get aiChatCancel;
+
+  /// No description provided for @aiChatConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get aiChatConfirm;
+
+  /// No description provided for @aiChatWelcome.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天需要处理什么？'**
+  String get aiChatWelcome;
+
+  /// No description provided for @aiChatBoundary.
+  ///
+  /// In zh, this message translates to:
+  /// **'按当前账号权限回答；数据查询与操作由系统逐次校验。'**
+  String get aiChatBoundary;
+
+  /// No description provided for @aiChatUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前使用基础助手，可查询已支持的业务信息。配置 AI 服务后可获得更完整的对话能力。'**
+  String get aiChatUnavailable;
+
+  /// No description provided for @aiChatLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时无法连接 AI 助手，请重试。'**
+  String get aiChatLoadFailed;
+
+  /// No description provided for @aiChatRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get aiChatRetry;
+
+  /// No description provided for @aiChatLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'对话内容'**
+  String get aiChatLabel;
+
+  /// No description provided for @aiChatHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入问题，或上传报价文件生成订货单…'**
+  String get aiChatHint;
+
+  /// No description provided for @aiChatHintNoUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入你要查询的问题…'**
+  String get aiChatHintNoUpload;
+
+  /// No description provided for @aiChatSend.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送'**
+  String get aiChatSend;
+
+  /// No description provided for @aiChatAttach.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传报价文件'**
+  String get aiChatAttach;
+
+  /// No description provided for @aiChatRemoveFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除文件'**
+  String get aiChatRemoveFile;
+
+  /// No description provided for @aiChatFileHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持 Excel、CSV；文件会用于生成待核对的订货单。'**
+  String get aiChatFileHint;
+
+  /// No description provided for @aiChatFileFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取文件，请重新选择 Excel 或 CSV 文件。'**
+  String get aiChatFileFailed;
+
+  /// No description provided for @aiChatFileLarge.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件不能超过 15 MB。'**
+  String get aiChatFileLarge;
+
+  /// No description provided for @aiChatFileMemory.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次对话的文件已达容量上限，请开始新对话后上传。'**
+  String get aiChatFileMemory;
+
+  /// No description provided for @aiChatSending.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在理解问题…'**
+  String get aiChatSending;
+
+  /// No description provided for @aiChatUploading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取报价文件…'**
+  String get aiChatUploading;
+
+  /// No description provided for @aiChatStop.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止'**
+  String get aiChatStop;
+
+  /// No description provided for @aiChatStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停止本次处理'**
+  String get aiChatStopped;
+
+  /// No description provided for @aiChatFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理未完成，请稍后重试。'**
+  String get aiChatFailed;
+
+  /// No description provided for @aiChatTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理时间较长，已停止等待。请稍后重试。'**
+  String get aiChatTimeout;
+
+  /// No description provided for @aiChatGone.
+  ///
+  /// In zh, this message translates to:
+  /// **'这次处理已过期，请开始新对话。'**
+  String get aiChatGone;
+
+  /// No description provided for @aiChatPermissionChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前权限或会话已变化，对话已清除。请刷新后重试。'**
+  String get aiChatPermissionChanged;
+
+  /// No description provided for @aiChatOpenDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对并新建订货单'**
+  String get aiChatOpenDraft;
+
+  /// No description provided for @aiChatDraftHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将进入订货单核对页，确认客户、货品、数量和价格后由你保存。'**
+  String get aiChatDraftHint;
+
+  /// No description provided for @aiChatUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'此操作暂不支持，请到对应业务页面处理。'**
+  String get aiChatUnsupported;
+
+  /// No description provided for @aiChatEmptyReply.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次未返回可显示的答复，请重新描述你的问题。'**
+  String get aiChatEmptyReply;
+
+  /// No description provided for @aiChatYou.
+  ///
+  /// In zh, this message translates to:
+  /// **'你'**
+  String get aiChatYou;
+
+  /// No description provided for @aiChatAssistant.
+  ///
+  /// In zh, this message translates to:
+  /// **'助手'**
+  String get aiChatAssistant;
+
+  /// No description provided for @aiChatDraftUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法打开此草稿，请重新上传文件。'**
+  String get aiChatDraftUnavailable;
+
+  /// No description provided for @aiChatConfirmPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对授权内容'**
+  String get aiChatConfirmPermission;
+
+  /// No description provided for @aiChatPermissionDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权已完成'**
+  String get aiChatPermissionDone;
+
+  /// No description provided for @aiChatMoveUp.
+  ///
+  /// In zh, this message translates to:
+  /// **'向上移动助手'**
+  String get aiChatMoveUp;
+
+  /// No description provided for @aiChatMoveDown.
+  ///
+  /// In zh, this message translates to:
+  /// **'向下移动助手'**
+  String get aiChatMoveDown;
+
+  /// No description provided for @aiChatPageAware.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在帮助：当前页面'**
+  String get aiChatPageAware;
+
+  /// No description provided for @aiChatPageOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'结合当前页面回答'**
+  String get aiChatPageOff;
+
+  /// No description provided for @aiChatPageHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只使用页面与字段说明，不读取你的表单内容。'**
+  String get aiChatPageHint;
+
+  /// No description provided for @aiChatPageQuestion.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个页面怎么填写？请举个例子。'**
+  String get aiChatPageQuestion;
+
+  /// No description provided for @aiChatGrantDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对目标人员、权限和范围，确认后需重新验证密码。'**
+  String get aiChatGrantDetails;
+
+  /// No description provided for @aiChatGrantExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权建议已过期，请重新发起。'**
+  String get aiChatGrantExpired;
+
+  /// No description provided for @aiChatGrantUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权结果暂未确认。请在权限管理页核查，再决定是否重试。'**
+  String get aiChatGrantUnknown;
+
+  /// No description provided for @aiChatAttachmentQuestion.
+  ///
+  /// In zh, this message translates to:
+  /// **'请根据这份报价文件帮我生成订货单。'**
+  String get aiChatAttachmentQuestion;
+
+  /// No description provided for @aiChatLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次对话较长，请开始新对话后继续。'**
+  String get aiChatLimit;
+
+  /// No description provided for @aiChatPermissionTarget.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标人员'**
+  String get aiChatPermissionTarget;
+
+  /// No description provided for @aiChatPermissionItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'授予权限'**
+  String get aiChatPermissionItem;
+
+  /// No description provided for @aiChatPermissionScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据范围'**
+  String get aiChatPermissionScope;
+
+  /// No description provided for @aiChatPermissionExpiry.
+  ///
+  /// In zh, this message translates to:
+  /// **'有效期至'**
+  String get aiChatPermissionExpiry;
+
+  /// No description provided for @aiChatPendingGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'待你核对确认'**
+  String get aiChatPendingGrant;
+
+  /// No description provided for @aiChatFileReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'已读取文件，可继续发送问题'**
+  String get aiChatFileReady;
+
+  /// No description provided for @aiChatSendAgain.
+  ///
+  /// In zh, this message translates to:
+  /// **'再次发送'**
+  String get aiChatSendAgain;
+
+  /// No description provided for @aiChatDraftOpened.
+  ///
+  /// In zh, this message translates to:
+  /// **'已打开核对页面'**
+  String get aiChatDraftOpened;
+
+  /// No description provided for @aiChatFileMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。'**
+  String get aiChatFileMissing;
+
+  /// No description provided for @aiChatPrivacyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。'**
+  String get aiChatPrivacyNotice;
 }
 
 class _AppLocalizationsDelegate

@@ -4204,5 +4204,13 @@
   "aiChatSendAgain": "再次发送",
   "aiChatDraftOpened": "已打开核对页面",
   "aiChatFileMissing": "原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。",
-  "aiChatPrivacyNotice": "对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。"
+  "aiChatPrivacyNotice": "对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。",
+  "aiChatReceived": "已送达，正在等待回复…",
+  "aiChatRequestRejected": "这条消息未成功提交。",
+  "aiChatDeliveryUnknown": "送达状态未确认；再次发送会发起新请求。",
+  "aiChatReplyFailed": "消息已送达，AI 未能完成回复。",
+  "aiChatReplyInterrupted": "消息已受理，暂未能读取结果。",
+  "aiChatWaitingStopped": "已停止等待这条消息的回复。",
+  "aiChatRetryMessage": "重试此消息",
+  "aiChatCheckReply": "重新查看结果"
 }

@@ -191,7 +191,10 @@ void main() {
             authenticatedScopeProvider.overrideWithValue(
               const AuthenticatedScope(userId: 'report-user'),
             ),
-            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            // 不再覆盖 sessionSnapshotProvider：nativeDetailReaderOverrides 自带的
+            // 快照含全范围写能力(writeAll)，创建后向自己单据上传附件的
+            // loadDocumentOwnerCanWrite 闸门才放行；空 documentScopes 会被判
+            // 只读而拦下上传（2026-10-03 CI 红根因）。
             apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
@@ -2224,9 +2227,11 @@ class _ReportSaveAttachments extends AttachmentService {
     if (failFirst && attempts == 1) {
       throw StateError('temporary upload failure');
     }
+    // 回执上传人必须与页面的上传身份(当前登录用户 report-user)一致，
+    // flushToOwners 的 matchesNativeReceipt 才会把这次上传当作已确认。
     return Attachment(
       id: 'attachment',
-      uploadedBy: 'native-detail-reader',
+      uploadedBy: 'report-user',
       sha256: crypto.sha256.convert(bytes).toString(),
       ownerType: ownerType,
       ownerId: ownerId,

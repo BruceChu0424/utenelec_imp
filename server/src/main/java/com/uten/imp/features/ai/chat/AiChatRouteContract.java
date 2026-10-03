@@ -42,6 +42,7 @@ public record AiChatRouteContract(String schemaName, Map<String, Object> schema,
         properties.put("knowledgeId", strings(withEmpty(knowledge.stream().map(AiChatKnowledge.Entry::id).toList())));
         properties.put("fieldKey", strings(withEmpty(page.map(guide -> guide.fields().stream()
                 .map(AiChatPageGuideCatalog.FieldGuide::key).toList()).orElse(List.of()))));
+        properties.put("mode", strings(List.of("OVERVIEW", "EXAMPLE", "STEPS", "SUMMARY")));
 
         Map<String, Object> example = new LinkedHashMap<>();
         example.put("intent", page.isPresent() ? "PAGE_HELP" : knowledge.isEmpty() ? "CLARIFY" : "KNOWLEDGE");
@@ -49,6 +50,7 @@ public record AiChatRouteContract(String schemaName, Map<String, Object> schema,
         example.put("arguments", Map.of());
         example.put("knowledgeId", page.isPresent() || knowledge.isEmpty() ? "" : knowledge.getFirst().id());
         example.put("fieldKey", "");
+        example.put("mode", "OVERVIEW");
         try {
             return new AiChatRouteContract("erp_chat_route_v1", object(properties), JSON.writeValueAsString(example));
         } catch (JsonProcessingException impossible) {

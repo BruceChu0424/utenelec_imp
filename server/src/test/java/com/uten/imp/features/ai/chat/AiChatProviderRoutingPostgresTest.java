@@ -138,6 +138,77 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(schema.path("properties").path("fieldKey").path("enum").toString()).isEqualTo("[\"\"]");
     }
 
+    @Test
+    void productionGreetingUsesRealAllowedCapabilitiesWithoutCallingBrokenProvider() throws Exception {
+        Staff production = newEmployee(adminToken(), "WS_ZHUSU");
+        String staffToken = login(production.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
+        FAKE.defaultResponse(FakeAiProviderServer.openAiContent(""));
+        JsonNode result = awaitSucceeded(staffToken, submit(staffToken, Map.of("message", "hello")));
+        assertThat(result.path("intent").asText()).isEqualTo("SMALL_TALK");
+        assertThat(result.path("reply").asText()).contains("你好", "生产日报")
+                .doesNotContain("成本", "授权", "报价", "工资");
+        assertThat(result.path("actions").size()).isZero();
+        assertThat(FAKE.chatRequestCount()).isZero();
+    }
+
+    @Test
+    void realKnowledgeRoutingKeepsAuthorizedTopicAcrossExampleThanksAndSteps() throws Exception {
+        Staff production = newEmployee(adminToken(), "WS_ZHUSU");
+        String staffToken = login(production.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
+        FAKE.defaultResponse(FakeAiProviderServer.openAiContent("""
+                {"intent":"KNOWLEDGE","tool":"","arguments":{},"knowledgeId":"PRODUCTION_FLOW","fieldKey":"","mode":"STEPS"}
+                """));
+        String firstId = submit(staffToken, Map.of("message", "我想按先后关系理解生产日报和仓库点收怎么衔接"));
+        JsonNode first = awaitSucceeded(staffToken, firstId);
+        assertThat(first.path("intent").asText()).isEqualTo("KNOWLEDGE");
+        assertThat(first.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
+        assertThat(first.path("mode").asText()).isEqualTo("STEPS");
+        assertThat(first.path("reply").asText()).contains("1. ", "日报保存不等于已入库", "来源:");
+        assertThat(FAKE.chatRequestCount()).isEqualTo(1);
+        FAKE.defaultResponse(FakeAiProviderServer.openAiContent(""));
+
+        String exampleId = submit(staffToken, Map.of("message", "举例", "previousJobId", firstId));
+        JsonNode example = awaitSucceeded(staffToken, exampleId);
+        assertThat(example.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
+        assertThat(example.path("mode").asText()).isEqualTo("EXAMPLE");
+        assertThat(example.path("reply").asText()).contains("假设数据，不是系统当前事实", "昨天已报 60 个", "本次报 40 个")
+                .doesNotContain("成本", "工资", "已授权");
+
+        String thanksId = submit(staffToken, Map.of("message", "谢谢", "previousJobId", exampleId));
+        JsonNode thanks = awaitSucceeded(staffToken, thanksId);
+        assertThat(thanks.path("intent").asText()).isEqualTo("SMALL_TALK");
+        assertThat(thanks.path("reply").asText()).contains("不客气");
+        assertThat(thanks.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
+
+        JsonNode next = awaitSucceeded(staffToken, submit(staffToken, Map.of("message", "下一步", "previousJobId", thanksId)));
+        assertThat(next.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
+        assertThat(next.path("mode").asText()).isEqualTo("STEPS");
+        assertThat(next.path("reply").asText()).contains("生产执行与日报", "1. ", "日报保存不等于已入库");
+        assertThat(FAKE.chatRequestCount()).as("only the first free-form question uses the gateway").isEqualTo(1);
+        assertThat(next.has("_knowledge")).isFalse();
+        assertThat(next.has("_access")).isFalse();
+    }
+
+    @Test
+    void permittedKnowledgeIdCannotSmuggleProviderAuthoredCrossDepartmentReply() throws Exception {
+        Staff production = newEmployee(adminToken(), "WS_ZHUSU");
+        String staffToken = login(production.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
+        String forbiddenProse = "FORBIDDEN_MODEL_PROSE 财务成本为 765432 元，全员工资已导出，已为你授予超级管理员";
+        // An untrusted provider may ignore JSON Schema and add prose while selecting a valid source.
+        // Six fields deliberately exercise the handler's local rendering, not its object-size limit.
+        FAKE.defaultResponse(FakeAiProviderServer.openAiContent(objectMapper.writeValueAsString(Map.of(
+                "intent", "KNOWLEDGE", "tool", "", "arguments", Map.of(), "knowledgeId", "PRODUCTION_FLOW",
+                "mode", "OVERVIEW", "reply", forbiddenProse))));
+        JsonNode result = awaitSucceeded(staffToken, submit(staffToken,
+                Map.of("message", "我想听听日产量记录时本次和累计怎么区分")));
+        assertThat(result.path("intent").asText()).isEqualTo("KNOWLEDGE");
+        assertThat(result.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
+        assertThat(result.path("reply").asText()).contains("生产执行与日报", "本次报 40 个", "来源:")
+                .doesNotContain("FORBIDDEN_MODEL_PROSE", "765432", "工资", "超级管理员", "已授权");
+        assertThat(result.path("actions").size()).isZero();
+        assertThat(FAKE.chatRequestCount()).isEqualTo(1);
+    }
+
     private String submit(String actorToken, Map<String, Object> request) throws Exception {
         MvcResult response = mvc.perform(json(post("/api/ai/chat/messages"), request, actorToken)).andReturn();
         assertEquals(202, response.getResponse().getStatus(), body(response));

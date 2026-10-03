@@ -11418,6 +11418,22 @@ Future<void> _pickCascadeWorkshop(
 /// 点下单页的提交按钮('下单(N)' / '只下达父件' / '一键下单(N)'); 车间种子在本页
 /// 被改大过时顺手过一次「确认超量下达」; 有下层行但一行都没勾时页面会问
 /// 「只下达父件？」, 这里按「只下达父件」答(本文件的用例都只验证父件段)。
+/// 2026-09-29 起提交前可能先弹「本次下单是否使用可用数量抵扣？」(skipAutoClaim)：
+/// 所选行有可用余量且选择影响结果时询问。默认「优先使用可用余量」＝旧自动抵扣
+/// 行为，点「继续」放行；没有余量的用例不弹、此处直接跳过。
+Future<void> _continueClaimChoiceDialog(WidgetTester tester) async {
+  final question = find.text('本次下单是否使用可用数量抵扣？');
+  if (question.evaluate().isEmpty) return;
+  final next = find.descendant(
+    of: find.byType(AlertDialog),
+    matching: find.text('继续'),
+  );
+  await tester.ensureVisible(next);
+  await tester.pumpAndSettle();
+  await tester.tap(next);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _submitIssuePage(
   WidgetTester tester, {
   bool confirm = true,
@@ -11427,6 +11443,7 @@ Future<void> _submitIssuePage(
   await tester.pumpAndSettle();
   await tester.tap(submit);
   await tester.pumpAndSettle();
+  await _continueClaimChoiceDialog(tester);
   if (!confirm) return;
   final confirmation = find.descendant(
     of: find.byType(AlertDialog),

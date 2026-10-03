@@ -16,6 +16,7 @@ import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 late SharedPreferences _preferences;
 
@@ -584,6 +585,13 @@ Future<_EditorApi> _pumpEditor(
         ),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         apiClientProvider.overrideWithValue(api),
+        // 本套件核对订单保存提交的单价/折扣原文：看不到价格的账号会被客户端
+        // 脱敏(_priceMasked)，价格与折扣都不随保存提交，须显式授予价格查看权限。
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.salesOrderView,
+          Perm.salesOrderEdit,
+          Perm.salesOrderPriceView,
+        }),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
         ),

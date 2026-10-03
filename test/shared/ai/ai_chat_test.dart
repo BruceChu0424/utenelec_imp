@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_en.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
@@ -86,6 +87,216 @@ void main() {
     expect(find.byKey(const ValueKey('ai-chat-launcher')), findsNothing);
     expect(harness.repository.capabilityCalls, 0);
   });
+
+  testWidgets(
+    'delivered AI failure stays beside its message and retry never overwrites a new draft',
+    (tester) async {
+      final pending = Completer<AiJobSnapshot>();
+      final repository = _FakeChatRepository()..pending = pending;
+      final jobs = _FakeJobRepository()
+        ..response = const AiJobSnapshot(
+          id: 'accepted-1',
+          kind: 'ERP_CHAT',
+          status: AiJobStatus.failed,
+          errorCode: 'AI_INVALID_RESPONSE',
+          errorMessage: 'AI response could not be processed',
+        );
+      final harness = await _pump(tester, repository: repository, jobs: jobs);
+      await _open(tester);
+      await _send(tester, 'hello');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('ai-chat-input')),
+        'My next draft',
+      );
+      pending.complete(
+        const AiJobSnapshot(
+          id: 'accepted-1',
+          kind: 'ERP_CHAT',
+          status: AiJobStatus.pending,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final failed = find.byKey(const ValueKey('ai-chat-delivery-1'));
+      expect(
+        find.descendant(
+          of: failed,
+          matching: find.text(AppLocalizationsEn().aiChatReplyFailed),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(AppLocalizationsEn().aiChatDeliveryUnknown),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .controller!
+            .text,
+        'My next draft',
+      );
+      harness.container.read(harness.route.notifier).state =
+          '/production/plans/new';
+      repository.pending = null;
+      jobs.response = null;
+      await tester.ensureVisible(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.pumpAndSettle();
+      expect(repository.messages, hasLength(2));
+      expect(repository.messages[1], repository.messages[0]);
+      expect(
+        find.byKey(const ValueKey('ai-chat-user-bubble-1')),
+        findsOneWidget,
+      );
+      expect(find.text('hello'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .controller!
+            .text,
+        'My next draft',
+      );
+    },
+  );
+
+  testWidgets(
+    'unknown delivery is explicit and only a user retry resubmits the stored message',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..sendFailure = NetworkException();
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await _send(tester, 'Original message');
+      await tester.pumpAndSettle();
+      expect(
+        find.text(AppLocalizationsEn().aiChatDeliveryUnknown),
+        findsOneWidget,
+      );
+      expect(find.text(AppLocalizationsEn().aiChatReplyFailed), findsNothing);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(repository.messages, hasLength(1));
+      await tester.enterText(
+        find.byKey(const ValueKey('ai-chat-input')),
+        'Unsent fresh text',
+      );
+      repository.sendFailure = null;
+      await tester.ensureVisible(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.pumpAndSettle();
+      expect(repository.messages.map((item) => item['message']), [
+        'Original message',
+        'Original message',
+      ]);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .controller!
+            .text,
+        'Unsent fresh text',
+      );
+    },
+  );
+
+  testWidgets(
+    'interrupted polling checks the accepted job again without submitting twice',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..response = const AiJobSnapshot(
+          id: 'accepted-1',
+          kind: 'ERP_CHAT',
+          status: AiJobStatus.pending,
+        );
+      final jobs = _FakeJobRepository()..readFailure = NetworkException();
+      await _pump(tester, repository: repository, jobs: jobs);
+      await _open(tester);
+      await _send(tester, 'Question with a known job');
+      await tester.pumpAndSettle();
+      expect(
+        find.text(AppLocalizationsEn().aiChatReplyInterrupted),
+        findsOneWidget,
+      );
+      expect(find.text(AppLocalizationsEn().aiChatCheckReply), findsOneWidget);
+      jobs.readFailure = null;
+      await tester.ensureVisible(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.pumpAndSettle();
+      expect(repository.messages, hasLength(1));
+      expect(jobs.reads, ['accepted-1', 'accepted-1']);
+      expect(find.text('Scoped answer'), findsOneWidget);
+    },
+  );
+
+  testWidgets('retrying an earlier message keeps a newer conversation branch', (
+    tester,
+  ) async {
+    final repository = _FakeChatRepository()..sendFailure = NetworkException();
+    await _pump(tester, repository: repository);
+    await _open(tester);
+    await _send(tester, 'Earlier message');
+    repository.sendFailure = null;
+    await _send(tester, 'Newer message');
+    await tester.ensureVisible(find.byKey(const ValueKey('ai-chat-retry-1')));
+    await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
+    await tester.pumpAndSettle();
+    await _send(tester, 'Continue the newer conversation');
+    expect(repository.messages[2]['message'], 'Earlier message');
+    expect(repository.messages[2]['previousJobId'], isNull);
+    expect(repository.messages[3]['previousJobId'], 'chat-job-2');
+  });
+
+  testWidgets(
+    'user bubbles align right and composer keeps both icon controls inside',
+    (tester) async {
+      await _pump(tester);
+      await _open(tester);
+      await _send(tester, 'hello');
+      final messages = tester.getRect(
+        find.byKey(const ValueKey('ai-chat-messages')),
+      );
+      final user = tester.getRect(
+        find.byKey(const ValueKey('ai-chat-user-bubble-1')),
+      );
+      final assistant = tester.getRect(
+        find.byKey(const ValueKey('ai-chat-assistant-bubble')),
+      );
+      expect(user.right, closeTo(messages.right - 16, 0.1));
+      expect(user.width, lessThanOrEqualTo((messages.width - 32) * 0.62));
+      expect(assistant.left, closeTo(messages.left + 16, 0.1));
+      final composer = tester.getRect(
+        find.byKey(const ValueKey('ai-chat-composer')),
+      );
+      final attach = tester.getRect(
+        find.byKey(const ValueKey('ai-chat-attach')),
+      );
+      final send = tester.getRect(find.byKey(const ValueKey('ai-chat-send')));
+      expect(attach.left, greaterThan(composer.left));
+      expect(attach.bottom, lessThan(composer.bottom));
+      expect(send.right, lessThan(composer.right));
+      expect(send.bottom, lessThan(composer.bottom));
+      expect(send.center.dx, greaterThan(attach.center.dx));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('ai-chat-send')),
+          matching: find.byType(Text),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   test(
     'page-help hint requires an allowlisted value and a safe current path',
@@ -530,7 +741,7 @@ Future<_Harness> _pump(
       aiChatIdentityProvider.overrideWith((ref) => ref.watch(identity)),
       aiChatRepositoryProvider.overrideWithValue(repo),
       aiJobRunnerProvider.overrideWithValue(
-        AiJobRunner(jobs ?? _FakeJobRepository()),
+        AiJobRunner(jobs ?? _FakeJobRepository(), maxConsecutivePollErrors: 1),
       ),
       currentPermissionsProvider.overrideWith(
         (ref) => (ref.watch(identity)?.permissions ?? '').split('\n').toSet(),
@@ -654,6 +865,8 @@ class _FakeChatRepository implements AiChatRepository {
   final confirmations = <String>[];
   List<Map<String, dynamic>> actions = [];
   Completer<AiJobSnapshot>? pending;
+  AiJobSnapshot? response;
+  Object? sendFailure;
   int capabilityCalls = 0;
   List<String> suggestions = const [];
 
@@ -685,14 +898,17 @@ class _FakeChatRepository implements AiChatRepository {
       'currentRoute': currentRoute,
       'intentHint': intentHint,
     });
+    if (sendFailure case final error?) throw error;
     return pending?.future ??
-        Future.value(
-          _success(
-            'Scoped answer ${messages.length}',
-            id: 'chat-job-${messages.length}',
-            actions: actions,
-          ),
-        );
+        (response != null
+            ? Future.value(response!)
+            : Future.value(
+                _success(
+                  'Scoped answer ${messages.length}',
+                  id: 'chat-job-${messages.length}',
+                  actions: actions,
+                ),
+              ));
   }
 
   @override
@@ -724,11 +940,18 @@ class _RecordingApi extends ApiClient {
 
 class _FakeJobRepository implements AiJobRepository {
   final requests = <AiJobRequest>[];
+  final reads = <String>[];
+  Object? readFailure;
+  AiJobSnapshot? response;
   @override
   Future<void> cancel(String jobId) async {}
   @override
-  Future<AiJobSnapshot> get(String jobId) async =>
-      _success('Scoped answer', id: jobId);
+  Future<AiJobSnapshot> get(String jobId) async {
+    reads.add(jobId);
+    if (readFailure case final error?) throw error;
+    return response ?? _success('Scoped answer', id: jobId);
+  }
+
   @override
   Future<AiJobSnapshot> submit(AiJobRequest request) async {
     requests.add(request);

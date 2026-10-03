@@ -10,6 +10,14 @@ String aiChatText(BuildContext context, String key) {
       Localizations.of<AppLocalizations>(context, AppLocalizations) ??
       _fallback;
   return switch (key) {
+    'received' => l10n.aiChatReceived,
+    'requestRejected' => l10n.aiChatRequestRejected,
+    'deliveryUnknown' => l10n.aiChatDeliveryUnknown,
+    'replyFailed' => l10n.aiChatReplyFailed,
+    'replyInterrupted' => l10n.aiChatReplyInterrupted,
+    'waitingStopped' => l10n.aiChatWaitingStopped,
+    'retryMessage' => l10n.aiChatRetryMessage,
+    'checkReply' => l10n.aiChatCheckReply,
     'privacy' => l10n.aiChatPrivacyNotice,
     'title' => l10n.aiChatTitle,
     'open' => l10n.aiChatOpen,

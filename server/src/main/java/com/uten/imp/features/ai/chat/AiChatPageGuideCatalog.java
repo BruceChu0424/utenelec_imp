@@ -50,6 +50,10 @@ public class AiChatPageGuideCatalog {
 
     /** Respond from the reviewed catalog, with clearly hypothetical examples and a source. */
     public String answer(PageGuide guide, String fieldKey) {
+        return answer(guide, fieldKey, "OVERVIEW");
+    }
+
+    public String answer(PageGuide guide, String fieldKey, String mode) {
         if (guide == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先打开需要帮助的页面");
         List<FieldGuide> chosen = fieldKey == null || fieldKey.isBlank() ? guide.fields()
                 : guide.fields().stream().filter(f -> f.key().equals(fieldKey)).toList();
@@ -57,8 +61,17 @@ public class AiChatPageGuideCatalog {
         StringBuilder reply = new StringBuilder("当前页面: ").append(guide.title())
                 .append("。以下按系统页面规则说明；示例是假设数据，不是当前单据的实际值。\n");
         for (FieldGuide field : chosen) {
-            reply.append("\n").append(field.label()).append(": ").append(field.instruction())
-                    .append("\n举例: ").append(field.example()).append("\n");
+            reply.append("\n").append(field.label()).append(": ");
+            if ("STEPS".equals(mode)) {
+                int step = 1;
+                for (String sentence : field.instruction().split("[。；]")) {
+                    if (!sentence.isBlank()) reply.append("\n").append(step++).append(". ").append(sentence.strip());
+                }
+            } else if (!"EXAMPLE".equals(mode)) {
+                reply.append(field.instruction());
+            }
+            if (!"SUMMARY".equals(mode)) reply.append("\n举例: ").append(field.example());
+            reply.append("\n");
         }
         return reply.append("\n来源: ").append(guide.source())
                 .append("。实际能否编辑、保存或审核，以当前单据状态和页面可用操作为准。").toString();

@@ -148,7 +148,8 @@ void main() {
     testWidgets('仅 $permission 可见通用卡并到达不指定车间的总览', (tester) async {
       final router = await _pump(tester, {permission});
       expect(find.text('车间内料仓'), findsOneWidget);
-      expect(find.text('查看各车间库存与启用情况'), findsOneWidget);
+      // 2026-10-01 口径：标题下说明小字全站删除，卡片不再渲染描述行。
+      expect(find.text('查看各车间库存与启用情况'), findsNothing);
       await tester.ensureVisible(find.text('车间内料仓'));
       await tester.tap(find.text('车间内料仓'));
       await tester.pumpAndSettle();

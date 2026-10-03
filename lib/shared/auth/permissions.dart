@@ -21,6 +21,9 @@ abstract final class Perm {
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
 
+  /// 使用公共 AI 能力（识别客户文件、AI 作业等）；提交人须持有，调用计入任务次数。
+  static const aiUse = 'ai:use';
+
   /// Read-only server health and capacity overview.
   static const serverStatusView = 'server_status:view';
 

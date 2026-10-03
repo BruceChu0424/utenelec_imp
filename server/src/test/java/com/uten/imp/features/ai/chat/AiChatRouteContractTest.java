@@ -29,7 +29,10 @@ class AiChatRouteContractTest {
         assertStrictObjects(schema);
         JsonNode example = json.readTree(contract.exampleJson());
         assertThat(example.path("intent").asText()).isEqualTo("PAGE_HELP");
-        assertThat(example.size()).isEqualTo(5);
+        assertThat(example.size()).isEqualTo(6);
+        assertThat(example.path("mode").asText()).isEqualTo("OVERVIEW");
+        assertThat(schema.path("properties").path("mode").path("enum").toString())
+                .contains("EXAMPLE", "STEPS", "SUMMARY");
         assertThat(example.path("arguments").isObject()).isTrue();
     }
 

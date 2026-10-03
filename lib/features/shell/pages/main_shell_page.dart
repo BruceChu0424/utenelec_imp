@@ -157,7 +157,12 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final location = GoRouterState.of(context).matchedLocation;
+    // 根级 build 取一次路由状态复用（GoRouterState.of 调用点受闸门测试锁定，
+    // 见 test/shared/auth/go_router_state_usage_gate_test.dart）。
+    // ShellRoute 的 matchedLocation 在 push 后可能停在上一路由；URI 跟随活动
+    // 叶子路由，AI 聊天浮层需要的是后者。
+    final routerState = GoRouterState.of(context);
+    final location = routerState.matchedLocation;
 
     // 「返回即刷新」(ADR-108)：回到工作台时按需重拉——期间本端写过数据或距上次
     // 超过 30 秒才动，且推迟到转场结束：徽章汇总一次请求 + 今日概览(重聚合)按需一次，
@@ -211,10 +216,8 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
     return IdleTimeoutGuard(
-      // ShellRoute matchedLocation can remain at the previous route after a
-      // push. Its URI follows the active leaf route; chat needs that page.
       child: AiChatOverlay(
-        currentRoute: GoRouterState.of(context).uri.path,
+        currentRoute: routerState.uri.path,
         child: shell,
       ),
     );

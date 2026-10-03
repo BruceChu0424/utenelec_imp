@@ -183,6 +183,21 @@ class AiGatewayTest {
     }
 
     @Test
+    void http200BusinessFailureIsNotRetriedAsInvalidJson() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"code\":500,\"msg\":\"private upstream details\",\"success\":false}"),
+                FakeAiProviderServer.openAiContent("{\"ok\":true}"));
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("hello", false))))
+                .isInstanceOf(AiCallException.class).satisfies(error -> {
+                    AiCallException ai = (AiCallException) error;
+                    assertThat(ai.category()).isEqualTo(AiErrorCategory.BAD_REQUEST);
+                    assertThat(ai.httpStatus()).isEqualTo(200);
+                    assertThat(ai.getMessage()).doesNotContain("private upstream details");
+                });
+        assertThat(fake.chatRequestCount()).isEqualTo(1);
+        verify(callLogs, times(1)).record(any());
+    }
+
+    @Test
     void doesNotRetryAuthErrors() {
         fake.enqueue(FakeAiProviderServer.openAiError(401, "invalid api key " + KEY));
 

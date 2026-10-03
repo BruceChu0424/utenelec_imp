@@ -180,4 +180,94 @@ class AiChatJobHandlerTest {
         verify(ctx, never()).completeJson(any());
         verify(pages, never()).answer(any(), any());
     }
+
+    @Test void greetingWorksWithoutProviderAndOffersOnlyCurrentDepartmentHelp() throws Exception {
+        request("hello");
+        when(ctx.completeJson(any())).thenThrow(new AiCompletionPort.AiCallException(
+                AiCompletionPort.AiErrorCategory.INVALID_RESPONSE, "private output"));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "SMALL_TALK");
+        assertThat(result.get("reply").toString()).contains("你好", "生产日报")
+                .doesNotContain("查询货品成本", "授权确认预览", "private output");
+        verify(ctx, never()).completeJson(any());
+    }
+
+    @Test void followUpExampleUsesAuthorizedKnowledgeNotThePriorReplyText() throws Exception {
+        UUID previous = UUID.randomUUID();
+        when(evidence.previous(previous)).thenReturn(new AiJobView(previous, previous, "ERP_CHAT", "SUCCEEDED", "DONE", 100, false,
+                Map.of("question", "日报怎么做", "intent", "KNOWLEDGE", "knowledgeId", "PRODUCTION_FLOW",
+                        "reply", "PRIVATE_PRIOR_REPLY_MUST_NOT_BE_REUSED"),
+                null, null, "conversation.json", null, null, null));
+        request(Map.of("message", "举个例子", "previousJobId", previous.toString()));
+        var result = handler.process(ctx);
+        assertThat(result.get("reply").toString()).contains("本次报 40", "假设数据")
+                .doesNotContain("PRIVATE_PRIOR_REPLY");
+        assertThat(result).containsEntry("mode", "EXAMPLE").containsEntry("_knowledge", "PRODUCTION_FLOW");
+        verify(ctx, never()).completeJson(any());
+    }
+
+    @Test void followUpCannotRecoverKnowledgeAfterDomainRevocation() throws Exception {
+        UUID previous = UUID.randomUUID();
+        when(evidence.previous(previous)).thenReturn(new AiJobView(previous, previous, "ERP_CHAT", "SUCCEEDED", "DONE", 100, false,
+                Map.of("question", "成本是多少", "intent", "KNOWLEDGE", "knowledgeId", "FINANCE_COST"),
+                null, null, "conversation.json", null, null, null));
+        request(Map.of("message", "下一步", "previousJobId", previous.toString()));
+        assertThatThrownBy(() -> handler.process(ctx)).isInstanceOf(ApiException.class);
+        verify(ctx, never()).completeJson(any());
+        assertThatThrownBy(() -> handler.filterResultForReader(Map.of("_access", Map.of(), "_domain", "SELF",
+                "_knowledge", "FINANCE_COST", "reply", "private"))).isInstanceOf(ApiException.class);
+    }
+
+    @Test void pageFollowUpKeepsOnlyTheCurrentExplicitPageAndField() throws Exception {
+        UUID previous = UUID.randomUUID();
+        var guide = new AiChatPageGuideCatalog.PageGuide("daily_report", "生产日报", "PRODUCTION", "ADR-118",
+                List.of(new AiChatPageGuideCatalog.FieldGuide("quantity", "本次完成数量", "填写本次增量", "今天40个填40")));
+        when(evidence.previous(previous)).thenReturn(new AiJobView(previous, previous, "ERP_CHAT", "SUCCEEDED", "DONE", 100, false,
+                Map.of("question", "本次完成数量怎么填", "intent", "PAGE_HELP",
+                        "helpContext", Map.of("route", "/production/daily-reports/new", "fieldKey", "quantity")),
+                null, null, "conversation.json", null, null, null));
+        when(pages.resolve("/production/daily-reports/new", null)).thenReturn(Optional.of(guide));
+        when(pages.resolve("/production/daily-reports/new", "quantity")).thenReturn(Optional.of(guide));
+        when(pages.answer(guide, "quantity", "STEPS")).thenReturn("1. 填写本次增量，举例40个填40");
+        request(Map.of("message", "按步骤说", "previousJobId", previous.toString(),
+                "pageContext", Map.of("route", "/production/daily-reports/new")));
+        assertThat(handler.process(ctx)).containsEntry("mode", "STEPS")
+                .containsEntry("reply", "1. 填写本次增量，举例40个填40");
+        verify(ctx, never()).completeJson(any());
+    }
+
+    @Test void authorizedKnowledgeIdCannotSmuggleUntrustedGeneratedBusinessText() throws Exception {
+        request("生产日报和累计产量之间要怎么理解");
+        model("{\"intent\":\"KNOWLEDGE\",\"knowledgeId\":\"PRODUCTION_FLOW\",\"mode\":\"STEPS\","
+                + "\"reply\":\"PRIVATE_FINANCE_AMOUNT_123456\"}");
+        var result = handler.process(ctx);
+        assertThat(result.get("reply").toString()).contains("1.", "生产").doesNotContain("PRIVATE_FINANCE_AMOUNT", "123456");
+        assertThat(result).containsEntry("_knowledge", "PRODUCTION_FLOW").containsEntry("mode", "STEPS");
+    }
+
+    @Test void pageFollowUpWithAwarenessOffCannotUsePriorField() throws Exception {
+        UUID previous = UUID.randomUUID();
+        when(evidence.previous(previous)).thenReturn(new AiJobView(previous, previous, "ERP_CHAT", "SUCCEEDED", "DONE", 100, false,
+                Map.of("question", "当前字段", "intent", "PAGE_HELP", "helpContext",
+                        Map.of("route", "/production/daily-reports/new", "fieldKey", "quantity")),
+                null, null, "conversation.json", null, null, null));
+        request(Map.of("message", "举例", "previousJobId", previous.toString()));
+        model("{\"intent\":\"PAGE_HELP\",\"mode\":\"EXAMPLE\",\"fieldKey\":\"quantity\"}");
+        assertThat(handler.process(ctx)).containsEntry("intent", "UNSUPPORTED");
+        verifyNoInteractions(pages);
+    }
+
+    @Test void followUpPromptDoesNotIncludeOldCostOrGrantResults() throws Exception {
+        UUID previous = UUID.randomUUID();
+        when(evidence.previous(previous)).thenReturn(new AiJobView(previous, previous, "ERP_CHAT", "SUCCEEDED", "DONE", 100, false,
+                Map.of("question", "查询当前任务", "intent", "TOOL", "reply", "PRIVATE_COST_765432",
+                        "actions", List.of(Map.of("type", "CONFIRM_PERMISSION_GRANT", "proposalId", "PRIVATE_SIGNATURE"))),
+                null, null, "conversation.json", null, null, null));
+        request(Map.of("message", "说明一下可用的业务流程", "previousJobId", previous.toString()));
+        model("{\"intent\":\"KNOWLEDGE\",\"knowledgeId\":\"PRODUCTION_FLOW\",\"mode\":\"SUMMARY\"}");
+        handler.process(ctx);
+        var capture = ArgumentCaptor.forClass(AiCompletionPort.AiCompletionRequest.class);
+        verify(ctx).completeJson(capture.capture());
+        assertThat(capture.getValue().toString()).doesNotContain("PRIVATE_COST", "765432", "PRIVATE_SIGNATURE");
+    }
 }

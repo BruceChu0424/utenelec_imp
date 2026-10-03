@@ -74,6 +74,8 @@ class OpenAiChatClientTest {
         assertThat(sent.header("Authorization")).isEqualTo("Bearer " + KEY);
         JsonNode body = json.readTree(sent.body());
         assertThat(body.path("model").asText()).isEqualTo("fake-model");
+        assertThat(body.path("stream").isBoolean()).isTrue();
+        assertThat(body.path("stream").asBoolean()).isFalse();
         assertThat(body.path("messages").get(0).path("role").asText()).isEqualTo("system");
         assertThat(body.path("messages").get(1).path("content").asText()).isEqualTo("hello");
         assertThat(body.path("max_tokens").asInt()).isEqualTo(256);
@@ -186,6 +188,17 @@ class OpenAiChatClientTest {
 
         assertThat(client.chat(AiTestRuntimes.openAi(fake, KEY), request("x")).truncated()).isTrue();
         assertThat(client.chat(AiTestRuntimes.openAi(fake, KEY), request("x")).content()).isEmpty();
+    }
+
+    @Test void httpSuccessWithBusinessFailureIsNotEmptyJsonAndNeverEchoesPrivateMessage() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"code\":500,\"msg\":\"private prompt " + KEY + "\",\"success\":false}"));
+        assertThatThrownBy(() -> client.chat(AiTestRuntimes.openAi(fake, KEY), request("hello")))
+                .isInstanceOf(AiCallException.class).satisfies(error -> {
+                    AiCallException ai = (AiCallException) error;
+                    assertThat(ai.category()).isEqualTo(AiErrorCategory.BAD_REQUEST);
+                    assertThat(ai.httpStatus()).isEqualTo(200);
+                    assertThat(ai.getMessage()).contains("接口协议").doesNotContain(KEY, "private prompt");
+                });
     }
 
     @ParameterizedTest(name = "HTTP {0} -> {1}")

@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/inputs/uten_input.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/route_names.dart';
@@ -86,11 +85,49 @@ class _ChatMessage {
     this.user = false,
     this.fileName,
     this.actions = const [],
+    this.attempt,
   });
   final String text;
   final bool user;
   final String? fileName;
   final List<AiChatAction> actions;
+  final _ChatAttempt? attempt;
+}
+
+enum _ChatDelivery {
+  sending,
+  processing,
+  answered,
+  rejected,
+  unknown,
+  processingFailed,
+  interrupted,
+  stopped,
+}
+
+/// A retry belongs to the original message, never to whatever is now in the
+/// editor. Known accepted jobs can be read again without submitting a duplicate.
+class _ChatAttempt {
+  _ChatAttempt({
+    required this.id,
+    required this.text,
+    this.file,
+    this.previousJobId,
+    this.currentRoute,
+    this.intentHint,
+  });
+  final int id;
+  final String text;
+  final PlatformFile? file;
+  final String? previousJobId;
+  final String? currentRoute;
+  final String? intentHint;
+  String? attachmentJobId;
+  String? submittedJobId;
+  String? failure;
+  bool chatSubmissionStarted = false;
+  String progressKey = 'sending';
+  _ChatDelivery delivery = _ChatDelivery.sending;
 }
 
 class _ChatSession extends ConsumerStatefulWidget {
@@ -117,7 +154,6 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   AiChatCapabilities? _capabilities;
   AiJobCancelToken? _cancel;
   PlatformFile? _attachment;
-  String? _attachmentJobId;
   String? _previousJobId;
   String? _error;
   String? _progressKey;
@@ -128,6 +164,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   bool _picking = false;
   bool _pageAware = true;
   int _generation = 0;
+  int _nextMessageId = 0;
+  _ChatMessage? _activeMessage;
 
   String _t(String key) => aiChatText(context, key);
   bool get _current =>
@@ -137,7 +175,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   @override
   void initState() {
     super.initState();
+    _focus.addListener(_focusChanged);
     _loadCapabilities();
+  }
+
+  void _focusChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -145,6 +188,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     _generation++;
     _cancel?.cancel();
     _input.dispose();
+    _focus.removeListener(_focusChanged);
     _focus.dispose();
     _scroll.dispose();
     _sourceFiles.clear();
@@ -210,17 +254,16 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         setState(() => _error = _t('fileLarge'));
         return;
       }
-      final retained = _sourceFiles.values.fold<int>(
-        0,
-        (sum, source) => sum + (source.bytes?.length ?? 0),
-      );
+      final retained = <PlatformFile>{
+        ..._sourceFiles.values,
+        for (final message in _messages) ?message.attempt?.file,
+      }.fold<int>(0, (sum, source) => sum + (source.bytes?.length ?? 0));
       if (retained + bytes.length > 30 * 1024 * 1024) {
         setState(() => _error = _t('fileMemory'));
         return;
       }
       setState(() {
         _attachment = file;
-        _attachmentJobId = null;
         _error = null;
       });
       _focus.requestFocus();
@@ -242,78 +285,139 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
     final message = typed.isEmpty ? _t('attachmentQuestion') : typed;
     if (message.length > 2000) return;
+    final currentRoute = _pageAware
+        ? safeAiChatRoute(widget.currentRoute)
+        : null;
+    final outgoing = _ChatMessage(
+      text: message,
+      user: true,
+      fileName: file?.name,
+      attempt: _ChatAttempt(
+        id: ++_nextMessageId,
+        text: message,
+        file: file,
+        previousJobId: _previousJobId,
+        currentRoute: currentRoute,
+        intentHint: currentRoute == null ? null : intentHint,
+      ),
+    );
+    setState(() {
+      _error = null;
+      _messages.add(outgoing);
+      _input.clear();
+      _attachment = null;
+    });
+    await _performMessage(outgoing);
+  }
+
+  Future<void> _retryMessage(_ChatMessage message) async {
+    if (!_current || _busy || !_messages.contains(message)) return;
+    final attempt = message.attempt;
+    if (attempt == null || attempt.delivery == _ChatDelivery.answered) return;
+    await _performMessage(
+      message,
+      resume: attempt.delivery == _ChatDelivery.interrupted,
+    );
+  }
+
+  Future<void> _performMessage(
+    _ChatMessage message, {
+    bool resume = false,
+  }) async {
+    if (!_current || _busy || _capabilities?.usable != true) return;
+    final attempt = message.attempt!;
+    final file = attempt.file;
     final repository = ref.read(aiChatRepositoryProvider);
     final runner = ref.read(aiJobRunnerProvider);
     final generation = ++_generation;
     final cancel = AiJobCancelToken();
-    final currentRoute = _pageAware
-        ? safeAiChatRoute(widget.currentRoute)
-        : null;
     setState(() {
       _busy = true;
       _cancel = cancel;
-      _error = null;
-      _progressKey = file == null ? 'sending' : 'uploading';
-      _messages.add(
-        _ChatMessage(text: message, user: true, fileName: file?.name),
-      );
-      _input.clear();
+      _activeMessage = message;
+      attempt.failure = null;
+      attempt.delivery = resume
+          ? _ChatDelivery.processing
+          : _ChatDelivery.sending;
+      attempt.progressKey = file != null && attempt.attachmentJobId == null
+          ? 'uploading'
+          : 'sending';
+      if (!resume) {
+        attempt.submittedJobId = null;
+        attempt.chatSubmissionStarted = false;
+      }
     });
     _scrollToEnd();
     try {
-      var attachmentJobId = _attachmentJobId;
-      if (file != null && attachmentJobId == null) {
-        final snapshot = await runner.run(
-          AiJobRequest(
-            kind: kSalesIntakeJobKind,
-            params: const {'docType': 'order'},
-            bytes: file.bytes!,
-            fileName: file.name,
-            contentType:
-                kSalesIntakeContentTypes[file.extension!.toLowerCase()]!,
-          ),
+      final AiJobSnapshot snapshot;
+      if (resume && attempt.submittedJobId != null) {
+        snapshot = await runner.resume(
+          attempt.submittedJobId!,
           cancelToken: cancel,
         );
-        if (!_active(generation) || cancel.isCancelled) return;
-        attachmentJobId = snapshot.id;
-        _sourceFiles[snapshot.id] = file;
-        _attachmentJobId = snapshot.id;
-      }
-      if (!_active(generation) || cancel.isCancelled) return;
-      setState(() => _progressKey = 'sending');
-      final submitted = await repository.send(
-        message: message,
-        previousJobId: _previousJobId,
-        attachmentJobId: attachmentJobId,
-        currentRoute: currentRoute,
-        intentHint: currentRoute == null ? null : intentHint,
-      );
-      if (!_active(generation) || cancel.isCancelled) {
-        if (_current && cancel.isCancelled) {
-          try {
-            await runner.repository.cancel(submitted.id);
-          } catch (_) {
-            // Cancellation is best effort, like the shared job runner.
-          }
+      } else {
+        if (file != null && attempt.attachmentJobId == null) {
+          final uploaded = await runner.run(
+            AiJobRequest(
+              kind: kSalesIntakeJobKind,
+              params: const {'docType': 'order'},
+              bytes: file.bytes!,
+              fileName: file.name,
+              contentType:
+                  kSalesIntakeContentTypes[file.extension!.toLowerCase()]!,
+            ),
+            cancelToken: cancel,
+          );
+          if (!_active(generation) || cancel.isCancelled) return;
+          attempt.attachmentJobId = uploaded.id;
+          _sourceFiles[uploaded.id] = file;
         }
-        return;
+        if (!_active(generation) || cancel.isCancelled) return;
+        setState(() => attempt.progressKey = 'sending');
+        attempt.chatSubmissionStarted = true;
+        final submitted = await repository.send(
+          message: attempt.text,
+          previousJobId: attempt.previousJobId,
+          attachmentJobId: attempt.attachmentJobId,
+          currentRoute: attempt.currentRoute,
+          intentHint: attempt.intentHint,
+        );
+        if (!_active(generation) || cancel.isCancelled) {
+          if (_current && cancel.isCancelled) {
+            try {
+              await runner.repository.cancel(submitted.id);
+            } catch (_) {
+              // Cancellation is best effort, like the shared job runner.
+            }
+          }
+          return;
+        }
+        setState(() {
+          attempt.submittedJobId = submitted.id;
+          attempt.delivery = _ChatDelivery.processing;
+        });
+        snapshot =
+            submitted.status == AiJobStatus.succeeded &&
+                submitted.result != null
+            ? submitted
+            : await runner.resume(submitted.id, cancelToken: cancel);
       }
-      final snapshot =
-          submitted.status == AiJobStatus.succeeded && submitted.result != null
-          ? submitted
-          : await runner.resume(submitted.id, cancelToken: cancel);
       if (!_active(generation) || cancel.isCancelled) return;
       final reply = AiChatReply.fromJson(snapshot.result ?? const {});
       setState(() {
-        _previousJobId = snapshot.id;
-        _messages.add(
+        final index = _messages.indexOf(message);
+        // Retrying an older bubble must not rewind a newer conversation branch.
+        if (!_messages.skip(index + 1).any((item) => item.user)) {
+          _previousJobId = snapshot.id;
+        }
+        attempt.delivery = _ChatDelivery.answered;
+        _messages.insert(
+          index + 1,
           _ChatMessage(
             text: reply.reply.isEmpty ? _t('emptyReply') : reply.reply,
             actions: reply.actions,
           ),
         );
-        _attachment = null;
-        _attachmentJobId = null;
       });
     } catch (error) {
       if (!_active(generation)) return;
@@ -326,10 +430,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         _loadCapabilities();
       } else {
         setState(() {
-          _error = _errorText(error);
-          // Preserve the user's input and successfully uploaded job for retry.
-          // No mutation is retried automatically.
-          if (_input.text.isEmpty) _input.text = typed;
+          attempt.failure = _errorText(error);
+          attempt.delivery = _failedDelivery(attempt, error);
         });
       }
     } finally {
@@ -337,11 +439,33 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         setState(() {
           _busy = false;
           _cancel = null;
+          _activeMessage = null;
           _progressKey = null;
         });
         _scrollToEnd();
       }
     }
+  }
+
+  _ChatDelivery _failedDelivery(_ChatAttempt attempt, Object error) {
+    if (error is AiJobFailure && error.isCancelled) {
+      return _ChatDelivery.stopped;
+    }
+    if (attempt.submittedJobId != null) {
+      return error is AiJobFailure &&
+              error.code != AiJobFailure.codeClientTimeout
+          ? _ChatDelivery.processingFailed
+          : _ChatDelivery.interrupted;
+    }
+    if (!attempt.chatSubmissionStarted) return _ChatDelivery.rejected;
+    if (error is ApiException &&
+        error.httpStatus != null &&
+        error.httpStatus! >= 400 &&
+        error.httpStatus! < 500 &&
+        error.httpStatus != 408) {
+      return _ChatDelivery.rejected;
+    }
+    return _ChatDelivery.unknown;
   }
 
   String _errorText(Object error) {
@@ -359,10 +483,15 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     // A send request may be between submit and poll. Fence its result too.
     _generation++;
     setState(() {
+      final attempt = _activeMessage?.attempt;
+      if (attempt != null) {
+        attempt.delivery = _ChatDelivery.stopped;
+        attempt.failure = null;
+      }
       _busy = false;
       _cancel = null;
       _progressKey = null;
-      _error = _t('stopped');
+      _activeMessage = null;
     });
   }
 
@@ -374,11 +503,11 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     _sourceFiles.clear();
     _completedActions.clear();
     _attachment = null;
-    _attachmentJobId = null;
     _previousJobId = null;
     _error = null;
     _progressKey = null;
     _busy = false;
+    _activeMessage = null;
     _input.clear();
   }
 
@@ -761,7 +890,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             children: [
               if (_messages.isEmpty) _welcome(),
               for (final message in _messages) _message(message),
-              if (_busy)
+              if (_busy && _activeMessage == null)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
                   child: Row(
@@ -807,95 +936,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             ],
           ),
         ),
-        const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_attachment != null)
-                Row(
-                  children: [
-                    const Icon(Icons.description_outlined, size: 18),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        _attachment!.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: _t('removeFile'),
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() {
-                              _attachment = null;
-                              _attachmentJobId = null;
-                            }),
-                      icon: const Icon(Icons.close, size: 18),
-                    ),
-                  ],
-                ),
-              UtenInput(
-                key: const ValueKey('ai-chat-input'),
-                label: tight ? null : _t('label'),
-                hint: _t(
-                  _capabilities?.canUploadSalesOrder == true
-                      ? 'hint'
-                      : 'hintNoUpload',
-                ),
-                controller: _input,
-                focusNode: _focus,
-                maxLines: tight ? 1 : 2,
-                inputFormatters: [LengthLimitingTextInputFormatter(2000)],
-                enabled: _capabilities?.usable == true,
-                textInputAction: TextInputAction.newline,
-                onChanged: (_) => setState(() {}),
-              ),
-              if (_capabilities?.canChat == true) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  _t('privacy'),
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                    height: 1.35,
-                  ),
-                ),
-              ],
-              const SizedBox(height: UtenSpacing.s8),
-              Row(
-                children: [
-                  if (_capabilities?.canUploadSalesOrder == true &&
-                      !widget.identity.scope.readOnly)
-                    Tooltip(
-                      message: _t('fileHint'),
-                      child: IconButton(
-                        tooltip: _t('attach'),
-                        onPressed: _busy || _picking ? null : _pickFile,
-                        icon: const Icon(Icons.attach_file),
-                      ),
-                    ),
-                  const Spacer(),
-                  UtenButton(
-                    key: const ValueKey('ai-chat-send'),
-                    size: UtenButtonSize.small,
-                    icon: Icons.arrow_upward,
-                    onPressed:
-                        !_busy &&
-                            !_picking &&
-                            _capabilities?.usable == true &&
-                            (_input.text.trim().isNotEmpty ||
-                                _attachment != null)
-                        ? _send
-                        : null,
-                    child: Text(_t('send')),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        _composer(tight),
       ],
     );
     return scrollAll
@@ -905,6 +946,161 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             child: content,
           )
         : content;
+  }
+
+  Widget _composer(bool tight) {
+    final colors = Theme.of(context).colorScheme;
+    final canSend =
+        !_busy &&
+        !_picking &&
+        _capabilities?.usable == true &&
+        (_input.text.trim().isNotEmpty || _attachment != null);
+    return Padding(
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DecoratedBox(
+            key: const ValueKey('ai-chat-composer'),
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerLowest,
+              borderRadius: UtenRadius.xlAll,
+              border: Border.all(
+                color: _focus.hasFocus ? colors.primary : colors.outlineVariant,
+                width: _focus.hasFocus ? 1.5 : 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_attachment != null)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: UtenSpacing.s12,
+                      right: UtenSpacing.s4,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.description_outlined,
+                          size: 18,
+                          color: colors.primary,
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Expanded(
+                          child: Text(
+                            _attachment!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: _t('removeFile'),
+                          onPressed: () => setState(() => _attachment = null),
+                          icon: const Icon(Icons.close, size: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+                Semantics(
+                  label: _t('label'),
+                  child: TextField(
+                    key: const ValueKey('ai-chat-input'),
+                    controller: _input,
+                    focusNode: _focus,
+                    minLines: tight ? 1 : 2,
+                    maxLines: tight ? 2 : 4,
+                    inputFormatters: [LengthLimitingTextInputFormatter(2000)],
+                    enabled: _capabilities?.usable == true,
+                    textInputAction: TextInputAction.newline,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: _t(
+                        _capabilities?.canUploadSalesOrder == true
+                            ? 'hint'
+                            : 'hintNoUpload',
+                      ),
+                      hintStyle: TextStyle(color: colors.onSurfaceVariant),
+                      contentPadding: const EdgeInsets.fromLTRB(
+                        UtenSpacing.s12,
+                        UtenSpacing.s12,
+                        UtenSpacing.s12,
+                        UtenSpacing.s4,
+                      ),
+                      isDense: true,
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    UtenSpacing.s4,
+                    0,
+                    UtenSpacing.s4,
+                    UtenSpacing.s4,
+                  ),
+                  child: Row(
+                    children: [
+                      if (_capabilities?.canUploadSalesOrder == true &&
+                          !widget.identity.scope.readOnly)
+                        IconButton(
+                          key: const ValueKey('ai-chat-attach'),
+                          tooltip: _t('attach'),
+                          onPressed: _busy || _picking ? null : _pickFile,
+                          icon: Icon(
+                            Icons.attach_file,
+                            size: 20,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      const Spacer(),
+                      IconButton.filled(
+                        key: const ValueKey('ai-chat-send'),
+                        tooltip: _t(_cancel != null ? 'stop' : 'send'),
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        onPressed: _cancel != null
+                            ? _stop
+                            : canSend
+                            ? _send
+                            : null,
+                        icon: Icon(
+                          _cancel != null
+                              ? Icons.stop_rounded
+                              : Icons.arrow_upward_rounded,
+                          size: 20,
+                          color: _cancel != null || canSend
+                              ? colors.onPrimary
+                              : colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_capabilities?.canChat == true) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              _t('privacy'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _welcome() {
@@ -953,48 +1149,186 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
 
   Widget _message(_ChatMessage message) {
     final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _t(message.user ? 'you' : 'assistant'),
-            style: Theme.of(
-              context,
-            ).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: UtenSpacing.s6),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            decoration: BoxDecoration(
-              color: message.user
-                  ? colors.primaryContainer.withValues(alpha: 0.45)
-                  : colors.surfaceContainerLow,
-              borderRadius: UtenRadius.lgAll,
-            ),
-            // Plain selectable text deliberately does not execute Markdown links
-            // or HTML supplied by an external model or uploaded document.
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SelectableText(
-                  message.text,
-                  style: const TextStyle(height: 1.5),
-                ),
-                if (message.fileName != null) ...[
-                  const SizedBox(height: UtenSpacing.s8),
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 21;
+    return LayoutBuilder(
+      builder: (context, constraints) => Padding(
+        key: message.attempt == null
+            ? null
+            : ValueKey('ai-chat-message-${message.attempt!.id}'),
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+        child: Column(
+          crossAxisAlignment: message.user
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            if (!message.user) ...[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.auto_awesome_outlined,
+                    size: 14,
+                    color: colors.primary,
+                  ),
+                  const SizedBox(width: UtenSpacing.s6),
                   Text(
-                    message.fileName!,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    _t('assistant'),
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
+              ),
+              const SizedBox(height: UtenSpacing.s6),
+            ],
+            Align(
+              alignment: message.user
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth:
+                      constraints.maxWidth *
+                      (largeText
+                          ? 0.94
+                          : message.user
+                          ? 0.62
+                          : 0.92),
+                ),
+                child: IntrinsicWidth(
+                  child: Container(
+                    key: message.attempt == null
+                        ? const ValueKey('ai-chat-assistant-bubble')
+                        : ValueKey(
+                            'ai-chat-user-bubble-${message.attempt!.id}',
+                          ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12,
+                      vertical: UtenSpacing.s8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: message.user
+                          ? colors.primaryContainer
+                          : colors.surfaceContainerLow,
+                      borderRadius: UtenRadius.lgAll,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Plain text cannot execute model-supplied links or HTML.
+                        SelectableText(
+                          message.text,
+                          style: TextStyle(
+                            height: 1.5,
+                            color: message.user
+                                ? colors.onPrimaryContainer
+                                : colors.onSurface,
+                          ),
+                        ),
+                        if (message.fileName != null) ...[
+                          const SizedBox(height: UtenSpacing.s8),
+                          Text(
+                            message.fileName!,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (message.attempt != null) _messageDelivery(message),
+            for (final action in message.actions) _action(action),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _messageDelivery(_ChatMessage message) {
+    final attempt = message.attempt!;
+    if (attempt.delivery == _ChatDelivery.answered) {
+      return const SizedBox.shrink();
+    }
+    final colors = Theme.of(context).colorScheme;
+    final pending =
+        attempt.delivery == _ChatDelivery.sending ||
+        attempt.delivery == _ChatDelivery.processing;
+    final status = switch (attempt.delivery) {
+      _ChatDelivery.sending => attempt.progressKey,
+      _ChatDelivery.processing => 'received',
+      _ChatDelivery.rejected => 'requestRejected',
+      _ChatDelivery.unknown => 'deliveryUnknown',
+      _ChatDelivery.processingFailed => 'replyFailed',
+      _ChatDelivery.interrupted => 'replyInterrupted',
+      _ChatDelivery.stopped => 'waitingStopped',
+      _ChatDelivery.answered => 'received',
+    };
+    return Padding(
+      key: ValueKey('ai-chat-delivery-${attempt.id}'),
+      padding: const EdgeInsets.only(top: UtenSpacing.s6),
+      child: Semantics(
+        liveRegion: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (pending)
+                  const Padding(
+                    padding: EdgeInsets.only(top: UtenSpacing.s2),
+                    child: SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 1.5),
+                    ),
+                  )
+                else
+                  Icon(Icons.error_outline, size: 16, color: colors.error),
+                const SizedBox(width: UtenSpacing.s6),
+                Flexible(
+                  child: Text(
+                    _t(status),
+                    textAlign: TextAlign.end,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: pending ? colors.onSurfaceVariant : colors.error,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          for (final action in message.actions) _action(action),
-        ],
+            if (!pending && attempt.failure?.isNotEmpty == true) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                attempt.failure!,
+                textAlign: TextAlign.end,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+            ],
+            if (!pending)
+              TextButton(
+                key: ValueKey('ai-chat-retry-${attempt.id}'),
+                onPressed: _busy ? null : () => _retryMessage(message),
+                child: Text(
+                  _t(
+                    attempt.delivery == _ChatDelivery.interrupted
+                        ? 'checkReply'
+                        : attempt.delivery == _ChatDelivery.unknown
+                        ? 'sendAgain'
+                        : 'retryMessage',
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

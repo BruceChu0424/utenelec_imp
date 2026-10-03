@@ -8032,4 +8032,28 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiChatPrivacyNotice => '对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。';
+
+  @override
+  String get aiChatReceived => '已送达，正在等待回复…';
+
+  @override
+  String get aiChatRequestRejected => '这条消息未成功提交。';
+
+  @override
+  String get aiChatDeliveryUnknown => '送达状态未确认；再次发送会发起新请求。';
+
+  @override
+  String get aiChatReplyFailed => '消息已送达，AI 未能完成回复。';
+
+  @override
+  String get aiChatReplyInterrupted => '消息已受理，暂未能读取结果。';
+
+  @override
+  String get aiChatWaitingStopped => '已停止等待这条消息的回复。';
+
+  @override
+  String get aiChatRetryMessage => '重试此消息';
+
+  @override
+  String get aiChatCheckReply => '重新查看结果';
 }

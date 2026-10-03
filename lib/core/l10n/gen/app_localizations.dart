@@ -14823,6 +14823,54 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。'**
   String get aiChatPrivacyNotice;
+
+  /// No description provided for @aiChatReceived.
+  ///
+  /// In zh, this message translates to:
+  /// **'已送达，正在等待回复…'**
+  String get aiChatReceived;
+
+  /// No description provided for @aiChatRequestRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'这条消息未成功提交。'**
+  String get aiChatRequestRejected;
+
+  /// No description provided for @aiChatDeliveryUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'送达状态未确认；再次发送会发起新请求。'**
+  String get aiChatDeliveryUnknown;
+
+  /// No description provided for @aiChatReplyFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'消息已送达，AI 未能完成回复。'**
+  String get aiChatReplyFailed;
+
+  /// No description provided for @aiChatReplyInterrupted.
+  ///
+  /// In zh, this message translates to:
+  /// **'消息已受理，暂未能读取结果。'**
+  String get aiChatReplyInterrupted;
+
+  /// No description provided for @aiChatWaitingStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停止等待这条消息的回复。'**
+  String get aiChatWaitingStopped;
+
+  /// No description provided for @aiChatRetryMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试此消息'**
+  String get aiChatRetryMessage;
+
+  /// No description provided for @aiChatCheckReply.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新查看结果'**
+  String get aiChatCheckReply;
 }
 
 class _AppLocalizationsDelegate

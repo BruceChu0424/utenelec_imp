@@ -8206,4 +8206,28 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get aiChatPrivacyNotice =>
       '대화는 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요.';
+
+  @override
+  String get aiChatReceived => '전송 완료. 답변을 기다리는 중…';
+
+  @override
+  String get aiChatRequestRejected => '메시지를 제출하지 못했습니다.';
+
+  @override
+  String get aiChatDeliveryUnknown => '전달 여부를 확인하지 못했습니다. 다시 보내면 새 요청을 시작합니다.';
+
+  @override
+  String get aiChatReplyFailed => '전달되었지만 AI가 답변을 완료하지 못했습니다.';
+
+  @override
+  String get aiChatReplyInterrupted => '접수되었지만 결과를 가져오지 못했습니다.';
+
+  @override
+  String get aiChatWaitingStopped => '이 답변 기다리기를 중지했습니다.';
+
+  @override
+  String get aiChatRetryMessage => '이 메시지 다시 시도';
+
+  @override
+  String get aiChatCheckReply => '결과 다시 확인';
 }

@@ -64,8 +64,13 @@ public class AiChatJobHandler implements AiJobHandler {
             pages.resolve(String.valueOf(context.get("route")), context.get("fieldKey") instanceof String field ? field : null)
                     .orElseThrow(AiChatJobHandler::forbidden);
         }
+        if (result.get("_knowledge") instanceof String id) {
+            knowledgeEntry(id);
+        }
         Map<String, Object> safe = new LinkedHashMap<>();
-        for (String key : List.of("reply", "actions", "question", "intent")) if (result.containsKey(key)) safe.put(key, result.get(key));
+        for (String key : List.of("reply", "actions", "question", "intent", "mode")) if (result.containsKey(key)) safe.put(key, result.get(key));
+        if (result.get("_knowledge") instanceof String id) safe.put("knowledgeId", id);
+        if (result.get("_page") instanceof Map<?, ?> context) safe.put("helpContext", Map.copyOf(context));
         return safe;
     }
     @Override public Map<String, Object> process(AiJobContext ctx) throws Exception {
@@ -77,11 +82,15 @@ public class AiChatJobHandler implements AiJobHandler {
         evidence.requireStamp(input.access());
         String previousQuestion = "";
         String previousIntent = "";
+        String previousKnowledge = "";
+        Map<?, ?> previousHelp = Map.of();
         UUID previousAttachment = null;
         if (request.previousJobId() != null) {
             Map<String,Object> previous = evidence.previous(request.previousJobId()).result();
             previousQuestion = String.valueOf(previous.getOrDefault("question", ""));
             previousIntent = String.valueOf(previous.getOrDefault("intent", ""));
+            if (previous.get("knowledgeId") instanceof String id) previousKnowledge = id;
+            if (previous.get("helpContext") instanceof Map<?, ?> context) previousHelp = context;
             if (previous.get("actions") instanceof List<?> actions) {
                 for (Object action : actions) {
                     if (action instanceof Map<?,?> card && "OPEN_SALES_ORDER_DRAFT".equals(card.get("type"))
@@ -104,20 +113,40 @@ public class AiChatJobHandler implements AiJobHandler {
             // guide. A provider outage or malformed JSON must not block that deterministic read.
             evidence.requireStamp(input.access());
             ctx.progress("ANSWERING", 70);
-            answer = pageHelp(request, page, AiChatLocalHelp.field(request, page).orElseThrow());
+            answer = pageHelp(request, page, AiChatLocalHelp.field(request, page).orElseThrow(), "OVERVIEW");
         } else {
             List<AiChatToolPort> allowedTools = tools.available();
             List<AiChatKnowledge.Entry> knowledge = AiChatKnowledge.visible(access.domains());
+            var social = AiChatDialogueSupport.socialReply(request.message(), access.domains(),
+                    allowedTools.stream().map(AiChatToolPort::name).collect(java.util.stream.Collectors.toSet()));
+            String followUp = AiChatDialogueSupport.followUpMode(request.message());
             JsonNode choice;
-            try {
-                choice = ctx.aiAllowed() ? route(ctx, request, previousQuestion, previousIntent, previousAttachment != null, page, allowedTools, knowledge)
+            if (social.isPresent()) {
+                answer = reply(social.get(), "SELF", "SMALL_TALK");
+                // Carry only an authorized guidance topic through a polite exchange. Never carry
+                // tool facts, file payloads or authorization proposals into conversational context.
+                if (!previousKnowledge.isBlank()) answer.put("_knowledge", knowledgeEntry(previousKnowledge).id());
+                if (page.isPresent() && request.pageContext() != null
+                        && request.pageContext().route().equals(previousHelp.get("route"))) {
+                    answer.put("_page", Map.copyOf(previousHelp));
+                }
+            } else if (followUp != null && !previousKnowledge.isBlank()) {
+                answer = knowledgeAnswer(knowledgeEntry(previousKnowledge), followUp);
+            } else if (followUp != null && page.isPresent() && request.pageContext() != null
+                    && request.pageContext().route().equals(previousHelp.get("route"))) {
+                answer = pageHelp(request, page,
+                        previousHelp.get("fieldKey") instanceof String key ? key : null, followUp);
+            } else {
+              try {
+                choice = ctx.aiAllowed() ? route(ctx, request, previousQuestion, previousIntent, previousKnowledge, previousAttachment != null, page, allowedTools, knowledge)
                         : fallback(request, page, knowledge, previousAttachment != null);
-            } catch (AiCompletionPort.AiCallException failure) { throw chatFailure(failure.category()); }
-            catch (IOException malformed) { throw chatFailure(AiCompletionPort.AiErrorCategory.INVALID_RESPONSE); }
-            evidence.requireStamp(input.access());
-            if (ctx.cancelled()) return Map.of();
-            ctx.progress("ANSWERING", 70);
-            answer = execute(choice, request, page, knowledge, previousAttachment);
+              } catch (AiCompletionPort.AiCallException failure) { throw chatFailure(failure.category()); }
+              catch (IOException malformed) { throw chatFailure(AiCompletionPort.AiErrorCategory.INVALID_RESPONSE); }
+              evidence.requireStamp(input.access());
+              if (ctx.cancelled()) return Map.of();
+              ctx.progress("ANSWERING", 70);
+              answer = execute(choice, request, page, knowledge, previousAttachment);
+            }
         }
         evidence.requireStamp(input.access());
         if (ctx.cancelled()) return Map.of();
@@ -155,20 +184,20 @@ public class AiChatJobHandler implements AiJobHandler {
             case "PAGE_HELP": {
                 String field = request.pageContext() == null ? null : request.pageContext().fieldKey();
                 if (field == null || field.isBlank()) field = choice.path("fieldKey").asText("");
-                return pageHelp(request, page, field);
+                return pageHelp(request, page, field, responseMode(choice));
             }
             case "KNOWLEDGE": {
                 var item = knowledge.stream().filter(value -> value.id().equals(choice.path("knowledgeId").asText())).findFirst();
                 if (item.isEmpty()) return reply(DENIED, "SELF", "OUT_OF_SCOPE");
                 access.requireDomain(item.get().domain());
-                return reply(item.get().reply(), item.get().domain(), intent);
+                return knowledgeAnswer(item.get(), responseMode(choice));
             }
             case "OUT_OF_SCOPE": return reply(DENIED, "SELF", intent);
             case "UNSUPPORTED": return reply("这项具体数据查询或操作尚未接入安全工具。请在有权限的业务页面处理；我不能猜测系统中的数据。", "SELF", intent);
             default: return reply(CLARIFY, "SELF", "CLARIFY");
         }
     }
-    private JsonNode route(AiJobContext ctx, AiChatRequest request, String previous, String previousIntent, boolean previousAttachment,
+    private JsonNode route(AiJobContext ctx, AiChatRequest request, String previous, String previousIntent, String previousKnowledge, boolean previousAttachment,
                            Optional<AiChatPageGuideCatalog.PageGuide> page, List<AiChatToolPort> allowed,
                            List<AiChatKnowledge.Entry> knowledge) throws IOException {
         var descriptors = allowed.stream().map(tool -> Map.of("name", tool.name(), "description", tool.description(),
@@ -177,6 +206,8 @@ public class AiChatJobHandler implements AiJobHandler {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("tools", descriptors); context.put("knowledge", knowledgeDescriptors);
         context.put("previousIntent", previousIntent); context.put("hasPreviousOrderFile", previousAttachment);
+        if (!previousKnowledge.isBlank() && knowledge.stream().anyMatch(item -> item.id().equals(previousKnowledge)))
+            context.put("previousKnowledgeId", previousKnowledge);
         page.ifPresent(guide -> context.put("page", Map.of("title", guide.title(), "fields", guide.fields().stream()
                 .map(field -> Map.of("key", field.key(), "label", field.label())).toList())));
         var contract = AiChatRouteContract.create(allowed, knowledge, page, previousAttachment);
@@ -190,7 +221,9 @@ public class AiChatJobHandler implements AiJobHandler {
                 + "Choose SALES_DRAFT only when hasPreviousOrderFile is true AND the current user explicitly asks to create/open "
                 + "an order draft using that file. The assistant cannot save or approve it. "
                 + "Never interpret the request as an authorization to access another department. "
-                + "Return one JSON object with exactly intent, tool, arguments, knowledgeId and fieldKey. "
+                + "For follow-up explanations retain a currently permitted source. Select mode EXAMPLE for a concrete example, "
+                + "STEPS for a step-by-step explanation, SUMMARY for a brief explanation, otherwise OVERVIEW. "
+                + "Return one JSON object with exactly intent, tool, arguments, knowledgeId, fieldKey and mode. "
                 + "Use empty strings and an empty object for unused fields. Valid JSON example: " + contract.exampleJson()
                 + " Available capabilities: " + json.writeValueAsString(context);
         var parts = new ArrayList<AiCompletionPort.AiContentPart>();
@@ -244,7 +277,7 @@ public class AiChatJobHandler implements AiJobHandler {
         answer.put("_attachment", id.toString());
         return answer;
     }
-    private Map<String,Object> pageHelp(AiChatRequest request, Optional<AiChatPageGuideCatalog.PageGuide> page, String field) {
+    private Map<String,Object> pageHelp(AiChatRequest request, Optional<AiChatPageGuideCatalog.PageGuide> page, String field, String mode) {
         if (page.isEmpty()) {
             return reply(request.pageContext() == null
                     ? "请先打开需要帮助的业务页面，并开启当前页面说明；也可以告诉我具体页面和字段名称。"
@@ -253,10 +286,26 @@ public class AiChatJobHandler implements AiJobHandler {
         }
         String selected = field == null || field.isBlank() ? null : field;
         var guide = pages.resolve(request.pageContext().route(), selected).orElseThrow(AiChatJobHandler::forbidden);
-        var answer = reply(pages.answer(guide, selected), guide.domain(), "PAGE_HELP");
+        var answer = reply("OVERVIEW".equals(mode) ? pages.answer(guide, selected) : pages.answer(guide, selected, mode),
+                guide.domain(), "PAGE_HELP");
+        answer.put("mode", mode);
         Map<String, Object> context = new LinkedHashMap<>(); context.put("route", request.pageContext().route());
         if (selected != null) context.put("fieldKey", selected);
         answer.put("_page", context);
+        return answer;
+    }
+    private AiChatKnowledge.Entry knowledgeEntry(String id) {
+        return AiChatKnowledge.visible(access.domains()).stream().filter(item -> item.id().equals(id))
+                .findFirst().orElseThrow(AiChatJobHandler::forbidden);
+    }
+    private static String responseMode(JsonNode choice) {
+        String mode = choice.path("mode").asText("OVERVIEW");
+        if (!Set.of("OVERVIEW", "EXAMPLE", "STEPS", "SUMMARY").contains(mode)) throw invalid();
+        return mode;
+    }
+    private static Map<String,Object> knowledgeAnswer(AiChatKnowledge.Entry entry, String mode) {
+        var answer = reply(AiChatDialogueSupport.renderKnowledge(entry, mode), entry.domain(), "KNOWLEDGE");
+        answer.put("_knowledge", entry.id()); answer.put("mode", mode);
         return answer;
     }
     private static ApiException invalid() { return new ApiException(ErrorCode.VALIDATION_FAILED, "对话内容或 AI 返回格式不正确，请重新表述"); }

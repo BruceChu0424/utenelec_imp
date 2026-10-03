@@ -8515,4 +8515,32 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiChatPrivacyNotice =>
       'Your messages are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information.';
+
+  @override
+  String get aiChatReceived => 'Delivered. Waiting for a reply…';
+
+  @override
+  String get aiChatRequestRejected =>
+      'This message was not submitted successfully.';
+
+  @override
+  String get aiChatDeliveryUnknown =>
+      'Delivery is unconfirmed. Sending again starts a new request.';
+
+  @override
+  String get aiChatReplyFailed =>
+      'Delivered, but AI could not complete the reply.';
+
+  @override
+  String get aiChatReplyInterrupted =>
+      'Accepted, but the result could not be retrieved.';
+
+  @override
+  String get aiChatWaitingStopped => 'Stopped waiting for this reply.';
+
+  @override
+  String get aiChatRetryMessage => 'Retry this message';
+
+  @override
+  String get aiChatCheckReply => 'Check the result again';
 }

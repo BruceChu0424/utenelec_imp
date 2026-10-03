@@ -1576,8 +1576,11 @@ void main() {
       await _submit(tester);
       final saved = storage.draft;
       final data = saved['data'] as Map;
+      // 重量草稿记录 userEdited（手工改过的重量在重开/兜底时不被自动建议覆盖），
+      // 序列化契约含该键。
       expect((data['weights'] as Map)['item-normal'], {
         'kg': 1.25,
+        'userEdited': true,
         'qtyFromWeight': false,
         'qtyNote': null,
       });

@@ -75,6 +75,8 @@ class AnthropicMessagesClientTest {
         assertThat(sent.header("Authorization")).isNull();
         JsonNode body = json.readTree(sent.body());
         assertThat(body.path("system").asText()).isEqualTo("system prompt");
+        assertThat(body.path("stream").isBoolean()).isTrue();
+        assertThat(body.path("stream").asBoolean()).isFalse();
         assertThat(body.path("max_tokens").asInt()).isEqualTo(512);
         assertThat(body.has("temperature")).isFalse();
         JsonNode content = body.path("messages").get(0).path("content");
@@ -104,6 +106,18 @@ class AnthropicMessagesClientTest {
         assertThat(client.chat(AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false),
                 new AiProtocolClient.ChatRequest("s", List.of(new AiText("x", false)), null, null, 64)).truncated())
                 .isTrue();
+    }
+
+    @Test void httpSuccessWithBusinessFailureIsAConfigurationErrorWithoutLeakingItsBody() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"code\":\"500\",\"msg\":\"private prompt " + KEY + "\"}"));
+        assertThatThrownBy(() -> client.chat(AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false),
+                new AiProtocolClient.ChatRequest("s", List.of(new AiText("hello", false)), null, null, 512)))
+                .isInstanceOf(AiCallException.class).satisfies(error -> {
+                    AiCallException ai = (AiCallException) error;
+                    assertThat(ai.category()).isEqualTo(AiErrorCategory.BAD_REQUEST);
+                    assertThat(ai.httpStatus()).isEqualTo(200);
+                    assertThat(ai.getMessage()).contains("接口协议").doesNotContain(KEY, "private prompt");
+                });
     }
 
     @ParameterizedTest(name = "HTTP {0} -> {1}")

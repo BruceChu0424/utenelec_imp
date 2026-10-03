@@ -3382,5 +3382,13 @@
   "aiChatSendAgain": "Send again",
   "aiChatDraftOpened": "Review page opened",
   "aiChatFileMissing": "Attach the file again before creating the order so its source is preserved.",
-  "aiChatPrivacyNotice": "Your messages are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information."
+  "aiChatPrivacyNotice": "Your messages are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information.",
+  "aiChatReceived": "Delivered. Waiting for a reply…",
+  "aiChatRequestRejected": "This message was not submitted successfully.",
+  "aiChatDeliveryUnknown": "Delivery is unconfirmed. Sending again starts a new request.",
+  "aiChatReplyFailed": "Delivered, but AI could not complete the reply.",
+  "aiChatReplyInterrupted": "Accepted, but the result could not be retrieved.",
+  "aiChatWaitingStopped": "Stopped waiting for this reply.",
+  "aiChatRetryMessage": "Retry this message",
+  "aiChatCheckReply": "Check the result again"
 }

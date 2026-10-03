@@ -415,4 +415,62 @@ class AiProviderServiceTest {
                 .contains("停用");
         assertThat(row.getLastTestAt()).isNull();
     }
+
+    @Test void knownZhipuEndpointsRejectMismatchedNewConfigurationAndTypedProbes() {
+        assertValidation(() -> service.create(zhipu("OPENAI_CHAT", "/api/anthropic", null), admin), "Anthropic Messages");
+        assertValidation(() -> service.create(zhipu("ANTHROPIC_MESSAGES", "/api/paas/v4", null), admin), "OpenAI 兼容");
+        assertValidation(() -> service.probeRuntime(new AiProviderDtos.ProbeRequest("ZHIPU", null, "OPENAI_CHAT",
+                "https://open.bigmodel.cn/api/anthropic", "glm-5.3", KEY, null, null, null, 30, null)), "Anthropic Messages");
+        assertThat(rows).isEmpty();
+        service.create(zhipu("ANTHROPIC_MESSAGES", "/api/anthropic", null), admin);
+        AiProvider row = rows.getFirst();
+        assertValidation(() -> service.update(row.getId(), zhipu("OPENAI_CHAT", "/api/anthropic", row.getVersion()), admin), "Anthropic Messages");
+        assertThat(row.getProtocol()).isEqualTo(AiProtocol.ANTHROPIC_MESSAGES);
+    }
+
+    @Test void legacyZhipuProtocolMismatchUsesOnlyTheCanonicalProtocolInMemory() {
+        service.create(zhipu("ANTHROPIC_MESSAGES", "/api/anthropic", null), admin);
+        AiProvider row = rows.getFirst();
+        row.setProtocol(AiProtocol.OPENAI_CHAT); // Existing persisted configuration before this validation.
+        String secret = row.getSecret(); long version = row.getVersion();
+        AiProviderRuntime runtime = service.resolveDefault().runtime();
+        assertThat(runtime.protocol()).isEqualTo(AiProtocol.ANTHROPIC_MESSAGES);
+        assertThat(runtime.endpoint().normalized()).isEqualTo(row.getBaseUrl());
+        assertThat(runtime.apiKey()).isEqualTo(KEY);
+        assertThat(service.storedRuntime(row.getId(), new AiProviderDtos.StoredProbeRequest("OPENAI_CHAT", row.getBaseUrl(), row.getModel())).protocol())
+                .isEqualTo(AiProtocol.ANTHROPIC_MESSAGES);
+        assertThat(row.getProtocol()).isEqualTo(AiProtocol.OPENAI_CHAT);
+        assertThat(row.getSecret()).isEqualTo(secret);
+        assertThat(row.getVersion()).isEqualTo(version);
+
+        var openAi = mock(com.uten.imp.features.ai.client.AiProtocolClient.class);
+        var anthropic = mock(com.uten.imp.features.ai.client.AiProtocolClient.class);
+        when(openAi.protocol()).thenReturn(AiProtocol.OPENAI_CHAT);
+        when(anthropic.protocol()).thenReturn(AiProtocol.ANTHROPIC_MESSAGES);
+        when(anthropic.chat(any(), any())).thenReturn(new com.uten.imp.features.ai.client.AiProtocolClient.ChatResponse("{\"ok\":true}", 1, 1, 200, false, 1));
+        var gateway = new com.uten.imp.features.ai.gateway.AiGateway(service, List.of(openAi, anthropic),
+                mock(com.uten.imp.features.ai.gateway.AiCallLogService.class), properties, mock(com.uten.imp.security.SecurityContextCurrentUser.class));
+        assertThat(gateway.completeJson(new com.uten.imp.application.port.AiCompletionPort.AiCompletionRequest("CONFIGURATION_TEST", "Return JSON.",
+                List.of(new com.uten.imp.application.port.AiCompletionPort.AiText("hello", true)), null, null, 256, null)).json()).isEqualTo("{\"ok\":true}");
+        verify(openAi, never()).chat(any(), any());
+        verify(anthropic).chat(any(), any());
+    }
+
+    @Test void customAndUnknownProxyPathsAreNeverInferredFromTheirNames() {
+        assertThat(AiEndpointProtocolCompatibility.effectiveProtocol(AiProviderPreset.CUSTOM, AiProtocol.OPENAI_CHAT,
+                AiEndpointPolicy.parse("https://open.bigmodel.cn/api/anthropic"))).isEqualTo(AiProtocol.OPENAI_CHAT);
+        assertThat(AiEndpointProtocolCompatibility.effectiveProtocol(AiProviderPreset.ZHIPU, AiProtocol.OPENAI_CHAT,
+                AiEndpointPolicy.parse("https://proxy.bigmodel.cn/api/anthropic"))).isEqualTo(AiProtocol.OPENAI_CHAT);
+        assertThat(AiEndpointProtocolCompatibility.effectiveProtocol(AiProviderPreset.ZHIPU, AiProtocol.OPENAI_CHAT,
+                AiEndpointPolicy.parse("https://open.bigmodel.cn/custom/anthropic"))).isEqualTo(AiProtocol.OPENAI_CHAT);
+        assertThat(AiEndpointProtocolCompatibility.effectiveProtocol(AiProviderPreset.ZHIPU, AiProtocol.OPENAI_CHAT,
+                AiEndpointPolicy.parse("https://open.bigmodel.cn/api/anthropic/v1"))).isEqualTo(AiProtocol.ANTHROPIC_MESSAGES);
+        assertThat(AiEndpointProtocolCompatibility.effectiveProtocol(AiProviderPreset.ZHIPU, AiProtocol.ANTHROPIC_MESSAGES,
+                AiEndpointPolicy.parse("https://open.bigmodel.cn/api/paas/v4"))).isEqualTo(AiProtocol.OPENAI_CHAT);
+    }
+
+    private static AiProviderDtos.ProviderRequest zhipu(String protocol, String path, Long version) {
+        return new AiProviderDtos.ProviderRequest("智谱测试", "ZHIPU", null, protocol,
+                "https://open.bigmodel.cn" + path, "glm-5.3", KEY, null, null, null, null, null, null, null, true, null, version);
+    }
 }

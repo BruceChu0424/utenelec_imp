@@ -3269,5 +3269,13 @@
   "aiChatSendAgain": "다시 보내기",
   "aiChatDraftOpened": "검토 페이지 열림",
   "aiChatFileMissing": "원본을 보존하려면 주문서를 만들기 전에 파일을 다시 첨부하세요.",
-  "aiChatPrivacyNotice": "대화는 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요."
+  "aiChatPrivacyNotice": "대화는 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요.",
+  "aiChatReceived": "전송 완료. 답변을 기다리는 중…",
+  "aiChatRequestRejected": "메시지를 제출하지 못했습니다.",
+  "aiChatDeliveryUnknown": "전달 여부를 확인하지 못했습니다. 다시 보내면 새 요청을 시작합니다.",
+  "aiChatReplyFailed": "전달되었지만 AI가 답변을 완료하지 못했습니다.",
+  "aiChatReplyInterrupted": "접수되었지만 결과를 가져오지 못했습니다.",
+  "aiChatWaitingStopped": "이 답변 기다리기를 중지했습니다.",
+  "aiChatRetryMessage": "이 메시지 다시 시도",
+  "aiChatCheckReply": "결과 다시 확인"
 }

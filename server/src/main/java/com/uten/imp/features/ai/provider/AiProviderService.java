@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.ai.AiProperties;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecretCipher;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -36,6 +37,7 @@ import java.util.regex.Pattern;
  * 只发往保存时的地址); 第一个服务商自动成为默认; 默认服务商只有在它是最后一个时才能删除。
  */
 @Service
+@Slf4j
 public class AiProviderService {
 
     static final String KEY_UNREADABLE_MESSAGE =
@@ -52,6 +54,7 @@ public class AiProviderService {
     private final AuditService audit;
     private final NamedParameterJdbcTemplate jdbc;
     private final Clock clock;
+    private final Map<UUID, String> protocolCompatibilityWarnings = new java.util.concurrent.ConcurrentHashMap<>();
 
     public AiProviderService(AiProviderRepository repository, SecretCipher cipher, AiProperties properties,
                              AuditService audit, NamedParameterJdbcTemplate jdbc, Clock clock) {
@@ -160,6 +163,14 @@ public class AiProviderService {
         if (regionBlock != null) {
             return Resolution.unavailable(row.getName(), row.getModel(), row.isSupportsVision(), regionBlock);
         }
+        AiEndpointPolicy.Endpoint endpoint;
+        try {
+            endpoint = AiEndpointPolicy.validateConfigured(row.getBaseUrl(), row.getRegion(),
+                    properties.isAllowLanHttp());
+        } catch (AiEndpointPolicy.PolicyViolation e) {
+            return Resolution.unavailable(row.getName(), row.getModel(), row.isSupportsVision(),
+                    "默认 AI 服务的接口地址不符合安全规则: " + e.getMessage());
+        }
         String apiKey = null;
         if (row.getSecret() != null) {
             try {
@@ -174,14 +185,6 @@ public class AiProviderService {
         } else if (row.getPreset().requiresApiKey(row.getRegion())) {
             return Resolution.unavailable(row.getName(), row.getModel(), row.isSupportsVision(),
                     "默认的 AI 服务还没有填写密钥");
-        }
-        AiEndpointPolicy.Endpoint endpoint;
-        try {
-            endpoint = AiEndpointPolicy.validateConfigured(row.getBaseUrl(), row.getRegion(),
-                    properties.isAllowLanHttp());
-        } catch (AiEndpointPolicy.PolicyViolation e) {
-            return Resolution.unavailable(row.getName(), row.getModel(), row.isSupportsVision(),
-                    "默认 AI 服务的接口地址不符合安全规则: " + e.getMessage());
         }
         return Resolution.available(runtime(row, endpoint, apiKey));
     }
@@ -209,6 +212,7 @@ public class AiProviderService {
             }
         }
         requireRegionAllowed(row.getRegion());
+        AiEndpointPolicy.Endpoint endpoint = endpointOrThrow(row.getBaseUrl(), row.getRegion());
         String apiKey = null;
         if (row.getSecret() != null) {
             try {
@@ -219,7 +223,6 @@ public class AiProviderService {
         } else if (row.getPreset().requiresApiKey(row.getRegion())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "还没有保存密钥, 请先填写密钥");
         }
-        AiEndpointPolicy.Endpoint endpoint = endpointOrThrow(row.getBaseUrl(), row.getRegion());
         return runtime(row, endpoint, apiKey);
     }
 
@@ -237,6 +240,7 @@ public class AiProviderService {
         AiProtocol protocol = parseEnum(AiProtocol.class, request.protocol(), preset.protocol(), "接口协议");
         AiEndpointPolicy.Endpoint endpoint = endpointOrThrow(request.baseUrl(), region);
         requireRegisteredDomain(preset, endpoint);
+        requireCompatibleProtocol(preset, protocol, endpoint);
         String model = request.model() == null || request.model().isBlank()
                 ? "" : requireModel(request.model());
         String apiKey = normalizeKey(request.apiKey());
@@ -501,6 +505,7 @@ public class AiProviderService {
         AiProtocol protocol = parseEnum(AiProtocol.class, request.protocol(), preset.protocol(), "接口协议");
         AiEndpointPolicy.Endpoint endpoint = endpointOrThrow(request.baseUrl(), region);
         requireRegisteredDomain(preset, endpoint);
+        requireCompatibleProtocol(preset, protocol, endpoint);
         String model = requireModel(request.model());
         String apiKey = normalizeKey(request.apiKey());
         AiJsonMode jsonMode = parseEnum(AiJsonMode.class, request.jsonMode(),
@@ -689,6 +694,12 @@ public class AiProviderService {
         }
     }
 
+    private static void requireCompatibleProtocol(AiProviderPreset preset, AiProtocol protocol,
+                                                   AiEndpointPolicy.Endpoint endpoint) {
+        String reason = AiEndpointProtocolCompatibility.mismatch(preset, protocol, endpoint);
+        if (reason != null) throw new ApiException(ErrorCode.VALIDATION_FAILED, reason);
+    }
+
     private static String requireModel(String value) {
         String model = value == null ? "" : value.trim();
         if (model.isEmpty() || model.length() > 128 || !PRINTABLE_ASCII.matcher(model).matches()) {
@@ -735,8 +746,16 @@ public class AiProviderService {
     }
 
     private AiProviderRuntime runtime(AiProvider row, AiEndpointPolicy.Endpoint endpoint, String apiKey) {
+        AiProtocol effective = AiEndpointProtocolCompatibility.effectiveProtocol(row.getPreset(), row.getProtocol(), endpoint);
+        if (effective != row.getProtocol()) {
+            String state = row.getProtocol().name() + ":" + effective.name();
+            if (!state.equals(protocolCompatibilityWarnings.put(row.getId(), state))) {
+                log.warn("AI canonical endpoint compatibility: providerId={}, configuredProtocol={}, effectiveProtocol={}; persisted configuration unchanged",
+                        row.getId(), row.getProtocol(), effective);
+            }
+        } else protocolCompatibilityWarnings.remove(row.getId());
         return new AiProviderRuntime(row.getId(), row.getName(), row.getPreset(), row.getRegion(),
-                row.getProtocol(), endpoint, row.getModel(), apiKey, row.getJsonMode(), row.getThinkingControl(),
+                effective, endpoint, row.getModel(), apiKey, row.getJsonMode(), row.getThinkingControl(),
                 row.isSendTemperature(), row.isSupportsVision(), row.getMaxOutputTokens(), row.getTimeoutSeconds());
     }
 

@@ -14,9 +14,19 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'ai_visual_support.dart';
 
 void main() {
-  for (final variant in ['desktop', 'mobile', 'authorization-dark']) {
-    final mobile = variant != 'desktop';
+  for (final variant in [
+    'desktop',
+    'mobile',
+    'authorization-dark',
+    'failure-desktop',
+    'failure-mobile',
+  ]) {
+    final mobile =
+        variant == 'mobile' ||
+        variant == 'failure-mobile' ||
+        variant == 'authorization-dark';
     final grant = variant == 'authorization-dark';
+    final failure = variant.startsWith('failure');
     testWidgets('chat $variant renders current-page guidance', (tester) async {
       debugDisableShadows = false;
       await setCaptureView(tester, mobile ? kMobile : kDesktop);
@@ -82,25 +92,38 @@ void main() {
               superAdmin: grant,
             )),
             aiChatRepositoryProvider.overrideWithValue(
-              _VisualChatRepository(grant: grant),
+              _VisualChatRepository(grant: grant, failReply: failure),
             ),
-            aiJobRunnerProvider.overrideWithValue(AiJobRunner(_VisualJobs())),
+            aiJobRunnerProvider.overrideWithValue(
+              AiJobRunner(_VisualJobs(failReply: failure)),
+            ),
           ],
         ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('ai-chat-launcher')));
       await tester.pumpAndSettle();
-      if (!mobile) {
+      if (variant == 'desktop') {
         await capture(tester, 'chat-desktop-welcome');
       }
       await tester.enterText(
         find.byKey(const ValueKey('ai-chat-input')),
-        grant ? '请给示例员工加授销售价格查看权限。' : '交货日期应该怎么填？给我一个例子。',
+        failure
+            ? 'hello'
+            : grant
+            ? '请给示例员工加授销售价格查看权限。'
+            : '交货日期应该怎么填？给我一个例子。',
       );
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('ai-chat-send')));
       await tester.pumpAndSettle();
+      if (variant == 'failure-mobile') {
+        await tester.enterText(
+          find.byKey(const ValueKey('ai-chat-input')),
+          '我想再问一个新的问题',
+        );
+        await tester.pumpAndSettle();
+      }
       await capture(tester, 'chat-$variant');
       expect(find.text(AppLocalizationsZh().aiChatPageAware), findsOneWidget);
       debugDisableShadows = true;
@@ -109,8 +132,9 @@ void main() {
 }
 
 class _VisualChatRepository implements AiChatRepository {
-  const _VisualChatRepository({this.grant = false});
+  const _VisualChatRepository({this.grant = false, this.failReply = false});
   final bool grant;
+  final bool failReply;
   @override
   Future<AiChatCapabilities> capabilities() async => const AiChatCapabilities(
     canChat: true,
@@ -131,7 +155,7 @@ class _VisualChatRepository implements AiChatRepository {
   }) async => AiJobSnapshot(
     id: 'visual-chat-1',
     kind: 'ERP_CHAT',
-    status: AiJobStatus.succeeded,
+    status: failReply ? AiJobStatus.pending : AiJobStatus.succeeded,
     result: {
       'reply': grant
           ? '已准备授权建议，请核对后确认。'
@@ -161,11 +185,20 @@ class _VisualChatRepository implements AiChatRepository {
 }
 
 class _VisualJobs implements AiJobRepository {
+  const _VisualJobs({this.failReply = false});
+  final bool failReply;
   @override
   Future<void> cancel(String jobId) async {}
   @override
-  Future<AiJobSnapshot> get(String jobId) async =>
-      throw StateError('No polling in visual fixture');
+  Future<AiJobSnapshot> get(String jobId) async => failReply
+      ? AiJobSnapshot(
+          id: jobId,
+          kind: 'ERP_CHAT',
+          status: AiJobStatus.failed,
+          errorCode: 'AI_INVALID_RESPONSE',
+          errorMessage: 'AI 没有返回可处理的对话结果，请稍后重试。',
+        )
+      : throw StateError('No polling in visual fixture');
   @override
   Future<AiJobSnapshot> submit(AiJobRequest request) async =>
       throw StateError('No upload in visual fixture');

@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import '../../../shared/drafts/memory_form_draft_storage.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -54,6 +55,13 @@ Future<_DupApi> _pumpEditor(
         ),
         sessionSnapshotProvider.overrideWith(_ExistingSnapshot.new),
         apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+        // 本用例断言合并行保留单价：看不到价格的账号会被客户端脱敏、
+        // 不随保存提交 price，须显式授予价格查看权限。
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.salesOrderView,
+          Perm.salesOrderEdit,
+          Perm.salesOrderPriceView,
+        }),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

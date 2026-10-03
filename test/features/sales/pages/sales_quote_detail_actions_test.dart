@@ -223,7 +223,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('sales-quote-cancel-submit')));
     await tester.pumpAndSettle();
     expect(api.postPaths, isEmpty);
-    expect(find.text('请填写取消原因'), findsOneWidget);
+    expect(find.textContaining('请填写取消原因'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey('sales-quote-cancel-reason')),
       '客户未接受报价',

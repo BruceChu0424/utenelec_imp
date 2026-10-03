@@ -12,9 +12,10 @@ void main() {
           hasPhone: phone,
           hasIdCard: identity,
         );
-        expect(candidate.provisionable, phone && identity);
+        // 2026-10-02 初始密码改系统随机：provisionable 只看手机号。
+        expect(candidate.provisionable, phone);
         expect(candidate.missingHint.contains('缺手机号'), !phone);
-        expect(candidate.missingHint.contains('缺证件号'), !identity);
+        // 证件号不再是开通条件，不再出现在缺失提示里。
       });
     }
   }

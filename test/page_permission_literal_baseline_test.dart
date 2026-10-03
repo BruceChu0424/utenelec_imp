@@ -34,7 +34,9 @@ import 'package:flutter_test/flutter_test.dart';
 //   · 盘点审核页(stock_count_review_page) +5、库存余额详情弹层 +1；
 //   · 即时库存总览/汇总条 WIP +6（同口径）。
 //   净 621 -> 664。迁移服务端 allowedActions 归后续 uikit 工作流。
-const _baseline = 664;
+// 2026-10-02 +8：报价议价全链(V788)的报价操作按钮(客户确认/议价历史/撤回/重报)与服务端
+// @PreAuthorize 一一对应地本地预演（与 V694-V702 审批页同款口径）。
+const _baseline = 672;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

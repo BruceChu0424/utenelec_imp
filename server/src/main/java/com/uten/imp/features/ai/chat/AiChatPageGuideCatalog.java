@@ -48,7 +48,16 @@ public class AiChatPageGuideCatalog {
         return Optional.of(new PageGuide(page.key(), page.title(), page.domain(), page.source(), fields));
     }
 
-    /** Respond from the reviewed catalog, with clearly hypothetical examples and a source. */
+    /** Every suggested question is answerable by this same authorized local guide. */
+    public List<String> suggestions(PageGuide guide) {
+        if (guide.fields().isEmpty()) return List.of();
+        List<String> suggestions = new ArrayList<>();
+        suggestions.add("这个页面怎么填写？请举例。");
+        guide.fields().stream().limit(2).forEach(field -> suggestions.add(field.label() + "怎么填写？请举例。"));
+        return List.copyOf(suggestions);
+    }
+
+    /** Respond from the reviewed catalog, with clearly hypothetical examples. */
     public String answer(PageGuide guide, String fieldKey) {
         return answer(guide, fieldKey, "OVERVIEW");
     }
@@ -123,6 +132,11 @@ public class AiChatPageGuideCatalog {
 
     private static List<Page> buildPages() {
         List<Page> pages = new ArrayList<>();
+        pages.add(p("sales", "销售管理", "SALES", "/sales", "", "销售管理 / ADR-139",
+                restricted(f("order", "订货单", "点新建销售订货单，选客户、填货品和数量，核对后保存。也可以上传客户文件帮你填写。",
+                        "客户订 100 个 A001，选客户后添加 A001，数量填 100。"), "SALES", "sales_order:create"),
+                restricted(f("quote", "报价单", "点新建销售报价单，选客户、填货品和数量，补充有效期后保存。",
+                        "给客户 A 报 100 个 A001，按约定填有效期。"), "SALES", "sales_quote:create")));
         pages.add(p("sales_order", "销售订货单", "SALES", "/sales/orders" + DOC, "sales_order:view",
                 "订货单公共表头规范 / ADR-139", CLIENT, QUANTITY, TERMS, PRICE, FILE));
         pages.add(p("sales_quote", "销售报价单", "SALES", "/sales/quotes" + DOC, "sales_quote:view",
@@ -131,6 +145,10 @@ public class AiChatPageGuideCatalog {
                         "约定 11 月 30 日截止，就选这一天。"),
                 f("workflow", "财务核价和客户同意", "先财务核价，再登记客户对当前版本的同意，最后转订货。修改后要重新确认。",
                         "客户同意了版本 3；再改数量，就要请客户重新确认。")));
+        pages.add(p("expense", "报销申请", "SELF", "/expense" + DOC, "expense:apply", "报销申请 / ADR-094",
+                f("purpose", "报销事由", "写清哪一天、因为什么工作产生了费用。", "10 月 3 日到客户 A 处送样，填写送样交通费。"),
+                f("amount", "费用金额", "按实际支出填写，核对币种和票面金额。", "车费 35 元、停车费 10 元，分别列明，共 45 元。"),
+                f("invoice", "发票和凭证", "上传清晰发票，核对金额和日期后再保存。", "发票写 100 元，先核对实际支出，再填写报销金额。")));
         pages.add(p("purchase_order", "采购订货单", "PURCHASE", "/purchase/orders" + DOC, "purchase_order:view",
                 "订货单公共表头规范 / ADR-068", QUANTITY, COMMERCIAL,
                 f("source", "申请来源", "选对采购任务，按实际约定填写数量。",

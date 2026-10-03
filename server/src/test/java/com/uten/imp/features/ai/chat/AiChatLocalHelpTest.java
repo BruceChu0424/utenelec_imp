@@ -43,4 +43,13 @@ class AiChatLocalHelpTest {
                 .isInstanceOf(ApiException.class);
         assertThat(AiChatLocalHelp.field(new AiChatRequest("有效期怎么填写", null, null, null), Optional.empty())).isEmpty();
     }
+    @Test void orderCreationHelpRequiresItsActualAuthorizedPage() {
+        var order = new AiChatPageGuideCatalog.PageGuide("sales_order", "销售订货单", "SALES", "", guide.fields());
+        var orderContext = new AiChatRequest.PageContext("/sales/orders/new", null);
+        for (String message : List.of("如何创建订货档案？", "怎么新建订货单", "销售订货单怎么填写")) {
+            assertThat(AiChatLocalHelp.field(new AiChatRequest(message, null, null, orderContext), Optional.of(order))).contains("");
+            assertThat(AiChatLocalHelp.field(new AiChatRequest(message, null, null, context), Optional.of(guide))).isEmpty();
+        }
+        assertThat(AiChatLocalHelp.field(new AiChatRequest("如何创建订货档案，然后帮我授权", null, null, orderContext), Optional.of(order))).isEmpty();
+    }
 }

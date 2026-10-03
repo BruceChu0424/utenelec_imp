@@ -59,8 +59,8 @@ public class AnthropicMessagesClient implements AiProtocolClient {
         }
         boolean truncated = "max_tokens".equals(root.path("stop_reason").asText(""));
         JsonNode usage = root.path("usage");
-        return new ChatResponse(text.toString(), usage.path("input_tokens").asInt(0),
-                usage.path("output_tokens").asInt(0), exchange.status(), truncated, exchange.latencyMs());
+        return new ChatResponse(text.toString(), AiProtocolClient.tokenCount(usage, "input_tokens"),
+                AiProtocolClient.tokenCount(usage, "output_tokens"), exchange.status(), truncated, exchange.latencyMs());
     }
 
     @Override

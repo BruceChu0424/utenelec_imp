@@ -33,6 +33,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** Anthropic Messages 协议客户端对假服务商的真实 HTTP 往返。 */
 class AnthropicMessagesClientTest {
 
+    @Test void missingUsageIsUnknownInsteadOfZero() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"content\":[{\"type\":\"text\",\"text\":\"{}\"}],\"stop_reason\":\"end_turn\"}"));
+        var response = client.chat(AiTestRuntimes.anthropic(fake, KEY, AiJsonMode.JSON_OBJECT, false),
+                new AiProtocolClient.ChatRequest("Return JSON", List.of(new AiText("hello", false)), null, null, 100));
+        assertThat(response.inputTokens()).isNull(); assertThat(response.outputTokens()).isNull();
+    }
+
     private static final String KEY = "sk-ant-test-0123456789abcdefghijkl";
     private static FakeAiProviderServer fake;
     private final ObjectMapper json = new ObjectMapper();

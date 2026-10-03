@@ -66,4 +66,18 @@ class AiChatPageGuideCatalogTest {
         var page = guides.resolve("/basicinfo/goods", "cost").orElseThrow();
         assertTrue(guides.answer(page, "cost").contains("不能当成 0 元"));
     }
+    @Test void suggestionsUseOnlyAuthorizedFieldsAndLandingCreates() {
+        actor("sales_order:view", "sales_order:create");
+        when(access.hasDomain("SALES")).thenReturn(true);
+        var order = guides.resolve("/sales/orders/new", null).orElseThrow();
+        assertEquals(3, guides.suggestions(order).size());
+        assertTrue(guides.suggestions(order).stream().noneMatch(value -> value.contains("价格") || value.contains("成本")));
+        var landing = guides.resolve("/sales", null).orElseThrow();
+        assertEquals(1, landing.fields().size());
+        assertEquals("order", landing.fields().getFirst().key());
+        assertTrue(guides.suggestions(landing).stream().noneMatch(value -> value.contains("报价")));
+        actor("goods:view");
+        assertThrows(ApiException.class, () -> guides.resolve("/sales/orders/new", null));
+        assertTrue(guides.suggestions(guides.resolve("/basicinfo/goods", null).orElseThrow()).stream().noneMatch(value -> value.contains("成本")));
+    }
 }

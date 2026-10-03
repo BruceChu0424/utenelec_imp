@@ -81,6 +81,170 @@ void main() {
     },
   );
 
+  test(
+    'page suggestion endpoint only receives a bounded path and rejects a mismatched reply',
+    () async {
+      final api = _RecordingApi()
+        ..pageResult = {
+          'pageRoute': '/sales/orders/new',
+          'pageTitle': 'Order page',
+          'suggestions': [
+            'Order date?',
+            'Order date?',
+            42,
+            'Customer?',
+            'Quantity?',
+            'Excess?',
+          ],
+        };
+      final repository = DioAiChatRepository(api);
+      final result = await repository.pageSuggestions(
+        '/sales/orders/new?amount=secret#field',
+      );
+      expect(api.path, '/ai/chat/page-suggestions');
+      expect(api.query, {'pageRoute': '/sales/orders/new'});
+      expect(result.suggestions, ['Order date?', 'Customer?', 'Quantity?']);
+      await expectLater(
+        repository.pageSuggestions('/${'a' * 240}'),
+        throwsFormatException,
+      );
+      await expectLater(
+        repository.pageSuggestions('https://other.invalid/page'),
+        throwsFormatException,
+      );
+      api.pageResult = {
+        'pageRoute': '/sales/quotes/new',
+        'suggestions': ['Wrong page'],
+      };
+      await expectLater(
+        repository.pageSuggestions('/sales/orders/new'),
+        throwsFormatException,
+      );
+    },
+  );
+
+  testWidgets(
+    'page suggestions update with an open history and click uses the new page',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..pageResults.addAll({
+          '/sales/orders/new': const AiChatPageSuggestions(
+            pageRoute: '/sales/orders/new',
+            pageTitle: 'Order page',
+            suggestions: ['Order date?', 'Order customer?'],
+          ),
+          '/sales/quotes/new': const AiChatPageSuggestions(
+            pageRoute: '/sales/quotes/new',
+            pageTitle: 'Quote page',
+            suggestions: ['Quote validity?', 'Quote customer?'],
+          ),
+        });
+      final harness = await _pump(tester, repository: repository);
+      expect(repository.pageRequests, isEmpty);
+      await _open(tester);
+      expect(find.text('Order page'), findsOneWidget);
+      expect(find.text('Order date?'), findsOneWidget);
+      await _send(tester, 'hello');
+      await tester.pumpAndSettle();
+      harness.container.read(harness.route.notifier).state =
+          '/sales/quotes/new?private=secret';
+      await tester.pumpAndSettle();
+      expect(find.text('Quote page'), findsOneWidget);
+      expect(find.text('Order date?'), findsNothing);
+      expect(find.text('Scoped answer 1'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ai-chat-page-suggestions')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Quote validity?'));
+      await tester.pumpAndSettle();
+      expect(repository.messages.last['message'], 'Quote validity?');
+      expect(repository.messages.last['currentRoute'], '/sales/quotes/new');
+      expect(repository.messages.last['previousJobId'], 'chat-job-1');
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(find.text('Quote customer?'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('ai-chat-page-suggestions')),
+        findsNothing,
+      );
+      final reads = repository.pageRequests.length;
+      harness.container.read(harness.route.notifier).state =
+          '/sales/orders/new';
+      await tester.pumpAndSettle();
+      expect(repository.pageRequests, hasLength(reads));
+      expect(find.text('Scoped answer 2'), findsOneWidget);
+    },
+  );
+
+  for (final route in ['/unknown/page', '/finance/restricted']) {
+    testWidgets(
+      'unknown or denied page has no advertised page guidance: $route',
+      (tester) async {
+        final repository = _FakeChatRepository()
+          ..suggestions = [AppLocalizationsEn().aiChatPageQuestion]
+          ..deniedPages.add('/finance/restricted');
+        final harness = await _pump(tester, repository: repository);
+        harness.container.read(harness.route.notifier).state = route;
+        await tester.pump();
+        await _open(tester);
+        expect(
+          find.text(AppLocalizationsEn().aiChatPageQuestion),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('ai-chat-page-suggestions')),
+          findsNothing,
+        );
+        await _send(tester, 'hello');
+        expect(find.text('Scoped answer 1'), findsOneWidget);
+      },
+    );
+  }
+
+  for (final boundary in ['route', 'disabled', 'identity']) {
+    testWidgets('late page suggestions cannot cross $boundary changes', (
+      tester,
+    ) async {
+      final pending = Completer<AiChatPageSuggestions>();
+      final repository = _FakeChatRepository()
+        ..pendingPages['/sales/orders/new'] = pending
+        ..pageResults['/sales/quotes/new'] = const AiChatPageSuggestions(
+          pageRoute: '/sales/quotes/new',
+          pageTitle: 'New page',
+          suggestions: ['New question?'],
+        );
+      final harness = await _pump(tester, repository: repository);
+      await _open(tester);
+      if (boundary == 'route') {
+        harness.container.read(harness.route.notifier).state =
+            '/sales/quotes/new';
+      } else if (boundary == 'disabled') {
+        await tester.tap(find.byType(Switch));
+      } else {
+        repository.pendingPages.clear();
+        harness.container.read(harness.identity.notifier).state = _identity(
+          user: 'new-user',
+        );
+      }
+      await tester.pumpAndSettle();
+      pending.complete(
+        const AiChatPageSuggestions(
+          pageRoute: '/sales/orders/new',
+          pageTitle: 'Old private page',
+          suggestions: ['Old private question?'],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Old private page'), findsNothing);
+      expect(find.text('Old private question?'), findsNothing);
+      if (boundary == 'route') {
+        expect(find.text('New question?'), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('welcome has two examples without policy paragraphs', (
     tester,
   ) async {
@@ -210,6 +374,58 @@ void main() {
     },
   );
 
+  for (final page in [
+    (
+      route: '/sales/quotes/new?customer=private#total',
+      enabled: true,
+      expected: '/sales/quotes/new',
+    ),
+    (route: '/sales/orders/new', enabled: false, expected: null),
+    (
+      route: 'https://foreign.invalid/sales/orders/new',
+      enabled: true,
+      expected: null,
+    ),
+    (route: '/${'a' * 240}', enabled: true, expected: null),
+  ]) {
+    testWidgets(
+      'document page context is optional and bounded: ${page.route}',
+      (tester) async {
+        final file = PlatformFile(
+          name: 'quote.csv',
+          size: 4,
+          bytes: Uint8List.fromList([1, 2, 3, 4]),
+        );
+        FilePicker.platform = _Picker(file);
+        addTearDown(() => FilePicker.platform = _Picker(null));
+        final jobs = _FakeJobRepository();
+        AiGuidedFilePlan? opened;
+        final harness = await _pump(
+          tester,
+          jobs: jobs,
+          onDraftOpened: (_, extra) => opened = extra as AiGuidedFilePlan,
+        );
+        harness.container.read(harness.route.notifier).state = page.route;
+        await tester.pump();
+        await _open(tester);
+        if (!page.enabled) {
+          await tester.tap(find.byType(Switch));
+          await tester.pump();
+        }
+        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+        await tester.pumpAndSettle();
+        await _send(tester, 'Prepare this document');
+        await tester.pumpAndSettle();
+        expect(jobs.requests.single.params, {
+          'message': 'Prepare this document',
+          'pageRoute': ?page.expected,
+        });
+        expect(opened?.pageRoute, page.expected);
+        expect(opened, isNotNull);
+      },
+    );
+  }
+
   for (final scenario in [
     'unsupported',
     'revoked',
@@ -267,11 +483,16 @@ void main() {
         expect(harness.repository.messages, isEmpty);
         if (scenario == 'retry') {
           jobs.submitFailure = null;
+          harness.container.read(harness.route.notifier).state =
+              '/sales/quotes/new';
+          await tester.pump();
           await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
           await tester.pumpAndSettle();
           expect(opens, 1);
           expect(jobs.requests, hasLength(2));
           expect(jobs.requests.first.bytes, jobs.requests.last.bytes);
+          expect(jobs.requests.last.params, jobs.requests.first.params);
+          expect(jobs.requests.last.params['pageRoute'], '/sales/orders/new');
         }
         expect(tester.takeException(), isNull);
       },
@@ -556,17 +777,21 @@ void main() {
         '/sales/quotes/new',
       );
       await _open(tester);
+      expect(repository.pageRequests.last, '/sales/quotes/new');
       await tester.tap(find.text(AppLocalizationsEn().aiChatPageQuestion));
       await tester.pumpAndSettle();
       expect(repository.messages.single['currentRoute'], '/sales/quotes/new');
       expect(repository.messages.single['intentHint'], 'PAGE_HELP');
       router.push('/sales/orders/new?private=other');
       await tester.pumpAndSettle();
+      expect(repository.pageRequests.last, '/sales/orders/new');
+      expect(find.text('Scoped answer 1'), findsOneWidget);
       await _send(tester, 'Next page');
       expect(repository.messages.last['currentRoute'], '/sales/orders/new');
       expect(repository.messages.last['intentHint'], isNull);
       router.pop();
       await tester.pumpAndSettle();
+      expect(repository.pageRequests.last, '/sales/quotes/new');
       await _send(tester, 'Back to quote');
       expect(repository.messages.last['currentRoute'], '/sales/quotes/new');
       router.pop();
@@ -586,8 +811,8 @@ void main() {
       await _open(tester);
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
-      await tester.tap(find.text(question));
-      await tester.pumpAndSettle();
+      expect(find.text(question), findsNothing);
+      await _send(tester, question);
       expect(repository.messages.single['currentRoute'], isNull);
       expect(repository.messages.single['intentHint'], isNull);
       await tester.tap(find.byType(Switch));
@@ -624,13 +849,26 @@ void main() {
     },
   );
 
-  for (final scale in [1.5, 2.0]) {
+  for (final scale in [1.0, 1.5, 2.0]) {
     testWidgets(
       'narrow keyboard viewport remains usable at text scale $scale',
       (tester) async {
         tester.platformDispatcher.textScaleFactorTestValue = scale;
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-        final harness = await _pump(tester, size: const Size(360, 740));
+        final repository = _FakeChatRepository()
+          ..pageResults['/sales/orders/new'] = const AiChatPageSuggestions(
+            pageRoute: '/sales/orders/new',
+            pageTitle: 'Sales order',
+            suggestions: [
+              'How do I fill in the delivery date?',
+              'How do I choose a customer?',
+            ],
+          );
+        final harness = await _pump(
+          tester,
+          repository: repository,
+          size: const Size(360, 740),
+        );
         await _open(tester);
         tester.view.viewInsets = const FakeViewPadding(bottom: 360);
         await tester.pumpAndSettle();
@@ -641,10 +879,14 @@ void main() {
         );
         expect(
           find.byKey(const ValueKey('ai-chat-accessible-scroll')),
-          findsOneWidget,
+          scale > 1.2 ? findsOneWidget : findsNothing,
         );
         await tester.ensureVisible(find.byKey(const ValueKey('ai-chat-input')));
         await _send(tester, 'How do I fill in this page?');
+        expect(
+          find.byKey(const ValueKey('ai-chat-page-suggestions')),
+          findsOneWidget,
+        );
         expect(
           harness.repository.messages.single['message'],
           'How do I fill in this page?',
@@ -842,7 +1084,10 @@ void main() {
       await _send(tester, 'Prepare an order');
       expect(jobs.requests, hasLength(1));
       expect(jobs.requests.single.kind, 'ERP_DOCUMENT_ROUTE');
-      expect(jobs.requests.single.params, {'message': 'Prepare an order'});
+      expect(jobs.requests.single.params, {
+        'message': 'Prepare an order',
+        'pageRoute': '/sales/orders/new',
+      });
       expect(jobs.requests.single.bytes, file.bytes);
       await tester.pumpAndSettle();
       expect(harness.repository.messages, isEmpty);
@@ -852,6 +1097,7 @@ void main() {
       expect(plan.file.bytes, file.bytes);
       expect(plan.file.name, file.name);
       expect(plan.jobId, 'file-job-1');
+      expect(plan.pageRoute, '/sales/orders/new');
       expect(repository.confirmations, isEmpty);
       expect(tester.takeException(), isNull);
     },
@@ -1085,6 +1331,27 @@ class _FakeChatRepository implements AiChatRepository {
   Object? sendFailure;
   int capabilityCalls = 0;
   List<String> suggestions = const [];
+  final pageRequests = <String>[];
+  final pageResults = <String, AiChatPageSuggestions>{};
+  final pendingPages = <String, Completer<AiChatPageSuggestions>>{};
+  final deniedPages = <String>{};
+
+  @override
+  Future<AiChatPageSuggestions> pageSuggestions(String pageRoute) async {
+    pageRequests.add(pageRoute);
+    if (deniedPages.contains(pageRoute)) {
+      throw ApiException('FORBIDDEN', 'Denied page');
+    }
+    if (pendingPages[pageRoute] case final pending?) return pending.future;
+    return pageResults[pageRoute] ??
+        AiChatPageSuggestions(
+          pageRoute: pageRoute,
+          pageTitle: pageRoute.startsWith('/sales/') ? 'Sales page' : '',
+          suggestions: pageRoute.startsWith('/sales/')
+              ? [AppLocalizationsEn().aiChatPageQuestion]
+              : const [],
+        );
+  }
 
   @override
   Future<AiChatCapabilities> capabilities() async {
@@ -1140,6 +1407,18 @@ class _RecordingApi extends ApiClient {
   _RecordingApi() : super(Dio());
   String? path;
   Object? body;
+  Map<String, dynamic>? query;
+  Map<String, dynamic> pageResult = const {};
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    this.path = path;
+    this.query = query;
+    return pageResult;
+  }
 
   @override
   Future<Map<String, dynamic>> post(

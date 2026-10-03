@@ -13,6 +13,15 @@ class AiChatDialogueSupportTest {
     private static final Set<String> ALL_TOOLS = Set.of("my_workbench", "query_goods_cost", "prepare_permission_grant");
     private static final String MARKER = "举例(假设数据，不是系统当前事实):";
 
+    @Test void businessNamesAreNotMistakenForPersonalEntertainmentRequests() {
+        for (String question : List.of("游戏机 A001 库存多少", "给客户电影公司创建订货单", "报价单怎么填写", "你好")) {
+            assertThat(AiChatDialogueSupport.clearlyNonWork(question)).as(question).isFalse();
+        }
+        for (String question : List.of("讲个笑话", "帮我写一封情书", "推荐一部电影", "Tell me a joke")) {
+            assertThat(AiChatDialogueSupport.clearlyNonWork(question)).as(question).isTrue();
+        }
+    }
+
     @Test void greetingUsesOnlyRealDepartmentAndToolCapabilities() {
         String reply = AiChatDialogueSupport.socialReply(" ＨＥＬＬＯ！ ", PRODUCTION, ALL_TOOLS).orElseThrow();
         assertThat(reply).contains("你好").doesNotContain("成本", "授权", "报价", "员工资料").hasSizeLessThan(35);

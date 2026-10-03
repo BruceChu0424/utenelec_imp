@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -18,8 +19,13 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/models/ai_provider_models.dart';
 import 'package:uten_imp/features/admin/pages/admin_ai_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/ai_provider_repository.dart';
+import 'package:uten_imp/features/admin/repositories/ai_usage_audit_repository.dart';
 import 'package:uten_imp/features/admin/widgets/ai_masked_key.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 final _zh = lookupAppLocalizations(const Locale('zh'));
@@ -396,6 +402,49 @@ class _Repo implements AiProviderRepository {
   }
 }
 
+class _SettingsSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'settings-admin',
+      code: 'admin',
+      name: 'Administrator',
+      superAdmin: true,
+      permissions: [Perm.authorizationManage],
+    ),
+  );
+}
+
+class _SettingsSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot(generation: 1);
+}
+
+class _SettingsAudit implements AiUsageAuditRepository {
+  @override
+  Future<Map<String, dynamic>> read({
+    int days = 30,
+    int page = 0,
+    int size = 20,
+    String? userId,
+    String? providerId,
+  }) async => {
+    'total': 0,
+    'summary': <String, dynamic>{},
+    'records': <Object>[],
+    'users': <Object>[],
+  };
+  @override
+  Future<Map<String, dynamic>> billing(String providerId) =>
+      throw StateError('Unexpected billing read');
+  @override
+  Future<Map<String, dynamic>> saveBilling(
+    String providerId,
+    Map<String, dynamic> values,
+  ) => throw StateError('Unexpected billing write');
+}
+
 Future<ProviderContainer> _pump(
   WidgetTester tester,
   _Repo repo, {
@@ -415,6 +464,16 @@ Future<ProviderContainer> _pump(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         aiProviderRepositoryProvider.overrideWithValue(repo),
+        aiUsageAuditRepositoryProvider.overrideWithValue(_SettingsAudit()),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'settings-admin'),
+        ),
+        apiBaseUrlProvider.overrideWithValue('https://settings.invalid/api'),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.authorizationManage,
+        }),
+        sessionProvider.overrideWith(_SettingsSession.new),
+        sessionSnapshotProvider.overrideWith(_SettingsSnapshot.new),
       ],
       // 截图边界包住整个应用: 面板/弹窗在导航浮层里, 也要进截图。
       child: RepaintBoundary(

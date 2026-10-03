@@ -41,7 +41,13 @@ public interface AiProtocolClient {
      * @param content   模型输出的文本
      * @param truncated 因输出长度上限被截断
      */
-    record ChatResponse(String content, int inputTokens, int outputTokens, int httpStatus, boolean truncated,
+    record ChatResponse(String content, Integer inputTokens, Integer outputTokens, int httpStatus, boolean truncated,
                         long latencyMs) {
+    }
+
+    /** Missing, malformed or negative usage is unknown, never a fabricated zero. */
+    static Integer tokenCount(com.fasterxml.jackson.databind.JsonNode usage, String field) {
+        var value = usage.path(field);
+        return value.isIntegralNumber() && value.canConvertToInt() && value.intValue() >= 0 ? value.intValue() : null;
     }
 }

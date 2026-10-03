@@ -6,6 +6,7 @@ import 'ai_chat_models.dart';
 
 abstract interface class AiChatRepository {
   Future<AiChatCapabilities> capabilities();
+  Future<AiChatPageSuggestions> pageSuggestions(String pageRoute);
   Future<AiJobSnapshot> send({
     required String message,
     String? previousJobId,
@@ -27,6 +28,21 @@ class DioAiChatRepository implements AiChatRepository {
   @override
   Future<AiChatCapabilities> capabilities() async =>
       AiChatCapabilities.fromJson(await api.get('/ai/chat/capabilities'));
+
+  @override
+  Future<AiChatPageSuggestions> pageSuggestions(String pageRoute) async {
+    final path = safeAiChatRoute(pageRoute);
+    if (path == null || path.length > 240) {
+      throw const FormatException('Invalid AI page suggestion path');
+    }
+    final result = AiChatPageSuggestions.fromJson(
+      await api.get('/ai/chat/page-suggestions', query: {'pageRoute': path}),
+    );
+    if (result.pageRoute != path) {
+      throw const FormatException('AI page suggestions belong to another page');
+    }
+    return result;
+  }
 
   @override
   Future<String> confirmPermissionGrant(String proposalId) async {

@@ -44,6 +44,7 @@ Future<AiGuidedFilePlan?> prepareGuidedSalesRoute(
       'message': workflow == AiGuidedWorkflow.salesQuote
           ? 'Create sales quotation'
           : 'Fill sales order',
+      'pageRoute': ?current.pageRoute,
     },
     bytes: file.bytes!,
     fileName: file.name,
@@ -93,6 +94,7 @@ Future<AiGuidedFilePlan?> prepareGuidedSalesRoute(
     result: result,
     workflow: workflow,
     identity: current.identity,
+    pageRoute: current.pageRoute,
   );
   return validateAiGuidedFilePlan(ref, proposed);
 }

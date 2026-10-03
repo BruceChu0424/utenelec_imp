@@ -43,80 +43,91 @@ import '../../ai_visual/ai_visual_support.dart';
 void main() {
   tearDown(() => FilePicker.platform = _Picker(const []));
 
-  testWidgets('guided re-recognition quote handoff retains verified guided mode', (
-    tester,
-  ) async {
-    final plan = _guidedPlan(quoteAccess: true);
-    final result = _highResult();
-    final line = (result['lines'] as List).first as Map<String, dynamic>;
-    final selected = (line['candidates'] as List).first as Map<String, dynamic>;
-    selected['listPrice'] = 0;
-    selected['pricingFlag'] = 'NO_LIST_PRICE';
-    result['extraColumns'] = [
-      {'key': 'note', 'label': 'Source note', 'dataType': 'TEXT'},
-    ];
-    Object? handed;
-    final jobs = _GuidedJobs(plan);
-    final runner = _HandoffRunner(jobs, result);
-    final files = _Files();
-    final api = await _pumpEditor(
-      tester,
-      files,
-      type: SalesDocType.order,
-      guidedPlan: plan,
-      permissions: plan.identity.permissions.split('\n').toSet(),
-      guidedJobs: jobs,
-      guidedRunner: runner,
-      onQuoteOpened: (state) => handed = state.extra,
-      renderQuoteHandoff: true,
+  for (final pageRoute in <String?>['/sales/orders/new', null]) {
+    testWidgets(
+      'guided re-recognition quote handoff retains verified guided mode and page hint ${pageRoute ?? 'disabled'}',
+      (tester) async {
+        final plan = _guidedPlan(quoteAccess: true, pageRoute: pageRoute);
+        final result = _highResult();
+        final line = (result['lines'] as List).first as Map<String, dynamic>;
+        final selected =
+            (line['candidates'] as List).first as Map<String, dynamic>;
+        selected['listPrice'] = 0;
+        selected['pricingFlag'] = 'NO_LIST_PRICE';
+        result['extraColumns'] = [
+          {'key': 'note', 'label': 'Source note', 'dataType': 'TEXT'},
+        ];
+        Object? handed;
+        final jobs = _GuidedJobs(plan);
+        final runner = _HandoffRunner(jobs, result);
+        final files = _Files();
+        final api = await _pumpEditor(
+          tester,
+          files,
+          type: SalesDocType.order,
+          guidedPlan: plan,
+          permissions: plan.identity.permissions.split('\n').toSet(),
+          guidedJobs: jobs,
+          guidedRunner: runner,
+          onQuoteOpened: (state) => handed = state.extra,
+          renderQuoteHandoff: true,
+        );
+        await tester.tap(find.byTooltip('关闭'));
+        await tester.pumpAndSettle();
+        final section = tester.widget<BusinessAttachmentSection>(
+          find.byKey(const ValueKey('sales-order-draft-attachments')),
+        );
+        final item = section.draftController!.items.single;
+        section.draftActionFor!(item)!.onTap!();
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('sales-intake-handoff-quote')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          handed,
+          isA<AiGuidedFilePlan>(),
+          reason:
+              'A raw PlatformFile loses no-write and source-validation restrictions',
+        );
+        expect(
+          (handed as AiGuidedFilePlan).workflow,
+          AiGuidedWorkflow.salesQuote,
+        );
+        expect((handed as AiGuidedFilePlan).pageRoute, pageRoute);
+        expect(
+          runner.requests
+              .where((request) => request.kind == aiGuidedRouteKind)
+              .single
+              .params,
+          {'message': 'Create sales quotation', 'pageRoute': ?pageRoute},
+        );
+        expect(
+          runner.requests.where(
+            (request) =>
+                request.kind == 'SALES_DOCUMENT_INTAKE' &&
+                request.params['docType'] == 'quote',
+          ),
+          hasLength(1),
+        );
+        await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+        await tester.pumpAndSettle();
+        final quotePage = find.byWidgetPredicate(
+          (widget) =>
+              widget is SalesDocEditPage &&
+              widget.docType == SalesDocType.quote,
+        );
+        expect(quotePage, findsOneWidget);
+        expect(
+          api.writes,
+          isEmpty,
+          reason:
+              'Workflow changes must not create columns or save a business document',
+        );
+        expect(files.uploads, isEmpty);
+      },
     );
-    await tester.tap(find.byTooltip('关闭'));
-    await tester.pumpAndSettle();
-    final section = tester.widget<BusinessAttachmentSection>(
-      find.byKey(const ValueKey('sales-order-draft-attachments')),
-    );
-    final item = section.draftController!.items.single;
-    section.draftActionFor!(item)!.onTap!();
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('sales-intake-handoff-quote')));
-    await tester.pumpAndSettle();
-    expect(
-      handed,
-      isA<AiGuidedFilePlan>(),
-      reason:
-          'A raw PlatformFile loses no-write and source-validation restrictions',
-    );
-    expect((handed as AiGuidedFilePlan).workflow, AiGuidedWorkflow.salesQuote);
-    expect(
-      runner.requests
-          .where((request) => request.kind == aiGuidedRouteKind)
-          .single
-          .params,
-      {'message': 'Create sales quotation'},
-    );
-    expect(
-      runner.requests.where(
-        (request) =>
-            request.kind == 'SALES_DOCUMENT_INTAKE' &&
-            request.params['docType'] == 'quote',
-      ),
-      hasLength(1),
-    );
-    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
-    await tester.pumpAndSettle();
-    final quotePage = find.byWidgetPredicate(
-      (widget) =>
-          widget is SalesDocEditPage && widget.docType == SalesDocType.quote,
-    );
-    expect(quotePage, findsOneWidget);
-    expect(
-      api.writes,
-      isEmpty,
-      reason:
-          'Workflow changes must not create columns or save a business document',
-    );
-    expect(files.uploads, isEmpty);
-  });
+  }
 
   testWidgets('guided plan cannot be applied to a different document type', (
     tester,
@@ -665,7 +676,7 @@ class _GuidedSession extends SessionNotifier {
   );
 }
 
-AiGuidedFilePlan _guidedPlan({bool quoteAccess = false}) {
+AiGuidedFilePlan _guidedPlan({bool quoteAccess = false, String? pageRoute}) {
   final file = fakeFile('guided-order.xlsx');
   final permissions = {
     Perm.attachmentView,
@@ -681,6 +692,7 @@ AiGuidedFilePlan _guidedPlan({bool quoteAccess = false}) {
     jobId: 'route-source',
     file: file,
     workflow: AiGuidedWorkflow.salesOrder,
+    pageRoute: pageRoute,
     identity: (
       scope: const AuthenticatedScope(userId: 'guide-user'),
       server: 'https://guided.invalid/api',

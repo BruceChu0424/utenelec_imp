@@ -47,6 +47,30 @@ import static org.mockito.Mockito.when;
 /** 网关: 重试、调用技术记录、预算、并发名额、可用性与不可信文本隔离(ADR-133)。 */
 class AiGatewayTest {
 
+    @Test void retryAttemptsKeepThePriceCapturedBeforeTheLogicalCall() {
+        var oldPrice = new AiCallLogService.PricingSnapshot("METERED", "USD", new java.math.BigDecimal("1.5"), new java.math.BigDecimal("3"), 1L);
+        var laterPrice = new AiCallLogService.PricingSnapshot("METERED", "USD", new java.math.BigDecimal("9"), new java.math.BigDecimal("20"), 2L);
+        when(callLogs.capturePricing(runtime.id(), runtime.model(), 12L)).thenReturn(oldPrice, laterPrice);
+        fake.enqueue(FakeAiProviderServer.openAiContent("invalid-json", 1000, 500, "stop"),
+                FakeAiProviderServer.openAiContent("{}", 1000, 500, "stop"));
+        gateway.completeJson(request(null, new AiText("query", false)));
+        var captured = ArgumentCaptor.forClass(AiCallLogService.CallRecord.class);
+        verify(callLogs, times(2)).record(captured.capture());
+        verify(callLogs).capturePricing(runtime.id(), runtime.model(), 12L);
+        assertThat(captured.getAllValues()).allSatisfy(record -> {
+            assertThat(record.pricing()).isEqualTo(oldPrice);
+            assertThat(record.pricing().estimate(record.inputTokens(), record.outputTokens())).isEqualByComparingTo("0.003");
+        });
+    }
+    @Test void missingUsageStaysNullThroughGatewayResultAndAuditRecord() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"choices\":[{\"message\":{\"content\":\"{}\"}}]}"));
+        var result = gateway.completeJson(request(null, new AiText("query", false)));
+        assertThat(result.inputTokens()).isNull(); assertThat(result.outputTokens()).isNull();
+        var captured = ArgumentCaptor.forClass(AiCallLogService.CallRecord.class);
+        verify(callLogs).record(captured.capture());
+        assertThat(captured.getValue().inputTokens()).isNull(); assertThat(captured.getValue().outputTokens()).isNull();
+    }
+
     private static final String KEY = "sk-gateway-0123456789abcdefghijk";
     private static FakeAiProviderServer fake;
     private final ObjectMapper json = new ObjectMapper();

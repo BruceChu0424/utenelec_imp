@@ -43,20 +43,48 @@ public class AiChatAccessPolicy {
     public Set<String> domains() {
         AuthUser actor = requireChat();
         if (actor.isSuperAdmin()) return ALL;
-        Set<String> codes = Set.copyOf(memberships(actor).stream().map(value -> value.substring(value.indexOf(':') + 1)).toList());
+        Set<String> contextual = departmentDomains(actor);
         Set<String> domains = new LinkedHashSet<>(Set.of("SELF"));
         Set<String> permissions = actor.getPermissions();
-        if ((codes.contains("DEPT_SALES") || codes.contains("DEPT_RAIL"))
-                && any(permissions, "sales_order:", "sales_quote:")) domains.add("SALES");
-        if ((codes.contains("DEPT_PROD") || codes.contains("SUB_PLAN") || codes.contains("SUB_WL"))
-                && any(permissions, "production_", "workshop_material:")) domains.add("PRODUCTION");
-        if (codes.contains("SUB_PURCHASE") && any(permissions, "purchase_")) domains.add("PURCHASE");
-        if (codes.contains("SUB_WH") && any(permissions, "stock_", "stock:", "warehouse:", "warehouse_", "inventory:")) domains.add("WAREHOUSE");
-        if (codes.contains("DEPT_FIN") && (any(permissions, "finance", "goods:cost:", "sales_quote_finance:"))) domains.add("FINANCE");
-        if (codes.contains("DEPT_QA") && any(permissions, "production_quality_inspection:", "procurement_inspection:", "sales_return_quality:")) domains.add("QUALITY");
-        if ((codes.contains("QA_OUT") || codes.contains("DEPT_SALES")) && any(permissions, "subcontract_")) domains.add("SUBCONTRACT");
-        if (codes.contains("DEPT_HR") && any(permissions, "employee:", "department:", "attendance:", "leave:")) domains.add("HR");
-        if (codes.contains("DEPT_ENG") && permissions.contains("rd_task:view")) domains.add("RD");
+        if (contextual.contains("SALES") && any(permissions, "sales_order:", "sales_quote:")) domains.add("SALES");
+        if (contextual.contains("PRODUCTION") && any(permissions, "production_", "workshop_material:")) domains.add("PRODUCTION");
+        if (contextual.contains("PURCHASE") && any(permissions, "purchase_")) domains.add("PURCHASE");
+        if (contextual.contains("WAREHOUSE") && any(permissions, "stock_", "stock:", "warehouse:", "warehouse_", "inventory:")) domains.add("WAREHOUSE");
+        if (contextual.contains("FINANCE") && any(permissions, "finance", "goods:cost:", "sales_quote_finance:")) domains.add("FINANCE");
+        if (contextual.contains("QUALITY") && any(permissions, "production_quality_inspection:", "procurement_inspection:", "sales_return_quality:")) domains.add("QUALITY");
+        if (contextual.contains("SUBCONTRACT") && any(permissions, "subcontract_")) domains.add("SUBCONTRACT");
+        if (contextual.contains("HR") && any(permissions, "employee:", "department:", "attendance:", "leave:")) domains.add("HR");
+        if (contextual.contains("RD") && permissions.contains("rd_task:view")) domains.add("RD");
+        return Set.copyOf(domains);
+    }
+
+    /**
+     * Classification context from the real primary/secondary departments, including their ancestors.
+     * This is only a preference hint: it grants no access. Authorization must still use domains()
+     * and the business feature's normal function, row and field guards. Super-admin status does not
+     * imply membership in every department.
+     */
+    public Set<String> contextualDomains() {
+        return departmentDomains(requireChat());
+    }
+
+    /** Real membership identity for invalidating classification hints, including super administrators. */
+    public String contextualMembershipFingerprint() {
+        return String.join("|", memberships(requireChat()).stream().sorted().toList());
+    }
+
+    private Set<String> departmentDomains(AuthUser actor) {
+        Set<String> codes = Set.copyOf(memberships(actor).stream().map(value -> value.substring(value.indexOf(':') + 1)).toList());
+        Set<String> domains = new LinkedHashSet<>();
+        if (codes.contains("DEPT_SALES") || codes.contains("DEPT_RAIL")) domains.add("SALES");
+        if (codes.contains("DEPT_PROD") || codes.contains("SUB_PLAN") || codes.contains("SUB_WL")) domains.add("PRODUCTION");
+        if (codes.contains("SUB_PURCHASE")) domains.add("PURCHASE");
+        if (codes.contains("SUB_WH")) domains.add("WAREHOUSE");
+        if (codes.contains("DEPT_FIN")) domains.add("FINANCE");
+        if (codes.contains("DEPT_QA")) domains.add("QUALITY");
+        if (codes.contains("QA_OUT") || codes.contains("DEPT_SALES")) domains.add("SUBCONTRACT");
+        if (codes.contains("DEPT_HR")) domains.add("HR");
+        if (codes.contains("DEPT_ENG")) domains.add("RD");
         return Set.copyOf(domains);
     }
 

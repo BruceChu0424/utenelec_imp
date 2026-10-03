@@ -17,6 +17,51 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 void main() {
   test(
+    'document page hint strips values and rejects malformed or overlong paths',
+    () {
+      expect(
+        safeAiGuidedPageRoute('/sales/orders/new?value=secret#total'),
+        '/sales/orders/new',
+      );
+      expect(safeAiGuidedPageRoute('/${'a' * 239}'), '/${'a' * 239}');
+      for (final raw in [
+        null,
+        '/${'a' * 240}',
+        '//foreign.invalid/page',
+        'https://foreign.invalid/page',
+        '/sales/../admin',
+        '/sales/%2Fadmin',
+        '/sales/orders\nnew',
+      ]) {
+        expect(safeAiGuidedPageRoute(raw), isNull, reason: '$raw');
+      }
+    },
+  );
+
+  testWidgets(
+    'page hint survives fresh validation and local restore without inventing one',
+    (tester) async {
+      final harness = await _pump(tester);
+      for (final route in <String?>['/sales/quotes/new?amount=secret', null]) {
+        final plan = harness.plan(pageRoute: route);
+        final fresh = await validateAiGuidedFilePlan(harness.ref, plan);
+        final restored = AiGuidedFilePlan.restoreLocalDraft(
+          fresh.toLocalDraft(),
+          fresh.identity,
+        )!;
+        expect(restored.pageRoute, route == null ? null : '/sales/quotes/new');
+        expect(restored.toLocalDraft().containsKey('pageRoute'), route != null);
+        final tampered = AiGuidedFilePlan.restoreLocalDraft({
+          ...fresh.toLocalDraft(),
+          'pageRoute': '/${'a' * 240}',
+        }, fresh.identity)!;
+        expect(tampered.pageRoute, isNull);
+        expect(tampered.file.bytes, fresh.file.bytes);
+      }
+    },
+  );
+
+  test(
     'source binding rejects changed bytes, filename and malformed digest',
     () {
       final file = _file();
@@ -488,6 +533,7 @@ class _Harness {
     PlatformFile? file,
     Map<String, dynamic>? result,
     AiGuidedWorkflow workflow = AiGuidedWorkflow.expenseClaim,
+    String? pageRoute,
   }) {
     final source = file ?? _file();
     return AiGuidedFilePlan(
@@ -496,6 +542,7 @@ class _Harness {
       result: AiGuidedFileResult.fromJson(result ?? _result(source)),
       workflow: workflow,
       identity: container.read(aiGuidedFileIdentityProvider)!,
+      pageRoute: pageRoute,
     );
   }
 }

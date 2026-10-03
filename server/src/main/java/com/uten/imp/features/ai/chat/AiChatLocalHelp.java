@@ -29,6 +29,12 @@ final class AiChatLocalHelp {
         String question = normalized(request.message());
         if (PAGE_QUESTIONS.contains(question)) return Optional.of("");
         if (page.isEmpty()) return Optional.empty();
+        if (page.get().key().equals("sales_order")) {
+            for (String name : Set.of("订货单", "销售订货单", "订货档案", "订单")) {
+                if (Set.of("如何创建" + name, "如何新建" + name, "怎么创建" + name, "怎么新建" + name,
+                        name + "怎么填写", name + "怎么填").contains(question)) return Optional.of("");
+            }
+        }
         // Full-question matching only. Mixed requests such as "数量怎么填，然后给我财务数据" are
         // not silently turned into a successful local answer or any executable operation.
         for (var field : page.get().fields()) {

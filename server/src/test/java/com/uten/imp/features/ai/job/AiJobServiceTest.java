@@ -40,6 +40,11 @@ import static org.mockito.Mockito.when;
 /** 提交顺序、限额、幂等、只给本人看与读取时重新授权/过滤(ADR-133)。 */
 class AiJobServiceTest {
 
+    @Test void acceptedQuestionIsBoundToTheRealSubmitterAndRecordedWithoutDocumentBytes() throws Exception {
+        var result = submit(Map.of("message", "生成报价 api_key=private-secret"), new ByteArrayInputStream(CSV));
+        verify(repository).recordAuditQuestion(eq(result.id()), eq(user.getId()), eq("生成报价 api_key=[已隐藏]"), eq("REDACTED"));
+    }
+
     private static final byte[] CSV = "model,qty\nGZ23,10\n".getBytes(StandardCharsets.UTF_8);
 
     private final List<String> calls = new ArrayList<>();

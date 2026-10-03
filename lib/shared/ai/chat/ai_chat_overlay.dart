@@ -88,6 +88,7 @@ class _ChatMessage {
     this.attempt,
     this.documentResult,
     this.documentJobId,
+    this.documentPageRoute,
     this.sourceFile,
   });
   final String text;
@@ -97,6 +98,7 @@ class _ChatMessage {
   final _ChatAttempt? attempt;
   final AiGuidedFileResult? documentResult;
   final String? documentJobId;
+  final String? documentPageRoute;
   final PlatformFile? sourceFile;
 }
 
@@ -159,6 +161,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   final _guidedOpeningJobs = <String>{};
   final _dialogs = <DialogRoute<bool>>{};
   AiChatCapabilities? _capabilities;
+  AiChatPageSuggestions? _pageSuggestions;
   AiJobCancelToken? _cancel;
   PlatformFile? _attachment;
   String? _previousJobId;
@@ -171,6 +174,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   bool _picking = false;
   bool _pageAware = true;
   int _generation = 0;
+  int _pageSuggestionGeneration = 0;
   int _nextMessageId = 0;
   _ChatMessage? _activeMessage;
 
@@ -192,6 +196,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
 
   @override
   void dispose() {
+    _pageSuggestionGeneration++;
     _generation++;
     _cancel?.cancel();
     _input.dispose();
@@ -212,6 +217,44 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant _ChatSession oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (safeAiGuidedPageRoute(oldWidget.currentRoute) !=
+        safeAiGuidedPageRoute(widget.currentRoute)) {
+      _loadPageSuggestions();
+    }
+  }
+
+  Future<void> _loadPageSuggestions() async {
+    final generation = ++_pageSuggestionGeneration;
+    setState(() => _pageSuggestions = null);
+    final route = safeAiGuidedPageRoute(widget.currentRoute);
+    if (!_current ||
+        !_open ||
+        !_pageAware ||
+        route == null ||
+        _capabilities?.usable != true) {
+      return;
+    }
+    try {
+      final result = await ref
+          .read(aiChatRepositoryProvider)
+          .pageSuggestions(route);
+      if (!_current ||
+          !_open ||
+          !_pageAware ||
+          generation != _pageSuggestionGeneration ||
+          safeAiGuidedPageRoute(widget.currentRoute) != route ||
+          result.pageRoute != route) {
+        return;
+      }
+      setState(() => _pageSuggestions = result);
+    } catch (_) {
+      // Optional guidance failures do not interrupt the conversation.
+    }
+  }
+
   Future<void> _loadCapabilities() async {
     final repository = ref.read(aiChatRepositoryProvider);
     try {
@@ -222,6 +265,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         _loadingCapabilities = false;
         _error = null;
       });
+      _loadPageSuggestions();
     } catch (_) {
       if (!_current) return;
       setState(() {
@@ -479,7 +523,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       snapshot = await runner.run(
         AiJobRequest(
           kind: aiGuidedRouteKind,
-          params: {'message': aiGuidedRequestMessage(attempt.text)},
+          params: {
+            'message': aiGuidedRequestMessage(attempt.text),
+            'pageRoute': ?safeAiGuidedPageRoute(attempt.currentRoute),
+          },
           bytes: file.bytes!,
           fileName: file.name,
           contentType: aiGuidedContentTypes[file.extension!.toLowerCase()]!,
@@ -502,6 +549,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           '${result.summary.isEmpty ? result.title : result.summary}${partialRequest ? '\n\n${_t('documentLongRequest')}' : ''}',
       documentResult: result,
       documentJobId: snapshot.id,
+      documentPageRoute: safeAiGuidedPageRoute(attempt.currentRoute),
       sourceFile: file,
     );
     setState(() {
@@ -564,6 +612,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       result: result,
       workflow: workflow,
       identity: identity,
+      pageRoute: message.documentPageRoute,
     );
     if (!plan.matches(ref)) return;
     final generation = _generation;
@@ -653,6 +702,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
 
   void _clear() {
     _generation++;
+    _pageSuggestionGeneration++;
+    _pageSuggestions = null;
     _cancel?.cancel();
     _cancel = null;
     _messages.clear();
@@ -680,6 +731,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
     setState(_clear);
     _focus.requestFocus();
+    _loadPageSuggestions();
   }
 
   void _scrollToEnd() {
@@ -934,6 +986,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                       foregroundColor: colors.onPrimaryContainer,
                       onPressed: () {
                         setState(() => _open = true);
+                        _loadPageSuggestions();
                         _scrollToEnd();
                       },
                       child: const Icon(Icons.auto_awesome_outlined),
@@ -1050,7 +1103,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
                   child: Text(
-                    _t(_pageAware ? 'pageAware' : 'pageOff'),
+                    _pageAware && _pageSuggestions?.pageTitle.isNotEmpty == true
+                        ? _pageSuggestions!.pageTitle
+                        : _t('pageOff'),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -1058,10 +1113,43 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                   message: _t('pageHint'),
                   child: Switch.adaptive(
                     value: _pageAware,
-                    onChanged: (value) => setState(() => _pageAware = value),
+                    onChanged: (value) {
+                      setState(() => _pageAware = value);
+                      _loadPageSuggestions();
+                    },
                   ),
                 ),
               ],
+            ),
+          ),
+        if (_messages.isNotEmpty &&
+            _pageAware &&
+            _pageSuggestions?.suggestions.isNotEmpty == true)
+          Padding(
+            key: const ValueKey('ai-chat-page-suggestions'),
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s12,
+              0,
+              UtenSpacing.s12,
+              UtenSpacing.s8,
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s4,
+                children: [
+                  for (final suggestion in _pageSuggestions!.suggestions.take(
+                    2,
+                  ))
+                    ActionChip(
+                      label: Text(suggestion),
+                      onPressed: _busy || _picking
+                          ? null
+                          : () => _sendPageSuggestion(suggestion),
+                    ),
+                ],
+              ),
             ),
           ),
         messagesViewport(
@@ -1279,9 +1367,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
 
   Widget _welcome() {
     final suggestions = <String, bool>{
-      if (_pageAware) _t('pageQuestion'): true,
+      if (_pageAware)
+        for (final text in _pageSuggestions?.suggestions ?? const <String>[])
+          text: text == _t('pageQuestion'),
     };
     for (final text in _capabilities?.suggestions ?? const <String>[]) {
+      if (text == _t('pageQuestion')) continue;
       suggestions.putIfAbsent(text, () => false);
     }
     return Column(
@@ -1310,6 +1401,19 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             ),
           ),
       ],
+    );
+  }
+
+  void _sendPageSuggestion(String suggestion) {
+    if (!_pageAware ||
+        _pageSuggestions?.pageRoute !=
+            safeAiGuidedPageRoute(widget.currentRoute) ||
+        _pageSuggestions?.suggestions.contains(suggestion) != true) {
+      return;
+    }
+    _send(
+      suggestion: suggestion,
+      intentHint: suggestion == _t('pageQuestion') ? 'PAGE_HELP' : null,
     );
   }
 

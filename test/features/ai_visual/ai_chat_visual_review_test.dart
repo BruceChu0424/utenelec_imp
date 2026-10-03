@@ -125,7 +125,7 @@ void main() {
         await tester.pumpAndSettle();
       }
       await capture(tester, 'chat-$variant');
-      expect(find.text(AppLocalizationsZh().aiChatPageAware), findsOneWidget);
+      expect(find.text('销售订货单'), findsOneWidget);
       if (variant == 'mobile') {
         await tester.tap(find.byKey(const ValueKey('ai-chat-info')));
         await tester.pumpAndSettle();
@@ -142,6 +142,13 @@ class _VisualChatRepository implements AiChatRepository {
   const _VisualChatRepository({this.grant = false, this.failReply = false});
   final bool grant;
   final bool failReply;
+  @override
+  Future<AiChatPageSuggestions> pageSuggestions(String pageRoute) async =>
+      AiChatPageSuggestions(
+        pageRoute: pageRoute,
+        pageTitle: '销售订货单',
+        suggestions: ['订货单怎么填写？', '客户怎么选？'],
+      );
   @override
   Future<AiChatCapabilities> capabilities() async => const AiChatCapabilities(
     canChat: true,

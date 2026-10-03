@@ -35,6 +35,7 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
                 WHERE (d.code='DEPT_PROD' AND p.code IN ('ai:use','expense:apply','production_execution:view'))
                    OR (d.code='DEPT_SALES' AND p.code IN ('ai:use','expense:apply','sales_order:view','sales_order:create',
                        'sales_order:edit','sales_quote:view','sales_quote:create','sales_quote:edit'))
+                   OR (d.code='DEPT_FIN' AND p.code IN ('ai:use','expense:apply'))
                 ON CONFLICT DO NOTHING
                 """);
         admin = adminToken();
@@ -196,6 +197,104 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_permission_overrides d JOIN permissions p ON p.id=d.permission_id WHERE p.code='client:credit:view'", Long.class)).isZero();
         assertThat(jdbc.queryForList("SELECT s.surface_key FROM permission_surface_permissions m JOIN permissions p ON p.id=m.permission_id JOIN permission_surfaces s ON s.id=m.surface_id WHERE p.code='client:credit:view'", String.class))
                 .containsExactly("basic.client");
+    }
+
+    @Test void syntheticSunasUsesRealSalesDepartmentOrAuthorizedPageWithoutCreatingDocuments() throws Exception {
+        Staff sales = newEmployee(adminToken(), "DEPT_SALES"), finance = newEmployee(adminToken(), "DEPT_FIN");
+        String seller = fresh(sales), accountant = fresh(finance);
+        byte[] input = sunasWorkbook();
+        long orders = count("sales_orders"), quotes = count("sales_quotes"), claims = count("expense_claims");
+        JsonNode explicit = succeeded(seller, upload(seller, AiDocumentRouteHandler.KIND, "SUNAS-explicit.xlsx", input,
+                Map.of("message", "生成订货单")));
+        assertThat(explicit.path("documentType").asText()).isEqualTo("COMMERCIAL_INVOICE");
+        assertThat(explicit.path("workflow").asText()).isEqualTo("SALES_ORDER");
+        JsonNode department = succeeded(seller, upload(seller, AiDocumentRouteHandler.KIND, "SUNAS-context.xlsx", input, Map.of()));
+        assertThat(department.path("workflow").asText()).isEqualTo("SALES_ORDER");
+        JsonNode quotePage = succeeded(seller, upload(seller, AiDocumentRouteHandler.KIND, "SUNAS-quote.xlsx", input,
+                Map.of("pageRoute", "/sales/quotes/new")));
+        assertThat(quotePage.path("workflow").asText()).isEqualTo("SALES_QUOTE");
+        JsonNode ambiguous = succeeded(accountant, upload(accountant, AiDocumentRouteHandler.KIND, "SUNAS-finance.xlsx", input, Map.of()));
+        assertThat(ambiguous.path("workflow").asText()).isEqualTo("NONE");
+        assertThat(ambiguous.path("needsChoice").asBoolean()).isTrue();
+        assertThat(ambiguous.path("fields").size()).isZero();
+        assertThat(count("sales_orders")).isEqualTo(orders); assertThat(count("sales_quotes")).isEqualTo(quotes);
+        assertThat(count("expense_claims")).isEqualTo(claims); assertThat(FAKE.requests()).isEmpty();
+    }
+
+    @Test void oldClassificationWithoutRoutingVersionCannotBeReadOrReusedForTenMinutes() throws Exception {
+        Staff sales = newEmployee(adminToken(), "DEPT_SALES"); String token = fresh(sales);
+        byte[] input = csv("Commercial Invoice", "ITEM NO. Description QTY Unit Price", "MAT-001 产品A 10 20");
+        String old = upload(token, AiDocumentRouteHandler.KIND, "old-classification.csv", input, Map.of());
+        succeeded(token, old);
+        jdbc.update("UPDATE ai_jobs SET result=result-'_routing' WHERE id=?::uuid", old);
+        var stale = mvc.perform(authed(get("/api/ai/jobs/" + old), token)).andReturn();
+        assertEquals(403, stale.getResponse().getStatus(), body(stale));
+        String replacement = upload(token, AiDocumentRouteHandler.KIND, "old-classification.csv", input, Map.of());
+        assertThat(replacement).isNotEqualTo(old);
+        JsonNode result = succeeded(token, replacement);
+        assertThat(result.path("workflow").asText()).isEqualTo("SALES_ORDER");
+        assertThat(result.has("_routing")).isFalse();
+        assertThat(jdbc.queryForObject("SELECT result->'_routing'->>'version' FROM ai_jobs WHERE id=?::uuid", String.class, replacement)).isEqualTo("v2");
+        assertThat(FAKE.requests()).isEmpty();
+    }
+
+    @Test void superAdminMoveBetweenSalesSubdepartmentsChangesRoutingEvidenceWithoutChangingTheSalesDomain() throws Exception {
+        String employee = jdbc.queryForObject("SELECT employee_id::text FROM users WHERE login_account=?", String.class, ADMIN_LOGIN);
+        String originalDepartment = jdbc.queryForObject("SELECT department_id::text FROM employees WHERE id=?::uuid", String.class, employee);
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID();
+        for (UUID id : List.of(first, second)) jdbc.update("""
+                INSERT INTO departments(id,code,name,parent_id,level)
+                SELECT ?,?,?,id,'二级班组' FROM departments WHERE code='DEPT_SALES'
+                """, id, "AI-CONTEXT-" + id, "销售分组测试");
+        byte[] input = csv("Commercial Invoice", "Description QTY Unit Price", "产品A 10 20");
+        try {
+            jdbc.update("UPDATE employees SET department_id=? WHERE id=?::uuid", first, employee);
+            String firstToken = adminToken();
+            String old = upload(firstToken, AiDocumentRouteHandler.KIND, "super-sales.csv", input, Map.of());
+            assertThat(succeeded(firstToken, old).path("workflow").asText()).isEqualTo("SALES_ORDER");
+            String fingerprint = jdbc.queryForObject("SELECT result->'_routing'->>'fingerprint' FROM ai_jobs WHERE id=?::uuid", String.class, old);
+            jdbc.update("UPDATE employees SET department_id=? WHERE id=?::uuid", second, employee);
+            String secondToken = adminToken();
+            var stale = mvc.perform(authed(get("/api/ai/jobs/" + old), secondToken)).andReturn();
+            assertEquals(403, stale.getResponse().getStatus(), body(stale));
+            String fresh = upload(secondToken, AiDocumentRouteHandler.KIND, "super-sales.csv", input, Map.of());
+            assertThat(succeeded(secondToken, fresh).path("workflow").asText()).isEqualTo("SALES_ORDER");
+            assertThat(jdbc.queryForObject("SELECT result->'_routing'->>'fingerprint' FROM ai_jobs WHERE id=?::uuid", String.class, fresh)).isNotEqualTo(fingerprint);
+        } finally {
+            jdbc.update("UPDATE employees SET department_id=?::uuid WHERE id=?::uuid", originalDepartment, employee);
+        }
+        assertThat(FAKE.requests()).isEmpty();
+    }
+
+    @Test void pageSuggestionsAndFileRouteBothRecheckCurrentPagePermission() throws Exception {
+        Staff sales = newEmployee(adminToken(), "DEPT_SALES"); String token = fresh(sales);
+        JsonNode before = getJson("/api/ai/chat/page-suggestions?pageRoute=/sales/quotes/new", token);
+        assertThat(before.path("pageTitle").asText()).isEqualTo("销售报价单");
+        assertThat(before.path("suggestions").size()).isGreaterThan(0);
+        revoke(sales, "sales_quote:view"); String revoked = fresh(sales);
+        JsonNode after = getJson("/api/ai/chat/page-suggestions?pageRoute=/sales/quotes/new", revoked);
+        assertThat(after.path("pageTitle").asText()).isEmpty(); assertThat(after.path("suggestions").size()).isZero();
+        var denied = request(revoked, AiDocumentRouteHandler.KIND, "page-denied.csv", csv("报价单", "品名 数量 单价"),
+                Map.of("pageRoute", "/sales/quotes/new"));
+        assertEquals(403, denied.getResponse().getStatus(), body(denied));
+        assertThat(FAKE.requests()).isEmpty();
+    }
+
+    private byte[] sunasWorkbook() throws Exception {
+        try (var input = getClass().getResourceAsStream("/sales-intake/matching-fixture.json");
+             var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook(); var output = new ByteArrayOutputStream()) {
+            var root = objectMapper.readTree(input);
+            var document = java.util.stream.StreamSupport.stream(root.path("documents").spliterator(), false)
+                    .filter(value -> value.path("key").asText().equals("SUNAS")).findFirst().orElseThrow();
+            var sheet = workbook.createSheet(document.path("sheetName").asText());
+            for (var item : document.path("rows")) {
+                var row = sheet.createRow(item.path("row").asInt() - 1);
+                for (var cell : item.path("cells").properties()) row.createCell(com.uten.imp.common.files.document.DocumentGrid.columnIndex(cell.getKey()))
+                        .setCellValue(cell.getValue().asText());
+            }
+            for (var merge : document.path("merges")) sheet.addMergedRegion(org.apache.poi.ss.util.CellRangeAddress.valueOf(merge.asText()));
+            workbook.write(output); return output.toByteArray();
+        }
     }
 
     private String fresh(Staff staff) throws Exception { return login(staff.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText(); }

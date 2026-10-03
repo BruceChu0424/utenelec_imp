@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.math.BigDecimal;
 
 /**
  * AI 调用技术记录(ai_call_logs, ADR-133): 每次调用(含重试的每一次)一行, 只有用途、服务商、模型、
@@ -43,7 +44,42 @@ public class AiCallLogService {
     public record CallRecord(String purpose, UUID providerId, String providerName, String model, String protocol,
                              boolean ok, String errorCategory, Integer httpStatus, Integer inputTokens,
                              Integer outputTokens, long latencyMs, UUID jobId, UUID userId,
-                             Long resetGeneration) {
+                             Long resetGeneration, UUID employeeId, PricingSnapshot pricing) {
+        public CallRecord(String purpose, UUID providerId, String providerName, String model, String protocol,
+                          boolean ok, String errorCategory, Integer httpStatus, Integer inputTokens,
+                          Integer outputTokens, long latencyMs, UUID jobId, UUID userId, Long resetGeneration) {
+            this(purpose, providerId, providerName, model, protocol, ok, errorCategory, httpStatus,
+                    inputTokens, outputTokens, latencyMs, jobId, userId, resetGeneration, null, null);
+        }
+    }
+
+    /** Prices frozen before the logical call; missing usage cannot produce an estimate. */
+    public record PricingSnapshot(String mode, String currency, BigDecimal inputPerMillion,
+                                  BigDecimal outputPerMillion, Long providerVersion) {
+        public BigDecimal estimate(Integer input, Integer output) {
+            if (!"METERED".equals(mode) || currency == null || inputPerMillion == null || outputPerMillion == null
+                    || input == null || output == null || input < 0 || output < 0) return null;
+            return inputPerMillion.multiply(BigDecimal.valueOf(input))
+                    .add(outputPerMillion.multiply(BigDecimal.valueOf(output))).movePointLeft(6);
+        }
+    }
+
+    public PricingSnapshot capturePricing(UUID providerId, String model, Long generation) {
+        if (providerId == null || generation == null || !resetGate.tryEnter()) return null;
+        try {
+            return requiresNew.execute(status -> jdbc.query("""
+                    SELECT p.billing_mode,p.billing_currency,p.billing_input_per_million,p.billing_output_per_million,p.version
+                    FROM ai_providers p CROSS JOIN authorization_state s
+                    WHERE p.id=:id AND NOT p.is_deleted AND p.model=:model
+                      AND (p.billing_mode<>'METERED' OR p.billing_model=:model)
+                      AND s.singleton_id=1 AND s.business_reset_generation=:generation
+                    """, new MapSqlParameterSource("id", providerId).addValue("model", model).addValue("generation", generation),
+                    (rs, row) -> new PricingSnapshot(rs.getString(1), rs.getString(2), rs.getBigDecimal(3), rs.getBigDecimal(4), rs.getLong(5)))
+                    .stream().findFirst().orElse(null));
+        } catch (RuntimeException unavailable) {
+            log.warn("AI price snapshot read failed: {}", unavailable.getClass().getSimpleName());
+            return null;
+        } finally { resetGate.leave(); }
     }
 
     /** Capture once before a logical network call, including all of its retries. */
@@ -73,13 +109,17 @@ public class AiCallLogService {
                 // A reset may have committed while this lock was waiting; its
                 // TRUNCATE and generation increment must precede our new check.
                 jdbc.getJdbcTemplate().execute("LOCK TABLE public.ai_call_logs IN ROW EXCLUSIVE MODE");
+                var pricing = call.pricing();
                 jdbc.update("""
                     INSERT INTO ai_call_logs (purpose, provider_id, provider_name, model, protocol, ok,
                                               error_category, http_status, input_tokens, output_tokens,
-                                              latency_ms, job_id, user_id)
+                                              latency_ms, job_id, user_id, employee_id, usage_capture_version,
+                                              billing_mode,billing_currency,billing_provider_version,
+                                              billing_input_per_million,billing_output_per_million,estimated_cost)
                     SELECT :purpose, p.id, :providerName, :model, :protocol, :ok,
                            :errorCategory, :httpStatus, :inputTokens, :outputTokens,
-                           :latencyMs, :jobId, :userId
+                           :latencyMs, :jobId, :userId, :employeeId, 1,
+                           :billingMode,:billingCurrency,:billingVersion,:inputPrice,:outputPrice,:estimatedCost
                     FROM (SELECT CAST(:providerId AS uuid) AS wanted) w
                     LEFT JOIN ai_providers p ON p.id = w.wanted
                     CROSS JOIN authorization_state generation
@@ -99,6 +139,13 @@ public class AiCallLogService {
                     .addValue("latencyMs", (int) Math.max(0, Math.min(Integer.MAX_VALUE, call.latencyMs())))
                     .addValue("jobId", call.jobId())
                     .addValue("userId", call.userId())
+                    .addValue("employeeId", call.employeeId())
+                    .addValue("billingMode", pricing == null ? "UNKNOWN" : pricing.mode())
+                    .addValue("billingCurrency", pricing == null ? null : pricing.currency())
+                    .addValue("billingVersion", pricing == null ? null : pricing.providerVersion())
+                    .addValue("inputPrice", pricing == null ? null : pricing.inputPerMillion())
+                    .addValue("outputPrice", pricing == null ? null : pricing.outputPerMillion())
+                    .addValue("estimatedCost", pricing == null ? null : pricing.estimate(call.inputTokens(), call.outputTokens()))
                     .addValue("resetGeneration", call.resetGeneration()));
             });
         } catch (RuntimeException e) {
@@ -171,7 +218,7 @@ public class AiCallLogService {
     }
 
     private static Integer nonNegative(Integer value) {
-        return value == null ? null : Math.max(0, value);
+        return value == null || value < 0 ? null : value;
     }
 
     private static String truncate(String value, int max) {

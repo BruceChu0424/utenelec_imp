@@ -3448,5 +3448,189 @@
   "aiChatGuidedOrderRequest": "Fill the current sales order from this file for my review.",
   "aiChatDocumentLongRequest": "The file instructions are too long to analyze completely. Please choose the workflow to continue.",
   "quoteTemplateMappingRequired": "Keep quantity and either model or description",
-  "quoteTemplateMappingDuplicate": "Each field can map to only one column. Adjust duplicate mappings."
+  "quoteTemplateMappingDuplicate": "Each field can map to only one column. Adjust duplicate mappings.",
+  "aiAuditTitle": "Usage and costs",
+  "aiAuditRefresh": "Refresh records",
+  "aiAuditLoadFailed": "Records are unavailable. Please retry.",
+  "aiAuditPeriod": "Period",
+  "aiAuditRecentDays": "Last {days} days",
+  "@aiAuditRecentDays": {
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
+  },
+  "aiAuditUser": "User",
+  "aiAuditAllUsers": "All employees",
+  "aiAuditProvider": "AI service",
+  "aiAuditAllProviders": "All services",
+  "aiAuditSummary": "Records: {uses} · Model calls: {calls}",
+  "@aiAuditSummary": {
+    "placeholders": {
+      "uses": {
+        "type": "int"
+      },
+      "calls": {
+        "type": "int"
+      }
+    }
+  },
+  "aiAuditPlatformOnly": "This platform only. Estimates use the configured prices.",
+  "aiAuditByUser": "View by employee",
+  "aiAuditUses": "Records: {count}",
+  "@aiAuditUses": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiAuditEmpty": "No records in this period.",
+  "aiAuditPagination": "Records: {total} · Page {page}",
+  "@aiAuditPagination": {
+    "placeholders": {
+      "total": {
+        "type": "int"
+      },
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "aiAuditPrevious": "Previous page",
+  "aiAuditNext": "Next page",
+  "aiAuditBillingTitle": "Billing and plan allowance",
+  "aiAuditSelectProvider": "Choose a service",
+  "aiAuditActualCost": "Actual cost: {currency} {amount}",
+  "@aiAuditActualCost": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditEstimatedCost": "Estimated cost: {currency} {amount}",
+  "@aiAuditEstimatedCost": {
+    "placeholders": {
+      "currency": {
+        "type": "String"
+      },
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditUnknownCost": "{count, plural, =1 {Cost pending for 1 call} other {Cost pending for {count} calls}}",
+  "@aiAuditUnknownCost": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiAuditLocalOnly": "Processed locally; no model calls",
+  "aiAuditCostPending": "Cost not confirmed",
+  "aiAuditQuestionMissing": "{kind} · Question not retained",
+  "@aiAuditQuestionMissing": {
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditSucceeded": "Completed",
+  "aiAuditFailed": "Not completed",
+  "aiAuditCancelled": "Cancelled",
+  "aiAuditQueued": "Queued",
+  "aiAuditRunning": "Processing",
+  "aiAuditKindChat": "Work chat",
+  "aiAuditKindDocument": "Document analysis",
+  "aiAuditKindSales": "Sales document filling",
+  "aiAuditKindOther": "AI processing",
+  "aiAuditPurpose": "Purpose: {kind}",
+  "@aiAuditPurpose": {
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditNonWorkRefused": "Non-work question declined",
+  "aiAuditTokens": "Model calls: {calls} · Input {input} · Output {output}",
+  "@aiAuditTokens": {
+    "placeholders": {
+      "calls": {
+        "type": "int"
+      },
+      "input": {
+        "type": "String"
+      },
+      "output": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditTokenCount": "{count, plural, =1 {1 token} other {{count} tokens}}",
+  "@aiAuditTokenCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiAuditNotReturned": "Not returned",
+  "aiAuditPersonUnknown": "Name not recorded",
+  "aiAuditBillingLoadFailed": "Billing settings are unavailable.",
+  "aiAuditPriceInvalid": "Enter valid input and output prices.",
+  "aiAuditBillingSaved": "Saved. Applies to future calls only.",
+  "aiAuditSaveFailed": "Could not save. Please retry.",
+  "aiAuditModel": "Model: {model}",
+  "@aiAuditModel": {
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditReloadBilling": "Reload billing settings",
+  "aiAuditBillingMode": "Billing method",
+  "aiAuditUnknownBilling": "Not configured",
+  "aiAuditMetered": "Usage based",
+  "aiAuditSubscription": "Subscription",
+  "aiAuditCurrency": "Currency",
+  "aiAuditCny": "Chinese yuan CNY",
+  "aiAuditUsd": "US dollar USD",
+  "aiAuditInputPrice": "Price per million input tokens",
+  "aiAuditOutputPrice": "Price per million output tokens",
+  "aiAuditPriceHint": "Use your provider prices. These are estimates, not a provider bill.",
+  "aiAuditFiveHourQuota": "Five-hour balance: not connected",
+  "aiAuditWeeklyQuota": "Weekly balance: not connected",
+  "aiAuditQuotaHint": "Requires a quota API from the provider.",
+  "aiAuditSaveBilling": "Save billing settings",
+  "aiAuditEur": "Euro EUR",
+  "aiAuditHkd": "Hong Kong dollar HKD",
+  "aiAuditJpy": "Japanese yen JPY",
+  "aiAuditKrw": "Korean won KRW",
+  "aiAuditPurposeCost": "Check costs",
+  "aiAuditPurposeStock": "Check inventory",
+  "aiAuditPurposeCredit": "Check client credit",
+  "aiAuditPurposeOrder": "Prepare an order",
+  "aiAuditPurposeQuote": "Prepare a quotation",
+  "aiAuditPurposeExpense": "Prepare an expense claim",
+  "aiAuditPurposeProduction": "Check production",
+  "aiAuditPurposeWorkbench": "Check work tasks",
+  "aiAuditPurposePageHelp": "Page filling guidance",
+  "aiAuditPurposeGrant": "Prepare a permission proposal",
+  "aiAuditProviders": "Service: {names}",
+  "@aiAuditProviders": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  }
 }

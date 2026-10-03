@@ -29,26 +29,88 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/ai/ai_progress_dialog.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../models/ai_provider_models.dart';
 import '../repositories/ai_provider_repository.dart';
 import '../widgets/ai_provider_card.dart';
 import '../widgets/ai_provider_editor.dart';
 import '../widgets/ai_settings_labels.dart';
 import '../widgets/ai_usage_card.dart';
+import '../widgets/ai_usage_audit_panel.dart';
 
-class AdminAiSettingsPage extends ConsumerStatefulWidget {
+Object? _settingsOwner(WidgetRef ref, {bool watch = false}) {
+  final scope = watch
+      ? ref.watch(authenticatedScopeProvider)
+      : ref.read(authenticatedScopeProvider);
+  final session = watch
+      ? ref.watch(sessionProvider)
+      : ref.read(sessionProvider);
+  final snapshot = confirmedSessionSnapshot(
+    watch
+        ? ref.watch(sessionSnapshotProvider)
+        : ref.read(sessionSnapshotProvider),
+  );
+  final server = watch
+      ? ref.watch(apiBaseUrlProvider)
+      : ref.read(apiBaseUrlProvider);
+  final permissions = watch
+      ? ref.watch(currentPermissionsProvider)
+      : ref.read(currentPermissionsProvider);
+  if (scope == null ||
+      scope.actorId != null ||
+      scope.readOnly ||
+      snapshot == null ||
+      session.user?.id != scope.userId ||
+      session.user?.superAdmin != true ||
+      !permissions.contains(Perm.authorizationManage)) {
+    return null;
+  }
+  return (scope, snapshot.generation, server);
+}
+
+class AdminAiSettingsPage extends ConsumerWidget {
   const AdminAiSettingsPage({super.key});
 
   @override
-  ConsumerState<AdminAiSettingsPage> createState() =>
+  Widget build(BuildContext context, WidgetRef ref) {
+    final owner = _settingsOwner(ref, watch: true);
+    if (owner == null) {
+      final l10n = AppLocalizations.of(context);
+      return Scaffold(
+        appBar: UtenAppBar(
+          title: l10n.aiSettingsTitle,
+          leading: const UtenBackButton(),
+        ),
+        body: UtenEmpty.error(
+          key: const ValueKey('ai-settings-error'),
+          message: l10n.aiSettingsNoAccess,
+        ),
+      );
+    }
+    return _AdminAiSettingsSession(key: ValueKey(owner));
+  }
+}
+
+class _AdminAiSettingsSession extends ConsumerStatefulWidget {
+  const _AdminAiSettingsSession({super.key});
+
+  @override
+  ConsumerState<_AdminAiSettingsSession> createState() =>
       _AdminAiSettingsPageState();
 }
 
-class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
+class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
+  late final Object? _owner;
+  bool get _current =>
+      mounted && _owner != null && _owner == _settingsOwner(ref);
   List<AiProviderConfig>? _providers;
   AiPresetCatalog _catalog = AiPresetCatalog.empty;
   AiUsageSummary? _usage;
@@ -69,10 +131,12 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
   @override
   void initState() {
     super.initState();
+    _owner = _settingsOwner(ref);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load({bool quiet = false}) async {
+    if (!_current) return;
     final seq = ++_loadSeq;
     if (!quiet) {
       setState(() {
@@ -85,7 +149,7 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
         _repository.list(),
         _repository.presets(),
       ]);
-      if (!mounted || seq != _loadSeq) return;
+      if (!_current || seq != _loadSeq) return;
       setState(() {
         _providers = results[0] as List<AiProviderConfig>;
         _catalog = results[1] as AiPresetCatalog;
@@ -94,19 +158,30 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
         _noAccess = false;
       });
       await _loadUsage(seq);
+      if (!_current) return;
     } on ApiException catch (error) {
-      if (!mounted || seq != _loadSeq) return;
+      if (!_current || seq != _loadSeq) return;
       _onLoadFailed(
         error.message,
-        noAccess: error.httpStatus == 403 || error.code == 'FORBIDDEN',
+        noAccess:
+            error.httpStatus == 401 ||
+            error.httpStatus == 403 ||
+            error.code == 'FORBIDDEN',
       );
     } catch (_) {
-      if (!mounted || seq != _loadSeq) return;
+      if (!mounted || !_current || seq != _loadSeq) return;
       _onLoadFailed(AppLocalizations.of(context).aiSettingsLoadFailed);
     }
   }
 
   void _onLoadFailed(String message, {bool noAccess = false}) {
+    if (noAccess) {
+      _providers = null;
+      _catalog = AiPresetCatalog.empty;
+      _usage = null;
+      _testResults.clear();
+      _testing.clear();
+    }
     if (_providers != null) {
       // 已有数据时刷新失败: 保留旧数据, 只提示。
       setState(() => _loading = false);
@@ -121,15 +196,23 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
   }
 
   Future<void> _loadUsage(int seq) async {
+    if (!_current) return;
     try {
       final usage = await _repository.usage();
-      if (!mounted || seq != _loadSeq) return;
+      if (!_current || seq != _loadSeq) return;
       setState(() {
         _usage = usage;
         _usageFailed = false;
       });
-    } catch (_) {
-      if (!mounted || seq != _loadSeq) return;
+    } catch (error) {
+      if (!_current || seq != _loadSeq) return;
+      if (error is ApiException &&
+          (error.httpStatus == 401 ||
+              error.httpStatus == 403 ||
+              error.code == 'FORBIDDEN')) {
+        _onLoadFailed(error.message, noAccess: true);
+        return;
+      }
       setState(() => _usageFailed = true);
     }
   }
@@ -379,6 +462,11 @@ class _AdminAiSettingsPageState extends ConsumerState<AdminAiSettingsPage> {
           usage: _usage,
           providers: providers,
           unavailable: _usageFailed,
+        ),
+        const SizedBox(height: UtenSpacing.s16),
+        AiUsageAuditPanel(
+          providers: providers,
+          onBillingSaved: () => _load(quiet: true),
         ),
         const SizedBox(height: UtenSpacing.s16),
         _SecurityNote(text: l10n.aiSettingsSecurityNote),

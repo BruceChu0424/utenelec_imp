@@ -25,7 +25,7 @@ public record AiChatRouteContract(String schemaName, Map<String, Object> schema,
                                              List<AiChatKnowledge.Entry> knowledge,
                                              Optional<AiChatPageGuideCatalog.PageGuide> page,
                                              boolean previousAttachment) {
-        List<String> intents = new ArrayList<>(List.of("OUT_OF_SCOPE", "UNSUPPORTED", "CLARIFY"));
+        List<String> intents = new ArrayList<>(List.of("OUT_OF_SCOPE", "NON_WORK", "UNSUPPORTED", "CLARIFY"));
         if (!allowedTools.isEmpty()) intents.add("TOOL");
         if (!knowledge.isEmpty()) intents.add("KNOWLEDGE");
         if (page.isPresent()) intents.add("PAGE_HELP");

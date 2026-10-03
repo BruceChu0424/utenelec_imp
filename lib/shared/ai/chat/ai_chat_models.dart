@@ -44,6 +44,30 @@ class AiChatCapabilities {
   bool get usable => canChat;
 }
 
+class AiChatPageSuggestions {
+  const AiChatPageSuggestions({
+    required this.pageRoute,
+    this.pageTitle = '',
+    this.suggestions = const [],
+  });
+  factory AiChatPageSuggestions.fromJson(Map<String, dynamic> json) =>
+      AiChatPageSuggestions(
+        pageRoute: _text(json['pageRoute']),
+        pageTitle: _text(json['pageTitle']),
+        suggestions: {
+          if (json['suggestions'] is List)
+            for (final value in json['suggestions'] as List)
+              if (value is String &&
+                  value.trim().isNotEmpty &&
+                  value.length <= 240)
+                value.trim(),
+        }.take(3).toList(growable: false),
+      );
+  final String pageRoute;
+  final String pageTitle;
+  final List<String> suggestions;
+}
+
 class AiChatReply {
   const AiChatReply({required this.reply, this.actions = const []});
 

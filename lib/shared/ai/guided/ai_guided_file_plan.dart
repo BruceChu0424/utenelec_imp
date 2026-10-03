@@ -11,6 +11,7 @@ import '../../../core/network/api_exception.dart';
 import '../ai_job_models.dart';
 import '../ai_job_repository.dart';
 import '../chat/ai_chat_models.dart' show checkedAiChatId;
+import '../chat/ai_chat_repository.dart' show safeAiChatRoute;
 
 enum AiGuidedWorkflow {
   salesOrder('SALES_ORDER'),
@@ -61,6 +62,12 @@ const aiGuidedContentTypes = <String, String>{
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 const aiGuidedRouteKind = 'ERP_DOCUMENT_ROUTE';
+
+/// Optional classification context, never a destination or access grant.
+String? safeAiGuidedPageRoute(String? raw) {
+  final path = safeAiChatRoute(raw);
+  return path != null && path.length <= 240 ? path : null;
+}
 
 String aiGuidedRequestMessage(String message) {
   final value = _normalizedGuidedMessage(message);
@@ -168,6 +175,7 @@ class AiGuidedFilePlan {
     required AiGuidedFileResult result,
     required AiGuidedWorkflow workflow,
     required AiGuidedFileIdentity identity,
+    String? pageRoute,
   }) {
     final bytes = Uint8List.fromList(
       file.bytes ?? const <int>[],
@@ -184,6 +192,7 @@ class AiGuidedFilePlan {
       workflow: workflow,
       identity: identity,
       sourceSha256: sha256.convert(bytes).toString(),
+      pageRoute: safeAiGuidedPageRoute(pageRoute),
     );
   }
   AiGuidedFilePlan._retained({
@@ -193,6 +202,7 @@ class AiGuidedFilePlan {
     required this.workflow,
     required this.identity,
     required this.sourceSha256,
+    required this.pageRoute,
   }) : _sourceMatches =
            file.bytes?.isNotEmpty == true &&
            result.fileName == file.name &&
@@ -203,6 +213,7 @@ class AiGuidedFilePlan {
   final AiGuidedWorkflow workflow;
   final AiGuidedFileIdentity identity;
   final String sourceSha256;
+  final String? pageRoute;
   final bool _sourceMatches;
   String? _draftBytes;
   bool matches(WidgetRef ref) =>
@@ -218,6 +229,7 @@ class AiGuidedFilePlan {
     'workflow': workflow.code,
     'result': result.toJson(),
     'fileName': file.name,
+    'pageRoute': ?pageRoute,
     if (includeBytes) 'bytes': _draftBytes ??= base64Encode(file.bytes!),
   };
 
@@ -256,6 +268,7 @@ class AiGuidedFilePlan {
       result: result,
       file: file,
       identity: identity,
+      pageRoute: raw['pageRoute'] is String ? raw['pageRoute'] as String : null,
     );
   }
 }
@@ -292,6 +305,7 @@ Future<AiGuidedFilePlan> validateAiGuidedFilePlan(
     workflow: plan.workflow,
     identity: plan.identity,
     sourceSha256: plan.sourceSha256,
+    pageRoute: plan.pageRoute,
   ).._draftBytes = plan._draftBytes;
 }
 

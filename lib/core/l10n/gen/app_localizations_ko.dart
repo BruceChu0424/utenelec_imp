@@ -8413,4 +8413,255 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get quoteTemplateMappingDuplicate =>
       '각 필드는 하나의 열에만 연결할 수 있습니다. 중복 매핑을 수정하세요';
+
+  @override
+  String get aiAuditTitle => '사용 기록 및 비용';
+
+  @override
+  String get aiAuditRefresh => '기록 새로 고침';
+
+  @override
+  String get aiAuditLoadFailed => '기록을 불러올 수 없습니다. 다시 시도해 주세요.';
+
+  @override
+  String get aiAuditPeriod => '기간';
+
+  @override
+  String aiAuditRecentDays(int days) {
+    return '최근 $days일';
+  }
+
+  @override
+  String get aiAuditUser => '사용자';
+
+  @override
+  String get aiAuditAllUsers => '전체 직원';
+
+  @override
+  String get aiAuditProvider => 'AI 서비스';
+
+  @override
+  String get aiAuditAllProviders => '전체 서비스';
+
+  @override
+  String aiAuditSummary(int uses, int calls) {
+    return '기록 $uses건 · 모델 호출 $calls회';
+  }
+
+  @override
+  String get aiAuditPlatformOnly => '이 플랫폼의 사용량입니다. 예상 비용은 설정한 단가로 계산합니다.';
+
+  @override
+  String get aiAuditByUser => '직원별 보기';
+
+  @override
+  String aiAuditUses(int count) {
+    return '$count건';
+  }
+
+  @override
+  String get aiAuditEmpty => '이 기간에는 기록이 없습니다.';
+
+  @override
+  String aiAuditPagination(int total, int page) {
+    return '전체 $total건 · $page페이지';
+  }
+
+  @override
+  String get aiAuditPrevious => '이전 페이지';
+
+  @override
+  String get aiAuditNext => '다음 페이지';
+
+  @override
+  String get aiAuditBillingTitle => '요금 방식 및 이용 한도';
+
+  @override
+  String get aiAuditSelectProvider => '서비스 선택';
+
+  @override
+  String aiAuditActualCost(String currency, String amount) {
+    return '실제 비용: $currency $amount';
+  }
+
+  @override
+  String aiAuditEstimatedCost(String currency, String amount) {
+    return '예상 비용: $currency $amount';
+  }
+
+  @override
+  String aiAuditUnknownCost(int count) {
+    return '호출 $count회의 비용 확인 필요';
+  }
+
+  @override
+  String get aiAuditLocalOnly => '로컬 처리, 모델 호출 없음';
+
+  @override
+  String get aiAuditCostPending => '비용 미확인';
+
+  @override
+  String aiAuditQuestionMissing(String kind) {
+    return '$kind · 질문 내용 보관 안 됨';
+  }
+
+  @override
+  String get aiAuditSucceeded => '완료';
+
+  @override
+  String get aiAuditFailed => '미완료';
+
+  @override
+  String get aiAuditCancelled => '취소됨';
+
+  @override
+  String get aiAuditQueued => '대기 중';
+
+  @override
+  String get aiAuditRunning => '처리 중';
+
+  @override
+  String get aiAuditKindChat => '업무 대화';
+
+  @override
+  String get aiAuditKindDocument => '파일 분석';
+
+  @override
+  String get aiAuditKindSales => '판매 문서 입력';
+
+  @override
+  String get aiAuditKindOther => 'AI 처리';
+
+  @override
+  String aiAuditPurpose(String kind) {
+    return '용도: $kind';
+  }
+
+  @override
+  String get aiAuditNonWorkRefused => '업무 외 질문 거절됨';
+
+  @override
+  String aiAuditTokens(int calls, String input, String output) {
+    return '모델 호출 $calls회 · 입력 $input · 출력 $output';
+  }
+
+  @override
+  String aiAuditTokenCount(int count) {
+    return '$count 토큰';
+  }
+
+  @override
+  String get aiAuditNotReturned => '반환되지 않음';
+
+  @override
+  String get aiAuditPersonUnknown => '이름 미등록';
+
+  @override
+  String get aiAuditBillingLoadFailed => '요금 설정을 불러올 수 없습니다.';
+
+  @override
+  String get aiAuditPriceInvalid => '올바른 입력·출력 단가를 입력해 주세요.';
+
+  @override
+  String get aiAuditBillingSaved => '저장되었습니다. 이후 호출에만 적용됩니다.';
+
+  @override
+  String get aiAuditSaveFailed => '저장하지 못했습니다. 다시 시도해 주세요.';
+
+  @override
+  String aiAuditModel(String model) {
+    return '모델: $model';
+  }
+
+  @override
+  String get aiAuditReloadBilling => '요금 설정 다시 불러오기';
+
+  @override
+  String get aiAuditBillingMode => '요금 방식';
+
+  @override
+  String get aiAuditUnknownBilling => '설정 안 됨';
+
+  @override
+  String get aiAuditMetered => '사용량 기반';
+
+  @override
+  String get aiAuditSubscription => '구독';
+
+  @override
+  String get aiAuditCurrency => '통화';
+
+  @override
+  String get aiAuditCny => '중국 위안 CNY';
+
+  @override
+  String get aiAuditUsd => '미국 달러 USD';
+
+  @override
+  String get aiAuditInputPrice => '입력 백만 토큰당 단가';
+
+  @override
+  String get aiAuditOutputPrice => '출력 백만 토큰당 단가';
+
+  @override
+  String get aiAuditPriceHint => '서비스 제공업체의 단가를 입력하세요. 예상 비용이며 실제 청구서가 아닙니다.';
+
+  @override
+  String get aiAuditFiveHourQuota => '5시간 잔여량: 연동되지 않음';
+
+  @override
+  String get aiAuditWeeklyQuota => '주간 잔여량: 연동되지 않음';
+
+  @override
+  String get aiAuditQuotaHint => '서비스 제공업체의 한도 조회 API가 필요합니다.';
+
+  @override
+  String get aiAuditSaveBilling => '요금 설정 저장';
+
+  @override
+  String get aiAuditEur => '유로 EUR';
+
+  @override
+  String get aiAuditHkd => '홍콩 달러 HKD';
+
+  @override
+  String get aiAuditJpy => '일본 엔 JPY';
+
+  @override
+  String get aiAuditKrw => '한국 원 KRW';
+
+  @override
+  String get aiAuditPurposeCost => '원가 조회';
+
+  @override
+  String get aiAuditPurposeStock => '재고 조회';
+
+  @override
+  String get aiAuditPurposeCredit => '고객 신용 조회';
+
+  @override
+  String get aiAuditPurposeOrder => '주문서 준비';
+
+  @override
+  String get aiAuditPurposeQuote => '견적서 준비';
+
+  @override
+  String get aiAuditPurposeExpense => '경비 청구 준비';
+
+  @override
+  String get aiAuditPurposeProduction => '생산 현황 조회';
+
+  @override
+  String get aiAuditPurposeWorkbench => '업무 할 일 조회';
+
+  @override
+  String get aiAuditPurposePageHelp => '페이지 입력 안내';
+
+  @override
+  String get aiAuditPurposeGrant => '권한 부여 제안 준비';
+
+  @override
+  String aiAuditProviders(String names) {
+    return '서비스: $names';
+  }
 }

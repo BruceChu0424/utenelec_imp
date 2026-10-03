@@ -32,6 +32,16 @@ final class AiChatDialogueSupport {
 
     private AiChatDialogueSupport() {}
 
+    /** Obvious recreational requests are rejected locally; other input still uses the closed ERP router. */
+    static boolean clearlyNonWork(String message) {
+        String value = normalized(message);
+        return value.matches("(?:请|帮我|给我|能不能|可以)?(?:讲|说|编)(?:一个|个|一段)?(?:笑话|鬼故事|童话|段子).*"
+                + "|(?:请|帮我|给我)?(?:写|创作)(?:一首|首|一封|封|一个|个)?(?:情诗|情书|小说|歌曲).*"
+                + "|(?:请|帮我|给我)?推荐(?:几部|一部|个|一个)?(?:电影|电视剧|游戏).*"
+                + "|(?:陪我闲聊|陪我聊天|今天的?星座运势|tellmeajoke|writealovepoem).*"
+                + "|(?:今天|明天)(?:天气|会下雨)(?:怎么样|如何|吗)?");
+    }
+
     /** Exact social utterances only: additional requests or claimed identities remain normal input. */
     static Optional<String> socialReply(String message, Set<String> domains, Set<String> toolNames) {
         String question = normalized(message);

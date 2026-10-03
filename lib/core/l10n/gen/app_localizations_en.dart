@@ -8733,4 +8733,269 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get quoteTemplateMappingDuplicate =>
       'Each field can map to only one column. Adjust duplicate mappings.';
+
+  @override
+  String get aiAuditTitle => 'Usage and costs';
+
+  @override
+  String get aiAuditRefresh => 'Refresh records';
+
+  @override
+  String get aiAuditLoadFailed => 'Records are unavailable. Please retry.';
+
+  @override
+  String get aiAuditPeriod => 'Period';
+
+  @override
+  String aiAuditRecentDays(int days) {
+    return 'Last $days days';
+  }
+
+  @override
+  String get aiAuditUser => 'User';
+
+  @override
+  String get aiAuditAllUsers => 'All employees';
+
+  @override
+  String get aiAuditProvider => 'AI service';
+
+  @override
+  String get aiAuditAllProviders => 'All services';
+
+  @override
+  String aiAuditSummary(int uses, int calls) {
+    return 'Records: $uses · Model calls: $calls';
+  }
+
+  @override
+  String get aiAuditPlatformOnly =>
+      'This platform only. Estimates use the configured prices.';
+
+  @override
+  String get aiAuditByUser => 'View by employee';
+
+  @override
+  String aiAuditUses(int count) {
+    return 'Records: $count';
+  }
+
+  @override
+  String get aiAuditEmpty => 'No records in this period.';
+
+  @override
+  String aiAuditPagination(int total, int page) {
+    return 'Records: $total · Page $page';
+  }
+
+  @override
+  String get aiAuditPrevious => 'Previous page';
+
+  @override
+  String get aiAuditNext => 'Next page';
+
+  @override
+  String get aiAuditBillingTitle => 'Billing and plan allowance';
+
+  @override
+  String get aiAuditSelectProvider => 'Choose a service';
+
+  @override
+  String aiAuditActualCost(String currency, String amount) {
+    return 'Actual cost: $currency $amount';
+  }
+
+  @override
+  String aiAuditEstimatedCost(String currency, String amount) {
+    return 'Estimated cost: $currency $amount';
+  }
+
+  @override
+  String aiAuditUnknownCost(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Cost pending for $count calls',
+      one: 'Cost pending for 1 call',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get aiAuditLocalOnly => 'Processed locally; no model calls';
+
+  @override
+  String get aiAuditCostPending => 'Cost not confirmed';
+
+  @override
+  String aiAuditQuestionMissing(String kind) {
+    return '$kind · Question not retained';
+  }
+
+  @override
+  String get aiAuditSucceeded => 'Completed';
+
+  @override
+  String get aiAuditFailed => 'Not completed';
+
+  @override
+  String get aiAuditCancelled => 'Cancelled';
+
+  @override
+  String get aiAuditQueued => 'Queued';
+
+  @override
+  String get aiAuditRunning => 'Processing';
+
+  @override
+  String get aiAuditKindChat => 'Work chat';
+
+  @override
+  String get aiAuditKindDocument => 'Document analysis';
+
+  @override
+  String get aiAuditKindSales => 'Sales document filling';
+
+  @override
+  String get aiAuditKindOther => 'AI processing';
+
+  @override
+  String aiAuditPurpose(String kind) {
+    return 'Purpose: $kind';
+  }
+
+  @override
+  String get aiAuditNonWorkRefused => 'Non-work question declined';
+
+  @override
+  String aiAuditTokens(int calls, String input, String output) {
+    return 'Model calls: $calls · Input $input · Output $output';
+  }
+
+  @override
+  String aiAuditTokenCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count tokens',
+      one: '1 token',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get aiAuditNotReturned => 'Not returned';
+
+  @override
+  String get aiAuditPersonUnknown => 'Name not recorded';
+
+  @override
+  String get aiAuditBillingLoadFailed => 'Billing settings are unavailable.';
+
+  @override
+  String get aiAuditPriceInvalid => 'Enter valid input and output prices.';
+
+  @override
+  String get aiAuditBillingSaved => 'Saved. Applies to future calls only.';
+
+  @override
+  String get aiAuditSaveFailed => 'Could not save. Please retry.';
+
+  @override
+  String aiAuditModel(String model) {
+    return 'Model: $model';
+  }
+
+  @override
+  String get aiAuditReloadBilling => 'Reload billing settings';
+
+  @override
+  String get aiAuditBillingMode => 'Billing method';
+
+  @override
+  String get aiAuditUnknownBilling => 'Not configured';
+
+  @override
+  String get aiAuditMetered => 'Usage based';
+
+  @override
+  String get aiAuditSubscription => 'Subscription';
+
+  @override
+  String get aiAuditCurrency => 'Currency';
+
+  @override
+  String get aiAuditCny => 'Chinese yuan CNY';
+
+  @override
+  String get aiAuditUsd => 'US dollar USD';
+
+  @override
+  String get aiAuditInputPrice => 'Price per million input tokens';
+
+  @override
+  String get aiAuditOutputPrice => 'Price per million output tokens';
+
+  @override
+  String get aiAuditPriceHint =>
+      'Use your provider prices. These are estimates, not a provider bill.';
+
+  @override
+  String get aiAuditFiveHourQuota => 'Five-hour balance: not connected';
+
+  @override
+  String get aiAuditWeeklyQuota => 'Weekly balance: not connected';
+
+  @override
+  String get aiAuditQuotaHint => 'Requires a quota API from the provider.';
+
+  @override
+  String get aiAuditSaveBilling => 'Save billing settings';
+
+  @override
+  String get aiAuditEur => 'Euro EUR';
+
+  @override
+  String get aiAuditHkd => 'Hong Kong dollar HKD';
+
+  @override
+  String get aiAuditJpy => 'Japanese yen JPY';
+
+  @override
+  String get aiAuditKrw => 'Korean won KRW';
+
+  @override
+  String get aiAuditPurposeCost => 'Check costs';
+
+  @override
+  String get aiAuditPurposeStock => 'Check inventory';
+
+  @override
+  String get aiAuditPurposeCredit => 'Check client credit';
+
+  @override
+  String get aiAuditPurposeOrder => 'Prepare an order';
+
+  @override
+  String get aiAuditPurposeQuote => 'Prepare a quotation';
+
+  @override
+  String get aiAuditPurposeExpense => 'Prepare an expense claim';
+
+  @override
+  String get aiAuditPurposeProduction => 'Check production';
+
+  @override
+  String get aiAuditPurposeWorkbench => 'Check work tasks';
+
+  @override
+  String get aiAuditPurposePageHelp => 'Page filling guidance';
+
+  @override
+  String get aiAuditPurposeGrant => 'Prepare a permission proposal';
+
+  @override
+  String aiAuditProviders(String names) {
+    return 'Service: $names';
+  }
 }

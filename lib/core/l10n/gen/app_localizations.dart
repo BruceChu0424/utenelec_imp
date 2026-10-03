@@ -15219,6 +15219,456 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'同一字段只能对应一列，请调整重复对应'**
   String get quoteTemplateMappingDuplicate;
+
+  /// No description provided for @aiAuditTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用记录与费用'**
+  String get aiAuditTitle;
+
+  /// No description provided for @aiAuditRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新记录'**
+  String get aiAuditRefresh;
+
+  /// No description provided for @aiAuditLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'记录暂时读不到，请重试。'**
+  String get aiAuditLoadFailed;
+
+  /// No description provided for @aiAuditPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'时间'**
+  String get aiAuditPeriod;
+
+  /// No description provided for @aiAuditRecentDays.
+  ///
+  /// In zh, this message translates to:
+  /// **'近 {days} 天'**
+  String aiAuditRecentDays(int days);
+
+  /// No description provided for @aiAuditUser.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用人'**
+  String get aiAuditUser;
+
+  /// No description provided for @aiAuditAllUsers.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部员工'**
+  String get aiAuditAllUsers;
+
+  /// No description provided for @aiAuditProvider.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 服务'**
+  String get aiAuditProvider;
+
+  /// No description provided for @aiAuditAllProviders.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部服务'**
+  String get aiAuditAllProviders;
+
+  /// No description provided for @aiAuditSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'记录 {uses} 条 · 调用模型 {calls} 次'**
+  String aiAuditSummary(int uses, int calls);
+
+  /// No description provided for @aiAuditPlatformOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅统计本平台。估算费用按设置的单价计算。'**
+  String get aiAuditPlatformOnly;
+
+  /// No description provided for @aiAuditByUser.
+  ///
+  /// In zh, this message translates to:
+  /// **'按员工查看'**
+  String get aiAuditByUser;
+
+  /// No description provided for @aiAuditUses.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 条'**
+  String aiAuditUses(int count);
+
+  /// No description provided for @aiAuditEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'这段时间没有记录。'**
+  String get aiAuditEmpty;
+
+  /// No description provided for @aiAuditPagination.
+  ///
+  /// In zh, this message translates to:
+  /// **'共 {total} 条 · 第 {page} 页'**
+  String aiAuditPagination(int total, int page);
+
+  /// No description provided for @aiAuditPrevious.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一页'**
+  String get aiAuditPrevious;
+
+  /// No description provided for @aiAuditNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一页'**
+  String get aiAuditNext;
+
+  /// No description provided for @aiAuditBillingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'计费方式与套餐额度'**
+  String get aiAuditBillingTitle;
+
+  /// No description provided for @aiAuditSelectProvider.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择服务'**
+  String get aiAuditSelectProvider;
+
+  /// No description provided for @aiAuditActualCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际费用：{currency} {amount}'**
+  String aiAuditActualCost(String currency, String amount);
+
+  /// No description provided for @aiAuditEstimatedCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'估算费用：{currency} {amount}'**
+  String aiAuditEstimatedCost(String currency, String amount);
+
+  /// No description provided for @aiAuditUnknownCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 次调用费用待确认'**
+  String aiAuditUnknownCost(int count);
+
+  /// No description provided for @aiAuditLocalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地处理，未调用模型'**
+  String get aiAuditLocalOnly;
+
+  /// No description provided for @aiAuditCostPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'费用尚未核定'**
+  String get aiAuditCostPending;
+
+  /// No description provided for @aiAuditQuestionMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'{kind} · 未保留问题内容'**
+  String aiAuditQuestionMissing(String kind);
+
+  /// No description provided for @aiAuditSucceeded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成'**
+  String get aiAuditSucceeded;
+
+  /// No description provided for @aiAuditFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未完成'**
+  String get aiAuditFailed;
+
+  /// No description provided for @aiAuditCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取消'**
+  String get aiAuditCancelled;
+
+  /// No description provided for @aiAuditQueued.
+  ///
+  /// In zh, this message translates to:
+  /// **'排队中'**
+  String get aiAuditQueued;
+
+  /// No description provided for @aiAuditRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理中'**
+  String get aiAuditRunning;
+
+  /// No description provided for @aiAuditKindChat.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作对话'**
+  String get aiAuditKindChat;
+
+  /// No description provided for @aiAuditKindDocument.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件分析'**
+  String get aiAuditKindDocument;
+
+  /// No description provided for @aiAuditKindSales.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售文件填写'**
+  String get aiAuditKindSales;
+
+  /// No description provided for @aiAuditKindOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 处理'**
+  String get aiAuditKindOther;
+
+  /// No description provided for @aiAuditPurpose.
+  ///
+  /// In zh, this message translates to:
+  /// **'用途：{kind}'**
+  String aiAuditPurpose(String kind);
+
+  /// No description provided for @aiAuditNonWorkRefused.
+  ///
+  /// In zh, this message translates to:
+  /// **'已拒绝非工作问题'**
+  String get aiAuditNonWorkRefused;
+
+  /// No description provided for @aiAuditTokens.
+  ///
+  /// In zh, this message translates to:
+  /// **'调用模型 {calls} 次 · 输入 {input} · 输出 {output}'**
+  String aiAuditTokens(int calls, String input, String output);
+
+  /// No description provided for @aiAuditTokenCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} token'**
+  String aiAuditTokenCount(int count);
+
+  /// No description provided for @aiAuditNotReturned.
+  ///
+  /// In zh, this message translates to:
+  /// **'未返回'**
+  String get aiAuditNotReturned;
+
+  /// No description provided for @aiAuditPersonUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'未登记姓名'**
+  String get aiAuditPersonUnknown;
+
+  /// No description provided for @aiAuditBillingLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'计费设置暂时读不到。'**
+  String get aiAuditBillingLoadFailed;
+
+  /// No description provided for @aiAuditPriceInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写有效的输入、输出单价。'**
+  String get aiAuditPriceInvalid;
+
+  /// No description provided for @aiAuditBillingSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存，仅影响后续调用。'**
+  String get aiAuditBillingSaved;
+
+  /// No description provided for @aiAuditSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存失败，请重试。'**
+  String get aiAuditSaveFailed;
+
+  /// No description provided for @aiAuditModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型：{model}'**
+  String aiAuditModel(String model);
+
+  /// No description provided for @aiAuditReloadBilling.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新读取计费设置'**
+  String get aiAuditReloadBilling;
+
+  /// No description provided for @aiAuditBillingMode.
+  ///
+  /// In zh, this message translates to:
+  /// **'计费方式'**
+  String get aiAuditBillingMode;
+
+  /// No description provided for @aiAuditUnknownBilling.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未设置'**
+  String get aiAuditUnknownBilling;
+
+  /// No description provided for @aiAuditMetered.
+  ///
+  /// In zh, this message translates to:
+  /// **'按用量计费'**
+  String get aiAuditMetered;
+
+  /// No description provided for @aiAuditSubscription.
+  ///
+  /// In zh, this message translates to:
+  /// **'套餐'**
+  String get aiAuditSubscription;
+
+  /// No description provided for @aiAuditCurrency.
+  ///
+  /// In zh, this message translates to:
+  /// **'币种'**
+  String get aiAuditCurrency;
+
+  /// No description provided for @aiAuditCny.
+  ///
+  /// In zh, this message translates to:
+  /// **'人民币 CNY'**
+  String get aiAuditCny;
+
+  /// No description provided for @aiAuditUsd.
+  ///
+  /// In zh, this message translates to:
+  /// **'美元 USD'**
+  String get aiAuditUsd;
+
+  /// No description provided for @aiAuditInputPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'每百万输入 token 单价'**
+  String get aiAuditInputPrice;
+
+  /// No description provided for @aiAuditOutputPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'每百万输出 token 单价'**
+  String get aiAuditOutputPrice;
+
+  /// No description provided for @aiAuditPriceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请按服务商账单填写。这里计算估算费用，不是服务商扣费账单。'**
+  String get aiAuditPriceHint;
+
+  /// No description provided for @aiAuditFiveHourQuota.
+  ///
+  /// In zh, this message translates to:
+  /// **'五小时余额：暂未接入'**
+  String get aiAuditFiveHourQuota;
+
+  /// No description provided for @aiAuditWeeklyQuota.
+  ///
+  /// In zh, this message translates to:
+  /// **'每周余额：暂未接入'**
+  String get aiAuditWeeklyQuota;
+
+  /// No description provided for @aiAuditQuotaHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要服务商提供额度查询接口。'**
+  String get aiAuditQuotaHint;
+
+  /// No description provided for @aiAuditSaveBilling.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存计费设置'**
+  String get aiAuditSaveBilling;
+
+  /// No description provided for @aiAuditEur.
+  ///
+  /// In zh, this message translates to:
+  /// **'欧元 EUR'**
+  String get aiAuditEur;
+
+  /// No description provided for @aiAuditHkd.
+  ///
+  /// In zh, this message translates to:
+  /// **'港币 HKD'**
+  String get aiAuditHkd;
+
+  /// No description provided for @aiAuditJpy.
+  ///
+  /// In zh, this message translates to:
+  /// **'日元 JPY'**
+  String get aiAuditJpy;
+
+  /// No description provided for @aiAuditKrw.
+  ///
+  /// In zh, this message translates to:
+  /// **'韩元 KRW'**
+  String get aiAuditKrw;
+
+  /// No description provided for @aiAuditPurposeCost.
+  ///
+  /// In zh, this message translates to:
+  /// **'查成本'**
+  String get aiAuditPurposeCost;
+
+  /// No description provided for @aiAuditPurposeStock.
+  ///
+  /// In zh, this message translates to:
+  /// **'查库存'**
+  String get aiAuditPurposeStock;
+
+  /// No description provided for @aiAuditPurposeCredit.
+  ///
+  /// In zh, this message translates to:
+  /// **'查客户信用'**
+  String get aiAuditPurposeCredit;
+
+  /// No description provided for @aiAuditPurposeOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'准备订货单'**
+  String get aiAuditPurposeOrder;
+
+  /// No description provided for @aiAuditPurposeQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'准备报价单'**
+  String get aiAuditPurposeQuote;
+
+  /// No description provided for @aiAuditPurposeExpense.
+  ///
+  /// In zh, this message translates to:
+  /// **'准备报销申请'**
+  String get aiAuditPurposeExpense;
+
+  /// No description provided for @aiAuditPurposeProduction.
+  ///
+  /// In zh, this message translates to:
+  /// **'查在产产品'**
+  String get aiAuditPurposeProduction;
+
+  /// No description provided for @aiAuditPurposeWorkbench.
+  ///
+  /// In zh, this message translates to:
+  /// **'查工作待办'**
+  String get aiAuditPurposeWorkbench;
+
+  /// No description provided for @aiAuditPurposePageHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'了解页面填写方法'**
+  String get aiAuditPurposePageHelp;
+
+  /// No description provided for @aiAuditPurposeGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'准备授权建议'**
+  String get aiAuditPurposeGrant;
+
+  /// No description provided for @aiAuditProviders.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务：{names}'**
+  String aiAuditProviders(String names);
 }
 
 class _AppLocalizationsDelegate

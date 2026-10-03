@@ -8231,4 +8231,255 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quoteTemplateMappingDuplicate => '同一字段只能对应一列，请调整重复对应';
+
+  @override
+  String get aiAuditTitle => '使用记录与费用';
+
+  @override
+  String get aiAuditRefresh => '刷新记录';
+
+  @override
+  String get aiAuditLoadFailed => '记录暂时读不到，请重试。';
+
+  @override
+  String get aiAuditPeriod => '时间';
+
+  @override
+  String aiAuditRecentDays(int days) {
+    return '近 $days 天';
+  }
+
+  @override
+  String get aiAuditUser => '使用人';
+
+  @override
+  String get aiAuditAllUsers => '全部员工';
+
+  @override
+  String get aiAuditProvider => 'AI 服务';
+
+  @override
+  String get aiAuditAllProviders => '全部服务';
+
+  @override
+  String aiAuditSummary(int uses, int calls) {
+    return '记录 $uses 条 · 调用模型 $calls 次';
+  }
+
+  @override
+  String get aiAuditPlatformOnly => '仅统计本平台。估算费用按设置的单价计算。';
+
+  @override
+  String get aiAuditByUser => '按员工查看';
+
+  @override
+  String aiAuditUses(int count) {
+    return '$count 条';
+  }
+
+  @override
+  String get aiAuditEmpty => '这段时间没有记录。';
+
+  @override
+  String aiAuditPagination(int total, int page) {
+    return '共 $total 条 · 第 $page 页';
+  }
+
+  @override
+  String get aiAuditPrevious => '上一页';
+
+  @override
+  String get aiAuditNext => '下一页';
+
+  @override
+  String get aiAuditBillingTitle => '计费方式与套餐额度';
+
+  @override
+  String get aiAuditSelectProvider => '选择服务';
+
+  @override
+  String aiAuditActualCost(String currency, String amount) {
+    return '实际费用：$currency $amount';
+  }
+
+  @override
+  String aiAuditEstimatedCost(String currency, String amount) {
+    return '估算费用：$currency $amount';
+  }
+
+  @override
+  String aiAuditUnknownCost(int count) {
+    return '$count 次调用费用待确认';
+  }
+
+  @override
+  String get aiAuditLocalOnly => '本地处理，未调用模型';
+
+  @override
+  String get aiAuditCostPending => '费用尚未核定';
+
+  @override
+  String aiAuditQuestionMissing(String kind) {
+    return '$kind · 未保留问题内容';
+  }
+
+  @override
+  String get aiAuditSucceeded => '已完成';
+
+  @override
+  String get aiAuditFailed => '未完成';
+
+  @override
+  String get aiAuditCancelled => '已取消';
+
+  @override
+  String get aiAuditQueued => '排队中';
+
+  @override
+  String get aiAuditRunning => '处理中';
+
+  @override
+  String get aiAuditKindChat => '工作对话';
+
+  @override
+  String get aiAuditKindDocument => '文件分析';
+
+  @override
+  String get aiAuditKindSales => '销售文件填写';
+
+  @override
+  String get aiAuditKindOther => 'AI 处理';
+
+  @override
+  String aiAuditPurpose(String kind) {
+    return '用途：$kind';
+  }
+
+  @override
+  String get aiAuditNonWorkRefused => '已拒绝非工作问题';
+
+  @override
+  String aiAuditTokens(int calls, String input, String output) {
+    return '调用模型 $calls 次 · 输入 $input · 输出 $output';
+  }
+
+  @override
+  String aiAuditTokenCount(int count) {
+    return '$count token';
+  }
+
+  @override
+  String get aiAuditNotReturned => '未返回';
+
+  @override
+  String get aiAuditPersonUnknown => '未登记姓名';
+
+  @override
+  String get aiAuditBillingLoadFailed => '计费设置暂时读不到。';
+
+  @override
+  String get aiAuditPriceInvalid => '请填写有效的输入、输出单价。';
+
+  @override
+  String get aiAuditBillingSaved => '已保存，仅影响后续调用。';
+
+  @override
+  String get aiAuditSaveFailed => '保存失败，请重试。';
+
+  @override
+  String aiAuditModel(String model) {
+    return '模型：$model';
+  }
+
+  @override
+  String get aiAuditReloadBilling => '重新读取计费设置';
+
+  @override
+  String get aiAuditBillingMode => '计费方式';
+
+  @override
+  String get aiAuditUnknownBilling => '尚未设置';
+
+  @override
+  String get aiAuditMetered => '按用量计费';
+
+  @override
+  String get aiAuditSubscription => '套餐';
+
+  @override
+  String get aiAuditCurrency => '币种';
+
+  @override
+  String get aiAuditCny => '人民币 CNY';
+
+  @override
+  String get aiAuditUsd => '美元 USD';
+
+  @override
+  String get aiAuditInputPrice => '每百万输入 token 单价';
+
+  @override
+  String get aiAuditOutputPrice => '每百万输出 token 单价';
+
+  @override
+  String get aiAuditPriceHint => '请按服务商账单填写。这里计算估算费用，不是服务商扣费账单。';
+
+  @override
+  String get aiAuditFiveHourQuota => '五小时余额：暂未接入';
+
+  @override
+  String get aiAuditWeeklyQuota => '每周余额：暂未接入';
+
+  @override
+  String get aiAuditQuotaHint => '需要服务商提供额度查询接口。';
+
+  @override
+  String get aiAuditSaveBilling => '保存计费设置';
+
+  @override
+  String get aiAuditEur => '欧元 EUR';
+
+  @override
+  String get aiAuditHkd => '港币 HKD';
+
+  @override
+  String get aiAuditJpy => '日元 JPY';
+
+  @override
+  String get aiAuditKrw => '韩元 KRW';
+
+  @override
+  String get aiAuditPurposeCost => '查成本';
+
+  @override
+  String get aiAuditPurposeStock => '查库存';
+
+  @override
+  String get aiAuditPurposeCredit => '查客户信用';
+
+  @override
+  String get aiAuditPurposeOrder => '准备订货单';
+
+  @override
+  String get aiAuditPurposeQuote => '准备报价单';
+
+  @override
+  String get aiAuditPurposeExpense => '准备报销申请';
+
+  @override
+  String get aiAuditPurposeProduction => '查在产产品';
+
+  @override
+  String get aiAuditPurposeWorkbench => '查工作待办';
+
+  @override
+  String get aiAuditPurposePageHelp => '了解页面填写方法';
+
+  @override
+  String get aiAuditPurposeGrant => '准备授权建议';
+
+  @override
+  String aiAuditProviders(String names) {
+    return '服务：$names';
+  }
 }

@@ -33,6 +33,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /** OpenAI 兼容协议客户端对假服务商(JDK HttpServer)的真实 HTTP 往返。 */
 class OpenAiChatClientTest {
 
+    @Test void absentOrInvalidUsageRemainsUnknown() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"choices\":[{\"message\":{\"content\":\"{}\"}}]}"));
+        var response = client.chat(AiTestRuntimes.openAi(fake, KEY), request("hello"));
+        assertThat(response.inputTokens()).isNull(); assertThat(response.outputTokens()).isNull();
+        assertThat(AiProtocolClient.tokenCount(json.createObjectNode().put("tokens", -1), "tokens")).isNull();
+        assertThat(AiProtocolClient.tokenCount(json.createObjectNode().put("tokens", "100"), "tokens")).isNull();
+        assertThat(AiProtocolClient.tokenCount(json.createObjectNode().put("tokens", 0), "tokens")).isZero();
+    }
+
     private static final String KEY = "sk-test-0123456789abcdefghijklmnop";
     private static FakeAiProviderServer fake;
     private final ObjectMapper json = new ObjectMapper();

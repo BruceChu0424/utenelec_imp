@@ -58,8 +58,8 @@ public class OpenAiChatClient implements AiProtocolClient {
         String text = contentText(content);
         boolean truncated = "length".equals(choice.path("finish_reason").asText(""));
         JsonNode usage = root.path("usage");
-        return new ChatResponse(text, usage.path("prompt_tokens").asInt(0),
-                usage.path("completion_tokens").asInt(0), exchange.status(), truncated, exchange.latencyMs());
+        return new ChatResponse(text, AiProtocolClient.tokenCount(usage, "prompt_tokens"),
+                AiProtocolClient.tokenCount(usage, "completion_tokens"), exchange.status(), truncated, exchange.latencyMs());
     }
 
     @Override

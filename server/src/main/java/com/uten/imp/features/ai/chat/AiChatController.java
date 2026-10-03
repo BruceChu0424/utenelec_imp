@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
@@ -56,10 +57,23 @@ public class AiChatController {
         result.put("canUploadDocument", !destinations.isEmpty()); result.put("workflows", destinations);
         result.put("canManagePermissions", tools.available("prepare_permission_grant").isPresent());
         result.put("scopeSummary", actor.isSuperAdmin() ? "超级管理员；业务保存、提交和审核仍由本人操作" : "仅限本人部门、现行功能权限和数据范围");
-        result.put("suggestions", List.of("这个页面怎么填写？请举例", "我能让你帮忙做什么？", "我的工作台有哪些待办？"));
+        result.put("suggestions", List.of("我能让你帮忙做什么？", "我的工作台有哪些待办？"));
         result.put("tools", catalog);
         result.put("catalogVersion", catalogVersion(catalog, destinations));
         return result;
+    }
+    @GetMapping("/page-suggestions")
+    public Map<String, Object> pageSuggestions(@RequestParam(defaultValue = "") String pageRoute) {
+        access.requireChat();
+        if (pageRoute.length() > 240) throw new ApiException(ErrorCode.VALIDATION_FAILED);
+        try {
+            var page = pages.resolve(pageRoute, null);
+            return Map.of("pageRoute", pageRoute, "pageTitle", page.map(AiChatPageGuideCatalog.PageGuide::title).orElse(""),
+                    "suggestions", page.map(pages::suggestions).orElse(List.of()));
+        } catch (ApiException deniedPage) {
+            if (deniedPage.getCode() != ErrorCode.FORBIDDEN) throw deniedPage;
+            return Map.of("pageRoute", pageRoute, "pageTitle", "", "suggestions", List.of());
+        }
     }
     private String catalogVersion(Object catalog, Object destinations) {
         try {

@@ -161,6 +161,11 @@ class AiJobRepository {
                 .stream().findFirst();
     }
 
+    void recordAuditQuestion(UUID id, UUID userId, String question, String state) {
+        jdbc.update("UPDATE ai_jobs SET audit_question=:question,audit_question_state=:state WHERE id=:id AND submitted_by_user=:user",
+                new MapSqlParameterSource("id", id).addValue("user", userId).addValue("question", question).addValue("state", state));
+    }
+
     Optional<String> resultJson(UUID id) {
         return jdbc.queryForList("SELECT result::text FROM ai_jobs WHERE id = :id AND result IS NOT NULL",
                 new MapSqlParameterSource("id", id), String.class).stream().findFirst();
@@ -377,6 +382,9 @@ class AiJobRepository {
                 UPDATE ai_jobs
                 SET status = CASE WHEN cancel_requested THEN 'CANCELLED' ELSE 'SUCCEEDED' END,
                     result = CASE WHEN cancel_requested THEN NULL ELSE CAST(:result AS jsonb) END,
+                    audit_intent = CASE WHEN kind='ERP_CHAT' THEN left(CAST(:result AS jsonb)->>'intent',48)
+                        WHEN kind='ERP_DOCUMENT_ROUTE' THEN left(CAST(:result AS jsonb)->>'workflow',48) ELSE NULL END,
+                    audit_tool = CASE WHEN kind='ERP_CHAT' THEN left(CAST(:result AS jsonb)->>'_tool',48) ELSE NULL END,
                     stage = 'DONE', progress = 100, input_bytes = NULL,
                     finished_at = now(), updated_at = now(), lease_until = NULL
                 WHERE id = :id AND status = 'RUNNING' AND attempts = :attempt

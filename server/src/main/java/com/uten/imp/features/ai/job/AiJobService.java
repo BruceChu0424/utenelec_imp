@@ -135,6 +135,7 @@ public class AiJobService {
     private AiJobView enqueue(String kind, Map<String, String> safeParams, AiJobHandler.AiJobInput input,
                               AuthUser user, AiJobHandler handler, boolean reuseContent) {
         String paramsJson = toJson(new TreeMap<>(safeParams));
+        var question = com.uten.imp.features.ai.usage.AiQuestionPreview.capture(kind, safeParams, input, objectMapper);
 
         UUID jobId = writeTx.execute(status -> {
             repository.lockSubmitter(user.getId());
@@ -166,6 +167,7 @@ public class AiJobService {
             repository.insert(new AiJobRepository.NewJob(id, kind, paramsJson, input.fileName(),
                     input.contentType(), input.kind(), input.size(), input.sha256(), input.bytes(), user.getId(), user.getEmployeeId(),
                     stamps.authVersion(), stamps.authorizationEpoch()));
+            repository.recordAuditQuestion(id, user.getId(), question.question(), question.state());
             events.publishEvent(new AiJobSubmittedEvent(id));
             return id;
         });

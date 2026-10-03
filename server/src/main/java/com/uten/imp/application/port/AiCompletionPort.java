@@ -82,8 +82,8 @@ public interface AiCompletionPort {
     }
 
     /** 补全结果: {@code json} 是已去掉 Markdown 代码块、取出首个完整 JSON 对象后的文本。 */
-    record AiCompletionResult(String json, String providerName, String model, int inputTokens,
-                              int outputTokens, long latencyMs) {
+    record AiCompletionResult(String json, String providerName, String model, Integer inputTokens,
+                              Integer outputTokens, long latencyMs) {
     }
 
     /** 失败类别(调用技术记录与界面提示按它归类)。 */

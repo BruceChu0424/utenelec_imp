@@ -87,7 +87,7 @@ public class InventoryAiChatQueryService {
                 .filter(w -> w.accountable() && !w.lineSide())
                 .sorted(Comparator.comparing(w -> w.id().toString())).toList();
         if (selected.isEmpty()) return new Facts(List.of(), List.of(),
-                "当前范围没有可查询的核算仓库；车间线边仓不属于本次库存查询范围，不能据此判断库存为零。");
+                "当前范围没有可查询的核算仓库；车间内料仓不属于本次库存查询范围，不能据此判断库存为零。");
         if (selected.size() > MAX_WAREHOUSES) return new Facts(selected, List.of(),
                 "当前可查询仓库较多，请指定一个仓库后再查询，最多一次查询 12 个实际仓库。");
         Set<UUID> ids = selected.stream().map(WarehouseReference::id).collect(Collectors.toSet());

@@ -74,7 +74,7 @@ public class InventoryAiChatTool implements AiChatToolPort {
         }
         if (facts.rows().size() > 20) reply.append("\n仅显示前 20 个仓库/货品/颜色组合，请指定仓库缩小范围。");
         if (!facts.rows().isEmpty()) reply.append("\n有效预留占用包含本仓和未定仓的全局预留；出库可动量已按实际出库闸门扣除有效预留与安全库存，最低为 0。"
-                + "全局预留在各仓分别保护，各仓可动量不能相加当作可一次领取总量。待检、待入库不属于可动库存；本查询包含不良品仓，不包含车间线边仓。"
+                + "全局预留在各仓分别保护，各仓可动量不能相加当作可一次领取总量。待检、待入库不属于可动库存；本查询包含不良品仓，不包含车间内料仓。"
                 + "此结果是当前查询快照，实际领取仍以业务单据校验为准。");
         reply.append("\n来源：即时库存 / 库存预留 / 仓库出库校验；只展示当前部门、功能权限和负责仓库范围允许的数据。");
         return Map.of("reply", reply.toString(), "actions", List.of(), "source", SOURCE,

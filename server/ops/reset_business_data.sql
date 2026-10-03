@@ -53,7 +53,7 @@ BEGIN
     FROM flyway_schema_history WHERE success AND type='SQL' AND version ~ '^[0-9]+$';
     -- Historical catalog accounting remains independently recountable. Execution
     -- requires V784+ so earlier reset functions cannot erase goods master settings.
-    -- V507/469、V508/470及V511至V789完整目录
+    -- V507/469、V508/470及V511至V790完整目录
     IF applied_max_version<784 OR (applied_max_version, applied_migration_count) NOT IN (
         (443, 405),
         (446, 408),
@@ -364,9 +364,11 @@ BEGIN
         -- V787：手工出入库单行级仓库与库位学习（原占位 V782 撞号顺延）。
         (787, 713),
         (788, 714),
-        (789, 715)
+        (789, 715),
+        -- V790：客户信用汇总窄口径查看权限（只插目录与权限面，不加表）。
+        (790, 716)
     ) THEN
-        RAISE EXCEPTION '测试清空要求已核对的完整目录（最低 V784/710，现已登记 V789/715），实际 V%/%',applied_max_version,applied_migration_count;
+        RAISE EXCEPTION '测试清空要求已核对的完整目录（最低 V784/710，现已登记 V790/716），实际 V%/%',applied_max_version,applied_migration_count;
     END IF;
     IF to_regprocedure('public.fn_business_test_reset_active()') IS NULL THEN
         RAISE EXCEPTION '显式测试清空能力未安装，拒绝执行';

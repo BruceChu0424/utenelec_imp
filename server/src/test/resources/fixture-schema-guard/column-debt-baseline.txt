@@ -1,6 +1,3 @@
-# 手写 fixture 相对真实迁移 schema 的已知缺列债务（文件#表.列）。
-# 只缩不涨：迁移加列后 fixture 未跟、或已补齐的列回退，都会在这里之外新增条目并让守卫红。
-# 重新生成：UTEN_RUN_DB_TESTS=true UTEN_REGEN_FIXTURE_BASELINE=true
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#production_material_analyses.analyzed_at
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#production_material_analyses.cancellation_reason
 com/uten/imp/application/concurrency/FulfillmentMutationLocksPostgresTest.java#production_material_analyses.cancelled_at
@@ -4098,6 +4095,23 @@ com/uten/imp/features/sales/quote/history/GoodsQuoteHistoryPostgresTest.java#sal
 com/uten/imp/features/sales/quote/history/GoodsQuoteHistoryPostgresTest.java#sales_quotes.updated_at
 com/uten/imp/features/sales/quote/history/GoodsQuoteHistoryPostgresTest.java#sales_quotes.updated_by
 com/uten/imp/features/sales/quote/history/GoodsQuoteHistoryPostgresTest.java#sales_quotes.valid_until
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_evidence.client_id
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_evidence.confirmed_column_roles
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_evidence.created_at
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_evidence.doc_id
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_evidence.doc_type
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_evidence.template_version
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.captured_by
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.created_at
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.mapping
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.payload_sha256
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.source_name
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.storage_key
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.storage_provider
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.storage_sha256
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.storage_size
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.storage_version
+com/uten/imp/features/sales/template/SalesQuoteTemplateStorePostgresTest.java#sales_quote_template_versions.workbook_bytes
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.a_price
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.app_status
 com/uten/imp/features/stock/GoodsOwningWarehouseSyncPostgresTest.java#goods.app_status2

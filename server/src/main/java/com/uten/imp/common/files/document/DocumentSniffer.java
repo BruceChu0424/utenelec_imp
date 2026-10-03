@@ -54,13 +54,15 @@ public final class DocumentSniffer {
             return DocumentKind.PDF;
         }
         if (startsWith(head, ZIP)) {
-            if (ext.equals("xlsm") || ext.equals("xltm") || ext.equals("xlam")) {
+            if (ext.equals("xlsm") || ext.equals("xltm") || ext.equals("xlam") || ext.equals("docm") || ext.equals("dotm")) {
                 return DocumentKind.UNSUPPORTED;
             }
             if (ext.equals("xlsx") || ext.equals("xltx")
                     || indexOf(head, "xl/".getBytes(StandardCharsets.US_ASCII), head.length) >= 0) {
                 return DocumentKind.XLSX;
             }
+            if (ext.equals("docx") && indexOf(head, "word/document.xml".getBytes(StandardCharsets.US_ASCII), head.length) >= 0)
+                return DocumentKind.DOCX;
             return DocumentKind.UNSUPPORTED;
         }
         if (startsWith(head, OLE2)) {

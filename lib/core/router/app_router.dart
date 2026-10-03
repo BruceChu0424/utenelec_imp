@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
+import '../../shared/ai/guided/ai_guided_file_plan.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
@@ -471,7 +472,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '/expense/new',
             name: 'expense-new',
-            builder: (_, _) => const ExpenseClaimEditPage(),
+            builder: (_, s) => ExpenseClaimEditPage(
+              initialGuidedPlan: s.extra is AiGuidedFilePlan
+                  ? s.extra as AiGuidedFilePlan
+                  : null,
+            ),
           ),
           DraftAwareGoRoute(
             path: '/expense/settings',
@@ -1458,6 +1463,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               // 订货单识别结果「改为新建报价单」: 同一次识别直接在报价页恢复(ADR-134),
               // 原文件经 extra 带过来(只在同一次跳转里有)。
               initialAiJobId: s.uri.queryParameters['aiJobId'],
+              initialGuidedPlan: s.extra is AiGuidedFilePlan
+                  ? s.extra as AiGuidedFilePlan
+                  : null,
               initialAiFile: s.extra is PlatformFile
                   ? s.extra as PlatformFile
                   : null,

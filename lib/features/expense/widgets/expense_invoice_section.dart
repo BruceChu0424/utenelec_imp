@@ -25,6 +25,8 @@ import '../../../shared/attachments/attachment.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../models/expense_invoice.dart';
+import '../models/expense_guided_values.dart';
+import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 import '../providers/expense_providers.dart';
 import '../providers/expense_settings_provider.dart';
 import '../repositories/expense_repository.dart';
@@ -411,12 +413,18 @@ class ExpenseInvoiceFormDialog extends ConsumerStatefulWidget {
     required this.attachments,
     this.existing,
     this.expectedVersion = 0,
+    this.guidedFields,
+    this.guidedAttachmentId,
+    this.guidedPlan,
   });
 
   final String claimId;
   final List<Attachment> attachments;
   final ExpenseClaimInvoice? existing;
   final int expectedVersion;
+  final Map<String, String>? guidedFields;
+  final String? guidedAttachmentId;
+  final AiGuidedFilePlan? guidedPlan;
 
   @override
   ConsumerState<ExpenseInvoiceFormDialog> createState() =>
@@ -473,6 +481,26 @@ class _ExpenseInvoiceFormDialogState
       _issueDate = ChinaDateTime.today();
       if (widget.attachments.length == 1) {
         _attachmentId = widget.attachments.single.id;
+      }
+      final fields = widget.guidedFields;
+      if (fields != null) {
+        _type = ExpenseInvoiceType.fromApi(fields['invoiceType']);
+        _noController.text = fields['invoiceNo'] ?? '';
+        _codeController.text = fields['invoiceCode'] ?? '';
+        _sellerController.text = fields['sellerName'] ?? '';
+        _sellerTaxController.text = fields['sellerTaxNo'] ?? '';
+        _buyerController.text = fields['buyerName'] ?? '';
+        _buyerTaxController.text = fields['buyerTaxNo'] ?? '';
+        _exclController.text = fields['amountExclTax'] ?? '';
+        _taxController.text = fields['taxAmount'] ?? '';
+        _totalController.text = fields['totalAmount'] ?? '';
+        _remarkController.text = fields['itemSummary'] ?? '';
+        _issueDate = guidedInvoiceDate(fields['issueDate']);
+        _attachmentId = widget.guidedAttachmentId;
+        _ocrUsed = true;
+        _ocrConfirmed = false;
+        _buyerEdited = true;
+        _buyerTaxEdited = true;
       }
     }
   }
@@ -690,6 +718,10 @@ class _ExpenseInvoiceFormDialogState
     }
     setState(() => _busy = true);
     try {
+      if (widget.guidedPlan case final plan?) {
+        await validateAiGuidedFilePlan(ref, plan);
+        if (!mounted || !plan.matches(ref)) return;
+      }
       final total = double.parse(_totalController.text.trim());
       final excl = double.tryParse(_exclController.text.trim());
       final tax = double.tryParse(_taxController.text.trim());
@@ -736,6 +768,18 @@ class _ExpenseInvoiceFormDialogState
 
   @override
   Widget build(BuildContext context) {
+    if (widget.guidedPlan case final plan?) {
+      final identity = ref.watch(aiGuidedFileIdentityProvider);
+      if (identity != plan.identity || !plan.matches(ref)) {
+        final route = ModalRoute.of(context);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (route != null && route.isActive) {
+            route.navigator?.removeRoute(route);
+          }
+        });
+        return const SizedBox.shrink();
+      }
+    }
     final theme = Theme.of(context);
     return Stack(
       children: [

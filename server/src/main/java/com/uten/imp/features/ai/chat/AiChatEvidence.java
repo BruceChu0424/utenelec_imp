@@ -57,7 +57,7 @@ public class AiChatEvidence {
         Boolean valid = jdbc.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM ai_jobs WHERE id=? AND submitted_by_user=?
                   AND kind='SALES_DOCUMENT_INTAKE' AND params->>'docType'='order'
-                  AND NOT (params ? 'docId') AND used_at IS NULL AND result_purged_at IS NULL
+                  AND NOT jsonb_exists(params, 'docId') AND used_at IS NULL AND result_purged_at IS NULL
                   AND submitted_auth_version=(SELECT auth_version FROM users WHERE id=?)
                   AND submitted_auth_epoch=(SELECT epoch FROM authorization_state WHERE singleton_id=1))
                 """, Boolean.class, id, actor.getId(), actor.getId());

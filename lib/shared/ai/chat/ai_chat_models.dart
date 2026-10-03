@@ -6,6 +6,8 @@ class AiChatCapabilities {
     required this.canChat,
     required this.available,
     this.canUploadSalesOrder = false,
+    this.canUploadDocument = false,
+    this.workflows = const [],
     this.canManagePermissions = false,
     this.scopeSummary = '',
     this.suggestions = const [],
@@ -16,6 +18,10 @@ class AiChatCapabilities {
         canChat: json['canChat'] == true,
         available: json['available'] == true,
         canUploadSalesOrder: json['canUploadSalesOrder'] == true,
+        canUploadDocument: json['canUploadDocument'] == true,
+        workflows: json['workflows'] is List
+            ? (json['workflows'] as List<dynamic>).whereType<String>().toList()
+            : const [],
         canManagePermissions: json['canManagePermissions'] == true,
         scopeSummary: _text(json['scopeSummary']),
         suggestions:
@@ -30,6 +36,8 @@ class AiChatCapabilities {
   final bool canChat;
   final bool available;
   final bool canUploadSalesOrder;
+  final bool canUploadDocument;
+  final List<String> workflows;
   final bool canManagePermissions;
   final String scopeSummary;
   final List<String> suggestions;

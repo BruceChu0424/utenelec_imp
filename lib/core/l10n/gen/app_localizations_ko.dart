@@ -8073,13 +8073,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatSend => '보내기';
 
   @override
-  String get aiChatAttach => '견적 파일 첨부';
+  String get aiChatAttach => '파일 첨부';
 
   @override
   String get aiChatRemoveFile => '파일 제거';
 
   @override
-  String get aiChatFileHint => 'Excel과 CSV를 지원합니다. 파일로 검토할 주문서를 준비합니다.';
+  String get aiChatFileHint =>
+      'Excel, CSV/TXT, PDF, 이미지 및 DOCX를 최대 15MB까지 지원합니다. 용도를 확인한 후 입력을 지원합니다.';
 
   @override
   String get aiChatFileFailed => '파일을 읽을 수 없습니다. Excel 또는 CSV 파일을 다시 선택하세요.';
@@ -8171,7 +8172,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatGrantUnknown => '결과를 확인하지 못했습니다. 다시 시도하기 전에 권한 관리에서 확인하세요.';
 
   @override
-  String get aiChatAttachmentQuestion => '이 견적 파일로 주문서를 준비해 주세요.';
+  String get aiChatAttachmentQuestion =>
+      '이 파일을 분석하여 적절한 업무를 판단하고 양식 입력을 도와주세요.';
 
   @override
   String get aiChatLimit => '대화가 길어졌습니다. 새 대화를 시작해 주세요.';
@@ -8236,4 +8238,165 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiChatInfoDone => '확인';
+
+  @override
+  String get aiChatDocumentReading => '파일을 읽는 중';
+
+  @override
+  String get aiChatDocumentParsing => '파일 내용을 인식하는 중';
+
+  @override
+  String get aiChatDocumentClassifying => '파일 용도를 확인하는 중';
+
+  @override
+  String get aiChatDocumentReady => '파일 분석 완료';
+
+  @override
+  String get aiChatDocumentSourceMismatch =>
+      '파일이 원본과 일치하지 않습니다. 원본 파일을 다시 선택해 주세요.';
+
+  @override
+  String get aiChatDocumentOpenFailed => '양식을 열지 못했습니다. 다시 시도해 주세요.';
+
+  @override
+  String get aiChatDocumentManualSave =>
+      '입력 내용을 확인해 주세요. 저장, 제출 및 승인은 직접 진행합니다.';
+
+  @override
+  String get aiChatDocumentPlanSteps => '처리 단계';
+
+  @override
+  String get aiChatDocumentUnsupported =>
+      '이 용도는 아직 입력 지원이 연결되지 않았습니다. 안내에 따라 해당 페이지에서 처리해 주세요.';
+
+  @override
+  String get aiChatDocumentOpened =>
+      '해당 양식을 열었습니다. 양식 또는 작업 센터로 돌아가 계속 진행해 주세요.';
+
+  @override
+  String get aiChatGuidedParsing => '파일 식별';
+
+  @override
+  String get aiChatGuidedValidating => '권한과 원본 파일을 확인하는 중';
+
+  @override
+  String get aiChatGuidedRecognizing => '고객과 항목을 인식하는 중';
+
+  @override
+  String get aiChatGuidedMatching => '고객 및 품목 매칭';
+
+  @override
+  String get aiChatGuidedReview => '매칭 결과 확인 대기';
+
+  @override
+  String get aiChatGuidedFilling => '확인한 내용을 입력하는 중';
+
+  @override
+  String get aiChatGuidedHeader => '기본 정보 입력';
+
+  @override
+  String get aiChatGuidedRows => '상세 항목 입력';
+
+  @override
+  String get aiChatGuidedFilled => '입력 완료, 확인 대기';
+
+  @override
+  String get aiChatGuidedManualSave => '직접 저장 대기';
+
+  @override
+  String get aiChatGuidedWaiting => '확인을 위해 일시 중지됨';
+
+  @override
+  String get aiChatGuidedExisting => '기존 입력 내용을 유지했습니다. 확인 후 계속 진행해 주세요.';
+
+  @override
+  String get aiChatGuidedNoMasterWrites =>
+      '원본 파일을 유지했습니다. 고객, 품목 또는 사용자 정의 열 추가는 해당 페이지에서 직접 진행해 주세요.';
+
+  @override
+  String get aiChatGuidedMasterManual => '기본 데이터를 먼저 직접 생성한 후 여기에서 선택해 주세요.';
+
+  @override
+  String get aiChatGuidedClient => '고객';
+
+  @override
+  String get aiChatGuidedFilledFields => '입력된 내용';
+
+  @override
+  String get aiChatGuidedLocalSaveFailed =>
+      '로컬 임시 저장에 실패했습니다. 원본 파일은 현재 페이지에 남아 있습니다. 페이지를 닫지 말고 다시 시도해 주세요.';
+
+  @override
+  String get aiChatGuidedExpenseSaved => '경비 청구서를 저장했습니다. 이제 증빙을 등록할 수 있습니다.';
+
+  @override
+  String get aiChatGuidedInvoiceRegister => '원본 업로드 및 증빙 등록';
+
+  @override
+  String get aiChatGuidedOpenSaved => '저장된 경비 청구서 보기';
+
+  @override
+  String get aiChatGuidedUploadUncertain =>
+      '원본 업로드 결과가 확인되지 않아 다시 업로드하지 않았습니다. 저장된 청구서의 원본을 먼저 확인해 주세요.';
+
+  @override
+  String get aiChatGuidedInvoiceFields => '원본 증빙 정보 (확인 필요)';
+
+  @override
+  String get aiChatGuidedInvoiceReview =>
+      '위 내용은 인식한 제안입니다. 원본과 비교해 주세요. 증빙 등록에는 직접 확인이 필요합니다.';
+
+  @override
+  String get aiChatInvoiceInvoiceType => '증빙 유형';
+
+  @override
+  String get aiChatInvoiceInvoiceCode => '증빙 코드';
+
+  @override
+  String get aiChatInvoiceInvoiceNo => '증빙 번호';
+
+  @override
+  String get aiChatInvoiceIssueDate => '발행일';
+
+  @override
+  String get aiChatInvoiceSellerName => '판매자명';
+
+  @override
+  String get aiChatInvoiceSellerTaxNo => '판매자 납세 번호';
+
+  @override
+  String get aiChatInvoiceBuyerName => '구매자명';
+
+  @override
+  String get aiChatInvoiceBuyerTaxNo => '구매자 납세 번호';
+
+  @override
+  String get aiChatInvoiceAmountExclTax => '세전 금액';
+
+  @override
+  String get aiChatInvoiceTaxAmount => '세액';
+
+  @override
+  String get aiChatInvoiceTotalAmount => '세금 포함 합계';
+
+  @override
+  String get aiChatInvoiceItemSummary => '항목 요약';
+
+  @override
+  String get aiChatInvoiceTypeGeneral => '전자 일반 부가세 증빙';
+
+  @override
+  String get aiChatInvoiceTypeSpecial => '전용 부가세 증빙';
+
+  @override
+  String get aiChatInvoiceTypeDigital => '디지털 증빙';
+
+  @override
+  String get aiChatInvoiceTypePaperGeneral => '종이 일반 증빙';
+
+  @override
+  String get aiChatInvoiceTypePaperSpecial => '종이 전용 증빙';
+
+  @override
+  String get aiChatInvoiceTypeOther => '기타 증빙';
 }

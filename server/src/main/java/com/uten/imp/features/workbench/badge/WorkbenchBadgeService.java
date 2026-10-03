@@ -82,18 +82,30 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     }
 
     /** 当前主体的徽章汇总(全部来源、全部入口)。 */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public WorkbenchBadgeSummary summary() {
         return readOnly(() -> compute(sources, EnumSet.allOf(WorkbenchBadgeCatalog.class)));
     }
 
     /** 只算指定入口: 只读它们引用的来源, 口径与 {@link #summary()} 相同。 */
     @Override
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public Entries entries(Set<String> entryNames) {
+        WorkbenchBadgeSummary summary = summary(entryNames);
+        Map<String, Long> todo = new LinkedHashMap<>();
+        summary.entries().forEach((name, counts) -> todo.put(name, counts.todo()));
+        return new Entries(Map.copyOf(todo), Map.copyOf(summary.facts()), Set.copyOf(summary.staleEntries()));
+    }
+
+    /** Same authority-owned projection with both red and yellow counts, limited before sources run. */
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+    public WorkbenchBadgeSummary summary(Set<String> entryNames) {
         Set<WorkbenchBadgeCatalog> wanted = EnumSet.noneOf(WorkbenchBadgeCatalog.class);
         for (String name : entryNames) {
             wanted.add(WorkbenchBadgeCatalog.valueOf(name));
         }
-        if (wanted.isEmpty()) return Entries.NONE;
+        if (wanted.isEmpty()) return new WorkbenchBadgeSummary(Instant.now(), Map.of(), Map.of(),
+                WorkbenchBadgeSummary.Counts.ZERO, Map.of(), List.of(), List.of());
         Set<String> keys = new HashSet<>();
         for (WorkbenchBadgeCatalog entry : wanted) {
             for (String fact : factsOf(entry)) keys.add(WorkbenchBadgeCatalog.sourceOf(fact));
@@ -101,11 +113,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         List<WorkbenchBadgeSources.Source> subset = sources.stream()
                 .filter(source -> keys.contains(source.key()))
                 .toList();
-        WorkbenchBadgeSummary summary = readOnly(() -> compute(subset, wanted));
-        Map<String, Long> todo = new LinkedHashMap<>();
-        summary.entries().forEach((name, counts) -> todo.put(name, counts.todo()));
-        return new Entries(Map.copyOf(todo), Map.copyOf(summary.facts()),
-                Set.copyOf(summary.staleEntries()));
+        return readOnly(() -> compute(subset, wanted));
     }
 
     private WorkbenchBadgeSummary readOnly(Supplier<WorkbenchBadgeSummary> work) {

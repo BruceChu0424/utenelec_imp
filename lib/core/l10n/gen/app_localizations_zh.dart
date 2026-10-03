@@ -7902,13 +7902,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSend => '发送';
 
   @override
-  String get aiChatAttach => '上传报价文件';
+  String get aiChatAttach => '上传文件';
 
   @override
   String get aiChatRemoveFile => '移除文件';
 
   @override
-  String get aiChatFileHint => '支持 Excel、CSV；文件会用于生成待核对的订货单。';
+  String get aiChatFileHint =>
+      '支持 Excel、CSV/TXT、PDF、图片和 DOCX，最大15MB；先识别用途，再辅助填写。';
 
   @override
   String get aiChatFileFailed => '无法读取文件，请重新选择 Excel 或 CSV 文件。';
@@ -7998,7 +7999,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatGrantUnknown => '授权结果暂未确认。请在权限管理页核查，再决定是否重试。';
 
   @override
-  String get aiChatAttachmentQuestion => '请根据这份报价文件帮我生成订货单。';
+  String get aiChatAttachmentQuestion => '请分析这份文件，判断适合办理的业务并辅助填写。';
 
   @override
   String get aiChatLimit => '本次对话较长，请开始新对话后继续。';
@@ -8062,4 +8063,157 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiChatInfoDone => '知道了';
+
+  @override
+  String get aiChatDocumentReading => '正在读取文件';
+
+  @override
+  String get aiChatDocumentParsing => '正在识别文件内容';
+
+  @override
+  String get aiChatDocumentClassifying => '正在判断文件用途';
+
+  @override
+  String get aiChatDocumentReady => '文件已分析';
+
+  @override
+  String get aiChatDocumentSourceMismatch => '文件来源校验失败，请重新选择原文件。';
+
+  @override
+  String get aiChatDocumentOpenFailed => '页面未能打开，请重试。';
+
+  @override
+  String get aiChatDocumentManualSave => '请核对填写结果；保存、提交和审核由你操作。';
+
+  @override
+  String get aiChatDocumentPlanSteps => '处理步骤';
+
+  @override
+  String get aiChatDocumentUnsupported => '当前用途尚未接入辅助填写，请按识别说明到对应页面处理。';
+
+  @override
+  String get aiChatDocumentOpened => '已打开对应表单；请回到该表单或任务中心继续处理。';
+
+  @override
+  String get aiChatGuidedParsing => '识别文件';
+
+  @override
+  String get aiChatGuidedValidating => '正在核对权限和原文件';
+
+  @override
+  String get aiChatGuidedRecognizing => '正在识别客户与明细';
+
+  @override
+  String get aiChatGuidedMatching => '客户与货品匹配';
+
+  @override
+  String get aiChatGuidedReview => '等待核对匹配结果';
+
+  @override
+  String get aiChatGuidedFilling => '正在填入已核对的内容';
+
+  @override
+  String get aiChatGuidedHeader => '填写表头';
+
+  @override
+  String get aiChatGuidedRows => '填写明细';
+
+  @override
+  String get aiChatGuidedFilled => '已填入，等待你核对';
+
+  @override
+  String get aiChatGuidedManualSave => '等待你手动保存';
+
+  @override
+  String get aiChatGuidedWaiting => '已暂停，请核对后继续';
+
+  @override
+  String get aiChatGuidedExisting => '已保留你的现有输入，请核对后继续。';
+
+  @override
+  String get aiChatGuidedNoMasterWrites => '原文件已保留；新增客户、货品或扩展列需要你到对应页面操作。';
+
+  @override
+  String get aiChatGuidedMasterManual => '新增主档需要你手动操作，请先完成后再选择。';
+
+  @override
+  String get aiChatGuidedClient => '客户';
+
+  @override
+  String get aiChatGuidedFilledFields => '已填入的内容';
+
+  @override
+  String get aiChatGuidedLocalSaveFailed => '本机草稿保存失败，原文件仍在当前页面。请保持页面并重试，勿关闭。';
+
+  @override
+  String get aiChatGuidedExpenseSaved => '报销单已由你保存，可继续登记票据';
+
+  @override
+  String get aiChatGuidedInvoiceRegister => '上传原件并登记发票';
+
+  @override
+  String get aiChatGuidedOpenSaved => '查看已保存的报销单';
+
+  @override
+  String get aiChatGuidedUploadUncertain => '原件上传结果未确认，未重复上传。请查看已保存报销中的原件后再核对。';
+
+  @override
+  String get aiChatGuidedInvoiceFields => '原件票面信息（待核对）';
+
+  @override
+  String get aiChatGuidedInvoiceReview => '以上为识别建议，请与原票核对。登记发票仍需你确认。';
+
+  @override
+  String get aiChatInvoiceInvoiceType => '发票类型';
+
+  @override
+  String get aiChatInvoiceInvoiceCode => '发票代码';
+
+  @override
+  String get aiChatInvoiceInvoiceNo => '发票号码';
+
+  @override
+  String get aiChatInvoiceIssueDate => '开票日期';
+
+  @override
+  String get aiChatInvoiceSellerName => '销售方名称';
+
+  @override
+  String get aiChatInvoiceSellerTaxNo => '销售方税号';
+
+  @override
+  String get aiChatInvoiceBuyerName => '购买方名称';
+
+  @override
+  String get aiChatInvoiceBuyerTaxNo => '购买方税号';
+
+  @override
+  String get aiChatInvoiceAmountExclTax => '不含税金额';
+
+  @override
+  String get aiChatInvoiceTaxAmount => '税额';
+
+  @override
+  String get aiChatInvoiceTotalAmount => '价税合计';
+
+  @override
+  String get aiChatInvoiceItemSummary => '项目摘要';
+
+  @override
+  String get aiChatInvoiceTypeGeneral => '增值税电子普票';
+
+  @override
+  String get aiChatInvoiceTypeSpecial => '增值税专票';
+
+  @override
+  String get aiChatInvoiceTypeDigital => '数电发票';
+
+  @override
+  String get aiChatInvoiceTypePaperGeneral => '纸质普票';
+
+  @override
+  String get aiChatInvoiceTypePaperSpecial => '纸质专票';
+
+  @override
+  String get aiChatInvoiceTypeOther => '其他票据';
 }

@@ -12,7 +12,7 @@ import java.util.Set;
 /** Chat additionally requires real department membership; a stray page permission cannot expand it. */
 @Component
 public class AiChatAccessPolicy {
-    private static final Set<String> ALL = Set.of("SELF", "SALES", "PRODUCTION", "PURCHASE", "WAREHOUSE", "FINANCE", "ADMIN", "QUALITY", "SUBCONTRACT", "HR");
+    private static final Set<String> ALL = Set.of("SELF", "SALES", "PRODUCTION", "PURCHASE", "WAREHOUSE", "FINANCE", "ADMIN", "QUALITY", "SUBCONTRACT", "HR", "RD");
     private final SecurityContextCurrentUser current;
     private final JdbcTemplate jdbc;
 
@@ -56,6 +56,7 @@ public class AiChatAccessPolicy {
         if (codes.contains("DEPT_QA") && any(permissions, "production_quality_inspection:", "procurement_inspection:", "sales_return_quality:")) domains.add("QUALITY");
         if ((codes.contains("QA_OUT") || codes.contains("DEPT_SALES")) && any(permissions, "subcontract_")) domains.add("SUBCONTRACT");
         if (codes.contains("DEPT_HR") && any(permissions, "employee:", "department:", "attendance:", "leave:")) domains.add("HR");
+        if (codes.contains("DEPT_ENG") && permissions.contains("rd_task:view")) domains.add("RD");
         return Set.copyOf(domains);
     }
 

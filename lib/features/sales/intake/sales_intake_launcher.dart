@@ -23,6 +23,8 @@ import '../../../shared/ai/ai_job_models.dart';
 import '../../../shared/ai/ai_job_runner.dart';
 import '../../../shared/ai/ai_progress_dialog.dart';
 import '../../../shared/ai/ai_status_provider.dart';
+import '../../../shared/ai/chat/ai_chat_l10n.dart';
+import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -42,6 +44,7 @@ const Map<String, String> kSalesIntakeContentTypes = {
   'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'xls': 'application/vnd.ms-excel',
   'csv': 'text/csv',
+  'txt': 'text/plain',
   'pdf': 'application/pdf',
   'png': 'image/png',
   'jpg': 'image/jpeg',
@@ -109,17 +112,20 @@ class SalesIntakeLaunchResult {
   const SalesIntakeLaunchResult.apply({
     required SalesIntakePatch this.patch,
     this.file,
+    this.wasAutomatic = false,
   }) : handoffJobId = null;
 
   /// 「改为新建报价单」: 带上作业 id 与本次上传的原文件(报价页恢复识别后把原文件存进附件)。
   const SalesIntakeLaunchResult.handoff(String this.handoffJobId, {this.file})
-    : patch = null;
+    : patch = null,
+      wasAutomatic = false;
 
   final SalesIntakePatch? patch;
 
   /// 本次上传的原文件(恢复已有作业时为 null)。
   final PlatformFile? file;
   final String? handoffJobId;
+  final bool wasAutomatic;
 }
 
 /// 选文件并识别。取消/失败返回 null(失败已提示)。
@@ -168,6 +174,10 @@ Future<SalesIntakeLaunchResult?> launchSalesIntakeWithFile(
   String? clientName,
   String? docId,
   bool canHandoffToQuote = false,
+  bool guided = false,
+  AiGuidedFilePlan? guidedPlan,
+  bool Function()? stillCurrent,
+  ValueChanged<String>? onGuidedStage,
 }) async {
   final l10n = salesIntakeL10n(context);
   final Uint8List? bytes = file.bytes;
@@ -230,6 +240,8 @@ Future<SalesIntakeLaunchResult?> launchSalesIntakeWithFile(
     contentType: contentType,
   );
   final runner = ref.read(aiJobRunnerProvider);
+  if (stillCurrent != null && !stillCurrent()) return null;
+  onGuidedStage?.call('guidedRecognizing');
   final snapshot = await _runWithProgress(
     context,
     ref,
@@ -237,7 +249,11 @@ Future<SalesIntakeLaunchResult?> launchSalesIntakeWithFile(
     task: (onProgress, cancelToken) =>
         runner.run(request, onProgress: onProgress, cancelToken: cancelToken),
   );
-  if (snapshot == null || !context.mounted) return null;
+  if (snapshot == null ||
+      !context.mounted ||
+      (stillCurrent != null && !stillCurrent())) {
+    return null;
+  }
   return _review(
     context,
     ref,
@@ -248,6 +264,10 @@ Future<SalesIntakeLaunchResult?> launchSalesIntakeWithFile(
     file: file,
     request: request,
     canHandoffToQuote: canHandoffToQuote,
+    guided: guided,
+    guidedPlan: guidedPlan,
+    stillCurrent: stillCurrent,
+    onGuidedStage: onGuidedStage,
   );
 }
 
@@ -401,15 +421,44 @@ Future<SalesIntakeLaunchResult?> _review(
   PlatformFile? file,
   AiJobRequest? request,
   bool canHandoffToQuote = false,
+  bool guided = false,
+  AiGuidedFilePlan? guidedPlan,
+  bool Function()? stillCurrent,
+  ValueChanged<String>? onGuidedStage,
 }) async {
   final l10n = salesIntakeL10n(context);
   final result = _readResult(context, snapshot);
   if (result == null) return null;
+  if (guided && salesIntakeCanAutoApply(result, docType)) {
+    final decisions = SalesIntakeDecisions.initial(
+      result,
+      docType: docType,
+      presetClientId: clientId,
+      presetClientName: clientName,
+    );
+    restrictGuidedIntakeDecisions(decisions);
+    onGuidedStage?.call('guidedFilling');
+    return SalesIntakeLaunchResult.apply(
+      file: file,
+      wasAutomatic: true,
+      patch: buildSalesIntakePatch(
+        result: result,
+        decisions: decisions,
+        docType: docType,
+        jobId: snapshot.id,
+        l10n: l10n,
+      ),
+    );
+  }
   // 进度弹窗刚关, 等一帧再弹面板(避免与弹窗退场动画叠在一起)。
   await WidgetsBinding.instance.endOfFrame;
-  if (!context.mounted) return null;
+  if (!context.mounted || (stillCurrent != null && !stillCurrent())) {
+    return null;
+  }
+  onGuidedStage?.call('guidedReview');
   final outcome = await showSalesIntakeReviewPanel(
     context,
+    guidedPlan: guidedPlan,
     result: result,
     jobId: snapshot.id,
     docType: docType,
@@ -417,6 +466,7 @@ Future<SalesIntakeLaunchResult?> _review(
     presetClientName: clientName,
     actions: salesIntakeReviewActions(
       ref,
+      guided: guided,
       canHandoffToQuote: docType == SalesDocType.order && canHandoffToQuote,
       rerunSheet: request == null
           ? null
@@ -424,7 +474,13 @@ Future<SalesIntakeLaunchResult?> _review(
                 _rerunSheet(panelContext, ref, source: request, sheet: sheet),
     ),
   );
-  if (!context.mounted) return null;
+  if (!context.mounted || (stillCurrent != null && !stillCurrent())) {
+    return null;
+  }
+  if (guided && outcome is SalesIntakeReviewApply) {
+    restrictGuidedIntakeDecisions(outcome.decisions);
+    onGuidedStage?.call('guidedFilling');
+  }
   return switch (outcome) {
     null => null,
     SalesIntakeReviewHandoffToQuote(:final jobId) =>
@@ -447,6 +503,7 @@ Future<SalesIntakeLaunchResult?> _review(
 SalesIntakeReviewActions salesIntakeReviewActions(
   WidgetRef ref, {
   bool canHandoffToQuote = false,
+  bool guided = false,
   Future<SalesIntakeSheetRerun?> Function(
     BuildContext context,
     SalesIntakeOtherSheet sheet,
@@ -483,8 +540,13 @@ SalesIntakeReviewActions salesIntakeReviewActions(
       price: financeExactTrimmed(goods.price?.toString()),
     );
   },
-  createClient: (context, proposal) =>
-      _createClientFromDocument(context, ref, proposal),
+  createClient: (context, proposal) async {
+    if (guided) {
+      context.appWarning(aiChatText(context, 'guidedMasterManual'));
+      return null;
+    }
+    return _createClientFromDocument(context, ref, proposal);
+  },
   canHandoffToQuote: canHandoffToQuote,
   rerunSheet: rerunSheet,
 );

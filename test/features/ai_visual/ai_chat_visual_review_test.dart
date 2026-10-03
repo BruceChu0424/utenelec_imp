@@ -147,6 +147,8 @@ class _VisualChatRepository implements AiChatRepository {
     canChat: true,
     available: true,
     canUploadSalesOrder: true,
+    canUploadDocument: true,
+    workflows: ['SALES_ORDER', 'SALES_QUOTE', 'EXPENSE_CLAIM'],
     canManagePermissions: true,
     scopeSummary: '可以帮你填写业务单据、整理客户报价，并查询你有权访问的信息。',
     suggestions: ['根据报价文件生成订货单', '我现在可以使用哪些功能？'],

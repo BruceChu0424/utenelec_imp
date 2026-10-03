@@ -48,4 +48,12 @@ class AiChatAccessPolicyTest {
         when(current.get()).thenReturn(Optional.of(new AuthUser(actor, employee, "worker", Set.of("ai:use"), false, true, false, false, UUID.randomUUID())));
         assertThatThrownBy(policy::requireChat).isInstanceOf(ApiException.class);
     }
+    @Test void researchDomainRequiresEngineeringMembershipAndExactTaskReadPermission() {
+        actor(Set.of("ai:use","rd_task:view"),false);
+        assertThat(policy.domains()).doesNotContain("RD");
+        when(jdbc.queryForList(anyString(),eq(String.class),any(),any())).thenReturn(List.of("eng:DEPT_ENG"));
+        assertThat(policy.domains()).contains("RD");
+        actor(Set.of("ai:use","rd_task:resolve"),false);
+        assertThat(policy.domains()).doesNotContain("RD");
+    }
 }

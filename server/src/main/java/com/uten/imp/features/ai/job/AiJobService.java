@@ -42,7 +42,7 @@ public class AiJobService {
     private static final int MAX_PARAMS = 16;
     private static final int MAX_PARAM_VALUE = 512;
     private static final Map<String, String> KIND_LABELS = Map.of(
-            "XLSX", "Excel(xlsx)", "XLS", "Excel(xls)", "CSV", "CSV", "PDF", "PDF",
+            "XLSX", "Excel(xlsx)", "XLS", "Excel(xls)", "CSV", "CSV/TXT", "DOCX", "Word(docx)", "PDF", "PDF",
             "PNG", "PNG 图片", "JPEG", "JPG 图片", "WEBP", "WEBP 图片");
 
     private final AiJobHandlerRegistry registry;

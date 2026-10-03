@@ -8367,14 +8367,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSend => 'Send';
 
   @override
-  String get aiChatAttach => 'Attach a quotation';
+  String get aiChatAttach => 'Attach a file';
 
   @override
   String get aiChatRemoveFile => 'Remove file';
 
   @override
   String get aiChatFileHint =>
-      'Excel and CSV supported. Files prepare an order for your review.';
+      'Excel, CSV/TXT, PDF, images and DOCX, up to 15 MB. The file is classified before assisted filling.';
 
   @override
   String get aiChatFileFailed =>
@@ -8477,7 +8477,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatAttachmentQuestion =>
-      'Prepare a sales order from this quotation.';
+      'Analyze this file, identify the appropriate workflow and help fill in its form.';
 
   @override
   String get aiChatLimit =>
@@ -8548,4 +8548,171 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatInfoDone => 'Got it';
+
+  @override
+  String get aiChatDocumentReading => 'Reading the file';
+
+  @override
+  String get aiChatDocumentParsing => 'Recognizing file contents';
+
+  @override
+  String get aiChatDocumentClassifying => 'Identifying the document purpose';
+
+  @override
+  String get aiChatDocumentReady => 'File analyzed';
+
+  @override
+  String get aiChatDocumentSourceMismatch =>
+      'The file did not match its source. Please select the original file again.';
+
+  @override
+  String get aiChatDocumentOpenFailed =>
+      'The form could not be opened. Please try again.';
+
+  @override
+  String get aiChatDocumentManualSave =>
+      'Review the filled values. You control saving, submitting and approving.';
+
+  @override
+  String get aiChatDocumentPlanSteps => 'Processing steps';
+
+  @override
+  String get aiChatDocumentUnsupported =>
+      'Assisted filling is not available for this purpose yet. Follow the document guidance in the appropriate page.';
+
+  @override
+  String get aiChatDocumentOpened =>
+      'The form has been opened. Return to it or the task center to continue.';
+
+  @override
+  String get aiChatGuidedParsing => 'Identify the file';
+
+  @override
+  String get aiChatGuidedValidating => 'Checking access and the original file';
+
+  @override
+  String get aiChatGuidedRecognizing => 'Recognizing the customer and items';
+
+  @override
+  String get aiChatGuidedMatching => 'Match customer and products';
+
+  @override
+  String get aiChatGuidedReview => 'Waiting for your matching review';
+
+  @override
+  String get aiChatGuidedFilling => 'Filling reviewed values';
+
+  @override
+  String get aiChatGuidedHeader => 'Fill header fields';
+
+  @override
+  String get aiChatGuidedRows => 'Fill line items';
+
+  @override
+  String get aiChatGuidedFilled => 'Filled and ready for your review';
+
+  @override
+  String get aiChatGuidedManualSave => 'Waiting for you to save';
+
+  @override
+  String get aiChatGuidedWaiting => 'Paused for your review';
+
+  @override
+  String get aiChatGuidedExisting =>
+      'Your existing input has been preserved. Review it before continuing.';
+
+  @override
+  String get aiChatGuidedNoMasterWrites =>
+      'The source file is retained. Add customers, products or custom columns yourself in the relevant page.';
+
+  @override
+  String get aiChatGuidedMasterManual =>
+      'Create the master record yourself first, then select it here.';
+
+  @override
+  String get aiChatGuidedClient => 'Customer';
+
+  @override
+  String get aiChatGuidedFilledFields => 'Filled values';
+
+  @override
+  String get aiChatGuidedLocalSaveFailed =>
+      'Local recovery could not be saved. The original file is still on this page. Keep the page open and try again.';
+
+  @override
+  String get aiChatGuidedExpenseSaved =>
+      'You saved the expense claim. You can now register the invoice.';
+
+  @override
+  String get aiChatGuidedInvoiceRegister =>
+      'Upload original and register invoice';
+
+  @override
+  String get aiChatGuidedOpenSaved => 'View saved expense claim';
+
+  @override
+  String get aiChatGuidedUploadUncertain =>
+      'The original upload outcome is unconfirmed, so it was not uploaded again. Check the original in the saved claim first.';
+
+  @override
+  String get aiChatGuidedInvoiceFields =>
+      'Original invoice details — review required';
+
+  @override
+  String get aiChatGuidedInvoiceReview =>
+      'These are extracted suggestions. Compare them with the original; invoice registration still requires your confirmation.';
+
+  @override
+  String get aiChatInvoiceInvoiceType => 'Invoice type';
+
+  @override
+  String get aiChatInvoiceInvoiceCode => 'Invoice code';
+
+  @override
+  String get aiChatInvoiceInvoiceNo => 'Invoice number';
+
+  @override
+  String get aiChatInvoiceIssueDate => 'Issue date';
+
+  @override
+  String get aiChatInvoiceSellerName => 'Seller name';
+
+  @override
+  String get aiChatInvoiceSellerTaxNo => 'Seller tax ID';
+
+  @override
+  String get aiChatInvoiceBuyerName => 'Buyer name';
+
+  @override
+  String get aiChatInvoiceBuyerTaxNo => 'Buyer tax ID';
+
+  @override
+  String get aiChatInvoiceAmountExclTax => 'Amount excluding tax';
+
+  @override
+  String get aiChatInvoiceTaxAmount => 'Tax amount';
+
+  @override
+  String get aiChatInvoiceTotalAmount => 'Total including tax';
+
+  @override
+  String get aiChatInvoiceItemSummary => 'Item summary';
+
+  @override
+  String get aiChatInvoiceTypeGeneral => 'Electronic VAT invoice';
+
+  @override
+  String get aiChatInvoiceTypeSpecial => 'Special VAT invoice';
+
+  @override
+  String get aiChatInvoiceTypeDigital => 'Fully digital invoice';
+
+  @override
+  String get aiChatInvoiceTypePaperGeneral => 'Standard paper invoice';
+
+  @override
+  String get aiChatInvoiceTypePaperSpecial => 'Special paper invoice';
+
+  @override
+  String get aiChatInvoiceTypeOther => 'Other receipt';
 }

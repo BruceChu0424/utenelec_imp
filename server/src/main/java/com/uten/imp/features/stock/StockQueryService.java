@@ -310,6 +310,15 @@ public class StockQueryService {
         return instantPage(instantSql(filter, sort), page, size, sort, order);
     }
 
+    /** Server-owned warehouse scope; an empty scope never falls back to all warehouses. */
+    @Transactional(readOnly = true)
+    public PageResponse<InstantInventoryRow> instantInventoryRowsInWarehouseScope(
+            InstantInventoryFilter filter, Set<UUID> allowedWarehouseIds, int page, int size,
+            String sort, String order) {
+        if (allowedWarehouseIds == null) throw new ApiException(ErrorCode.FORBIDDEN);
+        return instantPage(instantSql(filter, sort, Set.copyOf(allowedWarehouseIds)), page, size, sort, order);
+    }
+
     /** Stock-authorized goods context; existing zero balances are distinct from an absent/deleted master. */
     @Transactional(readOnly = true)
     public com.uten.imp.features.stock.dto.InventoryContextPage inventoryContext(
@@ -396,7 +405,7 @@ public class StockQueryService {
             if (filter.goodsId() != null) q.setParameter("goodsId", filter.goodsId());
             if (filter.goodsId() != null && filter.colorId() != null) q.setParameter("colorId", filter.colorId());
             if (warehouseScope != null && warehouseScope.size() == 1) {
-                q.setParameter("warehouseId", filter.warehouseId());
+                q.setParameter("warehouseId", warehouseScope.iterator().next());
             }
             if (warehouseScope != null && warehouseScope.size() > 1) {
                 q.setParameter("scopeIds", warehouseScope);
@@ -409,6 +418,10 @@ public class StockQueryService {
     }
 
     private InstantSql instantSql(InstantInventoryFilter filter, String sort) {
+        return instantSql(filter, sort, null);
+    }
+
+    private InstantSql instantSql(InstantInventoryFilter filter, String sort, Set<UUID> allowedWarehouseIds) {
         InstantInventoryAttention attention = InstantInventoryAttention.parse(filter.attention());
         boolean canViewCost = costMasker.canView();
         if (!canViewCost && "costAmount".equals(sort)) {
@@ -423,9 +436,18 @@ public class StockQueryService {
         StringBuilder stockInWhere = new StringBuilder();
         // V476：warehouseId 展开成查询范围——叶子仓=精确单仓（旧行为），父仓=子树聚合。
         Set<UUID> warehouseScope = StockWarehouseScope.subtreeOf(em, filter.warehouseId());
+        if (allowedWarehouseIds != null) {
+            Set<UUID> intersection = new java.util.HashSet<>(allowedWarehouseIds);
+            if (warehouseScope != null) intersection.retainAll(warehouseScope);
+            warehouseScope = Set.copyOf(intersection);
+        }
         // 先入库后检(V596)：已上架的待检品按实际上架仓统计，未上架的仍按收货参考仓。
         String iqcWarehouse = "COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)";
-        if (warehouseScope != null && warehouseScope.size() == 1) {
+        if (warehouseScope != null && warehouseScope.isEmpty()) {
+            balWhere.append(" AND FALSE");
+            iqcWhere.append(" AND FALSE");
+            stockInWhere.append(" AND FALSE");
+        } else if (warehouseScope != null && warehouseScope.size() == 1) {
             balWhere.append(" AND b.warehouse_id = :warehouseId");
             iqcWhere.append(" AND " + iqcWarehouse + " = :warehouseId");
             stockInWhere.append(" AND i.warehouse_id = :warehouseId");
@@ -460,6 +482,7 @@ public class StockQueryService {
         stockInWhere.insert(0,
                 " AND i.passed_base_qty - i.warehouse_stocked_base_qty > 0");
         StringBuilder goodsWhere = new StringBuilder(" WHERE g.is_deleted = false");
+        if (warehouseScope != null && warehouseScope.isEmpty()) goodsWhere.append(" AND FALSE");
         if (filter.goodsId() != null) goodsWhere.append(" AND g.id = :goodsId");
         if (filter.categoryId() != null) {
             goodsWhere.append(" AND g.category_id IN (SELECT id FROM cat)");

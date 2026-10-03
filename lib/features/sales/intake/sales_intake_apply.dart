@@ -142,6 +142,44 @@ class SalesIntakeDecisions {
       lines.putIfAbsent(line.key, SalesIntakeLineDecision.new);
 }
 
+/// Only unambiguous, high-confidence rows may be put into an unsaved form
+/// without a review dialog. This never means the document is approved.
+bool salesIntakeCanAutoApply(SalesIntakeResult result, SalesDocType docType) =>
+    result.client.status.resolved &&
+    result.client.selectedClientId != null &&
+    result.client.mismatchWarning == null &&
+    result.duplicates.isEmpty &&
+    result.notices.isEmpty &&
+    result.extraColumns.isEmpty &&
+    result.file.otherSheets.isEmpty &&
+    result.lines.isNotEmpty &&
+    result.lines.every(
+      (line) =>
+          line.status == SalesIntakeLineStatus.matched &&
+          line.confidence == SalesIntakeConfidence.high &&
+          !line.bundle &&
+          line.suggestedQty == null &&
+          line.warnings.isEmpty &&
+          line.preselected != null &&
+          (_Dec.parse(line.qty)?.isPositive ?? false) &&
+          !salesIntakeGoodsBlocked(
+            docType: docType,
+            goods: line.preselected,
+            priceMasked: result.priceMasked,
+          ),
+    );
+
+/// Guided form filling cannot silently create reusable columns or master-data
+/// learning instructions. The original source file retains omitted columns.
+void restrictGuidedIntakeDecisions(SalesIntakeDecisions decisions) {
+  decisions.enrichmentEnabled = false;
+  decisions.enrichmentFields.clear();
+  decisions.includedExtraColumns.clear();
+  for (final decision in decisions.lines.values) {
+    decision.setNameEn = false;
+  }
+}
+
 /// 订货单不能直接导入标价为 0/空、或文件单价高于标价的货品(§5.7)。
 /// 看不到价格的账号拿不到定价标记, 只看服务端保留的「不能导入」标记 orderBlocked
 /// (服务端还没下发这个标记时不拦, 保存时由服务端按货品资料标价处理)。

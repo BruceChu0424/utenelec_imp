@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,7 @@ import 'package:uten_imp/shared/ai/ai_job_runner.dart';
 import 'package:uten_imp/shared/ai/chat/ai_chat_models.dart';
 import 'package:uten_imp/shared/ai/chat/ai_chat_overlay.dart';
 import 'package:uten_imp/shared/ai/chat/ai_chat_repository.dart';
+import 'package:uten_imp/shared/ai/guided/ai_guided_file_plan.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
@@ -110,6 +112,113 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'file-only invoice uses a neutral request and opens expense without a business write',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'invoice.pdf',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {
+          'workflow': 'EXPENSE_CLAIM',
+          'documentType': 'INVOICE',
+          'title': 'Prepare expense',
+        };
+      Uri? opened;
+      final harness = await _pump(
+        tester,
+        jobs: jobs,
+        initial: _identity(permissions: 'ai:use\nexpense:apply'),
+        onDraftOpened: (uri, extra) => opened = uri,
+      );
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, '');
+      await tester.pumpAndSettle();
+      expect(
+        jobs.requests.single.params['message'],
+        AppLocalizationsEn().aiChatAttachmentQuestion,
+      );
+      expect(opened?.path, '/expense/new');
+      expect(harness.repository.messages, isEmpty);
+      expect(harness.repository.confirmations, isEmpty);
+      expect(jobs.reads, ['file-job-1']);
+    },
+  );
+
+  for (final scenario in [
+    'unsupported',
+    'revoked',
+    'changed_identity',
+    'retry',
+  ]) {
+    testWidgets(
+      'document route $scenario cannot navigate or write unexpectedly',
+      (tester) async {
+        final file = PlatformFile(
+          name: 'quote.csv',
+          size: 4,
+          bytes: Uint8List.fromList([1, 2, 3, 4]),
+        );
+        FilePicker.platform = _Picker(file);
+        addTearDown(() => FilePicker.platform = _Picker(null));
+        final jobs = _FakeJobRepository();
+        var opens = 0;
+        if (scenario == 'unsupported') {
+          jobs.routeOverride = {
+            'workflow': 'NONE',
+            'needsChoice': true,
+            'choices': <Object>[],
+          };
+        }
+        if (scenario == 'revoked') {
+          jobs.readFailure = ApiException(
+            'FORBIDDEN',
+            'Access changed',
+            httpStatus: 403,
+          );
+        }
+        if (scenario == 'changed_identity') {
+          jobs.pendingRead = Completer<AiJobSnapshot>();
+        }
+        if (scenario == 'retry') jobs.submitFailure = NetworkException();
+        final harness = await _pump(
+          tester,
+          jobs: jobs,
+          onDraftOpened: (_, _) => opens++,
+        );
+        await _open(tester);
+        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+        await tester.pumpAndSettle();
+        await _send(tester, 'Prepare this document');
+        if (scenario == 'changed_identity') {
+          harness.container.read(harness.identity.notifier).state = _identity(
+            user: 'bob',
+          );
+          await tester.pump();
+          jobs.pendingRead!.complete(jobs.routed!);
+        }
+        await tester.pumpAndSettle();
+        expect(opens, 0);
+        expect(harness.repository.messages, isEmpty);
+        if (scenario == 'retry') {
+          jobs.submitFailure = null;
+          await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
+          await tester.pumpAndSettle();
+          expect(opens, 1);
+          expect(jobs.requests, hasLength(2));
+          expect(jobs.requests.first.bytes, jobs.requests.last.bytes);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('no signed-in identity leaves the business surface unchanged', (
     tester,
@@ -635,7 +744,7 @@ void main() {
   });
 
   testWidgets(
-    'file to order keeps its source and uses the existing review route',
+    'file first routes as a document then automatically opens a typed unsaved order',
     (tester) async {
       final file = PlatformFile(
         name: 'quotation.xlsx',
@@ -667,25 +776,22 @@ void main() {
         },
       );
       await _open(tester);
-      await tester.tap(find.byTooltip('Attach a quotation'));
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
       await tester.pumpAndSettle();
       expect(find.text('quotation.xlsx'), findsOneWidget);
       await _send(tester, 'Prepare an order');
       expect(jobs.requests, hasLength(1));
-      expect(jobs.requests.single.kind, 'SALES_DOCUMENT_INTAKE');
-      expect(jobs.requests.single.params, {'docType': 'order'});
+      expect(jobs.requests.single.kind, 'ERP_DOCUMENT_ROUTE');
+      expect(jobs.requests.single.params, {'message': 'Prepare an order'});
       expect(jobs.requests.single.bytes, file.bytes);
-      expect(
-        harness.repository.messages.single['attachmentJobId'],
-        'file-job-1',
-      );
-      final review = find.text('Review and create order');
-      await tester.ensureVisible(review);
-      await tester.tap(review);
       await tester.pumpAndSettle();
+      expect(harness.repository.messages, isEmpty);
       expect(destination?.path, '/sales/orders/new');
-      expect(destination?.queryParameters, {'aiJobId': 'file-job-1'});
-      expect(handedFile, same(file));
+      expect(destination?.queryParameters, isEmpty);
+      final plan = handedFile as AiGuidedFilePlan;
+      expect(plan.file.bytes, file.bytes);
+      expect(plan.file.name, file.name);
+      expect(plan.jobId, 'file-job-1');
       expect(repository.confirmations, isEmpty);
       expect(tester.takeException(), isNull);
     },
@@ -710,7 +816,7 @@ AiChatIdentity _identity({
   bool readOnly = false,
   int epoch = 1,
   String server = 'https://example.test/api',
-  String permissions = 'ai:use\nsales_order:create',
+  String permissions = 'ai:use\nsales_order:create\nsales_order:view',
   bool superAdmin = false,
 }) => (
   scope: AuthenticatedScope(
@@ -771,7 +877,18 @@ Future<_Harness> _pump(
   final container = ProviderContainer(
     overrides: [
       aiChatIdentityProvider.overrideWith((ref) => ref.watch(identity)),
+      aiGuidedFileIdentityProvider.overrideWith((ref) {
+        final value = ref.watch(identity);
+        return value == null
+            ? null
+            : (
+                scope: value.scope,
+                server: value.server,
+                permissions: value.permissions,
+              );
+      }),
       aiChatRepositoryProvider.overrideWithValue(repo),
+      aiJobRepositoryProvider.overrideWithValue(jobs ?? _FakeJobRepository()),
       aiJobRunnerProvider.overrideWithValue(
         AiJobRunner(jobs ?? _FakeJobRepository(), maxConsecutivePollErrors: 1),
       ),
@@ -793,10 +910,17 @@ Future<_Harness> _pump(
           routes: [
             GoRoute(path: '/', builder: (context, state) => home),
             GoRoute(
-              path: '/sales/orders/new',
+              path: '/sales/:seg/new',
               builder: (context, state) {
                 onDraftOpened(state.uri, state.extra);
                 return const Scaffold(body: Text('Order review handoff'));
+              },
+            ),
+            GoRoute(
+              path: '/expense/new',
+              builder: (context, state) {
+                onDraftOpened(state.uri, state.extra);
+                return const Scaffold(body: Text('Expense handoff'));
               },
             ),
           ],
@@ -909,6 +1033,8 @@ class _FakeChatRepository implements AiChatRepository {
       canChat: true,
       available: true,
       canUploadSalesOrder: true,
+      canUploadDocument: true,
+      workflows: const ['SALES_ORDER', 'SALES_QUOTE', 'EXPENSE_CLAIM'],
       canManagePermissions: true,
       scopeSummary: 'Only data permitted for this account.',
       suggestions: suggestions,
@@ -974,19 +1100,50 @@ class _FakeJobRepository implements AiJobRepository {
   final requests = <AiJobRequest>[];
   final reads = <String>[];
   Object? readFailure;
+  Completer<AiJobSnapshot>? pendingRead;
   AiJobSnapshot? response;
+  AiJobSnapshot? routed;
+  Map<String, dynamic>? routeOverride;
+  Object? submitFailure;
   @override
   Future<void> cancel(String jobId) async {}
   @override
   Future<AiJobSnapshot> get(String jobId) async {
     reads.add(jobId);
     if (readFailure case final error?) throw error;
-    return response ?? _success('Scoped answer', id: jobId);
+    if (pendingRead != null) return pendingRead!.future;
+    return response ??
+        (routed?.id == jobId ? routed! : _success('Scoped answer', id: jobId));
   }
 
   @override
   Future<AiJobSnapshot> submit(AiJobRequest request) async {
     requests.add(request);
+    if (submitFailure case final failure?) throw failure;
+    if (request.kind == aiGuidedRouteKind) {
+      routed = AiJobSnapshot(
+        id: 'file-job-1',
+        kind: aiGuidedRouteKind,
+        status: AiJobStatus.succeeded,
+        result: {
+          'documentType': 'SALES_QUOTATION',
+          'workflow': 'SALES_ORDER',
+          'title': 'Prepare order',
+          'summary': 'Ready to fill an unsaved form',
+          'needsChoice': false,
+          'choices': <Object>[],
+          'steps': ['Read file', 'Fill form'],
+          'fields': <String, String>{},
+          'requiresReview': true,
+          'source': {
+            'fileName': request.fileName,
+            'sha256': sha256.convert(request.bytes).toString(),
+          },
+          ...?routeOverride,
+        },
+      );
+      return routed!;
+    }
     return _success('File read', id: 'file-job-1');
   }
 }

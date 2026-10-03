@@ -23,6 +23,7 @@ import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/attachments/pending_attachment_section.dart'
     show PendingFileActionSpec;
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -89,6 +90,11 @@ import '../intake/sales_intake_attachment.dart';
 import '../intake/sales_intake_l10n.dart';
 import '../intake/sales_intake_launcher.dart';
 import '../intake/sales_intake_models.dart';
+import '../../../shared/ai/guided/ai_guided_file_plan.dart';
+import '../../../shared/ai/guided/ai_guided_file_banner.dart';
+import '../../../shared/ai/chat/ai_chat_l10n.dart';
+import '../../../shared/ai/ai_job_repository.dart';
+import '../../../shared/ai/ai_job_models.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_shipment_prefill.dart';
 import '../providers/master_name_provider.dart';
@@ -123,6 +129,7 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
     this.initialOrderItems,
     this.initialAiJobId,
     this.initialAiFile,
+    this.initialGuidedPlan,
   });
   final SalesDocType docType;
   final String? id; // null=新建
@@ -135,6 +142,7 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
   /// 同一次「改为新建报价单」带来的客户原文件(路由 extra，页面刷新后没有)：
   /// 恢复识别并导入后存进报价的暂存附件(客户确认)，交财务核价时能看到原文件。
   final PlatformFile? initialAiFile;
+  final AiGuidedFilePlan? initialGuidedPlan;
 
   @override
   ConsumerState<SalesDocEditPage> createState() => _SalesDocEditPageState();
@@ -142,6 +150,15 @@ class SalesDocEditPage extends ConsumerStatefulWidget {
 
 class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     with FormDraftMixin<SalesDocEditPage> {
+  bool _guidedStarted = false;
+  AiGuidedFilePlan? _guidedPlan;
+  bool _guidedValidated = false;
+  bool _guidedApplied = false;
+  bool _guidedBusy = false;
+  String _guidedStatus = 'documentReady';
+  String? _guidedDetail;
+  final Set<String> _guidedCompletedStages = {'guidedParsing'};
+  final List<String> _guidedFilledFields = [];
   SalesDocConfig get _cfg => _isCustomerShipment
       ? SalesDocConfig.customerShipment
       : SalesDocConfig.by(widget.docType);
@@ -452,10 +469,55 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     'intakeClientId': _intakeClientId,
     'intakeClientName': _intakeClientName,
     'intakeRemark': _intakeRemark,
+    if (_guidedPlan case final plan?)
+      'guidedPlan': plan.toLocalDraft(
+        includeBytes: !_pendingFiles.items.any(
+          (item) =>
+              item.name == plan.file.name &&
+              item.bytes.length == plan.file.size,
+        ),
+      ),
   };
 
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _createdDocId = data['createdDocId'] as String?;
+    _createdShipments = draftMaps(data['createdShipments'])
+        .map(
+          (doc) => SalesDocDetail(
+            id: doc['id'] as String,
+            billNo: doc['billNo'] as String?,
+          ),
+        )
+        .toList();
+    if (data['guidedPlan'] != null) {
+      if (data['guidedPlan'] is! Map) {
+        throw FormatException(aiChatText(context, 'documentSourceMismatch'));
+      }
+      final raw = draftMap(data['guidedPlan']);
+      final identity = ref.read(aiGuidedFileIdentityProvider);
+      AiGuidedFilePlan? restored = AiGuidedFilePlan.restoreLocalDraft(
+        raw,
+        identity,
+      );
+      if (restored == null && raw['bytes'] == null) {
+        for (final source in draftMaps(
+          draftMap(data['attachments'])['items'],
+        )) {
+          if (source['name'] != raw['fileName']) continue;
+          restored = AiGuidedFilePlan.restoreLocalDraft({
+            ...raw,
+            'bytes': source['bytes'],
+          }, identity);
+          if (restored != null) break;
+        }
+      }
+      if (restored == null) {
+        throw FormatException(aiChatText(context, 'documentSourceMismatch'));
+      }
+      _guidedPlan = restored;
+      _guidedValidated = false;
+    }
     restoreDraftTextValues(_draftHeaderText, draftMap(data['text']));
     _billDate =
         DateTime.tryParse(data['billDate'] as String? ?? '') ?? _billDate;
@@ -515,6 +577,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   @override
   void initState() {
     super.initState();
+    _guidedPlan = widget.initialGuidedPlan;
     // 明细行增删 → 重新挂载数量监听并刷新按单位分组的数量。
     _grid.addListener(_onGridRowsChanged);
     // 预填黄标联动：收货地址/联系电话被改到与带入值不同 → 视为已核对，移除黄框。
@@ -810,6 +873,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         await _prefillSelectedOrder();
       }
       if (mounted && widget.id == null) await initializeFormDraft();
+      if (mounted &&
+          widget.id == null &&
+          _guidedPlan != null &&
+          !_guidedStarted) {
+        _guidedStarted = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _runGuidedPlan());
+      }
       final aiJobId = widget.initialAiJobId;
       if (mounted &&
           widget.id == null &&
@@ -1104,13 +1174,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 优先）带出收货地址/联系电话；地址簿为空再回退客户主档；都没有则留空不加载。
   /// 订货单不采集地址两字段（出货环节承载），仅做条款预填。
   Future<void> _onClientChanged(String? id) async {
+    if (_guidedPlan case final plan?) {
+      if (!plan.matches(ref)) return;
+    }
     final generation = ++_clientPrefillGeneration;
     final session = ref.read(sessionProvider);
     bool isCurrent() =>
         mounted &&
         generation == _clientPrefillGeneration &&
         _clientId == id &&
-        identical(ref.read(sessionProvider), session);
+        identical(ref.read(sessionProvider), session) &&
+        (_guidedPlan?.matches(ref) ?? true);
     setState(() {
       if (_clientId != id) {
         // Values remembered for a different client must not survive a missing-history response.
@@ -1613,7 +1687,37 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   Future<void> _save() async {
-    if (_saving) return;
+    if (_saving || _guidedBusy) return;
+    if (_guidedPlan != null) {
+      if (!_guidedValidated) return;
+      final before = jsonEncode(captureFormDraft());
+      setState(() {
+        _guidedBusy = true;
+        _guidedValidated = false;
+        _guidedStatus = 'guidedValidating';
+      });
+      try {
+        await _validateGuidedState();
+        if (!mounted ||
+            _guidedPlan?.matches(ref) != true ||
+            before != jsonEncode(captureFormDraft())) {
+          return;
+        }
+        setState(() => _guidedValidated = true);
+      } catch (error) {
+        if (mounted) {
+          setState(() {
+            _guidedStatus = 'guidedWaiting';
+            _guidedDetail = error is ApiException
+                ? error.message
+                : aiChatText(context, 'failed');
+          });
+        }
+        return;
+      } finally {
+        if (mounted) setState(() => _guidedBusy = false);
+      }
+    }
     if (_createdShipments.isNotEmpty) {
       await _finishCreatedShipments();
       return;
@@ -2239,7 +2343,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         replacePref: replacePref,
         reRecognizeFile: reRecognize ? item.name : null,
       );
-      if (!mounted) return false;
+      if (!mounted || (_guidedPlan != null && !_guidedPlan!.matches(ref))) {
+        return false;
+      }
       if (applied) {
         _intakeDoneFiles.add(item);
         // 识别过的客户文件自动标「客户确认」(没设过分类时)，与旧入口归档同口径。
@@ -2364,6 +2470,171 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
   }
 
+  Future<void> _runGuidedPlan() async {
+    final plan = _guidedPlan;
+    if (!mounted ||
+        plan == null ||
+        _guidedBusy ||
+        (_guidedApplied && _guidedValidated) ||
+        !plan.matches(ref)) {
+      return;
+    }
+    setState(() {
+      _guidedBusy = true;
+      _guidedValidated = false;
+      _guidedStatus = 'guidedValidating';
+      _guidedDetail = null;
+    });
+    FocusManager.instance.primaryFocus?.unfocus();
+    try {
+      final verified = await _validateGuidedState();
+      if (!mounted || !verified.matches(ref)) return;
+      setState(() => _guidedValidated = true);
+      if (!_canUseAiIntakeNow ||
+          _aiIntake != null ||
+          _grid.rows.any(_rowHasContent) ||
+          _clientId != null ||
+          _contractNo.text.trim().isNotEmpty ||
+          _remark.text.trim().isNotEmpty ||
+          (_currencyId != null && !_autofilled.contains('currency'))) {
+        setState(
+          () => _guidedStatus = _hasCreatedDocuments
+              ? 'documentOpened'
+              : 'guidedExisting',
+        );
+        return;
+      }
+      if (!_pendingFiles.items.any(
+        (item) => item.name == plan.file.name && item.bytes == plan.file.bytes,
+      )) {
+        final problem = _pendingFiles.add(
+          plan.file,
+          category: kSalesIntakeAttachmentCategory,
+        );
+        if (problem != null) {
+          setState(() {
+            _guidedStatus = 'guidedWaiting';
+            _guidedDetail = problem;
+          });
+          return;
+        }
+      }
+      final formBeforeRecognition = jsonEncode(captureFormDraft());
+      final result = await launchSalesIntakeWithFile(
+        context,
+        ref,
+        file: plan.file,
+        docType: widget.docType,
+        guided: true,
+        guidedPlan: plan,
+        clientId: _clientId,
+        clientName: _resolveIntakeClientName(),
+        stillCurrent: () => mounted && plan.matches(ref),
+        onGuidedStage: (stage) {
+          if (mounted && plan.matches(ref)) {
+            setState(() {
+              _guidedStatus = stage;
+              if (stage == 'guidedReview' || stage == 'guidedFilling') {
+                _guidedCompletedStages.add('guidedMatching');
+              }
+            });
+          }
+        },
+      );
+      if (!mounted || !plan.matches(ref)) return;
+      if (result == null) {
+        setState(() => _guidedStatus = 'guidedWaiting');
+        return;
+      }
+      if (jsonEncode(captureFormDraft()) != formBeforeRecognition) {
+        setState(() => _guidedStatus = 'guidedExisting');
+        return;
+      }
+      await validateAiGuidedFilePlan(ref, plan);
+      if (!mounted || !plan.matches(ref)) return;
+      if (result.patch case final patch?) {
+        final freshIntake = await ref
+            .read(aiJobRepositoryProvider)
+            .get(patch.jobId);
+        if (!mounted || !plan.matches(ref)) return;
+        if (freshIntake.id != patch.jobId ||
+            freshIntake.kind != kSalesIntakeJobKind ||
+            freshIntake.status != AiJobStatus.succeeded ||
+            freshIntake.result == null) {
+          throw ApiException(
+            'DOCUMENT_ROUTE_INVALID',
+            aiChatText(context, 'documentSourceMismatch'),
+          );
+        }
+      }
+      if (jsonEncode(captureFormDraft()) != formBeforeRecognition) {
+        setState(() => _guidedStatus = 'guidedExisting');
+        return;
+      }
+      final applied = await _handleIntakeResult(result, attachOriginal: false);
+      if (!mounted || !plan.matches(ref)) return;
+      setState(() {
+        _guidedApplied = applied;
+        _guidedStatus = applied ? 'guidedFilled' : 'guidedWaiting';
+        _guidedDetail = aiChatText(context, 'guidedNoMasterWrites');
+        if (applied) {
+          _guidedCompletedStages.addAll({'guidedHeader', 'guidedRows'});
+          _guidedFilledFields
+            ..clear()
+            ..add(
+              '${aiChatText(context, 'guidedClient')}: ${_clientDisplayName(ref.read(salesMasterNameServiceProvider))}',
+            )
+            ..add(
+              '${aiChatText(context, 'guidedRows')}: ${result.patch?.rows.length ?? 0}',
+            );
+        }
+      });
+    } catch (error) {
+      if (mounted && plan.matches(ref)) {
+        setState(() {
+          _guidedStatus = 'guidedWaiting';
+          _guidedDetail = error is ApiException
+              ? error.message
+              : aiChatText(context, 'failed');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _guidedBusy = false);
+    }
+  }
+
+  Future<AiGuidedFilePlan> _validateGuidedState() async {
+    final plan = _guidedPlan!;
+    final verified = await validateAiGuidedFilePlan(ref, plan);
+    if (!mounted) throw const FormatException('Guided page was closed');
+    if (!verified.matches(ref)) {
+      throw ApiException('FORBIDDEN', aiChatText(context, 'permissionChanged'));
+    }
+    if (_aiIntake case final intake?) {
+      for (final id in {intake.jobId, ...intake.additionalJobIds}) {
+        final snapshot = await ref.read(aiJobRepositoryProvider).get(id);
+        if (!mounted) throw const FormatException('Guided page was closed');
+        if (!verified.matches(ref)) {
+          throw ApiException(
+            'FORBIDDEN',
+            aiChatText(context, 'permissionChanged'),
+          );
+        }
+        if (snapshot.id != id ||
+            snapshot.kind != kSalesIntakeJobKind ||
+            snapshot.status != AiJobStatus.succeeded ||
+            snapshot.result == null) {
+          throw ApiException(
+            'DOCUMENT_ROUTE_INVALID',
+            aiChatText(context, 'documentSourceMismatch'),
+          );
+        }
+      }
+    }
+    _guidedPlan = verified;
+    return verified;
+  }
+
   Future<bool> _handleIntakeResult(
     SalesIntakeLaunchResult result, {
     bool attachOriginal = true,
@@ -2452,6 +2723,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     bool? replacePref,
     String? reRecognizeFile,
   }) async {
+    bool current() => mounted && (_guidedPlan?.matches(ref) ?? true);
+    if (!current()) return false;
     final l10n = salesIntakeL10n(context);
     var replace = true;
     if (replacePref != null) {
@@ -2497,7 +2770,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
     // Resolve reusable definitions before replacing any user-entered lines.
     final intakeColumns = <String, BusinessColumn>{};
-    if (_hasClientPricing && patch.extraColumns.isNotEmpty) {
+    if (_hasClientPricing &&
+        patch.extraColumns.isNotEmpty &&
+        _guidedPlan == null) {
       try {
         final repository = ref.read(businessColumnsRepositoryProvider);
         final scope = widget.docType == SalesDocType.quote
@@ -2532,7 +2807,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
     if (clientId != null && clientId != _clientId) {
       await _onClientChanged(clientId);
-      if (!mounted) return false;
+      if (!current()) return false;
     }
     final names = ref.read(salesMasterNameServiceProvider);
     final rows = [
@@ -2558,7 +2833,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       final currencyId = patch.currencyId;
       if (_cfg.hasCurrency &&
           currencyId != null &&
-          names.currencyEntries.containsKey(currencyId)) {
+          names.currencyEntries.containsKey(currencyId) &&
+          (_guidedPlan == null ||
+              _currencyId == null ||
+              _autofilled.contains('currency'))) {
         _currencyId = currencyId;
         _autofilled.add('currency');
         _errors.remove('currency');
@@ -2587,6 +2865,19 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _aiIntake = nextIntake;
       }
     });
+    if (_guidedBusy) {
+      setState(() {
+        _guidedCompletedStages.add('guidedHeader');
+        _guidedStatus = 'guidedRows';
+      });
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || _guidedPlan?.matches(ref) != true) {
+        for (final row in rows) {
+          row.dispose();
+        }
+        return false;
+      }
+    }
     if (replace) {
       _grid.replaceAll(rows);
     } else {
@@ -2609,7 +2900,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       );
     }
     _recalcQtyTotal();
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {
+        if (_guidedBusy) _guidedCompletedStages.add('guidedRows');
+      });
+    }
     await _attachOriginalFile(file);
     if (!mounted) return true;
     context.appSuccess(
@@ -2708,7 +3003,34 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   @override
-  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+  Widget build(BuildContext context) {
+    final plan = _guidedPlan;
+    if (plan != null &&
+        (ref.watch(aiGuidedFileIdentityProvider) != plan.identity ||
+            !plan.matches(ref))) {
+      return Scaffold(
+        body: Center(child: Text(aiChatText(context, 'permissionChanged'))),
+      );
+    }
+    if (plan != null && !_guidedValidated) {
+      return withFormDraft(
+        Scaffold(
+          appBar: UtenAppBar(title: _cfg.label, showBackButton: true),
+          body: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: AiGuidedFileBanner(
+              plan: plan,
+              status: _guidedStatus,
+              detail: _guidedDetail,
+              busy: _guidedBusy || _loading,
+              onRetry: _guidedBusy || _loading ? null : _runGuidedPlan,
+            ),
+          ),
+        ),
+      );
+    }
+    return withFormDraft(_buildDraftPage(context));
+  }
 
   Widget _buildDraftPage(BuildContext context) {
     // 页面保持打开时撤权也必须重建列、固定列快照和合计条。
@@ -2742,7 +3064,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         body: Stack(
           children: [
             AbsorbPointer(
-              absorbing: _saving || _uncertainShipmentBody != null,
+              absorbing:
+                  _saving || _guidedBusy || _uncertainShipmentBody != null,
               child: SafeArea(
                 child: _loading
                     ? const Center(
@@ -2773,6 +3096,24 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                               UtenFloatingActionGroup.scrollClearance,
                             ),
                             children: [
+                              if (_guidedPlan case final plan?)
+                                AiGuidedFileBanner(
+                                  plan: plan,
+                                  status: _guidedStatus,
+                                  detail: _guidedDetail,
+                                  busy:
+                                      _guidedBusy &&
+                                      _guidedStatus != 'guidedReview',
+                                  completedStages: _guidedCompletedStages
+                                      .toList(),
+                                  activeStage: _guidedApplied
+                                      ? 'guidedManualSave'
+                                      : _guidedStatus,
+                                  filledFields: _guidedFilledFields,
+                                  onRetry: _guidedApplied || _guidedBusy
+                                      ? null
+                                      : _runGuidedPlan,
+                                ),
                               if (_editingApprovedOrder &&
                                   !_financeRejected) ...[
                                 const Card(
@@ -3733,9 +4074,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                 // 2026-09-14 口径：没选货品（无内容）保存按钮置灰，点了提示原因；
                 // 有内容才转红可点——与财审页「未选中灰/选中红」同款。
                 onSave:
-                    _hasCreatedDocuments ||
-                        _hasGoodsRows ||
-                        _uncertainShipmentBody != null
+                    !_guidedBusy &&
+                        (_hasCreatedDocuments ||
+                            _hasGoodsRows ||
+                            _uncertainShipmentBody != null)
                     ? _save
                     : null,
                 saveDisabledHint: _uncertainShipmentBody != null

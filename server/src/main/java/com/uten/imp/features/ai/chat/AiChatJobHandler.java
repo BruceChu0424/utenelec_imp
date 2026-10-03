@@ -164,7 +164,7 @@ public class AiChatJobHandler implements AiJobHandler {
         String intent = choice.path("intent").asText("");
         switch (intent) {
             case "SALES_DRAFT": {
-                if (previousAttachment == null) return reply("请先上传需要识别的报价文件，再检查并生成订货草稿。", "SELF", "CLARIFY");
+                if (previousAttachment == null) return reply("请先上传需要识别的文件，我会判断用途，再打开对应页面辅助填写；保存和提交由你亲自操作。", "SELF", "CLARIFY");
                 return orderDraft(previousAttachment);
             }
             case "TOOL": {

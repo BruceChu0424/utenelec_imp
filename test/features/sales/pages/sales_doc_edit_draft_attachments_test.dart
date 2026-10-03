@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
@@ -23,10 +24,217 @@ import 'package:uten_imp/shared/attachments/pending_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/ai/guided/ai_guided_file_plan.dart';
+import 'package:uten_imp/shared/ai/ai_job_repository.dart';
+import 'package:uten_imp/shared/ai/ai_job_models.dart';
+import 'package:uten_imp/shared/ai/ai_job_runner.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/features/sales/intake/sales_intake_launcher.dart';
+import '../../sales/intake/sales_intake_fixture.dart';
+import '../../sales/intake/sales_intake_test_support.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../ai_visual/ai_visual_support.dart';
 
 /// 新建销售订货单：保存前就有附件暂存区（G4），已有订单仍用即时上传区。
 void main() {
   tearDown(() => FilePicker.platform = _Picker(const []));
+
+  testWidgets(
+    'guided sale validates first, fills real grid and keeps all writes manual',
+    (tester) async {
+      final plan = _guidedPlan();
+      final jobs = _GuidedJobs(plan);
+      final files = _Files();
+      final api = await _pumpEditor(
+        tester,
+        files,
+        type: SalesDocType.order,
+        guidedPlan: plan,
+        guidedJobs: jobs,
+        guidedRunner: FakeAiJobRunner(result: _highResult()),
+        storage: MemoryFormDraftStorage(),
+      );
+      final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+        find.byType(UtenEditableGrid<SalesGridRow>),
+      );
+      expect(grid.controller.rows.single.qty.text, '1800');
+      expect(grid.controller.rows.single.setNameEn, isFalse);
+      expect(jobs.reads, contains('route-source'));
+      expect(
+        find.byKey(const ValueKey('ai-guided-file-progress')),
+        findsOneWidget,
+      );
+      expect(files.uploads, isEmpty);
+      expect(api.writes, isEmpty);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(SalesDocEditPage)),
+        listen: false,
+      );
+      final draft = container.read(formDraftsProvider).single;
+      expect(
+        (draft.data['guidedPlan'] as Map).containsKey('bytes'),
+        isFalse,
+        reason: 'original bytes live once in pending attachments',
+      );
+      expect(
+        (((draft.data['attachments'] as Map)['items'] as List).single
+            as Map)['name'],
+        plan.file.name,
+      );
+      expect((draft.data['aiIntake'] as Map)['clientFields'], isEmpty);
+      expect(tester.takeException(), isNull);
+      if (kCaptureUi) {
+        await tester.pump(const Duration(seconds: 6));
+        await tester.pumpAndSettle();
+        await capture(tester, 'guided-sales-page-wide');
+      }
+    },
+  );
+
+  testWidgets(
+    'guided sale actual narrow page shows completed stages without overflow',
+    (tester) async {
+      final plan = _guidedPlan();
+      await _pumpEditor(
+        tester,
+        _Files(),
+        type: SalesDocType.order,
+        guidedPlan: plan,
+        guidedJobs: _GuidedJobs(plan),
+        guidedRunner: FakeAiJobRunner(result: _highResult()),
+        width: 390,
+        height: 1000,
+      );
+      expect(
+        find.byKey(const ValueKey('ai-guided-file-progress')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      if (kCaptureUi) {
+        await tester.pump(const Duration(seconds: 6));
+        await tester.pumpAndSettle();
+        await capture(tester, 'guided-sales-page-narrow');
+      }
+    },
+  );
+
+  testWidgets(
+    'guided extra columns wait for review and never create reusable definitions',
+    (tester) async {
+      final result = _highResult()
+        ..['extraColumns'] = [
+          {'key': 'source-note', 'label': 'Source note', 'dataType': 'TEXT'},
+        ];
+      final plan = _guidedPlan();
+      final files = _Files();
+      final api = await _pumpEditor(
+        tester,
+        files,
+        type: SalesDocType.order,
+        guidedPlan: plan,
+        guidedJobs: _GuidedJobs(plan),
+        guidedRunner: FakeAiJobRunner(result: result),
+      );
+      expect(find.text('核对识别结果'), findsOneWidget);
+      expect(api.writes, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+      await tester.pumpAndSettle();
+      expect(api.writes, isEmpty);
+      expect(files.uploads, isEmpty);
+      final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+        find.byType(UtenEditableGrid<SalesGridRow>),
+      );
+      expect(grid.controller.rows.single.extraColumnSnapshots, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'guided review rechecks candidate access before writing any fields',
+    (tester) async {
+      final result = _highResult()
+        ..['extraColumns'] = [
+          {'key': 'note', 'label': 'Source note', 'dataType': 'TEXT'},
+        ];
+      final plan = _guidedPlan();
+      final jobs = _GuidedJobs(plan);
+      final files = _Files();
+      final api = await _pumpEditor(
+        tester,
+        files,
+        type: SalesDocType.order,
+        guidedPlan: plan,
+        guidedJobs: jobs,
+        guidedRunner: FakeAiJobRunner(result: result),
+      );
+      expect(find.text('核对识别结果'), findsOneWidget);
+      jobs.deniedJobId = 'job-42';
+      jobs.failure = ApiException(
+        'FORBIDDEN',
+        'Candidate access revoked',
+        httpStatus: 403,
+      );
+      await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+      await tester.pumpAndSettle();
+      final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
+        find.byType(UtenEditableGrid<SalesGridRow>),
+      );
+      expect(grid.controller.rows.every((row) => row.goods == null), isTrue);
+      expect(find.textContaining('Candidate access revoked'), findsOneWidget);
+      expect(api.writes, isEmpty);
+      expect(files.uploads, isEmpty);
+    },
+  );
+
+  for (final denied in ['route-source', 'job-42']) {
+    testWidgets(
+      'guided draft restore denies revoked $denied without showing cached customer or grid',
+      (tester) async {
+        final plan = _guidedPlan();
+        final storage = MemoryFormDraftStorage();
+        await _pumpEditor(
+          tester,
+          _Files(),
+          type: SalesDocType.order,
+          guidedPlan: plan,
+          guidedJobs: _GuidedJobs(plan),
+          guidedRunner: FakeAiJobRunner(result: _highResult()),
+          storage: storage,
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(SalesDocEditPage)),
+          listen: false,
+        );
+        final draftId = container.read(formDraftsProvider).single.id;
+        await tester.pumpWidget(const SizedBox());
+        final jobs = _GuidedJobs(plan)
+          ..deniedJobId = denied
+          ..failure = ApiException(
+            'FORBIDDEN',
+            'Source access revoked',
+            httpStatus: 403,
+          );
+        final api = await _pumpEditor(
+          tester,
+          _Files(),
+          type: SalesDocType.order,
+          guidedIdentity: plan.identity,
+          guidedJobs: jobs,
+          storage: storage,
+          resumeId: draftId,
+        );
+        expect(find.byType(UtenEditableGrid<SalesGridRow>), findsNothing);
+        expect(find.textContaining('尼日利亚SUNAS'), findsNothing);
+        expect(find.text('Source access revoked'), findsOneWidget);
+        expect(api.writes, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'new order shows the draft attachment area and lists picked files as pending',
@@ -201,12 +409,20 @@ void main() {
   });
 }
 
-Future<void> _pumpEditor(
+Future<_EditorApi> _pumpEditor(
   WidgetTester tester,
   _Files files, {
   required SalesDocType type,
   String? id,
   Map<String, dynamic>? detail,
+  AiGuidedFilePlan? guidedPlan,
+  AiGuidedFileIdentity? guidedIdentity,
+  _GuidedJobs? guidedJobs,
+  FakeAiJobRunner? guidedRunner,
+  MemoryFormDraftStorage? storage,
+  String? resumeId,
+  double width = 1600,
+  double height = 1400,
   Set<String> permissions = const {
     Perm.attachmentView,
     Perm.attachmentUpload,
@@ -217,11 +433,14 @@ Future<void> _pumpEditor(
     Perm.salesOrderPriceView,
   },
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1400));
+  await tester.binding.setSurfaceSize(Size(width, height));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  if (kCaptureUi) await setCaptureView(tester, Size(width, height));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final api = _EditorApi(detail);
+  final identity = guidedPlan?.identity ?? guidedIdentity;
+  final progress = FakeProgressPresenter();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -232,40 +451,72 @@ Future<void> _pumpEditor(
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
         ),
-        sessionProvider.overrideWith(_TestSessionNotifier.new),
+        if (identity == null)
+          sessionProvider.overrideWith(_TestSessionNotifier.new),
+        if (identity != null) ...[
+          sessionProvider.overrideWith(_GuidedSession.new),
+          apiBaseUrlProvider.overrideWithValue(identity.server),
+          aiGuidedFileIdentityProvider.overrideWithValue(identity),
+          formDraftStorageProvider.overrideWithValue(
+            storage ?? MemoryFormDraftStorage(),
+          ),
+        ],
+        if (guidedJobs != null)
+          aiJobRepositoryProvider.overrideWithValue(guidedJobs),
+        if (guidedRunner != null) ...[
+          aiJobRunnerProvider.overrideWithValue(guidedRunner),
+          salesIntakeProgressPresenterProvider.overrideWithValue(
+            presenterOf(progress),
+          ),
+        ],
       ],
-      child: MaterialApp.router(
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: GoRouter(
-          initialLocation: '/edit',
-          routes: [
-            GoRoute(
-              path: '/edit',
-              builder: (_, _) => SalesDocEditPage(docType: type, id: id),
-            ),
-            GoRoute(
-              path: '/:rest(.*)',
-              builder: (_, _) => const SizedBox.shrink(),
-            ),
-          ],
-        ),
-        builder: (context, child) => Stack(
-          children: [
-            Positioned.fill(child: child!),
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: AppNotificationHost(),
-            ),
-          ],
+      child: RepaintBoundary(
+        key: kCaptureUi ? captureBoundary : null,
+        child: MaterialApp.router(
+          debugShowCheckedModeBanner: false,
+          theme: kCaptureUi ? captureTheme() : null,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: GoRouter(
+            initialLocation: identity == null
+                ? '/edit'
+                : '/sales/orders/new${resumeId == null ? '' : '?draftId=$resumeId'}',
+            routes: [
+              GoRoute(
+                path: '/edit',
+                builder: (_, _) => SalesDocEditPage(docType: type, id: id),
+              ),
+              GoRoute(
+                path: '/sales/orders/new',
+                builder: (_, _) => SalesDocEditPage(
+                  docType: type,
+                  initialGuidedPlan: guidedPlan,
+                ),
+              ),
+              GoRoute(
+                path: '/:rest(.*)',
+                builder: (_, _) => const SizedBox.shrink(),
+              ),
+            ],
+          ),
+          builder: (context, child) => Stack(
+            children: [
+              Positioned.fill(child: child!),
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AppNotificationHost(),
+              ),
+            ],
+          ),
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
+  return api;
 }
 
 class _TestSessionNotifier extends SessionNotifier {
@@ -273,10 +524,115 @@ class _TestSessionNotifier extends SessionNotifier {
   SessionState build() => const SessionState();
 }
 
+class _GuidedSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'guide-user',
+      employeeId: 'guide-employee',
+      code: 'G001',
+      name: 'Guide user',
+      permissions: [
+        Perm.attachmentView,
+        Perm.attachmentUpload,
+        Perm.attachmentDelete,
+        Perm.salesOrderCreate,
+        Perm.salesOrderEdit,
+        Perm.salesOrderView,
+        Perm.salesOrderPriceView,
+      ],
+    ),
+  );
+}
+
+AiGuidedFilePlan _guidedPlan() {
+  final file = fakeFile('guided-order.xlsx');
+  final permissions = {
+    Perm.attachmentView,
+    Perm.attachmentUpload,
+    Perm.attachmentDelete,
+    Perm.salesOrderCreate,
+    Perm.salesOrderEdit,
+    Perm.salesOrderView,
+    Perm.salesOrderPriceView,
+  }.toList()..sort();
+  return AiGuidedFilePlan(
+    jobId: 'route-source',
+    file: file,
+    workflow: AiGuidedWorkflow.salesOrder,
+    identity: (
+      scope: const AuthenticatedScope(userId: 'guide-user'),
+      server: 'https://guided.invalid/api',
+      permissions: permissions.join('\n'),
+    ),
+    result: AiGuidedFileResult.fromJson({
+      'workflow': 'SALES_ORDER',
+      'documentType': 'SALES_ORDER',
+      'needsChoice': false,
+      'title': 'Prepare order',
+      'summary': 'Fill a local form',
+      'requiresReview': true,
+      'source': {
+        'fileName': file.name,
+        'sha256': sha256.convert(file.bytes!).toString(),
+      },
+    }),
+  );
+}
+
+Map<String, dynamic> _highResult() {
+  final data = intakeResultJson();
+  data['lines'] = [(data['lines'] as List<dynamic>).first];
+  data['duplicates'] = <Object>[];
+  data['notices'] = <Object>[];
+  data['extraColumns'] = <Object>[];
+  (data['file'] as Map<String, dynamic>)['otherSheets'] = <Object>[];
+  return data;
+}
+
+class _GuidedJobs implements AiJobRepository {
+  _GuidedJobs(this.plan);
+  final AiGuidedFilePlan plan;
+  final reads = <String>[];
+  Object? failure;
+  String? deniedJobId;
+  @override
+  Future<AiJobSnapshot> get(String jobId) async {
+    reads.add(jobId);
+    if (failure != null && (deniedJobId == null || deniedJobId == jobId)) {
+      throw failure!;
+    }
+    return AiJobSnapshot(
+      id: jobId,
+      kind: jobId == plan.jobId ? aiGuidedRouteKind : 'SALES_DOCUMENT_INTAKE',
+      status: AiJobStatus.succeeded,
+      result: jobId == plan.jobId ? plan.result.toJson() : _highResult(),
+    );
+  }
+
+  @override
+  Future<void> cancel(String jobId) async {}
+  @override
+  Future<AiJobSnapshot> submit(AiJobRequest request) async =>
+      throw StateError('No automatic business submission');
+}
+
 class _EditorApi extends ApiClient {
   _EditorApi(this.detail) : super(Dio());
 
   final Map<String, dynamic>? detail;
+  final writes = <String>[];
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    writes.add(path);
+    throw StateError('Unexpected business write: $path');
+  }
 
   @override
   Future<Map<String, dynamic>> get(

@@ -493,6 +493,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     }
     @AfterEach
     void closeEntityManager() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
         if (em != null) em.close();
     }
     @AfterAll
@@ -642,5 +643,49 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThat(document.documentType()).isEqualTo("PRODUCTION_PLAN");
             assertThat(document.documentId()).isEqualTo(PLAN);
         });
+    }
+
+    @Test
+    void actualInProgressQueryUsesExactStateAndLiteralProductFilter() {
+        loginOperational("production_execution:view");
+        var result=service.inProgressTasks(null,false,1000);
+        assertThat(result.getTotal()).isEqualTo(1);
+        assertThat(result.getSize()).isEqualTo(20);
+        assertThat(result.getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentStatus).containsExactly("IN_PROGRESS");
+        assertThat(service.inProgressTasks("p001",false,20).getTotal()).isEqualTo(1);
+        assertThat(service.inProgressTasks("%",false,20).getTotal()).isZero();
+        assertThat(service.inProgressTasks("Assembly",false,20).getTotal()).isZero();
+        assertThatThrownBy(()->service.inProgressTask(new UUID(0,2),false)).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void actualInProgressQuerySeparatesOverviewOwnerScopeAndWorkshopAssignment() {
+        UUID other=new UUID(0,6);
+        jdbc.update("UPDATE production_execution_segments SET status='IN_PROGRESS' WHERE id=?",other);
+        jdbc.update("UPDATE v_production_execution_workbench_segments SET segment_status='IN_PROGRESS' WHERE segment_id=?",other);
+        try {
+            loginOperational("production_execution:view");
+            assertThat(service.inProgressTasks(null,false,20).getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                    .containsExactly(new UUID(0,4));
+            assertThatThrownBy(()->service.inProgressTasks(null,true,20)).isInstanceOf(ApiException.class);
+            assertThatThrownBy(()->service.inProgressTask(other,false)).isInstanceOf(ApiException.class);
+            loginOperational("production_execution:overview");
+            assertThat(service.inProgressTasks(null,true,20).getItems()).extracting(ProductionExecutionWorkbenchSegment::segmentId)
+                    .containsExactlyInAnyOrder(new UUID(0,4),other);
+            jdbc.update("UPDATE v_production_execution_workbench_roots SET owner_employee_id=? WHERE root_id=?",UUID.randomUUID(),PLAN);
+            assertThat(service.inProgressTasks(null,true,20).getTotal()).isZero();
+            assertThatThrownBy(()->service.inProgressTask(new UUID(0,4),true)).isInstanceOf(ApiException.class);
+        } finally {
+            jdbc.update("UPDATE v_production_execution_workbench_roots SET owner_employee_id=? WHERE root_id=?",EMPLOYEE,PLAN);
+            jdbc.update("UPDATE production_execution_segments SET status='READY' WHERE id=?",other);
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET segment_status='READY' WHERE segment_id=?",other);
+        }
+    }
+
+    private void loginOperational(String... permissions) {
+        var actor=new com.uten.imp.security.AuthUser(UUID.randomUUID(),EMPLOYEE,"query-operator",Set.of(permissions),false,true,false);
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(actor,null,actor.getAuthorities()));
     }
 }

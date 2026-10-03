@@ -9,6 +9,7 @@ public enum DocumentKind {
     XLSX,
     XLS,
     CSV,
+    DOCX,
     PDF,
     PNG,
     JPEG,

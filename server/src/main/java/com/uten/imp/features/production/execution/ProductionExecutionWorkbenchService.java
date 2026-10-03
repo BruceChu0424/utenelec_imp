@@ -196,6 +196,54 @@ public class ProductionExecutionWorkbenchService {
                 requestedSize);
     }
 
+    /**
+     * Bounded actual-production query. Unlike the root workbench's broad "in progress" category,
+     * these rows have explicitly started and are exactly IN_PROGRESS. Both views retain their
+     * existing owner/assignment predicate and the same quantity projection used by the UI.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ProductionExecutionWorkbenchSegment> inProgressTasks(
+            String productKeyword, boolean planningScope, int limit) {
+        return inProgressTasks(productKeyword, planningScope, null, Math.max(1, Math.min(20, limit)));
+    }
+
+    @Transactional(readOnly = true)
+    public ProductionExecutionWorkbenchSegment inProgressTask(UUID segmentId, boolean planningScope) {
+        if (segmentId == null) throw new ApiException(ErrorCode.NOT_FOUND, "在产工单不存在或不在当前范围内");
+        return inProgressTasks(null, planningScope, segmentId, 1).getItems().stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "在产工单不存在或不在当前范围内"));
+    }
+
+    private PageResponse<ProductionExecutionWorkbenchSegment> inProgressTasks(
+            String productKeyword, boolean planningScope, UUID segmentId, int limit) {
+        com.uten.imp.security.CurrentAuthorityGuard.requireAll(planningScope
+                ? "production_execution:overview" : "production_execution:view");
+        if (productKeyword != null && (productKeyword.length() > 80
+                || productKeyword.codePoints().anyMatch(Character::isISOControl)))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "货品名称或编码不能超过 80 个字");
+        String keyword = productKeyword == null || productKeyword.isBlank() ? null : productKeyword.strip().toLowerCase(Locale.ROOT);
+        NativeReadScope rootScope = planningScope
+                ? productionAccess.nativeReadScope("root.owner_employee_id", "inProgressOwners") : null;
+        boolean seeAllWorkshops = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        UUID employeeId = currentUser.employeeId().orElse(null);
+        if (!planningScope && !seeAllWorkshops && employeeId == null)
+            throw new ApiException(ErrorCode.FORBIDDEN);
+        String predicate = "task.segment_status = 'IN_PROGRESS' AND " + (planningScope
+                ? "EXISTS (SELECT 1 FROM v_production_execution_workbench_roots root"
+                    + " WHERE root.root_type = task.root_type AND root.root_id = task.root_id AND ("
+                    + rootVisibility(rootScope.predicate()) + "))"
+                : seeAllWorkshops ? "TRUE" : assignmentPredicate("task"));
+        if (keyword != null) predicate += " AND (strpos(lower(COALESCE(task.product_code,'')), :productKeyword) > 0"
+                + " OR strpos(lower(COALESCE(task.product_name,'')), :productKeyword) > 0)";
+        if (segmentId != null) predicate += " AND task.segment_id = :inProgressSegmentId";
+        return segmentPage(predicate, query -> {
+            if (rootScope != null) rootScope.bind(query);
+            else if (!seeAllWorkshops) query.setParameter("employeeId", employeeId);
+            if (keyword != null) query.setParameter("productKeyword", keyword);
+            if (segmentId != null) query.setParameter("inProgressSegmentId", segmentId);
+        }, 1, limit, "ORDER BY task.plan_begin_date ASC NULLS LAST, task.segment_code ASC, task.segment_id ASC");
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<ProductionExecutionWorkbenchSegment> workshopTasks(
             int requestedPage,

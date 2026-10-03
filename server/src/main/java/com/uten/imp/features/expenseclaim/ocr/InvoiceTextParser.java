@@ -51,6 +51,8 @@ final class InvoiceTextParser {
 
     /** 文本行（OCR 输出顺序）→ 票面要素；整体无价税合计返回 null（调用方报识别失败）。 */
     static RecognizedInvoiceDto parse(List<String> lines) {
+        if (lines != null && com.uten.imp.common.files.document.InvoiceMultiplicity.multiple(
+                lines.stream().filter(java.util.Objects::nonNull).limit(1000).toList())) return null;
         String text = lines == null ? "" : lines.stream().filter(java.util.Objects::nonNull)
                 .limit(1000).map(line -> line.substring(0, Math.min(2000, line.length())))
                 .collect(java.util.stream.Collectors.joining("\n"));

@@ -14,12 +14,12 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../features/sales/intake/sales_intake_launcher.dart';
-import '../../../features/sales/intake/sales_intake_models.dart';
 import '../../../features/sales/models/sales_doc.dart';
 import '../../auth/permissions.dart';
 import '../../providers/authenticated_scope_provider.dart';
 import '../ai_job_models.dart';
 import '../ai_job_runner.dart';
+import '../guided/ai_guided_file_plan.dart';
 import 'ai_chat_l10n.dart';
 import 'ai_chat_models.dart';
 import 'ai_chat_repository.dart';
@@ -86,12 +86,18 @@ class _ChatMessage {
     this.fileName,
     this.actions = const [],
     this.attempt,
+    this.documentResult,
+    this.documentJobId,
+    this.sourceFile,
   });
   final String text;
   final bool user;
   final String? fileName;
   final List<AiChatAction> actions;
   final _ChatAttempt? attempt;
+  final AiGuidedFileResult? documentResult;
+  final String? documentJobId;
+  final PlatformFile? sourceFile;
 }
 
 enum _ChatDelivery {
@@ -122,7 +128,6 @@ class _ChatAttempt {
   final String? previousJobId;
   final String? currentRoute;
   final String? intentHint;
-  String? attachmentJobId;
   String? submittedJobId;
   String? failure;
   bool chatSubmissionStarted = false;
@@ -150,6 +155,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   final _messages = <_ChatMessage>[];
   final _sourceFiles = <String, PlatformFile>{};
   final _completedActions = <AiChatAction>{};
+  final _guidedNavigatedJobs = <String>{};
+  final _guidedOpeningJobs = <String>{};
   final _dialogs = <DialogRoute<bool>>{};
   AiChatCapabilities? _capabilities;
   AiJobCancelToken? _cancel;
@@ -229,14 +236,14 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         _busy ||
         _picking ||
         widget.identity.scope.readOnly ||
-        _capabilities?.canUploadSalesOrder != true) {
+        _capabilities?.canUploadDocument != true) {
       return;
     }
     setState(() => _picking = true);
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: const ['xlsx', 'xls', 'csv'],
+        allowedExtensions: aiGuidedContentTypes.keys.toList(),
         withData: true,
         allowCompression: false,
       );
@@ -244,7 +251,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       final file = result.files.single;
       final bytes = file.bytes;
       final extension = file.extension?.toLowerCase();
-      if (!const ['xlsx', 'xls', 'csv'].contains(extension) ||
+      if (!aiGuidedContentTypes.containsKey(extension) ||
           bytes == null ||
           bytes.isEmpty) {
         setState(() => _error = _t('fileFailed'));
@@ -339,9 +346,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       attempt.delivery = resume
           ? _ChatDelivery.processing
           : _ChatDelivery.sending;
-      attempt.progressKey = file != null && attempt.attachmentJobId == null
-          ? 'uploading'
-          : 'sending';
+      attempt.progressKey = file != null ? 'uploading' : 'sending';
       if (!resume) {
         attempt.submittedJobId = null;
         attempt.chatSubmissionStarted = false;
@@ -349,6 +354,16 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     });
     _scrollToEnd();
     try {
+      if (file != null) {
+        await _performDocumentMessage(
+          message,
+          generation,
+          cancel,
+          runner,
+          resume: resume,
+        );
+        return;
+      }
       final AiJobSnapshot snapshot;
       if (resume && attempt.submittedJobId != null) {
         snapshot = await runner.resume(
@@ -356,29 +371,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           cancelToken: cancel,
         );
       } else {
-        if (file != null && attempt.attachmentJobId == null) {
-          final uploaded = await runner.run(
-            AiJobRequest(
-              kind: kSalesIntakeJobKind,
-              params: const {'docType': 'order'},
-              bytes: file.bytes!,
-              fileName: file.name,
-              contentType:
-                  kSalesIntakeContentTypes[file.extension!.toLowerCase()]!,
-            ),
-            cancelToken: cancel,
-          );
-          if (!_active(generation) || cancel.isCancelled) return;
-          attempt.attachmentJobId = uploaded.id;
-          _sourceFiles[uploaded.id] = file;
-        }
         if (!_active(generation) || cancel.isCancelled) return;
         setState(() => attempt.progressKey = 'sending');
         attempt.chatSubmissionStarted = true;
         final submitted = await repository.send(
           message: attempt.text,
           previousJobId: attempt.previousJobId,
-          attachmentJobId: attempt.attachmentJobId,
           currentRoute: attempt.currentRoute,
           intentHint: attempt.intentHint,
         );
@@ -447,6 +445,160 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
   }
 
+  Future<void> _performDocumentMessage(
+    _ChatMessage outgoing,
+    int generation,
+    AiJobCancelToken cancel,
+    AiJobRunner runner, {
+    required bool resume,
+  }) async {
+    final attempt = outgoing.attempt!;
+    final file = attempt.file!;
+    final AiJobSnapshot snapshot;
+    void progress(AiJobSnapshot value) {
+      if (!_active(generation)) return;
+      setState(() {
+        if (value.id.isNotEmpty) attempt.submittedJobId = value.id;
+        attempt.progressKey = switch (value.stage) {
+          'READING' => 'documentReading',
+          'PARSING' => 'documentParsing',
+          'CLASSIFYING' => 'documentClassifying',
+          'READY_TO_FILL' => 'documentReady',
+          _ => 'uploading',
+        };
+      });
+    }
+
+    if (resume && attempt.submittedJobId != null) {
+      snapshot = await runner.resume(
+        attempt.submittedJobId!,
+        cancelToken: cancel,
+        onProgress: progress,
+      );
+    } else {
+      snapshot = await runner.run(
+        AiJobRequest(
+          kind: aiGuidedRouteKind,
+          params: {'message': aiGuidedRequestMessage(attempt.text)},
+          bytes: file.bytes!,
+          fileName: file.name,
+          contentType: aiGuidedContentTypes[file.extension!.toLowerCase()]!,
+        ),
+        cancelToken: cancel,
+        onProgress: progress,
+      );
+    }
+    if (!_active(generation) || cancel.isCancelled) return;
+    final result = AiGuidedFileResult.fromJson(snapshot.result ?? const {});
+    if (!result.matchesSource(file)) {
+      throw AiJobFailure(
+        code: 'DOCUMENT_SOURCE_MISMATCH',
+        message: _t('documentSourceMismatch'),
+      );
+    }
+    final response = _ChatMessage(
+      text: result.summary.isEmpty ? result.title : result.summary,
+      documentResult: result,
+      documentJobId: snapshot.id,
+      sourceFile: file,
+    );
+    setState(() {
+      attempt.delivery = _ChatDelivery.answered;
+      _sourceFiles[snapshot.id] = file;
+      _messages.insert(_messages.indexOf(outgoing) + 1, response);
+    });
+    if (!result.needsChoice && result.workflow != AiGuidedWorkflow.none) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_current && _messages.contains(response)) {
+          _openGuided(response, result.workflow);
+        }
+      });
+    }
+  }
+
+  bool _workflowAllowed(AiGuidedWorkflow workflow) =>
+      workflow != AiGuidedWorkflow.none &&
+      _capabilities?.canUploadDocument == true &&
+      _capabilities!.workflows.contains(workflow.code) &&
+      !widget.identity.scope.readOnly &&
+      ref.read(currentPermissionsProvider).containsAll(workflow.permissions);
+
+  Future<void> _openGuided(
+    _ChatMessage message,
+    AiGuidedWorkflow workflow,
+  ) async {
+    if (!_current || _busy || !_workflowAllowed(workflow)) return;
+    final jobId = message.documentJobId;
+    final result = message.documentResult;
+    final file = message.sourceFile;
+    final identity = ref.read(aiGuidedFileIdentityProvider);
+    if (jobId == null ||
+        result == null ||
+        file == null ||
+        identity == null ||
+        _guidedNavigatedJobs.contains(jobId) ||
+        _guidedOpeningJobs.contains(jobId) ||
+        !result.matchesSource(file)) {
+      return;
+    }
+    // The destination is selected from this enum; server/model route strings
+    // are never evaluated, and no save/submit/approve endpoint is called here.
+    final route = switch (workflow) {
+      AiGuidedWorkflow.salesOrder => RoutePath.salesDocNew(
+        SalesDocType.order.pathSegment,
+      ),
+      AiGuidedWorkflow.salesQuote => RoutePath.salesDocNew(
+        SalesDocType.quote.pathSegment,
+      ),
+      AiGuidedWorkflow.expenseClaim => RouteName.expenseNew,
+      AiGuidedWorkflow.none => null,
+    };
+    if (route == null) return;
+    final plan = AiGuidedFilePlan(
+      jobId: jobId,
+      file: file,
+      result: result,
+      workflow: workflow,
+      identity: identity,
+    );
+    if (!plan.matches(ref)) return;
+    final generation = _generation;
+    setState(() => _guidedOpeningJobs.add(jobId));
+    try {
+      final verified = await validateAiGuidedFilePlan(ref, plan);
+      if (!_active(generation) ||
+          !_messages.contains(message) ||
+          !_workflowAllowed(workflow) ||
+          !verified.matches(ref)) {
+        return;
+      }
+      setState(() {
+        _guidedNavigatedJobs.add(jobId);
+        _open = false;
+      });
+      _focus.unfocus();
+      if (!mounted) return;
+      await context.push(route, extra: verified);
+    } catch (error) {
+      if (!_current) return;
+      if (error is ApiException &&
+          (error.httpStatus == 401 ||
+              error.httpStatus == 403 ||
+              error.code == 'FORBIDDEN')) {
+        setState(_clear);
+        _loadCapabilities();
+        return;
+      }
+      setState(() {
+        _guidedNavigatedJobs.remove(jobId);
+        _open = true;
+        _error = _t('documentOpenFailed');
+      });
+    } finally {
+      if (_current) setState(() => _guidedOpeningJobs.remove(jobId));
+    }
+  }
+
   _ChatDelivery _failedDelivery(_ChatAttempt attempt, Object error) {
     if (error is AiJobFailure && error.isCancelled) {
       return _ChatDelivery.stopped;
@@ -502,6 +654,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     _messages.clear();
     _sourceFiles.clear();
     _completedActions.clear();
+    _guidedNavigatedJobs.clear();
+    _guidedOpeningJobs.clear();
     _attachment = null;
     _previousJobId = null;
     _error = null;
@@ -1044,7 +1198,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       hintText: _t(
-                        _capabilities?.canUploadSalesOrder == true
+                        _capabilities?.canUploadDocument == true
                             ? 'hint'
                             : 'hintNoUpload',
                       ),
@@ -1073,7 +1227,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                   ),
                   child: Row(
                     children: [
-                      if (_capabilities?.canUploadSalesOrder == true &&
+                      if (_capabilities?.canUploadDocument == true &&
                           !widget.identity.scope.readOnly)
                         IconButton(
                           key: const ValueKey('ai-chat-attach'),
@@ -1257,8 +1411,75 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             ),
             if (message.attempt != null) _messageDelivery(message),
             for (final action in message.actions) _action(action),
+            if (message.documentResult != null) _documentRouteCard(message),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _documentRouteCard(_ChatMessage message) {
+    final result = message.documentResult!;
+    final opened = _guidedNavigatedJobs.contains(message.documentJobId);
+    final choices = <AiGuidedWorkflow, String>{
+      if (result.workflow != AiGuidedWorkflow.none &&
+          _workflowAllowed(result.workflow))
+        result.workflow: result.title,
+      for (final choice in result.choices)
+        if (_workflowAllowed(choice.workflow)) choice.workflow: choice.title,
+    };
+    return Container(
+      key: ValueKey('ai-guided-route-${message.documentJobId}'),
+      margin: const EdgeInsets.only(top: UtenSpacing.s8),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        borderRadius: UtenRadius.lgAll,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(result.title, style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            message.sourceFile!.name,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (result.steps.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(_t('documentPlanSteps')),
+            for (final step in result.steps) Text('• $step'),
+          ],
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            _t(
+              opened
+                  ? 'documentOpened'
+                  : choices.isEmpty
+                  ? 'documentUnsupported'
+                  : 'documentManualSave',
+            ),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (!opened)
+            for (final entry in choices.entries)
+              Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                child: UtenButton(
+                  type: UtenButtonType.secondary,
+                  onPressed:
+                      _busy ||
+                          _guidedOpeningJobs.contains(message.documentJobId)
+                      ? null
+                      : () => _openGuided(message, entry.key),
+                  child: Flexible(
+                    child: Text(
+                      entry.value.isEmpty ? entry.key.code : entry.value,
+                    ),
+                  ),
+                ),
+              ),
+        ],
       ),
     );
   }

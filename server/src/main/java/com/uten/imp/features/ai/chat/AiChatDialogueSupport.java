@@ -43,6 +43,11 @@ final class AiChatDialogueSupport {
         Set<String> tools = toolNames == null ? Set.of() : toolNames;
         List<String> examples = new ArrayList<>();
         if (scope.contains("SELF") && tools.contains("my_workbench")) examples.add("我的工作台有哪些待办？");
+        if (scope.contains("SELF") && tools.contains("workbench_tasks")) examples.add("分别列出我各项业务的待办和进行中任务。");
+        if (scope.contains("PRODUCTION") && tools.contains("production_in_progress")) examples.add("有什么正在生产的产品？");
+        if (scope.contains("WAREHOUSE") && tools.contains("inventory_lookup")) examples.add("帮我查物料编码 A001 的现存、预留和可用数量。");
+        if (scope.contains("SALES") && tools.contains("query_client_credit")) examples.add("客户的应收和逾期情况如何？请说明有哪些数据依据。");
+        if (scope.contains("HR") && tools.contains("hr_tasks")) examples.add("有哪些待转正和近期入职的人事任务？");
         if (scope.contains("PRODUCTION")) examples.add("生产日报的本次数量怎么填写？请举例。");
         if (scope.contains("SALES")) examples.add("报价核价、客户同意和订货之间是什么顺序？");
         if (scope.contains("PURCHASE")) examples.add("采购分批到货时，数量应该怎么核对？");

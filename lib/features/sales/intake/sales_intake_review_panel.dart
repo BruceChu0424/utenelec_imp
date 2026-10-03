@@ -10,6 +10,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -137,13 +139,14 @@ Future<SalesIntakeReviewOutcome?> showSalesIntakeReviewPanel(
   String? jobId,
   String? presetClientId,
   String? presetClientName,
+  AiGuidedFilePlan? guidedPlan,
 }) {
   return showDialog<SalesIntakeReviewOutcome>(
     context: context,
     barrierDismissible: false,
     builder: (dialogContext) {
       final size = MediaQuery.sizeOf(dialogContext);
-      final panel = SalesIntakeReviewPanel(
+      Widget panel = SalesIntakeReviewPanel(
         result: result,
         docType: docType,
         actions: actions,
@@ -151,6 +154,25 @@ Future<SalesIntakeReviewOutcome?> showSalesIntakeReviewPanel(
         presetClientId: presetClientId,
         presetClientName: presetClientName,
       );
+      if (guidedPlan != null) {
+        final content = panel;
+        panel = Consumer(
+          builder: (context, ref, _) {
+            if (ref.watch(aiGuidedFileIdentityProvider) !=
+                    guidedPlan.identity ||
+                !guidedPlan.matches(ref)) {
+              final route = ModalRoute.of(dialogContext);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (route != null && route.isActive) {
+                  route.navigator?.removeRoute(route);
+                }
+              });
+              return const SizedBox.shrink();
+            }
+            return content;
+          },
+        );
+      }
       if (size.width < 700) return Dialog.fullscreen(child: panel);
       // 圆角沿用主题 dialogTheme(全站弹窗 18)。
       return Dialog(

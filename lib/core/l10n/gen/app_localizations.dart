@@ -14563,7 +14563,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatAttach.
   ///
   /// In zh, this message translates to:
-  /// **'上传报价文件'**
+  /// **'上传文件'**
   String get aiChatAttach;
 
   /// No description provided for @aiChatRemoveFile.
@@ -14575,7 +14575,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatFileHint.
   ///
   /// In zh, this message translates to:
-  /// **'支持 Excel、CSV；文件会用于生成待核对的订货单。'**
+  /// **'支持 Excel、CSV/TXT、PDF、图片和 DOCX，最大15MB；先识别用途，再辅助填写。'**
   String get aiChatFileHint;
 
   /// No description provided for @aiChatFileFailed.
@@ -14755,7 +14755,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatAttachmentQuestion.
   ///
   /// In zh, this message translates to:
-  /// **'请根据这份报价文件帮我生成订货单。'**
+  /// **'请分析这份文件，判断适合办理的业务并辅助填写。'**
   String get aiChatAttachmentQuestion;
 
   /// No description provided for @aiChatLimit.
@@ -14883,6 +14883,312 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'知道了'**
   String get aiChatInfoDone;
+
+  /// No description provided for @aiChatDocumentReading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取文件'**
+  String get aiChatDocumentReading;
+
+  /// No description provided for @aiChatDocumentParsing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在识别文件内容'**
+  String get aiChatDocumentParsing;
+
+  /// No description provided for @aiChatDocumentClassifying.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在判断文件用途'**
+  String get aiChatDocumentClassifying;
+
+  /// No description provided for @aiChatDocumentReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件已分析'**
+  String get aiChatDocumentReady;
+
+  /// No description provided for @aiChatDocumentSourceMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件来源校验失败，请重新选择原文件。'**
+  String get aiChatDocumentSourceMismatch;
+
+  /// No description provided for @aiChatDocumentOpenFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面未能打开，请重试。'**
+  String get aiChatDocumentOpenFailed;
+
+  /// No description provided for @aiChatDocumentManualSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对填写结果；保存、提交和审核由你操作。'**
+  String get aiChatDocumentManualSave;
+
+  /// No description provided for @aiChatDocumentPlanSteps.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理步骤'**
+  String get aiChatDocumentPlanSteps;
+
+  /// No description provided for @aiChatDocumentUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前用途尚未接入辅助填写，请按识别说明到对应页面处理。'**
+  String get aiChatDocumentUnsupported;
+
+  /// No description provided for @aiChatDocumentOpened.
+  ///
+  /// In zh, this message translates to:
+  /// **'已打开对应表单；请回到该表单或任务中心继续处理。'**
+  String get aiChatDocumentOpened;
+
+  /// No description provided for @aiChatGuidedParsing.
+  ///
+  /// In zh, this message translates to:
+  /// **'识别文件'**
+  String get aiChatGuidedParsing;
+
+  /// No description provided for @aiChatGuidedValidating.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在核对权限和原文件'**
+  String get aiChatGuidedValidating;
+
+  /// No description provided for @aiChatGuidedRecognizing.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在识别客户与明细'**
+  String get aiChatGuidedRecognizing;
+
+  /// No description provided for @aiChatGuidedMatching.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户与货品匹配'**
+  String get aiChatGuidedMatching;
+
+  /// No description provided for @aiChatGuidedReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待核对匹配结果'**
+  String get aiChatGuidedReview;
+
+  /// No description provided for @aiChatGuidedFilling.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在填入已核对的内容'**
+  String get aiChatGuidedFilling;
+
+  /// No description provided for @aiChatGuidedHeader.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写表头'**
+  String get aiChatGuidedHeader;
+
+  /// No description provided for @aiChatGuidedRows.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写明细'**
+  String get aiChatGuidedRows;
+
+  /// No description provided for @aiChatGuidedFilled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已填入，等待你核对'**
+  String get aiChatGuidedFilled;
+
+  /// No description provided for @aiChatGuidedManualSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待你手动保存'**
+  String get aiChatGuidedManualSave;
+
+  /// No description provided for @aiChatGuidedWaiting.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂停，请核对后继续'**
+  String get aiChatGuidedWaiting;
+
+  /// No description provided for @aiChatGuidedExisting.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保留你的现有输入，请核对后继续。'**
+  String get aiChatGuidedExisting;
+
+  /// No description provided for @aiChatGuidedNoMasterWrites.
+  ///
+  /// In zh, this message translates to:
+  /// **'原文件已保留；新增客户、货品或扩展列需要你到对应页面操作。'**
+  String get aiChatGuidedNoMasterWrites;
+
+  /// No description provided for @aiChatGuidedMasterManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增主档需要你手动操作，请先完成后再选择。'**
+  String get aiChatGuidedMasterManual;
+
+  /// No description provided for @aiChatGuidedClient.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户'**
+  String get aiChatGuidedClient;
+
+  /// No description provided for @aiChatGuidedFilledFields.
+  ///
+  /// In zh, this message translates to:
+  /// **'已填入的内容'**
+  String get aiChatGuidedFilledFields;
+
+  /// No description provided for @aiChatGuidedLocalSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机草稿保存失败，原文件仍在当前页面。请保持页面并重试，勿关闭。'**
+  String get aiChatGuidedLocalSaveFailed;
+
+  /// No description provided for @aiChatGuidedExpenseSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'报销单已由你保存，可继续登记票据'**
+  String get aiChatGuidedExpenseSaved;
+
+  /// No description provided for @aiChatGuidedInvoiceRegister.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传原件并登记发票'**
+  String get aiChatGuidedInvoiceRegister;
+
+  /// No description provided for @aiChatGuidedOpenSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看已保存的报销单'**
+  String get aiChatGuidedOpenSaved;
+
+  /// No description provided for @aiChatGuidedUploadUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'原件上传结果未确认，未重复上传。请查看已保存报销中的原件后再核对。'**
+  String get aiChatGuidedUploadUncertain;
+
+  /// No description provided for @aiChatGuidedInvoiceFields.
+  ///
+  /// In zh, this message translates to:
+  /// **'原件票面信息（待核对）'**
+  String get aiChatGuidedInvoiceFields;
+
+  /// No description provided for @aiChatGuidedInvoiceReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'以上为识别建议，请与原票核对。登记发票仍需你确认。'**
+  String get aiChatGuidedInvoiceReview;
+
+  /// No description provided for @aiChatInvoiceInvoiceType.
+  ///
+  /// In zh, this message translates to:
+  /// **'发票类型'**
+  String get aiChatInvoiceInvoiceType;
+
+  /// No description provided for @aiChatInvoiceInvoiceCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'发票代码'**
+  String get aiChatInvoiceInvoiceCode;
+
+  /// No description provided for @aiChatInvoiceInvoiceNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'发票号码'**
+  String get aiChatInvoiceInvoiceNo;
+
+  /// No description provided for @aiChatInvoiceIssueDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'开票日期'**
+  String get aiChatInvoiceIssueDate;
+
+  /// No description provided for @aiChatInvoiceSellerName.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售方名称'**
+  String get aiChatInvoiceSellerName;
+
+  /// No description provided for @aiChatInvoiceSellerTaxNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'销售方税号'**
+  String get aiChatInvoiceSellerTaxNo;
+
+  /// No description provided for @aiChatInvoiceBuyerName.
+  ///
+  /// In zh, this message translates to:
+  /// **'购买方名称'**
+  String get aiChatInvoiceBuyerName;
+
+  /// No description provided for @aiChatInvoiceBuyerTaxNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'购买方税号'**
+  String get aiChatInvoiceBuyerTaxNo;
+
+  /// No description provided for @aiChatInvoiceAmountExclTax.
+  ///
+  /// In zh, this message translates to:
+  /// **'不含税金额'**
+  String get aiChatInvoiceAmountExclTax;
+
+  /// No description provided for @aiChatInvoiceTaxAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'税额'**
+  String get aiChatInvoiceTaxAmount;
+
+  /// No description provided for @aiChatInvoiceTotalAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'价税合计'**
+  String get aiChatInvoiceTotalAmount;
+
+  /// No description provided for @aiChatInvoiceItemSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'项目摘要'**
+  String get aiChatInvoiceItemSummary;
+
+  /// No description provided for @aiChatInvoiceTypeGeneral.
+  ///
+  /// In zh, this message translates to:
+  /// **'增值税电子普票'**
+  String get aiChatInvoiceTypeGeneral;
+
+  /// No description provided for @aiChatInvoiceTypeSpecial.
+  ///
+  /// In zh, this message translates to:
+  /// **'增值税专票'**
+  String get aiChatInvoiceTypeSpecial;
+
+  /// No description provided for @aiChatInvoiceTypeDigital.
+  ///
+  /// In zh, this message translates to:
+  /// **'数电发票'**
+  String get aiChatInvoiceTypeDigital;
+
+  /// No description provided for @aiChatInvoiceTypePaperGeneral.
+  ///
+  /// In zh, this message translates to:
+  /// **'纸质普票'**
+  String get aiChatInvoiceTypePaperGeneral;
+
+  /// No description provided for @aiChatInvoiceTypePaperSpecial.
+  ///
+  /// In zh, this message translates to:
+  /// **'纸质专票'**
+  String get aiChatInvoiceTypePaperSpecial;
+
+  /// No description provided for @aiChatInvoiceTypeOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他票据'**
+  String get aiChatInvoiceTypeOther;
 }
 
 class _AppLocalizationsDelegate

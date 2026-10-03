@@ -33,23 +33,40 @@ public class AiChatController {
     private final AiChatPageGuideCatalog pages;
     private final ObjectMapper json;
     private final AiChatToolRegistry tools;
+    private final AiDocumentWorkflows workflows;
     public AiChatController(AiJobService jobs, AiChatAccessPolicy access, AiChatEvidence evidence,
-                            AiCompletionPort ai, AiChatPageGuideCatalog pages, ObjectMapper json, AiChatToolRegistry tools) {
-        this.jobs = jobs; this.access = access; this.evidence = evidence; this.ai = ai; this.pages = pages; this.json = json; this.tools = tools;
+                            AiCompletionPort ai, AiChatPageGuideCatalog pages, ObjectMapper json, AiChatToolRegistry tools,
+                            AiDocumentWorkflows workflows) {
+        this.jobs = jobs; this.access = access; this.evidence = evidence; this.ai = ai; this.pages = pages; this.json = json; this.tools = tools; this.workflows = workflows;
     }
     @GetMapping("/capabilities")
     public Map<String, Object> capabilities() {
         try { access.requireChat(); }
         catch (ApiException denied) { return Map.of("canChat", false, "available", false,
-                "canUploadSalesOrder", false, "canManagePermissions", false, "scopeSummary", "当前账号不能使用 AI 对话", "suggestions", List.of()); }
+                "canUploadSalesOrder", false, "canUploadDocument", false, "workflows", List.of(), "canManagePermissions", false, "scopeSummary", "当前账号不能使用 AI 对话", "suggestions", List.of()); }
         var actor = access.requireChat();
-        var domains = access.domains();
         boolean available = ai.availability().available();
-        return Map.of("canChat", true, "available", available,
-                "canUploadSalesOrder", domains.contains("SALES") && (actor.isSuperAdmin() || actor.getPermissions().containsAll(java.util.Set.of("sales_order:view", "sales_order:create"))),
-                "canManagePermissions", tools.available("prepare_permission_grant").isPresent(),
-                "scopeSummary", actor.isSuperAdmin() ? "超级管理员；操作仍需明确确认和审计" : "仅限本人部门、现行功能权限和数据范围",
-                "suggestions", List.of("这个页面怎么填写？请举例", "我能让你帮忙做什么？", "我的工作台有哪些待办？"));
+        var allowed = tools.available();
+        var destinations = workflows.available().stream().map(value -> value.get("workflow")).toList();
+        var catalog = allowed.stream().sorted(java.util.Comparator.comparing(com.uten.imp.application.port.AiChatToolPort::name))
+                .map(tool -> Map.of("name", tool.name(), "title", tool.title(), "description", tool.description(), "domain", tool.domain())).toList();
+        var result = new LinkedHashMap<String, Object>();
+        result.put("canChat", true); result.put("available", available);
+        result.put("canUploadSalesOrder", destinations.contains("SALES_ORDER"));
+        result.put("canUploadDocument", !destinations.isEmpty()); result.put("workflows", destinations);
+        result.put("canManagePermissions", tools.available("prepare_permission_grant").isPresent());
+        result.put("scopeSummary", actor.isSuperAdmin() ? "超级管理员；业务保存、提交和审核仍由本人操作" : "仅限本人部门、现行功能权限和数据范围");
+        result.put("suggestions", List.of("这个页面怎么填写？请举例", "我能让你帮忙做什么？", "我的工作台有哪些待办？"));
+        result.put("tools", catalog);
+        result.put("catalogVersion", catalogVersion(catalog, destinations));
+        return result;
+    }
+    private String catalogVersion(Object catalog, Object destinations) {
+        try {
+            byte[] bytes = json.writer().with(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                    .writeValueAsBytes(Map.of("tools", catalog, "workflows", destinations, "contract", 1));
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException | JsonProcessingException impossible) { throw new IllegalStateException(impossible); }
     }
     @PostMapping("/messages")
     public ResponseEntity<AiJobView> message(@Valid @RequestBody AiChatRequest request) {

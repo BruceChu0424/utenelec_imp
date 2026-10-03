@@ -8,6 +8,7 @@
 // 编辑 REJECTED 保存后仍在 REJECTED，重提在详情页（清驳回痕迹并重新通知审批人）。
 
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
@@ -40,12 +41,22 @@ import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/platform_tables/platform_row_draft.dart';
 import '../widgets/expense_item_columns.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../shared/ai/guided/ai_guided_file_plan.dart';
+import '../../../shared/ai/guided/ai_guided_file_banner.dart';
+import '../../../shared/ai/chat/ai_chat_l10n.dart';
+import '../../../shared/attachments/attachment_service.dart';
+import '../models/expense_guided_values.dart';
+import '../repositories/expense_repository.dart';
+import '../widgets/expense_guided_invoice_preview.dart';
+import '../widgets/expense_invoice_section.dart';
 
 class ExpenseClaimEditPage extends ConsumerStatefulWidget {
-  const ExpenseClaimEditPage({super.key, this.claimId});
+  const ExpenseClaimEditPage({super.key, this.claimId, this.initialGuidedPlan});
 
   /// 空 = 新建；非空 = 编辑（DRAFT/REJECTED）。
   final String? claimId;
+  final AiGuidedFilePlan? initialGuidedPlan;
 
   @override
   ConsumerState<ExpenseClaimEditPage> createState() =>
@@ -68,6 +79,14 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   bool _initialized = false;
   int? _editVersion;
   Map<String, dynamic>? _pendingItemDraft;
+  AiGuidedFilePlan? _guidedPlan;
+  String _guidedStatus = 'documentReady';
+  String? _createdGuidedClaimId;
+  String? _guidedAttachmentId;
+  bool _guidedUploadStarted = false;
+  bool _guidedInitializing = false;
+  bool _guidedValidated = false;
+  String? _guidedError;
 
   AppLocalizations get l10n => AppLocalizations.of(context);
 
@@ -99,9 +118,36 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         },
     ],
     'pendingItem': _pendingItemDraft,
+    'guidedPlan': _guidedPlan?.toLocalDraft(),
+    'guidedStatus': _guidedStatus,
+    'createdDocId': _createdGuidedClaimId,
+    'guidedAttachmentId': _guidedAttachmentId,
+    'guidedUploadStarted': _guidedUploadStarted,
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    // Confirmed create/upload identities survive even when the source blob is
+    // damaged. Never downgrade an already-created claim into a fresh create.
+    _createdGuidedClaimId = data['createdDocId'] is String
+        ? data['createdDocId'] as String
+        : null;
+    _guidedAttachmentId = data['guidedAttachmentId'] is String
+        ? data['guidedAttachmentId'] as String
+        : null;
+    _guidedUploadStarted = data['guidedUploadStarted'] == true;
+    final restoredPlan = AiGuidedFilePlan.restoreLocalDraft(
+      data['guidedPlan'],
+      ref.read(aiGuidedFileIdentityProvider),
+    );
+    if (data['guidedPlan'] != null &&
+        (restoredPlan == null ||
+            restoredPlan.workflow != AiGuidedWorkflow.expenseClaim)) {
+      throw FormatException(aiChatText(context, 'documentSourceMismatch'));
+    }
+    if (restoredPlan != null) {
+      _guidedPlan = restoredPlan;
+      _guidedValidated = false;
+    }
     _titleController.text = draftText(data, 'title');
     _remarkController.text = draftText(data, 'remark');
     _items.clear();
@@ -128,13 +174,31 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     _pendingItemDraft = data['pendingItem'] == null
         ? null
         : draftMap(data['pendingItem']);
+    if (restoredPlan != null &&
+        restoredPlan.workflow == AiGuidedWorkflow.expenseClaim) {
+      _guidedPlan = restoredPlan;
+      _guidedStatus =
+          const {
+            'guidedFilled',
+            'guidedWaiting',
+            'guidedExpenseSaved',
+            'guidedExisting',
+            'documentReady',
+          }.contains(data['guidedStatus'])
+          ? data['guidedStatus'] as String
+          : 'guidedWaiting';
+    }
     if (mounted) setState(() {});
   }
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
+    _guidedPlan = widget.initialGuidedPlan;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await initializeFormDraft();
+      if (mounted) _applyGuidedPlan();
+    });
   }
 
   @override
@@ -145,6 +209,166 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     _titleController.dispose();
     _remarkController.dispose();
     super.dispose();
+  }
+
+  Future<void> _applyGuidedPlan() async {
+    final plan = _guidedPlan;
+    if (plan == null || _isEdit || !plan.matches(ref) || _guidedInitializing) {
+      return;
+    }
+    setState(() {
+      _guidedInitializing = true;
+      _guidedValidated = false;
+      _guidedStatus = 'guidedValidating';
+    });
+    try {
+      final verified = await validateAiGuidedFilePlan(ref, plan);
+      if (!mounted || !verified.matches(ref)) return;
+      setState(() {
+        _guidedPlan = verified;
+        _guidedValidated = true;
+      });
+      if (_createdGuidedClaimId != null) {
+        setState(() => _guidedStatus = 'guidedExpenseSaved');
+        return;
+      }
+      if (_items.isNotEmpty ||
+          _titleController.text.isNotEmpty ||
+          _remarkController.text.isNotEmpty) {
+        setState(() => _guidedStatus = 'guidedExisting');
+        return;
+      }
+      final fields = verified.result.fields;
+      final summary = verified.result.isHighConfidence('itemSummary')
+          ? fields['itemSummary']
+          : null;
+      final title = summary?.trim().isNotEmpty == true
+          ? summary!
+          : verified.file.name;
+      setState(() {
+        _titleController.text = title.substring(
+          0,
+          title.length > 200 ? 200 : title.length,
+        );
+        _guidedStatus = 'guidedHeader';
+      });
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || !verified.matches(ref)) return;
+      final item = guidedExpenseItem(verified, const Uuid().v4());
+      setState(() {
+        if (item != null) _items.add(item);
+        _guidedStatus = item != null ? 'guidedFilled' : 'guidedWaiting';
+      });
+      // Real durability is acknowledged only after the own-account local draft
+      // store commits. Quota/disk failures remain actionable on this page.
+      await saveFormDraftNow();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _guidedStatus = 'guidedWaiting';
+        _guidedError = error is ApiException
+            ? error.message
+            : aiChatText(context, 'guidedLocalSaveFailed');
+      });
+    } finally {
+      if (mounted) setState(() => _guidedInitializing = false);
+    }
+  }
+
+  /// Explicit user action after they saved the claim. An unknown upload result
+  /// is reconciled from persisted owner/file identity before any new write.
+  Future<void> _registerGuidedInvoice() async {
+    final plan = _guidedPlan;
+    final claimId = _createdGuidedClaimId;
+    if (_busy || plan == null || claimId == null || !plan.matches(ref)) return;
+    setState(() {
+      _busy = true;
+      _guidedError = null;
+    });
+    try {
+      final verified = await validateAiGuidedFilePlan(ref, plan);
+      if (!mounted || !verified.matches(ref)) return;
+      final repository = ref.read(expenseRepositoryProvider);
+      var claim = await repository.getById(claimId);
+      if (!mounted || !verified.matches(ref)) return;
+      final employeeId = ref.read(sessionProvider).user?.employeeId;
+      if (claim.applicantId != employeeId ||
+          (claim.status != ExpenseClaimStatus.draft &&
+              claim.status != ExpenseClaimStatus.rejected)) {
+        throw ApiException(
+          'FORBIDDEN',
+          aiChatText(context, 'permissionChanged'),
+        );
+      }
+      final existing = claim.attachments
+          .where(
+            (attachment) =>
+                !attachment.deleted &&
+                attachment.ownerType == 'EXPENSE_CLAIM' &&
+                attachment.ownerId == claimId &&
+                attachment.sha256 == verified.result.sha256Hex &&
+                attachment.sizeBytes == verified.file.bytes!.length &&
+                attachment.uploadedBy == verified.identity.scope.userId,
+          )
+          .firstOrNull;
+      if (existing != null) {
+        _guidedAttachmentId = existing.id;
+        _guidedUploadStarted = false;
+      } else if (_guidedUploadStarted || _guidedAttachmentId != null) {
+        throw ApiException(
+          'UPLOAD_RESULT_UNKNOWN',
+          aiChatText(context, 'guidedUploadUncertain'),
+        );
+      } else {
+        _guidedUploadStarted = true;
+        await saveFormDraftNow();
+        if (!mounted || !verified.matches(ref)) return;
+        final attachment = await ref
+            .read(attachmentServiceProvider)
+            .uploadGuarded(
+              ownerType: 'EXPENSE_CLAIM',
+              ownerId: claimId,
+              fileName: verified.file.name,
+              contentType:
+                  aiGuidedContentTypes[verified.file.extension!.toLowerCase()]!,
+              bytes: verified.file.bytes!,
+              canContinue: () => mounted && verified.matches(ref),
+            );
+        if (!mounted || !verified.matches(ref)) return;
+        _guidedAttachmentId = attachment.id;
+        _guidedUploadStarted = false;
+      }
+      await checkpointFormDraftAfterCreation();
+      claim = await repository.getById(claimId);
+      if (!mounted || !verified.matches(ref)) return;
+      _guidedPlan = verified;
+      final saved = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ExpenseInvoiceFormDialog(
+          claimId: claimId,
+          attachments: claim.attachments,
+          expectedVersion: claim.version,
+          guidedFields: verified.result.fields,
+          guidedAttachmentId: _guidedAttachmentId,
+          guidedPlan: verified,
+        ),
+      );
+      if (!mounted || !verified.matches(ref)) return;
+      if (saved == true) {
+        await completeFormDraft();
+        if (mounted) context.replace(RoutePath.expenseDetail(claimId));
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _guidedError = error is ApiException
+            ? error.message
+            : aiChatText(context, 'guidedLocalSaveFailed'),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   double get _total =>
@@ -204,7 +428,11 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   }
 
   Future<void> _save() async {
-    if (_busy) return;
+    if (_busy || _guidedInitializing || _createdGuidedClaimId != null) return;
+    if (_guidedPlan != null &&
+        (!_guidedValidated || !_guidedPlan!.matches(ref))) {
+      return;
+    }
     if (_pendingItemDraft != null) {
       context.appWarning('还有未完成的报销明细，请先继续填写或放弃该明细');
       await _addItem();
@@ -227,6 +455,33 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
 
     setState(() => _busy = true);
     try {
+      if (_guidedPlan case final plan?) {
+        final before = jsonEncode(captureFormDraft());
+        setState(() {
+          _guidedValidated = false;
+          _guidedStatus = 'guidedValidating';
+        });
+        final verified = await validateAiGuidedFilePlan(ref, plan);
+        if (!mounted || !verified.matches(ref)) return;
+        // Only the status label changes during this guard; fields must not.
+        final after = {
+          ...captureFormDraft(),
+          'guidedStatus':
+              (jsonDecode(before) as Map<String, dynamic>)['guidedStatus'],
+        };
+        if (jsonEncode(after) != before) {
+          setState(() {
+            _guidedValidated = true;
+            _guidedStatus = 'guidedExisting';
+          });
+          return;
+        }
+        setState(() {
+          _guidedPlan = verified;
+          _guidedValidated = true;
+          _guidedStatus = 'guidedFilled';
+        });
+      }
       if (_isEdit) {
         await updateExpense(
           ref,
@@ -259,13 +514,29 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
           remark: remark.isEmpty ? null : remark,
         ),
       );
+      if (_guidedPlan != null) {
+        _createdGuidedClaimId = claim.id;
+        await checkpointFormDraftAfterCreation();
+        if (mounted) setState(() => _guidedStatus = 'guidedExpenseSaved');
+        return;
+      }
       await completeFormDraft();
       if (mounted) {
         context.appSuccess(l10n.expenseFlowDraftSaved);
         context.replace(RoutePath.expenseDetail(claim.id));
       }
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted) {
+        if (_guidedPlan != null && !_guidedValidated) {
+          setState(() {
+            _guidedStatus = 'guidedWaiting';
+            _guidedError = error is ApiException
+                ? error.message
+                : aiChatText(context, 'failed');
+          });
+        }
+        context.appApiError(error);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -273,6 +544,32 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
 
   @override
   Widget build(BuildContext context) {
+    final plan = _guidedPlan;
+    if (plan != null &&
+        (ref.watch(aiGuidedFileIdentityProvider) != plan.identity ||
+            plan.workflow != AiGuidedWorkflow.expenseClaim ||
+            !plan.matches(ref))) {
+      return Scaffold(
+        body: Center(child: Text(aiChatText(context, 'permissionChanged'))),
+      );
+    }
+    if (plan != null && !_guidedValidated) {
+      return withFormDraft(
+        Scaffold(
+          appBar: UtenAppBar(title: l10n.expenseFlowNew, showBackButton: true),
+          body: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: AiGuidedFileBanner(
+              plan: plan,
+              status: _guidedStatus,
+              detail: _guidedError,
+              busy: _guidedInitializing || _busy,
+              onRetry: _guidedInitializing || _busy ? null : _applyGuidedPlan,
+            ),
+          ),
+        ),
+      );
+    }
     final theme = Theme.of(context);
     final detail = _isEdit
         ? ref.watch(expenseDetailProvider(widget.claimId!))
@@ -302,6 +599,31 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
           UtenFloatingActionGroup.scrollClearance,
         ),
         children: [
+          if (plan != null) ...[
+            AiGuidedFileBanner(
+              plan: plan,
+              status: _guidedStatus,
+              busy: _busy || _guidedInitializing,
+              detail: _guidedError,
+              onRetry: !_guidedValidated && !_guidedInitializing
+                  ? _applyGuidedPlan
+                  : null,
+              completedStages: [
+                'guidedParsing',
+                if (_items.isNotEmpty) ...['guidedHeader', 'guidedRows'],
+              ],
+              activeStage: _createdGuidedClaimId != null
+                  ? 'guidedInvoiceRegister'
+                  : 'guidedManualSave',
+              filledFields: [
+                if (_titleController.text.isNotEmpty) _titleController.text,
+                if (_items.isNotEmpty)
+                  '${aiChatText(context, 'invoice_totalAmount')}: ${_items.first.amount.toStringAsFixed(2)}',
+              ],
+            ),
+            if (_guidedValidated) ExpenseGuidedInvoicePreview(plan: plan),
+            const SizedBox(height: UtenSpacing.s16),
+          ],
           if (detail != null)
             detail.when(
               loading: () =>
@@ -360,19 +682,42 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         body: !canEdit && detail?.hasValue == true
             ? UtenEmpty(message: l10n.expenseFlowNotEditable)
             : AbsorbPointer(
-                absorbing: _busy || (_isEdit && claim == null),
+                absorbing:
+                    _busy ||
+                    _guidedInitializing ||
+                    (_isEdit && claim == null) ||
+                    _createdGuidedClaimId != null,
                 child: body,
               ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
         floatingActionButton: UtenFloatingActionGroup(
           children: [
-            if (canSave)
+            if (_createdGuidedClaimId != null) ...[
+              UtenButton(
+                type: UtenButtonType.secondary,
+                onPressed: _busy
+                    ? null
+                    : () => context.push(
+                        RoutePath.expenseDetail(_createdGuidedClaimId!),
+                      ),
+                child: Text(aiChatText(context, 'guidedOpenSaved')),
+              ),
+              if (plan != null && _guidedValidated)
+                UtenButton(
+                  key: const ValueKey('expense-guided-register'),
+                  isLoading: _busy,
+                  onPressed: _busy ? null : _registerGuidedInvoice,
+                  child: Text(aiChatText(context, 'guidedInvoiceRegister')),
+                ),
+            ] else if (canSave)
               UtenButton(
                 size: UtenButtonSize.large,
                 isLoading: _busy,
                 icon: Icons.save_outlined,
-                onPressed: _busy || _items.isEmpty ? null : _save,
+                onPressed: _busy || _guidedInitializing || _items.isEmpty
+                    ? null
+                    : _save,
                 onDisabledTap: _busy
                     ? null
                     : () => context.appWarning(l10n.expenseFlowMissingItems),

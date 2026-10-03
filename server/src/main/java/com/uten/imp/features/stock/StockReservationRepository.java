@@ -16,6 +16,18 @@ import java.util.UUID;
  */
 public interface StockReservationRepository extends JpaRepository<StockReservation, UUID> {
 
+    /** Same effective claims as the warehouse issue gate, before its zero clamp or safety buffer. */
+    @Query(value = """
+            SELECT COALESCE(SUM(r.qty - r.consumed_qty - r.released_qty), 0)
+            FROM stock_reservations r
+            WHERE r.is_deleted = FALSE AND r.status = 0
+              AND r.goods_id = :goods
+              AND r.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+              AND (r.warehouse_id IS NULL OR r.warehouse_id = :warehouse)
+            """, nativeQuery = true)
+    BigDecimal warehouseEffectiveReservedBase(@Param("warehouse") UUID warehouseId,
+            @Param("goods") UUID goodsId, @Param("color") UUID colorId);
+
     /** 订单若干明细行的全部生效预留（审核释放/出货消耗用）。 */
     @Query("SELECT r FROM StockReservation r WHERE r.orderItemId IN :ids AND r.deleted = false AND r.status = 0")
     List<StockReservation> findEffectiveByOrderItemIds(@Param("ids") List<UUID> orderItemIds);

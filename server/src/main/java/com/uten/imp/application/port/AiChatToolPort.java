@@ -12,7 +12,7 @@ public interface AiChatToolPort {
     String name();
     String title();
     String description();
-    /** SELF, SALES, PRODUCTION, PURCHASE, WAREHOUSE, FINANCE, QUALITY, SUBCONTRACT, HR or ADMIN. */
+    /** SELF, SALES, PRODUCTION, PURCHASE, WAREHOUSE, FINANCE, QUALITY, SUBCONTRACT, HR, RD or ADMIN. */
     String domain();
     /** JSON Schema for the bounded argument object, including additionalProperties=false. */
     Map<String, Object> parameters();

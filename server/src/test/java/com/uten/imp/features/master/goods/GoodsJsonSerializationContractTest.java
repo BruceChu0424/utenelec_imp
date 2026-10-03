@@ -59,7 +59,8 @@ class GoodsJsonSerializationContractTest {
 
     @Test
     void learningSummaryCarriesTheRelearnCapability() throws Exception {
-        assertEquals(List.of("profile", "components", "canRelearn"),
+        // V789 BOM 按单学习：materialEvidence 是已保存的认料/申请/仓库配置证据。
+        assertEquals(List.of("profile", "components", "canRelearn", "materialEvidence"),
                 serializedFieldNames(GoodsBomLearningQueryService.Summary.class));
     }
 

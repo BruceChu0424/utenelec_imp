@@ -187,6 +187,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("salesShipmentFinanceRejected", List.of("financeRejected.salesShipment"), List.of());
         legacy("salesQuoteFinanceRejected", List.of("financeRejected.salesQuote"), List.of());
         legacy("salesQuoteAwaitingConversion", List.of("salesQuote.awaitingConversion"), List.of());
+        // V788 报价议价：客户确认待办（红=待客户确认的报价）。
+        legacy("salesQuoteAwaitingCustomerConfirmation", List.of("salesQuote.awaitingCustomerConfirmation"), List.of());
         legacy("salesDrafts", List.of("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn",
                 "drafts.salesQuote"), List.of());
         legacy("serverStatusAlert", List.of("serverStatus.alerts"), List.of());

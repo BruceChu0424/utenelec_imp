@@ -244,7 +244,9 @@ class AuditTriggerCoverageMigrationContractTest {
             new ScopedTable("ai_providers", "system", false,
                     List.of("name", "preset", "region", "protocol", "base_url", "model", "json_mode",
                             "thinking_control", "send_temperature", "supports_vision", "max_output_tokens",
-                            "timeout_seconds", "enabled", "is_default"),
+                            "timeout_seconds", "enabled", "is_default",
+                            "billing_mode", "billing_currency", "billing_input_per_million",
+                            "billing_output_per_million", "billing_model"),
                     "AI 服务商配置(V742, ADR-133): 只记超管改的非密钥列; 不挂新增/删除触发器(整行会带上密钥密文), "
                             + "新建、删除、换密钥、设为默认由 AuditService 显式事件记录, 密文与尾号从不进审计"),
             new ScopedTable("platform_column_definitions", "data_change", true,

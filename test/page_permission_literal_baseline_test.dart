@@ -38,7 +38,8 @@ import 'package:flutter_test/flutter_test.dart';
 // @PreAuthorize 一一对应地本地预演（与 V694-V702 审批页同款口径）。
 // 2026-10-03 +8：AI 业务查询与表单辅助填写批次（报价模板下载/学习范围、销售模板
 // 辅助等操作按钮）继续按同口径本地预演。
-const _baseline = 680;
+// 2026-10-03 +3：AI 使用审计面板（管理页查看计价/审计入口）同口径预演。
+const _baseline = 683;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

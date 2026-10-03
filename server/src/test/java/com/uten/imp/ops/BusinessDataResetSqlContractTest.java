@@ -130,6 +130,7 @@ class BusinessDataResetSqlContractTest {
             Map.entry("production_planning_urges", 703),
             Map.entry("production_material_discovery_requests", 710),
             Map.entry("production_draw_issue_batches", 727),
+            Map.entry("stock_draw_issue_batches", 771),
             Map.entry("production_material_discovery_lines", 710),
             Map.entry("production_bom_learning_samples", 711),
             Map.entry("production_bom_learning_refresh_queue", 711),
@@ -172,7 +173,12 @@ class BusinessDataResetSqlContractTest {
             Map.entry("sales_intake_layout_learning_evidence", 751),
             Map.entry("inventory_cost_gl_periods", 754),
             Map.entry("inventory_cost_gl_period_choices", 754),
-            Map.entry("inventory_cost_gl_links", 754));
+            Map.entry("inventory_cost_gl_links", 754),
+            Map.entry("stock_count_requests", 766),
+            Map.entry("stock_count_request_lines", 766),
+            Map.entry("stock_count_request_events", 766),
+            Map.entry("workshop_material_count_adjustment_postings", 768),
+            Map.entry("business_test_object_cleanup_intents", 782));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -221,7 +227,24 @@ class BusinessDataResetSqlContractTest {
             Map.entry("goods_cost_templates", 753),
             Map.entry("inventory_cost_gl_policy", 754),
             Map.entry("goods_cost_imports", 755),
-            Map.entry("goods_cost_import_mappings", 755));
+            Map.entry("goods_cost_import_mappings", 755),
+            Map.entry("ai_input_originals",773),Map.entry("ai_input_original_bindings",773),
+            Map.entry("sales_quote_template_candidate_history",773),
+            Map.entry("business_record_history",775),Map.entry("business_record_retention_registry",775),
+            Map.entry("business_record_identities",775),
+            Map.entry("notice_blessing_history",778),Map.entry("ai_provider_history",778),Map.entry("platform_record_field_versions",779));
+
+    private static final java.util.Set<String> PERMANENT_POLICY_OVERRIDES=java.util.Set.of(
+        "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",
+        "notices","notice_user_states","notice_acknowledgments","notice_blessings","visitor_sms_codes");
+
+    /** Explicit testing exception; ordinary deletion and scheduled retention keep their guards. */
+    private static final java.util.Set<String> TEST_RESET_CLEAR_OVERRIDES=java.util.Set.of(
+        "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",
+        "notices","notice_user_states","notice_acknowledgments","notice_blessings","visitor_sms_codes",
+        "ai_input_originals","ai_input_original_bindings","sales_quote_template_candidate_history",
+        "business_record_history","business_record_identities","notice_blessing_history","ai_provider_history",
+        "platform_record_field_versions","platform_column_usage");
 
     /**
      * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
@@ -279,258 +302,24 @@ class BusinessDataResetSqlContractTest {
     }
 
     @Test
-    void appTwinFunctionClassifiesExactlyTheOpsScriptTables() {
-        Map<String, String> opsPolicy = policy(opsScript);
-        Map<String, String> twinPolicy = policy(migrationSql);
-        // 废弃表按它在冻结 V464 基线里的归类分别扣减(V590/V677 删的都是 PRESERVE，V743 两类都有)。
-        // V464 冻结基线之后才建、又随迁移废弃的表(如 V711 的按颜色学习累计)在基线里没有归类,
-        // 按它当初登记进清库脚本的扩展归类(CLEAR=运行时扩展 / PRESERVE=保留扩展)。
-        java.util.function.UnaryOperator<String> classification = table -> {
-            String policy = twinPolicy.get(table);
-            if (policy != null) return policy;
-            if (PRESERVE_RESET_EXTENSIONS.containsKey(table)) return "PRESERVE";
-            if (RUNTIME_RESET_EXTENSIONS.containsKey(table)) return "CLEAR";
-            return null;
-        };
-        long removedClear = REMOVED_RESET_TABLES.keySet().stream()
-                .filter(table -> "CLEAR".equals(classification.apply(table))).count();
-        long removedPreserve = REMOVED_RESET_TABLES.keySet().stream()
-                .filter(table -> "PRESERVE".equals(classification.apply(table))).count();
-        assertThat(removedClear + removedPreserve)
-                .as("every retired table must be classified in the frozen V464 baseline")
-                .isEqualTo(REMOVED_RESET_TABLES.size());
-
-        assertThat(opsPolicy).hasSize(
-                320 + RUNTIME_RESET_EXTENSIONS.size() + PRESERVE_RESET_EXTENSIONS.size()
-                        - REMOVED_RESET_TABLES.size());
-        assertThat(opsPolicy.values().stream().filter("CLEAR"::equals).count())
-                .isEqualTo(224 + RUNTIME_RESET_EXTENSIONS.size() - removedClear);
-        assertThat(opsPolicy.values().stream().filter("PRESERVE"::equals).count())
-                .isEqualTo(96 + PRESERVE_RESET_EXTENSIONS.size() - removedPreserve);
-
-        // V464 基础清单逐表一致：任何一侧漂移（新增/删除/改分类）都失败关闭。
-        // V590 起废弃表从两侧同时移除（twin 基线文件按历史字节保留，比较前扣除）。
-        Map<String, String> opsBase = new LinkedHashMap<>(opsPolicy);
-        RUNTIME_RESET_EXTENSIONS.keySet().forEach(opsBase::remove);
-        PRESERVE_RESET_EXTENSIONS.keySet().forEach(opsBase::remove);
-        Map<String, String> twinExpected = new LinkedHashMap<>(twinPolicy);
-        REMOVED_RESET_TABLES.keySet().forEach(twinExpected::remove);
-        assertThat(twinExpected).isEqualTo(opsBase);
-        // 扩展行必须全部 CLEAR：追加式运行时事件账随系统测试一并清空。
-        RUNTIME_RESET_EXTENSIONS.keySet().forEach(table ->
-                assertThat(opsPolicy.get(table))
-                        .as(table + " runtime reset extension must be CLEAR")
-                        .isEqualTo("CLEAR"));
-        // 废弃表必须真的不在两侧策略里。
-        REMOVED_RESET_TABLES.keySet().forEach(table ->
-                assertThat(opsPolicy).as(table + " was retired by V" + REMOVED_RESET_TABLES.get(table))
-                        .doesNotContainKey(table));
+    void appTwinFunctionClassifiesExactlyTheOpsScriptTables() throws IOException {
+        // The frozen V464 base and explicit reviewed migrations remain the independent source of truth.
+        assertThat(policy(opsScript)).isEqualTo(expectedCurrentPolicy());
+        assertThat(opsScript).startsWith("\\set ON_ERROR_STOP on");
+        assertThat(opsScript).doesNotContain("PERMANENT_RETAIN prohibits business reset")
+                .contains("CREATE TEMP TABLE reset_business_expected_policy",
+                        "SELECT * FROM public.business_data_reset();",
+                        "FULL JOIN reset_business_table_policy actual USING(table_name)");
+        assertThat(serviceSource).doesNotContain("requirePermanentRecordsPreserved()","PERMANENT_RECORD_REFUSAL")
+                .contains("featureGate.requireEnabled()","previewTestReset(operatorId)","drainTestResetNext(attemptId)");
     }
 
     @Test
-    void rootSupplyForwardFixAcceptsV479WithoutAddingAnotherBusinessTable() {
-        assertThat(opsScript)
-                .contains("(478, 440)")
-                .contains("(479, 441)")
-                .contains("(480, 442)")
-                .contains("(481, 443)")
-                .contains("(482, 444)")
-                // V483 审计窄修 + V484 运行时清空扩展：均不新增表（444→446）。
-                .contains("(483, 445)")
-                .contains("(484, 446)")
-                // V485 进行中工作台单趟聚合：不新增表（446→447）。
-                .contains("(485, 447)")
-                .contains("(486, 448)")
-                // V488 偏好表补列、V489/V490 换函数、V491 报工门控：均不新增表。
-                .contains("(487, 449)")
-                .contains("(488, 450)")
-                .contains("(489, 451)")
-                .contains("(490, 452)")
-                .contains("(491, 453)")
-                .contains("V484/446、V485/447、V486/448、V487/449、V488/450")
-                .contains("(492, 454)")
-                .contains("(493, 455)")
-                .contains("(494, 456)")
-                .contains("(495, 457)")
-                .contains("(496, 458)")
-                .contains("(497, 459)")
-                .contains("(498, 460)")
-                .contains("(499, 461)")
-                .contains("(500, 462)")
-                .contains("(501, 463)")
-                .contains("(502, 464)")
-                .contains("(503, 465)")
-                .contains("(504, 466)")
-                .contains("(505, 467)")
-                .contains("(506, 468)")
-                .contains("(507, 469)")
-                .contains("(508, 470)")
-                .contains("(527, 486)")
-                .contains("(528, 487)")
-                .contains("(529, 488)")
-                .contains("(530, 489)")
-                .contains("(531, 490)")
-                .contains("(532, 491)")
-                .contains("(533, 492)")
-                .contains("(534, 493)")
-                .contains("(535, 494)")
-                .contains("(536, 495)")
-                .contains("(537, 496)")
-                .contains("(538, 497)")
-                .contains("(539, 498)")
-                .contains("(540, 499)")
-                .contains("(541, 500)")
-                .contains("(545, 503)")
-                .contains("(547, 505)")
-                .contains("(548, 506)")
-                .contains("(549, 507)")
-                .contains("(550, 508)")
-                .contains("(551, 509)")
-                // V552 只加权限码与默认授权，不新增业务表；但迁移头一动，
-                // 清库脚本的 fail-closed 白名单就必须跟着动，否则脚本拒跑。
-                .contains("(555, 513)")
-                .contains("(556, 514)")
-                .contains("(557, 515)")
-                .contains("(558, 516)")
-                .contains("(559, 517)")
-                .contains("(560, 518)")
-                .contains("(561, 519)")
-                .contains("(562, 520)")
-                .contains("(569, 527)")
-                .contains("(570, 528)")
-                .contains("(571, 529)")
-                .contains("(572, 530)")
-                // V573 放宽原因 CHECK、V574 跨路线在途调入与两条索引、
-                // V575 货品起订量与订货倍数：三者都不新增业务表（530→533）。
-                .contains("(573, 531)")
-                .contains("(574, 532)")
-                .contains("(575, 533)")
-                // V577 下达车间超量的公共备货产出分账：只给计划关联行加一列 +
-                // 改一个触发器，不新增业务表（533→534）。V576 由并行分支占用。
-                .contains("(577, 534)")
-                .contains("(578, 535)")
-                .contains("(579, 536)")
-                // V580 只放宽计划关联行对账(公共备货单可不带销售来源)，不加表。
-                // V581 只扩委外发料计划行的 flow_mode 白名单与四个既有守卫，不加表。
-                .contains("(581, 538)")
-                // V582 只收窄销售出货仓库作业状态取值并重建触发器/索引/视图，不加表。
-                .contains("(582, 539)")
-                // V583 报工同页登记实际用料：新增 1 张表(539→540)。
-                .contains("(583, 540)")
-                // V584 车间直送：新增 3 张表(540→541)+ 线边仓/去向/检验种类三个列。
-                .contains("(584, 541)")
-                // V585 只加报工行接收需求列 + 一个审核权限码，不加表。
-                .contains("(585, 542)")
-                // V586 只补清库策略登记，不新增业务表；版本对的第二个数是迁移
-                // 文件条数，本迁移本身让它 542→543。
-                .contains("(586, 543)")
-                .contains("(587, 544)")
-                .contains("(588, 545)")
-                .contains("(589, 546)")
-                // V590 货品归属收敛：偏好表废弃删除（PRESERVE 96→95），条数 546→547。
-                .contains("(590, 547)")
-                // V591 存量归属回填：只 UPDATE 不加表（547→548）。
-                .contains("(591, 548)")
-                // V592 客户默认销售条款：clients 只加两列不加表（548→549）。
-                .contains("(592, 549)")
-                // V593 采购/委外链主档默认值：只加列不加表（549→550）。
-                .contains("(593, 550)")
-                // V594 日报审核补链放行：只替换只增不改守卫函数体，不加表（550→551）。
-                .contains("(594, 551)")
-                // V595 车间直送 v2：只加列/改函数/改视图列/加索引，不加表（551→552）。
-                .contains("(595, 552)")
-                // V598 货品来源按路线确认历史回填：只 UPDATE 一列不加表 (552->553)。
-                // V596 到货先入库后质检：只加列/事件动作/批次来源/权限码，不加表(552→553)。
-                .contains("(596, 553)")
-                // V597 产成品先入库后质检：只加列/守卫/权限码，不加表(553→554)。
-                .contains("(597, 554)")
-                .contains("(598, 555)")
-                .contains("(599, 556)")
-                .contains("(600, 557)")
-                // V601 通知已读回填 / V602 路线记忆索引：不加表（557→559）。
-                .contains("(601, 558)")
-                .contains("(602, 559)")
-                // V603 访客黑名单三列：不加表（559→560）；V604 未发布跳号。
-                .contains("(603, 560)")
-                // V605 直送资格收紧 / V606 路线自动识别：只换函数+回填，不加表（560→562）。
-                .contains("(605, 561)")
-                .contains("(606, 562)")
-                // V632 出货放行记账汇率只加列与种子, 不加表 (587→588)。
-                .contains("(632, 588)")
-                // V634 委外前置自制超量后的订货批准谱系守卫: 只替换一个断言函数, 不加表
-                // (V633 跳号, V634 588→589)。
-                .contains("(634, 589)")
-                // V636 委外允许损耗与回厂短交案件: 新增案件头/事件两张表 (V635 跳号, 589→590)。
-                .contains("(636, 590)")
-                // V638 委外回厂守卫计入前置自制出仓行: 只锚点补丁一个断言函数, 不加表
-                // (V637 跳号, V638 590→591)。
-                .contains("(638, 591)")
-                // V640 未订货申请明细就地追加 (ADR-099): 两个判定函数 + 锚点补丁三个身份守卫,
-                // 不加表 (V639 跳号, V640 591→592)。
-                .contains("(640, 592)")
-                // V641 我方供料委外件放开公共超量: 锚点补丁两个函数, 不加表 (V641 592→593)。
-                .contains("(641, 593)")
-                // V642 委外回厂守恒守卫计入财务已批准的委外商自带料 (ADR-101): 只锚点补丁
-                // 一个断言函数, 不加表 (V642 593→594)。
-                .contains("(642, 594)")
-                // V644 审核生产日报幂等键: 命令账本加 command_kind 一列并换一把唯一键,
-                // 不加表 (V643 跳号, V644 594→595)。
-                .contains("(644, 595)")
-                // V645 追加自制并入未开工的生产计划 (ADR-104): 四个判定函数 + 一条对账触发器
-                // + 锚点补丁三个身份守卫, 不加表 (V645 595→596)。
-                .contains("(645, 596)")
-                .contains("(646, 597)")
-                .contains("(647, 598)")
-                .contains("(670, 599)")
-                .contains("(671, 600)")
-                .contains("(672, 601)")
-                .contains("(673, 602)")
-                .contains("(674, 603)")
-                .contains("(675, 604)")
-                .contains("(676, 605)")
-                .contains("(677, 606)")
-                .contains("(678, 607)")
-                .contains("(679, 608)")
-                .contains("(680, 609)")
-                .contains("(681, 610)")
-                .contains("(682, 611)")
-                .contains("(683, 612)")
-                .contains("(684, 613)")
-                .contains("(685, 614)")
-                .contains("(686, 615)")
-                .contains("(687, 616)")
-                .contains("(688, 617)")
-                .contains("(689, 618)")
-                .contains("(690, 619)")
-                .contains("(691, 620)")
-                .contains("(692, 621)")
-                .contains("(693, 622)").contains("(694, 623)").contains("(695, 624)").contains("(696, 625)").contains("(697, 626)").contains("(698, 627)").contains("(699, 628)").contains("(700, 629)").contains("(701, 630), (702, 631), (703, 632), (704, 633), (705, 634), (706, 635), (707, 636),")
-                .contains("(708, 637),")
-                .contains("(709, 638), (710, 639), (711, 640), (712, 641), (713, 642), (714, 643), (715, 644),")
-                .contains("(716, 645),")
-                .contains("(717, 646),")
-                .contains("(718, 647),")
-                .contains("(719, 648),")
-                .contains("(720, 649)")
-                .contains("(721, 650), (722, 651), (723, 652), (724, 653), (725, 654), (726, 655), (727, 656), (728, 657), (729, 658), (730, 659), (731, 660), (732, 661)")
-                .contains("(733, 662)")
-                .contains("(734, 663),")
-                // V735 领料单批次号 draw_batch_no: 快照分支 2026-09-28 并入, 序号整体顺移。
-                .contains("(735, 664),")
-                .contains("(736, 665),")
-                .contains("(738, 666),")
-                .contains("(739, 667),")
-                .contains("(740, 668),")
-                .contains("(741, 669),")
-                .contains("(742, 670),")
-                // V743 仓库重量账与单重学习(ADR-135, 原号 V745): V735 并入后定号 V743/671。
-                .contains("(743, 671)")
-                // V757 only installs a candidate-object cleanup trigger; table policy is unchanged.
-                .contains("(757, 685)")
-                .contains("(758, 686)")
-                // The exact range label follows the independently enumerated classpath head.
-                .contains("V507/469、V508/470及V511至V"
-                        + MigrationRehearsalSupport.CURRENT_HEAD_VERSION + "完整目录");
+    void historicalMigrationCatalogKeepsTheRootSupplyForwardFixSequence() {
+        // Every version/count pair is independently recounted in the test below.
+        // Operator prose no longer describes a second destructive implementation.
+        assertThat(opsScript).contains("(478, 440)", "(479, 441)", "(480, 442)",
+                "(481, 443)", "(482, 444)", "(483, 445)", "(484, 446)");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
@@ -544,7 +333,8 @@ class BusinessDataResetSqlContractTest {
                 .contains("RAISE EXCEPTION 'V474 cannot extend business_data_reset policy safely'")
                 .contains("(''preplan_supply_actions'', ''CLEAR'')");
         for (String table : RUNTIME_RESET_EXTENSIONS.keySet()) {
-            assertThat(extensionSql(RUNTIME_RESET_EXTENSIONS.get(table)))
+            assertThat(extensionSql(RUNTIME_RESET_EXTENSIONS.get(table))
+                    .replace("'public.business_data_reset()'", "'business_data_reset()'"))
                     .as(table + " must be inserted by its registered runtime reset migration")
                     .contains("pg_get_functiondef('business_data_reset()'::regprocedure)")
                     .contains("'" + table + "'");
@@ -796,6 +586,16 @@ class BusinessDataResetSqlContractTest {
         });
         REMOVED_RESET_TABLES.forEach((table, version) ->
                 assertThat(expected.remove(table)).as(table + " must exist before retirement in V" + version).isNotNull());
+        PERMANENT_POLICY_OVERRIDES.forEach(table -> {
+            assertThat(expected).as(table + " must already be a registered table before its retention override")
+                    .containsKey(table);
+            expected.put(table,"PRESERVE");
+        });
+        TEST_RESET_CLEAR_OVERRIDES.forEach(table -> {
+            assertThat(expected).as(table + " must already be registered before its explicit testing exception")
+                    .containsKey(table);
+            expected.put(table,"CLEAR");
+        });
         return expected;
     }
 

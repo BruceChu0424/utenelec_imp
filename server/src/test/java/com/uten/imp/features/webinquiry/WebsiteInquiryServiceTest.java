@@ -9,6 +9,8 @@ import com.uten.imp.features.webinquiry.dto.IngestRequest;
 import com.uten.imp.features.webinquiry.dto.StatusUpdateRequest;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -22,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,8 +47,12 @@ class WebsiteInquiryServiceTest {
         employeeNames = mock(EmployeeNameLookupPort.class);
         currentUser = mock(SecurityContextCurrentUser.class);
         audit = mock(AuditService.class);
+        EntityManager entityManager = mock(EntityManager.class);
+        Query sourceLock = mock(Query.class);
+        when(entityManager.createNativeQuery(anyString())).thenReturn(sourceLock);
+        when(sourceLock.setParameter(anyString(), any())).thenReturn(sourceLock);
         service = new WebsiteInquiryService(
-                repository, clientPort, employeeNames, currentUser, audit);
+                repository, clientPort, employeeNames, currentUser, audit, entityManager);
 
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();
@@ -109,6 +116,7 @@ class WebsiteInquiryServiceTest {
                 ArgumentCaptor.forClass(WebsiteInquiryClientPort.CreateRequest.class);
         verify(clientPort).createFromInquiry(request.capture());
         assertEquals(currentUser.requireEmployeeId(), request.getValue().ownerEmployeeId());
+        assertEquals("web-9", request.getValue().sourceId());
         verify(audit).logCommitted(any(), any(), any(), any(), any(), any());
 
         // 第二次 convert：直接返回详情，不再新建客户

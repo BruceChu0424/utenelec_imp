@@ -281,6 +281,56 @@ class ReleaseFixture(unittest.TestCase):
         with self.assertRaises(release_tools.ReleaseMetadataError):
             release_tools.write_checksums(self.payload, self.payload / "SHA256SUMS.new")
 
+    def verify_migrations_cli(self) -> tuple[int, str, str]:
+        output, errors = io.StringIO(), io.StringIO()
+        args = ["release_tools.py", "verify-migrations", "--payload-root", str(self.payload),
+                "--flyway-dir", str(self.migrations), "--flyway-checksums", str(self.flyway_checksums)]
+        with mock.patch.object(sys, "argv", args), contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+            code = release_tools.main()
+        return code, output.getvalue(), errors.getvalue()
+
+    def test_simple_release_migration_cli_accepts_the_existing_exact_inventory(self) -> None:
+        code, output, errors = self.verify_migrations_cli()
+        self.assertEqual(0, code, errors)
+        self.assertIn("Verified 1 migrations through V1 in both release JARs", output)
+
+    def test_simple_release_migration_cli_refuses_parallel_duplicate_version(self) -> None:
+        (self.migrations / "V1__parallel_worker.sql").write_text("select 1;\n", encoding="utf-8")
+        code, output, errors = self.verify_migrations_cli()
+        self.assertEqual(2, code)
+        self.assertEqual("", output)
+        self.assertRegex(errors, "duplicate Flyway version|missing or mismatched")
+
+    def test_simple_release_migration_cli_requires_every_sql_in_both_jars(self) -> None:
+        for name, prefix in (("uten-imp-server.jar", "BOOT-INF/classes/db/migration/"),
+                             ("uten-imp-migrator.jar", "db/migration/")):
+            with self.subTest(jar=name):
+                jar_path = self.payload / "server" / name
+                original = jar_path.read_bytes()
+                with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(jar_path, "w") as target:
+                    for item in source.infolist():
+                        if item.filename != prefix + "V1__initial_schema.sql":
+                            target.writestr(item, source.read(item))
+                code, _, errors = self.verify_migrations_cli()
+                self.assertEqual(2, code)
+                self.assertIn("migrations differ", errors)
+                jar_path.write_bytes(original)
+
+    def test_simple_release_migration_cli_refuses_different_sql_bytes_in_either_jar(self) -> None:
+        for name, prefix in (("uten-imp-server.jar", "BOOT-INF/classes/db/migration/"),
+                             ("uten-imp-migrator.jar", "db/migration/")):
+            with self.subTest(jar=name):
+                jar_path = self.payload / "server" / name
+                original = jar_path.read_bytes()
+                with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(jar_path, "w") as target:
+                    for item in source.infolist():
+                        data = b"select 'unreviewed SQL';\n" if item.filename == prefix + "V1__initial_schema.sql" else source.read(item)
+                        target.writestr(item, data)
+                code, _, errors = self.verify_migrations_cli()
+                self.assertEqual(2, code)
+                self.assertIn("migrations differ", errors)
+                jar_path.write_bytes(original)
+
     def test_migrator_jar_rejects_business_and_web_runtime_classes(self) -> None:
         original = self.payload / "server/uten-imp-migrator.jar"
         for label, forbidden_class in (

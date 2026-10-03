@@ -773,6 +773,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                   _actionRow(),
                   Expanded(
                     child: MasterDataTableView<AccountListItem>(
+                      columnEditingEnabled: _canEdit,
                       tableKey:
                           'features.basic_data.pages.account_workspace_page.AccountPageState._buildDraftHost.1',
                       primary: true,

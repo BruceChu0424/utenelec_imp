@@ -16,6 +16,10 @@ public interface StockDocumentItemRepository extends JpaRepository<StockDocument
     List<StockDocumentItem> findByDocIdOrderByLineNoAsc(
             @Param("did") UUID docId);
 
+    /** Deleted headers can still show their last physical source rows, including exact soft-retired identities. */
+    @Query("SELECT i FROM StockDocumentItem i WHERE i.docId = :did ORDER BY i.lineNo ASC, i.id ASC")
+    List<StockDocumentItem> findHistoryByDocIdOrderByLineNoAsc(@Param("did") UUID docId);
+
     @Modifying
     @Query("DELETE FROM StockDocumentItem i WHERE i.docId = :did")
     void deleteByDocId(@Param("did") UUID docId);

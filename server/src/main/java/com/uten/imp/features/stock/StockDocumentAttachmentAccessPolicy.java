@@ -51,6 +51,24 @@ public class StockDocumentAttachmentAccessPolicy implements AttachmentOwnerAcces
         readable(ownerId, user, false);
     }
 
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        if (ownerId == null || !has(user, "stock_doc:view")) throw missing();
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT maker_id,fn_stock_document_has_history_provenance(id) FROM stock_documents WHERE id=:id
+                """).setParameter("id",ownerId));
+        if (rows.size()!=1) throw missing();
+        if (!(Boolean.TRUE.equals(rows.getFirst()[1]) && productionStockTaskAccess.canAccessWarehouseTasks())) {
+            access.requireReadable((UUID)rows.getFirst()[0], "仓库单据不存在");
+        }
+    }
+
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        requireCanViewHistory(ownerId, user);
+        if (!has(user, StockCostMasker.PERMISSION)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "查看仓库敏感原件需要货品成本查看权限");
+        }
+    }
+
     @Override public void requireCanManage(UUID ownerId, AuthUser user) {
         manageable(ownerId, user, false);
     }

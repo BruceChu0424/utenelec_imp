@@ -50,6 +50,11 @@ class UtenBusyOverlay extends StatefulWidget {
     }
   }
 
+  /// 仅测试用：widget 测试卸树时弃掉的让位 Future 永不完成，全局计数永久
+  /// 大于 0，后续用例的遮罩全部隐身。逐条用例复位。
+  @visibleForTesting
+  static void debugResetYield() => _yielding.value = 0;
+
   @override
   State<UtenBusyOverlay> createState() => _UtenBusyOverlayState();
 }

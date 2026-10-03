@@ -39,6 +39,11 @@ public final class ProcurementApprovalContracts {
         public FinanceApproval {
             allowedActions = List.copyOf(allowedActions);
         }
+
+        public FinanceApproval readOnly() {
+            return new FinanceApproval(caseId,status,attempt,version,assigneeUserId,assigneeEmployeeId,
+                    assigneeName,rejectionReason,submittedAt,List.of());
+        }
     }
 
     /** 精确绑定一次待审 case，避免驳回重提后相同版本号误命中新 attempt。 */
@@ -202,7 +207,8 @@ public final class ProcurementApprovalContracts {
             String sourceAllocations,
             UUID currencyId,
             boolean displaySnapshotComplete,
-            List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns) {
+            List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalAmountInput) {
     }
 
     /** 审批历史：按提交轮次展示 提交/通过/驳回 事件、操作人与原因。 */

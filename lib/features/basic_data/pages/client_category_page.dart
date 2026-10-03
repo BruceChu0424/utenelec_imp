@@ -193,6 +193,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     return buildShell(
       context,
       detailPaneBuilder: (selected) =>

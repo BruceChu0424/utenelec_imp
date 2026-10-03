@@ -3,8 +3,13 @@ package com.uten.imp.common.util;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -26,6 +31,57 @@ import com.uten.imp.common.web.ErrorCode;
 public class EmployeeNameResolver {
 
     private final EntityManager em;
+
+    static final int READ_BATCH_SIZE = 256;
+
+    /**
+     * Page-local read projection with the same employee-first/legacy-user fallback as nameOf.
+     * Null and unknown ids resolve to null, duplicates are read once, and deleted employees
+     * remain readable as historical identities. The returned map is immutable, not cached.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, String> namesOf(Collection<UUID> ids) {
+        return readNames(ids, false);
+    }
+
+    /** Same bounded lookup as namesOf, preserving nameWithCodeOf's SQL value semantics. */
+    @Transactional(readOnly = true)
+    public Map<UUID, String> namesWithCodeOf(Collection<UUID> ids) {
+        return readNames(ids, true);
+    }
+
+    private Map<UUID, String> readNames(Collection<UUID> ids, boolean withCode) {
+        if (ids == null || ids.isEmpty()) return Collections.emptyMap();
+        List<UUID> unique = ids.stream().filter(Objects::nonNull).distinct().toList();
+        if (unique.isEmpty()) return Collections.emptyMap();
+        String sql = """
+                WITH requested_ids AS (
+                    SELECT id FROM employees WHERE id IN (:ids)
+                    UNION
+                    SELECT id FROM users WHERE id IN (:ids)
+                )
+                SELECT requested.id, COALESCE(%s, %s)
+                FROM requested_ids requested
+                LEFT JOIN employees direct_employee ON direct_employee.id = requested.id
+                LEFT JOIN users legacy_user ON legacy_user.id = requested.id
+                LEFT JOIN employees legacy_employee ON legacy_employee.id = legacy_user.employee_id
+                """.formatted(readNameExpression("direct_employee", withCode),
+                        readNameExpression("legacy_employee", withCode));
+        Map<UUID, String> result = new LinkedHashMap<>();
+        for (int start = 0; start < unique.size(); start += READ_BATCH_SIZE) {
+            List<UUID> batch = unique.subList(start, Math.min(start + READ_BATCH_SIZE, unique.size()));
+            for (Object[] row : NativeQueryResults.objectArrayRows(
+                    em.createNativeQuery(sql).setParameter("ids", batch))) {
+                if (row[1] != null) result.put((UUID) row[0], row[1].toString());
+            }
+        }
+        // Unlike Map.copyOf, this map also permits a null lookup for optional employee ids.
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static String readNameExpression(String alias, boolean withCode) {
+        return alias + ".full_name" + (withCode ? " || '(' || " + alias + ".code || ')'" : "");
+    }
 
     /** 按 employees.id 直查；查不到再按 users.id 兼容解析。皆无返回 null。 */
     public String nameOf(UUID id) {

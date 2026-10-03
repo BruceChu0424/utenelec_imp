@@ -51,11 +51,17 @@ droppedItemsToPlatformFiles(List<DropItem> items) async {
 
 /// 拖入文件的名字：web 端 desktop_drop 直接给了真名；桌面端 cross_file 从
 /// path 取 basename，个别路径形态（正斜杠/取不到）会带出整段路径或空串，
-/// 这里统一剥到 basename；仍取不到就退回中性名。blob URL 不是文件名，不充数。
+/// 这里统一剥到 basename；仍取不到就退回中性名。blob URL 不是文件名，不充数；
+/// fromData 没给 name 时 XFile.name 是从生成的内部路径抄来的尾段（形如
+/// 8e2f-uuid），path 为 blob URL 且名字恰为其尾段时按派生名处理。
 String _droppedItemName(DropItem item) {
+  final path = item.path.trim();
+  final pathIsBlob = path.startsWith('blob:');
   // getter 在桌面端可能带出整段路径，与 path 同样处理。
   final fromGetter = _fileNameOrNull(item.name);
-  if (fromGetter != null) return fromGetter;
+  if (fromGetter != null && !(pathIsBlob && path.endsWith('/$fromGetter'))) {
+    return fromGetter;
+  }
   final fromPath = _fileNameOrNull(item.path);
   if (fromPath != null) return fromPath;
   return 'file';

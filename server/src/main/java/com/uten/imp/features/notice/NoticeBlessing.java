@@ -33,4 +33,8 @@ public class NoticeBlessing extends BaseEntity {
 
     @Column(nullable = false, columnDefinition = "text")
     private String content;
+    @Column(name="is_deleted",nullable=false) private boolean deleted;
+    @Column(name="deleted_at") private java.time.Instant deletedAt;
+    @Column(name="deleted_by") private UUID deletedBy;
+    @Column(name="deleted_reason") private String deletedReason;
 }

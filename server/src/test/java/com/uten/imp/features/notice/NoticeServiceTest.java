@@ -996,6 +996,16 @@ class NoticeServiceTest {
         verify(blessRepo).deleteByNoticeIdAndUserId(noticeId, userId);
     }
 
+    @Test void withdrawnBlessingCanBeSentAgainWithoutKeepingTheCurrentRowDeleted() {
+        UUID id=UUID.randomUUID();stubVisibleBroadcast(id);
+        Notice notice=noticeRepository.findById(id).orElseThrow();notice.setType("birthday");notice.setInteractionMode("bless");
+        var prior=new NoticeBlessing();prior.setNoticeId(id);prior.setUserId(userId);prior.setContent("旧祝福");
+        prior.setDeleted(true);prior.setDeletedAt(java.time.Instant.now());prior.setDeletedBy(userId);prior.setDeletedReason("USER_WITHDRAW");
+        when(blessRepo.findByNoticeIdAndUserId(id,userId)).thenReturn(Optional.of(prior));when(blessRepo.save(any())).thenAnswer(i->i.getArgument(0));
+        service.bless(id,"再次祝福");
+        assertFalse(prior.isDeleted());assertEquals("再次祝福",prior.getContent());assertNull(prior.getDeletedAt());assertNull(prior.getDeletedReason());
+    }
+
     @Test
     void blessRejectsNoticeWithoutBlessMode() {
         UUID noticeId = UUID.randomUUID();

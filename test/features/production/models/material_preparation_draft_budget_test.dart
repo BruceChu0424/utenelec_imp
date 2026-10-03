@@ -9,6 +9,7 @@ MaterialPreparationBudgetLine line(
   double need = 1000,
   double requested = 1000,
   bool selected = false,
+  bool useAvailableQty = true,
   int priority = 0,
   String? inputKey,
   double? cap,
@@ -20,6 +21,7 @@ MaterialPreparationBudgetLine line(
   uncoveredBeforeSharedQty: need,
   requestedQty: requested,
   selected: selected,
+  useAvailableQty: useAvailableQty,
   priority: priority,
   inputKey: inputKey,
   adoptableSharedQty: cap,
@@ -193,6 +195,114 @@ void main() {
     expect(budget.rows['b']!.availableQty, 9000);
     expect(budget.rows['b']!.reservedSharedQty, 0);
   });
+
+  test(
+    'extra purchasing leaves shared supply for selected rows that use it',
+    () {
+      final budget = MaterialPreparationDraftBudget.project(
+        lines: [
+          line(
+            'a-extra',
+            owned: 25,
+            need: 100,
+            requested: 250,
+            selected: true,
+            useAvailableQty: false,
+            cap: 100,
+            slices: slices({'Y'}),
+          ),
+          line(
+            'b-use',
+            need: 100,
+            requested: 150,
+            selected: true,
+            cap: 100,
+            slices: slices({'Y'}),
+          ),
+        ],
+        sharedAvailableByPool: const {pool: 200},
+      );
+
+      expect(budget.rows['a-extra']!.reservedSharedQty, 0);
+      expect(budget.coveredReservations['a-extra'] ?? 0, 0);
+      expect(budget.inputs['a-extra']!.ownedAvailableQty, 25);
+      expect(budget.inputs['a-extra']!.uncoveredBeforeSharedQty, 100);
+      expect(budget.rows['a-extra']!.netShortageQty, 100);
+      expect(budget.rows['b-use']!.reservedSharedQty, 150);
+      expect(budget.rows['b-use']!.netShortageQty, 0);
+      expect(budget.rows['a-extra']!.remainingSharedQty, 50);
+      expect(budget.rows['b-use']!.availableQty, 50);
+      expect(budget.summarize(['a-extra', 'b-use']).reservedSharedQty, 150);
+      expect(budget.summarize(['a-extra', 'b-use']).availableQty, 50);
+      expect(budget.summarize(['a-extra', 'b-use']).netShortageQty, 100);
+    },
+  );
+
+  test('fully covered extra purchasing does not reserve the editing pool', () {
+    final budget = MaterialPreparationDraftBudget.project(
+      lines: [
+        line(
+          'append',
+          owned: 100,
+          need: 0,
+          requested: 300,
+          selected: true,
+          useAvailableQty: false,
+        ),
+        line('future-demand', need: 200),
+      ],
+      sharedAvailableByPool: const {pool: 200},
+    );
+
+    expect(budget.rows['append']!.reservedSharedQty, 0);
+    expect(budget.rows['append']!.availableQty, 200);
+    expect(budget.rows['append']!.netShortageQty, 0);
+    expect(budget.rows['future-demand']!.netShortageQty, 0);
+    expect(budget.inputs['append']!.requestedQty, 300);
+    expect(budget.inputs['append']!.ownedAvailableQty, 100);
+    expect(budget.summarize(['append', 'future-demand']).availableQty, 200);
+    expect(budget.summarize(['append', 'future-demand']).netShortageQty, 0);
+  });
+
+  test(
+    'toggling extra purchasing releases and restores grouped reservations',
+    () {
+      MaterialPreparationDraftBudget project(bool useAvailableQty) =>
+          MaterialPreparationDraftBudget.project(
+            lines: [
+              for (final id in ['a', 'b'])
+                line(
+                  id,
+                  need: 100,
+                  requested: 250,
+                  selected: true,
+                  useAvailableQty: useAvailableQty,
+                  inputKey: 'one-input',
+                ),
+              line('future-demand', need: 100),
+            ],
+            sharedAvailableByPool: const {pool: 300},
+          );
+
+      final usingAvailable = project(true);
+      expect(usingAvailable.summarize(['a', 'b']).reservedSharedQty, 250);
+      expect(usingAvailable.rows['future-demand']!.availableQty, 50);
+      expect(usingAvailable.rows['future-demand']!.netShortageQty, 50);
+
+      final extraPurchasing = project(false);
+      expect(extraPurchasing.summarize(['a', 'b']).reservedSharedQty, 0);
+      expect(extraPurchasing.coveredReservations, isEmpty);
+      expect(extraPurchasing.rows['future-demand']!.availableQty, 300);
+      expect(extraPurchasing.rows['future-demand']!.netShortageQty, 0);
+      expect(extraPurchasing.inputs['a']!.requestedQty, 250);
+      expect(extraPurchasing.inputs['b']!.requestedQty, 250);
+
+      final usingAvailableAgain = project(true);
+      expect(usingAvailableAgain.summarize(['a', 'b']).reservedSharedQty, 250);
+      expect(usingAvailableAgain.rows['future-demand']!.availableQty, 50);
+      expect(usingAvailableAgain.rows['future-demand']!.netShortageQty, 50);
+    },
+  );
 
   test('private coverage stays with its owner and is not deducted twice', () {
     final budget = MaterialPreparationDraftBudget.project(

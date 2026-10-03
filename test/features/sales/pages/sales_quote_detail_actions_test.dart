@@ -7,14 +7,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
+
+class _AuthenticatedSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'reader', code: 'reader', name: '当前读者'),
+  );
+}
+
+class _ConfirmedSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
 
 Map<String, dynamic> _quote({
   required int status,
@@ -125,6 +146,16 @@ Future<_QuoteApi> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_TestSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'test-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_TestSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+        sessionProvider.overrideWith(_AuthenticatedSession.new),
+        sessionSnapshotProvider.overrideWith(_ConfirmedSnapshot.new),
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
@@ -157,7 +188,86 @@ Future<void> _tapAndConfirm(WidgetTester tester, String buttonKey) async {
   await tester.pumpAndSettle();
 }
 
+class _TestSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'test-user', code: 'E001', name: '测试员工'),
+  );
+}
+
+class _TestSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
+
 void main() {
+  testWidgets(
+    'customer acceptance records the displayed revision before conversion',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _quote(
+          status: 1,
+          actions: const ['customerConfirm', 'reopen', 'cancel'],
+        ),
+      );
+      expect(find.byKey(const ValueKey('sales-quote-convert')), findsNothing);
+      api.afterPost = _quote(
+        status: 1,
+        actions: const ['convert', 'reopen', 'cancel'],
+        extra: const {
+          'customerAcceptedAt': '2026-10-02T10:00:00Z',
+          'customerAcceptedRevision': 5,
+          'reviewRevision': 5,
+        },
+      );
+      await _tapAndConfirm(tester, 'sales-quote-customer-confirm');
+      expect(api.postBodies['/sales/quotes/quote-1/customer-confirm'], {
+        'expectedRevision': 4,
+      });
+      expect(
+        find.byKey(const ValueKey('sales-quote-customer-confirm')),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('sales-quote-convert')), findsOneWidget);
+      expect(find.textContaining('已登记客户同意'), findsOneWidget);
+    },
+  );
+
+  testWidgets('cancel requires a reason and keeps revision history', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      _quote(status: 1, actions: const ['cancel']),
+    );
+    await tester.tap(find.byKey(const ValueKey('sales-quote-cancel')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sales-quote-cancel-submit')));
+    await tester.pumpAndSettle();
+    expect(api.postPaths, isEmpty);
+    // 2026-09-04 起表单错误进字段内 ⓘ 披露（UtenInputDecoration）：
+    // 必填校验不再渲染底部错误文本，断言错误图标 + 完整语义标签。
+    expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    expect(find.bySemanticsLabel('请填写取消原因'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('sales-quote-cancel-reason')),
+      '客户未接受报价',
+    );
+    api.afterPost = _quote(
+      status: -1,
+      extra: const {'cancelReason': '客户未接受报价'},
+    );
+    await tester.tap(find.byKey(const ValueKey('sales-quote-cancel-submit')));
+    await tester.pumpAndSettle();
+    expect(api.postBodies['/sales/quotes/quote-1/cancel'], {
+      'expectedRevision': 4,
+      'reason': '客户未接受报价',
+    });
+    expect(find.textContaining('历史记录保留：客户未接受报价'), findsOneWidget);
+  });
+
   testWidgets('draft quote: submit for finance pricing, no self-approval', (
     tester,
   ) async {
@@ -249,7 +359,7 @@ void main() {
         },
       ),
     );
-    expect(find.textContaining('财务已核价(王会计'), findsOneWidget);
+    expect(find.textContaining('财务已核价，请与客户确认'), findsOneWidget);
     expect(find.text('核价人'), findsOneWidget);
     expect(
       find.byKey(const Key('sales-quote-revision-timeline')),
@@ -263,6 +373,9 @@ void main() {
 
     await _tapAndConfirm(tester, 'sales-quote-convert');
     expect(api.postPaths, contains('/sales/quotes/quote-1/convert'));
+    expect(api.postBodies['/sales/quotes/quote-1/convert'], {
+      'expectedRevision': 4,
+    });
     expect(find.text('order-edit-order-9'), findsOneWidget);
   });
 

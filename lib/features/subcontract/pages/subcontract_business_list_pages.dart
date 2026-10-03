@@ -327,6 +327,7 @@ class _SubcontractBusinessListPageState
   /// 表头列筛选：委外商/执行仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
+  bool? _apPostedFilter;
 
   /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
   /// MasterServerColumnFilters）。
@@ -453,6 +454,7 @@ class _SubcontractBusinessListPageState
     }
     clearDraftSelection();
     _controller.result = null;
+    _apPostedFilter = null;
     _seg = isDraftStatusQuery(widget.initialStatus) ? _draftSeg : null;
     _location = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -482,6 +484,9 @@ class _SubcontractBusinessListPageState
             status: seg.status,
             financeApproval: seg.financeApproval,
             closed: seg.closed,
+            apPosted: _p.type == SubcontractDocType.returnDoc
+                ? _apPostedFilter
+                : null,
             dateFrom: range == null
                 ? null
                 : ChinaDateTime.formatDate(range.start),
@@ -511,6 +516,9 @@ class _SubcontractBusinessListPageState
                 status: seg.status,
                 financeApproval: seg.financeApproval,
                 closed: seg.closed,
+                apPosted: _p.type == SubcontractDocType.returnDoc
+                    ? _apPostedFilter
+                    : null,
                 dateFrom: range == null
                     ? null
                     : ChinaDateTime.formatDate(range.start),
@@ -535,7 +543,9 @@ class _SubcontractBusinessListPageState
       silent: silent,
       fetch: _fetch,
     );
-    if (!mounted || generation != _reloadGeneration || _controller.error != null) {
+    if (!mounted ||
+        generation != _reloadGeneration ||
+        _controller.error != null) {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -596,6 +606,13 @@ class _SubcontractBusinessListPageState
     setState(() {
       if (key == 'supplier') {
         _supplierIdFilter = value;
+      } else if (key == 'apReverse' &&
+          _p.type == SubcontractDocType.returnDoc) {
+        _apPostedFilter = switch (value) {
+          'true' => true,
+          'false' => false,
+          _ => null,
+        };
       } else if (key == 'warehouse') {
         _warehouseIdFilter = value;
       }
@@ -688,7 +705,7 @@ class _SubcontractBusinessListPageState
     // 2026-09-06 页头动作进工具条 trailing：与分类分段/搜索同一行
     // （紧凑断点自动换行到搜索下方），不再单独占一行。
     final action = _p.primaryAction;
-    final actionReady = action != null && _canUse(action);
+    final actionReady = _seg != _draftSeg && action != null && _canUse(action);
     final page = Scaffold(
       appBar: UtenAppBar(
         title: _p.title,
@@ -884,6 +901,19 @@ class _SubcontractBusinessListPageState
                               ? (_, _) => [_draftDeleteButton()]
                               : null,
                           facets: {
+                            if (_p.type == SubcontractDocType.returnDoc)
+                              'apReverse': const [
+                                MasterFacetBucket(
+                                  value: 'true',
+                                  count: 0,
+                                  label: '已反立账',
+                                ),
+                                MasterFacetBucket(
+                                  value: 'false',
+                                  count: 0,
+                                  label: '未反立账',
+                                ),
+                              ],
                             'billNo': _columnFilters.bucketOf('billNo'),
                             'supplier': masterDictionaryFacets(
                               names.supplierEntries,
@@ -894,6 +924,8 @@ class _SubcontractBusinessListPageState
                           },
                           nullCounts: const {},
                           filters: {
+                            if (_p.type == SubcontractDocType.returnDoc)
+                              'apReverse': _apPostedFilter?.toString(),
                             'billNo': _columnFilters['billNo'],
                             'supplier': _supplierIdFilter,
                             'warehouse': _warehouseIdFilter,
@@ -928,6 +960,7 @@ class _SubcontractBusinessListPageState
                             _controller.keyword,
                             _seg,
                             _historyTime,
+                            _apPostedFilter,
                           ),
                           onPageChange: (p) => _reload(p),
                         ),

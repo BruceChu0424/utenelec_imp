@@ -36,6 +36,8 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
     private String documentRowsLookup;
     private Set<String> creators = Set.of();
     private BiConsumer<UUID,Object> documentSaveLocks = (id,request) -> { };
+    private Function<UUID,Object> historyDetail;
+    private String historicalParentLookup;
 
     public DocumentPlatformColumnAdapter(String scope, String label, SecurityContextCurrentUser current,
             EntityManager em, ObjectMapper json, Set<String> readers, Set<String> writers,
@@ -67,6 +69,37 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
         if (documentRowsLookup != null || parentLookup == null) throw new IllegalStateException("Invalid document row registration");
         documentRowsLookup = Objects.requireNonNull(query);
         return this;
+    }
+
+    /** Fixed trusted domain registration, never caller-provided SQL or a fallback authorization rule. */
+    public DocumentPlatformColumnAdapter history(Function<UUID,Object> nativeHistoryDetail,String fixedHistoricalParentLookup) {
+        if(historyDetail!=null||(parentLookup!=null&&(fixedHistoricalParentLookup==null||fixedHistoricalParentLookup.isBlank()))
+                ||(parentLookup==null&&fixedHistoricalParentLookup!=null))throw new IllegalStateException("Invalid document history registration");
+        historyDetail=Objects.requireNonNull(nativeHistoryDetail);historicalParentLookup=fixedHistoricalParentLookup;return this;
+    }
+
+    @Override public Map<UUID,RecordAccess> authorizeHistory(Set<UUID> ids) {
+        if(historyDetail==null)return PlatformColumnResourceAdapter.super.authorizeHistory(ids);
+        requireDefinitionAccess(false);
+        Map<UUID,UUID> parents=new LinkedHashMap<>();
+        if(parentLookup==null)ids.forEach(id->parents.put(id,id));
+        else {
+            @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery(historicalParentLookup).setParameter("ids",ids).getResultList();
+            for(Object[] row:rows){UUID id=(UUID)row[0],parent=(UUID)row[1];
+                if(id==null||parent==null||!ids.contains(id))throw missing();
+                UUID previous=parents.putIfAbsent(id,parent);if(previous!=null&&!previous.equals(parent))throw missing();}
+            if(!parents.keySet().equals(ids))throw missing();
+        }
+        var headers=new HashMap<UUID,JsonNode>();var result=new LinkedHashMap<UUID,RecordAccess>();
+        for(UUID id:ids) {
+            JsonNode header=headers.computeIfAbsent(parents.get(id),key->json.valueToTree(historyDetail.apply(key)));
+            if(header==null||header.isNull()||!parents.get(id).toString().equals(header.path("id").asText()))throw missing();
+            boolean price=canViewPrice()&&header.path("priceVisible").asBoolean(true)
+                && !header.path("priceMasked").asBoolean(false)&&!header.path("costMasked").asBoolean(false);
+            // Historical formulas never silently calculate against today's mutable native quantities/prices.
+            result.put(id,new RecordAccess(false,price,Map.of()));
+        }
+        return result;
     }
 
     public DocumentPlatformColumnAdapter documentCreateAuthorities(Set<String> permissions) {

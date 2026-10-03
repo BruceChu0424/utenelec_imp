@@ -9,6 +9,8 @@ import 'platform_table_binding.dart';
 import 'platform_table_layout.dart';
 import 'platform_table_models.dart';
 import 'platform_table_repository.dart';
+import '../providers/authenticated_scope_provider.dart';
+import '../../core/network/server_config.dart';
 
 /// Shared persistence lifecycle for master tables and editable grids. Row writes
 /// are explicit CAS operations and never mutate the host's business record.
@@ -33,6 +35,10 @@ class PlatformTableController<T> extends ChangeNotifier {
   final Set<String> _saving = {};
   ProviderSubscription<PlatformTableLayout>? _layoutSubscription;
   ProviderSubscription<PlatformTableRepository>? _repositorySubscription;
+  ProviderSubscription<AuthenticatedScope?>? _queryScopeSubscription;
+  ProviderSubscription<String>? _queryServerSubscription;
+  int _queryLifecycle = 0;
+  int get queryLifecycle => _queryLifecycle;
   ProviderContainer? _container;
   final Map<String, PlatformColumnDefinition> _definitions = {};
   final Set<String> _recordColumnIds = {};
@@ -60,11 +66,19 @@ class PlatformTableController<T> extends ChangeNotifier {
   List<PlatformColumnDefinition> get definitions =>
       _definitions.values.map(_visibleDefinition).toList(growable: false);
   bool get historical => binding?.snapshotOf != null;
+  bool _columnEditingEnabled = false;
+
+  /// A page must explicitly opt into authoring. Account permissions alone do
+  /// not turn review/detail tables into editors, including for administrators.
+  bool get columnEditingEnabled => _columnEditingEnabled && !historical;
+  bool get canDefineColumns =>
+      columnEditingEnabled && (!bound || capabilities?.canDefine == true);
 
   void configure(
     BuildContext context, {
     required PlatformTableDescriptor<T> descriptor,
     PlatformTableBinding<T>? explicitBinding,
+    bool columnEditingEnabled = false,
     Map<String, String?> Function(T)? factsOf,
     Iterable<Listenable> Function(T)? factListenablesOf,
     PlatformRowDraft? Function(T)? stagedDraftOf,
@@ -96,7 +110,10 @@ class PlatformTableController<T> extends ChangeNotifier {
         key != _tableKey ||
         next?.scope != binding?.scope ||
         !identical(repository, repo);
+    final wasEditing = this.columnEditingEnabled;
     binding = next;
+    _columnEditingEnabled = columnEditingEnabled;
+    if (wasEditing != this.columnEditingEnabled) _emit();
     repository = repo;
     fallbackFactsOf = factsOf;
     fallbackFactListenablesOf = factListenablesOf;
@@ -120,6 +137,28 @@ class PlatformTableController<T> extends ChangeNotifier {
       layoutTouched = false;
       _layoutSubscription?.close();
       _repositorySubscription?.close();
+      _queryScopeSubscription?.close();
+      _queryServerSubscription?.close();
+      void ownerChanged() {
+        if (disposed) return;
+        _queryLifecycle++;
+        layoutTouched = false;
+        layout = const PlatformTableLayout();
+        _invalidateAccess();
+      }
+
+      _queryScopeSubscription = container?.listen(authenticatedScopeProvider, (
+        previous,
+        next,
+      ) {
+        if (previous != next) ownerChanged();
+      });
+      _queryServerSubscription = container?.listen(apiBaseUrlProvider, (
+        previous,
+        next,
+      ) {
+        if (previous != next) ownerChanged();
+      });
       _repositorySubscription = next == null || repo == null
           ? null
           : container?.listen(platformTableRepositoryProvider, (_, nextRepo) {
@@ -135,9 +174,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       _layoutSubscription = container?.listen(
         platformTableLayoutProvider(key),
         (_, next) {
-          if (disposed ||
-              next.sourceInstance == _instance ||
-              (layoutTouched && next.sourceInstance == null)) {
+          if (disposed || next.sourceInstance == _instance) {
             return;
           }
           final priorIds = layout.added.map((column) => column.id).join('|');
@@ -291,6 +328,17 @@ class PlatformTableController<T> extends ChangeNotifier {
               if (!savedOrder.contains(canonicalKey(key))) key,
           };
     return layout.copyWith(
+      filters: {
+        for (final entry in layout.filters.entries)
+          if (byCanonical.containsKey(canonicalKey(entry.key)))
+            byCanonical[canonicalKey(entry.key)]!: entry.value,
+      },
+      sortColumn: layout.sortColumn == null
+          ? null
+          : byCanonical[canonicalKey(layout.sortColumn!)],
+      clearSort:
+          layout.sortColumn != null &&
+          !byCanonical.containsKey(canonicalKey(layout.sortColumn!)),
       order: order,
       hidden: hidden,
       pinned: {
@@ -344,7 +392,29 @@ class PlatformTableController<T> extends ChangeNotifier {
     unawaited(reload());
   }
 
+  void saveQuery({
+    required Map<String, String?> filters,
+    String? sortColumn,
+    bool sortAscending = true,
+  }) {
+    updateLayout(
+      layout.copyWith(
+        filters: {
+          for (final entry in filters.entries)
+            canonicalKey(entry.key): entry.value,
+        },
+        sortColumn: sortColumn == null ? null : canonicalKey(sortColumn),
+        clearSort: sortColumn == null,
+        sortAscending: sortAscending,
+        hasQueryPreferences: true,
+      ),
+    );
+  }
+
   void select(PlatformColumnDefinition column) {
+    if (!columnEditingEnabled) {
+      throw const FormatException('当前页面只能显示已有列，请在单据录入页添加列');
+    }
     if (layout.added.every((d) => d.id != column.id) &&
         layout.added.length >= 32) {
       throw const FormatException('最多添加 32 个扩展列');
@@ -561,7 +631,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   bool _canWriteFields(T item) =>
-      !historical &&
+      columnEditingEnabled &&
       binding?.canEditValues == true &&
       (binding?.canEditRow?.call(item) ?? true) &&
       capabilities?.supportsValues == true &&
@@ -669,6 +739,8 @@ class PlatformTableController<T> extends ChangeNotifier {
     _generation++;
     _layoutSubscription?.close();
     _repositorySubscription?.close();
+    _queryScopeSubscription?.close();
+    _queryServerSubscription?.close();
     super.dispose();
   }
 }

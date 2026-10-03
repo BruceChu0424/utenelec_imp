@@ -11,6 +11,7 @@ public record RetainedPlatformColumnAdapter(PlatformColumnResourceAdapter delega
     public boolean personalDefinitions(){return delegate.personalDefinitions();}public boolean preserveValuesOnReset(){return true;}
     public List<FactDefinition> facts(){return delegate.facts();}
     public Map<UUID,RecordAccess> authorize(Set<UUID> ids,boolean write){return delegate.authorize(ids,write);}
+    public Map<UUID,RecordAccess> authorizeHistory(Set<UUID> ids){return delegate.authorizeHistory(ids);}
     public void requireDocumentSaveAccess(boolean create){delegate.requireDocumentSaveAccess(create);}
     public Map<UUID,RecordAccess> authorizeCreated(Set<UUID> ids){return delegate.authorizeCreated(ids);}
     public Set<UUID> recordIdsForDocument(UUID id){return delegate.recordIdsForDocument(id);}

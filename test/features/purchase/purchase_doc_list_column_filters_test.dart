@@ -12,6 +12,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_list_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
 
 void main() {
   testWidgets('receipt headers send supplier and warehouse filters to API', (
@@ -47,9 +48,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    MasterDataTableView<PurchaseDocListItem> tableWidget() => tester.widget(
+    // 草稿段经 FormDraftCategoryTable 渲染合并表，双形态 finder 同款口径。
+    MasterDataTableView<dynamic> tableWidget() => tester.widget(
       find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<PurchaseDocListItem>,
+        (widget) =>
+            widget is MasterDataTableView<PurchaseDocListItem> ||
+            widget
+                is MasterDataTableView<
+                  FormDraftCategoryRow<PurchaseDocListItem>
+                >,
       ),
     );
     final table = tableWidget();

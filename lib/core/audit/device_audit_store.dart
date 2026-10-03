@@ -16,6 +16,7 @@ import 'package:uuid/uuid.dart';
 import '../constants/app_info.dart';
 import '../security/secure_storage.dart';
 import '../security/auth_refresh_lock.dart';
+import 'device_audit_receipt_storage.dart';
 
 abstract final class DeviceAuditHeaders {
   static const operationId = 'X-Uten-Operation-Id';
@@ -339,42 +340,44 @@ abstract interface class DeviceAuditStore {
   Future<void> updateRetentionMonths(int months);
 }
 
+typedef _ReceiptChange = LocalAuditReceipt? Function(LocalAuditReceipt?);
+
 class DefaultDeviceAuditStore implements DeviceAuditStore {
   DefaultDeviceAuditStore(
     this._storage, {
     DeviceInfoPlugin? deviceInfo,
     SharedPreferences? preferences,
     Uuid? uuid,
+    DeviceAuditReceiptStorage? receiptStorage,
   }) : _deviceInfo = deviceInfo ?? DeviceInfoPlugin(),
        _preferences = preferences == null
            ? SharedPreferences.getInstance()
            : Future<SharedPreferences>.value(preferences),
-       _uuid = uuid ?? const Uuid();
+       _uuid = uuid ?? const Uuid(),
+       _receiptStorage = receiptStorage ?? createDeviceAuditReceiptStorage();
 
   static const _installationKey = 'audit.device.installation_id';
   static const _installationMarkerKey = 'audit.device.installation_marker.v1';
   static const _legacyReceiptsKey = 'audit.device.local_receipts.v1';
   static const _receiptsKey = 'audit.device.local_receipts.v3';
   static const _receiptAdoptedKey = 'audit.device.local_receipts.v3.adopted';
-  static const _receiptIntegrityKey = 'audit.device.receipt_integrity_key.v1';
-  static const _retentionMonthsKey = 'audit.device.receipt_retention_months';
-  static const _maxReceipts = 300;
-  static const _defaultRetentionMonths = 36;
+  static const _receiptIntegrityKey = 'audit.device.receipt_integrity_key.v4';
+  static const _legacyIntegrityKey = 'audit.device.receipt_integrity_key.v1';
+  static const _permanentAdoptedKey = 'audit.device.local_receipts.v4.adopted';
+  static const _migrationKey = 'migration_v4';
 
   final SecureStorage _storage;
   final DeviceInfoPlugin _deviceInfo;
   final Future<SharedPreferences> _preferences;
   final Uuid _uuid;
+  final DeviceAuditReceiptStorage _receiptStorage;
 
   Future<DeviceAuditProfile>? _profileFuture;
   final _receiptLock = AuthRefreshLock('audit-device-receipts.v3');
-  List<LocalAuditReceipt>? _durableReceipts;
-  String? _durableEnvelope;
-  bool _adoptionConfirmed = false;
+  bool _migrationReady = false;
   Future<List<int>>? _integrityKeyFuture;
-  int? _retentionMonths;
   Future<void> _writes = Future<void>.value();
-  List<void Function(List<LocalAuditReceipt>)>? _pendingMutations;
+  List<MapEntry<String, _ReceiptChange>>? _pendingMutations;
   Future<void>? _pendingReceiptWrite;
 
   @override
@@ -387,36 +390,26 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
     required String path,
     required DateTime startedAt,
     required DeviceAuditProfile device,
-  }) => _mutateReceipts((receipts) {
-    final index = receipts.indexWhere(
-      (receipt) => receipt.clientEventId == clientEventId,
-    );
-    if (index < 0) {
-      receipts.add(
-        LocalAuditReceipt(
-          clientEventId: clientEventId,
-          installationId: device.installationId,
-          method: _clean(method, 10) ?? 'UNKNOWN',
-          path: _clean(path, 1000) ?? '/',
-          startedAt: startedAt.toUtc().toIso8601String(),
-          outcome: 'pending',
-          device: device,
-          // This new entry is published only after its signed write succeeds.
-          integrityVerified: true,
-        ),
-      );
-      return;
-    }
-    final previous = receipts.removeAt(index);
-    receipts.add(
-      previous.startNextAttempt(
-        method: _clean(method, 10) ?? 'UNKNOWN',
-        path: _clean(path, 1000) ?? '/',
-        startedAt: startedAt,
-        device: device,
-      ),
-    );
-  });
+  }) => _mutateReceipt(
+    clientEventId,
+    (previous) => previous == null
+        ? LocalAuditReceipt(
+            clientEventId: clientEventId,
+            installationId: device.installationId,
+            method: _clean(method, 10) ?? 'UNKNOWN',
+            path: _clean(path, 1000) ?? '/',
+            startedAt: startedAt.toUtc().toIso8601String(),
+            outcome: 'pending',
+            device: device,
+            integrityVerified: true,
+          )
+        : previous.startNextAttempt(
+            method: _clean(method, 10) ?? 'UNKNOWN',
+            path: _clean(path, 1000) ?? '/',
+            startedAt: startedAt,
+            device: device,
+          ),
+  );
 
   @override
   Future<void> completeReceipt({
@@ -425,77 +418,64 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
     required DateTime completedAt,
     int? statusCode,
     String? serverRequestId,
-  }) => _mutateReceipts((receipts) {
-    final index = receipts.indexWhere(
-      (receipt) => receipt.clientEventId == clientEventId,
-    );
-    if (index < 0) return;
-    receipts[index] = receipts[index].complete(
+  }) => _mutateReceipt(
+    clientEventId,
+    (previous) => previous?.complete(
       outcome: outcome,
       completedAt: completedAt,
       statusCode: statusCode,
       serverRequestId: _validUuid(serverRequestId) ? serverRequestId : null,
-    );
-  });
+    ),
+  );
 
   @override
   Future<LocalAuditReceipt?> findReceipt(String clientEventId) async {
+    if (!_validUuid(clientEventId)) return null;
     await _writes.catchError((_) {});
-    final receipts = await _loadReceipts();
-    for (final receipt in receipts.reversed) {
-      if (receipt.clientEventId == clientEventId) return receipt;
-    }
-    return null;
+    await _ensurePermanentStorage();
+    return _decodeRecord(
+      await _receiptStorage.read('receipt_$clientEventId'),
+      clientEventId,
+    );
   }
 
+  /// Kept for older server header compatibility. Age never destroys receipts.
   @override
-  Future<void> updateRetentionMonths(int months) async {
-    if (months < 1 || months > 360) return;
-    _retentionMonths = months;
-    final preferences = await _preferences;
-    await preferences.setInt(_retentionMonthsKey, months);
-    await _mutateReceipts((_) {});
-  }
+  Future<void> updateRetentionMonths(int months) async {}
 
-  Future<void> _mutateReceipts(
-    void Function(List<LocalAuditReceipt>) mutation,
-  ) {
+  Future<void> _mutateReceipt(String id, _ReceiptChange mutation) {
+    if (!_validUuid(id)) return Future.error(const FormatException('本机操作标识无效'));
+    final entry = MapEntry(id, mutation);
     final pending = _pendingMutations;
     if (pending != null) {
-      pending.add(mutation);
+      pending.add(entry);
       return _pendingReceiptWrite!;
     }
-    final mutations = <void Function(List<LocalAuditReceipt>)>[mutation];
+    final mutations = <MapEntry<String, _ReceiptChange>>[entry];
     _pendingMutations = mutations;
-    // A page often starts several reads in one frame. Preserve every receipt
-    // and retry attempt in order, but serialize/sign/persist their common
-    // bounded ledger once. Yield to the event loop instead of performing a
-    // full HMAC and local-storage write for every begin/complete callback.
     final next = _writes
         .catchError((_) {})
         .then(
           (_) => Future<void>(() async {
             _pendingMutations = null;
             _pendingReceiptWrite = null;
-            // Keep the last durable snapshot unchanged until storage succeeds.
-            // Otherwise a failed completion could appear integrity-verified in
-            // memory while the signed envelope on disk still says "pending".
-            await _receiptLock.synchronized(() async {
-              // Rebase on storage inside the shared lock; another tab may have
-              // committed newer receipts since this instance last wrote.
-              final receipts = List<LocalAuditReceipt>.of(
-                await _readReceiptsLocked(),
-              );
-              for (final apply in mutations) {
-                apply(receipts);
-              }
-              await _purgeExpired(receipts);
-              if (receipts.length > _maxReceipts) {
-                receipts.removeRange(0, receipts.length - _maxReceipts);
-              }
-              final envelope = await _persistReceiptsLocked(receipts);
-              _publishDurable(receipts, envelope);
-            });
+            await _ensurePermanentStorage();
+            final byId = <String, List<_ReceiptChange>>{};
+            for (final entry in mutations) {
+              (byId[entry.key] ??= []).add(entry.value);
+            }
+            // Only the IDs in this burst are read, signed and persisted. A bounded
+            // worker set avoids both an all-history rewrite and a filesystem flood.
+            final entries = byId.entries.toList();
+            var nextIndex = 0;
+            await Future.wait(
+              List.generate(min(4, entries.length), (_) async {
+                while (nextIndex < entries.length) {
+                  final entry = entries[nextIndex++];
+                  await _applyChanges(entry.key, entry.value);
+                }
+              }),
+            );
           }),
         );
     _writes = next;
@@ -503,80 +483,194 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
     return next;
   }
 
-  Future<List<LocalAuditReceipt>> _loadReceipts() =>
-      _receiptLock.synchronized(_readReceiptsLocked);
-
-  /// The v3 ledger has a separate key so older clients cannot overwrite its
-  /// provenance. A secure adoption marker prevents deleted/corrupt v3 storage
-  /// from re-importing a later v2 write. Failed adoption remains retryable.
-  Future<List<LocalAuditReceipt>> _readReceiptsLocked() async {
-    final preferences = await _preferences;
-    await preferences.reload();
-    final current = preferences.getString(_receiptsKey);
-    final adopted =
-        _adoptionConfirmed || await _storage.read(_receiptAdoptedKey) != null;
-    if (current != null || adopted) {
-      if (!adopted) {
-        // This also closes the crash window after the v3 snapshot was saved but
-        // before its adoption marker was committed. Never re-read legacy here.
-        await _storage.write(_receiptAdoptedKey, '3');
+  Future<void> _applyChanges(String id, List<_ReceiptChange> changes) async {
+    final key = 'receipt_$id';
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final raw = await _receiptStorage.read(key);
+      final previous = await _decodeRecord(raw, id);
+      var result = previous;
+      for (final change in changes) {
+        result = change(result);
       }
-      _adoptionConfirmed = true;
-      if (_durableReceipts != null && current == _durableEnvelope) {
-        return _durableReceipts!;
+      if (result == null) return;
+      // An unreadable previous record cannot become trusted by a later retry.
+      if (raw != null && previous == null) result = result.withIntegrity(false);
+      final value = await _encodeRecord(result);
+      if (await _receiptStorage.compareAndSet(
+        key,
+        expectedValue: raw,
+        value: value,
+      )) {
+        return;
       }
-      final receipts = await _decodeReceipts(current, allowLegacy: false);
-      await _purgeExpired(receipts);
-      _publishDurable(receipts, current);
-      return receipts;
     }
-    final receipts = await _decodeReceipts(
-      preferences.getString(_legacyReceiptsKey),
-      allowLegacy: true,
+    throw StateError('本机回执并发更新未完成，已有历史仍保留');
+  }
+
+  Future<void> _ensurePermanentStorage() async {
+    if (_migrationReady) return;
+    await _receiptLock.synchronized(
+      () => _receiptStorage.initialize(() async {
+        if (_migrationReady) return;
+        // All instances establish the signing key under the same lock, including
+        // an empty legacy ledger, before concurrent point writes can start.
+        await _signingKey();
+        final marker = await _receiptStorage.read(_migrationKey);
+        final adopted = await _storage.read(_permanentAdoptedKey) != null;
+        if (marker != null || adopted) {
+          if (!adopted) await _storage.write(_permanentAdoptedKey, '4');
+          _migrationReady = true;
+          return;
+        }
+        final preferences = await _preferences;
+        await preferences.reload();
+        final v3 = preferences.getString(_receiptsKey);
+        final legacy = preferences.getString(_legacyReceiptsKey);
+        final oldAdopted = await _storage.read(_receiptAdoptedKey) != null;
+        final legacyKey = await _readLegacyKey(mustExist: oldAdopted);
+        // Preserve exact source envelopes, including malformed rows and unknown
+        // timestamps. An older binary may still write its separate legacy key.
+        for (final source in {'v3': v3, 'legacy': legacy}.entries) {
+          final raw = source.value;
+          if (raw == null) continue;
+          final key =
+              'legacy_${source.key}_${sha256.convert(utf8.encode(raw))}';
+          final existing = await _receiptStorage.read(key);
+          if (existing != null && existing != raw) {
+            throw StateError('本机旧回执原件校验失败');
+          }
+          if (existing == null) {
+            await _storeMigrationValue(key, raw);
+          }
+        }
+        final records = _decodeReceipts(
+          v3 != null || oldAdopted ? v3 : legacy,
+          allowLegacy: v3 == null && !oldAdopted,
+          legacyKey: legacyKey,
+        );
+        // An intact current envelope may coexist with older distinct receipts
+        // outside its former 300-entry window. Keep those IDs discoverable as
+        // unverified history, without overriding current v3 provenance. A
+        // missing/corrupt adopted v3 never falls back to an older writer.
+        if (_hasV3Envelope(v3)) {
+          final present = records.map((row) => row.clientEventId).toSet();
+          for (final older in _decodeReceipts(
+            legacy,
+            allowLegacy: true,
+            legacyKey: legacyKey,
+          )) {
+            if (present.add(older.clientEventId)) {
+              records.add(older.withIntegrity(false));
+            }
+          }
+        }
+        for (final record in records) {
+          await _storeMigrationValue(
+            'receipt_${record.clientEventId}',
+            await _encodeRecord(record),
+            keepExisting: true,
+          );
+        }
+        // Commit marker last: interrupted imports can retry, but can never
+        // overwrite an already imported or newer receipt with an old snapshot.
+        await _storeMigrationValue(
+          _migrationKey,
+          jsonEncode({'version': 4, 'sourceRows': records.length}),
+          keepExisting: true,
+        );
+        await _storage.write(_permanentAdoptedKey, '4');
+        _migrationReady = true;
+      }),
     );
-    await _purgeExpired(receipts);
-    if (receipts.length > _maxReceipts) {
-      receipts.removeRange(0, receipts.length - _maxReceipts);
+  }
+
+  bool _hasV3Envelope(String? raw) {
+    try {
+      final envelope = raw == null ? null : jsonDecode(raw);
+      if (envelope is! Map ||
+          envelope['version'] != 3 ||
+          envelope['payload'] is! String) {
+        return false;
+      }
+      final payload = jsonDecode(envelope['payload'] as String);
+      return payload is Map &&
+          payload['format'] == 3 &&
+          payload['receipts'] is List;
+    } on FormatException {
+      return false;
+    } on TypeError {
+      return false;
     }
-    // Import is confirmed only after both the isolated snapshot and marker are
-    // durable. Neither a failed write nor its failed Future is cached.
-    final envelope = await _persistReceiptsLocked(receipts);
-    await _storage.write(_receiptAdoptedKey, '3');
-    _adoptionConfirmed = true;
-    _publishDurable(receipts, envelope);
-    return receipts;
   }
 
-  void _publishDurable(List<LocalAuditReceipt> receipts, String? envelope) {
-    _durableReceipts = receipts;
-    _durableEnvelope = envelope;
+  Future<void> _storeMigrationValue(
+    String key,
+    String value, {
+    bool keepExisting = false,
+  }) async {
+    if (await _receiptStorage.compareAndSet(
+      key,
+      expectedValue: null,
+      value: value,
+    )) {
+      return;
+    }
+    final existing = await _receiptStorage.read(key);
+    if (existing == null || (!keepExisting && existing != value)) {
+      throw StateError('本机历史回执尚未完整保存，迁移没有完成');
+    }
   }
 
-  Future<String> _persistReceiptsLocked(
-    List<LocalAuditReceipt> receipts,
-  ) async {
+  Future<String> _encodeRecord(LocalAuditReceipt receipt) async {
     final payload = jsonEncode({
-      'format': 3,
-      'receipts': [
-        for (final receipt in receipts)
-          {...receipt.toJson(), 'verifiedOrigin': receipt.integrityVerified},
-      ],
+      'format': 4,
+      'receipt': {
+        ...receipt.toJson(),
+        'verifiedOrigin': receipt.integrityVerified,
+      },
     });
-    final envelope = jsonEncode({
-      'version': 3,
+    return jsonEncode({
+      'version': 4,
       'payload': payload,
       'signature': await _signature(payload),
     });
-    if (!await (await _preferences).setString(_receiptsKey, envelope)) {
-      throw StateError('Local audit receipt write failed');
-    }
-    return envelope;
   }
 
-  Future<List<LocalAuditReceipt>> _decodeReceipts(
+  Future<LocalAuditReceipt?> _decodeRecord(String? raw, String id) async {
+    if (raw == null) return null;
+    try {
+      final envelope = jsonDecode(raw);
+      if (envelope is! Map ||
+          envelope['version'] != 4 ||
+          envelope['payload'] is! String ||
+          envelope['signature'] is! String) {
+        return null;
+      }
+      final payload = envelope['payload'] as String;
+      final data = jsonDecode(payload);
+      if (data is! Map || data['format'] != 4 || data['receipt'] is! Map) {
+        return null;
+      }
+      final row = Map<String, dynamic>.from(data['receipt'] as Map);
+      final receipt = LocalAuditReceipt.fromJson(row);
+      if (receipt.clientEventId != id) return null;
+      final verified = _constantTimeEquals(
+        envelope['signature'] as String,
+        await _signature(payload),
+      );
+      return receipt.withIntegrity(verified && row['verifiedOrigin'] == true);
+    } on FormatException {
+      return null;
+    } on TypeError {
+      return null;
+    }
+  }
+
+  List<LocalAuditReceipt> _decodeReceipts(
     String? raw, {
     required bool allowLegacy,
-  }) async {
+    required List<int>? legacyKey,
+  }) {
     try {
       final decoded = raw == null || raw.isEmpty ? null : jsonDecode(raw);
       var verified = false;
@@ -589,7 +683,14 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
         if ((envelope['version'] == 2 || envelope['version'] == 3) &&
             payload is String &&
             signature is String) {
-          verified = _constantTimeEquals(signature, await _signature(payload));
+          verified =
+              legacyKey != null &&
+              _constantTimeEquals(
+                signature,
+                base64UrlEncode(
+                  Hmac(sha256, legacyKey).convert(utf8.encode(payload)).bytes,
+                ),
+              );
           final signed = jsonDecode(payload);
           if (signed is Map &&
               signed['format'] == 3 &&
@@ -629,40 +730,67 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
     }
   }
 
-  Future<void> _purgeExpired(List<LocalAuditReceipt> receipts) async {
-    final preferences = await _preferences;
-    final months = _retentionMonths ??=
-        preferences.getInt(_retentionMonthsKey) ?? _defaultRetentionMonths;
-    final cutoff = _subtractMonths(DateTime.now().toUtc(), months);
-    receipts.removeWhere((receipt) {
-      final started = DateTime.tryParse(receipt.startedAt)?.toUtc();
-      return started == null || started.isBefore(cutoff);
-    });
-  }
-
   Future<String> _signature(String payload) async {
-    final key = await (_integrityKeyFuture ??= _integrityKey());
+    final key = await _signingKey();
     return base64UrlEncode(
       Hmac(sha256, key).convert(utf8.encode(payload)).bytes,
     );
   }
 
+  Future<List<int>?> _readLegacyKey({required bool mustExist}) async {
+    // Never create or repair the old writer's key. Freeze only what its exact
+    // original signature proves, then seal that provenance with the v4 key.
+    final encoded = await _storage.read(_legacyIntegrityKey);
+    if (encoded != null) {
+      try {
+        final bytes = base64Url.decode(encoded);
+        if (bytes.length == 32) return bytes;
+      } on FormatException {
+        /* Keep malformed legacy key bytes unchanged. */
+      }
+    }
+    if (mustExist) {
+      throw StateError('旧回执校验密钥缺失或无效，历史迁移尚未完成');
+    }
+    return null;
+  }
+
+  Future<List<int>> _signingKey() {
+    final current = _integrityKeyFuture;
+    if (current != null) return current;
+    late final Future<List<int>> pending;
+    pending = _integrityKey().catchError((Object error, StackTrace stack) {
+      if (identical(_integrityKeyFuture, pending)) _integrityKeyFuture = null;
+      Error.throwWithStackTrace(error, stack);
+    });
+    _integrityKeyFuture = pending;
+    return pending;
+  }
+
   Future<List<int>> _integrityKey() async {
-    try {
-      final existing = await _storage.read(_receiptIntegrityKey);
-      if (existing != null) {
+    // A permanent receipt is trusted only after its key is durably stored.
+    // Never replace an unreadable key or silently rotate an adopted ledger.
+    final existing = await _storage.read(_receiptIntegrityKey);
+    if (existing != null) {
+      try {
         final decoded = base64Url.decode(existing);
         if (decoded.length == 32) return decoded;
+      } on FormatException {
+        /* Preserve the original bytes for recovery. */
       }
-    } catch (_) {
-      // Fall through to a process-local key if secure storage is unavailable.
+      throw StateError('本机回执校验密钥无效，已有记录未修改');
+    }
+    if (await _receiptStorage.read(_migrationKey) != null ||
+        await _storage.read(_permanentAdoptedKey) != null) {
+      throw StateError('本机回执校验密钥缺失，已有记录未修改');
     }
     final random = Random.secure();
     final generated = List<int>.generate(32, (_) => random.nextInt(256));
-    try {
-      await _storage.write(_receiptIntegrityKey, base64UrlEncode(generated));
-    } catch (_) {
-      // A later process will flag these best-effort receipts as unverified.
+    final encoded = base64UrlEncode(generated);
+    await _storage.write(_receiptIntegrityKey, encoded);
+    final stored = await _storage.read(_receiptIntegrityKey);
+    if (stored == null || !_constantTimeEquals(stored, encoded)) {
+      throw StateError('本机回执校验密钥未安全保存，本次回执未发布');
     }
     return generated;
   }
@@ -829,23 +957,6 @@ bool _constantTimeEquals(String left, String right) {
     difference |= leftUnit ^ rightUnit;
   }
   return difference == 0;
-}
-
-DateTime _subtractMonths(DateTime value, int months) {
-  final monthIndex = value.year * 12 + value.month - 1 - months;
-  final year = monthIndex ~/ 12;
-  final month = monthIndex % 12 + 1;
-  final lastDay = DateTime.utc(year, month + 1, 0).day;
-  return DateTime.utc(
-    year,
-    month,
-    min(value.day, lastDay),
-    value.hour,
-    value.minute,
-    value.second,
-    value.millisecond,
-    value.microsecond,
-  );
 }
 
 String? _clean(String? value, int maxLength) {

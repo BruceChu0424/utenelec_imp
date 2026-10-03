@@ -4,6 +4,7 @@ import '../../shared/platform_tables/platform_table_picker.dart';
 import '../../shared/platform_tables/platform_table_widgets.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../shared/platform_tables/platform_row_draft.dart';
+import '../../shared/widgets/column_editor_dialog.dart';
 // UtenEditableGrid - 编辑页明细可编辑 Excel 表（采购/销售/委外/仓库/钱流 共用）
 //
 // 设计目标（plans/witty-imagining-reef.md Workstream B1）：
@@ -40,8 +41,11 @@ import '../../shared/platform_tables/platform_row_draft.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import '../data_display/uten_status_cell_color.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../inputs/uten_table_cell_hints.dart';
 import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_dialog.dart';
 import 'uten_grid_header_filter_cell.dart';
@@ -197,15 +201,8 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 未固定/未横滚时单元仍是原汁原味的可编辑控件，本字段不影响。
   final String Function(T row)? frozenTextOf;
 
-  /// 单元内部后缀装饰占宽（2026-09-09）：格内 ⓘ（UtenFieldHintIcon 44）或
-  /// 下拉箭头（20）这类排在文本之后的固定装饰宽度。自动加宽量宽时叠加在
-  /// [_cellChromeX] 上，否则装饰会吃掉文本宽度——110px 的币种列曾被 44px ⓘ
-  /// 挤到看不见默认值。无后缀装饰的列保持 0。
-  ///
-  /// 2026-09-10 口径：凡单元可能出现「预填黄标/必填红标」状态图标的列（学习
-  /// 预填的币种/汇率/税率/结账/供应商等），必须把 [UtenEditableGridCellSpec.hintIconWidth]
-  /// （44）计入——状态图标由 UtenInputDecoration 在预填态动态塞进 suffix，
-  /// 新单默认就是预填态，只按箭头 20 计会让默认值被裁成省略号。
+  /// 单元内部业务装饰占宽，如下拉箭头（20）。自动量宽时叠加到文本宽度；
+  /// 说明统一放在表头，单元格提示不再占用图标位。
   final double chromeWidth;
 }
 
@@ -224,9 +221,8 @@ abstract final class UtenEditableGridCellSpec {
     vertical: 12,
   );
 
-  /// 格内状态/说明图标（UtenFieldHintIcon）占宽，供 [EditableGridColumn.chromeWidth]
-  /// 叠加：`chromeWidth: 20 + UtenEditableGridCellSpec.hintIconWidth`。
-  static const double hintIconWidth = 44;
+  /// 兼容既有列宽定义。单元格说明/预填/错误提示已无图标，不再额外占宽。
+  static const double hintIconWidth = 0;
 
   /// 下拉/选择格的右侧展开箭头占宽。
   static const double dropdownChevronWidth = 20;
@@ -738,6 +734,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.addColumnLabel = '添加列',
     this.tableKey,
     this.platformBinding,
+    this.columnEditingEnabled = false,
   }) : assert(
          !showAddRow || createBlankRow != null,
          'showAddRow=true 必须提供 createBlankRow（「添加行」按钮需要构造空行）',
@@ -745,6 +742,10 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
 
   final String? tableKey;
   final PlatformTableBinding<T>? platformBinding;
+
+  /// Only document entry forms opt in. Review/selection tables keep their
+  /// existing layout controls without creating columns or editing field values.
+  final bool columnEditingEnabled;
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
 
@@ -982,6 +983,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         rows: widget.controller.rows,
       ),
       explicitBinding: widget.platformBinding,
+      columnEditingEnabled: widget.columnEditingEnabled,
       stagedDraftOf: (row) => row.platformFields,
       exactFactKeys: widget.columns
           .where((column) => column.exactValueOf != null)
@@ -1012,6 +1014,28 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
     final columns = _columns;
     final keys = columns.map((c) => c.key).toSet();
+    final querySignature = jsonEncode([
+      _platform.tableKey,
+      _platform.queryLifecycle,
+      saved.filters,
+      saved.hasQueryPreferences,
+      columns
+          .where((column) => column.filterValueOf != null)
+          .map((column) => column.key)
+          .toList(),
+    ]);
+    if (querySignature != _queryPreferenceSignature) {
+      _queryPreferenceSignature = querySignature;
+      _columnFilters
+        ..clear()
+        ..addAll({
+          for (final column in columns)
+            if (saved.hasQueryPreferences &&
+                column.filterValueOf != null &&
+                saved.filters[column.key] != null)
+              column.key: saved.filters[column.key],
+        });
+    }
     if (_platform.layout.order.isNotEmpty ||
         _platform.binding?.defaultColumnOrder != null ||
         _platform.binding?.defaultVisibleColumnKeys != null) {
@@ -1136,37 +1160,40 @@ class _UtenEditableGridState<T extends EditableGridRow>
   );
   Future<void> _addColumn() async {
     String? key;
-    if (widget.onAddColumn != null) {
+    if (_platform.columnEditingEnabled && widget.onAddColumn != null) {
       final mode = await showDialog<String>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('添加列'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.calculate_outlined),
-                title: const Text('单据附加项'),
-                subtitle: const Text('费用可计入金额，文字信息仅作记录'),
-                onTap: () => Navigator.pop(dialogContext, 'business'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.view_column_outlined),
-                title: const Text('辅助计算与说明'),
-                subtitle: const Text('不改变业务金额或库存数量'),
-                onTap: () => Navigator.pop(dialogContext, 'platform'),
-              ),
-            ],
-          ),
+        builder: (dialogContext) => ColumnEditorDialog(
+          title: '添加列',
+          subtitle: '选择这列的用途，再设置内容和计算规则。',
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: const Text('取消'),
             ),
           ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.calculate_outlined),
+                title: const Text('单据附加项'),
+                subtitle: const Text('输入附加费或优惠，计入正式金额；也可补充文字、数字和管理本单已添加列'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(dialogContext, 'business'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.view_column_outlined),
+                title: const Text('辅助计算与说明'),
+                subtitle: const Text('引用已有数值做辅助计算，或添加记录信息'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.pop(dialogContext, 'platform'),
+              ),
+            ],
+          ),
         ),
       );
-      if (!mounted || mode == null) return;
+      if (!mounted || mode == null || !_platform.columnEditingEnabled) return;
       key = mode == 'business'
           ? await widget.onAddColumn!(
               _columns.where((c) => _hiddenColumnKeys.contains(c.key)).toList(),
@@ -2121,9 +2148,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
       ? const SizedBox(width: 48, height: 48)
       : IconButton(
           key: const Key('editable-grid-add-column'),
-          tooltip: widget.addColumnLabel,
+          tooltip: _platform.columnEditingEnabled
+              ? widget.addColumnLabel
+              : '显示列',
           onPressed: _addColumn,
-          icon: const Icon(Icons.add_rounded),
+          icon: Icon(
+            _platform.columnEditingEnabled
+                ? Icons.add_rounded
+                : Icons.view_column_outlined,
+          ),
         );
 
   /// 表头全选 checkbox 的格子内容（批量模式表头首列；读写由 controller 或外部
@@ -2203,6 +2236,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// key=列 key，value=选中筛选值；null（或不在 map）=「所有」。纯视图级过滤：
   /// 行数据与选中集（按行身份持有）都不动，清除即全部恢复。
   final Map<String, String?> _columnFilters = {};
+  String _queryPreferenceSignature = '';
 
   bool get _hasColumnFilters => _columnFilters.values.any((v) => v != null);
 
@@ -3129,8 +3163,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ],
         nullCount: _filterNullCount(column),
         selected: _columnFilters[column.key],
-        onChanged: (value) =>
-            setState(() => _columnFilters[column.key] = value),
+        onChanged: (value) => setState(() {
+          _columnFilters[column.key] = value;
+          _platform.saveQuery(
+            filters: {
+              for (final entry in _columnFilters.entries)
+                if (entry.value != null) entry.key: entry.value,
+            },
+          );
+        }),
       );
     }
     final headerStyle = UtenTableHeader.textStyle(theme);
@@ -3490,12 +3531,20 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     Widget build() {
       final cellColor = isSelected
           ? null
-          : column.cellColor?.call(context, row);
+          : column.cellColor?.call(context, row) ??
+                (utenIsStatusColumn(column.key, column.label)
+                    ? udenStatusBadgeCellColor(
+                        context,
+                        utenStatusLabelType(
+                          column.textOf?.call(row) ??
+                              column.frozenTextOf?.call(row) ??
+                              column.filterValueOf?.call(row),
+                        ),
+                      )
+                    : null);
       final Color? onCellColor = cellColor == null
           ? null
-          : ThemeData.estimateBrightnessForColor(cellColor) == Brightness.dark
-          ? Colors.white
-          : Colors.black87;
+          : utenSemanticCellForeground(context, cellColor);
       return DecoratedBox(
         decoration: BoxDecoration(
           color: cellColor,
@@ -3517,7 +3566,17 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                     ? const [FontFeature.tabularFigures()]
                     : null,
               ),
-              child: column.cellBuilder(context, row),
+              child: UtenTableCellHints(
+                child: Builder(
+                  builder: (cellContext) => UtenStatusCellScope(
+                    enabled: utenIsStatusColumn(column.key, column.label),
+                    child: Builder(
+                      builder: (statusContext) =>
+                          column.cellBuilder(statusContext, row),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),

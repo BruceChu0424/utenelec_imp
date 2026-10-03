@@ -460,21 +460,26 @@ class DocumentActionPermissionContractTest {
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .filter(method -> method.getName().equals(methodName))
                 .toList();
+        // 2026-10-02 报价议价链(V788)给 delete/convertToOrder 加了带
+        // expectedRevision/action 的重载；契约改为「所有同名公开重载逐一守卫」，
+        // 任何重载缺少或放宽 @PreAuthorize 都红。
         assertThat(matches)
                 .as(type.getSimpleName() + "." + methodName)
-                .hasSize(1);
-        PreAuthorize annotation = matches.getFirst().getAnnotation(PreAuthorize.class);
-        assertThat(annotation)
-                .as(type.getSimpleName() + "." + methodName + " @PreAuthorize")
-                .isNotNull();
-        // 允许在精确权限之上用 "and ..." 追加收紧条件（如客户预收可见性），
-        // 但不得替换、省略或用 or 放宽基础动作权限。
-        assertThat(annotation.value())
-                .as(type.getSimpleName() + "." + methodName + " gate")
-                .satisfiesAnyOf(
-                        actual -> assertThat(actual).isEqualTo(expected),
-                        actual -> assertThat(actual)
-                                .startsWith(expected + " and "));
+                .isNotEmpty();
+        for (Method method : matches) {
+            PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
+            assertThat(annotation)
+                    .as(type.getSimpleName() + "." + methodName + " @" + method.getParameterCount() + "params @PreAuthorize")
+                    .isNotNull();
+            // 允许在精确权限之上用 "and ..." 追加收紧条件（如客户预收可见性），
+            // 但不得替换、省略或用 or 放宽基础动作权限。
+            assertThat(annotation.value())
+                    .as(type.getSimpleName() + "." + methodName + " gate")
+                    .satisfiesAnyOf(
+                            actual -> assertThat(actual).isEqualTo(expected),
+                            actual -> assertThat(actual)
+                                    .startsWith(expected + " and "));
+        }
     }
 
     private static AuthorizationDecision authorize(

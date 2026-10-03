@@ -183,6 +183,11 @@ class FinanceDocListItem {
 
 // ===== 5 单据明细行（超集）=====
 
+String financeDepartmentReferenceLabel(String? id, String? name) {
+  if (id == null || id.isEmpty) return '—';
+  return name != null && name.trim().isNotEmpty ? name : id;
+}
+
 class FinanceDocItem {
   const FinanceDocItem({
     this.id,
@@ -194,6 +199,7 @@ class FinanceDocItem {
     this.expenseStyleId,
     this.incomeStyleId,
     this.departmentId,
+    this.departmentName,
     this.counterpartAccountId,
     this.counterpartName,
     this.inAccountId,
@@ -236,6 +242,11 @@ class FinanceDocItem {
   final String? expenseStyleId;
   final String? incomeStyleId;
   final String? departmentId;
+
+  /// Current label supplied with this authorized document reference, not an historical name snapshot.
+  final String? departmentName;
+  String get departmentLabel =>
+      financeDepartmentReferenceLabel(departmentId, departmentName);
   // bankTransfer 转入
   final String? inAccountId;
   final String? occurDate;
@@ -278,6 +289,7 @@ class FinanceDocItem {
     expenseStyleId: json['expenseStyleId'] as String?,
     incomeStyleId: json['incomeStyleId'] as String?,
     departmentId: json['departmentId'] as String?,
+    departmentName: json['departmentName'] as String?,
     counterpartAccountId: json['counterpartAccountId'] as String?,
     counterpartName: json['counterpartName'] as String?,
     inAccountId: json['inAccountId'] as String?,
@@ -809,6 +821,8 @@ class ReconciliationItem {
     this.counterpartName,
     this.inAmount,
     this.outAmount,
+    this.inAmountText,
+    this.outAmountText,
     this.billDate,
     this.settledDate,
     this.sourceRemark,
@@ -825,6 +839,8 @@ class ReconciliationItem {
   final String? counterpartName;
   final double? inAmount;
   final double? outAmount;
+  final String? inAmountText;
+  final String? outAmountText;
   final String? billDate;
   final String? settledDate;
   final String? sourceRemark;
@@ -842,6 +858,8 @@ class ReconciliationItem {
         counterpartName: json['counterpartName'] as String?,
         inAmount: (json['inAmount'] as num?)?.toDouble(),
         outAmount: (json['outAmount'] as num?)?.toDouble(),
+        inAmountText: financeDecimalText(json['inAmountExact']),
+        outAmountText: financeDecimalText(json['outAmountExact']),
         billDate: json['billDate'] as String?,
         settledDate: json['settledDate'] as String?,
         sourceRemark: json['sourceRemark'] as String?,

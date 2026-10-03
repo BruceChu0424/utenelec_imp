@@ -1,5 +1,5 @@
 // 通知详情页
-// 详情页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
+// 详情页全断点套 UtenContentContainer.narrow（无固定最大宽度）。
 
 import 'dart:math' as math;
 
@@ -92,7 +92,7 @@ class _Content extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
-    // 详情页全断点窄版收敛（1120），避免宽屏正文被拉得过长。
+    // 详情正文随父容器扩宽，保留响应式 gutter。
     // 正文可框选复制：UtenContentContainer 默认已包局部 SelectionArea（准则 §3.4），
     // 页面无需再自行包裹。
     return UtenContentContainer.narrow(

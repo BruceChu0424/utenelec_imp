@@ -56,8 +56,11 @@ public class PurchaseReceiptController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new ReceiptQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new ReceiptQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -69,8 +72,11 @@ public class PurchaseReceiptController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new ReceiptQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new ReceiptQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")
@@ -78,6 +84,20 @@ public class PurchaseReceiptController {
     public ReceiptDetail detail(@PathVariable UUID id) {
         ReceiptDetail result = service.detail(id);
         auditViews.record(
+                "view_purchase_receipt_detail",
+                "purchase_receipts",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购收货单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('purchase_receipt:view')")
+    public ReceiptDetail history(@PathVariable UUID id) {
+        ReceiptDetail result = service.detailHistory(id);
+        auditViews.recordHistory(
                 "view_purchase_receipt_detail",
                 "purchase_receipts",
                 id,
@@ -115,5 +135,15 @@ public class PurchaseReceiptController {
     @PreAuthorize("hasAuthority('purchase_receipt:reverse')")
     public ReceiptDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('purchase_receipt:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        auditViews.recordHistory("view_purchase_receipt_detail", "purchase_receipts", id, null, null, "单据历史明细");
+        return rows;
     }
 }

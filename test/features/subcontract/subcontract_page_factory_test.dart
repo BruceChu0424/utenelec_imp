@@ -2,17 +2,27 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pages.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_page_factory.dart';
 import 'package:uten_imp/features/subcontract/services/subcontract_save_workflow.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   test(
     'factory routes remaining document families to explicit business pages',
     () {
@@ -147,6 +157,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {}),
             apiClientProvider.overrideWithValue(_api()),
           ],
@@ -183,6 +197,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.subcontractOrderView,
             Perm.subcontractOrderCreate,
@@ -230,9 +248,16 @@ void main() {
     await tester.tap(find.text('草稿'));
     await tester.pumpAndSettle();
 
-    final table = tester.widget<MasterDataTableView<SubcontractDocListItem>>(
+    // 草稿段经 FormDraftCategoryTable 渲染合并表（与 finance_stock 版双形态
+    // finder 同口径）；两种形态都要能驱动表头筛选。
+    final table = tester.widget<MasterDataTableView<dynamic>>(
       find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<SubcontractDocListItem>,
+        (widget) =>
+            widget is MasterDataTableView<SubcontractDocListItem> ||
+            widget
+                is MasterDataTableView<
+                  FormDraftCategoryRow<SubcontractDocListItem>
+                >,
       ),
     );
     expect(table.facets.keys, containsAll(<String>['supplier', 'warehouse']));
@@ -245,12 +270,16 @@ void main() {
     expect(api.lastQuery?['supplierId'], 'supplier-1');
     expect(api.lastQuery?['page'], 1);
 
-    final refreshed = tester
-        .widget<MasterDataTableView<SubcontractDocListItem>>(
-          find.byWidgetPredicate(
-            (widget) => widget is MasterDataTableView<SubcontractDocListItem>,
-          ),
-        );
+    final refreshed = tester.widget<MasterDataTableView<dynamic>>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is MasterDataTableView<SubcontractDocListItem> ||
+            widget
+                is MasterDataTableView<
+                  FormDraftCategoryRow<SubcontractDocListItem>
+                >,
+      ),
+    );
     refreshed.onFilterChanged('warehouse', 'warehouse-1');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['warehouseId'], 'warehouse-1');
@@ -279,6 +308,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.subcontractOrderView,
               Perm.subcontractOrderCreate,

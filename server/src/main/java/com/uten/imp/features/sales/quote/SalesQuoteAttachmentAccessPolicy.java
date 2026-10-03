@@ -4,6 +4,7 @@ import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.sales.SalesDocumentAccessPolicy;
+import com.uten.imp.features.sales.order.SalesPriceMasker;
 import com.uten.imp.security.AuthUser;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -24,9 +25,15 @@ public class SalesQuoteAttachmentAccessPolicy implements AttachmentOwnerAccessPo
     public static final String OWNER_TYPE = "SALES_QUOTE";
     private final EntityManager em;
     private final SalesDocumentAccessPolicy access;
+    private final SalesPriceMasker prices;
 
     @Override public String ownerType() { return OWNER_TYPE; }
     @Override public void requireCanView(UUID ownerId, AuthUser user) { readable(document(ownerId), user); }
+    @Override public void requireCanViewSensitiveOriginal(UUID ownerId,AuthUser user) {
+        SalesQuote quote=document(ownerId);readable(quote,user);
+        if(has(user,SalesQuoteService.FINANCE_VIEW)&&SalesQuoteService.financeVisible(quote))return;
+        if(!prices.canView())throw new ApiException(ErrorCode.FORBIDDEN,"识别原文件可能包含商业金额，需要订货价格查看权限");
+    }
     @Override public void requireCanManage(UUID ownerId, AuthUser user) { editable(document(ownerId), user); }
 
     @Override
@@ -39,15 +46,19 @@ public class SalesQuoteAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         editable(locked, user);
     }
 
-    private SalesQuote document(UUID id) {
+    private SalesQuote document(UUID id) { return document(id, false); }
+
+    private SalesQuote document(UUID id, boolean includeDeleted) {
         if (id == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定销售报价单");
         SalesQuote document = em.find(SalesQuote.class, id);
-        if (document == null || document.isDeleted()) throw missing();
+        if (document == null || (!includeDeleted && document.isDeleted())) throw missing();
         return document;
     }
-    private void readable(SalesQuote document, AuthUser user) {
-        if (document.isDeleted()) throw missing();
-        if (has(user, SalesQuoteService.FINANCE_VIEW) && SalesQuoteService.financeVisible(document)) return;
+    private void readable(SalesQuote document, AuthUser user) { readable(document,user,false); }
+
+    private void readable(SalesQuote document, AuthUser user, boolean includeDeleted) {
+        if ((!includeDeleted && document.isDeleted())) throw missing();
+        if (has(user, SalesQuoteService.FINANCE_VIEW) && SalesQuoteService.financeVisible(document,includeDeleted)) return;
         if (!has(user, "sales_quote:view")) throw missing();
         access.requireReadable(document.getMakerId(), "销售报价单不存在");
     }
@@ -69,4 +80,13 @@ public class SalesQuoteAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         return user != null && (user.isSuperAdmin() || user.getPermissions().contains(permission));
     }
     private static ApiException missing() { return new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在"); }
+
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        readable(document(ownerId,true),user,true);
+    }
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        SalesQuote quote=document(ownerId,true);readable(quote,user,true);
+        if(has(user,SalesQuoteService.FINANCE_VIEW)&&SalesQuoteService.financeVisible(quote,true))return;
+        if(!prices.canView())throw new ApiException(ErrorCode.FORBIDDEN,"识别原文件可能包含商业金额，需要订货价格查看权限");
+    }
 }

@@ -276,12 +276,12 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
       ),
       2 => WarehouseHistoryGate(
         timeKey: const Key('purchase-inbound-history-time'),
+        externalHeader: combined,
         builder: (time) => WarehouseDocumentHistoryView(
           type: WarehouseDocumentHistoryType.purchaseReceipt,
           keyword: widget.keyword,
           refreshTick: widget.refreshTick,
           embedded: true,
-          externalHeader: combined,
           dateFrom: time.range == null
               ? null
               : ChinaDateTime.formatDate(time.range!.start),
@@ -386,12 +386,12 @@ class _SubcontractInboundSegmentState
       ),
       1 => WarehouseHistoryGate(
         timeKey: const Key('subcontract-inbound-history-time'),
+        externalHeader: combined,
         builder: (time) => WarehouseDocumentHistoryView(
           type: WarehouseDocumentHistoryType.subcontractReceipt,
           keyword: widget.keyword,
           refreshTick: widget.refreshTick,
           embedded: true,
-          externalHeader: combined,
           dateFrom: time.range == null
               ? null
               : ChinaDateTime.formatDate(time.range!.start),

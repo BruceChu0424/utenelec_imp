@@ -16,6 +16,13 @@ import java.util.UUID;
 /** 采购申请明细。源 P_ApplicationItem。ordered_qty 由订货单审核回写。 */
 @Getter @Setter @NoArgsConstructor @Entity @Table(name = "purchase_request_items")
 public class PurchaseRequestItem extends BaseEntity {
+    /** Database owns every native/JPA mutation version, including retained-ID reincarnation. */
+    @org.hibernate.annotations.Generated(event = {
+            org.hibernate.generator.EventType.INSERT, org.hibernate.generator.EventType.UPDATE})
+    @Column(name = "row_version", nullable = false, insertable = false, updatable = false)
+    private long rowVersion;
+    @Column(name = "is_deleted", insertable = false, updatable = false)
+    private boolean deleted;
     private Integer legacyId;
     @Column(name = "bill_no") private String billNo;
     @Column(name = "bill_date") private LocalDate billDate;

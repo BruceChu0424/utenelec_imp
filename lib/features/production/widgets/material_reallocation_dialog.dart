@@ -9,6 +9,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/dialog_size.dart';
@@ -182,6 +183,7 @@ class _MaterialReallocationDialogBodyState
   int _batchDone = 0;
   int _batchTotal = 0;
   String? _loadError;
+  String? _loadMoreError;
   String? _submitError;
 
   @override
@@ -255,11 +257,15 @@ class _MaterialReallocationDialogBodyState
     required bool reset,
     bool preserveSelection = false,
   }) async {
-    if (_uncertain) return;
+    if (_uncertain ||
+        (!reset && (_loading || _loadingMore || !_hasMorePages))) {
+      return;
+    }
     final epoch = ++_loadEpoch;
     final keyword = _searchController.text;
     final selected = preserveSelection ? _target : null;
     setState(() {
+      _loadMoreError = null;
       if (reset) {
         _loading = true;
         _loadError = null;
@@ -351,10 +357,15 @@ class _MaterialReallocationDialogBodyState
       setState(() {
         _loading = false;
         _loadingMore = false;
-        _loadError = productionErrorMessage(
+        final message = productionErrorMessage(
           error,
           fallback: '$_counterpartRole加载失败，请检查网络后重试',
         );
+        if (reset) {
+          _loadError = message;
+        } else {
+          _loadMoreError = message;
+        }
       });
     }
   }
@@ -1081,30 +1092,50 @@ class _MaterialReallocationDialogBodyState
                   '候选须同主仓范围、同货品/颜色/单位，且仍有真实缺口。',
       );
     }
-    return ListView.separated(
-      key: const Key('cross-reallocation-candidates-list'),
-      controller: _candidateScrollController,
-      itemCount: _candidates.length + (_hasMorePages ? 1 : 0),
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        if (index == _candidates.length) {
-          return Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s8),
-            child: UtenButton(
-              key: const Key('cross-reallocation-load-more'),
-              size: UtenButtonSize.large,
-              type: UtenButtonType.ghost,
-              isLoading: _loadingMore,
-              isExpanded: true,
-              onPressed: _loadingMore || _locked
-                  ? null
-                  : () => _loadCandidates(reset: false),
-              child: Text('加载更多$_counterpartRole'),
-            ),
-          );
-        }
-        return _candidateTile(theme, _candidates[index]);
-      },
+    return UtenLoadMoreBoundary(
+      enabled:
+          !_loading &&
+          !_loadingMore &&
+          !_locked &&
+          _loadMoreError == null &&
+          _hasMorePages,
+      scope: (
+        _sourceAnalysis.analysisId,
+        _sourceMaterial.materialLineId,
+        _searchController.text,
+        widget.receiveIntoCurrent,
+        widget.futureTransfer,
+      ),
+      onLoadMore: () => _loadCandidates(reset: false),
+      child: ListView.separated(
+        key: const Key('cross-reallocation-candidates-list'),
+        controller: _candidateScrollController,
+        itemCount: _candidates.length + (_hasMorePages ? 1 : 0),
+        separatorBuilder: (_, _) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          if (index == _candidates.length) {
+            return Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s8),
+              child: UtenButton(
+                key: const Key('cross-reallocation-load-more'),
+                size: UtenButtonSize.large,
+                type: UtenButtonType.ghost,
+                isLoading: _loadingMore,
+                isExpanded: true,
+                onPressed: _loadingMore || _locked
+                    ? null
+                    : () => _loadCandidates(reset: false),
+                child: Text(
+                  _loadMoreError == null
+                      ? '加载更多$_counterpartRole'
+                      : '$_loadMoreError，点击重试',
+                ),
+              ),
+            );
+          }
+          return _candidateTile(theme, _candidates[index]);
+        },
+      ),
     );
   }
 

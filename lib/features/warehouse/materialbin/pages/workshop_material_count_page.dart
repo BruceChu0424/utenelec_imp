@@ -20,6 +20,7 @@ import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
+import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/print/uten_print_preview.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
@@ -568,12 +569,12 @@ class _WorkshopMaterialCountPageState
     final ok = await UtenDialog.show(
       context,
       title: l10n.wmSubmitCount,
-      content: const Text('提交后按实盘数过账, 系统自动结算。提交后要改, 只能"更正盘点"。'),
+      content: const Text('本操作代表仓库审核通过，将按实盘数过账并自动结算。之后要改须先建立更正盘点，再由仓库审核。'),
       confirmLabel: l10n.wmSubmitCount,
     );
     if (ok != true || !mounted) return;
     final period = await _run(
-      '正在提交盘点',
+      '正在审核盘点并过账',
       () => _repo.submitCount(
         count.id,
         expectedVersion: count.rowVersion,
@@ -793,6 +794,9 @@ class _WorkshopMaterialCountPageState
             ],
           ),
         ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: _loading ? null : _floatingActions(l10n),
       ),
     );
   }
@@ -847,9 +851,11 @@ class _WorkshopMaterialCountPageState
     }
     return ListView(
       key: const Key('wm-count-list'),
-      padding: const EdgeInsets.symmetric(
-        vertical: UtenSpacing.s12,
-        horizontal: UtenSpacing.s4,
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s4,
+        UtenSpacing.s12,
+        UtenSpacing.s4,
+        UtenFloatingActionGroup.scrollClearance,
       ),
       children: children,
     );
@@ -869,10 +875,7 @@ class _WorkshopMaterialCountPageState
               style: theme.textTheme.titleMedium,
             ),
             const SizedBox(height: UtenSpacing.s8),
-            Text(
-              '在开始清点实物的那一刻点"${l10n.wmStartCount}": 这一期到截止日为止, 之后发的料算到下一期。',
-              style: theme.textTheme.bodyMedium,
-            ),
+            Text('选择截止日，开始后录入容器和袋料余量。', style: theme.textTheme.bodyMedium),
             const SizedBox(height: UtenSpacing.s12),
             SegmentedButton<bool>(
               key: const Key('wm-count-cutoff'),
@@ -886,26 +889,10 @@ class _WorkshopMaterialCountPageState
                   ? (next) => setState(() => _cutoffYesterday = next.first)
                   : null,
             ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              l10n.wmMonthEndHint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s16),
-            if (canStart)
-              Center(
-                child: UtenButton(
-                  key: const Key('wm-count-start'),
-                  size: UtenButtonSize.large,
-                  icon: Icons.fact_check_outlined,
-                  onPressed: _busyTitle == null ? _startCount : null,
-                  child: Text(l10n.wmStartCount),
-                ),
-              )
-            else
+            if (!canStart) ...[
+              const SizedBox(height: UtenSpacing.s12),
               const Text('你没有开始盘点的权限, 请找有盘点权限的同事。'),
+            ],
           ],
         ),
       ),
@@ -939,6 +926,17 @@ class _WorkshopMaterialCountPageState
             '${wmPeriodLabel(period)} · ${wmPeriodStatusLabel(period.status)}',
             style: theme.textTheme.titleMedium,
           ),
+          IconButton(
+            key: const Key('wm-count-help'),
+            tooltip: '录入说明',
+            icon: const Icon(Icons.help_outline_rounded),
+            onPressed: () => UtenDialog.show(
+              context,
+              title: '录入说明',
+              content: Text(l10n.wmFillGuide),
+              confirmLabel: '知道了',
+            ),
+          ),
           UtenPrintPreviewButton(
             applyTableProjection:
                 false, // Fixed paper form with handwriting and tick-box columns.
@@ -950,8 +948,6 @@ class _WorkshopMaterialCountPageState
           ),
         ],
       ),
-      const SizedBox(height: UtenSpacing.s8),
-      UtenInlineNotice(message: l10n.wmFillGuide),
       const SizedBox(height: UtenSpacing.s8),
       Text(
         '已录 $recordedContainers / $totalContainers 个容器, '
@@ -1034,9 +1030,24 @@ class _WorkshopMaterialCountPageState
         );
     }
 
-    widgets.add(const SizedBox(height: UtenSpacing.s16));
+    return widgets;
+  }
+
+  Widget? _floatingActions(AppLocalizations l10n) {
+    final period = _period;
+    final count = _count;
+    if (period == null) return null;
     final actions = <Widget>[
-      if (editable)
+      if (period.status == WmPeriodStatus.open &&
+          period.can(WmAction.startCount))
+        UtenButton(
+          key: const Key('wm-count-start'),
+          size: UtenButtonSize.large,
+          icon: Icons.fact_check_outlined,
+          onPressed: _busyTitle == null ? _startCount : null,
+          child: Text(l10n.wmStartCount),
+        ),
+      if (_editable)
         UtenButton(
           key: const Key('wm-count-zero-rest'),
           type: UtenButtonType.secondary,
@@ -1052,7 +1063,8 @@ class _WorkshopMaterialCountPageState
           onPressed: _busyTitle == null ? _withdraw : null,
           child: Text(l10n.wmWithdrawCount),
         ),
-      if (!count.isDraft &&
+      if (count != null &&
+          !count.isDraft &&
           period.status == WmPeriodStatus.counted &&
           period.can(WmAction.correctCount))
         UtenButton(
@@ -1061,7 +1073,7 @@ class _WorkshopMaterialCountPageState
           onPressed: _busyTitle == null ? _correct : null,
           child: Text(l10n.wmCorrectCount),
         ),
-      if (count.isDraft && count.can(WmAction.submitCount))
+      if (count != null && count.isDraft && count.can(WmAction.submitCount))
         UtenButton(
           key: const Key('wm-count-submit'),
           size: UtenButtonSize.large,
@@ -1070,16 +1082,7 @@ class _WorkshopMaterialCountPageState
           child: Text(l10n.wmSubmitCount),
         ),
     ];
-    widgets.add(
-      Wrap(
-        alignment: WrapAlignment.center,
-        spacing: UtenSpacing.s12,
-        runSpacing: UtenSpacing.s8,
-        children: actions,
-      ),
-    );
-    widgets.add(const SizedBox(height: UtenSpacing.s24));
-    return widgets;
+    return actions.isEmpty ? null : UtenFloatingActionGroup(children: actions);
   }
 
   Widget _responsiveCards(List<Widget> cards) => LayoutBuilder(

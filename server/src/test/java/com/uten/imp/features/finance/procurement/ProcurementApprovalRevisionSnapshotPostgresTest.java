@@ -38,7 +38,7 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
                     CREATE TABLE units (id uuid, name text);
                     CREATE TABLE currencies (id uuid, name text);
                     CREATE TABLE purchase_order_item_sources (order_item_id uuid, request_item_id uuid);
-                    CREATE TABLE purchase_request_items (id uuid, request_id uuid);
+                    CREATE TABLE purchase_request_items (row_version bigint NOT NULL DEFAULT 0, id uuid, request_id uuid);
                     CREATE TABLE purchase_requests (id uuid, bill_no text);
                     CREATE TABLE subcontract_order_item_sources (order_item_id uuid, application_item_id uuid);
                     CREATE TABLE subcontract_application_items (id uuid, application_id uuid);

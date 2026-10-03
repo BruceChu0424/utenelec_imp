@@ -71,6 +71,9 @@ public class SubcontractOrderItem extends com.uten.imp.common.columns.ExtraColum
     @Column(name = "price", columnDefinition = "numeric")
     private BigDecimal price;            // 加工单价
 
+    @Column(name = "total_amount_input", columnDefinition = "numeric")
+    private BigDecimal totalAmountInput;
+
     @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;
 

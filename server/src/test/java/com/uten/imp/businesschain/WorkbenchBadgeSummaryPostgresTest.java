@@ -121,6 +121,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         // ADR-131 车间内料仓: 新入口, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
         ORIGINAL_ENDPOINTS.put("workshopMaterial", "/api/workshop-material/badge-counts");
         ORIGINAL_ENDPOINTS.put("serverStatus", "/api/admin/server-status");
+        ORIGINAL_ENDPOINTS.put("stockCountFinance", "/api/stock/count-review-badges/finance");
+        ORIGINAL_ENDPOINTS.put("stockCountWarehouse", "/api/stock/count-review-badges/warehouse");
         ORIGINAL_ENDPOINTS.put("notices", "/api/notices/unread-index");
     }
 
@@ -144,6 +146,8 @@ class WorkbenchBadgeSummaryPostgresTest {
                 "procurementApproval.count", "financeArrivalException.count",
                 "iqcRejection.open"), List.of());
         legacy("financeQuoteReview", List.of("salesQuoteFinance.pending"), List.of());
+        // 2026-10-02 盘点审批(ADR/库存盘点)：普通仓交财务审核的入口（红=待审）。
+        legacy("financeStockCountReview", List.of("stockCountFinance.count"), List.of());
         legacy("expenseFinance", List.of("expense.pendingApprovalCount", "expense.pendingPaymentCount"), List.of());
         legacy("financeDrafts", List.of("drafts.financeReceipt", "drafts.financePayment", "drafts.financeExpense",
                 "drafts.financeOtherIncome", "drafts.financeBankTransfer"), List.of());
@@ -165,6 +169,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("warehouseWorkshopMaterial", List.of("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
                 List.of("workshopMaterial.counting"));
         legacy("warehouseQualityResult", List.of("qualityResult.actionable.*"), List.of("qualityResult.inProgress.*"));
+        // 2026-10-02 盘点审批(ADR/库存盘点)：内料仓/仓库侧审核入口（红=待审）。
+        legacy("warehouseStockCountReview", List.of("stockCountWarehouse.count"), List.of());
         legacy("warehouseDrafts", List.of("drafts.stockDocument"), List.of());
         legacy("purchaseTaskCenter", List.of("purchaseTask.pending"), List.of("purchaseTask.inProgress"));
         legacy("purchaseSupplierReturn", List.of("purchaseSupplierReturn.count"), List.of());
@@ -181,6 +187,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("salesShipmentFinanceRejected", List.of("financeRejected.salesShipment"), List.of());
         legacy("salesQuoteFinanceRejected", List.of("financeRejected.salesQuote"), List.of());
         legacy("salesQuoteAwaitingConversion", List.of("salesQuote.awaitingConversion"), List.of());
+        // V788 报价议价：客户确认待办（红=待客户确认的报价）。
+        legacy("salesQuoteAwaitingCustomerConfirmation", List.of("salesQuote.awaitingCustomerConfirmation"), List.of());
         legacy("salesDrafts", List.of("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn",
                 "drafts.salesQuote"), List.of());
         legacy("serverStatusAlert", List.of("serverStatus.alerts"), List.of());
@@ -401,7 +409,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         long legacyStarted = System.nanoTime();
         try {
             for (String endpoint : ORIGINAL_ENDPOINTS.values()) {
-                http.perform(get(endpoint).with(authentication(admin))).andReturn();
+                var response = http.perform(get(endpoint).with(authentication(admin))).andReturn().getResponse();
+                assertThat(response.getStatus()).as("Original endpoint %s must execute its query", endpoint).isEqualTo(200);
             }
         } finally {
             ProductionJdbcMeasurement.end();

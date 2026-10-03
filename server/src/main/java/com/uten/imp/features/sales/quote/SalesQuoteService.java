@@ -65,6 +65,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesQuoteService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     static final short STATUS_DRAFT = 0;
     static final short STATUS_CONFIRMED = 1;
@@ -84,6 +88,7 @@ public class SalesQuoteService {
      * 「报价已核价待转订货」({@link #counts()})同一条件; 「从报价引入」选报价时用。
      */
     public static final String BUCKET_AWAITING_CONVERSION = "AWAITING_CONVERSION";
+    public static final String BUCKET_AWAITING_CUSTOMER = "AWAITING_CUSTOMER";
 
     private static final String DOC_LABEL = "报价";
     private static final String MASKED_DISCOUNT_NOTE = "文件单价换算不出合理折扣, 暂按原价, 请有价格权限的同事核对";
@@ -127,10 +132,12 @@ public class SalesQuoteService {
         boolean masked = pricesMasked();
         Map<UUID, ConvertedOrder> converted = convertedOrders(p.getContent().stream().map(SalesQuote::getId).toList());
         var readScope = accessPolicy.scope();
-        return new PageResponse<>(p.map(q -> toList(q,
+        PageResponse<QuoteListItem> result = new PageResponse<>(p.map(q -> toList(q,
                         canEdit && accessPolicy.canWrite(q.getMakerId(), readScope), masked,
                         converted.get(q.getId()), readScope)).getContent(),
                 p);
+        return p.stream().noneMatch(SalesQuote::isDeleted) ? result
+                : retainedRecords.page(result, "sales_quotes", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -148,22 +155,33 @@ public class SalesQuoteService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
     public QuoteCounts counts() {
-        if (!accessPolicy.hasAuthority("sales_quote:convert") || !accessPolicy.hasAuthority("sales_order:create")) {
-            return new QuoteCounts(0);
+        boolean canConvert = accessPolicy.hasAuthority("sales_quote:convert") && accessPolicy.hasAuthority("sales_order:create");
+        boolean canConfirm = accessPolicy.hasAuthority("sales_quote:edit");
+        if (!canConvert && !canConfirm) {
+            return new QuoteCounts(0, 0);
         }
-        var scope = accessPolicy.nativeReadScope("o.maker_id", "quoteOwners");
+        var owners = accessPolicy.scope();
+        var scope = accessPolicy.nativeReadScope("o.maker_id", "quoteOwners",
+                new com.uten.imp.security.OwnerVisibility.OwnerScope(owners.seeAll(), owners.writableOwners()));
         var query = em.createNativeQuery("""
-                SELECT COUNT(*) FROM sales_quotes o
+                SELECT COUNT(*) FILTER (WHERE o.customer_accepted_at IS NULL
+                                           OR o.customer_accepted_revision IS DISTINCT FROM o.review_revision),
+                       COUNT(*) FILTER (WHERE o.customer_accepted_at IS NOT NULL
+                                           AND o.customer_accepted_revision = o.review_revision)
+                FROM sales_quotes o
                 WHERE o.is_deleted = FALSE AND o.status = 1 AND o.finance_confirmed_at IS NOT NULL
+                  AND o.maker_id IS NOT NULL AND o.is_closed = FALSE
                   AND NOT EXISTS (SELECT 1 FROM sales_orders converted
-                                  WHERE converted.source_quote_id = o.id AND converted.is_deleted = FALSE)
+                                  WHERE converted.source_quote_id = o.id)
                   AND""" + " " + scope.predicate());
         scope.bind(query);
-        return new QuoteCounts(((Number) query.getSingleResult()).longValue());
+        Object[] result = (Object[]) query.getSingleResult();
+        return new QuoteCounts(canConfirm ? ((Number) result[0]).longValue() : 0,
+                canConvert ? ((Number) result[1]).longValue() : 0);
     }
 
     /** 报价计数(工作台徽章来源)。 */
-    public record QuoteCounts(long awaitingConversion) {
+    public record QuoteCounts(long awaitingCustomerConfirmation, long awaitingConversion) {
     }
 
     /** 列表谓词(list 与 facets 共用；billNo=表头单据号精确匹配；bucket=分段)。 */
@@ -173,7 +191,8 @@ public class SalesQuoteService {
         return (Root<SalesQuote> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             // 报价表没有独立 owner 列，maker_id 是其有效归属人。
             ps.add(accessPolicy.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
@@ -196,6 +215,8 @@ public class SalesQuoteService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
+            f.headerFilters().apply(root, cb, ps, "totalLocal", priceMasker != null && priceMasker.canView(), "deliverDate", false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
@@ -205,7 +226,7 @@ public class SalesQuoteService {
         String bucket = raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (bucket) {
             case BUCKET_DRAFT, BUCKET_FINANCE_REJECTED, BUCKET_PENDING_FINANCE, BUCKET_APPROVED, BUCKET_REVERSED,
-                 BUCKET_AWAITING_CONVERSION -> bucket;
+                 BUCKET_AWAITING_CONVERSION, BUCKET_AWAITING_CUSTOMER -> bucket;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价分段无效: " + raw);
         };
     }
@@ -223,15 +244,19 @@ public class SalesQuoteService {
                     cb.isNotNull(root.get("financeReturnReason")));
             case BUCKET_PENDING_FINANCE -> cb.equal(root.get("status"), STATUS_PENDING_FINANCE);
             case BUCKET_APPROVED -> cb.equal(root.get("status"), STATUS_CONFIRMED);
-            case BUCKET_AWAITING_CONVERSION -> {
+            case BUCKET_AWAITING_CONVERSION, BUCKET_AWAITING_CUSTOMER -> {
                 jakarta.persistence.criteria.Subquery<Integer> converted = query.subquery(Integer.class);
                 Root<com.uten.imp.features.sales.order.SalesOrder> order =
                         converted.from(com.uten.imp.features.sales.order.SalesOrder.class);
                 converted.select(cb.literal(1)).where(
-                        cb.equal(order.get("sourceQuoteId"), root.get("id")),
-                        cb.isFalse(order.get("deleted")));
+                        cb.equal(order.get("sourceQuoteId"), root.get("id")));
                 yield cb.and(cb.equal(root.get("status"), STATUS_CONFIRMED),
                         cb.isNotNull(root.get("financeConfirmedAt")),
+                        BUCKET_AWAITING_CONVERSION.equals(bucket)
+                                ? cb.and(cb.isNotNull(root.get("customerAcceptedAt")),
+                                    cb.equal(root.get("customerAcceptedRevision"), root.get("reviewRevision")))
+                                : cb.or(cb.isNull(root.get("customerAcceptedAt")),
+                                    cb.notEqual(root.get("customerAcceptedRevision"), root.get("reviewRevision"))),
                         cb.not(cb.exists(converted)));
             }
             default -> cb.equal(root.get("status"), STATUS_REVERSED);
@@ -240,9 +265,16 @@ public class SalesQuoteService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_quote:view')")
-    public QuoteDetail detail(UUID id) {
-        SalesQuote q = requireReadableQuote(id);
-        return toDetail(q, itemRepo.findByQuoteIdOrderByLineNoAsc(id), true);
+    public QuoteDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public QuoteDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private QuoteDetail readDetail(UUID id, boolean historyRead) {
+        SalesQuote q = requireReadableQuote(id, historyRead);
+        return finishHistory(toDetail(q, itemRepo.findByQuoteIdOrderByLineNoAsc(id), true), q, historyRead);
     }
 
     // ------------------------------------------------------------------ 草稿写
@@ -271,16 +303,22 @@ public class SalesQuoteService {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行重读, 与提交核价互斥
-        if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT) {
+        if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT || q.isClosed()) {
             throw new ApiException(ErrorCode.BUSINESS, q.getStatus() != null && q.getStatus() == STATUS_PENDING_FINANCE
                     ? "报价已提交财务核价, 请先撤回再修改" : "仅草稿单据可编辑");
         }
+        requireRevision(q, req.getExpectedRevision());
+        requireNotDeleted(q);
         referenceValidator.validate(req);
         validateHeaderReferences(req);
         applyHeader(req, q);
         List<SalesQuoteItem> existing = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         List<SalesQuoteItem> items = saveItems(q, req.getItems(), existing);
         applyTotals(q, items);
+        clearCustomerAcceptance(q);
+        q.setReviewRevision(q.getReviewRevision() + 1);
+        quoteRepo.save(q);
+        revisionLog.append(q, items, SalesQuoteRevisionLog.SALES_EDIT, currentUser.requireEmployeeId(), null);
         intakeHooks.afterSave(SalesIntakeSaveHooks.DOC_QUOTE, q.getId(), q.getClientId(),
                 learnedLines(req.getItems(), items), req.getAiIntake());
         return toDetail(q, items, false);
@@ -289,9 +327,21 @@ public class SalesQuoteService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote:delete')")
     public void delete(UUID id) {
+        delete(id, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:delete')")
+    public void delete(UUID id, Integer expectedRevision) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
+        em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireNotDeleted(q);
+        requireRevision(q, expectedRevision);
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(q.getStatus());
+        if (q.getSubmittedAt() != null) {
+            throw new ApiException(ErrorCode.CONFLICT, "报价已经提交过财务，请使用取消报价并填写原因");
+        }
         q.setDeleted(true);
         q.setDeletedAt(OffsetDateTime.now());
         quoteRepo.save(q);
@@ -309,9 +359,8 @@ public class SalesQuoteService {
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT || q.isClosed()) {
             throw new ApiException(ErrorCode.CONFLICT, "只有草稿报价可以提交财务核价");
         }
-        if (req != null && req.expectedRevision() != null) {
-            requireRevision(q, req.expectedRevision());
-        }
+        requireNotDeleted(q);
+        requireRevision(q, req == null ? null : req.expectedRevision());
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价还没有货品明细, 不能提交财务核价");
@@ -329,6 +378,7 @@ public class SalesQuoteService {
         q.setFinanceReturnedBy(null);
         q.setFinanceConfirmedAt(null);
         q.setFinanceConfirmedBy(null);
+        clearCustomerAcceptance(q);
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         revisionLog.append(q, items, SalesQuoteRevisionLog.SUBMIT, actor, null);
@@ -343,6 +393,7 @@ public class SalesQuoteService {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireNotDeleted(q);
         if (q.getStatus() == null || q.getStatus() != STATUS_PENDING_FINANCE) {
             throw new ApiException(ErrorCode.CONFLICT, "报价不在待财务核价状态, 不能撤回");
         }
@@ -365,7 +416,8 @@ public class SalesQuoteService {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED) {
+        requireNotDeleted(q);
+        if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED || q.isClosed()) {
             throw new ApiException(ErrorCode.CONFLICT, "只有已核价的报价可以重新修改");
         }
         requireRevision(q, req == null ? null : req.expectedRevision());
@@ -375,6 +427,7 @@ public class SalesQuoteService {
         q.setFinanceConfirmedAt(null);
         q.setFinanceConfirmedBy(null);
         q.setApproverId(null);
+        clearCustomerAcceptance(q);
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
@@ -382,20 +435,65 @@ public class SalesQuoteService {
         return toDetail(q, items, true);
     }
 
-    /** 作废：status 1→-1(已转订货单的报价不能作废)。 */
+    /** Legacy route retained; new clients use cancel with a revision and a reason. */
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote:reverse')")
     public QuoteDetail reverse(UUID id) {
+        throw new ApiException(ErrorCode.CONFLICT, "请使用取消报价并填写原因，原报价及沟通历史将保留");
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    public QuoteDetail customerConfirm(UUID id, QuoteActionRequest req) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
-        em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
-        if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已核价的报价可以作废");
+        em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireNotDeleted(q);
+        requireRevision(q, req == null ? null : req.expectedRevision());
+        if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED || q.getFinanceConfirmedAt() == null || q.isClosed()) {
+            throw new ApiException(ErrorCode.CONFLICT, "只有财务已核价的报价可以确认客户接受");
         }
-        requireNotConverted(q.getId(), "报价已转成订货单, 不能作废; 请先处理订货单");
-        q.setStatus(STATUS_REVERSED);
+        requireNotConverted(id, "报价已经生成订货单");
+        requireUnexpired(q);
+        if (customerAccepted(q)) return toDetail(q, itemRepo.findByQuoteIdOrderByLineNoAsc(id), true);
+        q.setReviewRevision(q.getReviewRevision() + 1);
+        q.setCustomerAcceptedAt(OffsetDateTime.now());
+        q.setCustomerAcceptedBy(currentUser.requireEmployeeId());
+        q.setCustomerAcceptedRevision(q.getReviewRevision());
         quoteRepo.save(q);
-        return toDetail(q, itemRepo.findByQuoteIdOrderByLineNoAsc(id), true);
+        List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
+        revisionLog.append(q, items, SalesQuoteRevisionLog.CUSTOMER_ACCEPT, currentUser.requireEmployeeId(), req.reason());
+        return toDetail(q, items, true);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:edit') or hasAuthority('sales_quote:reverse')")
+    public QuoteDetail cancel(UUID id, QuoteActionRequest req) {
+        tx.bind();
+        SalesQuote q = requireWritableQuote(id);
+        em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireNotDeleted(q);
+        requireRevision(q, req == null ? null : req.expectedRevision());
+        String reason = req == null ? null : blankToNull(req.reason());
+        if (reason == null || reason.length() > 500) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写取消报价的原因（最多 500 字）");
+        }
+        if (q.getStatus() == null || q.getStatus() == STATUS_REVERSED || q.isClosed()) {
+            throw new ApiException(ErrorCode.CONFLICT, "报价已取消或关闭，不能再次取消");
+        }
+        requireNotConverted(id, "报价已转成订货单，请先处理订货单");
+        taskClaim.requireNoActiveClaim(SalesQuoteFinanceClaimTargetLocks.TARGET_TYPE, id.toString());
+        q.setStatus(STATUS_REVERSED);
+        q.setCancelReason(reason);
+        q.setCancelledAt(OffsetDateTime.now());
+        q.setCancelledBy(currentUser.requireEmployeeId());
+        clearCustomerAcceptance(q);
+        q.setReviewRevision(q.getReviewRevision() + 1);
+        quoteRepo.save(q);
+        List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
+        revisionLog.append(q, items, SalesQuoteRevisionLog.CANCEL, currentUser.requireEmployeeId(), reason);
+        notices.resolveReviewNotices(id, "CANCELLED");
+        return toDetail(q, items, true);
     }
 
     /**
@@ -407,21 +505,33 @@ public class SalesQuoteService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
     public com.uten.imp.features.sales.order.dto.OrderDetail convertToOrder(UUID id) {
+        return convertToOrder(id, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
+    public com.uten.imp.features.sales.order.dto.OrderDetail convertToOrder(UUID id, QuoteActionRequest action) {
         tx.bind();
         SalesQuote q = requireWritableQuote(id);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过守卫
-        if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED) {
+        requireNotDeleted(q);
+        if (q.getStatus() == null || q.getStatus() != STATUS_CONFIRMED || q.isClosed()) {
             throw new ApiException(ErrorCode.BUSINESS, "报价还没有财务核价确认, 不能转订货单");
         }
         if (q.getFinanceConfirmedAt() == null) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "报价还没有财务核价确认, 不能转订货单; 请点「重新修改」后提交财务核价");
         }
+        if (!customerAccepted(q)) {
+            throw new ApiException(ErrorCode.CONFLICT, "请先确认客户已接受本次财务核价，再生成订货单");
+        }
+        requireRevision(q, action == null ? null : action.expectedRevision());
+        requireUnexpired(q);
         // 防重复/并发转入：运行时只按报价 UUID；source_doc_no 仅保留可读快照。
         // 防重复——转入不改报价状态；此查询在 em.refresh 锁行后执行，见最新提交，并发也只一笔成功。
         Integer existingFromQuote = ((Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM sales_orders
-                WHERE source_quote_id = :quoteId AND COALESCE(is_deleted, false) = false
+                WHERE source_quote_id = :quoteId
                 """)
                 .setParameter("quoteId", q.getId())
                 .getSingleResult()).intValue();
@@ -472,10 +582,88 @@ public class SalesQuoteService {
             lines.add(l);
         }
         req.setItems(lines);
-        return salesOrderService.createFromQuote(req, q.getId(), q.getMakerId());
+        var order = salesOrderService.createFromQuote(req, q.getId(), q.getMakerId());
+        // Conversion does not change negotiated terms or the accepted revision.
+        revisionLog.append(q, qitems, SalesQuoteRevisionLog.CONVERT, currentUser.requireEmployeeId(), order.getBillNo());
+        return order;
     }
 
     // ------------------------------------------------------------------ 表头与明细
+
+    /** A cancelled order never lends its original quote mutable pricing: negotiate in a new linked quote. */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:create') and hasAuthority('sales_quote:edit')")
+    public QuoteDetail requote(UUID id, QuoteActionRequest req) {
+        tx.bind();
+        SalesQuote original = requireWritableQuote(id);
+        em.refresh(original, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        requireNotDeleted(original);
+        requireRevision(original, req == null ? null : req.expectedRevision());
+        if (!canRequote(id)) {
+            throw new ApiException(ErrorCode.CONFLICT, "请先按订货流程红冲原订货单；原订单和报价将完整保留");
+        }
+        @SuppressWarnings("unchecked")
+        List<UUID> previous = em.createNativeQuery("""
+                SELECT id FROM sales_quotes WHERE origin_quote_id = :id AND NOT is_deleted AND status <> -1
+                """).setParameter("id", id).getResultList();
+        if (!previous.isEmpty()) return readDetail(previous.getFirst(), false);
+        SalesQuote q = new SalesQuote();
+        q.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SALES_QUOTE));
+        q.setBillDate(BusinessTime.today());
+        q.setClientId(original.getClientId());
+        q.setMakerId(original.getMakerId());
+        q.setSellerId(original.getSellerId());
+        q.setCurrencyId(original.getCurrencyId());
+        q.setSettlementMethodId(original.getSettlementMethodId());
+        q.setContractNo(original.getContractNo());
+        q.setClientFileCurrency(original.getClientFileCurrency());
+        q.setOriginQuoteId(id);
+        q.setSourceDocNo(original.getBillNo());
+        q.setRemark("从报价单 " + original.getBillNo() + " 重新议价"
+                + (req.reason() == null || req.reason().isBlank() ? "" : "；" + req.reason().strip()));
+        quoteRepo.saveAndFlush(q);
+        List<SalesQuoteItem> originalItems = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
+        referenceValidator.validateStoredQuote(q.getClientId(), originalItems);
+        List<SalesQuoteItem> items = new ArrayList<>();
+        for (SalesQuoteItem source : originalItems) {
+            SalesQuoteItem item = new SalesQuoteItem();
+            item.setQuoteId(q.getId());
+            item.setBillNo(q.getBillNo());
+            item.setBillDate(q.getBillDate());
+            item.setLineNo(source.getLineNo());
+            item.setGoodsId(source.getGoodsId());
+            item.setColorId(source.getColorId());
+            item.setUnitId(source.getUnitId());
+            item.setUnitRate(source.getUnitRate());
+            item.setQty(source.getQty());
+            item.setPrice(source.getPrice());
+            item.setDiscount(source.getDiscount());
+            item.setPriceSource(SalesQuoteItem.PRICE_SOURCE_SALES);
+            item.setWeight(source.getWeight());
+            item.setRemark(source.getRemark());
+            item.setClientModel(source.getClientModel());
+            item.setClientGoodsName(source.getClientGoodsName());
+            item.setClientPrice(source.getClientPrice());
+            item.setExtraColumns(source.getExtraColumns());
+            item.setGoodsNameEnSnapshot(source.getGoodsNameEnSnapshot());
+            item.setAmountOriginal(source.getAmountOriginal());
+            item.setAmountLocal(source.getAmountLocal());
+            items.add(item);
+        }
+        captureGoodsSnapshots(items, SalesGoodsSnapshot.MASTER_AT_SAVE, null);
+        itemRepo.saveAllAndFlush(items);
+        applyTotals(q, items);
+        revisionLog.append(q, items, SalesQuoteRevisionLog.SALES_EDIT, currentUser.requireEmployeeId(), "从 " + original.getBillNo() + " 重新议价");
+        return toDetail(q, items, true);
+    }
+
+    private boolean canRequote(UUID quoteId) {
+        Object[] counts = (Object[]) em.createNativeQuery("""
+                SELECT COUNT(*), COUNT(*) FILTER (WHERE NOT is_deleted AND status <> -1)
+                FROM sales_orders WHERE source_quote_id = :id
+                """).setParameter("id", quoteId).getSingleResult();
+        return ((Number) counts[0]).longValue() > 0 && ((Number) counts[1]).longValue() == 0;
+    }
 
     private void applyHeader(QuoteSaveRequest req, SalesQuote q) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
@@ -582,7 +770,18 @@ public class SalesQuoteService {
                 it.setFinancePriceBy(null);
                 it.setFinancePriceAt(null);
             }
-            SalesPriceAuthority.requirePreviewMatches(l.getPrice(), price, DOC_LABEL);
+            if (masked && (l.getPrice() != null || l.getDiscount() != null)) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "没有价格查看权限，不能修改报价单价或折扣");
+            }
+            if (!masked && l.getPrice() != null) {
+                SalesPriceAuthority.requireClientPrice(l.getPrice(), "第 " + auto + " 行报价单价");
+                if (price == null || l.getPrice().compareTo(price) != 0) {
+                    price = l.getPrice();
+                    it.setPriceSource(SalesQuoteItem.PRICE_SOURCE_SALES);
+                    it.setFinancePriceBy(null);
+                    it.setFinancePriceAt(null);
+                }
+            }
             requireSafeQuoteLine(l, auto);
             String note = null;
             BigDecimal discount;
@@ -650,6 +849,8 @@ public class SalesQuoteService {
                     "第 " + lineNo + " 行: 货品、单位和大于 0 的数量必须完整, 金额由系统计算");
         }
         SalesPriceAuthority.requireClientPrice(line.getClientPrice(), "第 " + lineNo + " 行文件单价");
+        com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "第 " + lineNo + " 行数量");
+        com.uten.imp.common.util.FinancialExactAmount.rate(line.getUnitRate(), "第 " + lineNo + " 行单位换算率");
     }
 
     /** 学习出口的行输入: 保存结果(货品/文件原文) + 请求里的识别行键与用户确认标记, 按顺序一一对应。 */
@@ -727,6 +928,10 @@ public class SalesQuoteService {
         item.setSubmittedAt(q.getSubmittedAt());
         item.setFinanceConfirmedAt(q.getFinanceConfirmedAt());
         item.setReviewRevision(q.getReviewRevision());
+        item.setCustomerAcceptedAt(q.getCustomerAcceptedAt());
+        item.setCustomerAcceptedRevision(q.getCustomerAcceptedRevision());
+        item.setCancelReason(q.getCancelReason());
+        item.setCancelledAt(q.getCancelledAt());
         item.setConvertedOrderId(converted == null ? null : converted.id());
         item.setConvertedOrderNo(converted == null ? null : converted.billNo());
         item.setClientFileCurrency(q.getClientFileCurrency());
@@ -777,12 +982,18 @@ public class SalesQuoteService {
         d.setFinanceConfirmedByName(q.getFinanceConfirmedBy() == null ? null : nameResolver.nameOf(q.getFinanceConfirmedBy()));
         d.setFinanceRemark(q.getFinanceRemark());
         d.setReviewRevision(q.getReviewRevision());
+        d.setCustomerAcceptedAt(q.getCustomerAcceptedAt());
+        d.setCustomerAcceptedByName(q.getCustomerAcceptedBy() == null ? null : nameResolver.nameOf(q.getCustomerAcceptedBy()));
+        d.setCustomerAcceptedRevision(q.getCustomerAcceptedRevision());
+        d.setCancelReason(q.getCancelReason());
+        d.setCancelledAt(q.getCancelledAt());
+        d.setOriginQuoteId(q.getOriginQuoteId());
         d.setConvertedOrderId(converted == null ? null : converted.id());
         d.setConvertedOrderNo(converted == null ? null : converted.billNo());
         d.setAllowedActions(allowedActions(q, converted, !items.isEmpty(), scope));
         d.setPriceMasked(masked);
         d.setPricePendingCount((int) items.stream().filter(item -> item.getPrice() == null).count());
-        d.setRevisions(withRevisions ? revisionLog.history(q.getId()) : List.of());
+        d.setRevisions(withRevisions ? revisionLog.history(q.getId(), masked) : List.of());
         return d;
     }
 
@@ -825,23 +1036,29 @@ public class SalesQuoteService {
         short status = q.getStatus() == null ? STATUS_DRAFT : q.getStatus();
         boolean owner = accessPolicy.canWrite(q.getMakerId(), scope);
         boolean draft = status == STATUS_DRAFT && !q.isClosed();
-        boolean open = status == STATUS_CONFIRMED && converted == null;
+        boolean open = status == STATUS_CONFIRMED && !q.isClosed() && converted == null;
         // 转订货单只认财务确认过的(与「报价已核价待转订货」徽章、待转订货筛选、主档引用保护同口径)。
-        boolean convertible = open && q.getFinanceConfirmedAt() != null;
+        boolean ready = open && q.getFinanceConfirmedAt() != null && !expired(q);
+        boolean convertible = ready && customerAccepted(q);
         if (owner && draft && accessPolicy.hasAuthority("sales_quote:edit")) {
             actions.add("edit");
             if (hasItems) actions.add("submit");
         }
-        if (owner && draft && accessPolicy.hasAuthority("sales_quote:delete")) actions.add("delete");
+        if (owner && draft && q.getSubmittedAt() == null && accessPolicy.hasAuthority("sales_quote:delete")) actions.add("delete");
         if (owner && status == STATUS_PENDING_FINANCE && accessPolicy.hasAuthority("sales_quote:edit")) {
             actions.add("withdraw");
         }
         if (owner && open && accessPolicy.hasAuthority("sales_quote:edit")) actions.add("reopen");
+        if (owner && ready && !customerAccepted(q) && accessPolicy.hasAuthority("sales_quote:edit")) actions.add("customerConfirm");
         if (owner && convertible && accessPolicy.hasAuthority("sales_quote:convert")
                 && accessPolicy.hasAuthority("sales_order:create")) {
             actions.add("convert");
         }
-        if (owner && open && accessPolicy.hasAuthority("sales_quote:reverse")) actions.add("reverse");
+        if (owner && !q.isClosed() && status != STATUS_REVERSED && converted == null
+                && (accessPolicy.hasAuthority("sales_quote:edit") || accessPolicy.hasAuthority("sales_quote:reverse"))) actions.add("cancel");
+        if (owner && status == STATUS_CONFIRMED && converted != null
+                && accessPolicy.hasAuthority("sales_quote:create") && accessPolicy.hasAuthority("sales_quote:edit")
+                && canRequote(q.getId())) actions.add("requote");
         if (accessPolicy.hasAuthority(FINANCE_VIEW) && financeVisible(q)) actions.add("financeReview");
         return actions;
     }
@@ -860,11 +1077,14 @@ public class SalesQuoteService {
      * 财务读范围: 待核价、财务确认过的已核价(旧流程销售自审、没有财务确认时间的不算), 以及本轮被财务退回的草稿
      * (退回时间不早于最近一次提交)。销售提交后又撤回的草稿财务看不到。
      */
-    static boolean financeVisible(SalesQuote q) {
-        if (q == null || q.isDeleted() || q.getStatus() == null) return false;
+    static boolean financeVisible(SalesQuote q) { return financeVisible(q,false); }
+
+    static boolean financeVisible(SalesQuote q, boolean includeDeleted) {
+        if (q == null || (!includeDeleted && q.isDeleted()) || q.getStatus() == null) return false;
         short status = q.getStatus();
         if (status == STATUS_PENDING_FINANCE) return true;
         if (status == STATUS_CONFIRMED) return q.getFinanceConfirmedAt() != null;
+        if (status == STATUS_REVERSED) return q.getSubmittedAt() != null;
         return status == STATUS_DRAFT
                 && q.getFinanceReturnedAt() != null
                 && q.getSubmittedAt() != null
@@ -895,7 +1115,8 @@ public class SalesQuoteService {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT source_quote_id, id, bill_no
                         FROM sales_orders
-                        WHERE source_quote_id IN (:ids) AND COALESCE(is_deleted, FALSE) = FALSE
+                        WHERE source_quote_id IN (:ids)
+                        ORDER BY created_at, id
                         """)
                 .setParameter("ids", List.copyOf(quoteIds))
                 .getResultList();
@@ -921,6 +1142,31 @@ public class SalesQuoteService {
         }
     }
 
+    public static boolean customerAccepted(SalesQuote q) {
+        return q.getCustomerAcceptedAt() != null && q.getCustomerAcceptedBy() != null
+                && q.getCustomerAcceptedRevision() != null
+                && q.getCustomerAcceptedRevision() == q.getReviewRevision();
+    }
+
+    static void clearCustomerAcceptance(SalesQuote q) {
+        q.setCustomerAcceptedAt(null);
+        q.setCustomerAcceptedBy(null);
+        q.setCustomerAcceptedRevision(null);
+    }
+
+    private static boolean expired(SalesQuote q) {
+        return q.getValidUntil() != null && q.getValidUntil().isBefore(BusinessTime.today());
+    }
+
+    private static void requireUnexpired(SalesQuote q) {
+        if (expired(q)) throw new ApiException(ErrorCode.CONFLICT, "报价已过有效期，请重新修改并提交财务核价");
+    }
+
+    private void requireNotDeleted(SalesQuote q) {
+        if (q.isDeleted()) throw new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在");
+        accessPolicy.requireWritable(q.getMakerId(), "报价归属已变化，请刷新后重新操作");
+    }
+
     private boolean hasObjectActionAuthority() {
         return accessPolicy.hasAuthority("sales_quote:edit")
                 || accessPolicy.hasAuthority("sales_quote:delete")
@@ -928,15 +1174,19 @@ public class SalesQuoteService {
                 || accessPolicy.hasAuthority("sales_quote:convert");
     }
 
-    private SalesQuote requireQuote(UUID id) {
-        return quoteRepo.findById(id).filter(q -> !q.isDeleted())
+    private SalesQuote requireQuote(UUID id) { return requireQuote(id, false); }
+
+    private SalesQuote requireQuote(UUID id, boolean includeDeleted) {
+        return quoteRepo.findById(id).filter(q -> includeDeleted || !q.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在"));
     }
 
-    private SalesQuote requireReadableQuote(UUID id) {
-        SalesQuote quote = requireQuote(id);
+    private SalesQuote requireReadableQuote(UUID id) { return requireReadableQuote(id, false); }
+
+    private SalesQuote requireReadableQuote(UUID id, boolean includeDeleted) {
+        SalesQuote quote = requireQuote(id, includeDeleted);
         if (accessPolicy.canRead(quote.getMakerId())) return quote;
-        if (accessPolicy.hasAuthority(FINANCE_VIEW) && financeVisible(quote)) return quote;
+        if (accessPolicy.hasAuthority(FINANCE_VIEW) && financeVisible(quote,includeDeleted)) return quote;
         throw new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在");
     }
 
@@ -953,5 +1203,18 @@ public class SalesQuoteService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.strip();
+    }
+
+    private QuoteDetail finishHistory(QuoteDetail view, SalesQuote entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "sales_quotes", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("sales_quotes",id,beforeId,size);
     }
 }

@@ -143,6 +143,20 @@ void main() {
       find.byType(SubcontractOutboundDetailTable),
     );
     final qtyBefore = table.rows.first.draft.qty.text;
+    final quantity = grid.columns.singleWhere(
+      (column) => column.key == 'quantity',
+    );
+    expect(quantity.exactValueOf!(table.rows.first), qtyBefore);
+    expect(
+      quantity.exactListenableOf!(table.rows.first),
+      same(table.rows.first.draft.qty),
+    );
+    for (final key in ['planned', 'prepared', 'issued', 'maximum']) {
+      expect(
+        grid.columns.singleWhere((column) => column.key == key).exactValueOf,
+        isNotNull,
+      );
+    }
     await tester.enterText(
       find.byKey(const ValueKey('weight-cell-input')).first,
       '1500g',

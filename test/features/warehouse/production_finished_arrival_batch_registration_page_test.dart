@@ -18,6 +18,9 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggest
 import 'package:uten_imp/features/warehouse/widgets/inbound_registration_widgets.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/uten_page_prefs_notifier.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 const _reportA = '20000000-0000-0000-0000-000000000001';
 const _reportB = '20000000-0000-0000-0000-000000000002';
@@ -659,12 +662,26 @@ Future<ProviderContainer> _openBatchPage(
   Set<String> permissions = const {Perm.stockDocApprove},
 }) async {
   // 账号记忆「上次所选入库仓」(InboundFillScope.finished，偏好键
-  // production.finishedArrivalFill)冷启动读本地缓存：用 mock 初值预置。
+  // production.finishedArrivalFill)冷启动读本地缓存：键按 账号/服务器 作用域
+  // 哈希（v2），先用空 mock 走真实 apiBaseUrlProvider 链算出同款键再预置。
+  SharedPreferences.setMockInitialValues({});
+  final probePrefs = await SharedPreferences.getInstance();
+  final probe = ProviderContainer(
+    overrides: [sharedPreferencesProvider.overrideWithValue(probePrefs)],
+  );
+  late final String scopedKey;
+  try {
+    scopedKey = scopedPagePreferenceCacheKey(
+      'page_prefs_cache_production.finishedArrivalFill',
+      probe.read(apiBaseUrlProvider),
+      probe.read(authenticatedScopeProvider),
+    );
+  } finally {
+    probe.dispose();
+  }
   SharedPreferences.setMockInitialValues({
     if (rememberedWarehouseId != null)
-      'page_prefs_cache_production.finishedArrivalFill': jsonEncode({
-        'warehouseId': rememberedWarehouseId,
-      }),
+      scopedKey: jsonEncode({'warehouseId': rememberedWarehouseId}),
   });
   final prefs = await SharedPreferences.getInstance();
   // 用 ProviderScope 挂在树上：测试结束卸载时一并释放 provider(含其定时器)。

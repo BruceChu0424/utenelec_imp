@@ -7,6 +7,8 @@
 //
 // 凭证一次性、不能共用：同一时刻只弹一个密码框，并发的第二个请求等前一个弹窗结束后
 // 再弹自己的一次 (敏感写操作几乎不会并发，按顺序来最不容易出错)。
+import 'package:flutter/foundation.dart';
+
 typedef StepUpPrompter = Future<String?> Function();
 
 class StepUpCoordinator {
@@ -34,5 +36,14 @@ class StepUpCoordinator {
     });
     _queue = next.then((_) {}, onError: (_) {});
     return next;
+  }
+
+  /// 仅测试用：widget 测试逐条用例卸树，被弃弹窗的 prompt Future 可能永远不
+  /// 完成，把全局队列卡死并泄漏到同文件后续用例（先用例弃弹窗 → 后用例再也
+  /// 要不出密码框）。每条用例复位登记与队列。
+  @visibleForTesting
+  static void debugReset() {
+    instance._prompter = null;
+    instance._queue = Future.value();
   }
 }

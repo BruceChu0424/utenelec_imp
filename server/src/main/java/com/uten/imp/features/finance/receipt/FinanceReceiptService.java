@@ -77,6 +77,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinanceReceiptService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -123,7 +127,9 @@ public class FinanceReceiptService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceReceipt> p = receiptRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<FinanceReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(FinanceReceipt::isDeleted) ? result
+                : retainedRecords.page(result, "finance_receipts", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -139,7 +145,8 @@ public class FinanceReceiptService {
         return (Root<FinanceReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (!canViewCustomerPrepayment()) {
                 ps.add(cb.notEqual(root.get("receiptKind"), "CUSTOMER_PREPAYMENT"));
@@ -162,18 +169,25 @@ public class FinanceReceiptService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "amountLocal", true, null, false, null, true);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public FinanceReceiptDetail detail(UUID id) {
-        FinanceReceipt r = require(id);
+    public FinanceReceiptDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public FinanceReceiptDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private FinanceReceiptDetail readDetail(UUID id, boolean historyRead) {
+        FinanceReceipt r = require(id, historyRead);
         access.requireReadable(r.getMakerId(), "销售收款单不存在");
         requirePrepaymentView(r);
         List<FinanceReceiptLineDto> items = lineRepo.findByReceiptIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
-        return toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList());
+        return finishHistory(toDetail(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()).stream().map(this::toLineDto).toList()), r, historyRead);
     }
 
     @Transactional
@@ -1401,8 +1415,10 @@ public class FinanceReceiptService {
                 r.getFeeAccountCurrencyId(), r.getFeeAccountExchangeRate());
     }
 
-    private FinanceReceipt require(UUID id) {
-        return receiptRepo.findById(id).filter(r -> !r.isDeleted())
+    private FinanceReceipt require(UUID id) { return require(id, false); }
+
+    private FinanceReceipt require(UUID id, boolean includeDeleted) {
+        return receiptRepo.findById(id).filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售收款单不存在"));
     }
 
@@ -1571,5 +1587,16 @@ public class FinanceReceiptService {
 
     private static BigDecimal nz(BigDecimal x) {
         return x == null ? BigDecimal.ZERO : x;
+    }
+
+    private FinanceReceiptDetail finishHistory(FinanceReceiptDetail view, FinanceReceipt entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "finance_receipts", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        return retainedRecords.children("finance_receipts",id,beforeId,size);
     }
 }

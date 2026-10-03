@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../auth/permissions.dart';
+import '../providers/authenticated_scope_provider.dart';
 import 'business_column.dart';
 
 class BusinessColumnsRepository {
@@ -38,6 +40,10 @@ class BusinessColumnsRepository {
   );
 }
 
-final businessColumnsRepositoryProvider = Provider<BusinessColumnsRepository>(
-  (ref) => BusinessColumnsRepository(ref.watch(apiClientProvider)),
-);
+final businessColumnsRepositoryProvider = Provider<BusinessColumnsRepository>((
+  ref,
+) {
+  ref.watch(authenticatedScopeProvider);
+  ref.watch(currentPermissionsProvider);
+  return BusinessColumnsRepository(ref.watch(apiClientProvider));
+});

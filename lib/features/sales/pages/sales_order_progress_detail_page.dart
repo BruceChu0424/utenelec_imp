@@ -5,7 +5,8 @@
 //   ① 订单摘要卡（单号/开单/交货/制单员/单据状态/财务状态/结案中止徽标）；
 //   ② 履约进度（UtenProgressTimeline 快递式时间线：下单→销售审核→财务审核→
 //      物料分析→物料准备-采购/委外订货→生产计划→生产→发货→结案，
-//      每环带责任人与发生时间，最新进展在最上面高亮）；
+//      每环带责任人与发生时间；未开始的阶段整块置顶、下单垫底，
+//      最新已发生环节高亮）；
 //   ③ 产品进度（复用 SalesPlanProgressPanel，财务确认前按 V300 口径隐藏，只给提示）。
 // 三个数据源并行加载（detail / plan-progress / progress-timeline），互不阻塞。
 // 2026-09-05 起财务驳回框提供双出口：修改订单（修订重报）+ 取消订单（终止处置，
@@ -580,7 +581,11 @@ class _SalesOrderProgressDetailPageState
     final events = _timeline;
     if (events == null) return ('最新：加载中…', theme.colorScheme.onSurfaceVariant);
     if (events.isEmpty) return ('暂无履约进度', theme.colorScheme.onSurfaceVariant);
-    final latest = events.first;
+    // 胶囊跟随第一条已发生事件（置顶的未开始 PENDING 阶段不抢「最新」）。
+    final latest = events.firstWhere(
+      (e) => !e.isPending,
+      orElse: () => events.first,
+    );
     final time = UtenProgressTimeline.formatTime(latest.occurredAt);
     final short = time.length >= 16 ? time.substring(5) : time;
     final label = short.isEmpty

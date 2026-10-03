@@ -80,7 +80,7 @@ class WarehouseInsightSqlTest {
                 // ABC 排名在整个范围上 (与单货品过滤无关)。
                 .contains("SUM(picks) OVER (ORDER BY picks DESC, goods_id ROWS UNBOUNDED PRECEDING) - picks");
         assertThat(WarehouseInsightSql.agingTypes())
-                .containsExactly((short) 1, (short) 4, (short) 9, (short) 11, (short) 13, (short) 17, (short) 7);
+                .containsExactly((short) 1, (short) 4, (short) 9, (short) 11, (short) 13, (short) 17, (short) 22, (short) 7);
         String single = WarehouseInsightSql.health(WarehouseInsightSql.Scope.defaultScope(), true);
         assertThat(single).contains("b.goods_id = :goods").contains("p.goods_id = :goods");
         assertThat(single.substring(single.indexOf("flows AS ("))).doesNotContain(":goods");

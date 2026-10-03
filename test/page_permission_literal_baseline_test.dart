@@ -28,7 +28,15 @@ import 'package:flutter_test/flutter_test.dart';
 // 2026-09-28 -1: ADR-133/134 合并后(报价按钮改服务端 allowedActions、政策情报退役)净减 1。
 // 2026-09-28 +1：快照分支并入的仓库收退回批量收货页/单据段(收货确认按 stockDocApprove
 // 本地预演，与服务端 @PreAuthorize 同口径)。
-const _baseline = 621;
+// 2026-10-02 +43（closeout/盘点批次，格式门禁修复后首次全量清点）：
+//   · 平台整改批次在 main 上未过格式门禁前已积累 +37（调度台 +13、日报创建恢复页
+//     新页 +12、日报编辑页 +14 等，均按「与服务端 @PreAuthorize 一一对应本地预演」口径）；
+//   · 盘点审核页(stock_count_review_page) +5、库存余额详情弹层 +1；
+//   · 即时库存总览/汇总条 WIP +6（同口径）。
+//   净 621 -> 664。迁移服务端 allowedActions 归后续 uikit 工作流。
+// 2026-10-02 +8：报价议价全链(V788)的报价操作按钮(客户确认/议价历史/撤回/重报)与服务端
+// @PreAuthorize 一一对应地本地预演（与 V694-V702 审批页同款口径）。
+const _baseline = 672;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

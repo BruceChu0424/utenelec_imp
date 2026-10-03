@@ -61,8 +61,11 @@ public class FinancePaymentController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new FinancePaymentQueryFilter(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new FinancePaymentQueryFilter(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -74,8 +77,11 @@ public class FinancePaymentController {
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new FinancePaymentQueryFilter(keyword, supplierId, accountId, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new FinancePaymentQueryFilter(keyword, supplierId, accountId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")
@@ -83,6 +89,20 @@ public class FinancePaymentController {
     public FinancePaymentDetail detail(@PathVariable UUID id) {
         FinancePaymentDetail result = service.detail(id);
         detailViewAudit.record(
+                "view_finance_payment_detail",
+                "finance_payments",
+                id,
+                result.getBillNo(),
+                result.getLegacyId(),
+                "采购付款单");
+        return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('finance_payment:view')")
+    public FinancePaymentDetail history(@PathVariable UUID id) {
+        FinancePaymentDetail result = service.detailHistory(id);
+        detailViewAudit.recordHistory(
                 "view_finance_payment_detail",
                 "finance_payments",
                 id,
@@ -128,5 +148,15 @@ public class FinancePaymentController {
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "finance_payment_reverse", "finance_payment", String.valueOf(id), "success"));
         return result;
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('finance_payment:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        detailViewAudit.recordHistory("view_finance_payment_detail", "finance_payments", id, null, null, "单据历史明细");
+        return rows;
     }
 }

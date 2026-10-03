@@ -1,8 +1,11 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/components/layout/uten_load_more_boundary.dart';
 import 'package:uten_imp/features/finance/models/finance_decimal.dart';
 import 'package:uten_imp/features/finance/widgets/ar_ap_picker_dialog.dart';
 
@@ -102,6 +105,106 @@ void main() {
     });
   }
 
+  testWidgets(
+    'AR reference drawer loads the next page by wheel and keeps the original exact amount',
+    (tester) async {
+      final api = _PagedArReferenceApi();
+      List<AppliedArAp>? applied;
+      await _openPagedPicker(tester, api, (result) => applied = result);
+      await _selectAndFillFirst(tester, '12.3456');
+
+      await _wheelAtLedgerBottom(tester, api);
+      expect(api.pages, [1, 2]);
+      expect(
+        find.byKey(const ValueKey('ar-ap-select-ledger-51')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.byKey(const ValueKey('ar-ap-select-ledger-1')),
+            )
+            .value,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('ar-ap-amount-ledger-1')),
+            )
+            .controller!
+            .text,
+        '12.3456',
+      );
+      expect(find.text('已选 1 行'), findsOneWidget);
+
+      _ledgerVerticalPosition(tester).jumpTo(0);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
+      await tester.pumpAndSettle();
+      expect(applied, hasLength(1));
+      expect(applied!.single.ledgerId, 'ledger-1');
+      expect(applied!.single.receiptAmountText, '12.3456');
+      expect(applied!.single.currencyId, 'currency-usd');
+      expect(api.pages, [1, 2]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'AR next-page failure retains the editable first page and retries only that page',
+    (tester) async {
+      final api = _PagedArReferenceApi(failPageTwoOnce: true);
+      List<AppliedArAp>? applied;
+      await _openPagedPicker(tester, api, (result) => applied = result);
+      await _selectAndFillFirst(tester, '7.0001');
+
+      await _wheelAtLedgerBottom(tester, api);
+      expect(api.pages, [1, 2]);
+      expect(
+        find.byKey(const ValueKey('ar-ap-select-ledger-51')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.byKey(const ValueKey('ar-ap-select-ledger-1')),
+            )
+            .value,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('ar-ap-amount-ledger-1')),
+            )
+            .controller!
+            .text,
+        '7.0001',
+      );
+      expect(find.text('重试'), findsOneWidget);
+
+      // A further wheel while an error is displayed must not retry in a loop.
+      await _wheelAtLedgerBottom(tester, api);
+      expect(api.pages, [1, 2]);
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(api.pages, [1, 2, 2]);
+      expect(
+        find.byKey(const ValueKey('ar-ap-select-ledger-51')),
+        findsOneWidget,
+      );
+      _ledgerVerticalPosition(tester).jumpTo(0);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
+      await tester.pumpAndSettle();
+      expect(applied, hasLength(1));
+      expect(applied!.single.ledgerId, 'ledger-1');
+      expect(applied!.single.receiptAmountText, '7.0001');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('exact finance decimal keeps four-place money without double math', () {
     expect(financeExactDecimal('100.1200'), '100.1200');
     expect(financeExactDecimalUnits('100.1200'), BigInt.from(1001200));
@@ -162,6 +265,147 @@ void main() {
       findsOneWidget,
     );
   });
+}
+
+Future<void> _openPagedPicker(
+  WidgetTester tester,
+  _PagedArReferenceApi api,
+  ValueChanged<List<AppliedArAp>?> onApplied,
+) async {
+  tester.view.physicalSize = const Size(1200, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [apiClientProvider.overrideWithValue(api)],
+      child: MaterialApp(
+        home: Consumer(
+          builder: (context, ref, _) => Scaffold(
+            body: FilledButton(
+              onPressed: () async => onApplied(
+                await showArApPickerDialog(
+                  context,
+                  ref,
+                  direction: 'AR',
+                  partyId: 'client-1',
+                ),
+              ),
+              child: const Text('打开引用'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('打开引用'));
+  await tester.pumpAndSettle();
+  expect(api.pages, [1]);
+}
+
+Future<void> _selectAndFillFirst(
+  WidgetTester tester,
+  String exactAmount,
+) async {
+  await tester.tap(find.byKey(const ValueKey('ar-ap-select-ledger-1')));
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byKey(const ValueKey('ar-ap-amount-ledger-1')),
+    exactAmount,
+  );
+  await tester.pumpAndSettle();
+}
+
+ScrollPosition _ledgerVerticalPosition(WidgetTester tester) {
+  // Cell editors own additional scrollables; select the outer list viewport.
+  final viewport = find
+      .descendant(
+        of: find.byType(UtenLoadMoreBoundary),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is SingleChildScrollView &&
+              widget.scrollDirection == Axis.vertical,
+        ),
+      )
+      .first;
+  return tester
+      .state<ScrollableState>(
+        find.descendant(of: viewport, matching: find.byType(Scrollable)).first,
+      )
+      .position;
+}
+
+Future<void> _wheelAtLedgerBottom(
+  WidgetTester tester,
+  _PagedArReferenceApi api,
+) async {
+  final beforeWheel = List<int>.of(api.pages);
+  final position = _ledgerVerticalPosition(tester);
+  position.jumpTo(position.maxScrollExtent);
+  await tester.pumpAndSettle();
+  expect(
+    api.pages,
+    beforeWheel,
+    reason: 'Only continued user scrolling loads the next page',
+  );
+  await tester.sendEventToBinding(
+    PointerScrollEvent(
+      position: tester.getCenter(find.byType(UtenLoadMoreBoundary)),
+      scrollDelta: const Offset(0, 96),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+class _PagedArReferenceApi extends _ArReferenceApi {
+  _PagedArReferenceApi({this.failPageTwoOnce = false})
+    : super(
+        overrides: const {
+          'amountBalanceOriginal': 65.4321,
+          'amountBalanceOriginalExact': '65.4321',
+        },
+      );
+  final bool failPageTwoOnce;
+  bool _failed = false;
+  final pages = <int>[];
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path != '/finance/ar-ap') return super.get(path, query: query);
+    final page = (query?['page'] as num?)?.toInt() ?? 1;
+    pages.add(page);
+    if (page == 2 && failPageTwoOnce && !_failed) {
+      _failed = true;
+      throw NetworkException();
+    }
+    final template = await super.get(path, query: query);
+    final first = Map<String, dynamic>.from(
+      (template['items'] as List).single as Map,
+    );
+    return {
+      'items': [
+        for (
+          var index = page == 1 ? 1 : 51;
+          index <= (page == 1 ? 50 : 52);
+          index++
+        )
+          {
+            ...first,
+            'id': 'ledger-$index',
+            'billNo': 'AR-$index',
+            'sourceDocId': 'shipment-$index',
+            'sourceDocNo': 'XSCK-$index',
+          },
+      ],
+      'page': page,
+      'size': 50,
+      'total': 52,
+      'totalPages': 2,
+    };
+  }
 }
 
 class _ArReferenceApi extends ApiClient {

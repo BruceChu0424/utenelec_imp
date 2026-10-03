@@ -20,13 +20,20 @@ class GoodsImportFileException implements Exception {
 /// The stream path is important on Flutter Web: it lets us enforce the same
 /// 50 MB limit as the server while producing a useful error instead of the
 /// file picker's generic JavaScript exception.
-Future<Uint8List> readGoodsImportFile(PlatformFile file) async {
-  if (file.size > maxGoodsImportBytes) {
-    throw const GoodsImportFileException('Excel 文件超过 50MB，请拆分后再导入');
+Future<Uint8List> readGoodsImportFile(
+  PlatformFile file, {
+  int maxBytes = maxGoodsImportBytes,
+}) async {
+  final limitMessage = 'Excel 文件超过 ${maxBytes ~/ (1024 * 1024)}MB，请拆分后再导入';
+  if (file.size > maxBytes) {
+    throw GoodsImportFileException(limitMessage);
   }
 
   final directBytes = file.bytes;
   if (directBytes != null) {
+    if (directBytes.length > maxBytes) {
+      throw GoodsImportFileException(limitMessage);
+    }
     return _validateWorkbookBytes(directBytes);
   }
 
@@ -41,8 +48,8 @@ Future<Uint8List> readGoodsImportFile(PlatformFile file) async {
   final builder = BytesBuilder(copy: false);
   try {
     await for (final chunk in stream) {
-      if (builder.length + chunk.length > maxGoodsImportBytes) {
-        throw const GoodsImportFileException('Excel 文件超过 50MB，请拆分后再导入');
+      if (builder.length + chunk.length > maxBytes) {
+        throw GoodsImportFileException(limitMessage);
       }
       builder.add(chunk);
     }

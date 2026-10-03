@@ -1,5 +1,5 @@
 // HR 个人修改审批详情（/hr/profile-changes/:id）
-// 详情页全断点套默认 UtenContentContainer（1600 钳制）。
+// 详情页全断点套默认 UtenContentContainer（正文随可用宽度铺满）。
 // 文档：docs/03-页面/我的页.md（§HR 端：员工修改审批 — 详情）
 
 import 'package:flutter/material.dart';
@@ -95,7 +95,7 @@ class _HrProfileChangeDetailPageState
     ProfileChangeBatch batch,
   ) {
     final theme = Theme.of(context);
-    // 详情类页面默认容器（1600 钳制居中）；窄版 1120 只留表单/设置页。
+    // 默认容器不设固定最大宽度，详情正文随导航收起和窗口加宽扩展。
     return UtenContentContainer(
       child: ListView(
         // 底部留出右下悬浮操作组的高度，末段内容可滚出按钮区。

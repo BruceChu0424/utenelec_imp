@@ -9,7 +9,7 @@ import java.util.UUID;
 /** 生产日报列表行。 */
 @Getter
 @AllArgsConstructor
-public class DailyReportListItem {
+public class DailyReportListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;

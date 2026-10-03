@@ -13,6 +13,7 @@ import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -23,8 +24,9 @@ void main() {
     (tester) async {
       final iqc = _Iqc();
       await _pump(tester, iqc, 1, size: const Size(375, 812));
+      // 2026-10-02 用户口径：批量审批合一张表（类型/单号成列），不再按单分组。
       expect(
-        find.byKey(const Key('batch-approval-iqc-table-receipt-1')),
+        find.byKey(const Key('batch-approval-unified-table')),
         findsOneWidget,
       );
       expect(find.byType(CheckboxListTile), findsNothing);
@@ -55,10 +57,10 @@ void main() {
         find.byKey(const Key('inspection-report-confirm-submit')),
         findsNothing,
       );
-      final groupCheck = find.byKey(
-        const Key('batch-approval-receipt-check-receipt-1'),
-      );
-      await tester.tap(groupCheck);
+      // 组头复选已随合表退役：勾选走表格行多选通道（idOf 前缀 iqc:）。
+      MasterDataTableView<dynamic> table() =>
+          tester.widget(find.byKey(const Key('batch-approval-unified-table')));
+      table().onSelectedIdsChanged!({'iqc:receipt-1'});
       await tester.pumpAndSettle();
       expect(
         tester
@@ -68,7 +70,7 @@ void main() {
             .enabled,
         isTrue,
       );
-      await tester.tap(groupCheck);
+      table().onSelectedIdsChanged!(const <String>{});
       await tester.pumpAndSettle();
       expect(
         tester

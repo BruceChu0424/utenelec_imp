@@ -35,22 +35,45 @@ public class AiCallLogService {
         this.resetGate = resetGate;
         this.requiresNew = new TransactionTemplate(transactionManager);
         this.requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.requiresNew.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
         this.requiresNew.setTimeout(10);
     }
 
     /** 一次调用尝试。 */
     public record CallRecord(String purpose, UUID providerId, String providerName, String model, String protocol,
                              boolean ok, String errorCategory, Integer httpStatus, Integer inputTokens,
-                             Integer outputTokens, long latencyMs, UUID jobId, UUID userId) {
+                             Integer outputTokens, long latencyMs, UUID jobId, UUID userId,
+                             Long resetGeneration) {
+    }
+
+    /** Capture once before a logical network call, including all of its retries. */
+    public Long captureResetGeneration() {
+        if (!resetGate.tryEnter()) return null;
+        try {
+            return requiresNew.execute(status -> jdbc.queryForObject("""
+                    SELECT business_reset_generation FROM authorization_state WHERE singleton_id = 1
+                    """, new MapSqlParameterSource(), Long.class));
+        } catch (RuntimeException error) {
+            log.warn("AI call log reset generation read failed: {}", error.getClass().getSimpleName());
+            return null;
+        } finally {
+            resetGate.leave();
+        }
     }
 
     /** 写一行; 任何失败都吞掉(记日志)。 */
     public void record(CallRecord call) {
-        if (!resetGate.tryEnter()) {
+        // An unknown generation cannot be rebound to whichever dataset exists now.
+        if (call.resetGeneration() == null || !resetGate.tryEnter()) {
             return;
         }
         try {
-            requiresNew.executeWithoutResult(status -> jdbc.update("""
+            requiresNew.executeWithoutResult(status -> {
+                // Lock the target before acquiring the INSERT's fresh RC snapshot.
+                // A reset may have committed while this lock was waiting; its
+                // TRUNCATE and generation increment must precede our new check.
+                jdbc.getJdbcTemplate().execute("LOCK TABLE public.ai_call_logs IN ROW EXCLUSIVE MODE");
+                jdbc.update("""
                     INSERT INTO ai_call_logs (purpose, provider_id, provider_name, model, protocol, ok,
                                               error_category, http_status, input_tokens, output_tokens,
                                               latency_ms, job_id, user_id)
@@ -59,6 +82,9 @@ public class AiCallLogService {
                            :latencyMs, :jobId, :userId
                     FROM (SELECT CAST(:providerId AS uuid) AS wanted) w
                     LEFT JOIN ai_providers p ON p.id = w.wanted
+                    CROSS JOIN authorization_state generation
+                    WHERE generation.singleton_id = 1
+                      AND generation.business_reset_generation = :resetGeneration
                     """, new MapSqlParameterSource()
                     .addValue("purpose", truncate(call.purpose(), 48))
                     .addValue("providerId", call.providerId())
@@ -72,7 +98,9 @@ public class AiCallLogService {
                     .addValue("outputTokens", nonNegative(call.outputTokens()))
                     .addValue("latencyMs", (int) Math.max(0, Math.min(Integer.MAX_VALUE, call.latencyMs())))
                     .addValue("jobId", call.jobId())
-                    .addValue("userId", call.userId())));
+                    .addValue("userId", call.userId())
+                    .addValue("resetGeneration", call.resetGeneration()));
+            });
         } catch (RuntimeException e) {
             log.warn("AI call log write failed: {}", e.getClass().getSimpleName());
         } finally {
@@ -127,9 +155,10 @@ public class AiCallLogService {
         int total = 0;
         for (int batch = 0; batch < 100; batch++) {
             Integer deleted = requiresNew.execute(status -> jdbc.update("""
-                    DELETE FROM ai_call_logs
+                    UPDATE ai_call_logs SET archived_at=now(),archived_by='system:ai-call-retention',archive_reason='TECHNICAL_LOG_RETENTION_WINDOW'
                     WHERE id IN (SELECT id FROM ai_call_logs
-                                 WHERE created_at < now() - make_interval(days => :days)
+                                 WHERE archived_at IS NULL AND created_at < now() - make_interval(days => :days)
+                                 ORDER BY created_at,id
                                  LIMIT 5000)
                     """, new MapSqlParameterSource("days", days)));
             int count = deleted == null ? 0 : deleted;

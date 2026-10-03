@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 // ADR-098 修订「等待委外判定期间先锁住」：仓库登记发现回厂比订货少并通知委外后，
 // 订货单详情要摆明「等待委外判定、本单已锁定」，改量按钮变灰但点得动并说明原因，
 // 横幅上给出去判定的入口；判定完成（服务端不再返回 shortDeliveryHold）即恢复原样。
@@ -108,6 +109,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         subcontractWriteAllDocumentScope(),
         currentPermissionsProvider.overrideWithValue(permissions),
         subcontractRepositoryProvider(

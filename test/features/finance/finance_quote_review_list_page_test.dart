@@ -5,6 +5,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -155,6 +158,10 @@ Future<_FakeRepo> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         salesQuoteFinanceReviewRepositoryProvider.overrideWithValue(repo),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.salesQuoteFinanceView,
@@ -183,7 +190,13 @@ UtenSegmentBadgeLabel _segment(WidgetTester tester, String label) =>
       ),
     );
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   test('route guard and hub catalog register the quote review pages', () {
     expect(requiredAnyPermFor(RouteName.financeQuoteReview), const [
       Perm.salesQuoteFinanceView,

@@ -15,6 +15,14 @@ public class SalesQuoteTemplateController {
     @GetMapping
     @PreAuthorize("hasAuthority('sales_quote:view')")
     public List<SalesQuoteTemplateStore.TemplateView> list(@PathVariable UUID quoteId) { return service.list(quoteId); }
+    @GetMapping("/learning-context")
+    @PreAuthorize("hasAuthority('sales_quote:view') and hasAuthority('sales_quote:export') and hasAuthority('sales_order:price:view') and (hasAuthority('sales_quote:create') or hasAuthority('sales_quote:edit'))")
+    public SalesQuoteTemplateService.LearningContext learningContext(@PathVariable UUID quoteId) { return service.learningContext(quoteId); }
+    @PostMapping("/adopt")
+    @PreAuthorize("hasAuthority('sales_quote:view') and hasAuthority('sales_quote:export') and hasAuthority('sales_order:price:view') and (hasAuthority('sales_quote:create') or hasAuthority('sales_quote:edit'))")
+    public SalesQuoteTemplateStore.TemplateView adopt(@PathVariable UUID quoteId, @RequestBody SalesQuoteTemplateService.AdoptRequest request) {
+        return service.adopt(quoteId, request);
+    }
     @PostMapping("/export")
     @PreAuthorize("hasAuthority('sales_quote:view') and hasAuthority('sales_quote:export') and hasAuthority('sales_order:price:view')")
     public ResponseEntity<byte[]> export(@PathVariable UUID quoteId,

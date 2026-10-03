@@ -26,9 +26,12 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -227,12 +230,13 @@ class GoodsBomImportServiceTest {
     void exportedWorkbookRoundTripsFullPrecisionAndLocksEveryParentBeforeWriting() throws Exception {
         GoodsRepository repo = repoWithAllCodes();
         GoodsBomPasteService paste = mock(GoodsBomPasteService.class);
-        when(paste.paste(any())).thenReturn(new BomPasteResult(1, 1, 0, List.of(), List.of()));
+        when(paste.pasteImported(any(), anySet(), anyMap()))
+                .thenReturn(new BomPasteResult(1, 1, 0, List.of(), List.of()));
         // 真正的导出格式：用量列是数值单元格，常规格式按存储值全精度显示。
-        byte[] xlsx = savedAgain(new XlsxExportService().build(GoodsBomService.EXPORT_COLUMNS, List.of(
+        byte[] xlsx = new XlsxExportService().build(GoodsBomService.EXPORT_COLUMNS, List.of(
                 exportRow("1", "K01", "按包装", "2.5", "允许", "0.03125", "0.031"),
                 exportRow("2", "S01", "按每件", "1", "—", "0.004", null),
-                exportRow("2.1", "D01", "按每件", "1", "—", "0.00001", null))));
+                exportRow("2.1", "D01", "按每件", "1", "—", "0.00001", null)));
         try (XSSFWorkbook book = new XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx))) {
             int qtyColumn = GoodsBomService.EXPORT_COLUMNS.stream().map(c -> c.key()).toList().indexOf("qty");
             var cell = book.getSheetAt(0).getRow(2).getCell(qtyColumn);
@@ -240,16 +244,17 @@ class GoodsBomImportServiceTest {
             assertEquals("0.004", new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(cell));
         }
 
-        new GoodsBomImportService(repo, paste).commit(targetId, xlsx, BomPasteRequest.Mode.APPEND);
+        GoodsBomImportService importer = new GoodsBomImportService(repo, paste);
+        importer.commit(targetId, xlsx, BomPasteRequest.Mode.APPEND, importer.detect(targetId, xlsx).stateFingerprint());
 
         InOrder order = inOrder(repo, paste);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<UUID>> locked = ArgumentCaptor.forClass(Collection.class);
         order.verify(repo).lockBomParents(locked.capture());
-        order.verify(paste, times(2)).paste(any());
+        order.verify(paste, times(2)).pasteImported(any(), anySet(), anyMap());
         assertEquals(Set.of(targetId, screwId), Set.copyOf(locked.getValue()));
         ArgumentCaptor<BomPasteRequest> requests = ArgumentCaptor.forClass(BomPasteRequest.class);
-        org.mockito.Mockito.verify(paste, times(2)).paste(requests.capture());
+        org.mockito.Mockito.verify(paste, times(2)).pasteImported(requests.capture(), anySet(), anyMap());
         List<BomItemSaveRequest> top = requests.getAllValues().get(0).items();
         List<BomItemSaveRequest> child = requests.getAllValues().get(1).items();
         assertExact("0.03125", top.get(0).getQty());
@@ -284,13 +289,139 @@ class GoodsBomImportServiceTest {
         assertEquals("商品导入不执行公式，请先将公式复制并粘贴为值", error.getMessage());
     }
 
-    /** 导出文件带打开密码，要在表格软件里去掉密码另存再导入：原样读进来再存一次，值与显示格式都不变。 */
-    private static byte[] savedAgain(byte[] exported) throws Exception {
-        try (XSSFWorkbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(exported));
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            workbook.write(output);
-            return output.toByteArray();
+    @Test
+    void sharedSubassemblyMustHaveOneConsistentDefinitionAcrossPaths() throws Exception {
+        BomImportReport report = service(repoWithAllCodes()).detect(targetId, workbook(new String[][]{
+                {"1", "K01", "1"}, {"1.1", "D01", "1"},
+                {"2", "S01", "1"}, {"2.1", "K01", "1"}, {"2.1.1", "D01", "2"},
+        }));
+
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("不同层级路径")));
+    }
+
+    @Test
+    void identicalSharedSubassemblyIsWrittenOnceEvenInAppendMode() throws Exception {
+        GoodsBomPasteService paste = mock(GoodsBomPasteService.class);
+        when(paste.pasteImported(any(), anySet(), anyMap()))
+                .thenReturn(new BomPasteResult(1, 1, 0, List.of(), List.of()));
+
+        GoodsBomImportService importer = new GoodsBomImportService(repoWithAllCodes(), paste);
+        byte[] xlsx = workbook(new String[][]{
+                        {"1", "K01", "1"}, {"1.1", "D01", "1"},
+                        {"2", "S01", "1"}, {"2.1", "K01", "1"}, {"2.1.1", "D01", "1.0"},
+                });
+        BomImportResult result = importer.commit(targetId, xlsx, BomPasteRequest.Mode.APPEND,
+                importer.detect(targetId, xlsx).stateFingerprint());
+
+        assertEquals(3, result.targets());
+        ArgumentCaptor<BomPasteRequest> requests = ArgumentCaptor.forClass(BomPasteRequest.class);
+        org.mockito.Mockito.verify(paste, times(3)).pasteImported(requests.capture(), anySet(), anyMap());
+        assertEquals(Set.of(targetId, shellId, screwId), requests.getAllValues().stream()
+                .map(request -> request.targets().getFirst().goodsId()).collect(java.util.stream.Collectors.toSet()));
+    }
+
+    @Test
+    void numericTextMustNotChangeMeaningByRemovingCharacters() throws Exception {
+        for (String invalid : List.of("1kg", "50%", "1/2", "1,5", "1 2")) {
+            BomImportReport report = service(repoWithAllCodes()).detect(targetId,
+                    workbook(new String[][]{{"1", "K01", invalid}}));
+            assertTrue(report.hasErrors(), () -> "must reject ambiguous value " + invalid);
         }
+        Object parsed = parsedRows(service(repoWithAllCodes()), targetId,
+                workbook(new String[][]{{"1", "K01", "1e-5"}, {"2", "S01", "1,234.50"}}));
+        assertTrue(errorsOf(parsed).isEmpty());
+        var qty = rowsOf(parsed).getFirst().getClass().getDeclaredField("qty");
+        qty.setAccessible(true);
+        assertExact("0.00001", (BigDecimal) qty.get(rowsOf(parsed).getFirst()));
+        assertExact("1234.5", (BigDecimal) qty.get(rowsOf(parsed).get(1)));
+    }
+
+    @Test
+    void invalidColorIsReportedDuringDetectionAtTheWorkbookRow() throws Exception {
+        GoodsBomPasteService paste = mock(GoodsBomPasteService.class);
+        when(paste.importedColorProblems(any(), anyMap())).thenReturn(Map.of(shellId, "颜色存在多个同名记录"));
+
+        BomImportReport report = new GoodsBomImportService(repoWithAllCodes(), paste).detect(targetId,
+                workbook(new String[]{"序号", "物料编号", "数量", "颜色"},
+                        new String[][]{{"1", "K01", "2", "蓝色"}}));
+
+        assertEquals(2, report.errors().getFirst().rowNum());
+        assertEquals("颜色", report.errors().getFirst().column());
+        assertTrue(report.errors().getFirst().message().contains("同名"));
+    }
+
+    @Test
+    void extremeExponentsAndValuesOutsideStoredPrecisionAreRowErrors() throws Exception {
+        for (String invalid : List.of("1e999999999", "1e-999999999", "1e14", "0.000001", "99999999999999")) {
+            BomImportReport report = service(repoWithAllCodes()).detect(targetId,
+                    workbook(new String[][]{{"1", "K01", invalid}}));
+            assertTrue(report.hasErrors(), invalid);
+            assertTrue(report.errors().getFirst().message().contains("位小数"));
+        }
+        assertFalse(service(repoWithAllCodes()).detect(targetId,
+                workbook(new String[][]{{"1", "K01", "0.00001"}})).hasErrors());
+    }
+
+    @Test
+    void depthBeyondCompleteFileLimitIsExplicitlyRejected() throws Exception {
+        BomImportReport report = service(repoWithAllCodes()).detect(targetId,
+                workbook(new String[][]{{String.join(".", java.util.Collections.nCopies(12, "1")), "K01", "1"}}));
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("最多支持 11 层")));
+    }
+
+    @Test
+    void staleDetectionRejectsManualLearningAndNestedChangesBeforeAnyWrite() throws Exception {
+        for (String change : List.of("manual-rule-change", "learning-quantity-change", "nested-parent-version", "color-change")) {
+            GoodsBomPasteService paste = mock(GoodsBomPasteService.class);
+            when(paste.importStateSnapshot(anySet(), anySet(), anySet())).thenReturn("initial", change);
+            GoodsRepository repo = repoWithAllCodes();
+            GoodsBomImportService importer = new GoodsBomImportService(repo, paste);
+            byte[] xlsx = workbook(new String[][]{{"1", "K01", "1"}, {"1.1", "D01", "2"}});
+            String fingerprint = importer.detect(targetId, xlsx).stateFingerprint();
+
+            ApiException error = assertThrows(ApiException.class,
+                    () -> importer.commit(targetId, xlsx, BomPasteRequest.Mode.APPEND, fingerprint));
+
+            assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT, error.getCode());
+            org.mockito.Mockito.verify(paste, times(0)).pasteImported(any(), anySet(), anyMap());
+            InOrder order = inOrder(repo, paste);
+            order.verify(paste).importStateSnapshot(anySet(), anySet(), anySet());
+            order.verify(repo).lockBomParents(Set.of(targetId, shellId));
+            order.verify(paste).importStateSnapshot(anySet(), anySet(), anySet());
+        }
+    }
+
+    @Test
+    void detectionFingerprintCannotBeReusedForAnotherFileOrMissingToken() throws Exception {
+        GoodsBomPasteService paste = mock(GoodsBomPasteService.class);
+        GoodsBomImportService importer = new GoodsBomImportService(repoWithAllCodes(), paste);
+        byte[] first = workbook(new String[][]{{"1", "K01", "1"}});
+        byte[] changed = workbook(new String[][]{{"1", "K01", "2"}});
+        String token = importer.detect(targetId, first).stateFingerprint();
+
+        assertThrows(ApiException.class, () -> importer.commit(targetId, changed, BomPasteRequest.Mode.APPEND, token));
+        assertThrows(ApiException.class, () -> importer.commit(targetId, first, BomPasteRequest.Mode.APPEND, null));
+        org.mockito.Mockito.verify(paste, times(0)).pasteImported(any(), anySet(), anyMap());
+    }
+
+    @Test
+    void successfulCommitAdvancesExistingVersionAndOldTokenCannotApplyAgain() throws Exception {
+        GoodsBomPasteService paste = mock(GoodsBomPasteService.class);
+        java.util.concurrent.atomic.AtomicInteger revision = new java.util.concurrent.atomic.AtomicInteger();
+        when(paste.importStateSnapshot(anySet(), anySet(), anySet())).thenAnswer(call -> "version-" + revision.get());
+        org.mockito.Mockito.doAnswer(call -> { revision.incrementAndGet(); return null; })
+                .when(paste).markImportApplied(anySet());
+        when(paste.pasteImported(any(), anySet(), anyMap()))
+                .thenReturn(new BomPasteResult(1, 1, 0, List.of(), List.of()));
+        GoodsBomImportService importer = new GoodsBomImportService(repoWithAllCodes(), paste);
+        byte[] xlsx = workbook(new String[][]{{"1", "K01", "1"}});
+        String token = importer.detect(targetId, xlsx).stateFingerprint();
+
+        importer.commit(targetId, xlsx, BomPasteRequest.Mode.APPEND, token);
+        assertThrows(ApiException.class, () -> importer.commit(targetId, xlsx, BomPasteRequest.Mode.APPEND, token));
+
+        org.mockito.Mockito.verify(paste, times(1)).pasteImported(any(), anySet(), anyMap());
+        org.mockito.Mockito.verify(paste, times(1)).markImportApplied(Set.of(targetId));
     }
 
     private static void assertExact(String expected, BigDecimal actual) {

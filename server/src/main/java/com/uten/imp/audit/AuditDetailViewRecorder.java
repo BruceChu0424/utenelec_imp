@@ -14,6 +14,12 @@ public class AuditDetailViewRecorder {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
+    /** Explicit business history uses the same registered action and one suffix. */
+    public void recordHistory(String action,String targetType,UUID targetId,String billNo,Integer legacyId,String documentLabel) {
+        record(action==null ? null : action.endsWith("_history") ? action : action+"_history",
+                targetType,targetId,billNo,legacyId,documentLabel);
+    }
+
     public void record(
             String action,
             String targetType,
@@ -44,7 +50,7 @@ public class AuditDetailViewRecorder {
         String safeDocumentLabel = documentLabel.trim();
         String safeBillNo = billNo == null ? "" : billNo.trim();
         Integer safeLegacyId = legacyId != null && legacyId > 0 ? legacyId : null;
-        String effectiveAction = safeLegacyId == null ? action : action + "_history";
+        String effectiveAction = safeLegacyId == null || action.endsWith("_history") ? action : action + "_history";
         audit.logSuccessfulDetailView(
                 actorId,
                 actorAccount,

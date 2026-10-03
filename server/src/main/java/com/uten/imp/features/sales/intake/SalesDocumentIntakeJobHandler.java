@@ -83,6 +83,8 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
             throw new ApiException(ErrorCode.PAYLOAD_TOO_LARGE, "文件太大了, 最大 15 MB, 请压缩或拆分后再上传");
         }
         DocumentKind kind = DocumentKind.valueOf(input.kind());
+        if (p.templateOnly() && kind != DocumentKind.XLSX && kind != DocumentKind.XLS)
+            throw new ApiException(ErrorCode.UNSUPPORTED_MEDIA_TYPE, "客户报价模板仅支持 Excel xlsx/xls 文件");
         if (kind.isImage()) {
             DocumentImageGuard.requireSafe(input.bytes(), kind);
         }
@@ -111,6 +113,7 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
 
     @Override
     public Map<String, Object> filterResultForReader(Map<String, Object> result) {
+        IntakeResultReadScope.requireVisible(result, lookup);
         return IntakeResultFilter.filter(result, canViewPrices(), hasPermission(CLIENT_CREATE));
     }
 
@@ -134,6 +137,8 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
         Set<String> perms = user.getPermissions();
+        if (params.templateOnly() && !perms.containsAll(Set.of("sales_quote:view", "sales_quote:export", "sales_order:price:view")))
+            throw new ApiException(ErrorCode.FORBIDDEN, "学习客户报价模板需要报价查看、导出和价格查看权限");
         boolean allowed = params.isOrder()
                 ? perms.contains("sales_order:create") || perms.contains("sales_order:edit")
                 : perms.contains("sales_quote:create") || perms.contains("sales_quote:edit");

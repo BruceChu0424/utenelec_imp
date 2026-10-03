@@ -52,6 +52,7 @@ public class OpenAiChatClient implements AiProtocolClient {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
         JsonNode root = parse(exchange.body());
+        AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("choices").path(0).path("message").isObject());
         JsonNode choice = root.path("choices").path(0);
         JsonNode content = choice.path("message").path("content");
         String text = contentText(content);
@@ -68,7 +69,9 @@ public class OpenAiChatClient implements AiProtocolClient {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
         List<String> models = new ArrayList<>();
-        for (JsonNode item : parse(exchange.body()).path("data")) {
+        JsonNode root = parse(exchange.body());
+        AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("data").isArray());
+        for (JsonNode item : root.path("data")) {
             String id = item.path("id").asText("");
             if (!id.isBlank() && id.length() <= 128) {
                 models.add(id);
@@ -80,6 +83,7 @@ public class OpenAiChatClient implements AiProtocolClient {
     byte[] requestBody(AiProviderRuntime runtime, ChatRequest request) {
         ObjectNode body = json.createObjectNode();
         body.put("model", runtime.model());
+        body.put("stream", false);
         ArrayNode messages = body.putArray("messages");
         messages.addObject().put("role", "system").put("content", request.systemPrompt());
         ObjectNode user = messages.addObject().put("role", "user");

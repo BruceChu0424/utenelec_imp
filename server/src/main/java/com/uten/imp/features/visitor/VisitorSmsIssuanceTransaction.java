@@ -65,10 +65,16 @@ public class VisitorSmsIssuanceTransaction {
         return new Issuance(entity.getId());
     }
 
-    /** 供应商明确拒绝时删除未发送记录，让用户可重试；不处理网络结果不确定的请求。 */
+    /** 明确拒绝使验证码不可用并释放发送配额；原签发/拒绝事实保留。 */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void reject(UUID issuanceId) {
-        smsRepo.deleteById(issuanceId);
+        smsRepo.recordDelivery(issuanceId,"REJECTED","SMS_PROVIDER_DEFINITIVELY_REJECTED");
+    }
+
+    @Transactional(propagation=Propagation.REQUIRES_NEW)
+    public void complete(UUID issuanceId,com.uten.imp.features.visitor.sms.SmsSendResult result) {
+        if(result==com.uten.imp.features.visitor.sms.SmsSendResult.REJECTED){reject(issuanceId);return;}
+        smsRepo.recordDelivery(issuanceId,result.name(),"SMS_PROVIDER_"+result.name());
     }
 
     public record Issuance(UUID id) {}

@@ -111,6 +111,9 @@ class DocumentScopeWriteNotice extends StatelessWidget {
   }
 
   _NoticeState? _state() => capability.when(
+    skipLoadingOnRefresh: false,
+    skipLoadingOnReload: false,
+    skipError: false,
     loading: () => const _NoticeState(
       kind: _NoticeKind.loading,
       keyName: 'loading',

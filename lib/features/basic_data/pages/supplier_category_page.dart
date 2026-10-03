@@ -172,6 +172,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     return buildShell(
       context,
       detailPaneBuilder: (selected) =>

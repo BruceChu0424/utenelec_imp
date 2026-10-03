@@ -12,6 +12,8 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import com.uten.imp.features.production.execution.ProductionExecutionBatch;
+import com.uten.imp.features.production.execution.ProductionDrawRequest;
+import com.uten.imp.features.production.execution.ProductionDrawRequestService;
 import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
 import com.uten.imp.features.production.execution.ProductionExecutionWorkbenchSegment;
 import com.uten.imp.features.production.execution.ProductionExecutionWorkbenchService;
@@ -47,6 +49,7 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.Periodic
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.SegmentMaterials;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.SettingsRequest;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialSettingsService;
+import com.uten.imp.features.warehouse.materialbin.WorkshopTaskMaterialStockQueryService;
 import com.uten.imp.support.DailyReportApproveRequests;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -108,6 +111,7 @@ class WorkshopMaterialStartGatePostgresTest {
     @Autowired ProductionExecutionSegmentService segments;
     @Autowired ProductionExecutionWorkbenchService workbench;
     @Autowired ProductionMaterialDiscoveryService discovery;
+    @Autowired ProductionDrawRequestService drawRequests;
     @Autowired ProductionDailyReportService reports;
     @Autowired ReportablePlanLineQueryService reportable;
     @Autowired ProductionFinishedArrivalRegistrationService arrivals;
@@ -115,6 +119,7 @@ class WorkshopMaterialStartGatePostgresTest {
     @Autowired ProductionFqcReplenishmentMaterialService replenishment;
     @Autowired StockDocService stock;
     @Autowired WorkshopMaterialSettingsService settings;
+    @Autowired WorkshopTaskMaterialStockQueryService materialStock;
     @Autowired WorkshopMaterialChoiceController choices;
     @Autowired WorkshopMaterialChoicePort choicePort;
     FullChainEndToEndTest fixture;
@@ -206,6 +211,7 @@ class WorkshopMaterialStartGatePostgresTest {
         assertEquals("DEMANDED", db.queryForObject(
                 "SELECT material_requirement_mode FROM production_execution_segments WHERE id = ?",
                 String.class, released.segment()), "拆批只对按单需求的段比指纹, 用零料段测会假绿");
+        enable(shop);
 
         fixture.loginAs(shop.world().superAdminUserId());
         segments.confirmRoute(released.plan(), released.segment(), new SegmentRouteConfirmRequest(
@@ -267,6 +273,20 @@ class WorkshopMaterialStartGatePostgresTest {
         assertFalse(blocked.canStart(), "车间没开启整批领料, 开工就绪排除这种段");
         assertFalse(blocked.needsStartConfirmation(), "开工确认表也解决不了, 不进确认表");
         assertFalse(blocked.allowedActions().contains("CHOOSE"));
+        assertFalse(blocked.canRequestMaterialDiscovery());
+        assertFalse(blocked.canRequestDraw());
+        assertTrue(inBucket(shop, released.segment(), "WAITING_MATERIAL"));
+        assertFalse(inBucket(shop, released.segment(), "DRAW_NOT_REQUESTED"));
+        assertFalse(inBucket(shop, released.segment(), "DRAW_REQUESTED"));
+        assertFalse(inBucket(shop, released.segment(), "READY_TO_START"));
+        assertFalse(workbench.workshopTasks(1, 50, null, "READY_TO_START", shop.workshop(), null, null)
+                .getItems().stream().anyMatch(row -> row.segmentId().equals(released.segment())));
+        assertFalse(discovery.context(released.segment()).canRequest());
+        assertTrue(assertThrows(ApiException.class, () -> discovery.request(released.segment(),
+                new Request(version(released.segment()), key("need-bin-request")))).getMessage().contains("开启"));
+        assertTrue(assertThrows(ApiException.class, () -> drawRequests.preview(new ProductionDrawRequest.PreviewRequest(
+                List.of(new ProductionDrawRequest.Item(released.segment(), version(released.segment()))))))
+                .getMessage().contains("开启"));
         assertFalse(bool("SELECT fn_execution_start_material_ready(?)", released.segment()));
         ApiException refused = assertThrows(ApiException.class, () -> segments.start(released.plan(),
                 released.segment(), new SegmentTransitionRequest(version(released.segment()), key("start-refused"))));
@@ -284,6 +304,15 @@ class WorkshopMaterialStartGatePostgresTest {
         segments.start(released.plan(), released.segment(),
                 new SegmentTransitionRequest(version(released.segment()), key("start")));
         assertEquals("IN_PROGRESS", status(released.segment()));
+
+        var materialEstimate = materialStock.readiness(released.segment());
+        assertEquals(bin, materialEstimate.binWarehouseId());
+        assertEquals(0, new BigDecimal("20").compareTo(materialEstimate.remainingOutputQty()));
+        assertEquals(1, materialEstimate.rows().size());
+        assertEquals(shop.granule(), materialEstimate.rows().getFirst().goodsId());
+        assertEquals(0, new BigDecimal("0.25").compareTo(materialEstimate.rows().getFirst().requiredQty()),
+                "真实期间单重按公斤直接相乘, 不经过客户端克/公斤换算");
+        assertEquals("UNKNOWN", materialEstimate.rows().getFirst().status(), "没有库存估计不能冒称够料");
 
         UUID edge = db.queryForObject("""
                 SELECT id FROM goods_bom_items WHERE goods_id = ? AND component_goods_id = ? AND NOT is_deleted""",
@@ -336,6 +365,8 @@ class WorkshopMaterialStartGatePostgresTest {
         assertTrue(pending.canStart(), "开工就绪不排除待认料, 否则进不了开工确认表");
         assertTrue(pending.needsStartConfirmation());
         assertTrue(pending.allowedActions().contains("CHOOSE"));
+        assertFalse(pending.canRequestDraw());
+        assertFalse(pending.canRequestMaterialDiscovery());
         assertTrue(inBucket(shop, released.segment(), "WAITING_MATERIAL"), "待认料归「等待物料」");
         assertFalse(inBucket(shop, released.segment(), "DRAW_NOT_REQUESTED"), "去领料桶排除待认料");
         assertFalse(inBucket(shop, released.segment(), "READY_TO_START"));
@@ -403,8 +434,17 @@ class WorkshopMaterialStartGatePostgresTest {
         assertTrue(waiting.needsStartConfirmation(), "待认料的零料件也能进开工确认表");
         assertFalse(waiting.canStart(), "没认料前领料发现门仍在");
         assertTrue(waiting.materialDiscoveryRequired());
+        assertFalse(waiting.canRequestMaterialDiscovery(), "首次认料不是首次按工单领料");
+        assertFalse(waiting.canRequestDraw());
+        assertFalse(discovery.context(inserted.segment()).canRequest());
+        ApiException beforeChoice = assertThrows(ApiException.class, () -> discovery.request(inserted.segment(),
+                new Request(version(inserted.segment()), key("before-choice-request"))));
+        assertTrue(beforeChoice.getMessage().contains("认料"), beforeChoice.getMessage());
+        assertEquals(0, count("SELECT count(*) FROM production_material_discovery_requests WHERE execution_segment_id = ?",
+                inserted.segment()));
 
-        // 车间申请领料时不能点名整批领料的料。
+        // 认料后明确还需按工单领嵌件, 申请也不能点名整批领料的颗粒。
+        choose(shop, insertPart, true);
         fixture.loginAs(shop.world().superAdminUserId());
         ApiException periodicSuggestion = assertThrows(ApiException.class, () -> discovery.request(inserted.segment(),
                 new Request(version(inserted.segment()), key("periodic-suggestion"),
@@ -414,11 +454,12 @@ class WorkshopMaterialStartGatePostgresTest {
                 inserted.segment()));
 
         // 勾了「还要按工单领别的料」: 用料已知, 但领料发现门保留, 只能登记非整批领料的料。
-        choose(shop, insertPart, true);
         assertEquals("KNOWN", state(inserted.segment()));
         assertFalse(bool("SELECT fn_segment_bin_discovery_released(?)", inserted.segment()));
         assertTrue(bool("SELECT fn_material_discovery_pending(?)", inserted.segment()));
         fixture.loginAs(shop.workshopUser());
+        assertTrue(task(shop, inserted.segment(), "PREPARING").canRequestMaterialDiscovery());
+        assertTrue(discovery.context(inserted.segment()).canRequest());
         ApiException early = assertThrows(ApiException.class, () -> segments.start(inserted.plan(),
                 inserted.segment(), new SegmentTransitionRequest(version(inserted.segment()), key("early-start"))));
         assertTrue(early.getMessage().contains("请先提交领料"), early.getMessage());
@@ -460,11 +501,119 @@ class WorkshopMaterialStartGatePostgresTest {
         assertFalse(released.materialDiscoveryRequired());
         assertTrue(released.canStart());
         assertFalse(released.needsStartConfirmation());
+        assertFalse(released.canRequestMaterialDiscovery());
+        assertFalse(released.canRequestDraw());
+        assertFalse(discovery.context(plain.segment()).materialDiscoveryRequired());
+        assertFalse(discovery.context(plain.segment()).canRequest());
+        assertTrue(assertThrows(ApiException.class, () -> discovery.request(plain.segment(),
+                new Request(version(plain.segment()), key("known-request")))).getMessage().contains("已不需要"));
         segments.start(plain.plan(), plain.segment(),
                 new SegmentTransitionRequest(version(plain.segment()), key("plain-start")));
         assertEquals("IN_PROGRESS", status(plain.segment()));
         assertEquals(0, count("SELECT count(*) FROM production_material_demands WHERE execution_segment_id = ?",
                 plain.segment()));
+    }
+
+    @Test
+    void pendingLegacyRequestCanBeCancelledAfterEnableAndMaterialChoiceReleasesFirstStart() {
+        Shop shop = shop("legacy-request");
+        UUID product = product(shop, "启用前申请过的注塑件");
+        Released released = release(shop, product, "10");
+        fixture.loginAs(shop.workshopUser());
+        assertEquals("NO_BIN", state(released.segment()));
+        assertTrue(discovery.context(released.segment()).canRequest());
+        Detail requested = discovery.request(released.segment(),
+                new Request(version(released.segment()), key("legacy-request")));
+
+        enable(shop);
+        fixture.loginAs(shop.workshopUser());
+        assertEquals("NEED_CHOICE", state(released.segment()));
+        assertEquals(requested.requestId(), discovery.context(released.segment()).requestId());
+        assertFalse(discovery.context(released.segment()).canRequest());
+        assertTrue(inBucket(shop, released.segment(), "WAITING_MATERIAL"));
+        assertFalse(inBucket(shop, released.segment(), "DRAW_REQUESTED"));
+        fixture.loginAs(shop.world().superAdminUserId());
+        ApiException refused = assertThrows(ApiException.class, () -> discovery.configure(requested.requestId(),
+                new Configure(requested.version(), key("stale-configure"), List.of(new Material(
+                        shop.world().goodsD(), null, shop.world().unitId(), shop.world().warehouseId(), BigDecimal.ONE)))));
+        assertTrue(refused.getMessage().contains("认料"), refused.getMessage());
+        assertEquals(0, count("SELECT count(*) FROM production_material_demands WHERE execution_segment_id = ?",
+                released.segment()));
+
+        fixture.loginAs(shop.workshopUser());
+        Detail cancelled = discovery.cancel(requested.requestId(), new Request(requested.version(), key("legacy-cancel")));
+        assertEquals("CANCELLED", cancelled.status(), "新用料门不阻止撤回未办理的旧申请");
+        choose(shop, product, false);
+        assertFalse(discovery.context(released.segment()).canRequest());
+        assertTrue(task(shop, released.segment(), "PREPARING").canStart());
+        segments.start(released.plan(), released.segment(),
+                new SegmentTransitionRequest(version(released.segment()), key("first-start")));
+        assertEquals("IN_PROGRESS", status(released.segment()));
+        assertEquals(0, count("SELECT count(*) FROM production_material_demands WHERE execution_segment_id = ?",
+                released.segment()), "第一次只认料即可开工, 不建按单需求");
+    }
+
+    @Test
+    void explicitlyChoosingOrderMaterialsKeepsTheOrdinaryDiscoveryRoute() {
+        Shop shop = shop("order-only");
+        enable(shop);
+        UUID product = product(shop, "明确按单领料的产品");
+        Released released = release(shop, product, "10");
+        fixture.loginAs(shop.workshopUser());
+        choices.choose(new ChooseRequest(shop.workshop(), List.of(new WorkshopMaterialChoicePort.ProductChoice(
+                product, WorkshopMaterialChoicePort.KIND_NONE, List.of(), false, null)), key("choose-order")));
+        assertEquals("ORDER_ONLY", state(released.segment()));
+        assertTrue(discovery.context(released.segment()).canRequest());
+        assertTrue(task(shop, released.segment(), "PREPARING").canRequestMaterialDiscovery());
+        assertTrue(inBucket(shop, released.segment(), "DRAW_NOT_REQUESTED"));
+        assertEquals("PENDING", discovery.request(released.segment(),
+                new Request(version(released.segment()), key("order-request"))).status());
+    }
+
+    @Test
+    void changingMaterialConvertsItsWeightUnitAndRejectsUnconfiguredCrossUnitChanges() {
+        Shop shop = shop("weight-units");
+        UUID product = product(shop, "跨重量单位换料的注塑件");
+        periodicEdge(product, shop.granule(), "0.0125");
+        Released released = release(shop, product, "20");
+        enable(shop);
+        UUID grams = UUID.randomUUID(), unknown = UUID.randomUUID();
+        UUID gramMaterial = UUID.randomUUID(), unknownMaterial = UUID.randomUUID();
+        for (UUID unit : List.of(grams, unknown)) {
+            int legacy = db.queryForObject("SELECT coalesce(max(legacy_id),0)+1 FROM units", Integer.class);
+            db.update("INSERT INTO units(id,legacy_id,code,name,status) VALUES (?,?,?,?,'使用')",
+                    unit, legacy, "WMU-" + unit.toString().substring(0, 8), unit.equals(grams) ? "克" : "待配置重量单位");
+            db.update("INSERT INTO unit_measurement_profiles(unit_id,measurement_dimension,mass_unit_code,provenance) VALUES (?,'MASS',?,'MANUAL_GOVERNANCE')",
+                    unit, unit.equals(grams) ? "G" : null);
+            UUID material = unit.equals(grams) ? gramMaterial : unknownMaterial;
+            db.update("""
+                    INSERT INTO goods(id,code,name,source_type,status,unit_id,unit_legacy_id,price,code_sequence,
+                                      issue_method,periodic_cost_basis,min_qty)
+                    VALUES (?,?,?,'采购','使用',?,?,10,(SELECT coalesce(max(code_sequence),0)+1 FROM goods),
+                            'PERIODIC','OWN',0)
+                    """, material, "WMG-" + material.toString().substring(0, 8), "跨单位颗粒", unit, legacy);
+        }
+        fixture.loginAs(shop.workshopUser());
+        segments.start(released.plan(), released.segment(),
+                new SegmentTransitionRequest(version(released.segment()), key("weight-start")));
+        var before = choices.segmentMaterials(released.segment());
+        var changed = choices.changeMaterial(released.segment(), new MaterialChangeRequest(before.lockVersion(),
+                before.rows().getFirst().id(), gramMaterial, null, BusinessTime.today(), "FROM_REPLACED", "公斤换成克",
+                key("change-to-grams")));
+        var active = changed.rows().stream().filter(row -> row.effectiveTo() == null).findFirst().orElseThrow();
+        money("12.5", decimal("SELECT unit_weight FROM fn_workshop_material_unit_weight(?)", active.id()));
+        money("250", materialStock.readiness(released.segment()).rows().getFirst().requiredQty());
+        ApiException missing = assertThrows(ApiException.class, () -> choices.changeMaterial(released.segment(),
+                new MaterialChangeRequest(version(released.segment()), active.id(), unknownMaterial, null,
+                        BusinessTime.today(), "FROM_REPLACED", "不应猜测单位", key("unknown-unit"))));
+        assertTrue(missing.getMessage().contains("重量单位换算尚未配置"), missing.getMessage());
+        assertEquals(2, choices.segmentMaterials(released.segment()).rows().size(), "失败的换料不留半条事实");
+        var returned = choices.changeMaterial(released.segment(), new MaterialChangeRequest(version(released.segment()),
+                active.id(), shop.granule(), null, BusinessTime.today(), "FROM_REPLACED", "换回公斤颗粒",
+                key("change-back-kg")));
+        var returnedRow = returned.rows().stream().filter(row -> row.effectiveTo() == null).findFirst().orElseThrow();
+        money("0.0125", decimal("SELECT unit_weight FROM fn_workshop_material_unit_weight(?)", returnedRow.id()));
+        money("0.25", materialStock.readiness(released.segment()).rows().getFirst().requiredQty());
     }
 
     // =============================================================================================
@@ -504,6 +653,9 @@ class WorkshopMaterialStartGatePostgresTest {
         assertTrue(bool("SELECT fn_fqc_replenishment_periodic_only(?)", scrap));
         assertTrue(bool("SELECT fn_fqc_replenishment_material_ready(?)", scrap));
         assertFalse(bool("SELECT fn_fqc_replenishment_periodic_only(?)", rework), "返工不是补产");
+        var recoveryEstimate = materialStock.readiness(released.segment());
+        money("3", recoveryEstimate.remainingOutputQty());
+        money("0.0375", recoveryEstimate.rows().getFirst().requiredQty());
 
         assertEquals("READY", replenishment.detail(scrap).status(), "补产只用内料仓的料: 任务直接就绪");
         var confirmed = replenishment.confirm(scrap,
@@ -593,6 +745,11 @@ class WorkshopMaterialStartGatePostgresTest {
         money("12.5", changed.unitWeightGrams());
         assertEquals(version(released.segment()), after.lockVersion());
         assertEquals(2, choices.segmentMaterials(released.segment()).rows().size());
+
+        var currentStock = materialStock.readiness(released.segment());
+        assertEquals(List.of(other), currentStock.rows().stream().map(row -> row.goodsId()).toList(),
+                "库存提示只取今天生效的新料, 不把昨日已结束的旧料重复算进需求");
+        assertEquals(0, new BigDecimal("0.25").compareTo(currentStock.rows().getFirst().requiredQty()));
 
         // 没有换料权限的员工能看底稿, 改不了
         fixture.loginAs(shop.starterOnly());

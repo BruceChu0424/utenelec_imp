@@ -44,6 +44,7 @@ public enum DocNumberPrefix {
     STOCK_FINISHED_OUT("CC"),
     STOCK_FINISHED_IN("CR"),
     STOCK_CHECK("PQ"),
+    STOCK_COUNT_REQUEST("PK"),
     STOCK_WASTE("QW"),
     // 委外
     SUB_INQUIRY("EA"),

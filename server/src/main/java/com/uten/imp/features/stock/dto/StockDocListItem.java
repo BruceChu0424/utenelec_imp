@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 仓库单据列表项（统一，跨 9 类 doc_type）。 */
 @Getter
 @AllArgsConstructor
-public class StockDocListItem {
+public class StockDocListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String docType;
     private String billNo;

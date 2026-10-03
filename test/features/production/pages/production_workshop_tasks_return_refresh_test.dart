@@ -10,6 +10,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
@@ -24,7 +27,13 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../../helpers/badge_summary_fixture.dart';
 import '../../../support/filter_segment_tap.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets(
     'saved draft opens review and completes both route futures on return',
     (tester) async {
@@ -65,6 +74,10 @@ void main() {
       addTearDown(router.dispose);
       final container = ProviderContainer(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
             Perm.productionDailyReportView,
@@ -73,6 +86,7 @@ void main() {
           productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
             _repository(() => loads++),
           ),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
       );
       // No page-resume fallback: both ordinary push futures must really complete.
@@ -174,6 +188,10 @@ void main() {
       addTearDown(router.dispose);
       final container = ProviderContainer(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.productionExecutionView,
             Perm.productionDailyReportView,
@@ -182,6 +200,7 @@ void main() {
           productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
             _repository(() => loads++),
           ),
+          fixedBadgeSummaryOverride(badgeSummaryFixture()),
         ],
       );
       addTearDown(
@@ -277,6 +296,10 @@ void main() {
     addTearDown(router.dispose);
     final container = ProviderContainer(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.productionExecutionView,
           Perm.productionDailyReportView,
@@ -285,6 +308,7 @@ void main() {
         productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
           _repository(() => loads++),
         ),
+        fixedBadgeSummaryOverride(badgeSummaryFixture()),
       ],
     );
     // 故意不接 attachPageResume：模拟「返回即刷新」没有触发的最坏情况，
@@ -349,6 +373,10 @@ void main() {
         final api = _draftClaimingApi(claimedQty: () => claim);
         final container = ProviderContainer(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             apiClientProvider.overrideWithValue(api),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.productionExecutionView,
@@ -479,12 +507,17 @@ void main() {
     final api = _draftFailingApi();
     final container = ProviderContainer(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         apiClientProvider.overrideWithValue(api),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.productionExecutionView,
           Perm.productionDailyReportView,
           Perm.productionDailyReportCreate,
         }),
+        fixedBadgeSummaryOverride(badgeSummaryFixture()),
       ],
     );
     addTearDown(container.dispose);

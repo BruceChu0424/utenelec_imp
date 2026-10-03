@@ -1,3 +1,4 @@
+import '../../../support/native_detail_reader_overrides.dart';
 // 销售单据详情页 2026-09-11 折叠头改版回归：
 // 「先滚页面收头部（表头卡/预收/出货卡/附件）、再滚明细表内部」+ 三视口叠 textScale 1.5 不溢出。
 import 'package:dio/dio.dart';
@@ -62,6 +63,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

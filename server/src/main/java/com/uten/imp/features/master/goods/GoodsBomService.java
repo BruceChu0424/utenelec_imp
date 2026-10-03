@@ -363,22 +363,31 @@ public class GoodsBomService {
             new ExportColumn("summary", "备注", ExportColumn.TEXT));
 
     /** 整树展开导出({@link #EXPORT_COLUMNS})。层级只用级联序号表达(1 / 3.1 / 3.1.1)，不再加缩进与子层星号标记。 */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload exportPayload(UUID goodsId) {
         List<Map<String, Object>> rows = new ArrayList<>();
         Set<UUID> path = new java.util.HashSet<>();
         path.add(goodsId);
-        expandForExport(goodsId, 0, path, "", rows);
+        expandForExport(goodsId, 0, path, "", rows, new HashMap<>());
         return new ExportPayload(EXPORT_COLUMNS, rows, rows.size());
     }
 
     /** DFS 平铺 BOM 树：[path] = 当前展开路径上的货品（含根，环路防护）；[prefix] = 级联序号前缀。 */
     private void expandForExport(UUID goodsId, int depth, Set<UUID> path, String prefix,
-                                 List<Map<String, Object>> rows) {
-        if (depth > MAX_DEPTH) return;
-        List<BomItemView> items = list(goodsId);
+                                 List<Map<String, Object>> rows, Map<UUID, List<BomItemView>> cache) {
+        if (depth >= GoodsBomFileLimits.MAX_LEVELS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "BOM 层级超过完整导出上限，请从下层组件分别导出");
+        }
+        List<BomItemView> items = cache.computeIfAbsent(goodsId, this::list);
         for (int i = 0; i < items.size(); i++) {
             BomItemView v = items.get(i);
+            if (v.getComponentCode() == null || v.getComponentCode().isBlank()) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "存在不可见或未编号的组件，无法完整导出，请联系管理员核对权限和货品资料");
+            }
+            if (rows.size() >= GoodsBomFileLimits.MAX_ROWS) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "BOM 展开超过 " + GoodsBomFileLimits.MAX_ROWS
+                        + " 行完整导出上限，请从下层组件分别导出");
+            }
             String seq = prefix.isEmpty() ? String.valueOf(i + 1) : prefix + "." + (i + 1);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("seq", seq);
@@ -399,15 +408,41 @@ public class GoodsBomService {
             row.put("actualQty", v.getUsage().actualQty());
             row.put("summary", v.getSummary());
             rows.add(row);
-            if (v.isHasChildren() && !path.contains(v.getComponentGoodsId())) {
+            if (v.isHasChildren()) {
+                if (path.contains(v.getComponentGoodsId())) {
+                    throw new ApiException(ErrorCode.CONFLICT, "BOM 存在循环引用，无法完整导出，请先检查组件结构");
+                }
                 Set<UUID> next = new java.util.HashSet<>(path);
                 next.add(v.getComponentGoodsId());
-                expandForExport(v.getComponentGoodsId(), depth + 1, next, seq, rows);
+                expandForExport(v.getComponentGoodsId(), depth + 1, next, seq, rows, cache);
             }
         }
     }
 
     // ===== 私有 =====
+
+    /** 文件颜色与当前有效颜色相同时保留原关系；真正改色才解析唯一、有效的主档 UUID。 */
+    void applyImportedColor(GoodsBomItem row, Goods component, String name) {
+        String current = bomColorNameOf(row, component, legacyNames(List.of(row)));
+        String requested = name == null ? "" : name.trim();
+        if (requested.equalsIgnoreCase(current == null ? "" : current.trim())) return;
+        if (requested.isEmpty()) {
+            row.setColor(null);
+            row.setColorLegacyId(null);
+            return;
+        }
+        List<Color> matches = colorRepo.findByNameIgnoreCaseAndDeletedFalse(requested).stream()
+                .filter(color -> !"禁用".equals(color.getStatus()) && !"报废".equals(color.getStatus()))
+                .toList();
+        if (matches.size() != 1) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, matches.isEmpty()
+                    ? "颜色「" + requested + "」不存在或已停用，请先维护颜色资料"
+                    : "颜色「" + requested + "」存在多个同名记录，请先在颜色资料中消除歧义");
+        }
+        Color color = relationships.color(matches.getFirst().getId());
+        row.setColor(color);
+        row.setColorLegacyId(color.getLegacyId());
+    }
 
     /** 把请求写到组装行上并校验(用量/阶段/计量方式/硬门槛/颜色/供应商)；粘贴命令逐行复用。 */
     void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component) {

@@ -34,7 +34,8 @@ KEY = re.compile(r"i1_([A-Z][A-Z0-9_]{0,63})_([0-9]{4}(?:0[1-9]|1[0-2]))_([a-f0-
 LEGACY_KEY = re.compile(r"[a-f0-9]{32}(?:\.[a-z0-9]{1,8})?\Z")
 FIELDS = ("id", "owner_type", "owner_id", "storage_key", "storage_version", "sha256",
           "size_bytes", "stored_size_bytes", "storage_encoding", "storage_provider")
-PRIVATE_TABLES = ("sales_quote_template_candidates", "sales_quote_template_versions", "goods_cost_imports")
+PRIVATE_TABLES = ("sales_quote_template_candidates", "sales_quote_template_versions", "goods_cost_imports",
+                  "sales_quote_template_candidate_history", "ai_input_originals")
 IDENTITY_FIELDS = ("storage_provider", "storage_key", "storage_version", "sha256", "size_bytes")
 CONSISTENCY_SQL = """
 SELECT EXISTS (
@@ -42,7 +43,7 @@ SELECT EXISTS (
     ON o.storage_key = a.storage_key
    AND (o.storage_provider = a.storage_provider OR o.storage_provider = 'legacy_unknown')
    AND (o.storage_version IS NOT DISTINCT FROM a.storage_version OR o.storage_version IS NULL)
-  WHERE a.lifecycle_state = 'CLEAN' AND o.operation = 'DELETE_FINAL' AND o.status <> 'SUCCEEDED'
+  WHERE a.lifecycle_state IN ('CLEAN','RETAINED_HISTORY','DELETE_PENDING','DELETE_FAILED') AND o.operation = 'DELETE_FINAL' AND o.status NOT IN ('SUCCEEDED','RETAINED_HISTORY')
 )
 """
 
@@ -202,7 +203,17 @@ def normalize_reference(row: dict) -> dict:
     if row.get("source_table") not in ("attachments", *PRIVATE_TABLES):
         raise ValueError("Unknown media reference producer")
     try:
-        uuid.UUID(str(row["id"]))
+        logical_id = str(row["id"])
+        if row["source_table"] == "sales_quote_template_versions":
+            template_id, version = logical_id.split(":")
+            uuid.UUID(template_id)
+            if not re.fullmatch(r"[1-9][0-9]{0,9}", version) or int(version) > 2147483647:
+                raise ValueError("invalid template version")
+        elif row["source_table"] == "sales_quote_template_candidate_history":
+            if not re.fullmatch(r"[1-9][0-9]{0,18}", logical_id) or int(logical_id) > 9223372036854775807:
+                raise ValueError("invalid history sequence")
+        else:
+            uuid.UUID(logical_id)
     except (ValueError, KeyError, TypeError):
         raise ValueError("Invalid logical media reference identity") from None
     if (row.get("storage_provider") not in ("internal", "local")
@@ -234,7 +245,7 @@ def collect_references(cursor, lock=True) -> list[dict]:
     """Only metadata; never select workbook content, names, previews or business payloads."""
     suffix = " FOR SHARE" if lock else ""
     cursor.execute("SELECT " + ",".join(FIELDS) + " FROM attachments "
-                   "WHERE lifecycle_state='CLEAN' ORDER BY id" + suffix)
+                   "WHERE lifecycle_state IN ('CLEAN','RETAINED_HISTORY','DELETE_PENDING','DELETE_FAILED') ORDER BY id" + suffix)
     references = [normalize_reference({**dict(zip(FIELDS, values)), "source_table": "attachments"})
                   for values in cursor.fetchall()]
     fields = ("id", "storage_provider", "storage_key", "storage_version", "size_bytes", "sha256")
@@ -247,8 +258,21 @@ def collect_references(cursor, lock=True) -> list[dict]:
                            "AND table_name=%s AND column_name='storage_provider')", (table,))
             if not cursor.fetchone()[0]:
                 continue  # Pre-V747 workbooks are bytea columns already included in pg_dump.
-        cursor.execute("SELECT id,storage_provider,storage_key,storage_version,storage_size,storage_sha256 "
-                       "FROM public." + table + " WHERE storage_provider IS NOT NULL ORDER BY id" + suffix)
+        # Exact immutable logical identities from the actual schemas, never guessed id columns.
+        identity, order = "id", "id"
+        size, digest = "storage_size", "storage_sha256"
+        if table in ("sales_quote_template_candidates", "ai_input_originals"):
+            identity = order = "job_id"
+        elif table == "sales_quote_template_versions":
+            identity, order = "template_id::text||':'||version::text", "template_id,version"
+        elif table == "sales_quote_template_candidate_history":
+            # Extract only the archived object's two metadata fields, never select its full original payload.
+            size, digest = "(payload->>'storage_size')::bigint", "payload->>'storage_sha256'"
+        predicate = "storage_provider IS NOT NULL"
+        if table == "ai_input_originals":
+            predicate += " AND availability='AVAILABLE' AND lifecycle_state='AVAILABLE'"
+        cursor.execute("SELECT " + identity + ",storage_provider,storage_key,storage_version," + size + "," + digest
+                       + " FROM public." + table + " WHERE " + predicate + " ORDER BY " + order + suffix)
         references.extend(normalize_reference({**dict(zip(fields, values)), "source_table": table})
                           for values in cursor.fetchall())
     # The canonical view is an independent inventory guard against missing a producer.
@@ -336,7 +360,7 @@ def copy_object(source_root: Path, target_root: Path, row: dict, budget: Budget)
 def assert_reference_consistency(cursor, references):
     for row in unique_references(references):
         cursor.execute("SELECT EXISTS (SELECT 1 FROM attachment_object_outbox WHERE operation='DELETE_FINAL' "
-                       "AND status <> 'SUCCEEDED' AND storage_key=%s "
+                       "AND status NOT IN ('SUCCEEDED','RETAINED_HISTORY') AND storage_key=%s "
                        "AND (storage_provider=%s OR storage_provider='legacy_unknown') "
                        "AND (storage_version IS NOT DISTINCT FROM %s OR storage_version IS NULL))",
                        (row["storage_key"], row["storage_provider"], row["storage_version"]))

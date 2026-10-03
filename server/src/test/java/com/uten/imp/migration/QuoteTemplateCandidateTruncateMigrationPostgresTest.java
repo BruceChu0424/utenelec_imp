@@ -55,6 +55,7 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
         assertOriginalHistory(db);
         assertCleanupInstalled(db);
         assertEquals(before, payloadSnapshot(db), "forward cleanup must not rewrite existing template data");
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE archived_at IS NOT NULL OR archived_by IS NOT NULL OR archive_reason IS NOT NULL",Integer.class),"new archive metadata does not invent historical destruction");
         assertEquals(0, db.queryForObject("SELECT count(*) FROM attachment_object_outbox", Integer.class));
         assertExactCleanup(db, fixture);
         String after = payloadSnapshot(db);
@@ -92,8 +93,8 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
             var savepoint = connection.setSavepoint();
             assertTrue(tx.queryForObject("SELECT cleared_rows FROM business_data_reset()", Long.class) >= 4);
             assertCleanupResult(tx, fixture);
-            assertEquals(originalFile, tx.queryForObject("SELECT pg_relation_filenode('sales_quotes'::regclass)", Long.class));
-            assertTrue(tx.queryForObject("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required", Integer.class) > 200);
+            assertNotEquals(originalFile, tx.queryForObject("SELECT pg_relation_filenode('sales_quotes'::regclass)", Long.class));
+            assertTrue(tx.queryForObject("SELECT count(*) FROM reset_business_clear_work WHERE NOT truncate_required", Integer.class) == 0);
             connection.rollback(savepoint);
             assertEquals(before, payloadSnapshot(tx), "rollback restores candidates and adopted versions");
             assertEquals(0, tx.queryForObject("SELECT count(*) FROM attachment_object_outbox", Integer.class));
@@ -120,7 +121,7 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
         var configuration = Flyway.configure()
                 .dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").cleanDisabled(true);
-        if (target != null) configuration.target(target);
+        configuration.target(target==null?"777":target); // historical truncate cleanup contract; current permanent reset is covered separately
         return configuration.load();
     }
 
@@ -199,7 +200,7 @@ class QuoteTemplateCandidateTruncateMigrationPostgresTest {
     private static String payloadSnapshot(JdbcTemplate db) {
         return db.queryForObject("""
                 SELECT jsonb_build_object(
-                    'candidates',(SELECT jsonb_agg(to_jsonb(c) ORDER BY job_id) FROM sales_quote_template_candidates c),
+                    'candidates',(SELECT jsonb_agg(to_jsonb(c)-ARRAY['archived_at','archived_by','archive_reason'] ORDER BY job_id) FROM sales_quote_template_candidates c),
                     'versions',(SELECT jsonb_agg(to_jsonb(v) ORDER BY template_id,version) FROM sales_quote_template_versions v)
                 )::text
                 """, String.class);

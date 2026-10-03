@@ -12,6 +12,8 @@ import com.uten.imp.support.MigratedSchemaBaseline;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -36,6 +38,7 @@ class SalesQuoteTemplateStorePostgresTest {
     private TransactionTemplate tx;
     private SalesQuoteTemplateStore store;
     private MasterIntakeLookupPort lookup;
+    private SecurityContextCurrentUser current;
     private UUID actor;
     private UUID client;
     private UUID otherClient;
@@ -53,7 +56,7 @@ class SalesQuoteTemplateStorePostgresTest {
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",
                 actor, employee, "template-" + actor);
         client = client(employee); otherClient = client(employee);
-        var current = mock(SecurityContextCurrentUser.class); when(current.id()).thenReturn(Optional.of(actor));
+        current = mock(SecurityContextCurrentUser.class); when(current.id()).thenReturn(Optional.of(actor));
         lookup = mock(MasterIntakeLookupPort.class); when(lookup.canLearnClientDocument(any())).thenReturn(true);
         var properties = new StorageProperties(); properties.setLocalDir(files.toString());
         var local = new LocalDiskStorageService(properties); ReflectionTestUtils.invokeMethod(local, "init");
@@ -112,18 +115,75 @@ class SalesQuoteTemplateStorePostgresTest {
                 .hasMessageContaining("不可覆盖");
     }
 
+    @Test void explicitTemplateAdoptionIsBoundToActorCustomerQuoteAndPurposeAndIsIdempotent() throws Exception {
+        UUID quote = UUID.randomUUID(), job = job();
+        stage(job, QuoteTemplateWorkbook.defaultTemplate()); succeed(job);
+        String params = new ObjectMapper().writeValueAsString(Map.of("docType", "quote", "templateOnly", "true",
+                "docId", quote.toString(), "clientId", client.toString()));
+        jdbc.update("UPDATE ai_jobs SET params=CAST(? AS jsonb) WHERE id=?", params, job);
+        when(current.id()).thenReturn(Optional.of(UUID.randomUUID()));
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, client, job))).hasMessageContaining("不属于");
+        when(current.id()).thenReturn(Optional.of(actor));
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(UUID.randomUUID(), client, job))).hasMessageContaining("不属于");
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, otherClient, job))).hasMessageContaining("不属于");
+        jdbc.update("UPDATE ai_jobs SET params=params-'templateOnly' WHERE id=?", job);
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, client, job))).hasMessageContaining("不属于");
+        jdbc.update("UPDATE ai_jobs SET params=CAST(? AS jsonb) WHERE id=?", params, job);
+        when(lookup.canLearnClientDocument(client)).thenReturn(false);
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote, client, job))).hasMessageContaining("权限");
+        when(lookup.canLearnClientDocument(client)).thenReturn(true);
+        UUID saved = tx.execute(s -> store.adoptUploaded(quote, client, job));
+        UUID repeated = tx.execute(s -> store.adoptUploaded(quote, client, job));
+        assertThat(repeated).isEqualTo(saved);
+        assertThat(store.list(client)).hasSize(1);
+        assertThat(store.list(client).getFirst().useCount()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_evidence WHERE job_id=?", Integer.class, job)).isEqualTo(1);
+    }
+
     @Test void expiryQueuesExactObjectButAdoptionKeepsReferencedObjectAndDoesNotCapTwentyTemplates() {
         var candidate = QuoteTemplateWorkbook.defaultTemplate(); UUID job = job(); stage(job, candidate);
         String key = jdbc.queryForObject("SELECT storage_key FROM sales_quote_template_candidates WHERE job_id=?", String.class, job);
         jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?", job);
+        succeed(job);
         tx.executeWithoutResult(s -> store.purgeExpired());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key=?", Integer.class, key)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key=?", Integer.class, key)).isZero();
         for (int i = 0; i < 21; i++) {
             Set<String> different = new TreeSet<>(candidate.features()); different.add("extra:" + i + ":variant");
             UUID another = job(); stage(another, new QuoteTemplateWorkbook.Candidate(candidate.xlsx(), String.format("%064x", i + 1), candidate.mapping(), different)); succeed(another);
             tx.executeWithoutResult(s -> store.adopt(event(another, client)));
         }
         assertThat(store.list(client)).hasSize(21);
+    }
+
+    @Test void expiredCandidateRemainsWhileItsAiWorkerOrLearningRetryStillOwnsIt() {
+        UUID job=job();stage(job,QuoteTemplateWorkbook.defaultTemplate());
+        jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?",job);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
+        succeed(job);
+        jdbc.update("UPDATE ai_jobs SET learning_retry_until=now()+interval '1 day' WHERE id=?",job);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
+        jdbc.update("UPDATE ai_jobs SET learning_retry_until=now()-interval '1 second' WHERE id=?",job);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT archived_at IS NOT NULL FROM sales_quote_template_candidates WHERE job_id=?",Boolean.class,job)).isTrue();
+    }
+
+    @ParameterizedTest @ValueSource(strings={"intakeJobId","additionalIntakeJobIds"})
+    void claimedReceiptKeepsItsTemplateCandidateBeforeAiReservation(String field) throws Exception {
+        UUID job=job();stage(job,QuoteTemplateWorkbook.defaultTemplate());succeed(job);
+        jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?",job);
+        UUID receipt=UUID.randomUUID();String payload=new ObjectMapper().writeValueAsString(Map.of(field,
+                "intakeJobId".equals(field)?job.toString():List.of(job.toString())));
+        jdbc.update("""
+                INSERT INTO sales_document_learning_receipts(id,doc_type,doc_id,actor_user_id,request_payload,steps,retry_until)
+                VALUES(?,'quote',?,?,CAST(? AS jsonb),'{"TEMPLATE":{"status":"RUNNING","attempts":1}}'::jsonb,now()-interval '1 second')
+                """,receipt,UUID.randomUUID(),actor,payload);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,job)).isEqualTo(1);
+        jdbc.update("UPDATE sales_document_learning_receipts SET steps='{\"TEMPLATE\":{\"status\":\"SUCCEEDED\",\"attempts\":1}}'::jsonb WHERE id=?",receipt);
+        tx.executeWithoutResult(s->store.purgeExpired());
+        assertThat(jdbc.queryForObject("SELECT archived_at IS NOT NULL FROM sales_quote_template_candidates WHERE job_id=?",Boolean.class,job)).isTrue();
     }
 
     @Test void onlyContributingServerSourceRowsCanTeachATemplateAndResetQueuesStagedObjects() {
@@ -137,8 +197,9 @@ class SalesQuoteTemplateStorePostgresTest {
         assertThat(store.list(client)).hasSize(1);
         UUID pending = job(); stage(pending, candidate);
         String key = jdbc.queryForObject("SELECT storage_key FROM sales_quote_template_candidates WHERE job_id=?", String.class, pending);
-        jdbc.execute("TRUNCATE sales_quote_template_candidates");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE storage_key=? AND operation='DELETE_FINAL'", Integer.class, key)).isEqualTo(1);
+        assertThatThrownBy(()->jdbc.execute("TRUNCATE sales_quote_template_candidates")).isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE storage_key=? AND operation='DELETE_FINAL'", Integer.class, key)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_candidates WHERE job_id=?",Integer.class,pending)).isEqualTo(1);
         assertThat(store.list(client)).hasSize(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key IN (SELECT storage_key FROM sales_quote_template_versions WHERE template_id=?)",
                 Integer.class, store.list(client).getFirst().id())).isZero();

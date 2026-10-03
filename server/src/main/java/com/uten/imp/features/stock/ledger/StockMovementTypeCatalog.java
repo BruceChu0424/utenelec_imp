@@ -33,7 +33,10 @@ public enum StockMovementTypeCatalog {
     SUBCONTRACT_RECEIPT(17, "委外成品进仓", 1, Category.EXTERNAL_IN),
     SUBCONTRACT_RETURN(18, "委外成品退", -1, Category.RETURN_OUT),
     SUBCONTRACT_WASTE(19, "委外材料损耗", -1, Category.LOSS),
-    SALES_OTHER_OUT(20, "销售其它出库", -1, Category.CONSUMPTION);
+    SALES_OTHER_OUT(20, "销售其它出库", -1, Category.CONSUMPTION),
+    WORKSHOP_CONSUME(21, "内料仓盘点耗用", -1, Category.CONSUMPTION),
+    WORKSHOP_COUNT_GAIN(22, "内料仓盘盈", 1, Category.COUNT),
+    APPROVED_COUNT(23, "批准盘点调整", 0, Category.COUNT);
 
     /** 分类: 流水汇总与库存分析 (库龄/周转/ABC) 的口径。 */
     public enum Category {
@@ -115,7 +118,7 @@ public enum StockMovementTypeCatalog {
         if (type.isPresent() && type.get() == OTHER_OUT && DOC_WASTE.equals(sourceDocCode)) {
             base = "报废出库";
         }
-        if (type.isPresent() && direction != null && direction != type.get().naturalDirection) {
+        if (type.isPresent() && type.get().naturalDirection != 0 && direction != null && direction != type.get().naturalDirection) {
             return base + "(红冲)";
         }
         return base;

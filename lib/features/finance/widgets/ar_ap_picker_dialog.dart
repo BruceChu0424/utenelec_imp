@@ -15,10 +15,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../components/layout/uten_load_more_boundary.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
 import '../models/finance_legacy_balance.dart';
@@ -132,6 +134,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   bool _loading = false;
   bool _loadingMore = false;
   String? _error;
+  String? _moreError;
+  int _requestVersion = 0;
   int _page = 1;
   int _totalPages = 1;
 
@@ -166,6 +170,9 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   }
 
   Future<void> _load({bool reset = true}) async {
+    if (!reset && (_loading || _loadingMore || _page >= _totalPages)) return;
+    final version = ++_requestVersion;
+    final keyword = _keyword;
     if (widget.partyId == null || widget.partyId!.isEmpty) {
       setState(() {
         _items = const [];
@@ -180,6 +187,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         _loadingMore = true;
       }
       _error = null;
+      _moreError = null;
     });
     try {
       final requestedPage = reset ? 1 : _page + 1;
@@ -189,9 +197,9 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
             direction: widget.direction,
             partyId: widget.partyId!,
             page: requestedPage,
-            keyword: _keyword,
+            keyword: keyword,
           );
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       for (final it in r.items) {
         _knownItems[it.id] = it;
         _amtCtrls.putIfAbsent(
@@ -206,7 +214,11 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         );
       }
       setState(() {
-        _items = reset ? r.items : [..._items, ...r.items];
+        _items = {
+          if (!reset)
+            for (final row in _items) row.id: row,
+          for (final row in r.items) row.id: row,
+        }.values.toList();
         _page = r.page;
         _totalPages = r.totalPages;
         _loading = false;
@@ -214,16 +226,25 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       });
       _rebuildGrid();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
-        _error = e.message;
+        if (reset) {
+          _error = e.message;
+        } else {
+          _moreError = e.message;
+        }
         _loading = false;
         _loadingMore = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || version != _requestVersion) return;
       setState(() {
-        _error = '加载$_ledgerNoun台账失败'; // TODO(l10n): 补 arb
+        final message = '加载$_ledgerNoun台账失败'; // TODO(l10n): 补 arb
+        if (reset) {
+          _error = message;
+        } else {
+          _moreError = message;
+        }
         _loading = false;
         _loadingMore = false;
       });
@@ -242,6 +263,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
   /// 内置 300ms 防抖回调发起。
   void _onKeywordInput(String v) {
     _keyword = v;
+    _requestVersion++;
   }
 
   void _toggleRow(_LedgerRow row, bool v) {
@@ -612,20 +634,51 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            child: UtenEditableGrid<_LedgerRow>(
-              tableKey:
-                  'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
-              controller: _grid,
-              columns: _columns(),
-              showAddRow: false,
-              showRowDelete: false,
-              createBlankRow: () =>
-                  _LedgerRow(const ArApLedgerItem(id: ''), false), // 不会被调用
-              emptyMessage: '没有匹配的台账行', // TODO(l10n): 补 arb
+          child: UtenLoadMoreBoundary(
+            enabled:
+                !_loading &&
+                !_loadingMore &&
+                _moreError == null &&
+                _page < _totalPages,
+            scope: (widget.partyId, widget.direction, _keyword),
+            onLoadMore: () => _load(reset: false),
+            child: SingleChildScrollView(
+              child: UtenEditableGrid<_LedgerRow>(
+                tableKey:
+                    'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
+                platformBinding: PlatformTableBinding<_LedgerRow>(
+                  tableKey:
+                      'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
+                  scope: 'view_ar_ap_ledger',
+                  recordIdOf: (_) => null,
+                  columnAliases: const {
+                    'amount': 'amountOriginal',
+                    'settled': 'amountReceivedOriginal',
+                    'writtenOff': 'amountWriteOffOriginal',
+                    'prepaymentApplied': 'prepaymentAppliedOriginal',
+                    'balance': 'amountBalanceOriginal',
+                    'thisAmt': 'appliedAmountOriginal',
+                  },
+                ),
+                controller: _grid,
+                columns: _columns(),
+                showAddRow: false,
+                showRowDelete: false,
+                createBlankRow: () =>
+                    _LedgerRow(const ArApLedgerItem(id: ''), false), // 不会被调用
+                emptyMessage: '没有匹配的台账行', // TODO(l10n): 补 arb
+              ),
             ),
           ),
         ),
+        if (_moreError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+            child: Text(
+              _moreError!,
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ),
         if (_page < _totalPages)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
@@ -637,7 +690,13 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.expand_more_rounded),
-              label: Text(_loadingMore ? '加载中' : '加载更多'),
+              label: Text(
+                _loadingMore
+                    ? '加载中'
+                    : _moreError != null
+                    ? '重试'
+                    : '加载更多',
+              ),
             ),
           ),
         _buildFooter(theme),
@@ -809,6 +868,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       label: _isAr ? '应收总额' : '应付金额',
       width: 110,
       numeric: true,
+      exactValueOf: (row) =>
+          row.item.amountOriginalText ?? row.item.amountOriginalLocalText,
       cellBuilder: (context, row) =>
           Text(_fmt(row.item.amountOriginal ?? row.item.amountOriginalLocal)),
     ),
@@ -817,6 +878,9 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       label: _isAr ? '累计已收' : '已付金额',
       width: 110,
       numeric: true,
+      exactValueOf: (row) =>
+          row.item.amountReceivedOriginalText ??
+          (_isAr ? null : row.item.amountSettledText),
       cellBuilder: (context, row) => Text(
         _fmt(
           _isAr
@@ -831,6 +895,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         label: '累计冲销',
         width: 110,
         numeric: true,
+        exactValueOf: (row) => row.item.amountWriteOffOriginalText,
         cellBuilder: (context, row) =>
             Text(_fmt(row.item.amountWriteOffOriginal)),
       ),
@@ -840,6 +905,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         label: '预收已抵',
         width: 110,
         numeric: true,
+        exactValueOf: (row) => row.item.prepaymentAppliedOriginal,
         cellBuilder: (context, row) =>
             Text(row.item.prepaymentAppliedOriginal ?? '0.00'),
       ),
@@ -848,6 +914,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       label: _isAr ? '本次可收' : '未付金额',
       width: 110,
       numeric: true,
+      exactValueOf: (row) => row.item.amountBalanceOriginalText,
       cellBuilder: (context, row) => Text(
         row.item.amountBalanceOriginal == null
             ? '待财务核验'
@@ -860,6 +927,8 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       label: '本次$_actionNoun金额',
       width: 130,
       numeric: true,
+      exactValueOf: (row) => _amtCtrls[row.item.id]?.text,
+      exactListenableOf: (row) => _amtCtrls[row.item.id],
       cellBuilder: (context, row) => TextField(
         key: ValueKey('ar-ap-amount-${row.item.id}'),
         controller: _amtCtrls[row.item.id],

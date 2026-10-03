@@ -239,6 +239,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       for (final row in _grid.rows)
         {
           'department': row.department.text,
+          'departmentName': row.departmentReferenceName,
           'qty': row.qty.text,
           'price': row.price.text,
           'amount': row.amount.text,
@@ -347,7 +348,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           row.balanceOriginal = (item['balanceOriginal'] as num?)?.toDouble();
           row.salesOrderIds = draftStrings(item['salesOrderIds']);
           row.salesOrderNos = draftStrings(item['salesOrderNos']);
-          row.department.text = draftText(item, 'department');
+          row.setDepartment(
+            draftText(item, 'department'),
+            item['departmentName'] as String?,
+          );
           row.qty.text = draftText(item, 'qty');
           row.price.text = draftText(item, 'price');
           row.amount.text = draftText(item, 'amount');
@@ -397,7 +401,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     });
     try {
       final names = ref.read(financeNameServiceProvider);
-      await names.ensureLoaded(refreshAccounts: true);
+      await names.ensureLoaded(
+        refreshAccounts: true,
+        includeCounterparties: !_cfg.isAllocate,
+      );
+      if (_cfg.isAllocate) await names.ensureDepartmentsLoaded();
       if (_cfg.isAllocate || _cfg.type == FinanceDocType.receipt) {
         await ref
             .read(financeNameServiceProvider)
@@ -514,7 +522,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             ..styleId = it.expenseStyleId ?? it.incomeStyleId
             ..inAccountId = it.inAccountId
             ..occurDate = it.occurDate;
-          row.department.text = it.departmentId ?? '';
+          row.setDepartment(it.departmentId, it.departmentName);
           row.qty.text = it.qtyText ?? it.qty?.toString() ?? '';
           row.price.text = it.priceText ?? it.price?.toString() ?? '';
           row.amount.text = _cfg.isSettle
@@ -1173,8 +1181,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       context.replace('/finance/${_cfg.type.pathSegment}/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+    } catch (error, stack) {
+      // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
+      debugPrint('保存钱流单据失败: $error\n$stack');
+      if (mounted) {
+        context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -2465,6 +2477,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                               ),
                               _savedFields(
                                 UtenEditableGrid<FinanceGridRow>(
+                                  columnEditingEnabled:
+                                      !_loading &&
+                                      !_saving &&
+                                      _initializationError == null &&
+                                      _createdDocId == null,
                                   tableKey:
                                       'finance.${widget.docType.name}.items',
                                   controller: _grid,

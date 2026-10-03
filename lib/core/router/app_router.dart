@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../features/stock/models/instant_inventory_scope.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
@@ -89,6 +90,7 @@ import '../../features/purchase/widgets/purchase_draft_task_category.dart';
 import '../../features/purchase/config/purchase_report_config.dart';
 import '../../features/purchase/models/purchase_doc.dart';
 import '../../features/stock/pages/instant_inventory_page.dart';
+import '../../features/stock/pages/instant_inventory_overview_page.dart';
 import '../../features/stock/pages/stock_item_detail_page.dart';
 import '../../features/warehouse/models/stock_check_prefill.dart';
 import '../../features/warehouse/models/stock_doc.dart';
@@ -149,6 +151,7 @@ import '../../features/payroll/pages/payroll_slip_detail_page.dart';
 import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
 import '../../features/production/pages/workshop_material_reports_page.dart';
+import '../../features/stock/counts/pages/stock_count_review_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
@@ -896,9 +899,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             },
           ),
           DraftAwareGoRoute(
+            path: RouteName.stockInstantInventoryOverview,
+            name: 'stock-instant-inventory-overview',
+            builder: (_, state) => InstantInventoryOverviewPage(
+              scope: InstantInventoryScope.fromQuery(state.uri.queryParameters),
+              scopeLabel: state.uri.queryParameters['scopeLabel'],
+            ),
+          ),
+          DraftAwareGoRoute(
             path: RouteName.stockInstantInventory,
             name: 'stock-instant-inventory',
-            builder: (_, _) => const InstantInventoryPage(),
+            builder: (_, state) => InstantInventoryPage(
+              initialScope: state.uri.queryParameters.isEmpty
+                  ? null
+                  : InstantInventoryScope.fromQuery(state.uri.queryParameters),
+            ),
           ),
           // 库存详情：即时库存双击货品行进入 (库存余额 / 出入库流水 / 单重学习三段)；
           // ?tab=balance|ledger|weight 原样交给页面解析 (ADR-135)。
@@ -908,6 +923,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => StockItemDetailPage(
               goodsId: state.pathParameters['goodsId']!,
               initialTab: state.uri.queryParameters['tab'],
+              initialScope: InstantInventoryScope.fromQuery(
+                state.uri.queryParameters,
+                inventoryDefault: false,
+              ),
+              returnTo: state.uri.queryParameters['returnTo'],
             ),
           ),
 
@@ -944,19 +964,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '${RouteName.productionFqcSheetHandlingBase}/:sheetId',
             name: 'production-fqc-sheet-handling',
-            builder: (_, s) => ProductionFqcSheetHandlingPage(
-              sheetId: s.pathParameters['sheetId']!,
-            ),
+            builder: ProductionFqcSheetHandlingPage.route,
           ),
           // FQC 单任务办理页（详情 + 决定 + 检验证据；extra 带任务快照）。
           DraftAwareGoRoute(
             path:
                 '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
             name: 'production-fqc-inspection-handling',
-            builder: (_, s) => ProductionFqcInspectionPage(
-              inspectionId: s.pathParameters['inspectionId']!,
-              extra: s.extra,
-            ),
+            builder: ProductionFqcInspectionPage.route,
           ),
           // 单张收货单的待检明细处置页（extra 携带任务卡快照；深链直达时页面自行反查）。
           DraftAwareGoRoute(
@@ -1061,19 +1076,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: RouteName.warehouseProductionDrawBatchIssue,
             name: 'warehouse-production-draw-batch-issue',
-            builder: (_, state) => ProductionDrawBatchIssuePage(
-              documentIds: (state.uri.queryParameters['documentIds'] ?? '')
-                  .split(',')
-                  .map((id) => id.trim())
-                  .where((id) => id.isNotEmpty)
-                  .toList(),
-              discoveryRequestIds:
-                  (state.uri.queryParameters['discoveryRequestIds'] ?? '')
-                      .split(',')
-                      .map((id) => id.trim())
-                      .where((id) => id.isNotEmpty)
-                      .toList(),
-            ),
+            builder: ProductionDrawBatchIssuePage.route,
           ),
           // 待点收多选「批量全量点收入库」页（2026-09-12 弹窗改页）。
           DraftAwareGoRoute(
@@ -1279,6 +1282,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'workshop-material-setup',
             builder: (_, s) => WorkshopMaterialSetupPage(
               initialTab: s.uri.queryParameters['tab'],
+              initialWorkshopId: s.uri.queryParameters['workshopId'],
             ),
           ),
 
@@ -1305,6 +1309,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           DraftAwareGoRoute(
+            path: RouteName.warehouseStockCountReview,
+            name: 'warehouse-stock-count-review',
+            builder: (_, s) => StockCountReviewPage(
+              reviewRoute: 'WAREHOUSE',
+              requestId: s.uri.queryParameters['requestId'],
+            ),
+          ),
+          DraftAwareGoRoute(
             path: '/warehouse/:code/:id',
             name: 'stock-doc-detail',
             redirect: _rejectUnknownStockDoc,
@@ -1324,6 +1336,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
+          DraftAwareGoRoute(
+            path: RouteName.stockCountRequests,
+            name: 'stock-count-requests',
+            builder: (_, s) => StockCountReviewPage(
+              requestId: s.uri.queryParameters['requestId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.financeStockCountReview,
+            name: 'finance-stock-count-review',
+            builder: (_, s) => StockCountReviewPage(
+              reviewRoute: 'FINANCE',
+              requestId: s.uri.queryParameters['requestId'],
+            ),
+          ),
           // —— 车间内料仓 (ADR-131) ——
           DraftAwareGoRoute(
             path: RouteName.workshopMaterialBin,

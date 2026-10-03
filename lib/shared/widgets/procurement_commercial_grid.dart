@@ -421,7 +421,6 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
       numeric: true,
       headerInfo: l10n.workflowExchangeRateHint,
       // 预填态格内有 44px 黄标图标：随值自动加宽并把图标计入量宽。
-      chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
       textOf: (r) => r.exchangeRate.text,
       listenableOf: (r) => r.exchangeRate,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
@@ -451,7 +450,6 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
       width: 140,
       numeric: true,
       headerInfo: l10n.workflowTaxRateHint,
-      chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
       textOf: (r) => r.taxRate.text,
       listenableOf: (r) => r.taxRate,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(

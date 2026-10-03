@@ -7,7 +7,7 @@
 //     (= 各模块卡角标之和，服务端徽章汇总算好，badgeTotalTodoProvider)、通知挂未读角标
 //   - medium+（≥600dp）：全高左侧 NavigationRail（surface 底 + 右侧发丝边框），
 //     屏宽 ≥1280dp 时 extended 常驻标签，否则纯图标 + Tooltip；
-//     大屏可手动收成图标栏，同时释放外壳内容的 1600dp 上限；展开时恢复版心
+//     大屏可手动收成图标栏，所有页面正文始终随右侧可用宽度伸缩
 //
 // 主 Tab 承载（全断点一致）：
 //   - 四个主 Tab 由 UtenSlidingTabView 承载：离散方向滑动转场（当前页左移 / 新页右进），
@@ -48,6 +48,7 @@ import '../widgets/idle_timeout_guard.dart';
 import '../widgets/uten_side_nav_rail.dart';
 import '../widgets/uten_sliding_tab_view.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/ai/chat/ai_chat_overlay.dart';
 
 class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key, required this.child});
@@ -156,7 +157,12 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final location = GoRouterState.of(context).matchedLocation;
+    // 根级 build 取一次路由状态复用（GoRouterState.of 调用点受闸门测试锁定，
+    // 见 test/shared/auth/go_router_state_usage_gate_test.dart）。
+    // ShellRoute 的 matchedLocation 在 push 后可能停在上一路由；URI 跟随活动
+    // 叶子路由，AI 聊天浮层需要的是后者。
+    final routerState = GoRouterState.of(context);
+    final location = routerState.matchedLocation;
 
     // 「返回即刷新」(ADR-108)：回到工作台时按需重拉——期间本端写过数据或距上次
     // 超过 30 秒才动，且推迟到转场结束：徽章汇总一次请求 + 今日概览(重聚合)按需一次，
@@ -209,7 +215,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
             workbenchTodos: workbenchTodos,
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
-    return IdleTimeoutGuard(child: shell);
+    return IdleTimeoutGuard(
+      child: AiChatOverlay(currentRoute: routerState.uri.path, child: shell),
+    );
   }
 
   /// compact 外壳：底部悬浮胶囊 overlay（与 v3 完全一致）
@@ -276,7 +284,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     );
   }
 
-  /// medium+ 外壳：左侧 Rail + UtenContentContainer 收敛内容区
+  /// medium+ 外壳：左侧 Rail + UtenContentContainer 自适应内容区
   Widget _buildRailShell({
     required int? tabIndex,
     required String location,
@@ -308,12 +316,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
               badgeCounts: [workbenchTodos, unread, 0, 0],
             ),
             Expanded(
-              // 手动收起时释放外壳版心，让表格真正获得宽度；页面自身的宽度策略不变。
+              // 页面正文不设固定版心，随导航收起 / 展开使用全部可用宽度。
               // 只改约束、不切换容器结构，保留表单输入、滚动位置和常驻 Tab State。
               child: UtenContentContainer(
-                maxWidth: _railCollapsed
-                    ? double.infinity
-                    : UtenBreakpoints.maxContentWidth,
                 // ⚠️ selectable:false 必须保留：此容器包住所有 medium+ 路由页（含常驻
                 // 保活的工作台/通知 Tab），若包 SelectionArea 等于变相全局包裹——
                 // 徽章/通知轮询的动态重建与拖选并发会触发框架 CME（准则 §3.4、

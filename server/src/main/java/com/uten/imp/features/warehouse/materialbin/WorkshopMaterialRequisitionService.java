@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.materialbin;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WorkshopMaterialNoticePort;
+import com.uten.imp.application.port.WorkshopMaterialSetupPort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.finance.MoneyPolicy;
@@ -22,6 +23,7 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.DirectIs
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.DirectIssueRequest;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.FulfilLine;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.FulfilRequest;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.MaterialSetup;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.RequisitionCreate;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.RequisitionDocumentView;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.RequisitionLineInput;
@@ -42,6 +44,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -59,7 +62,7 @@ public class WorkshopMaterialRequisitionService {
     static final String KIND_ISSUE = "ISSUE";
     static final String KIND_RETURN = "RETURN";
 
-    /** 一行申请 (已校验、已折算公斤)。 */
+    /** 一行申请 (已校验、已折成物料基本单位)。 */
     private record LineDraft(MaterialInfo material, UUID colorId, BigDecimal qty, BigDecimal bags, UUID leaf) {}
 
     /** 锁定后的单据表头。 */
@@ -79,6 +82,7 @@ public class WorkshopMaterialRequisitionService {
     private final DocNumberService docNumbers;
     private final WorkshopMaterialNoticePort notices;
     private final SecurityContextCurrentUser currentUser;
+    private final WorkshopMaterialSetupPort materialSetup;
 
     public WorkshopMaterialRequisitionService(NamedParameterJdbcTemplate db, WorkshopMaterialBinSupport bins,
                                               WorkshopMaterialStockGateway gateway,
@@ -86,7 +90,8 @@ public class WorkshopMaterialRequisitionService {
                                               WorkshopMaterialPermissions permissions,
                                               WorkshopMaterialCountService counts, DocNumberService docNumbers,
                                               WorkshopMaterialNoticePort notices,
-                                              SecurityContextCurrentUser currentUser) {
+                                              SecurityContextCurrentUser currentUser,
+                                              WorkshopMaterialSetupPort materialSetup) {
         this.db = db;
         this.bins = bins;
         this.gateway = gateway;
@@ -97,6 +102,7 @@ public class WorkshopMaterialRequisitionService {
         this.docNumbers = docNumbers;
         this.notices = notices;
         this.currentUser = currentUser;
+        this.materialSetup = materialSetup;
     }
 
     // ------------------------------------------------------------------ 车间申请
@@ -106,7 +112,7 @@ public class WorkshopMaterialRequisitionService {
     public RequisitionView create(RequisitionCreate request) {
         String kind = requireKind(request.kind());
         UUID workshop = requireWorkshop(request.workshopDepartmentId());
-        List<LineDraft> drafts = drafts(request.lines());
+        List<LineDraft> drafts = drafts(kind, request.lines());
         String remark = remark(request.remark());
         return commands.execute("REQUISITION_CREATE", request.idempotencyKey(), request, RequisitionView.class, () -> {
             Settings settings = bins.enabledSettingsForShare(workshop);
@@ -120,7 +126,11 @@ public class WorkshopMaterialRequisitionService {
     /** 仓库按申请发料 (领料单) 或点收退回 (退回单); 办完即结单。 */
     @Transactional
     public RequisitionView fulfil(UUID requisitionId, FulfilRequest request) {
-        return commands.execute("REQUISITION_FULFIL", request.idempotencyKey(), List.of(requisitionId, request),
+        // 未带首次设置时保持旧 JSON 指纹形状, 已办理的旧客户端重放仍能返回原回执。
+        Object fingerprint = request.materialSetup() == null || request.materialSetup().isEmpty()
+                ? new LegacyFulfilRequest(request.expectedVersion(), request.lines(), request.supplement(), request.idempotencyKey())
+                : request;
+        return commands.execute("REQUISITION_FULFIL", request.idempotencyKey(), List.of(requisitionId, fingerprint),
                 RequisitionView.class, () -> {
                     Header header = lockHeader(requisitionId);
                     scope.requireWorkshop(header.workshop());
@@ -130,10 +140,96 @@ public class WorkshopMaterialRequisitionService {
                             ? bins.enabledSettingsForShare(header.workshop())
                             : bins.enabledSettingsForUpdate(header.workshop());
                     requireSameBin(settings, header);
-                    execute(header, settings, request.lines(), request.supplement());
+                    execute(header, settings, request.lines(), request.supplement(), () -> prepareFulfilMaterials(header, request));
                     notices.requisitionResolved(header.id());
                     return new Outcome<>(header.id(), view(header.id()));
                 });
+    }
+
+    private record LegacyFulfilRequest(Long expectedVersion, List<FulfilLine> lines, Supplement supplement,
+                                      String idempotencyKey) {}
+
+    /** 首次用途确认复用主档命令, 先持有本次全部库存锁再进入主档锁; 后续失败一并回滚。 */
+    private void prepareFulfilMaterials(Header header, FulfilRequest request) {
+        if (request.lines() == null || request.lines().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请至少办理一行");
+        }
+        Map<UUID, Line> available = lines(header.id());
+        Map<UUID, Line> selected = new LinkedHashMap<>();
+        for (FulfilLine line : request.lines()) {
+            if (line == null || !available.containsKey(line.lineId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "办理的明细不属于这张单据, 请刷新后重试");
+            }
+            requirePositive(line.qty(), "数量");
+            selected.put(line.lineId(), available.get(line.lineId()));
+        }
+        Map<UUID, MaterialInfo> materials = new LinkedHashMap<>();
+        for (Line line : selected.values()) {
+            MaterialInfo info = materials.computeIfAbsent(line.goodsId(), bins::material);
+            requireLineUnit(line, info.unitId());
+            if (info.deleted()) throw new ApiException(ErrorCode.CONFLICT, "申请的材料已删除, 请撤回后重新申请");
+            if (!info.periodic()) requestMaterial(info.goodsId());
+        }
+        List<MaterialSetup> setups = request.materialSetup() == null ? List.of() : request.materialSetup();
+        if (!setups.isEmpty() && (!KIND_ISSUE.equals(header.kind()) || !"WORKSHOP_REQUEST".equals(header.origin()))) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "只有车间领料申请首次发料时可以确认材料用途");
+        }
+        Set<UUID> configured = new LinkedHashSet<>();
+        for (MaterialSetup setup : setups) {
+            if (setup == null || setup.goodsId() == null || setup.expectedVersion() == null || setup.expectedVersion() < 0
+                    || !Set.of("OWN", "SHARED", "EXPENSE").contains(Objects.toString(setup.periodicCostBasis(), ""))) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "请完整确认首次发料材料的用途和当前版本");
+            }
+            MaterialInfo info = materials.get(setup.goodsId());
+            if (info == null || info.periodic() || !configured.add(setup.goodsId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "只能确认本次实际发料中尚未设置用途的材料, 请刷新后重新核对");
+            }
+        }
+        for (MaterialInfo info : materials.values()) {
+            if (!info.periodic() && !configured.contains(info.goodsId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "「" + info.label() + "」首次发料需确认用途，请在本页核对材料用途和影响后再发料");
+            }
+        }
+        if (!setups.isEmpty()) {
+            materialSetup.setup(setups.stream().map(item -> new WorkshopMaterialSetupPort.Setup(item.goodsId(),
+                    item.expectedVersion(), item.periodicCostBasis())).toList(), request.idempotencyKey());
+        }
+        // 库存锁已经齐备。直接取得库存内核稍后需要的 goods UPDATE 锁, 避免不同颜色的共享锁互相升级。
+        Map<UUID, Map<String, Object>> current = new LinkedHashMap<>();
+        for (Map<String, Object> row : db.queryForList("""
+                SELECT id, unit_id, issue_method, is_deleted, status FROM goods
+                WHERE id IN (:ids) ORDER BY id FOR UPDATE
+                """, Map.of("ids", materials.keySet()))) current.put((UUID) row.get("id"), row);
+        for (Line line : selected.values()) {
+            Map<String, Object> row = current.get(line.goodsId());
+            if (row == null || Boolean.TRUE.equals(row.get("is_deleted")) || !"PERIODIC".equals(row.get("issue_method"))) {
+                throw new ApiException(ErrorCode.CONFLICT, "材料用途已变化，请刷新后重新确认首次发料用途");
+            }
+            requireLineUnit(line, (UUID) row.get("unit_id"));
+        }
+        if (KIND_ISSUE.equals(header.kind())) {
+            Map<UUID, Map<String, Object>> units = new LinkedHashMap<>();
+            for (Map<String, Object> row : db.queryForList("""
+                    SELECT unit.id, unit.status, unit.is_deleted, profile.measurement_dimension
+                    FROM units unit JOIN unit_measurement_profiles profile ON profile.unit_id = unit.id
+                    WHERE unit.id IN (:ids) ORDER BY unit.id FOR SHARE OF unit, profile
+                    """, Map.of("ids", current.values().stream().map(row -> (UUID) row.get("unit_id")).distinct().toList()))) {
+                units.put((UUID) row.get("id"), row);
+            }
+            for (Map<String, Object> material : current.values()) {
+                Map<String, Object> unit = units.get((UUID) material.get("unit_id"));
+                if (!"使用".equals(material.get("status")) || unit == null || Boolean.TRUE.equals(unit.get("is_deleted"))
+                        || !"使用".equals(unit.get("status")) || !"MASS".equals(unit.get("measurement_dimension"))) {
+                    throw new ApiException(ErrorCode.CONFLICT, "材料或重量单位已停用或发生变化，请刷新后重新核对发料");
+                }
+            }
+        }
+    }
+
+    private static void requireLineUnit(Line line, UUID currentUnit) {
+        if (!Objects.equals(line.unitId(), currentUnit)) {
+            throw new ApiException(ErrorCode.CONFLICT, "申请后材料的基本单位已变化，不能沿用原数量，请撤回后重新申请");
+        }
     }
 
     /**
@@ -173,13 +269,20 @@ public class WorkshopMaterialRequisitionService {
                                 sum(left.bags(), right.bags()), left.leaf()));
             }
             UUID id = insertHeader(KIND_ISSUE, "WAREHOUSE_DIRECT", settings, receiver, null);
+            Header header = lockHeader(id);
+            // INSERT 明细的 FK/单位身份锁也引用 goods, 因而直接发料须在建明细前先声明库存范围。
+            if (request.supplement() != null && request.supplement().periodId() != null) {
+                bins.periodForUpdate(request.supplement().periodId());
+            }
+            gateway.lockInventory(merged.keySet());
+            db.queryForList("SELECT id FROM goods WHERE id IN (:ids) ORDER BY id FOR UPDATE",
+                    Map.of("ids", merged.keySet().stream().map(Material::goodsId).distinct().toList()));
             Map<Material, UUID> lineIds = insertLines(id, List.copyOf(merged.values()));
             List<FulfilLine> fulfil = new ArrayList<>();
             for (LineDraft input : inputs) {
                 fulfil.add(new FulfilLine(lineIds.get(new Material(input.material().goodsId(), input.colorId())),
                         input.leaf(), input.qty()));
             }
-            Header header = lockHeader(id);
             execute(header, settings, fulfil, request.supplement());
             return new Outcome<>(id, view(id));
         });
@@ -280,6 +383,11 @@ public class WorkshopMaterialRequisitionService {
 
     /** 按叶仓逐张建调拨单并审核; 补录进已盘点的那一期时同事务自动更正。 */
     private void execute(Header header, Settings settings, List<FulfilLine> requested, Supplement supplement) {
+        execute(header, settings, requested, supplement, () -> {});
+    }
+
+    private void execute(Header header, Settings settings, List<FulfilLine> requested, Supplement supplement,
+                         Runnable beforeTransfer) {
         if (requested == null || requested.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请至少办理一行");
         }
@@ -335,6 +443,7 @@ public class WorkshopMaterialRequisitionService {
             counts.requireCountedMaterials(period, materials);
         }
         gateway.lockInventory(materials);
+        beforeTransfer.run();
         UUID receiver = header.receiver() != null ? header.receiver() : employeeOf(header.requestedBy());
         WorkshopMaterialDocumentCommand.Kind kind = KIND_ISSUE.equals(header.kind())
                 ? WorkshopMaterialDocumentCommand.Kind.ISSUE : WorkshopMaterialDocumentCommand.Kind.RETURN;
@@ -460,7 +569,7 @@ public class WorkshopMaterialRequisitionService {
                 SELECT line.requisition_id, line.id, line.line_no, line.goods_id, goods.code AS goods_code,
                        goods.name AS goods_name, line.color_id, color.name AS color_name, line.unit_id,
                        unit.name AS unit_name, line.requested_qty, line.requested_bags, goods.bulk_package_qty,
-                       line.suggested_leaf_warehouse_id, leaf.name AS leaf_name, line.fulfilled_qty
+                       line.suggested_leaf_warehouse_id, leaf.name AS leaf_name, line.fulfilled_qty, goods.issue_method
                 FROM workshop_material_requisition_lines line
                 JOIN goods ON goods.id = line.goods_id
                 LEFT JOIN colors color ON color.id = line.color_id
@@ -478,7 +587,7 @@ public class WorkshopMaterialRequisitionService {
                             WorkshopMaterialBinSupport.decimal(row.get("requested_bags")),
                             WorkshopMaterialBinSupport.decimal(row.get("bulk_package_qty")),
                             (UUID) row.get("suggested_leaf_warehouse_id"), (String) row.get("leaf_name"),
-                            WorkshopMaterialBinSupport.decimal(row.get("fulfilled_qty"))));
+                            WorkshopMaterialBinSupport.decimal(row.get("fulfilled_qty")), (String) row.get("issue_method")));
         }
         Map<UUID, List<RequisitionDocumentView>> documents = new LinkedHashMap<>();
         for (Map<String, Object> row : db.queryForList("""
@@ -568,14 +677,14 @@ public class WorkshopMaterialRequisitionService {
 
     // ------------------------------------------------------------------ 校验
 
-    private List<LineDraft> drafts(List<RequisitionLineInput> lines) {
+    private List<LineDraft> drafts(String kind, List<RequisitionLineInput> lines) {
         if (lines == null || lines.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请至少填一种料");
         }
         Map<Material, LineDraft> drafts = new LinkedHashMap<>();
         for (RequisitionLineInput line : lines) {
             if (line == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "申请明细不完整");
-            MaterialInfo material = bins.periodicMaterial(line.goodsId());
+            MaterialInfo material = KIND_ISSUE.equals(kind) ? requestMaterial(line.goodsId()) : bins.periodicMaterial(line.goodsId());
             bins.requireColor(line.colorId());
             BigDecimal qty = kilograms(material, line.qty(), line.bags());
             if (drafts.putIfAbsent(new Material(material.goodsId(), line.colorId()),
@@ -587,14 +696,27 @@ public class WorkshopMaterialRequisitionService {
         return List.copyOf(drafts.values());
     }
 
-    /** 公斤优先; 只填袋数时按每袋净重折算。 */
+    private MaterialInfo requestMaterial(UUID goodsId) {
+        if (goodsId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择原料");
+        MaterialInfo material = bins.material(goodsId);
+        boolean valid = Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM goods JOIN units unit ON unit.id = goods.unit_id
+                    JOIN unit_measurement_profiles profile ON profile.unit_id = unit.id
+                    WHERE goods.id = :goods AND NOT goods.is_deleted AND goods.status = '使用'
+                      AND NOT unit.is_deleted AND unit.status = '使用' AND profile.measurement_dimension = 'MASS')
+                """, Map.of("goods", goodsId), Boolean.class));
+        if (!valid) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择使用中的重量单位原料");
+        return material;
+    }
+
+    /** 基本单位数量优先; 只填袋数时按每袋净重折算。 */
     private static BigDecimal kilograms(MaterialInfo material, BigDecimal qty, BigDecimal bags) {
-        if (qty != null) return requirePositive(qty, "「" + material.label() + "」的公斤数");
+        if (qty != null) return requirePositive(qty, "「" + material.label() + "」的数量");
         if (bags != null && bags.signum() > 0 && material.bulkPackageQty() != null) {
             return requirePositive(MoneyPolicy.quantity(bags.multiply(material.bulkPackageQty())),
-                    "「" + material.label() + "」的公斤数");
+                    "「" + material.label() + "」的数量");
         }
-        throw new ApiException(ErrorCode.VALIDATION_FAILED, "「" + material.label() + "」请填公斤数");
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "「" + material.label() + "」请填数量 (" + material.unitName() + ")");
     }
 
     private static BigDecimal requirePositive(BigDecimal value, String what) {

@@ -11,6 +11,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
+import 'package:uten_imp/features/warehouse/materialbin/models/workshop_main_warehouse_option.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -23,6 +24,9 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
 
   // ------------------------------------------------------------ 预置数据
   List<WmSetting> settingsResult = const [];
+  List<WmMainWarehouseOption> setupMainWarehousesResult = const [];
+  Map<String, List<WmPendingProductChoice>> inProgressPendingByWorkshop =
+      const {};
   Map<String, List<WmMaterialOption>> materialsByWorkshop = const {};
   Map<String, WmDirectIssueDefaults> defaultsByWorkshop = const {};
   Map<String, List<WmPeriod>> periodsByBin = const {};
@@ -80,8 +84,44 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
   Future<List<WmSetting>> settings() async => settingsResult;
 
   @override
+  Future<List<WmMainWarehouseOption>> setupMainWarehouses() async =>
+      setupMainWarehousesResult;
+
+  @override
+  Future<List<WmPendingProductChoice>> inProgressPending(
+    String workshopId,
+  ) async => inProgressPendingByWorkshop[workshopId] ?? const [];
+
+  @override
   Future<List<WmMaterialOption>> materials(String workshopId) async =>
       materialsByWorkshop[workshopId] ?? const [];
+
+  @override
+  Future<PagedResult<WmMaterialOption>> requestMaterials(
+    String workshopId, {
+    String keyword = '',
+    List<String> goodsIds = const [],
+    int page = 1,
+    int size = 50,
+  }) async {
+    final matches =
+        (materialsByWorkshop[workshopId] ?? const <WmMaterialOption>[])
+            .where(
+              (material) =>
+                  (goodsIds.isEmpty || goodsIds.contains(material.goodsId)) &&
+                  '${material.goodsCode} ${material.displayName}'
+                      .toLowerCase()
+                      .contains(keyword.toLowerCase()),
+            )
+            .toList();
+    return PagedResult(
+      items: matches.skip((page - 1) * size).take(size).toList(),
+      page: page,
+      size: size,
+      total: matches.length,
+      totalPages: (matches.length / size).ceil(),
+    );
+  }
 
   @override
   Future<WmDirectIssueDefaults> directIssueDefaults(String workshopId) async =>

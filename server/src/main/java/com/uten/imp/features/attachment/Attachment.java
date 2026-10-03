@@ -94,4 +94,7 @@ public class Attachment extends BaseEntity {
 
     @Column(name = "delete_failure")
     private String deleteFailure;
+
+    @Column(name="delete_reason")
+    private String deleteReason;
 }

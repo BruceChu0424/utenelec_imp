@@ -21,6 +21,48 @@ import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 
 void main() {
+  testWidgets(
+    'delegation entry closes during retained-data refresh and failure',
+    (tester) async {
+      await tester.pumpWidget(_actionApp(canManage: true));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(UtenAppBar)),
+      );
+      final notifier =
+          container.read(sessionSnapshotProvider.notifier) as _FixedSnapshot;
+      final previous = container.read(sessionSnapshotProvider);
+      expect(
+        find.byKey(const ValueKey('page-permission-action')),
+        findsOneWidget,
+      );
+      notifier.emit(
+        const AsyncLoading<SessionSnapshot?>().copyWithPrevious(previous),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('page-permission-action')),
+        findsNothing,
+      );
+      notifier.emit(
+        AsyncError<SessionSnapshot?>(
+          StateError('revoked'),
+          StackTrace.current,
+        ).copyWithPrevious(previous),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('page-permission-action')),
+        findsNothing,
+      );
+      notifier.emit(AsyncData(SessionSnapshot()));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('page-permission-action')),
+        findsNothing,
+      );
+    },
+  );
   test('models parse bounded backend workspace DTO shapes', () {
     final staff = PagePermissionStaffPage.fromJson({
       'surfaceKey': 'sales.order',
@@ -783,6 +825,7 @@ class _FixedSnapshot extends SessionSnapshotNotifier {
   _FixedSnapshot(this._snapshot);
 
   final SessionSnapshot _snapshot;
+  void emit(AsyncValue<SessionSnapshot?> value) => state = value;
 
   @override
   Future<SessionSnapshot?> build() async => _snapshot;

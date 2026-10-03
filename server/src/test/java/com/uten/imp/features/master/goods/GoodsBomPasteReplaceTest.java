@@ -3,6 +3,10 @@ package com.uten.imp.features.master.goods;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.features.master.color.ColorRepository;
+import com.uten.imp.features.master.color.Color;
+import com.uten.imp.features.master.supplier.Supplier;
+import com.uten.imp.features.master.goods.importing.GoodsBomImportService;
+import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteResult;
@@ -25,6 +29,9 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,10 +59,12 @@ class GoodsBomPasteReplaceTest {
     private final EntityManager em = mock(EntityManager.class);
     private final Query softDelete = mock(Query.class);
     private final MasterObjectAccess access = mock(MasterObjectAccess.class);
+    private final ColorRepository colors = mock(ColorRepository.class);
+    private final GoodsMasterRelationshipResolver relationships = mock(GoodsMasterRelationshipResolver.class);
     private final GoodsBomService bom = new GoodsBomService(
-            goodsRepo, bomRepo, mock(ColorRepository.class), mock(UnitRepository.class),
+            goodsRepo, bomRepo, colors, mock(UnitRepository.class),
             mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class),
-            mock(MasterReferenceValidationPort.class), mock(GoodsMasterRelationshipResolver.class),
+            mock(MasterReferenceValidationPort.class), relationships,
             mock(BusinessEventPublisher.class), access);
     private final GoodsBomPasteService paste = new GoodsBomPasteService(
             bom, goodsRepo, bomRepo, mock(MasterReferenceValidationPort.class), access,
@@ -134,6 +143,139 @@ class GoodsBomPasteReplaceTest {
         assertNull(keptRow.getAuditedBy());
         verify(em, times(0)).persist(any());
         assertNotNull(keptRow.getId());
+    }
+
+    @Test
+    void actualExportImportedUnchangedPreservesColorControlPriceSupplierAndLearnedOwnership() {
+        Color blue = new Color();
+        blue.setName("蓝色");
+        keptRow.setColor(blue);
+        keptRow.setColorLegacyId(71);
+        keptRow.setControlStage("FINISH");
+        keptRow.setHardGate(false);
+        keptRow.setAllowPartialPackage(false);
+        keptRow.setPrice(new BigDecimal("3.125"));
+        keptRow.setTotal(new BigDecimal("6.25"));
+        Supplier supplier = new Supplier();
+        keptRow.setDefaultSupplier(supplier);
+        keptRow.setVendLegacyId(81);
+        keptRow.setLearningProfileGoodsId(target.getId());
+        OffsetDateTime audited = keptRow.getAuditedAt();
+        when(goodsRepo.findById(target.getId())).thenReturn(Optional.of(target));
+        when(goodsRepo.findByCodeAndDeletedFalse(kept.getCode())).thenReturn(Optional.of(kept));
+        when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(target.getId()))
+                .thenReturn(List.of(keptRow));
+        var payload = bom.exportPayload(target.getId());
+        byte[] workbook = new XlsxExportService().build(payload.columns(), payload.rows());
+
+        GoodsBomImportService importer = new GoodsBomImportService(goodsRepo, paste);
+        importer.commit(target.getId(), workbook, BomPasteRequest.Mode.REPLACE,
+                importer.detect(target.getId(), workbook).stateFingerprint());
+
+        assertSame(blue, keptRow.getColor());
+        assertEquals(71, keptRow.getColorLegacyId());
+        assertEquals("FINISH", keptRow.getControlStage());
+        assertEquals(false, keptRow.isHardGate());
+        assertEquals(false, keptRow.isAllowPartialPackage());
+        assertEquals(new BigDecimal("3.125"), keptRow.getPrice());
+        assertEquals(new BigDecimal("6.25"), keptRow.getTotal());
+        assertSame(supplier, keptRow.getDefaultSupplier());
+        assertEquals(81, keptRow.getVendLegacyId());
+        assertEquals(target.getId(), keptRow.getLearningProfileGoodsId());
+        assertEquals(audited, keptRow.getAuditedAt());
+    }
+
+    @Test
+    void oldMinimalWorkbookPreservesAbsentMeasurementAndSummaryFields() {
+        kept.setPrice(BigDecimal.TEN);
+        keptRow.setConsumptionBasis("PER_PACKAGE");
+        keptRow.setBasisOutputQty(BigDecimal.TEN);
+        keptRow.setAllowPartialPackage(false);
+        keptRow.setSummary("保留原备注");
+        OffsetDateTime audited = keptRow.getAuditedAt();
+
+        paste.pasteImported(request(line(kept, "2")), Set.of("seq", "code", "qty"), Map.of());
+
+        assertEquals("PER_PACKAGE", keptRow.getConsumptionBasis());
+        assertEquals(BigDecimal.TEN, keptRow.getBasisOutputQty());
+        assertEquals(false, keptRow.isAllowPartialPackage());
+        assertEquals("保留原备注", keptRow.getSummary());
+        assertNull(keptRow.getPrice());
+        assertEquals(audited, keptRow.getAuditedAt());
+    }
+
+    @Test
+    void genuinelyChangedImportedColorUsesUniqueUuidAndClearsAudit() {
+        Color blue = new Color();
+        blue.setName("蓝色");
+        when(colors.findByNameIgnoreCaseAndDeletedFalse("蓝色")).thenReturn(List.of(blue));
+        when(relationships.color(blue.getId())).thenReturn(blue);
+
+        paste.pasteImported(request(line(kept, "2")), Set.of("qty", "color"), Map.of(kept.getId(), "蓝色"));
+
+        assertSame(blue, keptRow.getColor());
+        assertNull(keptRow.getAuditedAt());
+    }
+
+    @Test
+    void ambiguousColorRejectsWholeImportBeforeRemovingAnyRows() {
+        Color first = new Color();
+        Color second = new Color();
+        when(colors.findByNameIgnoreCaseAndDeletedFalse("蓝色")).thenReturn(List.of(first, second));
+
+        var error = org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> paste.pasteImported(request(line(kept, "2")), Set.of("qty", "color"),
+                        Map.of(kept.getId(), "蓝色")));
+
+        org.junit.jupiter.api.Assertions.assertTrue(error.getFieldErrors().getFirst().message().contains("多个同名"));
+        verify(softDelete, times(0)).executeUpdate();
+        assertNotNull(keptRow.getAuditedAt());
+    }
+
+    @Test
+    void periodicMaterialExportRoundTripPreservesPerUnitWeightAndOwnership() {
+        var kilogram = new com.uten.imp.features.master.unit.Unit();
+        kilogram.setName("千克");
+        kept.setUnit(kilogram);
+        kept.setIssueMethod("PERIODIC");
+        kept.setPeriodicCostBasis("OWN");
+        keptRow.setQty(new BigDecimal("0.01250"));
+        keptRow.setHardGate(false);
+        keptRow.setLearningProfileGoodsId(target.getId());
+        OffsetDateTime audited = keptRow.getAuditedAt();
+        when(goodsRepo.findById(target.getId())).thenReturn(Optional.of(target));
+        when(goodsRepo.findByCodeAndDeletedFalse(kept.getCode())).thenReturn(Optional.of(kept));
+        when(bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(target.getId()))
+                .thenReturn(List.of(keptRow));
+        var payload = bom.exportPayload(target.getId());
+
+        GoodsBomImportService importer = new GoodsBomImportService(goodsRepo, paste);
+        byte[] workbook = new XlsxExportService().build(payload.columns(), payload.rows());
+        importer.commit(target.getId(), workbook, BomPasteRequest.Mode.REPLACE,
+                importer.detect(target.getId(), workbook).stateFingerprint());
+
+        assertEquals(0, new BigDecimal("0.01250").compareTo(keptRow.getQty()));
+        assertEquals(BigDecimal.ONE, keptRow.getBasisOutputQty());
+        assertEquals(false, keptRow.isHardGate());
+        assertEquals(target.getId(), keptRow.getLearningProfileGoodsId());
+        assertEquals(audited, keptRow.getAuditedAt());
+    }
+
+    @Test
+    void replacementCannotTreatInvisibleExistingComponentsAsIntentionalDeletion() {
+        UUID hiddenOwner = UUID.randomUUID();
+        dropped.setOwnerEmployeeId(hiddenOwner);
+        when(access.visibleGoodsOwner()).thenReturn(owner -> !hiddenOwner.equals(owner));
+        when(bomRepo.findAllById(anyCollection())).thenAnswer(call -> {
+            Collection<?> ids = call.getArgument(0);
+            return java.util.stream.Stream.of(keptRow, droppedRow).filter(row -> ids.contains(row.getId())).toList();
+        });
+
+        var error = org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> paste.pasteImported(request(line(kept, "2")), Set.of("qty"), Map.of()));
+
+        assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN, error.getCode());
+        verify(softDelete, times(0)).executeUpdate();
     }
 
     private BomPasteRequest request(BomItemSaveRequest... lines) {

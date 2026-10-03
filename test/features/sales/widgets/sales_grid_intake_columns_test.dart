@@ -55,6 +55,122 @@ Future<List<EditableGridColumn<SalesGridRow>>> _columns(
 }
 
 void main() {
+  test('完整销售草稿往返保留精确数量、来源、自身行ID及真实扩展列', () {
+    final row = SalesGridRow.fromIntake(_patchRow)
+      ..documentItemId = 'own-line'
+      ..orderItemId = 'source-order-line'
+      ..outItemId = 'source-shipment-line'
+      ..unitRateExact = '1.000000123456789'
+      ..solution = '换货'
+      ..responsible = '物流'
+      ..clientNo = 'client-order-19';
+    row.qty.text = '9007199254740993.1250';
+    row.weight.text = '12.345600';
+    row.machiningPrice.text = '0.125000';
+    row.circumference.text = '3.25';
+    row.inboundQty.text = '2.5000';
+    row.materialPrice.text = '4.50';
+    row.dieCastPrice.text = '6.70';
+    row.remark.text = '逐行保留';
+    row.restoreExtraColumns([
+      {
+        'columnId': 'fee-1',
+        'name': '包装费',
+        'scope': 'sales_order',
+        'type': 'AMOUNT',
+        'operation': 'ADD',
+        'value': '12.3400',
+      },
+      {
+        'columnId': 'spec-1',
+        'name': '客户规格',
+        'scope': 'sales_order',
+        'type': 'TEXT',
+        'operation': 'NONE',
+        'value': '包装 A',
+      },
+    ]);
+    final snapshot = row.exportDraft();
+    final restored = SalesGridRow.fromDraft(snapshot);
+    expect(restored.exportDraft(), snapshot);
+    expect(
+      filledSalesOptionalColumnKeys([restored]),
+      containsAll([
+        'clientModel',
+        'clientGoodsName',
+        'clientPrice',
+        'machiningPrice',
+        'circumference',
+        'inboundQty',
+        'materialPrice',
+        'dieCastPrice',
+        'extra:fee-1',
+        'extra:spec-1',
+      ]),
+    );
+    expect(restored.extraColumnsPayload(), [
+      {'columnId': 'fee-1', 'value': '12.3400'},
+      {'columnId': 'spec-1', 'value': '包装 A'},
+    ]);
+    row.dispose();
+    restored.dispose();
+  });
+
+  testWidgets('已撤价草稿不从单元格或固定列暴露旧价且不抹除原始值', (tester) async {
+    final row = SalesGridRow.fromIntake(_patchRow)..priceSource = 'FINANCE';
+    row.machiningPrice.text = '7.125';
+    row.inboundQty.text = '2.0000';
+    final before = row.exportDraft();
+    final columns = await _columns(
+      tester,
+      SalesDocType.order,
+      priceMasked: true,
+      showClientPrice: true,
+    );
+    final sensitive = columns
+        .where(
+          (c) =>
+              {'price', 'discount', 'amount', 'machiningPrice'}.contains(c.key),
+        )
+        .toList();
+    expect(sensitive, hasLength(4));
+    for (final column in sensitive) {
+      expect(column.frozenTextOf!(row), '***', reason: column.key);
+    }
+    final inbound = columns.singleWhere((c) => c.key == 'inboundQty');
+    expect(inbound.label, '进仓数量(历史参考)');
+    expect(inbound.frozenTextOf!(row), '2.0000');
+    // 客户文件原价按既有服务端合同仍可见，不能误当成系统标价删掉。
+    expect(
+      columns.singleWhere((c) => c.key == 'clientPrice').frozenTextOf!(row),
+      '19.95',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Column(
+              children: [
+                for (final column in sensitive)
+                  SizedBox(
+                    width: 220,
+                    height: 60,
+                    child: column.cellBuilder(context, row),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('***'), findsNWidgets(4));
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('财务定价'), findsNothing);
+    expect(row.exportDraft(), before);
+    await tester.pumpWidget(const SizedBox());
+    row.dispose();
+  });
+
   test('识别导入的行: 单价只来自标价, 折扣/文件原文/学习键齐全, 需核对行带黄标', () {
     final row = SalesGridRow.fromIntake(_patchRow);
     expect(row.goods!.id, 'g-1');
@@ -92,9 +208,9 @@ void main() {
     row.dispose();
   });
 
-  testWidgets('复制出来的报价行单价已清空: 提示重新选货取价, 不显示待财务定价', (tester) async {
+  testWidgets('复制报价保留议价单价且可编辑；无主档价也可填写', (tester) async {
     final source = SalesGridRow.fromIntake(_patchRow);
-    final copy = source.clone(requireOrderPriceRefresh: true);
+    final copy = source.clone();
     source.dispose();
     final unpriced = SalesGridRow.fromIntake(
       const SalesIntakePatchRow(goodsId: 'g-2', qty: '1', discount: ''),
@@ -133,9 +249,9 @@ void main() {
     TextField priceOf(SalesGridRow r) => tester.widget<TextField>(
       find.byWidgetPredicate((w) => w is TextField && w.controller == r.price),
     );
-    expect(copy.price.text, isEmpty);
-    expect(priceOf(copy).decoration?.hintText, '重新选货取价');
-    expect(priceOf(unpriced).decoration?.hintText, '待财务定价');
+    expect(copy.price.text, '21');
+    expect(priceOf(copy).readOnly, isFalse);
+    expect(priceOf(unpriced).readOnly, isFalse);
   });
 
   test('看不到价格/待财务定价的行: 折扣留空', () {
@@ -209,11 +325,11 @@ void main() {
     );
   });
 
-  testWidgets('报价: 单价不再手填, 折扣列可空(非必填); 订货折扣仍必填', (tester) async {
+  testWidgets('报价: 单价可议价, 折扣列可空(非必填); 订货折扣仍必填', (tester) async {
     final quote = await _columns(tester, SalesDocType.quote);
     final price = quote.singleWhere((c) => c.key == 'price');
     expect(price.required, isFalse);
-    expect(price.headerInfo, contains('销售不能修改'));
+    expect(price.headerInfo, contains('不改变货品资料'));
     expect(quote.singleWhere((c) => c.key == 'discount').required, isFalse);
 
     final order = await _columns(tester, SalesDocType.order);
@@ -227,7 +343,7 @@ void main() {
     expect(masked.singleWhere((c) => c.key == 'price').required, isFalse);
   });
 
-  testWidgets('报价单价格只读; 财务定价行显示标记; 看不到价格时折扣只读', (tester) async {
+  testWidgets('报价单价格可编辑; 看不到价格时折扣只读', (tester) async {
     final row = SalesGridRow.fromIntake(_patchRow)..priceSource = 'FINANCE';
     final masked = SalesGridRow.fromIntake(
       const SalesIntakePatchRow(goodsId: 'g-2', qty: '1'),
@@ -270,8 +386,14 @@ void main() {
         (w) => w is TextField && w.controller == row.price,
       ),
     );
-    expect(priceField.readOnly, isTrue);
-    expect(find.text('财务定价'), findsOneWidget);
+    expect(priceField.readOnly, isFalse);
+    await tester.enterText(
+      find.byWidgetPredicate(
+        (w) => w is TextField && w.controller == row.price,
+      ),
+      '24.50',
+    );
+    expect(row.price.text, '24.50');
     final discountField = tester.widget<TextField>(
       find.byWidgetPredicate(
         (w) => w is TextField && w.controller == row.discount,
@@ -285,12 +407,14 @@ void main() {
     );
 
     await pumpGrid(masked, priceMasked: true);
-    final maskedDiscount = tester.widget<TextField>(
+    expect(
       find.byWidgetPredicate(
-        (w) => w is TextField && w.controller == masked.discount,
+        (w) =>
+            w is TextField &&
+            (w.controller == masked.price || w.controller == masked.discount),
       ),
+      findsNothing,
     );
-    expect(maskedDiscount.readOnly, isTrue);
-    expect(maskedDiscount.decoration?.hintText, '保存时自动计算');
+    expect(find.byTooltip('保存时自动计算'), findsOneWidget);
   });
 }

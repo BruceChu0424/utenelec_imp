@@ -22,6 +22,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
 
 import '../helpers/badge_summary_fixture.dart';
 import '../helpers/document_scope_fixture.dart';
@@ -98,9 +99,40 @@ Future<FixedBadgeSummaryNotifier> _mount(
   return badges;
 }
 
-MasterDataTableView<T> _table<T>(WidgetTester tester) => tester.widget(
-  find.byWidgetPredicate((widget) => widget is MasterDataTableView<T>),
+// 草稿段(表单草稿全站收口)经 FormDraftCategoryTable 渲染合并表(本地草稿+正式单)，
+// 非草稿段渲染原表——两种形态都要能驱动，口径与 finance_stock_draft_bulk_delete_test 一致。
+MasterDataTableView<dynamic> _table<T>(WidgetTester tester) => tester.widget(
+  find.byWidgetPredicate(
+    (widget) =>
+        widget is MasterDataTableView<T> ||
+        widget is MasterDataTableView<FormDraftCategoryRow<T>>,
+  ),
 );
+
+// idOf/rowKeyOf 是泛型回调，经 dynamic 接收者直接调用会类型不匹配；按形态显式转型取行标识。
+String? _rowIdentity<T>(
+  WidgetTester tester, {
+  int? index,
+  bool last = false,
+  bool stableKey = false,
+}) {
+  final grid = _table<T>(tester);
+  if (grid is MasterDataTableView<FormDraftCategoryRow<T>>) {
+    final row = index != null
+        ? grid.items[index]
+        : last
+        ? grid.items.last
+        : grid.items.first;
+    return (stableKey ? grid.rowKeyOf : grid.idOf)?.call(row);
+  }
+  final records = grid as MasterDataTableView<T>;
+  final record = index != null
+      ? records.items[index]
+      : last
+      ? records.items.last
+      : records.items.first;
+  return (stableKey ? records.rowKeyOf : records.idOf)?.call(record);
+}
 
 Future<void> _confirmDelete(WidgetTester tester) async {
   await tester.tap(find.textContaining('删除所选草稿 ('));
@@ -117,9 +149,16 @@ void main() {
       await _mount(tester, _Kind.plan, api);
       var table = _table<ProductionPlanListItem>(tester);
       expect(table.selectable, isTrue);
-      expect(table.idOf!(table.items.first), 'draft-1');
-      expect(table.idOf!(table.items.last), isNull);
-      expect(table.rowKeyOf!(table.items.last), 'approved');
+      expect(_rowIdentity<ProductionPlanListItem>(tester), 'draft-1');
+      expect(_rowIdentity<ProductionPlanListItem>(tester, last: true), isNull);
+      expect(
+        _rowIdentity<ProductionPlanListItem>(
+          tester,
+          last: true,
+          stableKey: true,
+        ),
+        'approved',
+      );
       table.onSelectedIdsChanged!({'draft-1'});
       await tester.pump();
       table = _table<ProductionPlanListItem>(tester);
@@ -170,8 +209,18 @@ void main() {
     final api = _Api();
     final badges = await _mount(tester, _Kind.daily, api);
     var table = _table<ProductionDailyReportListItem>(tester);
-    expect(table.idOf!(table.items.last), isNull);
-    expect(table.rowKeyOf!(table.items.last), 'approved');
+    expect(
+      _rowIdentity<ProductionDailyReportListItem>(tester, last: true),
+      isNull,
+    );
+    expect(
+      _rowIdentity<ProductionDailyReportListItem>(
+        tester,
+        last: true,
+        stableKey: true,
+      ),
+      'approved',
+    );
     table.onSelectedIdsChanged!({'draft-1'});
     await tester.pump();
     _table<ProductionDailyReportListItem>(
@@ -186,7 +235,11 @@ void main() {
     await _confirmDelete(tester);
     expect(api.detailReads, containsAll(['draft-1', 'draft-2']));
     expect(api.deletes, ['/production/daily-reports/draft-2']);
-    expect(_table<ProductionDailyReportListItem>(tester).selectedIds, isEmpty);
+    // DraftBulkDeleteMixin 契约：逐条成功才移除选择，明确失败(CONFLICT 拒绝)保留，
+    // 让用户看见哪张没删成；draft-1 状态已变被拒，应仍处于选中。
+    expect(_table<ProductionDailyReportListItem>(tester).selectedIds, {
+      'draft-1',
+    });
     expect(badges.refreshCalls, greaterThan(0));
     expect(tester.takeException(), isNull);
   });
@@ -198,9 +251,17 @@ void main() {
     final badges = await _mount(tester, _Kind.expense, api);
     var table = _table<ExpenseClaim>(tester);
     expect(table.selectable, isTrue);
-    expect(table.idOf!(table.items[0]), 'draft-1');
-    expect(table.idOf!(table.items[2]), isNull, reason: '驳回单不是可删除草稿');
-    expect(table.idOf!(table.items[3]), isNull, reason: '不能选中他人草稿');
+    expect(_rowIdentity<ExpenseClaim>(tester, index: 0), 'draft-1');
+    expect(
+      _rowIdentity<ExpenseClaim>(tester, index: 2),
+      isNull,
+      reason: '驳回单不是可删除草稿',
+    );
+    expect(
+      _rowIdentity<ExpenseClaim>(tester, index: 3),
+      isNull,
+      reason: '不能选中他人草稿',
+    );
     table.onSelectedIdsChanged!({'draft-1'});
     await tester.pump();
     _table<ExpenseClaim>(tester).onFilterChanged('category', 'TRAVEL');

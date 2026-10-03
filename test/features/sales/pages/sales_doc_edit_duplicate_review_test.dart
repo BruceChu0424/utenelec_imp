@@ -9,11 +9,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
-import 'package:uten_imp/shared/providers/session_provider.dart';
 
 Map<String, dynamic> _orderDetail({
   required List<Map<String, dynamic>> items,
@@ -41,6 +48,20 @@ Future<_DupApi> _pumpEditor(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_TestSessionNotifier.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'test-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_ExistingSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+        // 本用例断言合并行保留单价：看不到价格的账号会被客户端脱敏、
+        // 不随保存提交 price，须显式授予价格查看权限。
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.salesOrderView,
+          Perm.salesOrderEdit,
+          Perm.salesOrderPriceView,
+        }),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),
@@ -88,6 +109,11 @@ Finder _redRowDecorations(Color tint) => find.byWidgetPredicate(
       w.decoration is BoxDecoration &&
       (w.decoration as BoxDecoration).color == tint,
 );
+
+class _ExistingSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
 
 void main() {
   testWidgets('数量不同的重复行：汇总合并后提交单行数量之和', (tester) async {

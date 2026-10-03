@@ -18,6 +18,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/document_status_counts_provider.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
@@ -208,7 +209,10 @@ void main() {
           ),
           fixedBadgeSummaryOverride(
             badgeSummaryFixture(
-              entries: {BadgeEntry.salesQuoteAwaitingConversion: (3, 0)},
+              entries: {
+                BadgeEntry.salesQuoteAwaitingConversion: (3, 0),
+                BadgeEntry.salesQuoteAwaitingCustomerConfirmation: (2, 0),
+              },
             ),
           ),
         ],
@@ -226,23 +230,26 @@ void main() {
         (w) => w is UtenSegmentBadgeLabel && w.label == '报价单',
       ),
     );
-    expect(quotes.count, 6);
+    expect(quotes.count, 8);
     expect(quotes.inProgressCount, 4);
 
     // 进入报价大类：分段红数与大类同源(草稿 2 + 退回 1 + 已核价待转 3)。
     await tester.tap(find.text('报价单'));
     await tester.pumpAndSettle();
-    int? countOf(String label) => tester
-        .widget<UtenSegmentBadgeLabel>(
-          find.byWidgetPredicate(
-            (w) => w is UtenSegmentBadgeLabel && w.label == label,
-          ),
-        )
-        .count;
+    final toolbar = tester.widget<UtenFilterToolbar<dynamic>>(
+      find.byWidgetPredicate(
+        (w) =>
+            w is UtenFilterToolbar &&
+            w.segmentsKey == const Key('sales-doc-status-quotes'),
+      ),
+    );
+    int? countOf(String label) =>
+        toolbar.segments.singleWhere((s) => s.label == label).count;
     expect(countOf('草稿'), 2);
     expect(countOf('财务退回'), 1);
     expect(countOf('待财务核价'), 4);
-    expect(countOf('已核价'), 3);
+    expect(countOf('待客户同意'), 2);
+    expect(countOf('待生成订货单'), 3);
   });
 
   testWidgets('历史其它出货大类进入即预选历史段（时间门控）', (tester) async {

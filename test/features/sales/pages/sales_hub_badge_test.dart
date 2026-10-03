@@ -86,7 +86,8 @@ void main() {
     );
     await pumpPage(tester, container, const SalesTaskCenterPage());
     expect(find.text('订货进度'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
+    // 外层任务中心与订货进度卡都带红 3（入口+分段两处徽章）。
+    expect(find.text('3'), findsWidgets);
 
     await pumpPage(tester, container);
     expect(

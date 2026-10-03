@@ -5,5 +5,6 @@ public enum AttachmentLifecycleState {
     CLEAN,
     DELETE_PENDING,
     DELETE_FAILED,
-    DELETED
+    DELETED,
+    RETAINED_HISTORY
 }

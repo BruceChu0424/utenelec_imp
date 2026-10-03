@@ -30,7 +30,6 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -64,7 +63,7 @@ class WarehouseInboundExpectationsView extends ConsumerStatefulWidget {
   /// 父页面「返回即刷新」信号。
   final int refreshTick;
 
-  /// true = 嵌在任务中心分段内（无类型分段与搜索框，仅提示行 + 表格）。
+  /// true = 嵌在任务中心分段内（无类型分段与搜索框，仅表格）。
   final bool embedded;
 
   /// 宿主（任务中心大类行 + 小类行/复合分段行）：挂进折叠头随页滚走
@@ -146,32 +145,6 @@ class _WarehouseInboundExpectationsViewState
         if (mounted) _load(1);
       });
     }
-  }
-
-  /// 当前筛选口径的提示文案（与财务审批任务中心同款：说明放工具条下方整行提示）。
-  String get _scopeHint {
-    final base = switch (_orderType) {
-      ProcurementInboundOrderType.purchase => '只显示财务已批准、可准备收货的采购订货单。',
-      ProcurementInboundOrderType.subcontract => '只显示目标件已经真实委外出仓、可能回厂的委外订货单。',
-      _ => '采购在财务批准后显示；委外必须先完成目标件真实出仓，才进入预计到货。',
-    };
-    const selection =
-        '双击行直达下一步（待登记→登记实际到货）；'
-        '多选「先质检后入库」：待登记行进批量登记页（实收+行级入库仓库），'
-        '已登记 · 待送检行直接送检；'
-        '多选「先入库后质检」：登记的同时逐行选库位上架，品质部到库位检验；'
-        '进批量登记页后只显示所选这一条路线的提交按钮。';
-    if (_orderType != null) return '$base$selection';
-    // 已送检待品质张数随徽章汇总带回(同一计数端点, 服务端按品质查看权限给或不给),
-    // 不再每次列表加载单独请求一次(ADR-108)。
-    final pending = ref.watch(badgeFactOrNullProvider(BadgeFact.iqcPending));
-    if (pending == null) {
-      return '$base$selection'
-          '已送检任务移交品质部；检查进度与结果请在「品质部检查结果」页查看。';
-    }
-    return '$base$selection'
-        '另有 $pending 张已送检等待品质结果；'
-        '检查进度与结果请在「品质部检查结果」页查看。';
   }
 
   void _selectType(ProcurementInboundOrderType? type) {
@@ -664,15 +637,30 @@ class _WarehouseInboundExpectationsViewState
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    return _loading && result == null
-        ? const UtenSkeletonList()
-        : _error != null && result == null
-        ? UtenEmpty.error(
-            message: _error,
-            actionLabel: '重新加载',
-            onAction: () => _load(1),
-          )
-        : _buildList(result);
+    // 骨架/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
+    // 整条分类栏不得消失），数据到位后照常走联动折叠容器。
+    final Widget fallback;
+    if (_loading && result == null) {
+      fallback = const UtenSkeletonList();
+    } else if (_error != null && result == null) {
+      fallback = UtenEmpty.error(
+        message: _error,
+        actionLabel: '重新加载',
+        onAction: () => _load(1),
+      );
+    } else {
+      return _buildList(result);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        Expanded(child: fallback),
+      ],
+    );
   }
 
   Widget _buildList(PagedResult<InboundExpectation>? value) {
@@ -685,8 +673,8 @@ class _WarehouseInboundExpectationsViewState
           total: 0,
           totalPages: 1,
         );
-    // 2026-09-24 用户口径「表格完全置顶」：工具行/范围提示/错误行进折叠头
-    // 随页滚走，body 只剩表格（primary 拾取联动控制器）。
+    // 2026-09-24 用户口径「表格完全置顶」：工具行/错误行进折叠头随页滚走，
+    // body 只剩表格（primary 拾取联动控制器）。
     return UtenCollapsingHeaderScrollView(
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -696,7 +684,6 @@ class _WarehouseInboundExpectationsViewState
             const SizedBox(height: UtenSpacing.s12),
           ],
           if (!widget.embedded) ..._buildToolbar(result),
-          if (widget.embedded) _scopeHintRow(),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             _InlineError(message: _error!, onRetry: () => _load(result.page)),
@@ -882,26 +869,7 @@ class _WarehouseInboundExpectationsViewState
           ),
         ),
       ),
-      const SizedBox(height: UtenSpacing.s8),
-      _scopeHintRow(),
     ];
-  }
-
-  Widget _scopeHintRow() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          Icons.info_outline_rounded,
-          size: 18,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: Text(_scopeHint, style: Theme.of(context).textTheme.bodySmall),
-        ),
-      ],
-    );
   }
 
   List<MasterColumnDef<InboundExpectation>> get _columns => [

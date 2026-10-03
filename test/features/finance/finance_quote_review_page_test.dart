@@ -346,6 +346,34 @@ Future<void> _save(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'finance edits independent base price, discount and quantity with the claimed revision',
+    (tester) async {
+      final (repo, claims) = await _pump(tester, _review());
+      await tester.enterText(
+        find.byKey(const ValueKey('quote-finance-price-a')),
+        '80.25',
+      );
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const ValueKey('quote-finance-qty-a')),
+        '4',
+      );
+      await tester.pump();
+      await tester.enterText(_discount('a'), '0.9');
+      await tester.pump();
+      await _save(tester);
+      expect(repo.saves.single['expectedRevision'], 5);
+      expect(
+        repo.saves.single['expectedClaimId'],
+        claims.leases['quote-1']!.claimId,
+      );
+      expect(repo.saves.single['lines'], [
+        {'itemId': 'a', 'qty': '4', 'price': '80.25', 'discount': '0.9000'},
+      ]);
+    },
+  );
+
   testWidgets('claims the quote then allows editing; deal ↔ discount derive', (
     tester,
   ) async {

@@ -1,6 +1,7 @@
 // Typed app composition: shared table widgets never import business features.
 import 'package:flutter/foundation.dart';
 import 'shared/platform_tables/platform_table_binding.dart';
+import 'platform_table_display_facts.dart';
 import 'features/basic_data/models/goods_node.dart';
 import 'features/basic_data/models/client_node.dart';
 import 'features/basic_data/models/supplier_node.dart';
@@ -25,6 +26,7 @@ import 'features/finance/models/sales_order_finance_confirmation.dart';
 import 'features/finance/widgets/finance_grid_columns.dart';
 import 'features/warehouse/models/stock_doc.dart';
 import 'features/warehouse/widgets/stock_grid_columns.dart';
+import 'features/stock/models/stock_query.dart';
 import 'features/production/models/production_plan.dart';
 import 'features/production/models/production_daily_report.dart';
 import 'features/production/widgets/production_grid_columns.dart';
@@ -115,6 +117,23 @@ PlatformTableBinding<T>? resolvePlatformTable<T>(
       scope: 'view_goods_cost',
       recordIdOf: (_) => null,
       factValuesOf: (row) => _costDisplayFacts(row),
+    );
+  }
+  if (T == AccountStatementRow) {
+    return PlatformTableBinding<T>(
+      tableKey: key,
+      scope: 'view_account_statement',
+      recordIdOf: (_) => null,
+      factValuesOf: (row) => platformDisplayFacts(row),
+    );
+  }
+  final displayScope = additionalPlatformDisplayScope(T);
+  if (displayScope != null) {
+    return PlatformTableBinding<T>(
+      tableKey: key,
+      scope: displayScope,
+      recordIdOf: (_) => null,
+      factValuesOf: (row) => platformDisplayFacts(row),
     );
   }
   PlatformTableBinding<T> record<R>(
@@ -344,7 +363,13 @@ PlatformTableBinding<T>? resolvePlatformTable<T>(
       return record<FinanceDocListItem>(finance, (r) => r.id);
     }
     if (T == FinanceDocItem) {
-      return record<FinanceDocItem>('${finance}_item', (r) => r.id);
+      return record<FinanceDocItem>('${finance}_item', (r) => r.id).copyWith(
+        columnAliases: {
+          ..._aliases,
+          if (finance == 'finance_expense' || finance == 'finance_other_income')
+            'dept': 'department',
+        },
+      );
     }
     if (T == FinanceGridRow) {
       return record<FinanceGridRow>(
@@ -353,6 +378,8 @@ PlatformTableBinding<T>? resolvePlatformTable<T>(
       ).copyWith(
         columnAliases: {
           ..._aliases,
+          if (finance == 'finance_expense' || finance == 'finance_other_income')
+            'dept': 'department',
           'balanceOriginal': 'balanceBeforeOriginal',
           'balanceAfter': 'balanceAfterOriginal',
         },
@@ -443,12 +470,33 @@ Iterable<Listenable> platformDisplayListenables(Object? row) => switch (row) {
 Map<String, String?> _costDisplayFacts(Object? row) {
   if (row is! Map) return const {};
   const keys = {
-    'designQty', 'actualQty', 'adoptedQty', 'batchQty', 'perProductQty',
-    'unitPrice', 'amount', 'materialAmount', 'feeAmount', 'unitContribution',
-    'value', 'quantity', 'baseAmount', 'unitAmount', 'knownAmountLocal',
-    'allocatedAmountLocal', 'heldAmountLocal', 'amountLocal', 'netQtyBase',
-    'grossQtyBase', 'returnedQtyBase', 'effectiveQtyBase', 'originalQtyBase',
-    'outputQtyBase', 'actualUnitCostLocal', 'knownTotal', 'unitCost',
+    'designQty',
+    'actualQty',
+    'adoptedQty',
+    'batchQty',
+    'perProductQty',
+    'unitPrice',
+    'amount',
+    'materialAmount',
+    'feeAmount',
+    'unitContribution',
+    'value',
+    'quantity',
+    'baseAmount',
+    'unitAmount',
+    'knownAmountLocal',
+    'allocatedAmountLocal',
+    'heldAmountLocal',
+    'amountLocal',
+    'netQtyBase',
+    'grossQtyBase',
+    'returnedQtyBase',
+    'effectiveQtyBase',
+    'originalQtyBase',
+    'outputQtyBase',
+    'actualUnitCostLocal',
+    'knownTotal',
+    'unitCost',
   };
   return {
     for (final key in keys)
@@ -458,6 +506,28 @@ Map<String, String?> _costDisplayFacts(Object? row) {
 
 /// Only unformatted model values are accepted. Hidden/masked values remain null.
 Map<String, String?> platformDisplayFacts(Object? row) {
+  final additional = additionalPlatformDisplayFacts(row);
+  if (additional != null) return additional;
+  if (row is InstantInventoryRow) {
+    // Aggregated inventory has no writable row ID. Only quantities actually
+    // shown in this table are calculation sources; cost and unit weight are not.
+    return {
+      'qty': row.qty?.toString(),
+      'weight': row.weight?.toString(),
+      'pendingQty': row.pendingQty?.toString(),
+      'pendingStockInQty': row.pendingStockInQty?.toString(),
+      'moreQty': row.moreQty?.toString(),
+    };
+  }
+  if (row is AccountStatementRow) {
+    // Preserve authorized decimal strings; never recover a masked/missing
+    // amount from a legacy double or a formatted balance label.
+    return {
+      'inAmount': row.inAmountText,
+      'outAmount': row.outAmountText,
+      'balance': row.balanceText,
+    };
+  }
   if (row is SalesGridRow) {
     return {
       'qty': row.qty.text,

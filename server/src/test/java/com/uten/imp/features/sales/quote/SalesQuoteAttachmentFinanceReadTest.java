@@ -33,7 +33,7 @@ class SalesQuoteAttachmentFinanceReadTest {
     private final EntityManager em = mock(EntityManager.class);
     private final SalesDocumentAccessPolicy access = mock(SalesDocumentAccessPolicy.class);
     private final SalesQuote quote = new SalesQuote();
-    private final SalesQuoteAttachmentAccessPolicy policy = new SalesQuoteAttachmentAccessPolicy(em, access);
+    private final SalesQuoteAttachmentAccessPolicy policy = new SalesQuoteAttachmentAccessPolicy(em, access,mock(com.uten.imp.features.sales.order.SalesPriceMasker.class));
 
     SalesQuoteAttachmentFinanceReadTest() {
         quote.setId(id);
@@ -77,7 +77,7 @@ class SalesQuoteAttachmentFinanceReadTest {
     @Test
     void ownerManagesAttachmentsOnlyWhileTheQuoteIsADraft() {
         SalesDocumentAccessPolicy ownerAccess = mock(SalesDocumentAccessPolicy.class);
-        SalesQuoteAttachmentAccessPolicy ownerPolicy = new SalesQuoteAttachmentAccessPolicy(em, ownerAccess);
+        SalesQuoteAttachmentAccessPolicy ownerPolicy = new SalesQuoteAttachmentAccessPolicy(em, ownerAccess,mock(com.uten.imp.features.sales.order.SalesPriceMasker.class));
         AuthUser seller = user("sales_quote:view", "sales_quote:edit");
         quote.setStatus((short) 0);
         quote.setFinanceReturnReason("客户要改数量");
@@ -85,6 +85,21 @@ class SalesQuoteAttachmentFinanceReadTest {
         quote.setStatus((short) 2);
         ApiException frozen = assertThrows(ApiException.class, () -> ownerPolicy.requireCanManage(id, seller));
         assertEquals(ErrorCode.CONFLICT, frozen.getCode());
+    }
+
+    @Test
+    void deletedReturnedQuoteKeepsItsCurrentFinanceHistoryScopeButNotActiveActions() {
+        AuthUser reviewer=user("sales_quote_finance:view");
+        quote.setStatus((short)0);
+        quote.setSubmittedAt(OffsetDateTime.now().minusHours(1));
+        quote.setFinanceReturnedAt(OffsetDateTime.now());
+        quote.setDeleted(true);
+        assertDoesNotThrow(()->policy.requireCanViewSensitiveOriginalHistory(id,reviewer));
+        assertThrows(ApiException.class,()->policy.requireCanView(id,reviewer));
+        assertThrows(ApiException.class,()->policy.requireCanManage(id,reviewer));
+        assertThrows(ApiException.class,()->policy.requireCanViewSensitiveOriginalHistory(id,user("sales_quote:view")));
+        quote.setFinanceReturnedAt(null);
+        assertThrows(ApiException.class,()->policy.requireCanViewSensitiveOriginalHistory(id,reviewer));
     }
 
     private static AuthUser user(String... permissions) {

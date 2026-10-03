@@ -35,7 +35,7 @@ public class PurchasePlatformColumnAdapters {
                 Set.of("purchase_request:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.purchase.request.PurchaseRequest.class,
                 null,
-                requestService::detail,(id,header)->false,HEADER);
+                requestService::detail,(id,header)->false,HEADER).history(requestService::detailHistory,null);
     }
 
     @Bean
@@ -44,7 +44,7 @@ public class PurchasePlatformColumnAdapters {
                 Set.of("purchase_request:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.purchase.request.PurchaseRequest.class,
                 "SELECT id,request_id FROM purchase_request_items WHERE id IN (:ids) AND NOT is_deleted",
-                requestService::detail,(id,header)->false,LINE)
+                requestService::detail,(id,header)->false,LINE).history(requestService::detailHistory,"SELECT live.id,live.request_id FROM purchase_request_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='purchase_request_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='purchase_request_items' AND parent_table='purchase_requests' AND CAST(CASE WHEN source_table='purchase_request_items' AND parent_table='purchase_requests' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM purchase_request_items WHERE request_id=:document AND NOT is_deleted");
     }
 
@@ -54,7 +54,7 @@ public class PurchasePlatformColumnAdapters {
                 Set.of("purchase_order:view"),Set.of("purchase_order:edit"),Set.of("purchase_order:price:view","finance:view:all"),
                 com.uten.imp.features.purchase.order.PurchaseOrder.class,
                 null,
-                orderService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                orderService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(orderService::detailHistory,null);
     }
 
     @Bean
@@ -63,7 +63,7 @@ public class PurchasePlatformColumnAdapters {
                 Set.of("purchase_receipt:view"),Set.of("purchase_receipt:edit"),Set.of("purchase_receipt:price:view","finance:view:all"),
                 com.uten.imp.features.purchase.receipt.PurchaseReceipt.class,
                 null,
-                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(receiptService::detailHistory,null);
     }
 
     @Bean
@@ -72,7 +72,7 @@ public class PurchasePlatformColumnAdapters {
                 Set.of("purchase_receipt:view"),Set.of("purchase_receipt:edit"),Set.of("purchase_receipt:price:view","finance:view:all"),
                 com.uten.imp.features.purchase.receipt.PurchaseReceipt.class,
                 "SELECT id,receipt_id FROM purchase_receipt_items WHERE id IN (:ids) AND NOT is_deleted",
-                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
+                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(receiptService::detailHistory,"SELECT live.id,live.receipt_id FROM purchase_receipt_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='purchase_receipt_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='purchase_receipt_items' AND parent_table='purchase_receipts' AND CAST(CASE WHEN source_table='purchase_receipt_items' AND parent_table='purchase_receipts' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM purchase_receipt_items WHERE receipt_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.purchase.receipt.dto.ReceiptSaveRequest.class,receiptService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("purchase_receipt:create"));
@@ -84,7 +84,7 @@ public class PurchasePlatformColumnAdapters {
                 Set.of("purchase_return:view"),Set.of("purchase_return:edit"),Set.of("purchase_return:price:view","finance:view:all"),
                 com.uten.imp.features.purchase.ret.PurchaseReturn.class,
                 null,
-                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(retService::detailHistory,null);
     }
 
     @Bean
@@ -93,7 +93,7 @@ public class PurchasePlatformColumnAdapters {
                 Set.of("purchase_return:view"),Set.of("purchase_return:edit"),Set.of("purchase_return:price:view","finance:view:all"),
                 com.uten.imp.features.purchase.ret.PurchaseReturn.class,
                 "SELECT id,return_id FROM purchase_return_items WHERE id IN (:ids) AND NOT is_deleted",
-                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
+                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(retService::detailHistory,"SELECT live.id,live.return_id FROM purchase_return_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='purchase_return_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='purchase_return_items' AND parent_table='purchase_returns' AND CAST(CASE WHEN source_table='purchase_return_items' AND parent_table='purchase_returns' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM purchase_return_items WHERE return_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.purchase.ret.dto.ReturnSaveRequest.class,retService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("purchase_return:create"));

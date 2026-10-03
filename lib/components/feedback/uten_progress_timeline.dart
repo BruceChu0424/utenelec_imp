@@ -1,7 +1,9 @@
 // 快递式全链路进度时间线（通用组件）。
 //
-// 视觉范式对齐快递物流追踪：最新进展永远在最上面并高亮（实心圆点 + 描边卡片 +
-// 「最新」徽章），其下按时间倒序排列历史节点，底部是灰色虚位的未来阶段（PENDING）。
+// 排列口径（2026-10-01 用户拍板「还没有进行的放上面，最下面是进度开始、最上面是
+// 最后的阶段」）：未开始的阶段（PENDING 灰色虚位）整块排在最上（阶段最靠后的在
+// 最顶）；其下已发生事件按时间倒序，最下面是进度开始（如销售下单）。「最新」徽章
+// 与描边高亮卡落在第一条已发生事件（DONE/CURRENT/REJECTED）上。
 // 每个节点 = 阶段标题 + 责任人（如下单人：张三）+ 发生时间 + 补充说明 + 可选单据跳转。
 //
 // 数据约定见 shared/models/progress_timeline_event.dart：服务端已排好展示顺序，
@@ -14,7 +16,8 @@ import '../../shared/models/progress_timeline_event.dart';
 
 /// 快递式进度时间线。
 ///
-/// [events] 按展示顺序传入（最新在最上）；[onOpenDoc] 非空时，带单据锚点的
+/// [events] 按展示顺序传入（未开始的阶段在最上、进度开始垫底）；第一条已发生
+/// （非 PENDING）的节点获「最新」徽章与高亮卡。[onOpenDoc] 非空时，带单据锚点的
 /// 节点单号渲染为可点链接（权限/路由判断由调用方处理）。
 class UtenProgressTimeline extends StatelessWidget {
   const UtenProgressTimeline({
@@ -44,13 +47,15 @@ class UtenProgressTimeline extends StatelessWidget {
         ),
       );
     }
+    // 「最新」徽章/高亮卡 = 第一条已发生事件；置顶的 PENDING 占位不抢徽章。
+    final latestIndex = events.indexWhere((e) => !e.isPending);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < events.length; i++)
           _TimelineTile(
             event: events[i],
-            isLatest: i == 0,
+            isLatest: i == latestIndex,
             isLast: i == events.length - 1,
             onOpenDoc: onOpenDoc,
           ),

@@ -21,6 +21,9 @@ abstract final class Perm {
   /// 权限、数据范围和系统设置管理；后端同时要求超级管理员身份。
   static const authorizationManage = 'authorization:manage';
 
+  /// 使用公共 AI 能力（识别客户文件、AI 作业等）；提交人须持有，调用计入任务次数。
+  static const aiUse = 'ai:use';
+
   /// Read-only server health and capacity overview.
   static const serverStatusView = 'server_status:view';
 
@@ -192,6 +195,9 @@ abstract final class Perm {
 
   /// 领导或库存负责人明确授权后，可直接把库存余额修正为目标值。
   static const stockBalanceAdjust = 'stock:balance:adjust';
+  static const stockCountSubmit = 'stock:count:submit';
+  static const stockCountFinanceReview = 'stock:count:finance_review';
+  static const stockCountWarehouseReview = 'stock:count:warehouse_review';
 
   /// 单重管理 (ADR-135)：单重设置 (默认皮重/核对容差/参与学习/换批方式)、人工设定单重、
   /// 称重记录排除/恢复、从今天起重新学习、核重 (只改库存重量不动数量)；

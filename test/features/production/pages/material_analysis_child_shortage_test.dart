@@ -99,9 +99,9 @@ Future<void> _dismissClaimUsageAskIfPresent(WidgetTester tester) async {
   }
 }
 
-/// 在「是否使用可用数量抵扣」弹窗里选「足额下单，不扣可用数量」并继续。
+/// 在「是否使用可用数量抵扣」弹窗里选「保留余量，额外下单」并继续。
 Future<void> _chooseFullOrderNoClaim(WidgetTester tester) async {
-  await tester.tap(find.text('足额下单，不扣可用数量'));
+  await tester.tap(find.text('保留余量，额外下单'));
   await tester.pump();
   await tester.tap(
     find.descendant(of: find.byType(AlertDialog), matching: find.text('继续')),
@@ -224,7 +224,7 @@ void main() {
     expect(_writes().single.body?.containsKey('skipAutoClaim'), isFalse);
   });
 
-  testWidgets('选择「足额下单，不扣可用数量」：请求带 skipAutoClaim=true', (tester) async {
+  testWidgets('选择「保留余量，额外下单」：请求带 skipAutoClaim=true', (tester) async {
     await _pump(
       tester,
       issuedRoot: true,
@@ -267,6 +267,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(_pageLine('m-c1'), findsNothing);
     expect(_pageLine('m-pc'), findsOneWidget);
+  });
+
+  testWidgets('补料页取消最终确认后可在当前页切换余量方式再下单', (tester) async {
+    await _pump(
+      tester,
+      issuedRoot: true,
+      mutate: (data) {
+        final copper = _line(data, 'm-c1');
+        copper['netShortageQty'] = 0;
+        copper['additionalSupplyRecommendedQty'] = 500;
+        copper['sharedFutureClaimableQty'] = 500;
+        copper['planningUncoveredQty'] = 500;
+        return data;
+      },
+    );
+    await tester.tap(find.byKey(const Key('child-shortage-banner-go')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('child-shortage-submit')));
+    await tester.pumpAndSettle();
+    await _chooseFullOrderNoClaim(tester);
+    await tester.tap(
+      find.descendant(of: find.byType(AlertDialog), matching: find.text('取消')),
+    );
+    await tester.pumpAndSettle();
+    expect(_writes(), isEmpty);
+    await tester.tap(
+      find.byKey(const Key('material-preparation-supply-usage')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('优先使用可用余量'));
+    await tester.tap(find.text('继续'));
+    await tester.pumpAndSettle();
+    await _submitShortagePage(tester);
+    expect(_writes(), isNotEmpty);
+    expect(
+      _writes().every((write) => write.body?['skipAutoClaim'] != true),
+      isTrue,
+    );
   });
 
   testWidgets('下单父件后只点名它自己下层缺的料；稍后再说后提示条常驻', (tester) async {

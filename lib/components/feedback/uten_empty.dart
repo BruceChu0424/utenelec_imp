@@ -52,58 +52,52 @@ class UtenEmpty extends StatelessWidget {
         : (isDark ? UtenColors.darkTextTertiary : UtenColors.textTertiary);
 
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: isError ? 0.1 : 0.08),
-                shape: BoxShape.circle,
+      // Keep recovery reachable without taking the host's primary scroll controller.
+      child: SingleChildScrollView(
+        primary: false,
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: isError ? 0.1 : 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: iconColor, size: 32),
               ),
-              child: Icon(icon, color: iconColor, size: 32),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              message,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (description != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 20),
               Text(
-                description!,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: isDark
-                      ? UtenColors.darkTextTertiary
-                      : UtenColors.textTertiary,
-                  height: 1.5,
+                message,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
               ),
-            ],
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 24),
-              OutlinedButton(
-                onPressed: onAction,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: UtenColors.primary,
-                  side: const BorderSide(color: UtenColors.primary),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
+              if (description != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  description!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: isDark
+                        ? UtenColors.darkTextTertiary
+                        : UtenColors.textTertiary,
+                    height: 1.5,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                child: Text(actionLabel!),
-              ),
+              ],
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(height: 24),
+                // The shared theme owns readable colors, target size and focus states.
+                OutlinedButton(onPressed: onAction, child: Text(actionLabel!)),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

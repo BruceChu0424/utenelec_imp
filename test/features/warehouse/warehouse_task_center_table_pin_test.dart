@@ -95,6 +95,18 @@ void main() {
     // 大类 → 出库；小类 → 销售出库；状态段 → 待出库（加载表格）。
     await tester.tap(find.text('出库'));
     await tester.pump(const Duration(milliseconds: 300));
+    void expectAlignedCategories() {
+      final parent = tester.getRect(
+        find.byKey(const Key('warehouse-task-center-groups')),
+      );
+      final child = tester.getRect(
+        find.byKey(const Key('warehouse-task-center-segments-出库任务中心')),
+      );
+      expect(child.left, parent.left);
+    }
+
+    // 选择小类前后都由同一页面容器决定分类左缘。
+    expectAlignedCategories();
     await tester.tap(find.text('销售出库'));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tap(find.text('待出库'));
@@ -105,6 +117,7 @@ void main() {
     expect(find.text('入库'), findsOneWidget);
     expect(find.text('委外出库'), findsOneWidget);
     expect(find.text('已出库'), findsOneWidget);
+    expectAlignedCategories();
 
     // 滑到头（外层收完 + 表内滚）。
     for (var i = 0; i < 12; i++) {

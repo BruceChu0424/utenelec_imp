@@ -192,15 +192,22 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
         clock.advance(Duration.ofMinutes(16));
         String afterPause = login(employee.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
         assertEquals(200, stepUpResult(afterPause, EMPLOYEE_PASSWORD).getResponse().getStatus());
-        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM auth_step_up_states WHERE user_id = ?::uuid",
-                Integer.class, employee.userId()), "成功一次即清零");
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM auth_step_up_states WHERE user_id = ?::uuid",
+                Integer.class, employee.userId()), "失败状态记录保留，不以删行冒充清零");
+        assertEquals(0, jdbc.queryForObject("SELECT failed_attempts FROM auth_step_up_states WHERE user_id = ?::uuid",
+                Integer.class, employee.userId()), "成功一次即清零有效失败次数");
+        assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT locked_until IS NULL FROM auth_step_up_states WHERE user_id = ?::uuid",
+                Boolean.class, employee.userId()), "成功后解除暂停状态");
     }
 
     @Test
     void resetIssuesOneTimeRandomPasswordNotifiesTheHolderAndEndsTheirSessions() throws Exception {
         String admin = adminToken();
         Employee target = newEmployee(admin);
-        assertTrue(target.issuedTemporaryPassword().length() >= 20, "开号的初始密码是随机高熵临时密码");
+        int fixtureSequence = Integer.parseInt(target.loginAccount().substring("1390000".length()));
+        String originalIdentity = idNumber(fixtureSequence);
+        assertEquals(originalIdentity.substring(originalIdentity.length() - 6), target.issuedTemporaryPassword(),
+                "开号使用提交的规范证件号末六位，管理员重置另用随机临时密码");
 
         String token = stepUp(admin, ADMIN_PASSWORD);
         MvcResult reset = mvc.perform(json(post("/api/admin/users/" + target.userId() + "/reset-password"),
@@ -208,6 +215,7 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
         assertEquals(200, reset.getResponse().getStatus(), body(reset));
         String temporary = json(reset).path("temporaryPassword").asText();
         assertTrue(temporary.length() >= 20);
+        assertNotEquals(target.issuedTemporaryPassword(), temporary, "管理员重置不得回退到证件号初始密码");
 
         assertEquals(401, me(target.accessToken()).getResponse().getStatus(), "目标的旧会话全部失效");
         assertEquals(1, jdbc.queryForObject("""

@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 委外询价单详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class InquiryDetail
+public class InquiryDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
         implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
@@ -36,4 +36,7 @@ public class InquiryDetail
     /** 制单时间（审计 created_at，创建后不可变）。 */
     private java.time.Instant createdAt;
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

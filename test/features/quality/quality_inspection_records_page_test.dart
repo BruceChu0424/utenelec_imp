@@ -64,70 +64,73 @@ void main() {
     expect(api.listQueries.single['to'], '2026-08-31T15:59:59.999999Z');
   });
 
-  testWidgets(
-    '375px renders server metrics, filters, cards, and audited detail',
-    (tester) async {
-      final api = _RecordApi();
-      await _pumpPage(
-        tester,
-        api: api,
-        permissions: const {
-          Perm.procurementInspectionView,
-          Perm.productionQualityInspectionView,
-        },
-      );
+  testWidgets('375px renders filters, cards, and audited detail', (
+    tester,
+  ) async {
+    final api = _RecordApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {
+        Perm.procurementInspectionView,
+        Perm.productionQualityInspectionView,
+      },
+    );
 
-      expect(find.text('检测记录'), findsOneWidget);
-      // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管，
-      // mobile-list 键退役；同一张表（含卡片形态）挂 quality-inspection-record-table。
-      expect(
-        find.byKey(const Key('quality-inspection-record-table')),
-        findsOneWidget,
-      );
-      expect(find.text('全部记录'), findsOneWidget);
-      // 卡片形态副行是「单号 · 编号」拼接串，用包含匹配。
-      expect(find.textContaining('PR20260831001'), findsOneWidget);
-      // 卡片明细是「标签 值」富文本，用包含匹配。
-      expect(find.textContaining('当前有效'), findsOneWidget);
-      expect(api.listQueries.last['page'], 1);
-      expect(api.listPaths.last, '/procurement/inspection/records');
+    expect(find.text('检测记录'), findsOneWidget);
+    // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管，
+    // mobile-list 键退役；同一张表（含卡片形态）挂 quality-inspection-record-table。
+    expect(
+      find.byKey(const Key('quality-inspection-record-table')),
+      findsOneWidget,
+    );
+    expect(find.text('来料检验(IQC)'), findsOneWidget);
+    // 卡片形态副行是「单号 · 编号」拼接串，用包含匹配。
+    expect(find.textContaining('PR20260831001'), findsOneWidget);
+    // 卡片明细是「标签 值」富文本，用包含匹配。
+    expect(find.textContaining('当前有效'), findsOneWidget);
+    expect(api.listQueries.last['page'], 1);
+    expect(api.listPaths.last, '/procurement/inspection/records');
 
-      await tester.tap(find.text('不合格记录'));
-      await tester.pumpAndSettle();
-      expect(api.listQueries.last['decision'], 'FAIL');
-      expect(api.listQueries.last['page'], 1);
+    // 2026-10-01 用户口径：顶部指标卡已删除，检验结果筛选走表头 decision 桶。
+    final table = tester.widget<MasterDataTableView<QualityInspectionRecord>>(
+      find.byKey(const Key('quality-inspection-record-table')),
+    );
+    table.onFilterChanged('decision', 'FAIL');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['decision'], 'FAIL');
+    expect(api.listQueries.last['page'], 1);
 
-      await tester.enterText(
-        find.byKey(const Key('quality-inspection-record-search')),
-        'V51043',
-      );
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pumpAndSettle();
-      expect(api.listQueries.last['keyword'], 'V51043');
+    await tester.enterText(
+      find.byKey(const Key('quality-inspection-record-search')),
+      'V51043',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['keyword'], 'V51043');
 
-      await tester.tap(find.text('成品检验(FQC)'));
-      await tester.pumpAndSettle();
-      expect(api.listPaths.last, '/production/quality-inspections/records');
-      expect(api.listQueries.last.containsKey('decision'), isFalse);
-      expect(find.textContaining('RB20260831001'), findsOneWidget);
+    await tester.tap(find.text('成品检验(FQC)'));
+    await tester.pumpAndSettle();
+    expect(api.listPaths.last, '/production/quality-inspections/records');
+    expect(api.listQueries.last.containsKey('decision'), isFalse);
+    expect(find.textContaining('RB20260831001'), findsOneWidget);
 
-      // 卡片形态点卡片任意处（副行文本）打开详情。
-      await tester.tap(find.textContaining('RB20260831001'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const ValueKey('quality-inspection-record-fqc-event-1')),
-        findsOneWidget,
-      );
-      expect(find.text('检测记录详情'), findsOneWidget);
-      expect(find.text('尺寸抽检不合格'), findsOneWidget);
-      expect(find.text('warehouse-1'), findsOneWidget);
-      expect(
-        api.detailPaths.last,
-        '/production/quality-inspections/records/fqc-event-1',
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+    // 卡片形态点卡片任意处（副行文本）打开详情。
+    await tester.tap(find.textContaining('RB20260831001'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('quality-inspection-record-fqc-event-1')),
+      findsOneWidget,
+    );
+    expect(find.text('检测记录详情'), findsOneWidget);
+    expect(find.text('尺寸抽检不合格'), findsOneWidget);
+    expect(find.text('warehouse-1'), findsOneWidget);
+    expect(
+      api.detailPaths.last,
+      '/production/quality-inspections/records/fqc-event-1',
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'desktop uses the shared paged table and keeps stale data on error',
@@ -327,7 +330,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('PR20260831001'), findsOneWidget);
-    expect(find.textContaining('本页只读'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

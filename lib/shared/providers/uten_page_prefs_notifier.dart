@@ -41,13 +41,24 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:crypto/crypto.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/network/server_config.dart';
 import '../auth/session_snapshot_provider.dart';
 import 'authenticated_scope_provider.dart';
 import 'session_provider.dart';
 import 'shared_providers.dart';
+
+/// Legacy keys did not identify their owner. Never adopt them for another
+/// account or server; authenticated server preferences provide the migration.
+String scopedPagePreferenceCacheKey(
+  String key,
+  String server,
+  AuthenticatedScope? scope,
+) =>
+    '${key}_v2_${sha256.convert(utf8.encode(jsonEncode([server, scope?.userId, scope?.actorId]))).toString().substring(0, 32)}';
 
 abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   /// 服务端偏好 key（user_preferences.pref_key，全账号唯一；点分层命名）。
@@ -79,10 +90,49 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   /// 已采用过的快照加载批次与其所属身份。
   int? _adoptedGeneration;
   AuthenticatedScope? _adoptedScope;
+  int _lifecycle = 0;
+  bool _disposed = false;
+  AuthenticatedScope? _ownerScope;
+  String _ownerServer = '';
+
+  String _server({bool watch = false}) {
+    try {
+      return watch
+          ? ref.watch(apiBaseUrlProvider)
+          : ref.read(apiBaseUrlProvider);
+    } on UnimplementedError {
+      // Isolated widgets may not provide the main application's local prefs.
+      return '';
+    }
+  }
+
+  String get _scopedCacheKey =>
+      scopedPagePreferenceCacheKey(cacheKey, _ownerServer, _ownerScope);
+
+  bool _owns(int lifecycle) =>
+      !_disposed &&
+      lifecycle == _lifecycle &&
+      ref.read(authenticatedScopeProvider) == _ownerScope &&
+      _server() == _ownerServer;
 
   @override
   T build() {
-    ref.onDispose(() => _saveTimer?.cancel());
+    _ownerScope = ref.watch(authenticatedScopeProvider);
+    _ownerServer = _server(watch: true);
+    final lifecycle = ++_lifecycle;
+    _disposed = false;
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    _localAhead = false;
+    _localRevision = 0;
+    _adoptedScope = null;
+    _adoptedGeneration = null;
+    ref.onDispose(() {
+      if (lifecycle != _lifecycle) return;
+      _disposed = true;
+      _saveTimer?.cancel();
+      _saveTimer = null;
+    });
 
     // 会话快照到达(登录/换号/恢复会话)后同步一次；9 个子类共用同一份快照，
     // 整个会话只有 /auth/me 那一次请求。
@@ -90,19 +140,28 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
       prev,
       next,
     ) {
-      final snapshot = next.valueOrNull;
+      if (!_owns(lifecycle) ||
+          next.isLoading ||
+          next.hasError ||
+          next is! AsyncData<SessionSnapshot?>) {
+        return;
+      }
+      final snapshot = next.value;
       if (snapshot != null) {
         _adoptSnapshot(snapshot);
-      } else if (next is AsyncData) {
+      } else {
         // 登出：下次登录(哪怕同一账号)视为新身份，以服务端为准。
         _adoptedScope = null;
         _adoptedGeneration = null;
       }
     });
     // 兜住「快照先到、provider 后建」的顺序
-    final ready = ref.read(sessionSnapshotProvider).valueOrNull;
+    final readyState = ref.read(sessionSnapshotProvider);
+    final ready = confirmedSessionSnapshot(readyState);
     if (ready != null) {
-      Future.microtask(() => _adoptSnapshot(ready));
+      Future.microtask(() {
+        if (_owns(lifecycle)) _adoptSnapshot(ready);
+      });
     }
 
     // 冷启动：本地缓存优先，避免闪烁；无缓存用默认
@@ -112,7 +171,7 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   T? _loadFromCache() {
     final prefs = _sharedPrefsOrNull();
     if (prefs == null) return null;
-    final raw = prefs.getString(cacheKey);
+    final raw = prefs.getString(_scopedCacheKey);
     if (raw == null || raw.isEmpty) return null;
     try {
       return decode(jsonDecode(raw));
@@ -150,9 +209,10 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
   /// snapshot listener; pages whose first request depends on a persisted default
   /// may await this method before constructing that request.
   Future<void> syncNow() async {
+    final lifecycle = _lifecycle;
     try {
       final snapshot = await ref.read(sessionSnapshotProvider.future);
-      if (snapshot != null) _adoptSnapshot(snapshot);
+      if (_owns(lifecycle) && snapshot != null) _adoptSnapshot(snapshot);
     } catch (_) {
       // 快照拉取失败：保留本地缓存/默认值，不打断页面
     }
@@ -160,12 +220,14 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
 
   /// 整体替换状态并持久化（简单偏好用这个）。
   void update(T value) {
+    if (!_owns(_lifecycle)) return;
     state = value;
     persist();
   }
 
   /// 子类自行变更 state 后调用：立即写缓存 + 防抖推服务端。
   void persist() {
+    if (!_owns(_lifecycle)) return;
     _localRevision++;
     _localAhead = true;
     _writeCache();
@@ -178,7 +240,7 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
     if (encoded == null) return;
     final prefs = _sharedPrefsOrNull();
     if (prefs == null) return;
-    prefs.setString(cacheKey, jsonEncode(encoded));
+    prefs.setString(_scopedCacheKey, jsonEncode(encoded));
   }
 
   /// 本地缓存层对「未注入 sharedPreferences」容错：widget 测试经常直接泵页面
@@ -194,6 +256,8 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
 
   Future<void> _pushToServer() async {
     _saveTimer = null;
+    final lifecycle = _lifecycle;
+    if (!_owns(lifecycle)) return;
     if (ref.read(sessionProvider).user == null) return; // 未登录不推
     // The debounce belongs to the identity that produced it. A newly issued
     // token must never write the previous account's queued preferences.
@@ -206,7 +270,7 @@ abstract class UtenPagePrefsNotifier<T> extends Notifier<T> {
           .read(apiClientProvider)
           .put(ApiEndpoints.userPreference(prefKey), body: value);
       // 推送期间换了身份：这次结果与新身份无关。
-      if (scope != _adoptedScope) return;
+      if (!_owns(lifecycle) || scope != _adoptedScope) return;
       // 推送期间又改过：仍以本地为准，等下一次推送。
       if (revision == _localRevision) _localAhead = false;
       // 就地更新会话快照(同一加载批次)：换页重建的实例读到刚存的值，不必重拉整张表；

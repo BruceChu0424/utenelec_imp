@@ -70,6 +70,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
         hubCardAllowed(RouteName.finance, location, permissions, superAdmin);
     final canOpenAuditCenter = canOpen(RouteName.financeAudits);
     final canOpenQuoteReview = canOpen(RouteName.financeQuoteReview);
+    final canOpenStockCountReview = canOpen(RouteName.financeStockCountReview);
     final canHandleExpense = canOpen('/expense/approval');
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) => canOpen(entry.location))
@@ -103,6 +104,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
             children: [
               if (canOpenAuditCenter ||
                   canOpenQuoteReview ||
+                  canOpenStockCountReview ||
                   canHandleExpense) ...[
                 _section(context, theme, l10n.hubSectionTaskCenter, [
                   // 2026-09-18 合并：原 6 张审核队列卡（销售订单财务确认/销售订单
@@ -122,6 +124,16 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                       badge: FinanceAuditCenterBadge(),
                     ),
                   // 报价核价(ADR-134)：红徽章 = 等财务定价确认的报价。
+                  if (canOpenStockCountReview)
+                    const _Entry(
+                      icon: Icons.inventory_outlined,
+                      label: '普通仓盘点审核',
+                      description: '核对盘点前后数量与重量，审核通过后更新库存',
+                      location: RouteName.financeStockCountReview,
+                      badgeScope: BadgeScope.entry(
+                        BadgeEntry.financeStockCountReview,
+                      ),
+                    ),
                   if (canOpenQuoteReview)
                     _Entry(
                       icon: Icons.price_check_outlined,

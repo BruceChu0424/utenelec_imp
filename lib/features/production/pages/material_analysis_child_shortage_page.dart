@@ -153,6 +153,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                         ),
                         children: [
                           _summaryCard(theme, lines, urged),
+                          ?_host._preparationSupplyUsageAction(),
                           const SizedBox(height: UtenSpacing.s12),
                           for (final root in roots) ...[
                             _rootSection(theme, root, urged),

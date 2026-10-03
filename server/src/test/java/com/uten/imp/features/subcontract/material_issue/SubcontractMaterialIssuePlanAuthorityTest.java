@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,7 +28,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +43,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
     private StockService stockService;
     private EntityManager em;
     private SubcontractDocumentAccessPolicy access;
+    private SubcontractMaterialPlanService planService;
     private SubcontractMaterialIssueService service;
 
     @BeforeEach
@@ -48,6 +53,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         stockService = mock(StockService.class);
         em = mock(EntityManager.class);
         access = mock(SubcontractDocumentAccessPolicy.class);
+        planService = mock(SubcontractMaterialPlanService.class);
         service = new SubcontractMaterialIssueService(
                 issueRepo,
                 itemRepo,
@@ -58,8 +64,76 @@ class SubcontractMaterialIssuePlanAuthorityTest {
                 mock(EmployeeNameResolver.class),
                 mock(DocNumberService.class),
                 access,
-                mock(SubcontractMaterialPlanService.class),
+                planService,
                 org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+    }
+
+    @Test
+    void successfulPlanDraftSaveUpdatesTheOriginalRowBeforeRefreshingReservations() {
+        UUID issueId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        SubcontractMaterialIssue document = new SubcontractMaterialIssue();
+        document.setId(issueId);
+        document.setStatus((short) 0);
+        document.setBillNo("EC20261001000001");
+        document.setWarehouseId(warehouseId);
+        SubcontractMaterialIssueItem item = new SubcontractMaterialIssueItem();
+        item.setIssueId(issueId);
+        item.setPlanItemId(planItemId);
+        item.setGoodsId(goodsId);
+        item.setQty(new BigDecimal("1000"));
+        item.setWeight(new BigDecimal("20"));
+        UUID originalItemId = item.getId();
+        when(em.find(SubcontractMaterialIssue.class, issueId, LockModeType.PESSIMISTIC_WRITE))
+                .thenReturn(document);
+        when(itemRepo.findByIssueIdOrderByLineNoAsc(issueId)).thenReturn(List.of(item));
+        when(access.hasAuthority("subcontract_outbound:execute")).thenReturn(true);
+
+        Query plan = mock(Query.class);
+        when(plan.setParameter(anyString(), any())).thenReturn(plan);
+        when(plan.getResultList()).thenReturn(java.util.Arrays.<Object[]>asList(new Object[]{
+                UUID.randomUUID(), null, null, null, goodsId, null, null, BigDecimal.ONE,
+                new BigDecimal("1000"), BigDecimal.ZERO, "OPEN"
+        }));
+        Query master = mock(Query.class);
+        when(master.setParameter(anyString(), any())).thenReturn(master);
+        when(master.getResultList()).thenReturn(java.util.Arrays.<Object[]>asList(new Object[]{
+                goodsId, goodsId, "PART-1", "测试物料"
+        }));
+        Query empty = mock(Query.class);
+        when(empty.setParameter(anyString(), any())).thenReturn(empty);
+        when(empty.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> {
+            String sql = call.getArgument(0);
+            if (sql.contains("SELECT pi.plan_id")) return plan;
+            if (sql.contains("SELECT goods.id, goods.id")) return master;
+            return empty;
+        });
+        MaterialIssueItemLine line = new MaterialIssueItemLine();
+        line.setPlanItemId(planItemId);
+        line.setGoodsId(goodsId);
+        line.setQty(new BigDecimal("500"));
+        line.setWeight(new BigDecimal("10"));
+        MaterialIssueSaveRequest request = new MaterialIssueSaveRequest();
+        request.setWarehouseId(warehouseId);
+        request.setBillDate(LocalDate.of(2026, 10, 1));
+        request.setItems(List.of(line));
+
+        var saved = service.update(issueId, request);
+
+        assertEquals(originalItemId, saved.getItems().getFirst().getId());
+        assertEquals(new BigDecimal("500"), saved.getItems().getFirst().getQty());
+        assertEquals(new BigDecimal("10"), saved.getItems().getFirst().getWeight());
+        verify(itemRepo).save(item);
+        verify(itemRepo, never()).deleteByIssueId(any());
+        verify(itemRepo, never()).deleteAll(any());
+        var order = org.mockito.Mockito.inOrder(itemRepo, planService);
+        order.verify(itemRepo).save(item);
+        order.verify(itemRepo).flush();
+        order.verify(planService).reserveDraft(issueId, warehouseId);
+        verifyNoInteractions(stockService);
     }
 
     @Test

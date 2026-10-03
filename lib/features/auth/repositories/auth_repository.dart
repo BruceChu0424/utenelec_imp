@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/security/secure_storage.dart';
 import '../models/auth_session.dart';
 import '../services/pending_refresh_revocation_drainer.dart';
 
@@ -18,9 +19,10 @@ abstract interface class AuthRepository {
 /// below; the pending-revocation drainer calls this endpoint through its own
 /// dedicated transport so queued logout never recurses through the decorator.
 class DioAuthRepository implements AuthRepository {
-  DioAuthRepository(this.api);
+  DioAuthRepository(this.api, [this.storage]);
 
   final ApiClient api;
+  final SecureStorage? storage;
 
   @override
   Future<AuthResult> login(String loginAccount, String password) async {
@@ -68,11 +70,15 @@ class DioAuthRepository implements AuthRepository {
 
   @override
   Future<UserProfile> me() async {
+    final submitted = await storage?.getAuthTokenSnapshot();
     final json = await api.get(ApiEndpoints.authMe);
     final profile = UserProfile.fromJson(json);
     final session = json['session'];
-    if (session is Map<String, dynamic>) {
-      RecentMeSnapshot.remember(profile.id, session);
+    if (session is Map<String, dynamic> && submitted?.sessionLineage != null) {
+      final current = await storage!.getAuthTokenSnapshot();
+      if (submitted!.isSameSession(current)) {
+        RecentMeSnapshot.remember(profile.id, session, api, submitted);
+      }
     }
     return profile;
   }
@@ -83,24 +89,59 @@ class DioAuthRepository implements AuthRepository {
 /// 会话恢复刚调过 /auth/me, 会话快照 provider 紧接着取用这一份, 不再为快照重复请求;
 /// 只存内存、只认同一用户、10 秒内有效、取用一次即清。
 abstract final class RecentMeSnapshot {
+  static bool get hasCandidate => _last != null;
   static const _ttl = Duration(seconds: 10);
-  static ({String userId, Map<String, dynamic> session, DateTime at})? _last;
+  static ({
+    String userId,
+    Map<String, dynamic> session,
+    DateTime at,
+    ApiClient client,
+    int generation,
+    int intentGeneration,
+    String lineage,
+  })?
+  _last;
 
-  static void remember(String userId, Map<String, dynamic> session) {
-    _last = (userId: userId, session: session, at: DateTime.now());
+  static void remember(
+    String userId,
+    Map<String, dynamic> session,
+    ApiClient client,
+    AuthTokenSnapshot tokens,
+  ) {
+    final lineage = tokens.sessionLineage;
+    if (lineage == null || lineage.isEmpty) return;
+    _last = (
+      userId: userId,
+      session: session,
+      at: DateTime.now(),
+      client: client,
+      generation: tokens.generation,
+      intentGeneration: tokens.intentGeneration,
+      lineage: lineage,
+    );
   }
 
   /// 取走 [userId] 的最近快照; 过期、换人或已取过返回 null。
-  static Map<String, dynamic>? take(String userId) {
+  static Map<String, dynamic>? take(
+    String userId,
+    ApiClient client,
+    AuthTokenSnapshot tokens,
+  ) {
     final last = _last;
     _last = null;
     if (last == null ||
         last.userId != userId ||
+        !identical(last.client, client) ||
+        last.generation != tokens.generation ||
+        last.intentGeneration != tokens.intentGeneration ||
+        last.lineage != tokens.sessionLineage ||
         DateTime.now().difference(last.at) > _ttl) {
       return null;
     }
     return last.session;
   }
+
+  static void clear() => _last = null;
 }
 
 /// Adds durable, encrypted, eventually-consistent server revocation to every
@@ -134,7 +175,10 @@ class DurableLogoutAuthRepository implements AuthRepository {
 }
 
 final authNetworkRepositoryProvider = Provider<AuthRepository>(
-  (ref) => DioAuthRepository(ref.watch(apiClientProvider)),
+  (ref) => DioAuthRepository(
+    ref.watch(apiClientProvider),
+    ref.read(secureStorageProvider),
+  ),
 );
 
 final authRepositoryProvider = Provider<AuthRepository>(

@@ -31,8 +31,8 @@
         <aliyun-oss.version>3.18.5</aliyun-oss.version>
         <!-- Security patch floors; keep managed dependency families aligned via their BOMs. -->
         <commons-lang3.version>3.18.0</commons-lang3.version>
-        <!-- GHSA-gx83-3vf8-gh7j / GHSA-q4xh-88c3-wmh7 / GHSA-wjgm-6hv5-3cvf：jackson-databind 2.21.5 → 2.21.6（High×1 + Medium×2，osv-scanner 门禁） -->
-        <jackson-bom.version>2.21.6</jackson-bom.version>
+        <!-- GHSA-cxp5-3px4-pw24 / GHSA-wv8q-qhhj-9h54：jackson-databind 2.21.6 → 2.21.7（High ×2）；BOM 保持 Jackson 家族版本一致。 -->
+        <jackson-bom.version>2.21.7</jackson-bom.version>
         <!-- GHSA-qv9r-c865-cp47：log4j-api 2.24.3 → 2.25.5（Medium，osv-scanner 门禁） -->
         <log4j2.version>2.25.5</log4j2.version>
         <!-- GHSA-9xv2-5v5q-p794 / GHSA-gcx9-497g-6cp6 / GHSA-h3x4-894j-xpx5：tomcat-embed-core 10.1.55 → 10.1.59（Critical ×3，osv-scanner 门禁）。

@@ -106,12 +106,12 @@ class ServerStatusProbeTest {
     }
 
     @Test void outboxBacklogWarnsByCountOrAgeAndReadsBothOutboxes() throws Exception {
-        assertThat(ServerStatusProbe.outboxMetric(0,0,0,0).status()).isEqualTo("NORMAL");
-        assertThat(ServerStatusProbe.outboxMetric(50,50,0,5).status()).isEqualTo("NORMAL");
-        assertThat(ServerStatusProbe.outboxMetric(51,51,0,0).status()).isEqualTo("WARNING");
-        assertThat(ServerStatusProbe.outboxMetric(1,0,1,6).status()).isEqualTo("WARNING");
-        assertThat(ServerStatusProbe.outboxMetric(501,500,1,0).status()).isEqualTo("CRITICAL");
-        assertThat(ServerStatusProbe.outboxMetric(3,3,0,31).status()).isEqualTo("CRITICAL");
+        assertThat(ServerStatusProbe.outboxMetric(0,0,0,0,0).status()).isEqualTo("NORMAL");
+        assertThat(ServerStatusProbe.outboxMetric(50,50,0,5,0).status()).isEqualTo("NORMAL");
+        assertThat(ServerStatusProbe.outboxMetric(51,51,0,0,0).status()).isEqualTo("WARNING");
+        assertThat(ServerStatusProbe.outboxMetric(1,0,1,6,0).status()).isEqualTo("WARNING");
+        assertThat(ServerStatusProbe.outboxMetric(501,500,1,0,0).status()).isEqualTo("CRITICAL");
+        assertThat(ServerStatusProbe.outboxMetric(3,3,0,31,0).status()).isEqualTo("CRITICAL");
         var probe=probe();
         when(result.getLong(1)).thenReturn(4L);
         when(result.getLong(3)).thenReturn(2L);
@@ -126,6 +126,42 @@ class ServerStatusProbeTest {
         when(result.getObject(2,OffsetDateTime.class)).thenReturn(null);
         when(result.getObject(4,OffsetDateTime.class)).thenReturn(null);
         assertThat(probe.outbox(now).detail()).contains("等待 0 分钟");
+    }
+
+    @Test void stoppedEventsAddToUnresolvedCountWithoutChangingPendingAge() throws Exception {
+        var probe=probe();
+        when(result.getLong(1)).thenReturn(4L);
+        when(result.getLong(3)).thenReturn(2L);
+        when(result.getLong(5)).thenReturn(1L);
+        when(result.getObject(2,OffsetDateTime.class))
+                .thenReturn(OffsetDateTime.ofInstant(now.minusSeconds(120),ZoneOffset.UTC));
+        when(result.getObject(4,OffsetDateTime.class))
+                .thenReturn(OffsetDateTime.ofInstant(now.minusSeconds(7*60),ZoneOffset.UTC));
+        var unresolved=probe.outbox(now);
+        assertThat(unresolved.value()).isEqualTo(7d);
+        assertThat(unresolved.status()).isEqualTo("WARNING");
+        assertThat(unresolved.detail()).contains("业务通知 4", "附件清理 2", "已停止重试 1", "等待 7 分钟");
+    }
+
+    @Test void stoppedBusinessEventsRemainVisibleWhenNoWorkIsPending() throws Exception {
+        var probe=probe();
+        when(result.getLong(5)).thenReturn(1L);
+        var stopped=probe.outbox(now);
+        assertThat(stopped.status()).isEqualTo("WARNING");
+        assertThat(stopped.value()).isEqualTo(1d);
+        assertThat(stopped.detail()).contains("业务通知 0", "附件清理 0", "已停止重试 1", "管理员核查")
+                .doesNotContain("停止重试 1 分钟");
+        verify(connection).prepareStatement(contains("business_outbox WHERE status=2"));
+
+        when(result.getLong(5)).thenReturn(501L);
+        assertThat(probe.outbox(now).status()).isEqualTo("CRITICAL");
+        when(result.getLong(5)).thenReturn(0L);
+        assertThat(probe.outbox(now).status()).isEqualTo("NORMAL");
+        when(statement.executeQuery()).thenThrow(new SQLTimeoutException("private diagnostic"));
+        var unavailable=probe.outbox(now);
+        assertThat(unavailable.status()).isEqualTo("UNKNOWN");
+        assertThat(unavailable.value()).isNull();
+        assertThat(unavailable.detail()).doesNotContain("private diagnostic");
     }
 
     @Test void attachmentVolumeSumsStoredSizeAndReportsUnknownOnTimeout() throws Exception {

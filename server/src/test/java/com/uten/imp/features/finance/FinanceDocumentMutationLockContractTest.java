@@ -18,9 +18,17 @@ class FinanceDocumentMutationLockContractTest {
         for (ServiceContract contract : services()) {
             String source = source(contract.relativePath());
             assertThat(method(source, " detail("))
-                    .as("read-only detail in %s", contract.relativePath())
-                    .contains("= require(id);")
+                    .as("active detail delegation in %s", contract.relativePath())
+                    .contains("return readDetail(id, false);")
                     .doesNotContain("lockActive(id)");
+            assertThat(method(source, " detailHistory("))
+                    .as("history detail delegation in %s", contract.relativePath())
+                    .contains("return readDetail(id, true);")
+                    .doesNotContain("lockActive(id)");
+            assertThat(method(source, " readDetail(UUID id, boolean historyRead)"))
+                    .as("shared read-only detail in %s", contract.relativePath())
+                    .contains("= require(id, historyRead);", "access.requireReadable(")
+                    .doesNotContain("lockActive(", "lockActiveForProjection(", "PESSIMISTIC_WRITE");
             String lockHelper = lastMethod(source, " lockActive(");
             assertThat(lockHelper)
                     .as("lock helper in %s", contract.relativePath())

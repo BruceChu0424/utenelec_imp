@@ -74,6 +74,10 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class PurchaseOrderService implements ProcurementOrderApprovalPort {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -144,8 +148,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         List<OrderListItem> items = p.getContent().stream()
                 .map(row -> toList(row, approvals.get(row.getId()), priceMasked))
                 .toList();
-        return new PageResponse<>(
+        PageResponse<OrderListItem> result = new PageResponse<>(
                 items, p);
+        return p.stream().noneMatch(PurchaseOrder::isDeleted) ? result
+                : retainedRecords.page(result, "purchase_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -172,7 +178,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return (Root<PurchaseOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -211,18 +218,25 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     }
                 }
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewPurchaseOrder(), null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public OrderDetail detail(UUID id) {
-        PurchaseOrder o = requireOrder(id);
+    public OrderDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public OrderDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private OrderDetail readDetail(UUID id, boolean historyRead) {
+        PurchaseOrder o = requireOrder(id, historyRead);
         if (!access.canRead(o.getMakerId())
                 && !approvalProjection.canCurrentActorReviewPending(orderType(), id)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在");
         }
-        return assembleDetail(o);
+        return finishHistory(assembleDetail(o), o, historyRead);
     }
 
     private OrderDetail assembleDetail(PurchaseOrder o) {
@@ -830,10 +844,12 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         for (Object[] change : changes) {
             PurchaseOrderItem item = (PurchaseOrderItem) change[0];
             BigDecimal newQty = (BigDecimal) change[2];
+            item.setTotalAmountInput(MoneyPolicy.revisedTotalAmountInput(
+                    item.getTotalAmountInput(), (BigDecimal) change[1], newQty));
             item.setQty(newQty);
             BigDecimal amountOriginal = item.getPrice() == null
                     ? null : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                            MoneyPolicy.exactProduct(newQty, item.getPrice()), item.getExtraColumns());
+                            MoneyPolicy.orderBaseAmount(newQty, item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
             item.setAmountOriginal(amountOriginal);
             item.setAmountLocal(amountOriginal == null
                     ? null : money(amountOriginal.multiply(rate)));
@@ -978,7 +994,11 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         "采购订货数量、单价和金额必须完整且不能为负");
             }
             BigDecimal expectedOriginal = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    MoneyPolicy.exactProduct(item.getQty(), item.getPrice()), item.getExtraColumns());
+                    MoneyPolicy.orderBaseAmount(item.getQty(), item.getPrice(), item.getTotalAmountInput()), item.getExtraColumns());
+            if (item.getTotalAmountInput() != null
+                    && item.getPrice().compareTo(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty())) != 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "参考单价与总金额、数量不一致");
+            }
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
@@ -1030,7 +1050,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                                 item.getPrice(),
                                 item.getAmountOriginal(),
                                 item.getAmountLocal(),
-                                item.getDeliverDate()))
+                                item.getDeliverDate(), item.getTotalAmountInput()))
                         .toList());
     }
 
@@ -1138,8 +1158,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         lines.stream().map(OrderItemLine::getGoodsId).toList(),
                         PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         UUID actorId = currentUser.requireId();
-        // 行金额只由服务端按「数量×单价」「原币金额×表头汇率」精确派生(ADR-112), 请求不带金额;
-        // 单价缺省则金额为空(送审要求单价完整), 汇率缺省则本币为空。
+        // 行金额按单价乘数量或用户约定总金额派生；本币仍由服务端按汇率计算。
+        // 单价和约定总金额都缺省时金额为空；汇率缺省则本币为空。
         BigDecimal headerRate = o.getExchangeRate();
         int auto = 1;
         for (OrderItemLine l : lines) {
@@ -1168,12 +1188,16 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
             it.setQty(l.getQty());
-            BigDecimal price = l.getPrice()==null?null:com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(),"采购单价");
+            BigDecimal totalInput = MoneyPolicy.totalAmountInput(l.getTotalAmountInput());
+            BigDecimal price = totalInput == null
+                    ? (l.getPrice() == null ? null : com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(), "单价"))
+                    : MoneyPolicy.referenceUnitPrice(totalInput, l.getQty());
+            it.setTotalAmountInput(totalInput);
             it.setPrice(price);
             it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "purchase_order",
                     l.getExtraColumns(), previousColumns.getOrDefault(l, List.of()), purchasePriceMasked()));
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    price == null ? null : MoneyPolicy.exactProduct(l.getQty(), price), it.getExtraColumns());
+                    MoneyPolicy.orderBaseAmount(l.getQty(), price, totalInput), it.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
             it.setAmountOriginal(amounts.original());
@@ -1444,6 +1468,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(),
                 it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
                 sourceRequests);
+        dto.setTotalAmountInput(it.getTotalAmountInput());
         dto.setExtraColumns(it.getExtraColumns());
         return dto;
     }
@@ -1539,8 +1564,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return null;
     }
 
-    private PurchaseOrder requireOrder(UUID id) {
-        return orderRepo.findById(id).filter(o -> !o.isDeleted())
+    private PurchaseOrder requireOrder(UUID id) { return requireOrder(id, false); }
+
+    private PurchaseOrder requireOrder(UUID id, boolean includeDeleted) {
+        return orderRepo.findById(id).filter(o -> includeDeleted || !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购订货单不存在"));
     }
     private PurchaseOrder requireOrderForUpdate(UUID id) {
@@ -1549,5 +1576,17 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return order == null || order.isDeleted()
                 ? requireOrder(id)
                 : order;
+    }
+
+    private OrderDetail finishHistory(OrderDetail view, PurchaseOrder entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "purchase_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("purchase_orders",id,beforeId,size);
     }
 }

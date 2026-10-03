@@ -102,6 +102,21 @@ class SalesDocumentIntakeJobHandlerTest {
     }
 
     @Test
+    void templateLearningRequiresExportPriceAndDocumentPermissionsAndAnExcelFile() {
+        Map<String, String> template = new LinkedHashMap<>(Map.of("docType", "quote", "templateOnly", "true",
+                "clientId", fixture.client("CLIENT_A").id().toString(), "docId", java.util.UUID.randomUUID().toString()));
+        login("sales_quote:create");
+        assertThatThrownBy(() -> handler.authorizeSubmit(template)).hasMessageContaining("权限");
+        login("sales_quote:create", "sales_quote:view", "sales_quote:export", "sales_order:price:view");
+        handler.authorizeSubmit(template);
+        handler.authorizeRead(template);
+        byte[] bytes = new byte[]{1};
+        assertThatThrownBy(() -> handler.validateInput(template, new AiJobInput("template.csv", "text/csv", "CSV", 1, bytes, "0".repeat(64))))
+                .hasMessageContaining("xlsx/xls");
+        handler.validateInput(template, new AiJobInput("template.xlsx", "x", "XLSX", 1, bytes, "0".repeat(64)));
+    }
+
+    @Test
     void inputMustBeASupportedKindAndThePreselectedClientMustBeVisible() {
         login("sales_quote:create");
         byte[] bytes = new byte[]{1, 2, 3};
@@ -128,7 +143,7 @@ class SalesDocumentIntakeJobHandlerTest {
     @Test
     void resultIsMaskedForReadersWithoutPriceView() {
         Map<String, Object> candidate = new LinkedHashMap<>();
-        candidate.put("goodsId", "g");
+        candidate.put("goodsId", fixture.goods.stream().filter(g -> !fixture.invisibleGoods.contains(g.id())).findFirst().orElseThrow().id().toString());
         candidate.put("listPrice", 21);
         candidate.put("discount", 1);
         candidate.put("rateUsed", 1);
@@ -139,7 +154,7 @@ class SalesDocumentIntakeJobHandlerTest {
         Map<String, Object> line = new LinkedHashMap<>();
         line.put("candidates", List.of(candidate));
         line.put("customerUnitPrice", 21);
-        line.put("bundleParts", List.of(Map.of("partNo", "A", "candidates", List.of(Map.of("goodsId", "x", "listPrice", 3)))));
+        line.put("bundleParts", List.of(Map.of("partNo", "A", "candidates", List.of(Map.of("goodsId", candidate.get("goodsId"), "listPrice", 3)))));
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("priceMasked", false);
         Map<String, Object> currency = new LinkedHashMap<>();
@@ -260,5 +275,21 @@ class SalesDocumentIntakeJobHandlerTest {
         when(usage.resultFor(any(), any())).thenThrow(new IllegalStateException("db down"));
         new SalesIntakeLayoutLearner(usage, mock(IntakeReferenceData.class), noTx())
                 .onIntakeUsed(new SalesIntakeUsedEvent(UUID.randomUUID(), UUID.randomUUID(), "quote", UUID.randomUUID(), null));
+    }
+
+    @Test
+    void dedicatedTemplateAdoptionUsesIdempotentLayoutLearningWithoutAnyMasterDataEvent() {
+        AiJobUsagePort usage = mock(AiJobUsagePort.class);
+        IntakeReferenceData store = mock(IntakeReferenceData.class);
+        UUID job = UUID.randomUUID(), actor = UUID.randomUUID(), quote = UUID.randomUUID(), client = UUID.randomUUID();
+        Map<String, String> roles = Map.of("A", "PART_NO", "B", "QTY");
+        when(usage.resultFor(job, actor)).thenReturn(Optional.of(Map.of("templateOnly", true, "extraction", Map.of(
+                "layoutSource", "AI", "layoutFingerprint", "a".repeat(64), "headerTexts", "A=model|B=qty", "columnRoles", roles))));
+        var event = new com.uten.imp.features.sales.template.SalesQuoteTemplateAdoptedEvent(job, actor, quote, client);
+        new SalesIntakeLayoutLearner(usage, store, noTx()).onTemplateAdopted(event);
+        verify(store).learnLayoutOnce(new SalesIntakeUsedEvent(job, actor, "quote", quote, client), "a".repeat(64),
+                "A=model|B=qty", roles, 0, false);
+        org.mockito.Mockito.verifyNoMoreInteractions(store);
+        verify(usage, never()).markUsed(any(), any(), any(), any());
     }
 }

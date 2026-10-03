@@ -48,8 +48,12 @@ public class SalesOtherShipmentController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new OtherShipmentQueryFilter(keyword, clientId, warehouseId, outType, status, dateFrom, dateTo, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new OtherShipmentQueryFilter(keyword, clientId, warehouseId, outType, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted).withCurrency(currencyId).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -62,8 +66,12 @@ public class SalesOtherShipmentController {
             @RequestParam(required = false) String outType,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(new OtherShipmentQueryFilter(keyword, clientId, warehouseId, outType, status, dateFrom, dateTo, null));
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new OtherShipmentQueryFilter(keyword, clientId, warehouseId, outType, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted).withCurrency(currencyId).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")
@@ -71,6 +79,16 @@ public class SalesOtherShipmentController {
     public OtherShipmentDetail detail(@PathVariable UUID id) {
         OtherShipmentDetail detail = service.detail(id);
         viewAudit.record(
+                "view_sales_other_shipment_detail", "sales_other_shipments", id,
+                detail.getBillNo(), detail.getLegacyId(), "其它出货单");
+        return detail;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('sales_other_shipment:view')")
+    public OtherShipmentDetail history(@PathVariable UUID id) {
+        OtherShipmentDetail detail = service.detailHistory(id);
+        viewAudit.recordHistory(
                 "view_sales_other_shipment_detail", "sales_other_shipments", id,
                 detail.getBillNo(), detail.getLegacyId(), "其它出货单");
         return detail;
@@ -104,5 +122,15 @@ public class SalesOtherShipmentController {
     @PreAuthorize("hasAuthority('sales_other_shipment:reverse')")
     public OtherShipmentDetail reverse(@PathVariable UUID id) {
         return service.reverse(id);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('sales_other_shipment:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        viewAudit.recordHistory("view_sales_other_shipment_detail", "sales_other_shipments", id, null, null, "单据历史明细");
+        return rows;
     }
 }

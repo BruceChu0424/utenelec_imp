@@ -33,4 +33,7 @@ public interface ColorRepository extends JpaRepository<Color, UUID>, JpaSpecific
 
     /** 按名称查（大小写不敏感，仅未软删）——导入颜色名→既有 legacyId 解析用。 */
     Optional<Color> findFirstByNameIgnoreCaseAndDeletedFalse(String name);
+
+    /** BOM 文件按名称选色时必须检查歧义，不能任取同名颜色。 */
+    List<Color> findByNameIgnoreCaseAndDeletedFalse(String name);
 }

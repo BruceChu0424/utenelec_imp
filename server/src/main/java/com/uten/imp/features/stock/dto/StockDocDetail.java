@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 仓库单据详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class StockDocDetail {
+public class StockDocDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String docType;
@@ -76,4 +76,10 @@ public class StockDocDetail {
     private UUID materialReturnMainWarehouseId;
     /** Read-only LQ source identity via exact discovery-demand-DRAW mapping. */
     private String materialRequestNo;
+
+    @Override public void disableHistoryActions() {
+        canEdit = false;
+        canDelete = false;
+        restrictionReason = isDeleted() ? "已删除单据历史只读，原始数量及来源保留" : "历史查看只读";
+    }
 }

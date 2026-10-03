@@ -11,7 +11,38 @@ public record FinancePaymentQueryFilter(
         Short status,
         LocalDate dateFrom,
         LocalDate dateTo,
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted,
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+    public FinancePaymentQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
+    }
+    public FinancePaymentQueryFilter(String keyword,
+        UUID supplierId,
+        UUID accountId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+        this(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+    public FinancePaymentQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new FinancePaymentQueryFilter(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, headers);
+    }
+
+    public FinancePaymentQueryFilter(
+        String keyword,
+        UUID supplierId,
+        UUID accountId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        String billNo) { this(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo, false, false); }
+    public FinancePaymentQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new FinancePaymentQueryFilter(keyword, supplierId, accountId, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public FinancePaymentQueryFilter(

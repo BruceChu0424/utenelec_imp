@@ -210,7 +210,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                         child: Align(
                           alignment: Alignment.centerLeft,
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 720),
+                            constraints: const BoxConstraints.tightFor(
+                              width: double.infinity,
+                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -241,12 +243,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     body: SafeArea(child: Center(child: child)),
   );
 
-  /// medium 收敛居中 720；compact 顶满。
+  /// medium 保持居中布局并铺满可用宽度；compact 顶满。
   Widget _centerIfMedium(UtenBreakpoint bp, {required Widget child}) =>
       bp == UtenBreakpoint.medium
       ? Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
+            constraints: const BoxConstraints.tightFor(width: double.infinity),
             child: child,
           ),
         )

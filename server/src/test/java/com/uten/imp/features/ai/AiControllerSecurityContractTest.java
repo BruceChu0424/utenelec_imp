@@ -1,11 +1,14 @@
 package com.uten.imp.features.ai;
 
 import com.uten.imp.features.ai.job.AiJobController;
+import com.uten.imp.features.ai.job.AiJobService;
+import com.uten.imp.security.AuthUser;
 import com.uten.imp.features.ai.provider.AiProviderController;
 import com.uten.imp.security.RequiresStepUp;
 import com.uten.imp.security.StepUpExempt;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +20,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -63,7 +67,7 @@ class AiControllerSecurityContractTest {
     }
 
     @Test
-    void jobAndStatusEndpointsAreStaffOnly() {
+    void jobAndStatusEndpointsAreStaffOnly() throws Exception {
         assertThat(AiJobController.class.getAnnotation(PreAuthorize.class).value()).isEqualTo(STAFF);
         assertThat(AiStatusController.class.getAnnotation(PreAuthorize.class).value()).isEqualTo(STAFF);
         assertThat(AiJobController.class.getAnnotation(RequestMapping.class).value()).containsExactly("/api/ai/jobs");
@@ -72,7 +76,17 @@ class AiControllerSecurityContractTest {
                 .filter(path -> path != null)
                 .sorted()
                 .toList();
-        assertThat(mappings).containsExactly("GET /{id}", "POST ", "POST /{id}/cancel");
+        assertThat(mappings).containsExactly(
+                "GET /{id}", "GET /{id}/history", "POST ", "POST /{id}/cancel");
+        // A method-level override must not weaken the class's staff-only guard.
+        for (Method method : AiJobController.class.getDeclaredMethods()) {
+            if (anyPath(method) == null) continue;
+            PreAuthorize override = method.getAnnotation(PreAuthorize.class);
+            assertThat(override == null ? STAFF : override.value())
+                    .as("effective authorization of %s", method.getName()).isEqualTo(STAFF);
+        }
+        assertThat(AiJobService.class.getDeclaredMethod("history", UUID.class, AuthUser.class)
+                .getAnnotation(Transactional.class).readOnly()).isTrue();
     }
 
     @Test

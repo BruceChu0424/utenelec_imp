@@ -170,6 +170,7 @@ warehouseSalesOutboundTableColumns({
         label: l10n.warehouseOutboundWeight,
         width: 110,
         type: 'number',
+        exactValueOf: (row) => row.line.weightKg?.toString(),
         value: (row) => formatWeightValue(
           row.line.weightKg,
           estimated: isEstimatedWeightSource(row.line.weightSource),
@@ -195,6 +196,9 @@ warehouseSalesOutboundTableColumns({
     type: type,
     info: info,
     value: (row) => value(row) ?? '—',
+    // These numeric callbacks read API decimal strings, before the display
+    // placeholder is introduced. A line number is an identity, not a fact.
+    exactValueOf: type == 'number' && key != 'lineNumber' ? value : null,
   );
 
   return [

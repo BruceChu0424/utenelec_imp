@@ -1,5 +1,5 @@
 // 新建建议页
-// 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120）。
+// 表单页全断点套 UtenContentContainer.narrow（无固定最大宽度）。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -86,7 +86,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
       body: Column(
         children: [
           Expanded(
-            // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长；
+            // 表单正文随父容器扩宽，保留响应式 gutter；
             // 底部留出右下悬浮操作组的高度。
             child: UtenContentContainer.narrow(
               child: ListView(

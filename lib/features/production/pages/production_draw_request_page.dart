@@ -609,6 +609,8 @@ class _ProductionDrawRequestPageState
         width: 170,
         type: 'number',
         value: (row) => _quantities[row.identity]?.text,
+        exactValueOf: (row) => _quantities[row.identity]?.text,
+        exactListenableOf: (row) => _quantities[row.identity],
         // 语义交回表格的列包装（Semantics「应领数量: <当前值>」）：
         // 删掉 labelText 后读屏仍有等价列名，不另贴页面级标签。
         cellBuilder: (context, row) => TextField(
@@ -723,12 +725,24 @@ class _ProductionDrawRequestPageState
               width: 110,
               type: 'number',
               value: (line) => _quantity(line.qty),
+              exactValueOf: (line) => line.qty.toString(),
             ),
             MasterColumnDef(
               key: 'requestQty',
               label: '本次领料',
               width: 120,
               type: 'number',
+              exactValueOf: (line) =>
+                  (_requestLines(preview)
+                              .where(
+                                (selected) =>
+                                    selected.drawItemId == line.drawItemId,
+                              )
+                              .firstOrNull
+                              ?.quantity ??
+                          0)
+                      .toString(),
+              exactListenableOf: (_) => _quantities[summary.identity],
               value: (line) => _quantity(
                 _requestLines(preview)
                         .where(

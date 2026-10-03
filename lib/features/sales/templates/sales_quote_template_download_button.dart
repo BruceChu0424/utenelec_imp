@@ -7,6 +7,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import 'sales_quote_template.dart';
+import 'sales_quote_template_learning.dart';
 import 'sales_quote_template_repository.dart';
 
 /// The detail action group must know whether this widget occupies an action slot.
@@ -22,7 +23,7 @@ bool canDownloadSalesQuoteTemplate(
     permissions.contains(Perm.salesQuoteExport);
 
 /// Uses the same password, notification and download flow as other exports.
-/// Template selection is a read; it never creates or changes customer data.
+/// Template adoption is explicit and keeps the quotation's saved business data intact.
 class SalesQuoteTemplateDownloadButton extends ConsumerWidget {
   const SalesQuoteTemplateDownloadButton({
     super.key,
@@ -58,30 +59,41 @@ class SalesQuoteTemplateDownloadButton extends ConsumerWidget {
             .read(salesQuoteTemplateRepositoryProvider)
             .listForQuote(quoteId);
         if (!context.mounted) return null;
-        if (templates.isEmpty) {
-          return const UtenExportSelection(
-            bodyParams: {'templateIds': <String>[]},
-          );
-        }
-        if (templates.length == 1) {
-          return UtenExportSelection(
-            bodyParams: {
-              'templateIds': [templates.single.id],
-            },
-          );
-        }
-        return showDialog<UtenExportSelection>(
+        final canUpload =
+            permissions.contains(Perm.salesQuoteCreate) ||
+            permissions.contains(Perm.salesQuoteEdit);
+        final selection = await showDialog<UtenExportSelection>(
           context: context,
-          builder: (_) => SalesQuoteTemplatePicker(templates: templates),
+          builder: (_) => templates.isEmpty
+              ? SalesQuoteTemplateMissing(canUpload: canUpload)
+              : SalesQuoteTemplatePicker(
+                  templates: templates,
+                  canUpload: canUpload,
+                ),
         );
+        if (selection == null || !context.mounted) return null;
+        if (selection.bodyParams['_uploadTemplate'] != true) return selection;
+        final learned = await learnSalesQuoteTemplate(context, ref, quoteId);
+        return learned == null
+            ? null
+            : UtenExportSelection(
+                bodyParams: {
+                  'templateIds': [learned.id],
+                },
+              );
       },
     );
   }
 }
 
 class SalesQuoteTemplatePicker extends StatefulWidget {
-  const SalesQuoteTemplatePicker({super.key, required this.templates});
+  const SalesQuoteTemplatePicker({
+    super.key,
+    required this.templates,
+    this.canUpload = false,
+  });
   final List<SalesQuoteTemplate> templates;
+  final bool canUpload;
 
   @override
   State<SalesQuoteTemplatePicker> createState() =>
@@ -185,6 +197,14 @@ class _SalesQuoteTemplatePickerState extends State<SalesQuoteTemplatePicker> {
           onPressed: () => _finish(standard: true),
           child: Flexible(child: Text(l10n.quoteTemplateStandard)),
         ),
+        if (widget.canUpload)
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: () => Navigator.of(context).pop(
+              const UtenExportSelection(bodyParams: {'_uploadTemplate': true}),
+            ),
+            child: Flexible(child: Text(l10n.quoteTemplateUpload)),
+          ),
         UtenButton(
           type: UtenButtonType.secondary,
           onPressed: () => _finish(all: true),
@@ -194,6 +214,42 @@ class _SalesQuoteTemplatePickerState extends State<SalesQuoteTemplatePicker> {
           onPressed: _selected.isEmpty ? null : _finish,
           child: Flexible(child: Text(l10n.quoteTemplateDownloadSelected)),
         ),
+      ],
+    );
+  }
+}
+
+class SalesQuoteTemplateMissing extends StatelessWidget {
+  const SalesQuoteTemplateMissing({super.key, required this.canUpload});
+  final bool canUpload;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.quoteTemplateMissingTitle),
+      content: SizedBox(width: 480, child: Text(l10n.quoteTemplateMissingHint)),
+      actions: [
+        UtenButton(
+          type: UtenButtonType.ghost,
+          onPressed: () => Navigator.of(context).pop(),
+          child: Flexible(child: Text(l10n.commonCancel)),
+        ),
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => Navigator.of(context).pop(
+            const UtenExportSelection(bodyParams: {'templateIds': <String>[]}),
+          ),
+          child: Flexible(child: Text(l10n.quoteTemplateStandard)),
+        ),
+        if (canUpload)
+          UtenButton(
+            key: const ValueKey('quote-template-upload'),
+            onPressed: () => Navigator.of(context).pop(
+              const UtenExportSelection(bodyParams: {'_uploadTemplate': true}),
+            ),
+            child: Flexible(child: Text(l10n.quoteTemplateUpload)),
+          ),
       ],
     );
   }

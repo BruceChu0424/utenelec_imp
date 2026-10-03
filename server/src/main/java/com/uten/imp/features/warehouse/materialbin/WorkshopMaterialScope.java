@@ -34,6 +34,21 @@ public class WorkshopMaterialScope {
     public Optional<Set<UUID>> restrictedWorkshops() {
         AuthUser user = currentUser.get().orElse(null);
         if (user == null || user.isSuperAdmin() || user.getEmployeeId() == null) return Optional.empty();
+        return restrictedWorkshopsForEmployee(user.getEmployeeId());
+    }
+
+    /** 通知候选人使用相同对象范围, 不切换请求中的登录主体。权限与账号有效性由通知接收人解析器判定。 */
+    public boolean canSeeForUser(UUID workshopDepartmentId, UUID userId) {
+        if (workshopDepartmentId == null || userId == null) return false;
+        var users=db.queryForList("SELECT employee_id,is_super_admin FROM users WHERE id=:user",Map.of("user",userId));
+        if(users.size()!=1) return false;
+        var user=users.getFirst();
+        if(Boolean.TRUE.equals(user.get("is_super_admin")) || user.get("employee_id")==null) return true;
+        return restrictedWorkshopsForEmployee((UUID)user.get("employee_id"))
+                .map(workshops->workshops.contains(workshopDepartmentId)).orElse(true);
+    }
+
+    private Optional<Set<UUID>> restrictedWorkshopsForEmployee(UUID employeeId) {
         var rows = db.queryForList("""
                 WITH RECURSIVE production AS (
                     SELECT department.id FROM departments department
@@ -60,7 +75,7 @@ public class WorkshopMaterialScope {
                 SELECT ancestry.member_id, ancestry.id, ancestry.parent_id,
                        ancestry.id IN (SELECT id FROM production) AS is_production
                 FROM ancestry
-                """, Map.of("employee", user.getEmployeeId()));
+                """, Map.of("employee", employeeId));
         Set<UUID> production = rows.stream().filter(row -> Boolean.TRUE.equals(row.get("is_production")))
                 .map(row -> (UUID) row.get("id")).collect(Collectors.toSet());
         if (production.isEmpty()) return Optional.empty();

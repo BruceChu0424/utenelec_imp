@@ -140,7 +140,52 @@ class SubcontractMaterialPlanStateMachineTest {
                 .containsEntry("issueId", issueId)
                 .containsEntry("planItemId", planItemId)
                 .containsEntry("balanceId", balanceId)
-                .containsEntry("key", "SC-OUT-DRAFT:" + issueItemId);
+                .containsEntry("key", "SC-OUT-DRAFT:" + issueItemId + ":" + inserted.parameters().get("id"));
+    }
+
+    @Test
+    void savingTheSameStableIssueRowAgainCreatesANewReservationEventWithoutReusingItsUniqueKey()
+            throws Exception {
+        UUID issueId = UUID.randomUUID();
+        UUID issueItemId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID warehouseId = UUID.randomUUID();
+        UUID balanceId = UUID.randomUUID();
+        String fingerprint = emptyBomFingerprint(goodsId);
+        listAnswer = (sql, parameters) -> {
+            if (sql.contains("from subcontract_material_issue_items issue_item")
+                    && sql.contains("for update of plan_item")) {
+                return rows(new Object[]{issueItemId, planItemId, new BigDecimal("6"), goodsId, null,
+                        "DIRECT_OUTBOUND", "READY_OUTBOUND", null, false, fingerprint});
+            }
+            if (sql.contains("join v_stock_available available")) {
+                return rows(new Object[]{balanceId, new BigDecimal("20")});
+            }
+            return List.of();
+        };
+        java.util.Set<Object> persistedUniqueKeys = new java.util.HashSet<>();
+        List<String> lifecycle = new ArrayList<>();
+        updateAnswer = (sql, parameters) -> {
+            if (sql.contains("insert into stock_reservations")) {
+                assertThat(persistedUniqueKeys.add(parameters.get("key")))
+                        .as("released reservations retain their globally unique keys").isTrue();
+                lifecycle.add("reserve");
+            } else if (sql.contains("source_doc_type = 'subcontract_outbound_draft'")) {
+                lifecycle.add("release");
+            }
+            return 1;
+        };
+
+        service.reserveDraft(issueId, warehouseId);
+        service.reserveDraft(issueId, warehouseId);
+
+        assertThat(lifecycle).containsExactly("release", "reserve", "release", "reserve");
+        assertThat(persistedUniqueKeys).hasSize(2);
+        assertThat(nativeCalls.stream().filter(call -> call.sql().contains("insert into stock_reservations")))
+                .allSatisfy(call -> assertThat(call.parameters())
+                        .containsEntry("issueId", issueId).containsEntry("planItemId", planItemId)
+                        .containsEntry("key", "SC-OUT-DRAFT:" + issueItemId + ":" + call.parameters().get("id")));
     }
 
     @Test

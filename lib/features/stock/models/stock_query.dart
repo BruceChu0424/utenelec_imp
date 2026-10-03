@@ -11,6 +11,7 @@ class BalanceRow {
     this.colorId,
     this.qty,
     this.amountLocal,
+    this.costMasked = false,
     this.weight,
     this.weightEstimated = false,
     this.lastMovementDate,
@@ -22,6 +23,7 @@ class BalanceRow {
   final String? colorId;
   final double? qty;
   final double? amountLocal;
+  final bool costMasked;
 
   /// 库存重量 (千克); null = 未知。
   final double? weight;
@@ -36,7 +38,10 @@ class BalanceRow {
     goodsId: json['goodsId'] as String?,
     colorId: json['colorId'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
-    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    amountLocal: json['costMasked'] == true
+        ? null
+        : (json['amountLocal'] as num?)?.toDouble(),
+    costMasked: json['costMasked'] == true,
     weight: (json['weight'] as num?)?.toDouble(),
     weightEstimated: json['weightEstimated'] == true,
     lastMovementDate: json['lastMovementDate'] as String?,
@@ -103,6 +108,7 @@ class InstantInventoryRow {
     this.weightTier,
     this.qty,
     this.costAmount,
+    this.costMasked = false,
     this.moreQty,
     this.goodsCode,
     this.series,
@@ -142,6 +148,7 @@ class InstantInventoryRow {
   ///
   /// 不是 goods.c_total × qty 的标准成本估算。
   final double? costAmount;
+  final bool costMasked;
   final double? moreQty; // 多排数量
   final String? goodsCode; // 物料编码（goods.code）
   final String? series; // 物料系列（goods.series）
@@ -151,8 +158,7 @@ class InstantInventoryRow {
 
   // ===== 所属仓库 (V587) =====
   // 货品平时归哪个仓管的主档归属，不是本行库存所在的落点仓，也不是页面的仓库筛选值。
-  // 当前后端即时库存行还没下发这两个字段 (恒 null)，页面据此回落货品字典
-  // (GoodsDictEntry.owningWarehouseName)；后端补发后前端无需再改。
+  // stock:view 的即时库存/详情投影直接连接当前主档，不依赖 goods:view 字典。
   final String? owningWarehouseId;
   final String? owningWarehouseName;
 
@@ -174,7 +180,10 @@ class InstantInventoryRow {
         unitWeightKg: (json['unitWeightKg'] as num?)?.toDouble(),
         weightTier: json['weightTier'] as String?,
         qty: (json['qty'] as num?)?.toDouble(),
-        costAmount: (json['costAmount'] as num?)?.toDouble(),
+        costAmount: json['costMasked'] == true
+            ? null
+            : (json['costAmount'] as num?)?.toDouble(),
+        costMasked: json['costMasked'] == true,
         moreQty: (json['moreQty'] as num?)?.toDouble(),
         goodsCode: json['goodsCode'] as String?,
         series: json['series'] as String?,

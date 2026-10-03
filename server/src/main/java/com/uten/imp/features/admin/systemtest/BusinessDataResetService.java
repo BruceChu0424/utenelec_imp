@@ -61,7 +61,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class BusinessDataResetService {
-
     /** 排水等待上限：在途请求多为秒级；长导出等请求超时则放弃本次清空。 */
     static final long DRAIN_TIMEOUT_MILLIS = 45_000;
 
@@ -162,14 +161,15 @@ public class BusinessDataResetService {
     /** Optional correlation only; it never retries or bypasses any reset gate. */
     public Result reset(UUID operatorId, String operatorAccount, UUID attemptId) {
         featureGate.requireEnabled();
+        UUID effectiveAttemptId = attemptId == null ? UUID.randomUUID() : attemptId;
         // 受理回执先于一切(ADR-067 §9)：写不进去就不清库——「没有受理回执」必须严格等价于「没执行」。
-        recordAttemptReceived(operatorId, operatorAccount, attemptId);
+        recordAttemptReceived(operatorId, operatorAccount, effectiveAttemptId);
         try {
-            return resetAfterReceipt(operatorId, operatorAccount, attemptId);
+            return resetAfterReceipt(operatorId, operatorAccount, effectiveAttemptId);
         } catch (UncertainResetOutcome uncertain) {
             throw uncertain;
         } catch (RuntimeException failure) {
-            recordAttemptFailed(operatorId, operatorAccount, attemptId, failure);
+            recordAttemptFailed(operatorId, operatorAccount, effectiveAttemptId, failure);
             throw failure;
         }
     }
@@ -220,9 +220,9 @@ public class BusinessDataResetService {
             // 业务附件/上传凭证/删除任务彻底清理（标删→物理删除→完成证明），
             // 使 V462 的 unsafe_attachment_owners 检查自然通过——不再要求发起人
             // 提前手动「清理业务附件」并等待异步 outbox。
-            long deletionsBefore = attachmentReset.succeededDeletionCount();
-            purgeBusinessAttachments(operatorId, operatorAccount);
-            long deletedFiles = Math.max(0L, attachmentReset.succeededDeletionCount() - deletionsBefore);
+            long deletionsBefore = attachmentReset.succeededTestDeletionCount(attemptId);
+            purgeBusinessAttachments(operatorId, operatorAccount, attemptId);
+            long deletedFiles = Math.max(0L, attachmentReset.succeededTestDeletionCount(attemptId) - deletionsBefore);
             result = runReset(operatorId, operatorAccount, deletedFiles, attemptId);
         } finally {
             drainGate.endReset();
@@ -238,7 +238,7 @@ public class BusinessDataResetService {
      * 与一行处置指引。
      */
     private void rejectUnpurgeableAttachments(UUID operatorId) {
-        List<UnpurgeableGroup> groups = attachmentReset.unpurgeableBlockers(operatorId);
+        List<UnpurgeableGroup> groups = attachmentReset.unpurgeableTestResetBlockers(operatorId);
         if (groups == null || groups.isEmpty()) {
             return;
         }
@@ -274,9 +274,9 @@ public class BusinessDataResetService {
      * outbox（物理删除文件并落完成证明）」直到 blocker 归零。任一轮无进展即拒绝（防死循环）；
      * 附件量大时受总时长预算/轮次/单轮任务数上限保护，每轮 log.info 留证。
      */
-    private void purgeBusinessAttachments(UUID operatorId, String operatorAccount) {
+    private void purgeBusinessAttachments(UUID operatorId, String operatorAccount, UUID attemptId) {
         Instant started = Instant.now();
-        Preview before = attachmentReset.preview(operatorId);
+        Preview before = attachmentReset.previewTestReset(operatorId);
         for (int round = 1; round <= ATTACHMENT_PURGE_MAX_ROUNDS; round++) {
             if (before.blockingCount() == 0) {
                 return;
@@ -287,14 +287,14 @@ public class BusinessDataResetService {
                         "业务附件清理超过 " + ATTACHMENT_PURGE_BUDGET.toMinutes() + " 分钟预算（仍剩 "
                                 + before.blockingCount() + " 项），已删除的文件不会恢复；请稍后重试清空");
             }
-            attachmentReset.prepare(operatorId, operatorAccount,
+            attachmentReset.prepareTestReset(operatorId, operatorAccount, attemptId,
                     new BusinessAttachmentResetPreparationPort.Confirmation(
                             before.database(), before.fingerprint()));
             int drained = 0;
-            while (drained < ATTACHMENT_PURGE_MAX_DRAIN_PER_ROUND && attachmentReset.drainNextDeletion()) {
+            while (drained < ATTACHMENT_PURGE_MAX_DRAIN_PER_ROUND && attachmentReset.drainTestResetNext(attemptId)) {
                 drained++; // 排水删除队列（含本轮与历史失败任务）
             }
-            Preview after = attachmentReset.preview(operatorId);
+            Preview after = attachmentReset.previewTestReset(operatorId);
             log.info("business_data_reset 附件自动清理第 {} 轮：阻塞 {} → {}，本轮排水 {} 项，累计 {} 秒",
                     round, before.blockingCount(), after.blockingCount(), drained,
                     Duration.between(started, Instant.now()).toSeconds());
@@ -343,7 +343,16 @@ public class BusinessDataResetService {
         }
         try (Connection connection = dataSource.getConnection()) {
             LastResult completion = LastResult.none();
-            try (PreparedStatement statement = connection.prepareStatement("SELECT actor_id, actor_account, target_id, result, created_at FROM audit_log WHERE action = ? AND event_source = 'business' AND target_type = 'system_test' AND (CAST(? AS uuid) IS NULL OR (target_id = ? AND actor_id = ?)) ORDER BY created_at DESC, id DESC LIMIT 1")) {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT actor_id,actor_account,target_id,result,created_at FROM (
+                        SELECT id,actor_id,actor_account,target_id,result,created_at,action,event_source,target_type FROM public.audit_log
+                        UNION ALL
+                        SELECT id,actor_id,actor_account,target_id,result,created_at,action,event_source,target_type FROM public.audit_log_archive
+                    ) receipts
+                    WHERE action=? AND event_source='business' AND target_type='system_test'
+                      AND (CAST(? AS uuid) IS NULL OR (target_id=? AND actor_id=?))
+                    ORDER BY created_at DESC,id DESC LIMIT 1
+                    """)) {
                 statement.setString(1, AUDIT_ACTION);
                 statement.setObject(2, attemptId);
                 statement.setString(3, attemptId == null ? null : attemptId.toString());
@@ -381,7 +390,16 @@ public class BusinessDataResetService {
         boolean byCurrentServer = false;
         boolean failed = false;
         String failureMessage = null;
-        try (PreparedStatement statement = connection.prepareStatement("SELECT action, result, created_at FROM audit_log WHERE action IN (?, ?) AND event_source = 'business' AND target_type = 'system_test' AND target_id = ? AND actor_id = ? ORDER BY created_at ASC, id ASC")) {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT action,result,created_at FROM (
+                    SELECT id,actor_id,target_id,result,created_at,action,event_source,target_type FROM public.audit_log
+                    UNION ALL
+                    SELECT id,actor_id,target_id,result,created_at,action,event_source,target_type FROM public.audit_log_archive
+                ) receipts
+                WHERE action IN (?,?) AND event_source='business' AND target_type='system_test'
+                  AND target_id=? AND actor_id=?
+                ORDER BY created_at ASC,id ASC
+                """)) {
             statement.setString(1, AUDIT_ACTION_RECEIVED);
             statement.setString(2, AUDIT_ACTION_FAILED);
             statement.setString(3, attemptId.toString());

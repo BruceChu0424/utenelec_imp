@@ -139,6 +139,21 @@ Map<String, dynamic> _item(Map<String, dynamic> body) =>
     (body['items'] as List).cast<Map<String, dynamic>>().single;
 
 void main() {
+  testWidgets('历史单重实际预填，但未经实称的建议不提交为重量', (tester) async {
+    final (:api, :weights) = await _open(tester, prefill: _prefill());
+    expect(tester.widget<TextField>(_weightInput()).controller!.text, '0.01');
+    expect(find.text('预估 · 请填实称'), findsOneWidget);
+    expect(weights.requests.single.single.warehouseId, 'warehouse-1');
+    expect(weights.requests.single.single.colorId, isNull);
+    await _submit(tester);
+    expect(_item(api.arrivalBodies.single).containsKey('weight'), isFalse);
+    expect(
+      _item(api.arrivalBodies.single).containsKey('qtyFromWeight'),
+      isFalse,
+    );
+    expect(_item(api.arrivalBodies.single)['qty'], 5);
+  });
+
   testWidgets('实称重量: 后缀换千克提交, 幂等键带重量, 偏差出称重核对标签', (tester) async {
     final (:api, :weights) = await _open(
       tester,

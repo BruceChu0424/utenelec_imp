@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 委外申请单列表项。 */
 @Getter
 @AllArgsConstructor
-public class ApplicationListItem {
+public class ApplicationListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -20,4 +20,7 @@ public class ApplicationListItem {
     private Short status;
     private boolean closed;
     private Integer legacyId;
+
+    @Override public void disableHistoryActions() {
+    }
 }

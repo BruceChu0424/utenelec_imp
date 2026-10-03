@@ -61,6 +61,7 @@ import '../../employee/repositories/employee_repository.dart';
 import '../../subcontract/models/subcontract_doc.dart';
 import '../../subcontract/repositories/subcontract_repository.dart';
 import '../models/subcontract_outbound.dart';
+import '../models/warehouse_form_draft_codec.dart';
 import '../models/subcontract_outbound_execution.dart';
 import '../widgets/subcontract_outbound_detail_table.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
@@ -126,6 +127,11 @@ class _WarehouseSubcontractOutboundEditPageState
   @override
   bool get formDraftBusy => _saving || _confirming || _requestUncertain;
   @override
+  Future<void> Function()? get formDraftReloadSource => () async {
+    await _load();
+    if (_error != null) throw StateError(_error!);
+  };
+  @override
   FormDraftSpec get formDraftSpec => FormDraftCatalog.subcontractOutbound.spec(
     title: '委外拣货出仓填写',
     route: '/warehouse/subcontract-outbound/${widget.planId}',
@@ -147,15 +153,19 @@ class _WarehouseSubcontractOutboundEditPageState
     'billDate': _billDate.toIso8601String(),
     'deliverDate': _deliverDate?.toIso8601String(),
     'draftId': _draftId,
+    if (_draftDocument != null)
+      'serverFingerprint': subcontractOutboundDraftFingerprint(_draftDocument!),
     'employees': _empCache.values.map(draftEmployee).toList(),
     'rows': [
       for (final row in _lines)
         {
           'planItemId': row.line.planItemId,
           'draftItemId': row.draftItemId,
+          'sourceIdentity': _draftSourceIdentity(row),
           'qty': row.qty.text,
           'qtyAutofilled': row.qty.autofilled,
           'weightKg': row.weight.kg,
+          'weightEntry': weightEntryDraft(row.weight.weight, qty: row.qty),
           'qtyFromWeight': row.weight.qtyFromWeight,
           'remark': row.remarkController.text,
           'selected': row.selected,
@@ -165,15 +175,25 @@ class _WarehouseSubcontractOutboundEditPageState
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     final saved = draftMaps(data['rows']);
-    // Regenerated documents and changed sources require review, never a goods/name match.
+    final bySource = {for (final row in _lines) row.line.planItemId: row};
+    final savedSourceIds = saved.map((item) => item['planItemId']).toSet();
+    // A draft save used to recreate item UUIDs. The immutable plan line is the
+    // authoritative source; retain the latest server item UUID for submission.
+    // Never map by goods/name, across documents, or across a changed source set.
     if (data['draftId'] != _draftId ||
-        saved.any(
-          (item) => !_lines.any(
-            (row) =>
-                row.line.planItemId == item['planItemId'] &&
-                row.draftItemId == item['draftItemId'],
-          ),
-        )) {
+        (data['serverFingerprint'] != null &&
+            (_draftDocument == null ||
+                data['serverFingerprint'] !=
+                    subcontractOutboundDraftFingerprint(_draftDocument!))) ||
+        bySource.length != _lines.length ||
+        savedSourceIds.length != saved.length ||
+        saved.length != _lines.length ||
+        saved.any((item) {
+          final row = bySource[item['planItemId']];
+          return row == null ||
+              (item['sourceIdentity'] != null &&
+                  item['sourceIdentity'] != _draftSourceIdentity(row));
+        })) {
       throw const FormatException('出仓来源或服务器草稿已变化，填写草稿保留；请先核对最新任务');
     }
     _remark.text = draftText(data, 'remark');
@@ -186,26 +206,34 @@ class _WarehouseSubcontractOutboundEditPageState
       _empCache[employee.id] = employee;
     }
     for (final item in saved) {
-      final row = _lines.firstWhere(
-        (row) =>
-            row.line.planItemId == item['planItemId'] &&
-            row.draftItemId == item['draftItemId'],
-      );
-      final weightKg = (item['weightKg'] as num?)?.toDouble();
-      row.weight.weight.setKg(
-        weightKg,
-        qtyFromWeight: weightKg != null && item['qtyFromWeight'] == true,
-      );
+      final row = bySource[item['planItemId']]!;
       if (item['qtyAutofilled'] == true) {
         row.qty.setAutomaticText(draftText(item, 'qty'));
       } else {
         row.qty.text = draftText(item, 'qty');
       }
+      restoreWeightEntryDraft(
+        row.weight.weight,
+        item['weightEntry'] ??
+            {'kg': item['weightKg'], 'qtyFromWeight': item['qtyFromWeight']},
+        qty: row.qty,
+      );
       row.remarkController.text = draftText(item, 'remark');
       row.selected = item['selected'] == true;
     }
     if (mounted) setState(() {});
   }
+
+  String _draftSourceIdentity(SubcontractOutboundLineDraft row) => [
+    row.line.orderItemId,
+    row.line.goodsId,
+    row.line.colorId,
+    row.line.unitId,
+    row.unitRate,
+    row.line.parentGoodsId,
+    row.line.parentColorId,
+    row.line.flowMode.wireName,
+  ].join('|');
 
   AppLocalizations get _l10n =>
       Localizations.of<AppLocalizations>(context, AppLocalizations) ??
@@ -272,6 +300,7 @@ class _WarehouseSubcontractOutboundEditPageState
       }
       String? warehouseId;
       String? workerId;
+      var billDate = ChinaDateTime.today();
       DateTime? deliverDate = _parseDate(detail.deliverDate);
       final remarkText = StringBuffer();
       final lines = <SubcontractOutboundLineDraft>[];
@@ -295,7 +324,7 @@ class _WarehouseSubcontractOutboundEditPageState
         }
         if (doc.billDate != null) {
           final parsed = _parseDate(doc.billDate);
-          if (parsed != null) _billDate = parsed;
+          if (parsed != null) billDate = parsed;
         }
         // 草稿行 → 计划行（按 planItemId 对齐；草稿数量为本次出仓默认值）。
         final byPlanItem = <String, SubcontractDocItem>{
@@ -364,6 +393,7 @@ class _WarehouseSubcontractOutboundEditPageState
       setState(() {
         _detail = detail;
         _warehouseId = warehouseId;
+        _billDate = billDate;
         _workerId = workerId;
         _deliverDate = deliverDate;
         for (final old in _lines) {

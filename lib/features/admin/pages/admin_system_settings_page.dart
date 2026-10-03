@@ -10,6 +10,8 @@
 //     被盗也无法改安全策略）；
 //   * 改设置全过审计（action=update_system_setting，审计页可查谁改了哪项 旧→新值）；
 //   * 后端类型/非负校验（前端也提示），防恶意值。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,6 +31,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/providers/idle_timeout_controller.dart';
+import '../../../shared/audit/audit_retention_presentation.dart';
+import '../../../shared/repositories/public_settings_repository.dart';
 import '../models/system_setting_entry.dart';
 import '../models/system_updater_status.dart';
 import '../repositories/system_setting_repository.dart';
@@ -101,6 +105,9 @@ class _AdminSystemSettingsPageState
         _dirty.clear();
         _loading = false;
       });
+      if (list.any((entry) => entry.category == 'audit')) {
+        unawaited(_refreshAuditCapability());
+      }
       if (list.any((entry) => entry.category == 'updates')) {
         await _loadUpdaterStatus();
       }
@@ -116,6 +123,15 @@ class _AdminSystemSettingsPageState
         _error = '加载系统设置失败';
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _refreshAuditCapability() async {
+    try {
+      await ref.read(publicSettingsRepositoryProvider).fetch();
+    } catch (_) {
+      // The repository clears only verified archive mode on failure, while
+      // retaining other last-known runtime limits. Never assume preservation.
     }
   }
 
@@ -184,8 +200,10 @@ class _AdminSystemSettingsPageState
     ];
     setState(() => _saving = true);
     try {
-      // 缩短审计留存会在下一次清理中永久删日志：保存前单独确认一次。
+      // Confirm against a fresh installed capability, not the months being saved.
       if (keys.any((key) => key.startsWith('audit_'))) {
+        await _refreshAuditCapability();
+        if (!mounted) return;
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (_) => const _RetentionConfirmDialog(),
@@ -210,8 +228,9 @@ class _AdminSystemSettingsPageState
             ? '已保存 ${keys.length} 项设置；更新计划等待服务器确认'
             : '已保存 ${keys.length} 项设置',
       );
-      // 公共运行时设置变更后立即重拉：同步空闲阈值，也让本机回执采用新的总留存月数。
+      // Reuse the public-settings refresh for idle, receipt and badge consumers.
       if (keys.contains('session_idle_timeout_minutes') ||
+          keys.contains('badge_poll_seconds') ||
           keys.any((key) => key.startsWith('audit_'))) {
         ref.read(idleThresholdVersionProvider.notifier).state++;
       }
@@ -465,8 +484,8 @@ class _SettingGroupCard extends StatelessWidget {
   }
 }
 
-/// 把两个独立月份翻译成用户真正关心的“何时归档、何时永久删除”。
-class _AuditRetentionNotice extends StatelessWidget {
+/// Archive timing is editable; installed preservation is read-only server capability.
+class _AuditRetentionNotice extends ConsumerWidget {
   const _AuditRetentionNotice({
     required this.hotController,
     required this.archiveController,
@@ -476,7 +495,8 @@ class _AuditRetentionNotice extends StatelessWidget {
   final TextEditingController archiveController;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(auditArchivePurgeModeProvider);
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: hotController,
       builder: (context, hotValue, _) => ValueListenableBuilder<TextEditingValue>(
@@ -491,9 +511,10 @@ class _AuditRetentionNotice extends StatelessWidget {
               archive != null &&
               archive >= 0 &&
               archive <= 240;
-          final policy = valid
-              ? '当前填写：前 $hot 个月可在审计中心查询和导出；随后冷归档 $archive 个月；共 ${hot + archive} 个月后永久删除。'
-              : '请输入有效月份后，这里会计算在线查询期和最终删除时间。';
+          final policy = AuditRetentionPresentation.configuredPeriods(
+            valid ? hot : null,
+            valid ? archive : null,
+          );
           final theme = Theme.of(context);
           return Semantics(
             label: '审计日志留存说明',
@@ -513,7 +534,9 @@ class _AuditRetentionNotice extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    Icons.auto_delete_outlined,
+                    mode == AuditArchivePurgeMode.preserveUnclassified
+                        ? Icons.shield_outlined
+                        : Icons.help_outline,
                     size: 20,
                     color: theme.colorScheme.tertiary,
                   ),
@@ -523,14 +546,19 @@ class _AuditRetentionNotice extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          policy,
+                          AuditRetentionPresentation.modeLabel(mode),
+                          key: const ValueKey('audit-retention-mode'),
                           style: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 4),
+                        Text(policy, style: theme.textTheme.bodyMedium),
+                        const SizedBox(height: 4),
                         Text(
-                          '每日北京时间 03:17 分批执行。各客户端的本机回执在下次同步公共设置后，也按总月数清理(同时最多 300 条)。永久删除不可恢复；缩短期限前请先完成合规确认和必要备份。',
+                          '${AuditRetentionPresentation.modeConsequence(mode)}'
+                          '归档任务每日北京时间 03:17 执行。'
+                          '${AuditRetentionPresentation.localReceiptPolicy}',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -567,6 +595,9 @@ class _SettingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final updated = DisplayDateTime.beijing(entry.updatedAt);
+    final description = entry.key == 'audit_archive_retention_months'
+        ? '归档后继续保存的月数。到期日志如何处理，请看本组的日志保护说明；保护状态由服务器管理。'
+        : entry.description;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
       child: Column(
@@ -593,7 +624,7 @@ class _SettingRow extends StatelessWidget {
                       allowClear: false,
                       searchable: false,
                       enabled: enabled,
-                      info: entry.description,
+                      info: description,
                       // 改动态（原 filled 高亮）由黄框 + 字段内提醒承接。
                       warningMessage: dirty ? '已修改，尚未保存' : null,
                       items: [
@@ -625,7 +656,7 @@ class _SettingRow extends StatelessWidget {
                           : TextInputType.text,
                       decoration: UtenInputDecoration(
                         decoration,
-                        info: entry.description,
+                        info: description,
                       ),
                       maxLines: numeric ? 1 : 2,
                       errorBuilder: utenTextFieldErrorBuilder,
@@ -677,20 +708,22 @@ class _SettingRow extends StatelessWidget {
   }
 }
 
-/// 审计留存调整的风险确认 (缩短期限会在下一次清理中永久删除历史日志)。
+/// The confirmation follows the latest capability snapshot, including failures.
 /// 密码确认由服务端统一要求再认证、网络层弹统一密码框完成 (ADR-110)。
-class _RetentionConfirmDialog extends StatelessWidget {
+class _RetentionConfirmDialog extends ConsumerWidget {
   const _RetentionConfirmDialog();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final mode = ref.watch(auditArchivePurgeModeProvider);
     return AlertDialog(
+      scrollable: true,
       icon: const Icon(Icons.warning_amber_rounded),
       title: const Text('确认审计留存修改'),
       content: Text(
-        '本次包含审计留存调整。缩短期限可能在下一次 03:17 清理中永久删除历史日志且不可恢复。'
-        '请确认合规与备份后再继续。',
+        AuditRetentionPresentation.confirmation(mode),
+        key: const ValueKey('audit-retention-confirm-mode'),
         style: theme.textTheme.bodySmall,
       ),
       actionsAlignment: MainAxisAlignment.center,

@@ -102,14 +102,23 @@ public class ProductionPlanService {
     private final ProductionPlanMutationFootprintService mutationFootprint;
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.production.dailyreport.ActualOutputSupplementService> actualOutputSupplements;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
+        return list(f, page, size, sort, order, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order,
+                                         boolean includeDeleted, boolean onlyDeleted) {
         var readScope = access.scope("production_plan:approve");
         Specification<ProductionPlan> spec = (Root<ProductionPlan> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -124,7 +133,8 @@ public class ProductionPlanService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<ProductionPlan> p = planRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<PlanListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_plans", p.getContent()) : result;
     }
 
     @Transactional(readOnly = true)
@@ -134,6 +144,29 @@ public class ProductionPlanService {
                 p.getMakerId(), "生产计划不存在", "production_plan:approve");
         List<PlanItemDto> items = itemRepo.findByPlanIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
         return toDetail(p, items);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:view')")
+    public PlanDetail history(UUID id) {
+        ProductionPlan plan = readableHistoryPlan(id);
+        List<PlanItemDto> items = itemRepo.findByPlanIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
+        return retainedRecords.detail(toDetail(plan, items), "production_plans", id,
+                plan.isDeleted(), plan.getDeletedAt(), true);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:view')")
+    public List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRecords(UUID id, Long beforeId, int size) {
+        readableHistoryPlan(id);
+        return retainedRecords.children("production_plans", id, beforeId, size);
+    }
+
+    private ProductionPlan readableHistoryPlan(UUID id) {
+        if (id == null) throw new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在");
+        ProductionPlan plan = planRepo.findById(id).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在"));
+        access.requireReadable(plan.getMakerId(), "生产计划不存在", "production_plan:approve");
+        return plan;
     }
 
     @Transactional

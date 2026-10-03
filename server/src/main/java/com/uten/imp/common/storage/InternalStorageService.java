@@ -145,7 +145,8 @@ public class InternalStorageService implements StorageService, BlobStore {
     @Override public StoredObject describe(String key) {
         Path path = resolve(staging, key);
         try (Lease lease = lease()) {
-            if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return new StoredObject(false,0,null,null,null);
+            requireObjectNamespaces(path);
+            if (Files.notExists(path, LinkOption.NOFOLLOW_LINKS)) return new StoredObject(false,0,null,null,null);
             try (Envelope envelope = envelope(path)) { return describe(envelope.header); }
         } catch (IOException error) { throw storageFailure("Unable to inspect internal attachment", error); }
     }
@@ -330,8 +331,13 @@ public class InternalStorageService implements StorageService, BlobStore {
     private void deleteAt(Path namespace, String key, String versionId) {
         Path path = resolve(namespace,key);
         try (Lease lease = lease()) {
-            if (!Files.exists(path,LinkOption.NOFOLLOW_LINKS)) {
-                Path parent=path.getParent();while(!Files.exists(parent,LinkOption.NOFOLLOW_LINKS))parent=parent.getParent();
+            requireObjectNamespaces(path);
+            if (Files.notExists(path,LinkOption.NOFOLLOW_LINKS)) {
+                Path parent=path.getParent();
+                while(Files.notExists(parent,LinkOption.NOFOLLOW_LINKS)) {
+                    if(parent.equals(namespace))throw new StorageResourceUnavailableException("内部存储目录暂不可用，请核验后重试");
+                    parent=parent.getParent();
+                }
                 directorySync.force(parent);return;
             }
             try (Envelope envelope = envelope(path)) { requireVersion(envelope.header,versionId); }
@@ -362,6 +368,8 @@ public class InternalStorageService implements StorageService, BlobStore {
     }
 
     private Envelope envelope(Path path) throws IOException {
+        requireObjectNamespaces(path);
+        if (Files.notExists(path,LinkOption.NOFOLLOW_LINKS)) throw new NoSuchFileException(path.toString());
         if (!Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS)) throw new IOException("Object is not a regular file");
         FileChannel channel=FileChannel.open(path,StandardOpenOption.READ,LinkOption.NOFOLLOW_LINKS);
         try {
@@ -425,6 +433,30 @@ public class InternalStorageService implements StorageService, BlobStore {
         }
         throw new IllegalArgumentException("Invalid internal attachment key");
     }
+    /** Missing leaf/never-created partitions are distinct from an unavailable initialized storage root. */
+    private void requireObjectNamespaces(Path object) {
+        if(root==null || staging==null || finals==null || scratch==null)
+            throw new StorageResourceUnavailableException("内部存储尚未初始化");
+        for(Path directory:List.of(root,staging,finals,scratch))requireRealDirectory(directory);
+        Path namespace=object.startsWith(staging)?staging:object.startsWith(finals)?finals:null;
+        if(namespace==null)throw new StorageResourceUnavailableException("原件不在初始化存储目录内");
+        Path parent=namespace;
+        for(Path segment:namespace.relativize(object.getParent())) {
+            parent=parent.resolve(segment);
+            if(Files.notExists(parent,LinkOption.NOFOLLOW_LINKS))return; // A category/month may never have been created.
+            requireRealDirectory(parent);
+        }
+    }
+    private static void requireRealDirectory(Path directory) {
+        try {
+            if(!Files.isDirectory(directory,LinkOption.NOFOLLOW_LINKS) || !directory.equals(directory.toRealPath()))
+                throw new StorageResourceUnavailableException("内部存储目录缺失或身份异常，请核验后重试");
+        } catch(IOException unknown) {
+            // Do not preserve a nested NoSuchFileException: a missing namespace is not proof that one object was deleted.
+            throw new StorageResourceUnavailableException("内部存储目录暂不可用，请核验后重试");
+        }
+    }
+
     private void createPartition(Path namespace,Path parent) throws IOException {
         if(parent.equals(namespace))return;
         privateDirectory(parent.getParent());privateDirectory(parent);

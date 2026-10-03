@@ -118,11 +118,12 @@ class VisitorSmsIssuanceTransactionTest {
     }
 
     @Test
-    void definitiveRejectionDeletesOnlyThePreparedIssuance() {
+    void definitiveRejectionRetainsOnlyThePreparedIssuanceAsAnInactiveFact() {
         UUID id = UUID.randomUUID();
 
         issuance.reject(id);
 
-        verify(repository).deleteById(id);
+        verify(repository).recordDelivery(id,"REJECTED","SMS_PROVIDER_DEFINITIVELY_REJECTED");
+        verify(repository,never()).deleteById(any());
     }
 }

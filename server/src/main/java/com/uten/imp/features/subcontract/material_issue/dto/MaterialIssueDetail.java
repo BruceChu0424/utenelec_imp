@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 委外材料出仓单详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class MaterialIssueDetail
+public class MaterialIssueDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
         implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
@@ -41,4 +41,7 @@ public class MaterialIssueDetail
     private java.time.Instant createdAt;
     /** 当前用户无委外商业金额权限时为 true，明细单价/金额和合计同时置 null。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /** 采购付款单详情。 */
 @Getter
-public class FinancePaymentDetail {
+public class FinancePaymentDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -111,4 +111,7 @@ public class FinancePaymentDetail {
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
     /** The source identity is immutable; ordinary save requests cannot set it. */
     public boolean isLegacyImported() { return legacyId != null; }
+
+    @Override public void disableHistoryActions() {
+    }
 }

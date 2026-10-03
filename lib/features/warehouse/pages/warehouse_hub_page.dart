@@ -15,8 +15,8 @@
 //
 // 卡片统一 UtenHubCard；显隐只走 hub_catalog 登记的落点 + 路由守卫同一份 any/all 契约
 // (hubCardAllowed，ADR-109)。计数口径(准则 14-徽章与计数口径)：
-//   · 任务中心卡红数 = BadgeModule.warehouse 待办累计（四任务中心 + 仓库草稿，
-//     服务端徽章目录求和，页面里不做加法）；黄数 = 同容器在办累计（等待检查结果）。
+//   · 任务中心卡只显示 BadgeModule.warehouse 待办累计（含盘点审核与仓库草稿），
+//     服务端徽章目录求和，页面里不做加法；进行中不与待办重复展示。
 //   · 新建区六张卡不挂数（新建入口不是待办；草稿仍在新页「草稿(N)」按钮与
 //     任务中心各草稿分段可见）。
 //   · 库存查询与报表区是浏览型入口，不挂任何计数。
@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_module_badges.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -44,7 +45,6 @@ import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../../shared/badges/badge_scope.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
@@ -64,28 +64,17 @@ class WarehouseHubPage extends ConsumerWidget {
     bool canOpen(String location) =>
         hubCardAllowed(RouteName.warehouse, location, perms, isSuperAdmin);
 
-    // 任务中心卡（2026-09-24 合并）：六大类一站式；角标 = 模块待办/在办累计
-    //（服务端徽章目录求和，与顶栏两枚药丸、工作台仓库卡同源同数）。
+    // 唯一任务中心入口只展示待办。进行中是另一种状态，不能与待办相加造成重复。
     final taskEntries =
-        <
-              ({
-                IconData icon,
-                String label,
-                String description,
-                String location,
-                BadgeScope badgeScope,
-              })
-            >[
-              if (canOpen(RouteName.warehouseTasks))
-                (
-                  icon: Icons.task_alt_outlined,
-                  label: '仓库任务中心',
-                  description: '出库 · 入库 · 生产领料 · 品质检查结果 · 委外退回，一站式查看与办理',
-                  location: RouteName.warehouseTasks,
-                  badgeScope: const BadgeScope.module(BadgeModule.warehouse),
-                ),
-            ]
-            .toList();
+        <({IconData icon, String label, String description, String location})>[
+          if (canOpen(RouteName.warehouseTasks))
+            (
+              icon: Icons.task_alt_outlined,
+              label: '仓库任务中心',
+              description: '出库 · 入库 · 领料 · 品质结果 · 盘点审核',
+              location: RouteName.warehouseTasks,
+            ),
+        ].toList();
 
     // 新建单据区：仓库原生单据直达新建页（creator-only，路由守卫按
     // /warehouse/:code/new 的 create 权限放行；不支持手工新建的类型不登记）。
@@ -205,8 +194,12 @@ class WarehouseHubPage extends ConsumerWidget {
                       icon: e.icon,
                       label: e.label,
                       description: e.description,
-                      badgeScope: e.badgeScope,
-                      badgeShowLabel: true,
+                      badge: UtenNotificationBadge(
+                        count: ref.watch(
+                          badgeModuleTodoProvider(BadgeModule.warehouse),
+                        ),
+                        showLabel: true,
+                      ),
                       onTap: () => goFrom(context, e.location),
                     );
                   },

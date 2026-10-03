@@ -176,6 +176,7 @@ final class _MaterialAggregateSubmission {
       if (createdChildren.isNotEmpty) {
         unawaited(_offerRemainingChildren(createdChildren));
       }
+      if (!confirmed) owner._setPreparationSupplyUsage(null);
       return true;
     } on FormatException catch (failure) {
       if (owner.mounted) owner.context.appWarning(failure.message);

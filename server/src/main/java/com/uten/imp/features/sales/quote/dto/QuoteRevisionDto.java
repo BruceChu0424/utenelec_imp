@@ -11,5 +11,6 @@ public record QuoteRevisionDto(
         String actionLabel,
         String actorName,
         String reason,
-        OffsetDateTime createdAt) {
+        OffsetDateTime createdAt,
+        com.fasterxml.jackson.databind.JsonNode snapshot) {
 }

@@ -137,7 +137,7 @@ public class SalesQuoteTemplateStore {
                 VALUES(:job,:id,:client,:type,:doc)
                 """, p);
         // V747's cleanup trigger only releases objects not referenced by an immutable template version.
-        jdbc.update("DELETE FROM sales_quote_template_candidates WHERE job_id=:job", p);
+        jdbc.update("UPDATE sales_quote_template_candidates SET archived_at=COALESCE(archived_at,now()),archived_by=COALESCE(archived_by,CAST(:actor AS text)),archive_reason=COALESCE(archive_reason,'ADOPTED') WHERE job_id=:job",p);
         audit.logCommittedSideEffect(event.userId(), null, "learn_sales_quote_template", "sales_quote_customer_templates",
                 id.toString(), "保存客户报价样式 v" + version);
     }
@@ -147,6 +147,28 @@ public class SalesQuoteTemplateStore {
         for (String f : a) if (semantic(f)) rolesA.add(f);
         for (String f : b) if (semantic(f)) rolesB.add(f);
         return rolesA.equals(rolesB) && QuoteTemplateWorkbook.similarity(a, b) >= 0.92;
+    }
+
+    /** Explicit adoption from a saved quotation's download flow; no document/master values are imported. */
+    @Transactional
+    public UUID adoptUploaded(UUID quoteId, UUID clientId, UUID jobId) {
+        UUID actor = currentUser.id().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+        Map<String, Object> p = Map.of("job", jobId, "actor", actor, "doc", quoteId, "client", clientId);
+        lockJob(p);
+        boolean owned = Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM ai_jobs j WHERE j.id=:job AND j.submitted_by_user=:actor
+                  AND j.kind='SALES_DOCUMENT_INTAKE' AND j.status='SUCCEEDED'
+                  AND j.params->>'templateOnly'='true' AND j.params->>'docType'='quote'
+                  AND j.params->>'docId'=CAST(:doc AS text) AND j.params->>'clientId'=CAST(:client AS text))
+                """, p, Boolean.class));
+        if (!owned) throw new ApiException(ErrorCode.CONFLICT, "模板识别任务不属于当前报价或客户，请重新上传");
+        if (!lookup.canLearnClientDocument(clientId)) throw new ApiException(ErrorCode.FORBIDDEN, "你没有此客户的模板学习权限");
+        adopt(new SalesIntakeUsedEvent(jobId, actor, "quote", quoteId, clientId));
+        return jdbc.query("""
+                SELECT template_id FROM sales_quote_template_evidence
+                WHERE job_id=:job AND client_id=:client AND doc_type='quote' AND doc_id=:doc
+                """, p, (rs, row) -> rs.getObject(1, UUID.class)).stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "模板候选已失效或无法保存，请重新上传"));
     }
     private static boolean semantic(String feature) {
         return feature.startsWith("role:") || feature.startsWith("extra:") || feature.startsWith("header:")
@@ -199,8 +221,21 @@ public class SalesQuoteTemplateStore {
     @Transactional
     public void purgeExpired() {
         jdbc.update("""
-                DELETE FROM sales_quote_template_candidates c WHERE c.expires_at<now() OR EXISTS (
-                    SELECT 1 FROM ai_jobs j WHERE j.id=c.job_id AND (j.status IN ('FAILED','CANCELLED') OR j.used_at IS NOT NULL))
+                WITH candidates AS (
+                    SELECT c.job_id FROM sales_quote_template_candidates c JOIN ai_jobs j ON j.id=c.job_id
+                    WHERE c.archived_at IS NULL AND j.status IN ('SUCCEEDED','FAILED','CANCELLED')
+                      AND (j.learning_retry_until IS NULL OR j.learning_retry_until<now())
+                      AND (c.expires_at<now() OR j.status IN ('FAILED','CANCELLED') OR j.used_at IS NOT NULL)
+                      AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
+                          WHERE ((receipt.doc_type=j.used_doc_type AND receipt.doc_id=j.used_doc_id)
+                              OR (receipt.actor_user_id=j.submitted_by_user
+                                  AND (receipt.request_payload->>'intakeJobId'=CAST(j.id AS text)
+                                      OR jsonb_exists(receipt.request_payload->'additionalIntakeJobIds',CAST(j.id AS text)))))
+                            AND EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING'))
+                    ORDER BY c.expires_at,c.job_id LIMIT 1000 FOR UPDATE OF c,j SKIP LOCKED
+                )
+                UPDATE sales_quote_template_candidates c SET archived_at=now(),archived_by='system:template-retention',archive_reason='CANDIDATE_RETENTION_WINDOW'
+                FROM candidates WHERE c.job_id=candidates.job_id
                 """, Map.of());
     }
     private void lockJob(Map<String, Object> parameters) {

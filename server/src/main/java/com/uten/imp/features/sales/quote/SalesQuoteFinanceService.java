@@ -41,7 +41,7 @@ import java.util.UUID;
  * <p>核价人 = {@link SalesQuoteFinanceReviewerEligibilityPort}(财务部门树 + 查看/核价权限 + 在职); 改折扣/
  * 成交单价、退回、确认都要先认领({@code SALES_QUOTE_FINANCE_REVIEW}), 并带页面看到的核价修订号。
  * 核价可以改的只有: 各行折扣或成交单价(货品没有标价或成交单价高于标价时由财务定价)、赠品/0 价、按最新标价刷新,
- * 以及表头有效期、结账方式、财务备注; 货品和数量只能退回销售修改。确认时不允许还有没定价的行。
+ * 以及基价、数量、整行删除和表头有效期、结账方式、财务备注；新增货品退回销售处理。确认时不允许还有没定价的行。
  * 金额口径与报价单一致(数量 × 单价 × 折扣, 只在 {@link MoneyPolicy} 取位)。
  */
 @Service
@@ -83,6 +83,7 @@ public class SalesQuoteFinanceService {
             case "confirmed" -> "o.status = 1 AND o.finance_confirmed_at IS NOT NULL";
             case "returned" -> "o.status = 0 AND o.finance_returned_at IS NOT NULL"
                     + " AND o.submitted_at IS NOT NULL AND o.finance_returned_at >= o.submitted_at";
+            case "cancelled" -> "o.status = -1 AND o.submitted_at IS NOT NULL";
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "核价列表分类无效: " + state);
         };
         String orderBy = switch (normalizedState) {
@@ -339,7 +340,7 @@ public class SalesQuoteFinanceService {
         q.setSettlementMethodId(req.settlementMethodId());
         q.setFinanceRemark(blankToNull(req.financeRemark()));
 
-        List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
+        List<SalesQuoteItem> items = new ArrayList<>(itemRepo.findByQuoteIdOrderByLineNoAsc(id));
         Map<UUID, SalesQuoteItem> byId = new HashMap<>();
         items.forEach(item -> byId.put(item.getId(), item));
         List<QuoteFinanceEditRequest.Line> edits = req.lines() == null ? List.of() : req.lines();
@@ -356,21 +357,48 @@ public class SalesQuoteFinanceService {
             int actions = (edit.discount() != null ? 1 : 0) + (edit.dealPrice() != null ? 1 : 0)
                     + (Boolean.TRUE.equals(edit.giftZeroPrice()) ? 1 : 0)
                     + (Boolean.TRUE.equals(edit.useMasterPrice()) ? 1 : 0);
-            if (actions != 1) {
+            boolean removed = Boolean.TRUE.equals(edit.removed());
+            if (removed && (actions > 0 || edit.qty() != null || edit.price() != null)) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "删除整行不能同时修改该行金额或数量");
+            }
+            if (!removed && ((edit.price() != null && (edit.dealPrice() != null
+                    || Boolean.TRUE.equals(edit.giftZeroPrice()) || Boolean.TRUE.equals(edit.useMasterPrice())))
+                    || actions > 1 || (actions == 0 && edit.price() == null && edit.qty() == null))) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "每行只能选一种改法: 折扣、成交单价、赠品/0价 或 按最新标价");
+                        "不能混用成交价、赠品和标价刷新；直接填写单价可同时修改折扣和数量");
+            }
+            if (edit.qty() != null) {
+                com.uten.imp.common.util.FinancialExactAmount.quantity(edit.qty(), "核价数量");
+                if (edit.qty().signum() <= 0) throw new ApiException(ErrorCode.VALIDATION_FAILED, "核价数量必须大于 0");
+            }
+            if (edit.price() != null) {
+                SalesPriceAuthority.requireClientPrice(edit.price(), "核价单价");
             }
             if (edit.dealPrice() != null || Boolean.TRUE.equals(edit.useMasterPrice())
                     || item.getPrice() == null) {
                 needMaster.add(item.getGoodsId());
             }
         }
+        if (edits.stream().filter(edit -> Boolean.TRUE.equals(edit.removed())).count() >= items.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价至少保留一行货品；无法承接请退回销售取消报价");
+        }
         Map<UUID, BigDecimal> master = priceAuthority.loadMasterPrices(needMaster);
         boolean baseCurrency = quotes.isBaseCurrency(q.getCurrencyId());
         for (QuoteFinanceEditRequest.Line edit : edits) {
             SalesQuoteItem item = byId.get(edit.itemId());
             String label = lineLabel(item);
-            if (edit.discount() != null) {
+            if (Boolean.TRUE.equals(edit.removed())) {
+                itemRepo.delete(item);
+                items.remove(item);
+                continue;
+            }
+            if (edit.qty() != null) item.setQty(edit.qty());
+            if (edit.price() != null) {
+                BigDecimal discount = edit.discount() == null ? item.getDiscount()
+                        : SalesPriceAuthority.normalizeExplicitDiscount(edit.discount());
+                financePrice(item, edit.price(), actor, now);
+                item.setDiscount(discount);
+            } else if (edit.discount() != null) {
                 if (item.getPrice() == null) {
                     throw new ApiException(ErrorCode.VALIDATION_FAILED,
                             label + "还没有单价, 请直接填写成交单价");
@@ -388,7 +416,7 @@ public class SalesQuoteFinanceService {
                 item.setFinancePriceBy(null);
                 item.setFinancePriceAt(null);
                 item.setDiscount(SalesPriceAuthority.normalizeDiscountForWrite(item.getDiscount()));
-            } else {
+            } else if (edit.dealPrice() != null) {
                 applyDealPrice(item, edit.dealPrice(), master.get(item.getGoodsId()), label, actor, now);
             }
             BigDecimal amount = item.getPrice() == null ? null
@@ -498,6 +526,7 @@ public class SalesQuoteFinanceService {
         q.setStatus(SalesQuoteService.STATUS_PENDING_FINANCE);
         q.setFinanceConfirmedAt(null);
         q.setFinanceConfirmedBy(null);
+        SalesQuoteService.clearCustomerAcceptance(q);
         q.setApproverId(null);
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
@@ -518,13 +547,17 @@ public class SalesQuoteFinanceService {
         if (dealPrice.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "成交单价要大于 0; 0 价请勾选赠品/0价");
         }
-        BigDecimal listPrice = SalesQuoteItem.PRICE_SOURCE_MASTER.equals(item.getPriceSource()) && item.getPrice() != null
+        BigDecimal listPrice = !SalesQuoteItem.PRICE_SOURCE_FINANCE.equals(item.getPriceSource()) && item.getPrice() != null
                 ? item.getPrice() : currentMaster;
         MoneyPolicy.DiscountQuote quote = MoneyPolicy.discountFromUnitPrice(dealPrice, BigDecimal.ONE, listPrice);
         switch (quote.flag()) {
             case OK, ROUNDED -> {
                 item.setPrice(listPrice);
-                item.setPriceSource(SalesQuoteItem.PRICE_SOURCE_MASTER);
+                // A negotiated sales base price stays a sales snapshot; deriving a discount
+                // must not silently replace it with the current goods master price.
+                if (!SalesQuoteItem.PRICE_SOURCE_SALES.equals(item.getPriceSource())) {
+                    item.setPriceSource(SalesQuoteItem.PRICE_SOURCE_MASTER);
+                }
                 item.setFinancePriceBy(null);
                 item.setFinancePriceAt(null);
                 item.setDiscount(quote.discount());

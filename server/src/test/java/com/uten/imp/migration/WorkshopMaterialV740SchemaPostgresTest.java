@@ -876,7 +876,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
                 "workshop_material:view:VIEW:{NORMAL}",
                 "workshop_material:issue:EXECUTE:{NORMAL}",
                 "workshop_material:request:CREATE:{NORMAL}",
-                "workshop_material:count:EXECUTE:{NORMAL}",
+                "workshop_material:count:EXECUTE:{INDIVIDUAL_ONLY}",
                 "workshop_material:choose:EXECUTE:{NORMAL}",
                 "workshop_material:setup:CONFIGURE:{BULK_EXCLUDED,NON_DELEGABLE}",
                 "workshop_material:reopen:EXECUTE:{INDIVIDUAL_ONLY}"));
@@ -887,10 +887,10 @@ class WorkshopMaterialV740SchemaPostgresTest {
                 JOIN permissions permission ON permission.id=grant_row.permission_id
                 WHERE permission.code LIKE 'workshop\\_material:%'""")).isEqualTo(String.join(",",
                 "DEPT_FIN>workshop_material:view",
-                "DEPT_PROD>workshop_material:choose", "DEPT_PROD>workshop_material:count",
+                "DEPT_PROD>workshop_material:choose",
                 "DEPT_PROD>workshop_material:request", "DEPT_PROD>workshop_material:view",
                 "SUB_PLAN>workshop_material:view",
-                "SUB_WH>workshop_material:count", "SUB_WH>workshop_material:issue",
+                "SUB_WH>workshop_material:issue",
                 "SUB_WH>workshop_material:setup", "SUB_WH>workshop_material:view"));
         assertThat(count("""
                 SELECT count(*) FROM permissions permission
@@ -902,6 +902,13 @@ class WorkshopMaterialV740SchemaPostgresTest {
                 WHERE surface_key IN ('warehouse.workshop-material', 'warehouse.workshop-material-setup',
                                       'production.workshop-material', 'report.workshop-material') AND enabled""")).isEqualTo(4);
         assertThat(str("SELECT high_risk::text FROM permissions WHERE code='workshop_material:reopen'")).isEqualTo("true");
+        // The template migrates to HEAD: V767 keeps named user grants, but revokes department/manager grants.
+        assertThat(str("SELECT baseline::text FROM permissions WHERE code='workshop_material:count'")).isEqualTo("false");
+        assertThat(count("""
+                SELECT count(*) FROM manager_permission_delegations granted
+                JOIN permissions permission ON permission.id=granted.permission_id
+                WHERE permission.code='workshop_material:count'""")).isZero();
+
     }
 
     @Test
@@ -1147,7 +1154,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
         exec("""
                 INSERT INTO workshop_material_requisition_lines(id, requisition_id, line_no, goods_id, unit_id,
                     requested_qty, fulfilled_qty)
-                VALUES (?, ?, 1, ?, ?, ?::numeric, ?::numeric)""", line, requisition, goods, KG, qty, qty);
+                VALUES (?, ?, 1, ?, ?, ?::numeric, 0)""", line, requisition, goods, KG, qty);
         exec("""
                 INSERT INTO stock_documents(id, doc_type, bill_no, bill_date, warehouse_id, to_warehouse_id, status)
                 VALUES (?, 'TRANSFER', ?, ?, ?, ?, 1)""", document, "DB740-" + n, date, LEAF, BIN);
@@ -1172,6 +1179,8 @@ class WorkshopMaterialV740SchemaPostgresTest {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?::numeric, ?, ?, ?, ?, ?)""",
                 posting, line, item, LEAF, BIN, goods, in, qty, period, date, supplement,
                 supplement ? "上一期漏录" : null, ACTOR);
+        // Match the real stock gateway: only posted stock may advance fulfilled quantity.
+        exec("UPDATE workshop_material_requisition_lines SET fulfilled_qty=?::numeric WHERE id=?", qty, line);
         exec("""
                 UPDATE workshop_material_requisitions SET status='DONE', done_by=?, done_at=now(), row_version=row_version+1
                 WHERE id=?""", ACTOR, requisition);

@@ -58,19 +58,111 @@ enum WeightCaptureMode {
 
 /// 取参请求行: [key] 由调用方定 (默认 [WeightParams.keyOf])。
 class WeightParamsLine {
-  const WeightParamsLine({required this.goodsId, this.supplierId, this._key});
+  const WeightParamsLine({
+    required this.goodsId,
+    this.supplierId,
+    this.warehouseId,
+    this.colorId,
+    this._key,
+  });
 
   final String goodsId;
   final String? supplierId;
+  final String? warehouseId;
+  final String? colorId;
   final String? _key;
 
-  String get key => _key ?? WeightParams.keyOf(goodsId, supplierId);
+  String get key =>
+      _key ??
+      WeightParams.keyOf(
+        goodsId,
+        supplierId,
+        warehouseId: warehouseId,
+        colorId: colorId,
+      );
 
   Map<String, Object?> toJson() => {
     'key': key,
     'goodsId': goodsId,
     if (supplierId != null && supplierId!.isNotEmpty) 'supplierId': supplierId,
+    if (warehouseId != null && warehouseId!.isNotEmpty)
+      'warehouseId': warehouseId,
+    if (colorId != null && colorId!.isNotEmpty) 'colorId': colorId,
   };
+}
+
+/// 同仓库、货品、颜色的库存重量参考；重量未知时不得当作零。
+class WeightStockBalance {
+  const WeightStockBalance({
+    required this.warehouseId,
+    required this.qtyBase,
+    required this.weightKg,
+    this.colorId,
+    this.estimated = false,
+  });
+
+  final String warehouseId;
+  final String? colorId;
+  final double qtyBase;
+  final double weightKg;
+  final bool estimated;
+
+  bool get usable =>
+      warehouseId.isNotEmpty &&
+      qtyBase.isFinite &&
+      qtyBase > 0 &&
+      weightKg.isFinite &&
+      weightKg > 0;
+
+  double? expectedKgFor(double? qty) {
+    if (!usable || qty == null || !qty.isFinite || qty <= 0) return null;
+    final result = qty / qtyBase * weightKg;
+    return result.isFinite && result > 0 ? result : null;
+  }
+
+  factory WeightStockBalance.fromJson(Map<String, dynamic> j) =>
+      WeightStockBalance(
+        warehouseId: _str(j['warehouseId']) ?? '',
+        colorId: _str(j['colorId']),
+        qtyBase: _num(j['qtyBase']) ?? 0,
+        weightKg: _num(j['weightKg']) ?? 0,
+        estimated: j['estimated'] == true,
+      );
+}
+
+/// 仅用于预填/核对，不是实称事实，不写进单据重量与学习样本。
+class WeightSuggestion {
+  const WeightSuggestion({
+    required this.kg,
+    required this.source,
+    required this.tolerancePct,
+    this.inventoryBased = false,
+  });
+  final double kg;
+  final String source;
+  final double tolerancePct;
+  final bool inventoryBased;
+
+  bool differsFrom(
+    double? measuredKg, {
+    double scaleResKg = WeightPredictor.defaultScaleResKg,
+  }) {
+    if (measuredKg == null ||
+        !measuredKg.isFinite ||
+        measuredKg <= 0 ||
+        !kg.isFinite ||
+        kg <= 0) {
+      return false;
+    }
+    final resolution = scaleResKg.isFinite && scaleResKg > 0
+        ? scaleResKg
+        : WeightPredictor.defaultScaleResKg;
+    final tolerance = tolerancePct.isFinite && tolerancePct > 0
+        ? tolerancePct
+        : WeightPredictor.defaultTolerancePct;
+    return (measuredKg - kg).abs() >
+        math.max(kg * tolerance / 100, resolution * 2);
+  }
 }
 
 /// 一行的单重参数 (POST /stock/weight/params items[])。
@@ -102,6 +194,7 @@ class WeightParams {
     this.baseUnitDimension,
     this.learningEnabled = true,
     this.scaleResKg = WeightPredictor.defaultScaleResKg,
+    this.stockBalance,
   });
 
   final String key;
@@ -146,9 +239,19 @@ class WeightParams {
 
   /// 秤分辨率 (千克; 服务端配置, 预测公式里的量化误差项, 与服务端 ApwPredictor 同值)。
   final double scaleResKg;
+  final WeightStockBalance? stockBalance;
 
-  static String keyOf(String goodsId, String? supplierId) =>
-      '$goodsId|${supplierId ?? ''}';
+  static String keyOf(
+    String goodsId,
+    String? supplierId, {
+    String? warehouseId,
+    String? colorId,
+  }) {
+    final base = '$goodsId|${supplierId ?? ''}';
+    return warehouseId == null || warehouseId.isEmpty
+        ? base
+        : '$base|$warehouseId|${colorId ?? ''}';
+  }
 
   /// 按件计 (折算件数取整)。
   bool get integerQty =>
@@ -157,7 +260,11 @@ class WeightParams {
       baseUnitDimension!.toUpperCase() == 'COUNT';
 
   /// 货品按重量计 (重量由数量精确换算, 格子只读)。
-  bool get isExact => basis == WeightBasis.exact && massFactorKg != null;
+  bool get isExact =>
+      basis == WeightBasis.exact &&
+      massFactorKg != null &&
+      massFactorKg!.isFinite &&
+      massFactorKg! > 0;
 
   bool get drawOnly => evidence?.toUpperCase() == 'DRAW_ONLY';
   bool get conflict => evidence?.toUpperCase() == 'CONFLICT';
@@ -167,7 +274,9 @@ class WeightParams {
       basis != WeightBasis.exact &&
       basis != WeightBasis.none &&
       logMean != null &&
+      logMean!.isFinite &&
       lotPrior != null &&
+      lotPrior!.isFinite &&
       lotPrior! > 0;
 
   /// 生效档位 (没有档位按「未学准」)。
@@ -227,6 +336,9 @@ class WeightParams {
     baseUnitDimension: _str(j['baseUnitDimension']),
     learningEnabled: j['learningEnabled'] != false,
     scaleResKg: _num(j['scaleResKg']) ?? WeightPredictor.defaultScaleResKg,
+    stockBalance: j['stockBalance'] is Map<String, dynamic>
+        ? WeightStockBalance.fromJson(j['stockBalance'] as Map<String, dynamic>)
+        : null,
   );
 }
 
@@ -262,12 +374,46 @@ class WeightCheck {
 
 /// 参数 -> 预测的桥接 (纯计算, 不做文案)。
 extension WeightParamsPrediction on WeightParams {
+  /// 出库优先对应库存均重；入库优先可信单重，再参考同维度库存。
+  WeightSuggestion? suggestionFor(
+    double? qtyBase, {
+    WeightCaptureMode mode = WeightCaptureMode.inbound,
+  }) {
+    if (isExact || qtyBase == null || !qtyBase.isFinite || qtyBase <= 0) {
+      return null;
+    }
+    final stockKg = stockBalance?.expectedKgFor(qtyBase);
+    final stock = stockKg == null
+        ? null
+        : WeightSuggestion(
+            kg: stockKg,
+            source: stockBalance!.estimated ? '按库存估算均重预填' : '按库存数量与重量比例预填',
+            inventoryBased: true,
+            tolerancePct: math.max(
+              effectiveTolerancePct,
+              stockBalance!.estimated ? 15 : 5,
+            ),
+          );
+    if (mode == WeightCaptureMode.outbound && stock != null) return stock;
+    final learned = alertsEnabled && !conflict ? expectedKgFor(qtyBase) : null;
+    if (learned != null && learned.isFinite && learned > 0) {
+      return WeightSuggestion(
+        kg: learned,
+        source: basis == WeightBasis.manual ? '按设定单重预填' : '按历史实称单重预填',
+        tolerancePct: effectiveTolerancePct,
+      );
+    }
+    return stock;
+  }
+
   /// 数量 (基本单位) 的应称重量; 精确换算货品直接乘系数。
   double? expectedKgFor(double? qtyBase) {
-    if (qtyBase == null || qtyBase <= 0) return null;
+    if (qtyBase == null || !qtyBase.isFinite || qtyBase <= 0) return null;
     if (isExact) return qtyBase * massFactorKg!;
     final unit = currentUnitWeightKg;
-    if (!predictable || unit == null) return null;
+    if (!predictable || unit == null || !unit.isFinite || unit <= 0) {
+      return null;
+    }
     return qtyBase * unit;
   }
 
@@ -992,44 +1138,81 @@ class WeightParamsCache extends ChangeNotifier {
 
   final WeightRepository _repository;
   final Map<String, WeightParams> _items = {};
-  final Set<String> _pending = {};
+  final Map<String, Object> _pending = {};
+  final Map<String, String> _pendingGoods = {};
+  final Map<String, int> _generations = {};
   bool _disposed = false;
 
   Object? lastError;
 
-  WeightParams? of(String? goodsId, {String? supplierId}) {
+  WeightParams? of(
+    String? goodsId, {
+    String? supplierId,
+    String? warehouseId,
+    String? colorId,
+  }) {
     if (goodsId == null || goodsId.isEmpty) return null;
-    return _items[WeightParams.keyOf(goodsId, supplierId)];
+    return _items[WeightParams.keyOf(
+      goodsId,
+      supplierId,
+      warehouseId: warehouseId,
+      colorId: colorId,
+    )];
   }
 
   WeightParams? byKey(String key) => _items[key];
 
-  bool isLoading(String goodsId, {String? supplierId}) =>
-      _pending.contains(WeightParams.keyOf(goodsId, supplierId));
+  bool isLoading(
+    String goodsId, {
+    String? supplierId,
+    String? warehouseId,
+    String? colorId,
+  }) => _pending.containsKey(
+    WeightParams.keyOf(
+      goodsId,
+      supplierId,
+      warehouseId: warehouseId,
+      colorId: colorId,
+    ),
+  );
 
   /// 补齐缺的参数 (已有/在途的不重复取)。
   Future<void> ensure(Iterable<WeightParamsLine> lines) async {
+    if (_disposed) return;
     final missing = <WeightParamsLine>[];
+    final token = Object();
+    final generations = <String, int>{};
     for (final line in lines) {
       if (line.goodsId.isEmpty) continue;
-      if (_items.containsKey(line.key) || _pending.contains(line.key)) {
+      if (_items.containsKey(line.key) || _pending.containsKey(line.key)) {
         continue;
       }
-      _pending.add(line.key);
+      _pending[line.key] = token;
+      _pendingGoods[line.key] = line.goodsId;
+      generations[line.goodsId] = _generations[line.goodsId] ?? 0;
       missing.add(line);
     }
     if (missing.isEmpty) return;
     try {
       final fetched = await _repository.params(missing);
       if (_disposed) return;
-      _items.addAll(fetched);
+      for (final line in missing) {
+        if (generations[line.goodsId] != (_generations[line.goodsId] ?? 0)) {
+          continue;
+        }
+        final params = fetched[line.key];
+        if (params != null) _items.putIfAbsent(line.key, () => params);
+      }
       lastError = null;
     } catch (e) {
       if (_disposed) return;
       lastError = e;
     } finally {
       for (final line in missing) {
-        _pending.remove(line.key);
+        if (identical(_pending[line.key], token)) {
+          _pending.remove(line.key);
+          _pendingGoods.remove(line.key);
+        }
       }
     }
     if (!_disposed) notifyListeners();
@@ -1050,6 +1233,15 @@ class WeightParamsCache extends ChangeNotifier {
     if (_disposed) return;
     final before = _items.length;
     _items.removeWhere((key, value) => value.goodsId == goodsId);
+    _generations[goodsId] = (_generations[goodsId] ?? 0) + 1;
+    final pendingKeys = _pendingGoods.entries
+        .where((entry) => entry.value == goodsId)
+        .map((entry) => entry.key)
+        .toList();
+    for (final key in pendingKeys) {
+      _pending.remove(key);
+      _pendingGoods.remove(key);
+    }
     if (_items.length != before) notifyListeners();
   }
 

@@ -8,13 +8,17 @@ import java.util.*;
 /** Personal display configuration, analogous to page preferences; never a record write authority. */
 public final class DisplayPlatformColumnAdapter implements PlatformColumnResourceAdapter {
     private final String scope, label;
-    private final Set<String> readers, priceReaders;
+    private final Set<String> readers, priceReaders, requiredPermissions;
     private final SecurityContextCurrentUser current;
     private final List<FactDefinition> facts;
     public DisplayPlatformColumnAdapter(String scope, String label, Set<String> readers, Set<String> priceReaders,
             SecurityContextCurrentUser current, List<FactDefinition> facts) {
+        this(scope,label,readers,priceReaders,current,facts,Set.of());
+    }
+    public DisplayPlatformColumnAdapter(String scope, String label, Set<String> readers, Set<String> priceReaders,
+            SecurityContextCurrentUser current, List<FactDefinition> facts, Set<String> requiredPermissions) {
         this.scope=scope;this.label=label;this.readers=Set.copyOf(readers);this.priceReaders=Set.copyOf(priceReaders);
-        this.current=current;this.facts=List.copyOf(facts);
+        this.current=current;this.facts=List.copyOf(facts);this.requiredPermissions=Set.copyOf(requiredPermissions);
     }
     @Override public String scope(){return scope;}
     @Override public String label(){return label;}
@@ -34,6 +38,7 @@ public final class DisplayPlatformColumnAdapter implements PlatformColumnResourc
     }
     private boolean has(Set<String> permissions){
         return current.get().filter(user->!user.isVisitor()).map(user->user.getPermissions()!=null
+                && user.getPermissions().containsAll(requiredPermissions)
                 && permissions.stream().anyMatch(user.getPermissions()::contains)).orElse(false);
     }
 }

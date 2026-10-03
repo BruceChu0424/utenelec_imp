@@ -14,7 +14,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class QuoteListItem {
+public class QuoteListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -36,9 +36,18 @@ public class QuoteListItem {
     private OffsetDateTime submittedAt;
     private OffsetDateTime financeConfirmedAt;
     private int reviewRevision;
+    private OffsetDateTime customerAcceptedAt;
+    private Integer customerAcceptedRevision;
+    private String cancelReason;
+    private OffsetDateTime cancelledAt;
     private UUID convertedOrderId;
     private String convertedOrderNo;
     private String clientFileCurrency;
     private List<String> allowedActions;
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+        writable = false;
+        allowedActions = java.util.List.of();
+    }
 }

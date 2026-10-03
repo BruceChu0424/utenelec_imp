@@ -13,6 +13,28 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SubcontractReceiptAmountAuthorityTest {
 
     @Test
+    void threeThousandBagsForOneHundredCloseExactlyAfterThreeReceipts() {
+        BigDecimal sourceQty = new BigDecimal("3000");
+        BigDecimal sourceOriginal = new BigDecimal("100");
+        BigDecimal rate = new BigDecimal("7.123456");
+        BigDecimal sourceLocal = com.uten.imp.common.finance.MoneyPolicy.local(sourceOriginal, rate);
+        BigDecimal referencePrice = com.uten.imp.common.finance.MoneyPolicy.referenceUnitPrice(sourceOriginal, sourceQty);
+        BigDecimal priorQty = BigDecimal.ZERO, priorOriginal = BigDecimal.ZERO, priorLocal = BigDecimal.ZERO;
+        for (String expectedOriginal : List.of("33.3333", "33.3334", "33.3333")) {
+            var receipt = SubcontractReceiptAmountAuthority.sourceAmounts(new BigDecimal("1000"), referencePrice, rate,
+                    sourceQty, sourceOriginal, sourceLocal, priorQty, priorOriginal, priorLocal);
+            assertThat(receipt.original()).isEqualByComparingTo(expectedOriginal);
+            priorQty = priorQty.add(new BigDecimal("1000"));
+            priorOriginal = priorOriginal.add(receipt.original());
+            priorLocal = priorLocal.add(receipt.local());
+        }
+        assertThat(sourceQty.subtract(priorQty)).isEqualByComparingTo("0");
+        assertThat(sourceOriginal.subtract(priorOriginal)).isEqualByComparingTo("0");
+        assertThat(sourceLocal.subtract(priorLocal)).isEqualByComparingTo("0");
+    }
+
+
+    @Test
     void partialSlicesKeepExactPriceAndFinalSliceTakesTheApprovedRemainder() {
         var partial = SubcontractReceiptAmountAuthority.sourceAmounts(
                 BigDecimal.ONE, new BigDecimal("0.33335"), BigDecimal.ONE,

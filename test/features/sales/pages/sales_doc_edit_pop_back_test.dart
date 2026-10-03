@@ -1,3 +1,5 @@
+import 'package:uten_imp/shared/models/user.dart';
+import '../../../support/native_detail_reader_overrides.dart';
 // 编辑既有销售订货单保存后的落点与返回（2026-09-25 修复）：
 //  - 从详情编辑后保存 pop 回宿主，避免叠一层新详情；
 //  - 从草稿列表直接编辑后保存进入本单详情，显示后续审核入口；
@@ -124,6 +126,7 @@ Future<({GoRouter router, _PopApi api})> _pumpFlow(
   late final _PopApi api;
   final container = ProviderContainer(
     overrides: [
+      ...nativeDetailReaderOverrides(includeSession: false),
       apiClientProvider.overrideWith((ref) => api),
       salesMasterNameServiceProvider.overrideWith(
         (ref) => SalesMasterNameService(api),
@@ -216,7 +219,10 @@ Future<({GoRouter router, _PopApi api})> _pumpFlow(
 
 class _TestSessionNotifier extends SessionNotifier {
   @override
-  SessionState build() => const SessionState();
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'native-detail-reader', code: 'reader', name: '测试读者'),
+  );
 }
 
 /// PUT 成功时推进本端写修订号——线上由 Dio 拦截器做，测试 fake 绕过了网络层。

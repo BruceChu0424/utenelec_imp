@@ -17,6 +17,9 @@ public interface AttachmentAccessPort {
 
     List<AttachmentView> listVisible(String ownerType, UUID ownerId);
 
+    /** Read-only full history under the owner's current historical object/data-scope policy. */
+    List<AttachmentView> listVisibleHistory(String ownerType,UUID ownerId);
+
     /**
      * Selects one clean image as the owner's avatar and returns its opaque storage key.
      */
@@ -40,6 +43,13 @@ public interface AttachmentAccessPort {
             UUID uploadedBy,
             String downloadUrl,
             String category,
-            boolean avatar) {
+            boolean avatar,
+            boolean deleted,Instant deletedAt,UUID deletedBy,String deletedByName,String deletedReason,
+            boolean historyReadOnly,String originalAvailability,String historyDownloadUrl) {
+        public AttachmentView(UUID id,String ownerType,UUID ownerId,String storageKey,String originalName,String contentType,
+                long sizeBytes,Instant uploadedAt,UUID uploadedBy,String downloadUrl,String category,boolean avatar) {
+            this(id,ownerType,ownerId,storageKey,originalName,contentType,sizeBytes,uploadedAt,uploadedBy,downloadUrl,category,avatar,
+                    false,null,null,null,null,false,"UNKNOWN",null);
+        }
     }
 }

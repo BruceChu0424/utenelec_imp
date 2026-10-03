@@ -5,6 +5,7 @@
 // 三个分段与货品详情「库存与出入库」页签完全同一套。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -13,7 +14,8 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/providers/master_name_provider.dart';
+import '../models/stock_query.dart';
+import '../models/instant_inventory_scope.dart';
 import '../../../shared/stock_ledger/goods_stock_ledger_panel.dart';
 import '../../../shared/stock_ledger/stock_ledger_models.dart';
 
@@ -22,12 +24,16 @@ class StockItemDetailPage extends ConsumerStatefulWidget {
     super.key,
     required this.goodsId,
     this.initialTab,
+    this.initialScope = const InstantInventoryScope.full(),
+    this.returnTo,
   });
 
   final String goodsId;
 
   /// 路由 ?tab=: balance (库存余额, 默认) / ledger (出入库流水) / weight (单重学习)。
   final String? initialTab;
+  final InstantInventoryScope initialScope;
+  final String? returnTo;
 
   @override
   ConsumerState<StockItemDetailPage> createState() =>
@@ -37,20 +43,39 @@ class StockItemDetailPage extends ConsumerStatefulWidget {
 class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
   final _panelKey = GlobalKey<GoodsStockLedgerPanelState>();
   String? _myLocation;
+  InstantInventoryRow? _goods;
+
+  void _syncLocation({
+    InstantInventoryScope? scope,
+    GoodsStockLedgerSegment? segment,
+  }) {
+    final panel = _panelKey.currentState;
+    final path = RouteName.stockItemDetail(
+      widget.goodsId,
+      tab:
+          (segment ??
+                  panel?.segment ??
+                  GoodsStockLedgerSegment.parse(widget.initialTab))
+              .key,
+      scope: scope ?? panel?.scope ?? widget.initialScope,
+      returnTo: widget.returnTo,
+    );
+    _myLocation = Uri.parse(path).path;
+    context.replace(path);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final names = ref.watch(masterNameServiceProvider);
     _myLocation ??= currentLocationOr(
       context,
       RouteName.stockItemDetail(widget.goodsId),
     );
     // 返回即刷新: 从源单据做过红冲/出库等写操作回来, 余额与流水静默重取。
     ref.onPageResume(_myLocation!, () => _panelKey.currentState?.reload());
-    final goods = names.goodsInfo(widget.goodsId);
+    final goods = _goods;
     final goodsLabel = [
       goods?.name ?? widget.goodsId,
-      if (goods?.code?.isNotEmpty == true) goods!.code,
+      if (goods?.goodsCode?.isNotEmpty == true) goods!.goodsCode,
       if (goods?.series?.isNotEmpty == true) '系列 ${goods!.series}',
       if (goods?.stockPlace?.isNotEmpty == true) '库位 ${goods!.stockPlace}',
     ].join(' · ');
@@ -83,6 +108,12 @@ class _StockItemDetailPageState extends ConsumerState<StockItemDetailPage> {
               key: _panelKey,
               goodsId: widget.goodsId,
               initialSegment: GoodsStockLedgerSegment.parse(widget.initialTab),
+              initialScope: widget.initialScope,
+              onScopeChanged: (scope) => _syncLocation(scope: scope),
+              onSegmentChanged: (segment) => _syncLocation(segment: segment),
+              onGoodsLoaded: (goods) {
+                if (mounted) setState(() => _goods = goods);
+              },
             ),
           ),
         ),

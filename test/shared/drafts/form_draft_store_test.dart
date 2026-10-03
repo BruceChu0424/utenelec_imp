@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
@@ -51,14 +52,19 @@ class MemoryDraftStorage implements FormDraftStorage {
 const _scope = AuthenticatedScope(userId: 'user-1');
 const _perms = {Perm.salesOrderCreate, Perm.salesOrderView};
 
-FormDraft _draft(String id, {String note = 'unfinished'}) => FormDraft(
+FormDraft _draft(
+  String id, {
+  String note = 'unfinished',
+  Map<String, dynamic>? data,
+  String? route,
+}) => FormDraft(
   id: id,
   title: '销售订货单',
   module: BadgeModule.sales,
-  route: '/sales/orders/new',
+  route: route ?? '/sales/orders/new',
   permission: Perm.salesOrderCreate,
   updatedAt: DateTime.utc(2026, 9, 26),
-  data: {'note': note},
+  data: data ?? {'note': note},
 );
 
 ProviderContainer _container(
@@ -76,6 +82,208 @@ ProviderContainer _container(
 );
 
 void main() {
+  test('known outcomes and partial unsent remainder remain deletable', () {
+    final route = RouteName.productionFqcSheetHandling('s');
+    for (final state in ['notSent', 'rejected', 'confirmed']) {
+      expect(
+        hasUnknownFormDraftSubmission({
+          '_formDraftSubmissionPending': true,
+          'rows': [
+            {'inspectionId': 'i', 'submissionState': state},
+          ],
+        }, route: route),
+        isFalse,
+      );
+    }
+    expect(
+      hasUnknownFormDraftSubmission({
+        '_formDraftSubmissionPending': true,
+        'rows': [
+          {
+            'inspectionId': 'done',
+            'completed': true,
+            'submission': {'decision': 'PASS'},
+          },
+          {'inspectionId': 'remaining', 'submissionState': 'notSent'},
+        ],
+      }, route: route),
+      isFalse,
+    );
+    expect(
+      hasUnknownFormDraftSubmission({
+        'createdOrders': ['one'],
+        '_formDraftSubmissionPending': true,
+      }, route: '/sales/orders/new'),
+      isTrue,
+    );
+    expect(
+      hasUnknownFormDraftSubmission({
+        'createdDocId': 'one',
+        '_formDraftSubmissionPending': true,
+      }, route: '/sales/orders/new'),
+      isFalse,
+    );
+  });
+  test(
+    'CAS local deletion prevents stale tab persisting a pending command',
+    () async {
+      final storage = MemoryDraftStorage();
+      final first = _container(storage);
+      final second = _container(storage);
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      final a = first.read(formDraftsProvider.notifier);
+      await a.ready;
+      final saved = await a.save(_draft('race'));
+      final b = second.read(formDraftsProvider.notifier);
+      await b.ready;
+      await a.delete(saved.id, expectedRevision: saved.revision);
+      await expectLater(
+        b.save(
+          _draft('race', data: {'_formDraftSubmissionPending': true}),
+          expectedRevision: saved.revision,
+        ),
+        throwsA(isA<FormDraftConflict>()),
+      );
+      final retained = jsonDecode(storage.records.values.single) as Map;
+      expect(retained['completed'], isTrue);
+      expect(retained['historyAction'], 'deleted');
+      expect(retained['data'], saved.data);
+    },
+  );
+  final pendingPayloads = <String, Map<String, dynamic>>{
+    'unified': {
+      '_formDraftHasUnknownSubmission': true,
+      'commandKey': 'same-key',
+    },
+    'legacy generic': {
+      '_formDraftSubmissionPending': true,
+      'commandKey': 'same-key',
+    },
+    'legacy batch': {
+      'uncertain': true,
+      'requestKey': 'same-key',
+      'submittedDocIds': ['doc'],
+    },
+    'contradictory batch': {
+      '_formDraftHasUnknownSubmission': false,
+      'uncertain': true,
+      'requestKey': 'same-key',
+      'confirmedResult': {
+        'issuedCount': 1,
+        'skippedCount': 0,
+        'replayedCount': 0,
+      },
+    },
+    'contradictory fqc single': {
+      '_formDraftHasUnknownSubmission': false,
+      'row': {
+        'inspectionId': 'i',
+        'idempotencyKey': 'same-key',
+        'completed': true,
+        'submissionState': 'unknown',
+        'submission': {'decision': 'PASS'},
+      },
+    },
+    'legacy fqc single': {
+      'row': {
+        'inspectionId': 'i',
+        'idempotencyKey': 'same-key',
+        'completed': false,
+        'submission': {'decision': 'PASS'},
+      },
+    },
+    'legacy fqc sheet': {
+      'rows': [
+        {
+          'inspectionId': 'i',
+          'idempotencyKey': 'same-key',
+          'submissionState': 'unknown',
+          'submission': {'decision': 'PASS'},
+        },
+      ],
+    },
+  };
+  for (final entry in pendingPayloads.entries) {
+    test(
+      'unknown deletion refuses ${entry.key} but confirmed completion remains available',
+      () async {
+        final storage = MemoryDraftStorage();
+        final container = _container(
+          storage,
+          permissions: {
+            ..._perms,
+            Perm.stockDocView,
+            Perm.stockDocIssue,
+            Perm.productionQualityInspectionView,
+            Perm.productionQualityInspectionApprove,
+          },
+        );
+        addTearDown(container.dispose);
+        final store = container.read(formDraftsProvider.notifier);
+        await store.ready;
+        final route = entry.key.contains('batch')
+            ? RouteName.warehouseProductionDrawBatchIssue
+            : entry.key.contains('fqc single')
+            ? RouteName.productionFqcInspectionHandling('i')
+            : entry.key == 'legacy fqc sheet'
+            ? RouteName.productionFqcSheetHandling('s')
+            : null;
+        final saved = await store.save(
+          _draft('unknown', data: entry.value, route: route),
+        );
+        await expectLater(
+          store.delete(saved.id, expectedRevision: saved.revision),
+          throwsA(predicate((error) => error.toString().contains('先核对提交'))),
+        );
+        expect(container.read(formDraftsProvider).single.data, entry.value);
+        await store.complete(saved.id, expectedRevision: saved.revision);
+        expect(container.read(formDraftsProvider), isEmpty);
+        expect(
+          (jsonDecode(storage.records.values.single) as Map)['completed'],
+          isTrue,
+        );
+      },
+    );
+  }
+  test(
+    'unknown deletion checks persisted content rather than cached eligibility',
+    () async {
+      final storage = MemoryDraftStorage();
+      final first = _container(storage);
+      final second = _container(storage);
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      final a = first.read(formDraftsProvider.notifier);
+      await a.ready;
+      final original = await a.save(_draft('race'));
+      final b = second.read(formDraftsProvider.notifier);
+      await b.ready;
+      final latest = await b.save(
+        _draft(
+          'race',
+          data: {'_formDraftSubmissionPending': true, 'key': 'frozen'},
+        ),
+        expectedRevision: original.revision,
+      );
+      expect(
+        first
+            .read(formDraftsProvider)
+            .single
+            .data['_formDraftSubmissionPending'],
+        isNull,
+      );
+      await expectLater(
+        a.delete(latest.id, expectedRevision: latest.revision),
+        throwsA(predicate((error) => error.toString().contains('先核对提交'))),
+      );
+      expect(
+        ((jsonDecode(storage.records.values.single) as Map)['data']
+            as Map)['key'],
+        'frozen',
+      );
+    },
+  );
   test(
     'durable scope survives login epoch but separates user server actor',
     () {
@@ -177,7 +385,7 @@ void main() {
   );
 
   test(
-    'completion removes payload, survives restart, rejects stale resurrection',
+    'completion retains payload, survives restart, rejects stale resurrection',
     () async {
       final storage = MemoryDraftStorage();
       final first = _container(storage);
@@ -189,7 +397,7 @@ void main() {
       expect(first.read(formDraftsProvider), isEmpty);
       final marker = jsonDecode(storage.records.values.single) as Map;
       expect(marker['completed'], isTrue);
-      expect(marker.containsKey('data'), isFalse);
+      expect(marker['data'], initial.data);
       await expectLater(
         a.save(_draft('draft-1'), expectedRevision: initial.revision),
         throwsA(isA<FormDraftConflict>()),

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Getter @AllArgsConstructor
-public class ReturnDetail
+public class ReturnDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
         implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
@@ -38,4 +38,7 @@ public class ReturnDetail
     private java.time.Instant createdAt;
     /** 当前用户无采购商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

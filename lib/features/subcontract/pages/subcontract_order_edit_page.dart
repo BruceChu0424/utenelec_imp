@@ -55,6 +55,7 @@ import '../../../core/utils/currency_display.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../basic_data/models/goods_node.dart' show GoodsListItem;
 import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -79,6 +80,7 @@ import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
 import '../services/subcontract_save_workflow.dart';
 import '../widgets/subcontract_grid_columns.dart';
+import '../widgets/subcontract_goods_picker.dart';
 import '../widgets/subcontract_link_picker.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 
@@ -207,7 +209,11 @@ class _SubcontractOrderEditPageState
     _warehouseId = data['warehouseId'] as String?;
     _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
     restoreDraftEmployees(_empCache, data['employees']);
-    restoreDraftGrid(_grid, data['rows'], SubcontractGridRow.fromDraft);
+    restoreDraftGrid(
+      _grid,
+      data['rows'],
+      (row) => SubcontractGridRow.fromDraft(row, supportsTotalInput: true),
+    );
     _pendingFiles.restoreDraft(draftMap(data['attachments']));
     final created = draftMaps(data['createdOrders']);
     _createdOrders = created.isEmpty
@@ -269,7 +275,10 @@ class _SubcontractOrderEditPageState
   /// 空白行带条款默认 (币种人民币/汇率 1/税率 0)：主档默认值只在字段为空时回填，
   /// 先给默认会挡住主档值——顺序是「主档预填 → 默认兜底」，空白行直接给默认。
   SubcontractGridRow _blankRow() =>
-      inheritBusinessColumns(SubcontractGridRow(), _grid.rows)
+      inheritBusinessColumns(
+          SubcontractGridRow(supportsTotalInput: true),
+          _grid.rows,
+        )
         ..currencyId = _defaultCurrencyId
         ..exchangeRate.text = '1'
         ..taxRate.text = '0';
@@ -361,6 +370,7 @@ class _SubcontractOrderEditPageState
                 linked,
                 // 名称+编号（编号列数据源；goodsInfo 未解析时编号为 null 显 '—'）。
                 names.goodsOptionOf(item.goodsId)!,
+                supportsTotalInput: true,
               )
               ..unitRate = item.unitRate
               ..sourceDocNo = item.sourceDocumentNo
@@ -446,13 +456,19 @@ class _SubcontractOrderEditPageState
       final rows = <SubcontractGridRow>[];
       for (final it in d.items) {
         final row =
-            SubcontractGridRow(sourceLocked: it.applicationItemId != null)
+            SubcontractGridRow(
+                supportsTotalInput: true,
+                sourceLocked: it.applicationItemId != null,
+              )
               // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
               ..goods = ref
                   .read(masterNameServiceProvider)
                   .goodsOptionOf(it.goodsId)
-              ..qty.text = financeExactTrimmed(it.qty?.toString()) ?? ''
-              ..price.text = financeExactTrimmed(it.price?.toString()) ?? ''
+              ..qty.text =
+                  financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? ''
+              ..price.text =
+                  financeExactTrimmed(it.priceText ?? it.price?.toString()) ??
+                  ''
               ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
               ..upstreamItemId = it.applicationItemId
               // V463：多来源合并行回显（来源明细 ids + 单号逐条带回）。
@@ -471,6 +487,7 @@ class _SubcontractOrderEditPageState
         row.restoreExtraColumns(
           it.extraColumns.map((c) => c.toSnapshot()).toList(),
         );
+        row.pricing.restoreRecordedTotal(it.totalAmountInputText);
         row.remark.text = it.remark ?? '';
         // ADR-098：已保存的允许损耗原样回显（冻结在本行，不再按主档预填）。
         row.allowedLossPct.text = it.allowedLossPct == null
@@ -496,17 +513,42 @@ class _SubcontractOrderEditPageState
 
   Future<void> _pickGoods(SubcontractGridRow row) async {
     if (row.sourceLocked) return;
-    // 委外订货/进仓/退货选成品（sellable 为选择器默认范围）。
-    final g = await showUtenGoodsPicker(context, ref);
-    if (g == null) return;
-    row
-      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = g.colorId
-      ..unitId = g.unitId
-      ..stockPlaceNotifier.value = g.stockPlace;
-    row.revalidateDefaultPrice();
-    // 新建态手工选了货品 = 这行要进本次订货：自动勾上（保存按钮只认勾选行）。
-    if (_isCreate) _grid.setSelected([row], true);
+    final picked = await ref.read(subcontractGridGoodsPickerProvider)(
+      context,
+      ref,
+      UtenGoodsPickerScope.sellable,
+    );
+    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    void fill(SubcontractGridRow target, GoodsListItem goods) {
+      target
+        ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)
+        ..colorId = goods.colorId
+        ..unitId = goods.unitId
+        ..unitRate = 1
+        ..stockPlaceNotifier.value = goods.stockPlace;
+      target.revalidateDefaultPrice();
+    }
+
+    fill(row, picked.first);
+    final added = <SubcontractGridRow>[];
+    for (final goods in picked.skip(1)) {
+      final next = _blankRow();
+      if (!_isCreate) {
+        // 既有订单只能一套商业条款；新增货品仍继承当前单的条款。
+        next
+          ..supplierId = row.supplierId
+          ..settlementMethodId = row.settlementMethodId
+          ..currencyId = row.currencyId
+          ..exchangeRate.text = row.exchangeRate.text
+          ..taxRate.text = row.taxRate.text;
+      }
+      fill(next, goods);
+      added.add(next);
+    }
+    if (added.isNotEmpty) _grid.addRows(added);
+    // 多选带入的每一行都参与新订单保存，重复货品仍由保存前的统一复核处理。
+    if (_isCreate) _grid.setSelected([row, ...added], true);
+    setState(() {});
     // 换货品后按主档默认值预填该货品的整套条款 (不覆盖已选值)。
     await _prefillRememberedTerms();
   }
@@ -630,6 +672,7 @@ class _SubcontractOrderEditPageState
                 ) ??
                 false);
         if (r.price.text.trim().isEmpty &&
+            r.pricing.totalAmount.text.trim().isEmpty &&
             terms.subcontractPrice != null &&
             matchesPriceContext()) {
           r.price.text =
@@ -859,22 +902,27 @@ class _SubcontractOrderEditPageState
       final goods = ref
           .read(masterNameServiceProvider)
           .goodsOptionOf(li.goodsId)!;
-      final row = SubcontractGridRow.fromLinked(li, goods)
-        ..sourceDocs = [
-          // 引入选择器不回来源单头信息：先带明细 id 占位，单号留待保存后由
-          // 服务端 sources 回显（跳详情在详情页逐行可见）。
-          if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
-            SubcontractSourceApplicationRef(
-              applicationItemId: li.upstreamItemId!,
-            ),
-        ];
+      final row =
+          SubcontractGridRow.fromLinked(li, goods, supportsTotalInput: true)
+            ..sourceDocs = [
+              // 引入选择器不回来源单头信息：先带明细 id 占位，单号留待保存后由
+              // 服务端 sources 回显（跳详情在详情页逐行可见）。
+              if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
+                SubcontractSourceApplicationRef(
+                  applicationItemId: li.upstreamItemId!,
+                ),
+            ];
       final key =
           '${row.goods?.id ?? ''}|${row.colorId ?? ''}|${row.unitId ?? ''}|${row.unitRate ?? 1}';
       var hit = false;
       for (final existing in _grid.rows) {
         final existingKey =
             '${existing.goods?.id ?? ''}|${existing.colorId ?? ''}|${existing.unitId ?? ''}|${existing.unitRate ?? 1}';
-        if (existingKey != key) continue;
+        if (existingKey != key ||
+            existing.pricing.totalAmountInput != null ||
+            existing.extraColumnsPreventMerge) {
+          continue;
+        }
         final total =
             (double.tryParse(existing.qty.text) ?? 0) +
             (double.tryParse(row.qty.text) ?? 0);
@@ -898,7 +946,8 @@ class _SubcontractOrderEditPageState
       (r) =>
           r.goods == null &&
           r.qty.text.trim().isEmpty &&
-          r.price.text.trim().isEmpty,
+          r.price.text.trim().isEmpty &&
+          r.pricing.totalAmount.text.trim().isEmpty,
     );
     if (_isCreate) _grid.setSelected(touched, true);
     await _prefillRememberedTerms();
@@ -943,7 +992,7 @@ class _SubcontractOrderEditPageState
       groupKey: (r) =>
           '${_comboKey(r)}|${r.goods?.id ?? ''}|${r.colorId ?? ''}|'
           '${r.unitId ?? ''}|${r.unitRate ?? 1}|${r.extraColumnsSignature}|'
-          '${r.extraColumnsPreventMerge ? identityHashCode(r) : ''}',
+          '${(r.extraColumnsPreventMerge || r.pricing.totalAmountInput != null) ? identityHashCode(r) : ''}',
       identityLabel: (r) {
         final parts = <String>[
           if ((r.goods?.name ?? '').isNotEmpty) r.goods!.name!,
@@ -1160,13 +1209,19 @@ class _SubcontractOrderEditPageState
     // 逐行校验已全部通过，这里只组装提交体。
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
-      final qty = double.tryParse(r.qty.text) ?? 0;
-      final price = double.tryParse(r.price.text)!;
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       final rate = double.tryParse(r.exchangeRate.text.trim())!;
       final tax = double.tryParse(r.taxRate.text.trim())!;
-      if (!r.extraColumnsValid(exactLineAmountText(r.qty.text, r.price.text))) {
+      final pricingError = r.pricing.validate();
+      if (pricingError != null) {
+        context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+        return;
+      }
+      if (!r.extraColumnsValid(
+        r.pricing.totalAmountInput ??
+            exactLineAmountText(r.qty.text, r.price.text),
+      )) {
         context.appError('附加列数字或计算有误，请检查数字、除数以及最终金额');
         return;
       }
@@ -1192,8 +1247,10 @@ class _SubcontractOrderEditPageState
         'goodsId': r.goods!.id,
         'extraColumns': r.extraColumnsPayload(),
         if (r.documentItemId != null) 'id': r.documentItemId,
-        'qty': qty,
-        'price': price,
+        'qty': r.qty.text.trim(),
+        'price': r.price.text.trim(),
+        if (r.pricing.totalAmountInput != null)
+          'totalAmountInput': r.pricing.totalAmountInput,
         if (r.upstreamItemId != null) 'applicationItemId': r.upstreamItemId,
         // V463 同货品合并行：多来源申请明细逐条提交，服务端按剩余量 FIFO 拆分。
         if (r.upstreamItemIds.length > 1)
@@ -1275,8 +1332,12 @@ class _SubcontractOrderEditPageState
       );
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+    } catch (error, stack) {
+      // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
+      debugPrint('保存委外订货单失败: $error\n$stack');
+      if (mounted) {
+        context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1606,6 +1667,10 @@ class _SubcontractOrderEditPageState
                               return SavedDocumentFields(
                                 locked: _hasCreatedDocuments,
                                 child: UtenEditableGrid<SubcontractGridRow>(
+                                  columnEditingEnabled:
+                                      !_loading &&
+                                      !_saving &&
+                                      !_hasCreatedDocuments,
                                   tableKey: 'subcontract.order.items',
                                   onAddColumn: (hidden) =>
                                       addBusinessGridColumn(
@@ -1613,6 +1678,12 @@ class _SubcontractOrderEditPageState
                                         scope: 'subcontract_order',
                                         hiddenColumns: hidden,
                                         rows: _grid.rows,
+                                        currentRows: () => _grid.rows,
+                                        isEditingEnabled: () =>
+                                            mounted &&
+                                            !_loading &&
+                                            !_saving &&
+                                            !_hasCreatedDocuments,
                                         createRow: () {
                                           final row = _blankRow();
                                           _grid.addRow(row);

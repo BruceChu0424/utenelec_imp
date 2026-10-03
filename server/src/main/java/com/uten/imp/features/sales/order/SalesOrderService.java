@@ -75,6 +75,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesOrderService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -136,11 +140,15 @@ public class SalesOrderService {
                 shippableFirst ? Sort.unsorted()
                         : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
+        Map<UUID, String> sellerNames = p.isEmpty() ? Map.of() : nameResolver.namesOf(
+                p.getContent().stream().map(SalesOrder::getSellerId).toList());
         boolean canEdit = hasObjectActionAuthority();
-        return new PageResponse<>(p.map(o -> toList(o,
-                        nameResolver.nameOf(o.getSellerId()),
+        PageResponse<OrderListItem> result = new PageResponse<>(p.map(o -> toList(o,
+                        o.getSellerId() == null ? null : sellerNames.get(o.getSellerId()),
                         canEdit && accessPolicy.canWrite(o.getOwnerEmployeeId(), readScope))).getContent(),
                 p);
+        return p.stream().noneMatch(SalesOrder::isDeleted) ? result
+                : retainedRecords.page(result, "sales_orders", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -157,7 +165,8 @@ public class SalesOrderService {
         return (Root<SalesOrder> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
@@ -211,8 +220,12 @@ public class SalesOrderService {
                         cb.desc(cb.selectCase()
                                 .when(cb.gt(sum, BigDecimal.ZERO), 1).otherwise(0).as(Integer.class)),
                         cb.asc(root.get("deliverDate")),
-                        cb.desc(root.get("billDate")));
+                        cb.desc(root.get("billDate")),
+                        cb.desc(root.get("id")));
             }
+            f.headerFilters().requireAmountVisible(priceMasker != null && priceMasker.canView());
+            if (f.headerFilters().hasAmountRange() && f.currencyId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "原币订单金额筛选须先选择币种");
+            f.headerFilters().apply(root, cb, ps, "totalOriginal", priceMasker != null && priceMasker.canView(), "deliverDate", false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
@@ -452,14 +465,17 @@ public class SalesOrderService {
      * <p>V592 起客户表三列 (default_settlement_method_id / default_shipment_policy /
      * default_currency_id) 是唯一来源: 基础资料可维护, 每次保存订货单自动写回。
      * 「按最近一张订单推导」的回退路径 (SalesOrderRepository.findLastTermsByClientId)
-     * 已于 2026-09-16 退役: 客户不存在或三项全空返回 null, 不再实时扫订单表。
-     * 前端只回填空字段并黄标提醒核对。授权在 Controller (sales_order:view)。
+     * 已于 2026-09-16 退役: 三项全空返回 null, 不再实时扫订单表。
+     * 报价及其他销售表单共用功能权限，读取前须通过客户可读范围与启用状态校验。
+     * 前端只回填空字段并黄标提醒核对；报价仍保留本位币与报价有效期约定。
      */
     @Transactional(readOnly = true)
+    @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.READ)
     public MasterDefaultTermsForClient masterDefaultTermsForClient(UUID clientId) {
         if (clientId == null) {
             return null;
         }
+        referenceValidator.validateClientForNewBusiness(clientId);
         var client = em.find(com.uten.imp.features.master.client.Client.class, clientId);
         if (client == null || client.isDeleted()
                 || (client.getDefaultSettlementMethodId() == null
@@ -745,8 +761,15 @@ public class SalesOrderService {
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order:view')")
-    public OrderDetail detail(UUID id) {
-        SalesOrder o = requireReadableOrder(id);
+    public OrderDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public OrderDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private OrderDetail readDetail(UUID id, boolean historyRead) {
+        SalesOrder o = requireReadableOrder(id, historyRead);
         List<SalesOrderItem> items =
                 itemRepo.findByOrderIdAndDeletedFalseOrderByLineNoAsc(id);
         List<OrderItemDto> itemDtos = items.stream().map(this::toItemDto).toList();
@@ -757,7 +780,7 @@ public class SalesOrderService {
                 hasObjectActionAuthority()
                         && accessPolicy.canWrite(o.getOwnerEmployeeId()));
         fillQuoteTrace(o, d); // 报价转入回联：sourceQuoteId + 行级 quotePrice（价格留痕比对）
-        return d;
+        return finishHistory(d, o, historyRead);
     }
 
     /**
@@ -1042,6 +1065,9 @@ public class SalesOrderService {
             req.setCurrencyId(resolveQuoteConversionCurrencyId());
         }
         var sourceQuote = resolveSourceQuote(sourceQuoteId, expectedQuoteOwner);
+        if (sourceQuote != null && !java.util.Objects.equals(sourceQuote.getClientId(), req.getClientId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "订货客户必须与客户已确认的报价一致");
+        }
         SalesOrder o = new SalesOrder();
         applyHeader(req, o);
         if (sourceQuote != null) {
@@ -1144,10 +1170,24 @@ public class SalesOrderService {
         if (source == null) {
             throw new ApiException(ErrorCode.CONFLICT, "来源报价不存在或已删除");
         }
+        em.refresh(source, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (!accessPolicy.hasAuthority("sales_quote:view")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权引用销售报价单");
         }
         accessPolicy.requireWritable(source.getMakerId(), "无权引用该销售报价单");
+        if (source.isDeleted() || source.isClosed() || source.getStatus() == null || source.getStatus() != 1
+                || source.getFinanceConfirmedAt() == null
+                || !com.uten.imp.features.sales.quote.SalesQuoteService.customerAccepted(source)) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价须经财务核价并由销售确认客户接受本版后才能转订货单");
+        }
+        if (source.getValidUntil() != null && source.getValidUntil().isBefore(BusinessTime.today())) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价已过有效期，请重新议价");
+        }
+        Number previous = (Number) em.createNativeQuery("SELECT COUNT(*) FROM sales_orders WHERE source_quote_id = :quoteId")
+                .setParameter("quoteId", sourceQuoteId).getSingleResult();
+        if (previous.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "来源报价已经生成过订货单；原订单终止后请重新议价");
+        }
         if (expectedQuoteOwner != null && !java.util.Objects.equals(expectedQuoteOwner, source.getMakerId())) {
             throw new ApiException(ErrorCode.CONFLICT, "来源报价归属已变化，请刷新后重试");
         }
@@ -2709,8 +2749,12 @@ public class SalesOrderService {
     static final class TrustedQuotePriceBook {
         /** 报价核定条款: 单价与 4 位折扣。 */
         record Terms(BigDecimal price, BigDecimal discount,
-                     List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns, String goodsNameEn) {
-            Terms(BigDecimal price, BigDecimal discount) { this(price, discount, List.of(), null); }
+                     List<com.uten.imp.common.columns.ExtraColumnSnapshot> extraColumns, String goodsNameEn, BigDecimal qty) {
+            Terms(BigDecimal price, BigDecimal discount) { this(price, discount, List.of(), null, null); }
+            Terms(BigDecimal price, BigDecimal discount,
+                  List<com.uten.imp.common.columns.ExtraColumnSnapshot> columns, String goodsNameEn) {
+                this(price, discount, columns, goodsNameEn, null);
+            }
         }
 
         private static final class Entry {
@@ -2744,7 +2788,7 @@ public class SalesOrderService {
                         QuoteLinePriceIdentity.from(item),
                         com.uten.imp.features.sales.SalesPriceAuthority.identity(
                                 item.getGoodsId(), item.getColorId(), item.getUnitId(), item.getUnitRate()),
-                        new Terms(item.getPrice(), normalizeOrderDiscountForWrite(item.getDiscount()), item.getExtraColumns(), item.getGoodsNameEnSnapshot())));
+                        new Terms(item.getPrice(), normalizeOrderDiscountForWrite(item.getDiscount()), item.getExtraColumns(), item.getGoodsNameEnSnapshot(), item.getQty())));
             }
         }
 
@@ -3119,13 +3163,17 @@ public class SalesOrderService {
                 || accessPolicy.hasAuthority("sales_order:reallocate");
     }
 
-    private SalesOrder requireOrder(UUID id) {
-        return orderRepo.findById(id).filter(o -> !o.isDeleted())
+    private SalesOrder requireOrder(UUID id) { return requireOrder(id, false); }
+
+    private SalesOrder requireOrder(UUID id, boolean includeDeleted) {
+        return orderRepo.findById(id).filter(o -> includeDeleted || !o.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在"));
     }
 
-    private SalesOrder requireReadableOrder(UUID id) {
-        SalesOrder order = requireOrder(id);
+    private SalesOrder requireReadableOrder(UUID id) { return requireReadableOrder(id, false); }
+
+    private SalesOrder requireReadableOrder(UUID id, boolean includeDeleted) {
+        SalesOrder order = requireOrder(id, includeDeleted);
         accessPolicy.requireReadable(order.getOwnerEmployeeId(), "销售订货单不存在");
         return order;
     }
@@ -3295,5 +3343,18 @@ public class SalesOrderService {
             return timestamp.toInstant().atOffset(java.time.ZoneOffset.UTC);
         }
         throw new IllegalArgumentException("Unsupported timestamp type: " + value.getClass());
+    }
+
+    private OrderDetail finishHistory(OrderDetail view, SalesOrder entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "sales_orders", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("sales_orders",id,beforeId,size);
     }
 }

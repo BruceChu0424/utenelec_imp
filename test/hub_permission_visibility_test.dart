@@ -5,19 +5,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
+import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/components/cards/uten_hub_card.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import 'helpers/badge_summary_fixture.dart';
 
-Widget _app(Widget page, Set<String> permissions) {
+Widget _app(Widget page, Set<String> permissions, {BadgeSummary? badges}) {
   return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
       // 徽章数字只有一个源头(汇总), 固定成空汇总即不发任何计数请求。
-      fixedBadgeSummaryOverride(),
+      fixedBadgeSummaryOverride(badges),
     ],
     child: MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -90,6 +95,56 @@ void main() {
     expect(find.text('新建盘点单'), findsOneWidget);
     expect(find.text('新建其它出库'), findsOneWidget);
     expect(find.text('采购收货单'), findsNothing);
+  });
+
+  testWidgets('审核角色各自有入口，旧调整权限不暴露新盘点审核', (tester) async {
+    await tester.pumpWidget(
+      _app(const WarehouseHubPage(), const {Perm.stockBalanceAdjust}),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('车间内料仓盘点审核'), findsNothing);
+    await tester.pumpWidget(
+      _app(const WarehouseHubPage(), const {Perm.stockCountWarehouseReview}),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('车间内料仓盘点审核'), findsNothing);
+    expect(find.text('仓库任务中心'), findsOneWidget);
+    await tester.pumpWidget(
+      _app(const FinanceHubPage(), const {Perm.stockCountFinanceReview}),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('普通仓盘点审核'), findsOneWidget);
+  });
+
+  testWidgets('仓库任务中心只有统一待办徽章，进行中不重复相加', (tester) async {
+    await tester.pumpWidget(
+      _app(
+        const WarehouseHubPage(),
+        const {Perm.stockCountWarehouseReview},
+        badges: badgeSummaryFixture(
+          entries: {
+            BadgeEntry.warehouseStockCountReview: (1, 0),
+            BadgeEntry.warehouseWorkshopMaterial: (0, 1),
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final card = find.byWidgetPredicate(
+      (widget) => widget is UtenHubCard && widget.label == '仓库任务中心',
+    );
+    expect(card, findsOneWidget);
+    final badge = find.descendant(
+      of: card,
+      matching: find.byType(UtenNotificationBadge),
+    );
+    expect(badge, findsOneWidget);
+    expect(tester.widget<UtenNotificationBadge>(badge).count, 1);
+    expect(
+      find.descendant(of: card, matching: find.byType(UtenInProgressBadge)),
+      findsNothing,
+    );
+    expect(find.text('车间内料仓盘点审核'), findsNothing);
   });
 
   testWidgets('warehouse insights card follows the stock report permission', (

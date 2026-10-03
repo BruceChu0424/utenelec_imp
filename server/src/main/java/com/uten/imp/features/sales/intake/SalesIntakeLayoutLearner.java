@@ -70,6 +70,24 @@ class SalesIntakeLayoutLearner {
         });
     }
 
+    @EventListener
+    public void onTemplateAdopted(com.uten.imp.features.sales.template.SalesQuoteTemplateAdoptedEvent adopted) {
+        SalesIntakeUsedEvent event = new SalesIntakeUsedEvent(adopted.jobId(), adopted.actorId(), "quote", adopted.quoteId(), adopted.clientId());
+        Runnable learn = () -> {
+            try {
+                LayoutFacts facts = readTransaction.execute(status -> capture(event));
+                if (facts != null) store.learnLayoutOnce(event, facts.fingerprint(), facts.headerTexts(), facts.columnRoles(),
+                        facts.headerRowOffset(), facts.learned());
+            } catch (RuntimeException failure) {
+                log.warn("quote template column learning failed job={} reason={}", event.jobId(), failure.getClass().getSimpleName());
+            }
+        };
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) { learn.run(); return; }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() { learn.run(); }
+        });
+    }
+
     /** 读版式并写入; 任何失败只记日志。 */
     void learn(SalesIntakeUsedEvent event) {
         if (receipts != null && event.learningReceiptId() != null) {

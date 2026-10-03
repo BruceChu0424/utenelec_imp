@@ -60,6 +60,9 @@ public class AuditEventInterpreter {
             "summary", "export", "download", "heartbeat", "capability", "preview",
             "search", "tree", "subtree", "arrivals", "unread-count");
     private static final Map<String, String> DETAIL_VIEW_ACTION_LABELS = Map.ofEntries(
+            Map.entry("view_ai_provider_history_detail", "查看 AI 服务配置历史"),
+            Map.entry("view_attachment_history_detail", "查看附件历史"),
+            Map.entry("view_platform_field_history_detail", "查看业务扩展字段历史"),
             Map.entry("view_sales_quote_detail", "查看销售报价详情"),
             Map.entry("view_sales_order_detail", "查看销售订单详情"),
             Map.entry("view_sales_shipment_detail", "查看销售出货详情"),
@@ -122,6 +125,7 @@ public class AuditEventInterpreter {
             Map.entry("view_subcontract_short_delivery_detail", "查看委外回厂短交案件详情"),
             Map.entry("view_production_plan_detail", "查看生产计划详情"),
             Map.entry("view_production_daily_report_detail", "查看生产日报详情"),
+            Map.entry("view_production_daily_report_approval_receipt", "核对生产日报原审核记录"),
             Map.entry("view_procurement_inspection_record_detail", "查看IQC检测决定记录"),
             Map.entry("view_production_fqc_decision_record_detail", "查看FQC检测决定记录"),
             Map.entry("view_production_fqc_inspection_detail", "查看成品检验详情"),
@@ -129,7 +133,8 @@ public class AuditEventInterpreter {
             Map.entry("view_production_material_increment_detail", "查看追加用料申请详情"),
             Map.entry("view_production_material_discovery_detail", "查看实际领料登记详情"),
             Map.entry("view_production_overproduction_rate_detail", "查看超产比例申请详情"),
-            Map.entry("view_stock_document_detail", "查看库存单据详情"));
+            Map.entry("view_stock_document_detail", "查看库存单据详情"),
+            Map.entry("view_stock_count_request_detail", "查看库存盘点申请详情"));
     /** 公共 AI 平台的语义/显式事件(ADR-133): 按「资源.方法」给出具体中文动作。 */
     private static final Map<String, String> AI_ACTION_LABELS = Map.ofEntries(
             Map.entry("ai_provider.create", "新增 AI 服务"),
@@ -142,6 +147,11 @@ public class AuditEventInterpreter {
             Map.entry("ai_provider.test_stored", "用已保存密钥测试 AI 服务连接"),
             Map.entry("ai_provider.models_stored", "用已保存密钥获取 AI 模型列表"),
             Map.entry("ai_job.submit", "提交 AI 识别"),
+            Map.entry("bind_ai_input_original", "保全单据识别来源"),
+            Map.entry("download_ai_input_original", "下载识别来源原件"),
+            Map.entry("attachment_history_download", "下载已保留附件原件"),
+            Map.entry("attachment_logical_delete", "标记附件已删除并保留历史"),
+            Map.entry("view_notice_history", "查看通知历史"),
             Map.entry("ai_job.cancel", "取消 AI 识别"));
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
             "view_client_detail", "view_supplier_detail", "view_account_detail",
@@ -183,6 +193,7 @@ public class AuditEventInterpreter {
     private static final String REDACTED_CHANGES_KEY = "_redacted_changes";
 
     public InterpretedEvent interpret(AuditLog value) {
+        value = PlatformFieldAuditProjection.presentation(value);
         String action = normalized(value.getAction());
         String target = normalized(value.getTargetType());
         String path = normalized(firstNonBlank(value.getHttpPath(), value.getTargetId()));
@@ -302,7 +313,7 @@ public class AuditEventInterpreter {
         if ("task_renew".equals(action)) return "续租任务认领(自动协调)";
         if ("task_force_release".equals(action)) return "强制释放任务";
         if ("audit_retention_failed".equals(action)) return "审计留存任务失败";
-        if ("audit_retention_completed".equals(action)) return "审计日志按期归档与清理";
+        if ("audit_retention_completed".equals(action)) return "审计日志按期归档与保全";
         if ("legacy_migration_run".equals(action)) return "导入老系统历史数据";
         String pathLabel = pathActionLabel(action, path);
         if (pathLabel != null) return pathLabel;
@@ -997,6 +1008,8 @@ public class AuditEventInterpreter {
         values.put("expense_claim_settings", "报销业务设置");
         // 公共 AI 平台与客户文件识别(ADR-133 / ADR-134)
         values.put("ai_providers", "AI 服务配置");
+        values.put("platform_record_fields", "业务扩展字段");
+        values.put("platform_record_field_versions", "业务扩展字段历史");
         values.put("ai_jobs", "AI 识别任务");
         values.put("ai_call_logs", "AI 调用记录");
         values.put("client_goods_aliases", "客户货品对照");
@@ -1154,6 +1167,9 @@ public class AuditEventInterpreter {
         values.put("preplan_analysis_stock_exact_pegs", "预计划分析精确挂钩");
         // 仓库 / 库存
         values.put("stock_documents", "库存单据");
+        values.put("stock_count_requests", "库存盘点申请");
+        values.put("ai_input_originals", "识别来源原件");
+        values.put("ai_input_original_bindings", "单据原件来源关系");
         values.put("stock_document_items", "库存单据明细");
         values.put("stock_balances", "即时库存");
         values.put("stock_movements", "库存流水");

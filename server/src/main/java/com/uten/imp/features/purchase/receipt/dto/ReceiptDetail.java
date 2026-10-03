@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 收货单详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class ReceiptDetail
+public class ReceiptDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
         implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
@@ -50,4 +50,7 @@ public class ReceiptDetail
     public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+
+    @Override public void disableHistoryActions() {
+    }
 }

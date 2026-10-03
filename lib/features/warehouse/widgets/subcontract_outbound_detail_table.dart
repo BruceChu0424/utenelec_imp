@@ -49,6 +49,7 @@ class SubcontractOutboundLineDraft {
            : double.tryParse(initialQty) ?? 0 {
     this.weight = OutboundWeightEntry(
       goodsId: line.goodsId,
+      colorId: line.colorId,
       qtyOf: () => double.tryParse(qty.text.trim()),
       qtyController: qty,
       unitRate: unitRate ?? 1,
@@ -116,6 +117,7 @@ class SubcontractOutboundLineDraft {
   }
 
   Map<String, dynamic> toPayload() => {
+    if (draftItemId != null) 'id': draftItemId,
     ...line.toMaterialIssueItemPayload(
       qty: double.parse(qty.text.trim()),
       weight: weight.kg,
@@ -230,6 +232,9 @@ class _SubcontractOutboundDetailTableState
 
   /// 下一帧 (缓存已在 build 里盯住) 补齐缺的单重参数; 已有/在途的不重复取。
   void _ensureWeightParams() {
+    for (final row in widget.rows) {
+      row.draft.weight.warehouseId = row.warehouseId;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ensureOutboundWeightParams(_weightCache, [
@@ -266,6 +271,7 @@ class _SubcontractOutboundDetailTableState
       String Function(SubcontractOutboundTableRow) value, {
       bool numeric = false,
       String? info,
+      String? Function(SubcontractOutboundTableRow)? exactValue,
     }) => EditableGridColumn(
       key: key,
       label: label,
@@ -273,19 +279,22 @@ class _SubcontractOutboundDetailTableState
       numeric: numeric,
       headerInfo: info,
       textOf: value,
+      exactValueOf: exactValue,
       cellBuilder: (_, row) =>
           Text(value(row), maxLines: 1, overflow: TextOverflow.ellipsis),
     );
     EditableGridColumn<SubcontractOutboundTableRow> quantityColumn(
       String key,
       String label,
-      double Function(SubcontractOutboundTableRow) value,
-    ) => textColumn(
+      double Function(SubcontractOutboundTableRow) value, {
+      String? Function(SubcontractOutboundTableRow)? exactValue,
+    }) => textColumn(
       key,
       label,
       115,
       (row) => subcontractOutboundQuantity(value(row)),
       numeric: true,
+      exactValue: exactValue ?? (row) => value(row).toString(),
     );
     final grid = UtenEditableGrid<SubcontractOutboundTableRow>(
       tableKey:
@@ -483,6 +492,10 @@ class _SubcontractOutboundDetailTableState
             // 否则一张刚开出来的草稿会显示「仓内可动用 0 / 本次最多 6」，像是自相矛盾。
             (row) =>
                 (row.draft.line.stockAvailableQty ?? 0) + row.draft.ownDraftQty,
+            exactValue: (row) => row.draft.line.stockAvailableQty == null
+                ? null
+                : (row.draft.line.stockAvailableQty! + row.draft.ownDraftQty)
+                      .toString(),
           ),
         quantityColumn(
           'maximum',
@@ -491,6 +504,8 @@ class _SubcontractOutboundDetailTableState
         ),
         EditableGridColumn(
           key: 'quantity',
+          exactValueOf: (row) => row.draft.qty.text,
+          exactListenableOf: (row) => row.draft.qty,
           label: l10n.warehouseSubcontractOutboundQuantity,
           width: 150,
           required: true,

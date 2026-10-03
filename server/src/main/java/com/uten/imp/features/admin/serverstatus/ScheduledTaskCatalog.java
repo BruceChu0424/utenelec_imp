@@ -24,6 +24,8 @@ public final class ScheduledTaskCatalog {
             Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据清理",
                     "每 10 分钟清理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"
                             + " 7 天前的识别任务与 180 天前的调用记录删除。")),
+            Map.entry("AiInputOriginalCleanup.purge",new Entry("未采用识别原件清理",
+                    "每小时登记未采用识别来源的归档状态，保留原文件、内容和关联，正式单据来源原件继续保留。")),
             Map.entry("AiJobScheduler.poll", new Entry("AI 识别任务",
                     "每 5 秒接手排队中的 AI 识别(销售上传的客户文件), 并把处理中断的识别重新排队或判失败。")),
             Map.entry("SalesQuoteTemplateCleanupScheduler.purgeExpired", new Entry("报价模板候选清理",

@@ -90,7 +90,12 @@ jobs:
 
       - name: Build server application and migrator
         working-directory: server
-        run: mvn $MAVEN_ARGS clean package -DskipTests
+        run: |
+          set -euo pipefail
+          mvn $MAVEN_ARGS clean package -DskipTests
+          mvn $MAVEN_ARGS \
+            -Dtest=ForwardMigrationSequenceContractTest,FlywayChecksumManifestExporterTest \
+            -Duten.exportFlywayChecksums=true test
 
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
@@ -117,6 +122,10 @@ jobs:
           rm -rf dist && mkdir -p dist/server dist/web
           cp server/target/uten-imp-server-*.jar dist/server/uten-imp-server.jar
           cp server/target/uten-imp-migrator.jar dist/server/uten-imp-migrator.jar
+          python3 deploy/release/release_tools.py verify-migrations \
+            --payload-root dist \
+            --flyway-dir server/src/main/resources/db/migration \
+            --flyway-checksums server/target/uten-imp-flyway-checksums.tsv
           cp -r build/web/. dist/web/
           python3 deploy/release/release_tools.py stamp-web \
             --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"

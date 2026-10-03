@@ -117,4 +117,12 @@ public class SalesQuote extends SoftDeletableEntity {
     /** 核价修订号: 提交/撤回/财务修改/退回/确认/重新打开各加 1, 所有核价动作带期望值防并发覆盖。 */
     @Column(name = "review_revision", nullable = false)
     private int reviewRevision;
+
+    private OffsetDateTime customerAcceptedAt;
+    private UUID customerAcceptedBy;
+    private Integer customerAcceptedRevision;
+    private String cancelReason;
+    private OffsetDateTime cancelledAt;
+    private UUID cancelledBy;
+    private UUID originQuoteId;
 }

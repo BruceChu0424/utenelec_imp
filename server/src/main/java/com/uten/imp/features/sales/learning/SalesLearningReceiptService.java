@@ -31,6 +31,7 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
     private final SecurityContextCurrentUser current;
     private final ObjectProvider<AiJobUsagePort> jobs;
     private final TransactionTemplate separate;
+    private final ThreadLocal<RunningClaim> runningClaim=new ThreadLocal<>();
     public SalesLearningReceiptService(NamedParameterJdbcTemplate jdbc,ObjectMapper json,SecurityContextCurrentUser current,
             ObjectProvider<AiJobUsagePort> jobs,PlatformTransactionManager transactions) {
         this.jdbc=jdbc;this.json=json;this.current=current;this.jobs=jobs;
@@ -67,49 +68,60 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
     @Transactional
     public void purgeExpiredEvidence() {
         jdbc.update("""
-                UPDATE sales_document_learning_receipts SET evidence='{}'::jsonb,
-                    request_payload=jsonb_set(jsonb_set(request_payload,'{lines}','[]'::jsonb),'{clientFields}','{}'::jsonb)
-                WHERE retry_until<now() AND (evidence<>'{}'::jsonb OR request_payload->'lines'<>'[]'::jsonb
-                    OR request_payload->'clientFields'<>'{}'::jsonb)
+                WITH candidates AS (
+                    SELECT id FROM sales_document_learning_receipts receipt
+                    WHERE archived_at IS NULL AND retry_until<now() AND (evidence<>'{}'::jsonb OR request_payload->'lines'<>'[]'::jsonb
+                        OR request_payload->'clientFields'<>'{}'::jsonb)
+                      AND NOT EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING')
+                    ORDER BY retry_until,id LIMIT 1000 FOR UPDATE SKIP LOCKED
+                )
+                UPDATE sales_document_learning_receipts receipt SET archived_at=now(),archived_by='system:learning-retention',
+                    archive_reason='RETRY_WINDOW_ENDED',updated_at=now()
+                FROM candidates WHERE receipt.id=candidates.id
                 """,Map.of());
     }
 
     @Override public void run(UUID id,String kind,UUID job,Supplier<StepResult> work) {
         if(id==null){work.get();return;}
         String step=step(kind,job);
+        StepClaim claim=null;
+        RunningClaim previous=runningClaim.get();
         try {
             Receipt receipt=owned(id);
-            String currentState=Objects.toString(stepMap(receipt.steps().get(step)).get("status"), "PENDING");
-            if("SUCCEEDED".equals(currentState)||"SKIPPED".equals(currentState))return;
-            if(receipt.retryUntil().isBefore(OffsetDateTime.now()))throw new ApiException(ErrorCode.CONFLICT,"学习证据重试期限已过，请重新识别文件");
+            if(job!=null&&!receipt.request().intakeJobIds().contains(job))throw denied();
+            claim=separate.execute(status->claim(id,step));
+            if(claim==null)return;
+            runningClaim.set(new RunningClaim(id,step,claim));
             if(job!=null) {
-                if(!receipt.request().intakeJobIds().contains(job))throw denied();
-                if(priorComplete(receipt,step)){finish(id,step,"SUCCEEDED",Map.of(),null);return;}
-                if(!prepareSource(receipt,job)){finish(id,step,"SKIPPED",Map.of(),null);return;}
+                if(priorComplete(receipt,step)){finish(id,step,claim,"SUCCEEDED",Map.of(),null);return;}
+                if(!prepareSource(receipt,job,step,claim)){finish(id,step,claim,"SKIPPED",Map.of(),null);return;}
             }
-            if(!Boolean.TRUE.equals(separate.execute(status->claim(id,step))))return;
             StepResult result=work.get();
-            finish(id,step,result.skipped()?"SKIPPED":"SUCCEEDED",result.counts(),null);
+            finish(id,step,claim,result.skipped()?"SKIPPED":"SUCCEEDED",result.counts(),null);
         } catch(RuntimeException failure) {
-            try { finish(id,step,"FAILED",Map.of(),failure.getClass().getSimpleName()); }
+            try { if(claim!=null)finish(id,step,claim,"FAILED",Map.of(),failure.getClass().getSimpleName()); }
             catch(RuntimeException receiptFailure){log.warn("Learning receipt update failed receipt={} type={}",id,receiptFailure.getClass().getSimpleName());}
             log.warn("Confirmed learning step failed receipt={} step={} type={}",id,kind,failure.getClass().getSimpleName());
+        } finally {
+            if(previous==null)runningClaim.remove();else runningClaim.set(previous);
         }
     }
 
-    private boolean claim(UUID id,String step) {
+    private StepClaim claim(UUID id,String step) {
         Receipt receipt=locked(id);
+        if(!receipt.steps().containsKey(step))throw denied();
         Map<String,Object> value=stepMap(receipt.steps().get(step));
         String status=Objects.toString(value.get("status"),"PENDING");
-        if("SUCCEEDED".equals(status)||"SKIPPED".equals(status))return false;
-        if("RUNNING".equals(status)&&recent(value.get("startedAt")))return false;
+        if("SUCCEEDED".equals(status)||"SKIPPED".equals(status))return null;
+        if("RUNNING".equals(status)&&recent(value.get("startedAt")))return null;
+        if(!receipt.retryUntil().isAfter(OffsetDateTime.now()))throw new ApiException(ErrorCode.CONFLICT,"学习证据重试期限已过，请重新识别文件");
         Map<String,Object> next=new LinkedHashMap<>();next.put("status","RUNNING");
         next.put("attempts",((Number)value.getOrDefault("attempts",0)).intValue()+1);
         next.put("startedAt",OffsetDateTime.now().toString());
-        updateStep(receipt,step,next);return true;
+        updateStep(receipt,step,next);return new StepClaim((int)next.get("attempts"),next.get("startedAt").toString());
     }
 
-    private boolean prepareSource(Receipt receipt,UUID job) {
+    private boolean prepareSource(Receipt receipt,UUID job,String step,StepClaim claim) {
         AiJobUsagePort usage=jobs.getIfAvailable();if(usage==null)return false;
         Optional<Map<String,Object>> raw=usage.resultFor(job,receipt.request().actorUserId());
         if(raw.isEmpty())return false;
@@ -119,8 +131,10 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
         boolean headerOnly=job.equals(receipt.request().intakeJobId())&&!receipt.request().clientFields().isEmpty();
         if(!matching&&!headerOnly)return false;
         return Boolean.TRUE.equals(separate.execute(status->{
+            Receipt live=locked(receipt.id());
+            if(!claim.owns(live,step))return false;
             if(!usage.reserveLearning(job,receipt.request().actorUserId(),receipt.request().docType(),receipt.request().docId(),receipt.retryUntil()))return false;
-            remember(receipt,job,raw.get());
+            remember(live,job,raw.get());
             jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=GREATEST(expires_at,:until) WHERE job_id=:job",
                     Map.of("job",job,"until",java.sql.Timestamp.from(receipt.retryUntil().toInstant())));
             return true;
@@ -142,7 +156,7 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
     }
     @Override public void rememberEvidence(UUID id,UUID job,Map<String,Object> result) {
         if(id==null||result==null)return;
-        Receipt receipt=owned(id);separate.executeWithoutResult(status->remember(receipt,job,result));
+        separate.executeWithoutResult(status->{Receipt receipt=locked(id);requireExecutingClaim(receipt);remember(receipt,job,result);});
     }
     private void remember(Receipt receipt,UUID job,Map<String,Object> result) {
         Set<String> selected=sourceKeys(receipt.request(),job);List<Map<String,Object>> lines=new ArrayList<>();
@@ -165,7 +179,7 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
 
     @Override @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void requireCurrentSource(UUID id) {
-        Receipt receipt=owned(id);SalesLearningRequest request=receipt.request();
+        Receipt receipt=locked(id);requireExecutingClaim(receipt);SalesLearningRequest request=receipt.request();
         String table="quote".equals(request.docType())?"sales_quotes":"sales_orders";
         String items="quote".equals(request.docType())?"sales_quote_items":"sales_order_items";
         String parent="quote".equals(request.docType())?"quote_id":"order_id";
@@ -213,8 +227,26 @@ public class SalesLearningReceiptService implements SalesLearningReceiptPort {
                     AND steps->CAST(:step AS text)->>'status'='SUCCEEDED')
                 """,p,Boolean.class));
     }
-    private void finish(UUID id,String step,String status,Map<String,Integer> counts,String error) {
-        separate.executeWithoutResult(tx->{Receipt receipt=locked(id);Map<String,Object> next=new LinkedHashMap<>(stepMap(receipt.steps().get(step)));
+    private record StepClaim(int attempt,String startedAt) {
+        boolean owns(Receipt receipt,String step) {
+            Map<String,Object> value=stepMap(receipt.steps().get(step));
+            return "RUNNING".equals(value.get("status"))&&value.get("attempts") instanceof Number attempts
+                    &&attempts.intValue()==attempt&&Objects.equals(value.get("startedAt"),startedAt);
+        }
+    }
+    private record RunningClaim(UUID id,String step,StepClaim claim) { }
+    private void requireExecutingClaim(Receipt receipt) {
+        RunningClaim running=runningClaim.get();
+        if(running!=null&&running.id().equals(receipt.id())) {
+            if(!running.claim().owns(receipt,running.step()))throw stale();
+        } else if(!receipt.retryUntil().isAfter(OffsetDateTime.now())) {
+            throw new ApiException(ErrorCode.CONFLICT,"学习证据重试期限已过，请重新识别文件");
+        }
+    }
+    private void finish(UUID id,String step,StepClaim claim,String status,Map<String,Integer> counts,String error) {
+        separate.executeWithoutResult(tx->{Receipt receipt=locked(id);
+            if(!claim.owns(receipt,step))return;
+            Map<String,Object> next=new LinkedHashMap<>(stepMap(receipt.steps().get(step)));
             next.put("status",status);next.put("counts",counts==null?Map.of():counts);next.remove("errorClass");
             if(error!=null)next.put("errorClass",error.replaceAll("[^A-Za-z0-9_$]", "").substring(0,Math.min(error.replaceAll("[^A-Za-z0-9_$]", "").length(),100)));
             updateStep(receipt,step,next);});

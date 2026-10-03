@@ -30,7 +30,6 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
@@ -107,6 +106,17 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   bool get _isOrdinaryOutbound =>
       widget.docType == StockDocType.otherOut ||
       widget.docType == StockDocType.finishedOut;
+
+  /// 行级仓库类型（V787，与编辑页同口径）：仓库在明细行上逐行展示；
+  /// 调拨/盘点仍看表头。
+  bool get _usesLineWarehouse => switch (widget.docType) {
+    StockDocType.otherIn ||
+    StockDocType.otherOut ||
+    StockDocType.finishedIn ||
+    StockDocType.finishedOut ||
+    StockDocType.draw => true,
+    _ => false,
+  };
 
   Iterable<OutboundWeightEntry> get _weightEntries => [
     ..._issueWeights.values,
@@ -458,7 +468,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         autofilled: false,
       );
       _issueQty[item.id!] = qty;
-      _issueWeights[item.id!] = drawIssueWeightEntry(item, qty, unit: unit);
+      _issueWeights[item.id!] = drawIssueWeightEntry(
+        item,
+        qty,
+        unit: unit,
+        warehouseId: detail.warehouseId,
+      );
       _lineRemarks[item.id!] = TextEditingController();
     }
   }
@@ -484,6 +499,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (id == null) continue;
       _returnWeights[id] = OutboundWeightEntry(
         goodsId: item.goodsId,
+        colorId: item.colorId,
+        warehouseId: detail.warehouseId,
         qtyOf: () => item.qty,
         unitRate: item.unitRate ?? 1,
         unit: unit,
@@ -1067,11 +1084,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           children: [
             SafeArea(
               child: UtenContentContainer(
-                // 2026-09-15 宽度口径（用户反馈）：非普通出库弃 narrow(1120)（两侧
-                // 大留白），改默认 1600 钳制对齐新建销售订货单页；普通出库仍全宽。
-                maxWidth: _isOrdinaryOutbound
-                    ? UtenContentContainer.wideMaxWidth
-                    : UtenBreakpoints.maxContentWidth,
                 center: !_isOrdinaryOutbound,
                 child: _loading
                     ? const Center(
@@ -1164,7 +1176,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                           utenFmtIsoTime(_d!.createdAt),
                                           theme,
                                         ),
-                                        if (widget.docType != StockDocType.draw)
+                                        // V787 行级仓库：这几类的实际仓在各明细行上，
+                                        // 表头仓只是首行仓的回显，不再单列展示。
+                                        if (widget.docType !=
+                                                StockDocType.draw &&
+                                            !_usesLineWarehouse)
                                           _kv(
                                             _d!.productionMaterialReturn
                                                 ? '实际收料仓库'
@@ -1421,6 +1437,14 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           width: 80,
           value: (it) => names.goodsInfo(it.goodsId)?.series ?? '—',
         ),
+        // V787 行级仓库：明细行各自落的仓（跨仓单据逐行可见）；空 = 表头仓。
+        if (_usesLineWarehouse)
+          MasterColumnDef(
+            key: 'warehouse',
+            label: '仓库',
+            width: 140,
+            value: (it) => names.warehouse(it.warehouseId ?? _d!.warehouseId),
+          ),
         MasterColumnDef(
           key: 'stockPlace',
           label: '库位号',

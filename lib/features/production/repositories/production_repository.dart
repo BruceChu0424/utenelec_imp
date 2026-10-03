@@ -33,6 +33,7 @@ import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/analysis_linked_sales_order.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_daily_report_create_request.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_analysis_projection.dart';
@@ -2202,6 +2203,20 @@ class ProductionDailyReportRepository {
     return ProductionDailyReportDetail.fromJson(json);
   }
 
+  /// Pure actor-owned observation. Always resends the frozen original body;
+  /// this POST is never a create or an automatic retry of an unknown create.
+  Future<DailyReportCreateResolution> createReceipt(
+    FrozenDailyReportCreate command,
+  ) async {
+    final json = await api.post(
+      '/production/daily-reports/create-receipt',
+      body: command.requestBody,
+    );
+    final result = DailyReportCreateResolution.fromJson(json);
+    result.verify(command);
+    return result;
+  }
+
   Future<ProductionDailyReportDetail> update(
     String id,
     Map<String, dynamic> body, {
@@ -2221,12 +2236,29 @@ class ProductionDailyReportRepository {
   Future<ProductionDailyReportDetail> approve(
     String id, {
     required String idempotencyKey,
+    int? commandVersion,
+    int? expectedVersion,
   }) async {
     final json = await api.post(
       '/production/daily-reports/$id/approve',
-      body: {'idempotencyKey': idempotencyKey},
+      body: {
+        'idempotencyKey': idempotencyKey,
+        'commandVersion': ?commandVersion,
+        'expectedVersion': ?expectedVersion,
+      },
     ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
+  }
+
+  Future<ProductionDailyReportApprovalResolution> approvalReceipt(
+    String id, {
+    required String idempotencyKey,
+  }) async {
+    final json = await api.get(
+      '/production/daily-reports/$id/approval-receipt',
+      query: {'idempotencyKey': idempotencyKey},
+    );
+    return ProductionDailyReportApprovalResolution.fromJson(json);
   }
 
   Future<ProductionDailyReportDetail> reverse(String id) async {

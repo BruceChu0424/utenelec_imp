@@ -568,7 +568,6 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
         controllerOf(line)?.text ?? readOnlyExactValueOf?.call(line),
     exactListenableOf: controllerOf,
     // 按称重预填的黄标 ⓘ(44)计入量宽。
-    chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
     cellBuilder: (context, line) {
       final controller = controllerOf(line);
       if (controller == null) {
@@ -632,14 +631,31 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     String? Function(T line)? baseUnitNameOf,
     String? against,
   }) {
+    WeightSuggestion? stockSuggestionOf(T line) {
+      if (line.weight.qtyFromWeight) return null;
+      final suggestion = paramsOf(line)?.suggestionFor(qtyBaseOf(line));
+      return suggestion?.inventoryBased == true ? suggestion : null;
+    }
+
     WeightCheck? checkOf(T line) {
       if (line.weight.qtyFromWeight) return null;
+      if (stockSuggestionOf(line) != null) return null;
       final params = paramsOf(line);
       if (params == null || !params.alertsEnabled) return null;
       return params.check(qtyBase: qtyBaseOf(line), weightKg: line.weight.kg);
     }
 
     String textOf(T line) {
+      final stock = stockSuggestionOf(line);
+      if (stock != null) {
+        if (!stock.differsFrom(
+          line.weight.kg,
+          scaleResKg: paramsOf(line)!.scaleResKg,
+        )) {
+          return '';
+        }
+        return '数值可能有问题，预计约 ${formatWeight(stock.kg)}';
+      }
       final check = checkOf(line);
       if (check == null || check.level == WeightAlertLevel.none) return '';
       return warehouseWeightCheckText(
@@ -654,26 +670,12 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
       label: '称重核对',
       width: 150,
       headerInfo:
-          '按学到的单重核对实称重量与数量；超出容差才提示(琥珀 = 有偏差，红 = 偏差较大)，'
-          '悬停看折算件数与依据。单重还没学准时不核对，可在行右键「称样校准」。',
+          '优先按可靠历史单重核对，否则参考同仓库、货品和颜色的库存均重。'
+          '偏差变黄提醒核对，不拦截入库；悬停看预计重量与依据。无可靠依据时不核对。',
       textOf: textOf,
-      // 2026-09-27 用户口径「格内胶囊改单元格背景色」：偏差档位色铺整格
-      // （ALERT 红 / WARN 琥珀 / 无偏差不铺色）；底色随重量/数量输入实时重算。
-      cellColor: (context, line) {
-        final check = checkOf(line);
-        if (check == null) return null;
-        return switch (check.level) {
-          WeightAlertLevel.alert => udenStatusBadgeCellColor(
-            context,
-            UtenStatusBadgeType.danger,
-          ),
-          WeightAlertLevel.warn => udenStatusBadgeCellColor(
-            context,
-            UtenStatusBadgeType.warning,
-          ),
-          WeightAlertLevel.none => null,
-        };
-      },
+      cellColor: (context, line) => textOf(line).isEmpty
+          ? null
+          : udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
       cellColorListenableOf: (line) => Listenable.merge([
         line.weight,
         paramsListenable,
@@ -686,6 +688,19 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
           qtyListenableOf?.call(line),
         ]),
         builder: (context, _) {
+          final stock = stockSuggestionOf(line);
+          if (stock != null) {
+            final text = textOf(line);
+            if (text.isEmpty) return const SizedBox.shrink();
+            return Tooltip(
+              key: ValueKey('$keyPrefix-weight-check-${lineKeyOf(line)}'),
+              message:
+                  '$text；${stock.source}；实称 ${formatWeight(line.weight.kg!)}，'
+                  '偏差 ${formatSignedPct((line.weight.kg! / stock.kg - 1) * 100)}。'
+                  '请核对数量、重量单位和皮重。',
+              child: Text(text),
+            );
+          }
           final check = checkOf(line);
           final params = paramsOf(line);
           if (check == null || params == null) return const SizedBox.shrink();
@@ -807,7 +822,6 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     textOf: (line) => line.place.text,
     listenableOf: (line) => line.place,
     // 预填黄标 ⓘ(44)计入量宽。
-    chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
     cellBuilder: (context, line) {
       final canEdit = enabled(line) && !line.locked;
       final field = Semantics(

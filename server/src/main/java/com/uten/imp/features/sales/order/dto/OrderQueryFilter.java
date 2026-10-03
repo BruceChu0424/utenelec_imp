@@ -19,7 +19,48 @@ public record OrderQueryFilter(
         String chainGroup,
         UUID currencyId,
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted,
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+    public OrderQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
+    }
+    public OrderQueryFilter(String keyword,
+        UUID clientId,
+        Short status,
+        Boolean closed,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        java.util.List<Short> chain,
+        UUID sellerId,
+        String chainGroup,
+        UUID currencyId,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+        this(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo, includeDeleted, onlyDeleted, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+    public OrderQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo, includeDeleted, onlyDeleted, headers);
+    }
+
+    public OrderQueryFilter(
+        String keyword,
+        UUID clientId,
+        Short status,
+        Boolean closed,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        java.util.List<Short> chain,
+        UUID sellerId,
+        String chainGroup,
+        UUID currencyId,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo) { this(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo, false, false); }
+    public OrderQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters);
+    }
+
 
     /** 兼容旧调用（无 chainGroup/currencyId）。 */
     public OrderQueryFilter(

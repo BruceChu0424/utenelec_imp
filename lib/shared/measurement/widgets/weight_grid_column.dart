@@ -3,9 +3,9 @@
 // - 列放在数量组之后 (单位跟在数量后面时放在单位之后); 表头「实称重量(kg)」随录入单位变化,
 //   单位由工具条「称重单位: 千克▾」([WeightEntryUnitButton]) 切换 (用户级偏好, 不做逐行下拉)。
 // - 格子接受带后缀的输入 (850g / 1.2t / 3斤 / 2lb), 失焦后规范成列单位; 0 或空 = 没称。
-// - 占位: 入库「约 12.5」, 出库「应称 12.5」, 单重未学准「可选」;
+// - 有可靠依据时预填建议重量；建议与实称分开，用户改字后停止自动覆盖；
 //   货品/行单位本身是重量单位时只读灰字「=25 kg」(服务端按数量精确换算)。
-// - 偏差: WARN 琥珀框 + 琥珀 ⓘ, ALERT 红框 + 红 ⓘ, 悬停给件数说明; 未学准不核对。
+// - 偏差: 琥珀框与文字提示，悬停给出依据；说明图标统一放表头。
 // - **重量格与数量格永不批量生效**: 勾选多行后改一行的重量只改这一行 (一次称重是一个
 //   物理事实, 绝不能复制到其它行); 页面级的只有工具条上的录入单位。
 // - 数量为空 (盘点实盘 / 其它入库) 且单重不是未学准时, 填重量自动推算数量 (黄框预填,
@@ -18,7 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
-import '../../../components/inputs/uten_field_hint_icon.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../weight_params.dart';
@@ -28,7 +28,10 @@ import '../weight_unit.dart';
 import 'weight_text.dart';
 
 /// 表头说明 (ⓘ)。
-const String weightColumnHeaderInfo = '填净重(扣除箱/袋); 可直接输 850g、1.2t、3斤; 空着=没称';
+const String weightColumnHeaderInfo =
+    '填净重(扣除箱/袋); 可直接输 850g、1.2t、3斤。'
+    '系统按对应库存或历史实称预填建议，标为“预估”；输入秤上读数才记实称。'
+    '偏差较大时黄框提醒核对数量、单位与皮重；空着=没称。';
 
 /// 非法输入提示。
 const String weightInputErrorText = '看不懂这个重量, 例: 850g、1.2t、3斤、12';
@@ -45,6 +48,7 @@ class WeightEntryController extends ChangeNotifier {
     this._qtyFromWeight = false,
   }) : _unit = unit,
        _kg = _positiveKg(kg) {
+    _userEdited = _kg != null;
     text = TextEditingController(text: _kg == null ? '' : unit.editText(_kg!));
     _lastText = text.text;
     text.addListener(_onText);
@@ -54,6 +58,9 @@ class WeightEntryController extends ChangeNotifier {
 
   WeightUnit _unit;
   double? _kg;
+  double? _suggestedKg;
+  String? _suggestionSource;
+  late bool _userEdited;
   String? _error;
   bool _qtyFromWeight;
   bool _programmatic = false;
@@ -66,6 +73,35 @@ class WeightEntryController extends ChangeNotifier {
 
   /// 千克 (HALF_UP 4 位); 空/0/非法 = null (没称)。
   double? get kg => _kg;
+
+  /// 当前自动预填（千克）。只供呈现；不得提交为实称或参与学习。
+  double? get suggestedKg => _suggestedKg;
+  double? get displayKg => _kg ?? _suggestedKg;
+  bool get isSuggested => _suggestedKg != null;
+  String? get suggestionSource => _suggestionSource;
+  bool get userEdited => _userEdited;
+
+  /// 同步数量/库存/单重变化。人工改过、清空过或恢复的实称永不覆盖。
+  void setSuggestedKg(double? kg, {String? source}) {
+    if (_userEdited) return;
+    final next = _positiveKg(kg);
+    final nextSource = next == null ? null : source;
+    if (_suggestedKg == next && _suggestionSource == nextSource) return;
+    _suggestedKg = next;
+    _suggestionSource = nextSource;
+    _writeText(next == null ? '' : _unit.editText(next));
+    notifyListeners();
+  }
+
+  /// 用户明确输入了秤上读数（包括与预填恰好相同的数字）。
+  void acceptUserInput() {
+    if (_userEdited) return;
+    _userEdited = true;
+    _suggestedKg = null;
+    _suggestionSource = null;
+    _reparse();
+    notifyListeners();
+  }
 
   /// 文本非空但看不懂/为负。
   bool get hasError => _error != null;
@@ -107,7 +143,10 @@ class WeightEntryController extends ChangeNotifier {
   }
 
   /// 程序写入千克值 (称重计数回填/草稿恢复); 默认视为重量变了 -> 清 qtyFromWeight。
-  void setKg(double? kg, {bool qtyFromWeight = false}) {
+  void setKg(double? kg, {bool qtyFromWeight = false, bool userEdited = true}) {
+    _userEdited = userEdited || _positiveKg(kg) != null;
+    _suggestedKg = null;
+    _suggestionSource = null;
     _kg = _positiveKg(kg);
     _error = null;
     _writeText(_kg == null ? '' : _unit.editText(_kg!));
@@ -125,8 +164,8 @@ class WeightEntryController extends ChangeNotifier {
     _unit = next;
     if (_error != null) {
       _reparse();
-    } else if (_kg != null) {
-      _writeText(next.editText(_kg!));
+    } else if (displayKg != null) {
+      _writeText(next.editText(displayKg!));
     }
     notifyListeners();
   }
@@ -134,7 +173,7 @@ class WeightEntryController extends ChangeNotifier {
   /// 失焦/回车: 把带后缀或带千分位的输入规范成列单位的纯数字; 0 清空。
   void normalize() {
     if (_error != null) return;
-    final canonical = _kg == null ? '' : _unit.editText(_kg!);
+    final canonical = displayKg == null ? '' : _unit.editText(displayKg!);
     if (canonical == text.text) return;
     _writeText(canonical);
     notifyListeners();
@@ -157,6 +196,9 @@ class WeightEntryController extends ChangeNotifier {
     if (text.text == _lastText) return; // 只是光标/选区变化
     _lastText = text.text;
     if (_programmatic) return;
+    _userEdited = true;
+    _suggestedKg = null;
+    _suggestionSource = null;
     _reparse();
     // 用户改了重量: 之前「按称重折算的数量」不再对应这次重量。
     _qtyFromWeight = false;
@@ -244,6 +286,8 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
   double? Function(T row)? qtyBaseOf,
   Listenable? Function(T row)? qtyListenableOf,
   double? Function(T row)? exactKgOf,
+  double? Function(T row)? expectedKgOf,
+  String? Function(T row)? expectedSourceOf,
   String? Function(T row)? baseUnitNameOf,
   bool Function(T row)? enabledOf,
   bool required = false,
@@ -258,15 +302,26 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
     label: '$label(${entryUnit.symbol})',
     width: width,
     numeric: true,
+    // Formula facts use kilograms regardless of the entry/display unit, and
+    // follow the same exact-unit precedence as the visible weight cell.
+    exactValueOf: (row) =>
+        (_exactKg(row, exactKgOf, paramsOf, qtyBaseOf) ?? controllerOf(row).kg)
+            ?.toString(),
+    exactListenableOf: (row) => Listenable.merge([
+      controllerOf(row),
+      ?qtyListenableOf?.call(row),
+      ?paramsListenable,
+    ]),
     required: required,
     headerInfo: headerInfo,
-    chromeWidth:
-        UtenEditableGridCellSpec.hintIconWidth +
-        (onWeighCount == null ? 0 : UtenEditableGridCellSpec.hintIconWidth),
+    chromeWidth: onWeighCount == null
+        ? 0
+        : UtenEditableGridCellSpec.hintIconWidth,
     frozenTextOf: (row) {
       final exact = _exactKg(row, exactKgOf, paramsOf, qtyBaseOf);
       if (exact != null) return '=${formatWeight(exact)}';
-      return controllerOf(row).text.text;
+      final controller = controllerOf(row);
+      return '${controller.isSuggested ? '≈' : ''}${controller.text.text}';
     },
     cellBuilder: (context, row) => _WeightCell<T>(
       row: row,
@@ -278,6 +333,8 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
       qtyBaseOf: qtyBaseOf,
       qtyListenable: qtyListenableOf?.call(row),
       exactKgOf: exactKgOf,
+      expectedKgOf: expectedKgOf,
+      expectedSourceOf: expectedSourceOf,
       baseUnitName: baseUnitNameOf?.call(row),
       enabled: enabledOf?.call(row) ?? true,
       required: requiredOf?.call(row) ?? required,
@@ -316,6 +373,8 @@ class _WeightCell<T extends EditableGridRow> extends StatefulWidget {
     required this.qtyBaseOf,
     required this.qtyListenable,
     required this.exactKgOf,
+    required this.expectedKgOf,
+    required this.expectedSourceOf,
     required this.baseUnitName,
     required this.enabled,
     required this.required,
@@ -333,6 +392,8 @@ class _WeightCell<T extends EditableGridRow> extends StatefulWidget {
   final double? Function(T row)? qtyBaseOf;
   final Listenable? qtyListenable;
   final double? Function(T row)? exactKgOf;
+  final double? Function(T row)? expectedKgOf;
+  final String? Function(T row)? expectedSourceOf;
   final String? baseUnitName;
   final bool enabled;
   final bool required;
@@ -348,18 +409,19 @@ class _WeightCellState<T extends EditableGridRow>
     extends State<_WeightCell<T>> {
   /// 焦点归格子自己 (不放进行 model: 同一个 FocusNode 不能挂到两个输入框上)。
   final FocusNode _focus = FocusNode(debugLabel: 'weight-cell');
+  bool _syncScheduled = false;
 
   @override
   void initState() {
     super.initState();
     _focus.addListener(_onFocus);
-    _syncUnit();
+    _scheduleSync();
   }
 
   @override
   void didUpdateWidget(covariant _WeightCell<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncUnit();
+    _scheduleSync();
   }
 
   @override
@@ -375,17 +437,51 @@ class _WeightCellState<T extends EditableGridRow>
     if (!_focus.hasFocus) widget.controller.normalize();
   }
 
-  /// 录入单位切换后把本行文本改写成新单位 (下一帧做, 构建期间不改控制器)。
-  void _syncUnit() {
-    if (widget.controller.unit == widget.entryUnit) return;
+  /// 构建与参数异步到达时下一帧同步，回调执行时读当前行，避免旧值覆盖新行。
+  void _scheduleSync() {
+    if (_syncScheduled) return;
+    _syncScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncScheduled = false;
       if (!mounted) return;
       widget.controller.switchUnit(widget.entryUnit);
+      final exact = _exactKg(
+        widget.row,
+        widget.exactKgOf,
+        widget.paramsOf,
+        widget.qtyBaseOf,
+      );
+      final suggestion = widget.enabled && exact == null ? _suggestion() : null;
+      widget.controller.setSuggestedKg(
+        suggestion?.kg,
+        source: suggestion?.source,
+      );
     });
+  }
+
+  WeightSuggestion? _suggestion() {
+    final qty = widget.qtyBaseOf?.call(widget.row);
+    if (widget.qtyBaseOf != null &&
+        (qty == null || !qty.isFinite || qty <= 0)) {
+      return null;
+    }
+    final override = widget.expectedKgOf?.call(widget.row);
+    if (override != null && override.isFinite && override > 0) {
+      return WeightSuggestion(
+        kg: override,
+        source: widget.expectedSourceOf?.call(widget.row) ?? '按对应库存重量预填',
+        tolerancePct: 5,
+        inventoryBased: true,
+      );
+    }
+    return widget.paramsOf
+        ?.call(widget.row)
+        ?.suggestionFor(qty, mode: widget.mode);
   }
 
   /// 用户敲重量: 只动本行 (永不批量), 需要时按称重推算数量。
   void _handleChanged(String _) {
+    widget.controller.acceptUserInput();
     _maybeAutofillQty();
     widget.onChanged?.call(widget.row);
   }
@@ -447,6 +543,7 @@ class _WeightCellState<T extends EditableGridRow>
     return ListenableBuilder(
       listenable: Listenable.merge(listenables),
       builder: (context, _) {
+        _scheduleSync();
         final exact = _exactKg<T>(
           widget.row,
           widget.exactKgOf,
@@ -470,41 +567,54 @@ class _WeightCellState<T extends EditableGridRow>
     final c = widget.controller;
     final params = widget.paramsOf?.call(widget.row);
     final qtyBase = widget.qtyBaseOf?.call(widget.row);
+    final suggestion = _suggestion();
+    final stockReference = suggestion?.inventoryBased ?? false;
     final check = c.qtyFromWeight || params == null
         ? null
         : params.check(qtyBase: qtyBase, weightKg: c.kg, mode: widget.mode);
-    final level = check?.level ?? WeightAlertLevel.none;
-
-    String? info;
-    String? warning;
-    String? error = c.errorText;
+    final deviation =
+        !c.qtyFromWeight &&
+        c.kg != null &&
+        (stockReference
+            ? (suggestion?.differsFrom(
+                    c.kg,
+                    scaleResKg:
+                        params?.scaleResKg ?? WeightPredictor.defaultScaleResKg,
+                  ) ??
+                  false)
+            : (check?.level != null && check!.level != WeightAlertLevel.none));
+    String? info = c.isSuggested
+        ? '${c.suggestionSource ?? '系统预填'}；预估 ${formatWeight(c.suggestedKg!, display: WeightDisplay.of(widget.entryUnit))}，尚未实称。请输入秤上读数。'
+        : null;
+    final error = c.errorText;
     if (error == null && c.kg != null && params != null) {
-      if (check != null && params.alertsEnabled) {
-        final tip = weightCheckTooltip(
+      if (check != null && params.alertsEnabled && !stockReference) {
+        info = weightCheckTooltip(
           check,
           params,
           mode: widget.mode,
           unitName: widget.baseUnitName,
           display: WeightDisplay.of(widget.entryUnit),
         );
-        switch (level) {
-          case WeightAlertLevel.alert:
-            error = tip;
-          case WeightAlertLevel.warn:
-            warning = tip;
-          case WeightAlertLevel.none:
-            info = tip;
-        }
       } else if (!c.qtyFromWeight &&
           params.basis != WeightBasis.exact &&
           !params.alertsEnabled) {
         info = weightNotLearnedHint;
       }
     }
+    if (stockReference && suggestion != null && c.kg != null) {
+      info =
+          '${suggestion.source}：预计 ${formatWeight(suggestion.kg, display: WeightDisplay.of(widget.entryUnit))}，'
+          '实称 ${formatWeight(c.kg!, display: WeightDisplay.of(widget.entryUnit))}，'
+          '偏差 ${formatSignedPct((c.kg! / suggestion.kg - 1) * 100)}。';
+    }
+    if (deviation) info = '数值可能有问题，请核对数量、重量单位和皮重。${info ?? ''}';
 
     final borderColor = error != null
         ? theme.colorScheme.error
-        : weightAlertColor(theme, level);
+        : deviation
+        ? weightAlertColor(theme, WeightAlertLevel.warn)
+        : null;
     OutlineInputBorder? border({required bool focused}) => borderColor == null
         ? null
         : OutlineInputBorder(
@@ -515,19 +625,11 @@ class _WeightCellState<T extends EditableGridRow>
             ),
           );
 
-    final hasStatus = error != null || warning != null || info != null;
     final suffix = <Widget>[
-      if (hasStatus)
-        UtenFieldHintIcon(
-          key: const ValueKey('weight-cell-status'),
-          info: info,
-          autofillMessage: warning,
-          errorMessage: error,
-        ),
       if (widget.onWeighCount != null)
         IconButton(
           key: const ValueKey('weight-cell-weigh'),
-          tooltip: '称重计数',
+          tooltip: widget.mode == WeightCaptureMode.outbound ? '称重核对' : '称重算数量',
           onPressed: widget.enabled
               ? () => widget.onWeighCount!(context, widget.row)
               : null,
@@ -537,7 +639,7 @@ class _WeightCellState<T extends EditableGridRow>
         ),
     ];
 
-    return TextField(
+    final field = TextField(
       key: const ValueKey('weight-cell-input'),
       controller: c.text,
       focusNode: _focus,
@@ -549,6 +651,7 @@ class _WeightCellState<T extends EditableGridRow>
       decoration: InputDecoration(
         isDense: true,
         hintText: _placeholder(params, qtyBase),
+        prefixText: c.isSuggested ? '≈ ' : null,
         enabledBorder: border(focused: false),
         focusedBorder: border(focused: true),
         suffixIcon: suffix.isEmpty
@@ -556,6 +659,41 @@ class _WeightCellState<T extends EditableGridRow>
             : Row(mainAxisSize: MainAxisSize.min, children: suffix),
       ),
     );
+    final message = error ?? info;
+    final content = Column(
+      key: const ValueKey('weight-cell-content'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        field,
+        if (error != null || deviation || c.isSuggested)
+          Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s4),
+            child: error != null
+                ? UtenFieldMessage.error(
+                    error,
+                    key: const ValueKey('weight-cell-message'),
+                    maxLines: 2,
+                  )
+                : deviation
+                ? const UtenFieldMessage.autofill(
+                    '数值可能有问题',
+                    key: ValueKey('weight-cell-message'),
+                    maxLines: 2,
+                  )
+                : Text(
+                    '预估 · 请填实称',
+                    key: const ValueKey('weight-cell-suggestion'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+          ),
+      ],
+    );
+    return message == null
+        ? content
+        : Tooltip(message: message, child: content);
   }
 
   String _placeholder(WeightParams? params, double? qtyBase) {
@@ -659,10 +797,20 @@ int weightDeviationRowCount<T>(
   for (final row in rows) {
     final c = controllerOf(row);
     if (c.qtyFromWeight || c.kg == null) continue;
-    final check = paramsOf(
-      row,
-    )?.check(qtyBase: qtyBaseOf(row), weightKg: c.kg, mode: mode);
-    if (check != null && check.level != WeightAlertLevel.none) count++;
+    final params = paramsOf(row);
+    final suggestion = params?.suggestionFor(qtyBaseOf(row), mode: mode);
+    if (suggestion?.inventoryBased ?? false) {
+      if (suggestion!.differsFrom(c.kg, scaleResKg: params!.scaleResKg)) {
+        count++;
+      }
+    } else {
+      final check = params?.check(
+        qtyBase: qtyBaseOf(row),
+        weightKg: c.kg,
+        mode: mode,
+      );
+      if (check != null && check.level != WeightAlertLevel.none) count++;
+    }
   }
   return count;
 }

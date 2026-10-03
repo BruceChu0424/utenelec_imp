@@ -150,6 +150,8 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "SUGGESTION_SUBMITTED",
                     new Entry("SUGGESTION", null)),
+            Map.entry("STOCK_COUNT_PENDING_FINANCE_REVIEW", new Entry("STOCK_COUNT_REQUEST", null)),
+            Map.entry("STOCK_COUNT_PENDING_WAREHOUSE_REVIEW", new Entry("STOCK_COUNT_REQUEST", null)),
             // ===== ADR-131 车间内料仓 (WorkshopMaterialNoticeService, 与业务同事务) =====
             // 车间申请领料 / 退回 → 仓库发料 / 点收 (申请级; 发完、收完或取消时撤卡)
             Map.entry(

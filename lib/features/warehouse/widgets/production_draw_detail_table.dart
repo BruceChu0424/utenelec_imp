@@ -13,6 +13,7 @@ import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/outbound_weight_entry.dart';
 import '../models/stock_doc.dart';
@@ -75,8 +76,11 @@ OutboundWeightEntry drawIssueWeightEntry(
   StockDocItem item,
   UtenAutofillTextController qty, {
   WeightUnit unit = WeightUnit.kg,
+  String? warehouseId,
 }) => OutboundWeightEntry(
   goodsId: item.goodsId,
+  colorId: item.colorId,
+  warehouseId: warehouseId,
   qtyOf: () => double.tryParse(qty.text.trim()),
   qtyController: qty,
   unitRate: item.unitRate ?? 1,
@@ -87,8 +91,11 @@ OutboundWeightEntry drawIssueWeightEntry(
 OutboundWeightEntry drawRemainingWeightEntry(
   StockDocItem item, {
   WeightUnit unit = WeightUnit.kg,
+  String? warehouseId,
 }) => OutboundWeightEntry(
   goodsId: item.goodsId,
+  colorId: item.colorId,
+  warehouseId: warehouseId,
   qtyOf: () => item.remainingQty,
   unitRate: item.unitRate ?? 1,
   unit: unit,
@@ -419,6 +426,10 @@ class ProductionDrawDetailTable extends StatelessWidget {
           value: (row) => row.isMergedGroup
               ? _mergedQty(row.group!, (item) => item.qty ?? 0)
               : row.discovery?.quantity.text ?? _quantity(row.item!.qty ?? 0),
+          exactValueOf: (row) => row.isMergedGroup
+              ? _mergedExactQty(row.group!, (item) => item.qty)
+              : row.discovery?.quantity.text ?? row.item?.qty?.toString(),
+          exactListenableOf: (row) => row.discovery?.quantity,
           cellBuilder: (context, row) => row.isMergedGroup
               ? Text(_mergedQty(row.group!, (item) => item.qty ?? 0))
               : row.discovery == null
@@ -435,6 +446,11 @@ class ProductionDrawDetailTable extends StatelessWidget {
               : row.discovery == null
               ? _quantity(row.item!.issuedQty ?? 0)
               : '0',
+          exactValueOf: (row) => row.isMergedGroup
+              ? _mergedExactQty(row.group!, (item) => item.issuedQty)
+              : row.discovery == null
+              ? row.item?.issuedQty?.toString()
+              : '0',
         ),
         // 已出库重量 = 本行各轮出库流水重量合计 (服务端按流水算, 估算带「≈」)。
         MasterColumnDef(
@@ -444,6 +460,9 @@ class ProductionDrawDetailTable extends StatelessWidget {
           type: 'number',
           info: '各轮出库实称/分摊的重量合计(已扣取消出库); 「≈」为按库存均重或单重估算。',
           value: (row) => _issuedWeightText(row.item),
+          exactValueOf: (row) => (row.item?.issuedQty ?? 0) > 0
+              ? row.item?.issuedWeightKg?.toString()
+              : null,
           cellBuilder: (context, row) {
             final item = row.item;
             if (item == null || (item.issuedQty ?? 0) <= 0) {
@@ -466,6 +485,11 @@ class ProductionDrawDetailTable extends StatelessWidget {
               : row.discovery == null
               ? _quantity(row.item!.remainingQty)
               : '待确认',
+          exactValueOf: (row) => row.isMergedGroup
+              ? _mergedExactQty(row.group!, (item) => item.remainingQty)
+              : row.discovery == null
+              ? row.item?.remainingQty.toString()
+              : null,
         ),
         // 批量整单出库没有「本次出库」列: 本次重量紧跟「待出库」(本次 = 待出库)。
         if (issueQtyControllers == null) ...weightColumns,
@@ -476,7 +500,10 @@ class ProductionDrawDetailTable extends StatelessWidget {
             key: 'issueQty',
             label: '本次出库',
             width: 120,
+            type: 'number',
             value: (row) => issueQtyControllers![row.item?.id]?.text ?? '',
+            exactValueOf: (row) => issueQtyControllers![row.item?.id]?.text,
+            exactListenableOf: (row) => issueQtyControllers![row.item?.id],
             cellBuilder: (context, row) {
               final controller = issueQtyControllers![row.item?.id];
               if (controller == null) return const Text('—');
@@ -592,6 +619,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
             value: (row) => row.item?.weight == null
                 ? '—'
                 : formatWeightValue(row.item!.weight),
+            exactValueOf: (row) => row.item?.weight?.toString(),
             cellBuilder: (context, row) => row.item?.weight == null
                 ? const Text('—')
                 : WeightText(kg: row.item!.weight, textAlign: TextAlign.right),
@@ -784,6 +812,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
   }
 
   /// 合并行数量合计（组员逐行取数相加）。
+  static String? _mergedExactQty(
+    List<ProductionDrawDetailRow> group,
+    double? Function(StockDocItem) pick,
+  ) => financeExactSumTexts([
+    for (final row in group)
+      row.item == null ? null : pick(row.item!)?.toString(),
+  ]);
+
   static String _mergedQty(
     List<ProductionDrawDetailRow> group,
     double Function(StockDocItem) pick,

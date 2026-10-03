@@ -95,6 +95,31 @@ Finder _redRowDecorations(Color tint) => find.byWidgetPredicate(
 );
 
 void main() {
+  testWidgets('重新打开按总金额计价的订单不会回乘参考单价', (tester) async {
+    final api = await _pumpEditor(tester, [
+      {
+        'id': 'total-line',
+        'goodsId': 'goods-1',
+        'qty': 3000,
+        'qtyExact': '3000',
+        'price': 0.0333333333,
+        'priceExact': '0.0333333333',
+        'totalAmountInput': 100,
+        'totalAmountInputExact': '100',
+        'amountOriginal': 100,
+        'amountOriginalExact': '100',
+      },
+    ]);
+    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+    await tester.pumpAndSettle();
+    expect(api.lastPutBody, isNotNull);
+    final line = (api.lastPutBody!['items'] as List).single as Map;
+    expect(line['qty'], '3000');
+    expect(line['price'], '0.0333333333');
+    expect(line['totalAmountInput'], '100');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('同供应商同货品多行：汇总合并后提交单行数量之和', (tester) async {
     final api = await _pumpEditor(tester, [
       {
@@ -127,7 +152,7 @@ void main() {
         .cast<Map<String, dynamic>>();
     expect(items, hasLength(1));
     expect(items.single['goodsId'], 'goods-1');
-    expect(items.single['qty'], 15.0);
+    expect(items.single['qty'], '15');
     expect(items.single['supplierId'], 'sup-1');
     expect(tester.takeException(), isNull);
   });

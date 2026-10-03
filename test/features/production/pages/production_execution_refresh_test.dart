@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
@@ -18,7 +21,13 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/list_refresh_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('workshop tasks refresh on plan generation and route return', (
     tester,
   ) async {
@@ -106,6 +115,10 @@ Future<ProviderContainer> _pump(
   addTearDown(tester.view.resetDevicePixelRatio);
   final container = ProviderContainer(
     overrides: [
+      localServerReachableProvider.overrideWith(
+        (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+      ),
+      sharedPreferencesProvider.overrideWithValue(_preferences),
       sessionProvider.overrideWith(_Session.new),
       currentPermissionsProvider.overrideWithValue(const {
         Perm.productionExecutionView,

@@ -194,7 +194,7 @@ public final class WeightParamsResolver {
                     pool == null ? null : pool.nInliers(), ApwEstimator.suggestedSampleSize(cfg, null), null,
                     profile.effectiveTolerancePct(), profile.defaultTareKg(), facts.lastTareKg(), null, false,
                     pool == null ? null : pool.lastObservedAt(), drawBiasPct(pool), null,
-                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg());
+                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg(), null);
             return new Resolution(params, null, null, false, cfg);
         }
 
@@ -204,7 +204,7 @@ public final class WeightParamsResolver {
                     StrictMath.log(factor.doubleValue()), 0.0, cfg.gamma(), null, Tier.GREEN.name(), 0.0,
                     null, null, null, profile.effectiveTolerancePct(), profile.defaultTareKg(),
                     facts.lastTareKg(), factor, false, null, null, null, facts.baseUnitDimension(),
-                    profile.learningEnabled(), cfg.scaleResKg());
+                    profile.learningEnabled(), cfg.scaleResKg(), null);
             return new Resolution(params, null, Tier.GREEN, false, cfg);
         }
 
@@ -223,7 +223,7 @@ public final class WeightParamsResolver {
                     ApwEstimator.suggestedSampleSize(cfg, unitWeight == null ? null : unitWeight.doubleValue()),
                     exactUpToQty, profile.effectiveTolerancePct(), profile.defaultTareKg(), facts.lastTareKg(),
                     null, stale, row == null ? null : row.lastObservedAt(), drawBiasPct(pool), manualConflictPct,
-                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg());
+                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg(), null);
             ApwPredictor.Params predictor = new ApwPredictor.Params(mu, prior, df, cfg.gamma(), cfg.scaleResKg());
             return new Resolution(params, predictor, tier, alertsAllowed, cfg);
         }

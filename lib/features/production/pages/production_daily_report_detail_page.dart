@@ -14,20 +14,25 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/document_scope_capability.dart';
@@ -35,11 +40,14 @@ import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/production_daily_report.dart';
+import '../models/daily_report_approval_intent.dart';
 import '../models/production_execution_planning.dart'
     show formatProductionPlanningQuantity;
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
+import '../repositories/daily_report_approval_intent_store.dart';
 import '../widgets/production_status_badge.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 
@@ -49,6 +57,16 @@ class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
     required this.id,
     this.returnToWorkshopTasks = false,
   });
+  static Widget route(BuildContext context, GoRouterState state) {
+    final id = state.pathParameters['id']!;
+    final fromWorkshop = state.uri.queryParameters['from'] == 'workshop-tasks';
+    return ProductionDailyReportDetailPage(
+      key: ValueKey((id, fromWorkshop)),
+      id: id,
+      returnToWorkshopTasks: fromWorkshop,
+    );
+  }
+
   final String id;
   final bool returnToWorkshopTasks;
 
@@ -66,14 +84,59 @@ class _ProductionDailyReportDetailPageState
   /// 审核/红冲/删除网络段的加载遮罩标题（null=无遮罩）。
   String? _busyTitle;
   String? _error;
+  StoredDailyReportApproval? _pendingApproval;
+  bool _approvalRecoveryReady = false;
+  bool _approvalConfirming = false;
+  bool _approvalLocallySettled = false;
+  bool _busyReadOnly = false;
+  String? _approvalRecoveryMessage;
+  int _approvalViewGeneration = 0;
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获，不随后续导航现取）。
   String? _myLocation;
 
+  AppLocalizations get _l10n => AppLocalizations.of(context);
+
   @override
   void initState() {
     super.initState();
+    ref.listenManual(authenticatedScopeProvider, (before, after) {
+      if (before != after) _invalidateApprovalView();
+    });
+    ref.listenManual(apiBaseUrlProvider, (before, after) {
+      if (before != after) _invalidateApprovalView();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  void _invalidateApprovalView() {
+    if (!mounted) return;
+    setState(() {
+      _approvalViewGeneration++;
+      _detail = null;
+      _pendingApproval = null;
+      _approvalRecoveryReady = false;
+      _approvalLocallySettled = false;
+      _approvalConfirming = false;
+      _busy = false;
+      _loading = false;
+      _error = '登录身份或服务器已变化，请重新读取这张日报。';
+    });
+  }
+
+  bool Function() _approvalViewFence({bool requireCurrentRoute = true}) {
+    final scope = ref.read(authenticatedScopeProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final id = widget.id;
+    final generation = _approvalViewGeneration;
+    final route = ModalRoute.of(context);
+    return () =>
+        mounted &&
+        _approvalViewGeneration == generation &&
+        widget.id == id &&
+        ref.read(authenticatedScopeProvider) == scope &&
+        ref.read(apiBaseUrlProvider) == server &&
+        (!requireCurrentRoute || route == null || route.isCurrent);
   }
 
   bool _allows(DocumentPermissionAction action) => DocumentPermissionCatalog
@@ -86,35 +149,72 @@ class _ProductionDailyReportDetailPageState
   );
 
   bool get _canEdit =>
-      _ordinaryWritable && _allows(DocumentPermissionAction.edit);
+      _pendingApproval == null &&
+      _approvalRecoveryReady &&
+      _ordinaryWritable &&
+      _allows(DocumentPermissionAction.edit);
   bool get _canDelete =>
-      _ordinaryWritable && _allows(DocumentPermissionAction.delete);
+      _pendingApproval == null &&
+      _approvalRecoveryReady &&
+      _ordinaryWritable &&
+      _allows(DocumentPermissionAction.delete);
   // 审核按钮只看服务端下发的 allowedActions(含车间直送审核权与对象范围，permissions-15)，
   // 避免没有直送审核权的人点了才被拒。
-  bool get _canApprove => _detail?.canApprove ?? false;
-  bool get _canReverse => _allows(DocumentPermissionAction.reverse);
+  bool get _canApprove =>
+      _approvalRecoveryReady &&
+      !_approvalConfirming &&
+      _pendingApproval == null &&
+      (_detail?.canApprove ?? false) &&
+      ((_detail?.supportsLegacyApproval ?? false) ||
+          (_detail?.canFreezeReviewedApproval ?? false));
+  bool get _canReverse =>
+      _pendingApproval == null &&
+      _approvalRecoveryReady &&
+      _allows(DocumentPermissionAction.reverse);
 
   Future<void> _load() async {
+    if (!mounted || _loading || _busy) return;
+    final isCurrent = _approvalViewFence(requireCurrentRoute: false);
     setState(() {
       _loading = true;
       _error = null;
+      _approvalRecoveryReady = false;
     });
     try {
       final d = await ref
           .read(productionDailyReportRepositoryProvider)
           .detail(widget.id);
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
+      if (d.id != widget.id) throw StateError('日报响应身份不一致');
       _applyDetail(d);
+      try {
+        final saved = await ref
+            .read(dailyReportApprovalIntentStoreProvider)
+            .read(widget.id);
+        if (!mounted || !isCurrent()) return;
+        setState(() {
+          _approvalLocallySettled =
+              _approvalLocallySettled && saved?.raw == _pendingApproval?.raw;
+          _pendingApproval = saved;
+          _approvalRecoveryReady = true;
+          _approvalRecoveryMessage = null;
+        });
+      } catch (_) {
+        if (!mounted || !isCurrent()) return;
+        setState(
+          () => _approvalRecoveryMessage = '本机原审核记录尚未读取，暂不能提交新审核。请保留本机记录并重试。',
+        );
+      }
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       setState(() {
-        _error = '加载详情失败';
+        _error = _l10n.productionDailyReportLoadFailed;
         _loading = false;
       });
     }
@@ -139,33 +239,430 @@ class _ProductionDailyReportDetailPageState
   void _signalExecutionChanged() =>
       bumpListRefresh(ref, productionExecutionRefreshKey);
 
-  Future<void> _approve() => _doAction(
-    '请核对本次实际产量与产出去向：\n'
-        '${_routeLines()}'
+  Future<void> _approve() async {
+    if (_busy || _approvalConfirming || !_canApprove) return;
+    final reviewed = _detail;
+    if (reviewed == null || reviewed.id != widget.id) return;
+    final isCurrent = _approvalViewFence();
+    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    late final DailyReportApprovalIntent intent;
+    try {
+      // All confirmation semantics come from this one detail, before opening the dialog.
+      intent = DailyReportApprovalIntent.review(
+        reviewed,
+        '请核对本次实际产量与产出去向：\n${_routeLines(reviewed)}'
         '转给上层工单的部分交下工序；送入仓库的部分生成仓库到货登记任务，'
         '仓库登记成品仓与库位并送品质部检查。'
-        '只有品质合格且仓库实际接收的数量才增加可用库存。确认审核？',
-    (repo) => repo.approve(
-      widget.id,
-      // 同一次点击重发必须是同一把键，换一次点击必须换键。
-      // 用「单号 + 当前版本号」确定性派生而不是页面里存一个随机数：
-      // 页面重建或来回跳转后仍算得出同一把键，而服务端一旦真的提交、版本号变了，
-      // 键自然就变了，不会把下一次操作当成上一次的重放。
-      idempotencyKey: businessIdempotencyKey(
-        'daily-report-approve',
-        '${widget.id}:${_detail?.rowVersion ?? 0}',
+        '只有品质合格且仓库实际接收的数量才增加可用库存。确认审核？'
+        '${reviewed.supportsLegacyApproval ? '\n此服务器使用旧版审核，暂不核对所见版本。' : ''}',
+      );
+    } catch (_) {
+      context.appError('当前审核资料不完整，请刷新后重新核对，暂不能提交审核。');
+      return;
+    }
+    setState(() => _approvalConfirming = true);
+    bool confirmed;
+    try {
+      confirmed = await showUtenReviewerConfirmDialog(
+        context,
+        message: intent.confirmation,
+      );
+    } finally {
+      if (sameOwner()) setState(() => _approvalConfirming = false);
+    }
+    if (!mounted || !isCurrent()) return;
+    if (confirmed != true) return;
+    await _sendApproval(intent);
+  }
+
+  Future<bool> _clearApprovalRecord(StoredDailyReportApproval record) async {
+    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    try {
+      await ref.read(dailyReportApprovalIntentStoreProvider).complete(record);
+      if (sameOwner()) {
+        setState(() {
+          _pendingApproval = null;
+          _approvalLocallySettled = false;
+          _approvalRecoveryMessage = null;
+        });
+      }
+      return true;
+    } catch (_) {
+      if (sameOwner()) {
+        setState(() {
+          _approvalLocallySettled = true;
+          _approvalRecoveryMessage = '原审核结果已核对，本机记录尚未清理；请保留页面后重试清理，不会重发审核。';
+        });
+      }
+      return false;
+    }
+  }
+
+  Future<void> _publishApproval(
+    StoredDailyReportApproval record,
+    ProductionDailyReportDetail updated, {
+    bool replay = false,
+    bool legacyMismatch = false,
+  }) async {
+    final isCurrent = _approvalViewFence();
+    if (updated.id != record.intent.reportId || !isCurrent()) return;
+    // The response is confirmed before any local cleanup or navigation.
+    _approvalLocallySettled = true;
+    _applyDetail(updated);
+    _signalExecutionChanged();
+    await _clearApprovalRecord(record);
+    if (!mounted || !isCurrent()) return;
+    if (legacyMismatch) {
+      setState(() => _approvalRecoveryMessage = '原审核记录已找到，但所见版本未被验证，请核对当前日报。');
+      context.appWarning('原审核按旧版规则登记，未验证所见版本；请以当前记录为准。');
+      return;
+    } else if (updated.status != kProductionStatusApproved) {
+      context.appWarning(_l10n.productionDailyReportStateChangedReview);
+    } else {
+      context.appSuccess(replay ? '原审核已登记' : '已审核');
+    }
+    await _returnAfterApproval(updated, responseIsCurrent: isCurrent);
+  }
+
+  Future<void> _sendApproval(
+    DailyReportApprovalIntent intent, {
+    StoredDailyReportApproval? original,
+  }) async {
+    if (_busy) return;
+    final isCurrent = _approvalViewFence();
+    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    final repository = ref.read(productionDailyReportRepositoryProvider);
+    final store = ref.read(dailyReportApprovalIntentStoreProvider);
+    StoredDailyReportApproval? record = original;
+    StoredDailyReportApproval? beforeClaim;
+    var sent = false;
+    var acknowledged = false;
+    setState(() {
+      _busy = true;
+      _busyReadOnly = false;
+      _busyTitle = '正在审核生产日报';
+    });
+    try {
+      record ??= await store.begin(intent);
+      if (!mounted || !isCurrent()) return;
+      final prepared = record;
+      final claimed = await store.claim(prepared);
+      beforeClaim = prepared;
+      record = claimed;
+      if (!mounted || !isCurrent()) return;
+      setState(() {
+        _pendingApproval = record;
+        _approvalLocallySettled = false;
+        _approvalRecoveryMessage = null;
+      });
+      // The complete original command is durable before the repository sends bytes.
+      sent = true;
+      final updated = await repository.approve(
+        intent.reportId,
+        idempotencyKey: intent.idempotencyKey,
+        commandVersion: intent.legacy ? null : 2,
+        expectedVersion: intent.expectedVersion,
+      );
+      if (!mounted || !isCurrent()) return;
+      final receipt = updated.approvalReceipt;
+      final verified = receipt != null && intent.verifiedReceipt(receipt);
+      final legacyAcceptedWithoutReceipt =
+          intent.legacy &&
+          receipt == null &&
+          updated.status != null &&
+          updated.status != kProductionStatusDraft;
+      if (updated.id != intent.reportId ||
+          (!verified && !legacyAcceptedWithoutReceipt)) {
+        await _settleApprovalUnknown('收到的审核回执不完整，原提交已保留，请核对原审核记录。', record);
+        return;
+      }
+      acknowledged = true;
+      await _publishApproval(record, updated, replay: receipt?.replay ?? false);
+    } catch (error) {
+      if (!mounted || !isCurrent()) return;
+      if (acknowledged) {
+        setState(() {
+          _approvalLocallySettled = true;
+          _approvalRecoveryMessage = '审核已确认，页面或本机收尾未完成，请以当前记录为准。';
+        });
+        context.appWarning(_approvalRecoveryMessage!);
+        return;
+      }
+      if (!sent) {
+        try {
+          final saved = await store.read(intent.reportId);
+          if (isCurrent()) {
+            _pendingApproval = saved;
+            _approvalLocallySettled = false;
+          }
+        } catch (_) {}
+        if (!mounted || !isCurrent()) return;
+        setState(
+          () => _approvalRecoveryMessage = '本机审核保护尚未保存，本次未发送审核。请保留页面并重新读取本机记录。',
+        );
+        context.appError(_approvalRecoveryMessage!);
+        return;
+      }
+      final staleV2 =
+          !intent.legacy &&
+          error is ApiException &&
+          error.code == 'DAILY_REPORT_REVIEW_VERSION_CONFLICT';
+      final rejectedFirstAttempt =
+          original == null &&
+          error is ApiException &&
+          const {
+            'BUSINESS',
+            'VALIDATION_FAILED',
+            'MALFORMED_REQUEST',
+            'CONFLICT',
+          }.contains(error.code);
+      if (staleV2 || rejectedFirstAttempt) {
+        await _clearApprovalRecord(record!);
+        if (!mounted || !isCurrent()) return;
+        await _settleFailedAction(
+          error.message,
+          targetStatus: kProductionStatusApproved,
+          returnAfterApproval: true,
+          responseIsCurrent: isCurrent,
+        );
+      } else {
+        await _settleApprovalUnknown(
+          error is ApiException ? error.message : '未收到审核结果，原提交已保留。',
+          record!,
+        );
+      }
+    } finally {
+      if (!sent &&
+          record != null &&
+          sameOwner() &&
+          !(beforeClaim?.hasBeenDispatched ?? record.hasBeenDispatched)) {
+        try {
+          if (beforeClaim == null) {
+            await store.cancelPrepared(record);
+          } else {
+            await store.cancelUnsentClaim(record, beforeClaim);
+          }
+          final current = await store.read(intent.reportId);
+          if (sameOwner()) {
+            setState(() {
+              _pendingApproval = current;
+              _approvalLocallySettled = false;
+              _approvalRecoveryMessage = current == null
+                  ? '本次审核尚未发送，可以重新核对后继续。'
+                  : '原记录已由另一页面领取，请先核对原审核。';
+            });
+          }
+        } catch (_) {
+          // Failure to release never erases evidence or authorizes a new write.
+        }
+      }
+      if (sameOwner()) {
+        setState(() {
+          _busy = false;
+          _busyTitle = null;
+          _busyReadOnly = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _tryResolveApproval(StoredDailyReportApproval record) async {
+    final isCurrent = _approvalViewFence();
+    final repository = ref.read(productionDailyReportRepositoryProvider);
+    var confirmed = false;
+    try {
+      if (!(_detail?.supportsReviewedApproval ?? false)) return false;
+      final observed = await repository.approvalReceipt(
+        record.intent.reportId,
+        idempotencyKey: record.intent.idempotencyKey,
+      );
+      if (!mounted || !isCurrent()) return true;
+      final detail = observed.detail;
+      if (detail != null && detail.id == widget.id) _applyDetail(detail);
+      final receipt = observed.receipt;
+      if (observed.status == 'CONFIRMED' &&
+          receipt != null &&
+          record.intent.ownsReceipt(receipt) &&
+          detail?.id == widget.id) {
+        if (record.intent.verifiedReceipt(receipt) || receipt.legacy) {
+          confirmed = true;
+          await _publishApproval(
+            record,
+            detail!,
+            replay: true,
+            legacyMismatch: !record.intent.legacy && receipt.legacy,
+          );
+        } else {
+          setState(
+            () => _approvalRecoveryMessage = '原记录与本机保存的审核版本不一致，内容已保留，请联系管理员核对。',
+          );
+          context.appError(_approvalRecoveryMessage!);
+        }
+        return true;
+      }
+      setState(
+        () => _approvalRecoveryMessage = observed.status == 'PENDING'
+            ? '原审核仍在处理中，请稍后核对。原内容已保留。'
+            : '暂未找到可确认的原审核记录；原请求仍可能完成，原内容已保留。',
+      );
+    } catch (_) {
+      if (mounted && isCurrent()) {
+        setState(() {
+          if (confirmed) _approvalLocallySettled = true;
+          _approvalRecoveryMessage = confirmed
+              ? '原审核已确认，页面或本机收尾未完成，请以当前记录为准。'
+              : '原审核记录暂时无法读取，原内容已保留，请稍后核对。';
+        });
+      }
+      if (confirmed) return true;
+    }
+    return false;
+  }
+
+  Future<void> _settleApprovalUnknown(
+    String message,
+    StoredDailyReportApproval record,
+  ) async {
+    final isCurrent = _approvalViewFence();
+    if (isCurrent()) {
+      setState(() {
+        _busyReadOnly = true;
+        _busyTitle = '正在核对原审核';
+      });
+    }
+    if (await _tryResolveApproval(record) || !mounted || !isCurrent()) return;
+    try {
+      final current = await ref
+          .read(productionDailyReportRepositoryProvider)
+          .detail(record.intent.reportId);
+      if (!mounted || !isCurrent()) return;
+      if (current.id == record.intent.reportId) {
+        final changed = _detail?.status != current.status;
+        _applyDetail(current);
+        if (changed) _signalExecutionChanged();
+      }
+    } catch (_) {
+      /* Keep the original command when even the state read fails. */
+    }
+    if (!mounted || !isCurrent()) return;
+    setState(
+      () => _approvalRecoveryMessage =
+          _detail?.status == kProductionStatusApproved
+          ? '当前显示已审核，但原提交尚未获得可核对回执。请保留原内容，继续核对原审核。'
+          : _detail?.status == kProductionStatusReversed
+          ? '当前显示已红冲，但原提交结果仍待核对。原内容已保留。'
+          : '$message 原提交结果仍待核对，原内容已保留。',
+    );
+    context.appWarning(_approvalRecoveryMessage!);
+  }
+
+  Future<void> _resumePreparedApproval() async {
+    final record = _pendingApproval;
+    if (_busy || record == null || record.hasBeenDispatched) return;
+    final isCurrent = _approvalViewFence();
+    final store = ref.read(dailyReportApprovalIntentStoreProvider);
+    try {
+      if (!await store.cancelPrepared(record)) {
+        final latest = await store.read(record.intent.reportId);
+        if (isCurrent()) {
+          setState(() {
+            _pendingApproval = latest;
+            _approvalLocallySettled = false;
+            _approvalRecoveryMessage = '原记录已由另一页面领取，请先核对原审核。';
+          });
+        }
+        return;
+      }
+      if (!isCurrent()) return;
+      setState(() {
+        _pendingApproval = null;
+        _approvalRecoveryMessage = null;
+      });
+      await _load();
+      if (isCurrent() && _canApprove) await _approve();
+    } catch (_) {
+      if (mounted && isCurrent()) context.appWarning('本机待审核记录暂未完成核对，本次未发送审核。');
+    }
+  }
+
+  Future<void> _resolveApproval() async {
+    final record = _pendingApproval;
+    if (_busy || record == null) return;
+    final isCurrent = _approvalViewFence();
+    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    setState(() {
+      _busy = true;
+      _busyReadOnly = true;
+      _busyTitle = '正在核对原审核';
+    });
+    try {
+      if (_approvalLocallySettled) {
+        await _clearApprovalRecord(record);
+        return;
+      }
+      if (!(_detail?.supportsReviewedApproval ?? false)) {
+        final current = await ref
+            .read(productionDailyReportRepositoryProvider)
+            .detail(widget.id);
+        if (!mounted || !isCurrent()) return;
+        _applyDetail(current);
+      }
+      if (await _tryResolveApproval(record) || !mounted || !isCurrent()) return;
+      context.appWarning(
+        _approvalRecoveryMessage ?? '当前服务器暂不能提供原审核回执；原记录已保留，不会重复发送旧版审核。',
+      );
+    } catch (_) {
+      if (mounted && isCurrent()) context.appWarning('原审核暂未核对，原记录已保留。');
+    } finally {
+      if (sameOwner()) {
+        setState(() {
+          _busy = false;
+          _busyTitle = null;
+          _busyReadOnly = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _retryOriginalApproval() async {
+    final record = _pendingApproval;
+    if (_busy ||
+        record == null ||
+        record.intent.legacy ||
+        _approvalLocallySettled ||
+        !(_detail?.canFreezeReviewedApproval ?? false)) {
+      return;
+    }
+    final isCurrent = _approvalViewFence();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('按原内容重试审核'),
+        content: Text(
+          '${record.intent.confirmation}\n\n将重试保存的原审核；日报已经变化时会拒绝，请重新核对。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('重试原审核'),
+          ),
+        ],
       ),
-    ),
-    '已审核',
-    reviewerResponsibility: true,
-  );
+    );
+    if (confirmed == true && isCurrent()) {
+      await _sendApproval(record.intent, original: record);
+    }
+  }
 
   /// 审核确认里逐批列出去向(直送给哪个工单多少；送入仓库多少及原因)，最多列 6 批。
-  String _routeLines() {
+  String _routeLines(ProductionDailyReportDetail reviewed) {
     try {
-      final groups = productionDailyReportInputGroups(
-        _detail?.items ?? const [],
-      );
+      final groups = productionDailyReportInputGroups(reviewed.items);
       const limit = 6;
       final lines = [
         for (final group in groups.take(limit)) '· ${group.routeSummary}',
@@ -177,8 +674,12 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  Future<void> _reverse() =>
-      _doAction('红冲将反向冲销，确认？', (repo) => repo.reverse(widget.id), '已红冲');
+  Future<void> _reverse() => _doAction(
+    _l10n.productionDailyReportReverseConfirmation,
+    (repo) => repo.reverse(widget.id),
+    '已红冲',
+    targetStatus: kProductionStatusReversed,
+  );
 
   Future<void> _doAction(
     String confirm,
@@ -187,30 +688,21 @@ class _ProductionDailyReportDetailPageState
     )
     fn,
     String ok, {
+    required int targetStatus,
     bool reviewerResponsibility = false,
   }) async {
     if (_busy) return;
     final c = reviewerResponsibility
         ? await showUtenReviewerConfirmDialog(context, message: confirm)
-        : await showDialog<bool>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('确认'),
-              content: Text(confirm),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('确认'),
-                ),
-              ],
-            ),
+        : await UtenDialog.show(
+            context,
+            title: _l10n.commonConfirm,
+            content: Text(confirm),
+            confirmLabel: _l10n.commonConfirm,
+            cancelLabel: _l10n.commonCancel,
+            danger: true,
           );
-    if (c != true) return;
+    if (c != true || !mounted || _busy) return;
     setState(() {
       _busy = true;
       _busyTitle = '正在${reviewerResponsibility ? '审核' : '红冲'}生产日报';
@@ -220,21 +712,25 @@ class _ProductionDailyReportDetailPageState
         ref.read(productionDailyReportRepositoryProvider),
       );
       if (!mounted) return;
-      context.appSuccess(ok);
       // 服务端已返回审核/红冲后的完整详情：直接落页面，省掉一次详情往返。
       _applyDetail(updated);
       _signalExecutionChanged();
-      if (reviewerResponsibility) _returnAfterApproval(updated);
+      if (updated.status != targetStatus) {
+        context.appWarning(_l10n.productionDailyReportStateChangedReview);
+        return;
+      }
+      context.appSuccess(ok);
+      if (reviewerResponsibility) await _returnAfterApproval(updated);
     } on ApiException catch (e) {
       await _settleFailedAction(
         e.message,
-        ok,
+        targetStatus: targetStatus,
         returnAfterApproval: reviewerResponsibility,
       );
     } catch (_) {
       await _settleFailedAction(
         '操作失败，请稍后重试',
-        ok,
+        targetStatus: targetStatus,
         returnAfterApproval: reviewerResponsibility,
       );
     } finally {
@@ -252,11 +748,12 @@ class _ProductionDailyReportDetailPageState
   /// 超时或断连不代表服务端没做——审核事务可能已经提交(2026-09-21 实测：服务端 15.094 秒
   /// 返回 200，浏览器 15 秒就掐了连接)。这时继续拿旧详情画「审核」按钮，用户必然再点一次，
   /// 第二次必然撞上「仅草稿单据可审核」。服务端明确拒绝时同理：本地状态多半已经陈旧。
-  /// 所以两条失败路径都先重读一次，状态真变了就据实告诉用户它其实成功了。
+  /// 核对只证明当前状态：达到本次目标才提示当前已审核/红冲，不能把其它人的状态变化归因于本次命令。
   Future<void> _settleFailedAction(
-    String failureMessage,
-    String successMessage, {
+    String failureMessage, {
+    required int targetStatus,
     bool returnAfterApproval = false,
+    bool Function()? responseIsCurrent,
   }) async {
     final before = _detail?.status;
     ProductionDailyReportDetail? fresh;
@@ -267,25 +764,67 @@ class _ProductionDailyReportDetailPageState
     } catch (_) {
       fresh = null; // 连重读都失败：只能报原始错误，页面保持原样。
     }
-    if (!mounted) return;
+    if (!mounted || !(responseIsCurrent?.call() ?? true)) return;
     if (fresh != null) {
       _applyDetail(fresh);
       if (fresh.status != before) {
         _signalExecutionChanged();
-        context.appSuccess('$successMessage(本次提交服务端已完成，页面已刷新)');
-        if (returnAfterApproval) _returnAfterApproval(fresh);
+      }
+      if (fresh.status == targetStatus) {
+        context.appSuccess(
+          targetStatus == kProductionStatusApproved
+              ? _l10n.productionDailyReportApprovedStateVerified
+              : _l10n.productionDailyReportReversedStateVerified,
+        );
+        if (returnAfterApproval) {
+          await _returnAfterApproval(
+            fresh,
+            responseIsCurrent: responseIsCurrent,
+          );
+        }
+        return;
+      }
+      if (fresh.status != before) {
+        context.appWarning(_l10n.productionDailyReportStateChangedReview);
         return;
       }
     }
     context.appError(failureMessage);
   }
 
-  void _returnAfterApproval(ProductionDailyReportDetail detail) {
-    if (!widget.returnToWorkshopTasks || detail.status != 1) return;
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go(RouteName.productionWorkshopTasks);
+  Future<void> _returnAfterApproval(
+    ProductionDailyReportDetail detail, {
+    bool Function()? responseIsCurrent,
+  }) async {
+    if (!widget.returnToWorkshopTasks ||
+        detail.status != kProductionStatusApproved) {
+      return;
+    }
+    await _leaveAfterCompletedAction(() {
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.go(RouteName.productionWorkshopTasks);
+      }
+    }, responseIsCurrent: responseIsCurrent);
+  }
+
+  /// A confirmed result releases the busy route guard before its own navigation.
+  Future<void> _leaveAfterCompletedAction(
+    VoidCallback navigate, {
+    bool Function()? responseIsCurrent,
+  }) async {
+    final route = ModalRoute.of(context);
+    setState(() {
+      _busy = false;
+      _busyTitle = null;
+    });
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted &&
+        (responseIsCurrent?.call() ?? true) &&
+        route?.isCurrent == true &&
+        identical(ModalRoute.of(context), route)) {
+      navigate();
     }
   }
 
@@ -318,26 +857,15 @@ class _ProductionDailyReportDetailPageState
 
   Future<void> _delete() async {
     if (_busy) return;
-    final c = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除日报'),
-        content: const Text('确定删除该草稿日报吗？'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final c = await UtenDialog.show(
+      context,
+      title: _l10n.productionDailyReportDeleteTitle,
+      content: Text(_l10n.productionDailyReportDeleteConfirmation),
+      confirmLabel: _l10n.productionDailyReportDeleteAction,
+      cancelLabel: _l10n.commonCancel,
+      danger: true,
     );
-    if (c != true) return;
+    if (c != true || !mounted || _busy) return;
     setState(() {
       _busy = true;
       _busyTitle = '正在删除日报';
@@ -348,7 +876,9 @@ class _ProductionDailyReportDetailPageState
       _signalExecutionChanged();
       context.appSuccess('已删除');
       // 返回键契约（路由设计 §十一）：pop 回来源（列表/车间任务），栈空回 hub。
-      popOrBackTo(context, defaultPath: RouteName.production);
+      await _leaveAfterCompletedAction(
+        () => popOrBackTo(context, defaultPath: RouteName.production),
+      );
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
     } catch (_) {
@@ -377,18 +907,24 @@ class _ProductionDailyReportDetailPageState
       documentScopeCapabilityProvider(DocumentDataScope.productionPlan),
     );
     final theme = Theme.of(context);
-    return Scaffold(
+    final page = Scaffold(
       appBar: const UtenAppBar(title: '生产日报详情', showBackButton: true),
       body: Stack(
         children: [
           SafeArea(
             child: UtenContentContainer(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ? Semantics(
+                      label: _l10n.commonLoading,
+                      liveRegion: true,
+                      child: const UtenSkeletonList(),
                     )
                   : _error != null
-                  ? Center(child: Text(_error!))
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: _l10n.commonRetry,
+                      onAction: _load,
+                    )
                   : _detail == null
                   ? const SizedBox.shrink()
                   // 2026-09-11 折叠头+表内滚：头部（提示条/表头卡/附件）随上滚收起，
@@ -411,6 +947,10 @@ class _ProductionDailyReportDetailPageState
                                   .read(sessionSnapshotProvider.notifier)
                                   .refresh(),
                             ),
+                            if (_approvalNotice() case final notice?) ...[
+                              notice,
+                              const SizedBox(height: UtenSpacing.s12),
+                            ],
                             _headerCard(theme),
                             // 日报附件（报工照片/检验记录）：草稿可管理，审核后只读。
                             // 属「备注类小卡」，并入折叠头尾部随头部一起收起。
@@ -450,15 +990,21 @@ class _ProductionDailyReportDetailPageState
           if (_busy)
             UtenBusyOverlay(
               title: _busyTitle ?? '正在处理',
-              description: '正在写入日报状态与派生任务，请勿重复提交或离开本页。',
+              description: _busyReadOnly
+                  ? '正在读取原审核记录，不会再次提交审核。'
+                  : '正在写入日报状态与派生任务，请勿重复提交或离开本页。',
             ),
         ],
       ),
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，大小/高度/禁用态全站统一。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _busy ? null : _actions(theme),
+      floatingActionButton:
+          _detail == null || _busy || _loading || _error != null
+          ? null
+          : _actions(theme),
     );
+    return PopScope<Object?>(canPop: !_busy, child: page);
   }
 
   Widget _headerCard(ThemeData theme) {
@@ -670,6 +1216,54 @@ class _ProductionDailyReportDetailPageState
       );
     }
 
+    if (_pendingApproval != null) {
+      addAction(
+        UtenButton(
+          key: const Key('daily-report-resolve-approval'),
+          size: UtenButtonSize.large,
+          onPressed: !_pendingApproval!.hasBeenDispatched
+              ? _resumePreparedApproval
+              : _resolveApproval,
+          child: Text(
+            !_pendingApproval!.hasBeenDispatched
+                ? '重新核对审核'
+                : _approvalLocallySettled
+                ? '清理已核对记录'
+                : '核对原审核',
+          ),
+        ),
+      );
+      if (_pendingApproval!.hasBeenDispatched &&
+          !_approvalLocallySettled &&
+          !_pendingApproval!.intent.legacy &&
+          detail.canFreezeReviewedApproval &&
+          detail.status == kProductionStatusDraft &&
+          detail.canApprove) {
+        addAction(
+          UtenButton(
+            key: const Key('daily-report-retry-original-approval'),
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            onPressed: _retryOriginalApproval,
+            child: const Text('按原内容重试'),
+          ),
+        );
+      }
+    } else if (!_approvalRecoveryReady ||
+        (detail.canApprove &&
+            !detail.supportsLegacyApproval &&
+            !detail.canFreezeReviewedApproval)) {
+      addAction(
+        UtenButton(
+          key: const Key('daily-report-review-reload'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          onPressed: _load,
+          child: Text(_l10n.commonRetry),
+        ),
+      );
+    }
+
     if (detail.status == kProductionStatusDraft) {
       if (_canDelete) {
         addAction(
@@ -726,6 +1320,51 @@ class _ProductionDailyReportDetailPageState
     return UtenFloatingActionGroup(
       children: children.where((child) => child is! SizedBox).toList(),
     );
+  }
+
+  Widget? _approvalNotice() {
+    final pending = _pendingApproval;
+    if (pending != null) {
+      return UtenInlineNotice(
+        key: const Key('daily-report-approval-recovery'),
+        level: _approvalLocallySettled
+            ? UtenInlineNoticeLevel.info
+            : UtenInlineNoticeLevel.warning,
+        title: !pending.hasBeenDispatched
+            ? '审核尚未发送'
+            : _approvalLocallySettled
+            ? '原审核结果已核对'
+            : '原审核结果待核对',
+        message:
+            _approvalRecoveryMessage ??
+            (!pending.hasBeenDispatched
+                ? '本机保留了尚未发送的确认内容；重新核对当前日报后可继续。'
+                : pending.intent.legacy
+                ? '原提交内容已保留。旧版审核只查询原记录，不会用当前资料重新发送审核。'
+                : '原提交内容已保留。先核对原审核；需要重试时仍使用原内容，日报已变化会拒绝。'),
+      );
+    }
+    if (_approvalRecoveryMessage != null) {
+      return UtenInlineNotice(
+        key: const Key('daily-report-approval-recovery'),
+        level: UtenInlineNoticeLevel.warning,
+        title: '审核保护需要核对',
+        message: _approvalRecoveryMessage!,
+      );
+    }
+    final detail = _detail;
+    if (detail != null &&
+        detail.canApprove &&
+        !detail.supportsLegacyApproval &&
+        !detail.canFreezeReviewedApproval) {
+      return const UtenInlineNotice(
+        key: Key('daily-report-approval-capability-unavailable'),
+        level: UtenInlineNoticeLevel.error,
+        title: '审核资料需要重新读取',
+        message: '当前资料不能用于核对审核版本，请刷新后重试；暂不能提交审核。',
+      );
+    }
+    return null;
   }
 }
 

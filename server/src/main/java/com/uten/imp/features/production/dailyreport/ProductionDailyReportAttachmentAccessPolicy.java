@@ -36,6 +36,17 @@ public class ProductionDailyReportAttachmentAccessPolicy implements AttachmentOw
         readable(report(ownerId), user);
     }
 
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        if (ownerId == null || !has(user, "production_daily_report:view")) throw missing();
+        ProductionDailyReport report = em.find(ProductionDailyReport.class, ownerId);
+        if (report == null) throw missing();
+        access.requireReadable(report.getMakerId(), "生产日报单不存在", "production_daily_report:approve", "production_daily_report:reverse");
+    }
+
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        requireCanViewHistory(ownerId, user);
+    }
+
     @Override public void requireCanManage(UUID ownerId, AuthUser user) {
         editable(report(ownerId), user);
     }

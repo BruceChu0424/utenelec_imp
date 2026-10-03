@@ -190,6 +190,57 @@ class MasterReferenceCatalogCoverageTest {
         }
     }
 
+    @Test
+    void pendingCountReferencesBlockOnlyTheirTargetsAndHideRequestDetails() throws SQLException {
+        List<MasterReferenceCatalog.Reference> references = MasterReferenceCatalog.references().stream()
+                .filter(r -> r.kind() == MasterReferenceGuard.RefKind.STOCK_COUNT_REQUEST).toList();
+        assertThat(references).hasSize(4);
+        assertThat(MasterReferenceCatalog.exemptions().stream()
+                .filter(e -> e.table().equals("workshop_material_count_adjustment_postings")).toList())
+                .hasSize(4).allSatisfy(e -> assertThat(e.reason()).isEqualTo(MasterReferenceCatalog.ExemptReason.HISTORY));
+        UUID target = UUID.randomUUID(), unrelated = UUID.randomUUID(), absent = UUID.randomUUID();
+        UUID pending = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                // Query oracle over real migrated column shapes, not a bypass of live lifecycle guards.
+                try (var sql = connection.createStatement()) {
+                    sql.execute("CREATE TEMP TABLE stock_count_requests ON COMMIT DROP AS SELECT * FROM public.stock_count_requests WITH NO DATA");
+                    sql.execute("CREATE TEMP TABLE stock_count_request_lines ON COMMIT DROP AS SELECT * FROM public.stock_count_request_lines WITH NO DATA");
+                }
+                for (String status : List.of("PENDING", "APPROVED", "REJECTED", "CANCELLED")) {
+                    UUID request = status.equals("PENDING") ? pending : UUID.randomUUID();
+                    try (var insert = connection.prepareStatement("INSERT INTO stock_count_requests(id,warehouse_id,status,request_no) VALUES(?,?,?,'PRIVATE-REQUEST-NUMBER')")) {
+                        insert.setObject(1,request);insert.setObject(2,target);insert.setString(3,status);insert.executeUpdate();
+                    }
+                    try (var insert = connection.prepareStatement("INSERT INTO stock_count_request_lines(id,request_id,goods_id,color_id,unit_id) VALUES(gen_random_uuid(),?,?,?,?)")) {
+                        insert.setObject(1,request);for(int n=2;n<=4;n++)insert.setObject(n,target);insert.executeUpdate();
+                    }
+                }
+                try (var insert = connection.prepareStatement("INSERT INTO stock_count_requests(id,warehouse_id,status) VALUES(?,?,'PENDING')")) {
+                    insert.setObject(1,unrelated);insert.setObject(2,unrelated);insert.executeUpdate();
+                }
+                try (var insert = connection.prepareStatement("INSERT INTO stock_count_request_lines(id,request_id,goods_id,color_id,unit_id) VALUES(gen_random_uuid(),?,?,?,?)")) {
+                    for(int n=1;n<=4;n++)insert.setObject(n,unrelated);insert.executeUpdate();
+                }
+                for (var reference : references) {
+                    try (var query=connection.prepareStatement("WITH targets AS (SELECT unnest(CAST(? AS uuid[])) AS id) "+reference.sql())) {
+                        query.setArray(1,connection.createArrayOf("uuid",new UUID[]{target,absent}));
+                        try(var rows=query.executeQuery()) {
+                            assertThat(rows.next()).as(reference.table()+"."+reference.column()).isTrue();
+                            assertThat(rows.getObject(1,UUID.class)).isEqualTo(target);
+                            assertThat(rows.getString(2)).isEqualTo("STOCK_COUNT_REQUEST");
+                            assertThat(rows.getString(3)).isEqualTo(pending.toString());
+                            assertThat(rows.getString(4)).isEqualTo("待审核库存盘点申请").doesNotContain("PRIVATE-REQUEST-NUMBER");
+                            assertThat(rows.getObject(5)).isNull();assertThat(rows.getString(6)).isEqualTo("public");
+                            assertThat(rows.next()).isFalse();
+                        }
+                    }
+                }
+            } finally {connection.rollback();}
+        }
+    }
+
     /** 库里所有指向七种主档的列：外键列(分区子表并到父表) + 按命名约定却没外键的 uuid 列。 */
     private static Map<String, MasterEntityKind> inventory() throws SQLException {
         Map<String, MasterEntityKind> out = new TreeMap<>();

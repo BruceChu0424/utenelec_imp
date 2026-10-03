@@ -67,6 +67,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinancePaymentService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -102,7 +106,9 @@ public class FinancePaymentService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinancePayment> p = paymentRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<FinancePaymentListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(FinancePayment::isDeleted) ? result
+                : retainedRecords.page(result, "finance_payments", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -118,7 +124,8 @@ public class FinancePaymentService {
         return (Root<FinancePayment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -132,17 +139,24 @@ public class FinancePaymentService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "amountLocal", true, null, false, null, true);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public FinancePaymentDetail detail(UUID id) {
-        FinancePayment p = require(id);
+    public FinancePaymentDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public FinancePaymentDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private FinancePaymentDetail readDetail(UUID id, boolean historyRead) {
+        FinancePayment p = require(id, historyRead);
         access.requireReadable(p.getMakerId(), "采购付款单不存在");
         List<FinancePaymentLineDto> items = lineRepo.findByPaymentIdOrderByLineNoAsc(id).stream()
                 .map(this::toLineDto).toList();
-        return toDetail(p, items);
+        return finishHistory(toDetail(p, items), p, historyRead);
     }
 
     @Transactional
@@ -812,8 +826,10 @@ public class FinancePaymentService {
                 p.getCreateIdempotencyKey()).withBankAuthority(p);
     }
 
-    private FinancePayment require(UUID id) {
-        return paymentRepo.findById(id).filter(p -> !p.isDeleted())
+    private FinancePayment require(UUID id) { return require(id, false); }
+
+    private FinancePayment require(UUID id, boolean includeDeleted) {
+        return paymentRepo.findById(id).filter(p -> includeDeleted || !p.isDeleted())
 
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购付款单不存在"));
     }
@@ -1053,5 +1069,16 @@ public class FinancePaymentService {
 
     private static BigDecimal money(BigDecimal value) {
         return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(nz(value),"付款账面金额");
+    }
+
+    private FinancePaymentDetail finishHistory(FinancePaymentDetail view, FinancePayment entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "finance_payments", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        return retainedRecords.children("finance_payments",id,beforeId,size);
     }
 }

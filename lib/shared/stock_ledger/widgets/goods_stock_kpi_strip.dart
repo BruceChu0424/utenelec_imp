@@ -21,6 +21,7 @@ class GoodsStockKpiStrip extends ConsumerStatefulWidget {
     required this.goodsId,
     this.unitName,
     this.reloadTick = 0,
+    this.showInventory = true,
   });
 
   final String goodsId;
@@ -30,6 +31,7 @@ class GoodsStockKpiStrip extends ConsumerStatefulWidget {
 
   /// 宿主每次刷新 +1, 本条随之重取。
   final int reloadTick;
+  final bool showInventory;
 
   @override
   ConsumerState<GoodsStockKpiStrip> createState() => _GoodsStockKpiStripState();
@@ -38,6 +40,8 @@ class GoodsStockKpiStrip extends ConsumerStatefulWidget {
 class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip> {
   GoodsStockInsight? _insight;
   int _version = 0;
+  bool _loading = false;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -56,27 +60,52 @@ class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip> {
 
   Future<void> _load() async {
     final version = ++_version;
+    setState(() {
+      _loading = true;
+      _failed = false;
+      _insight = null;
+    });
     try {
       final insight = await ref
           .read(goodsStockLedgerRepositoryProvider)
           .goodsInsight(widget.goodsId);
       if (!mounted || version != _version) return;
-      setState(() => _insight = insight);
+      setState(() {
+        _insight = insight;
+        _loading = false;
+      });
     } catch (_) {
       // KPI 只是概览: 取不到就不显示, 不打断余额/流水。
       if (!mounted || version != _version) return;
-      setState(() => _insight = null);
+      setState(() {
+        _insight = null;
+        _loading = false;
+        _failed = true;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) return const Text('正在读取货品级分析参考…');
+    if (_failed) {
+      return Wrap(
+        key: const ValueKey('goods-stock-kpi-error'),
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('货品级分析参考读取失败'),
+          TextButton(onPressed: _load, child: const Text('重试分析参考')),
+        ],
+      );
+    }
     final insight = _insight;
     if (insight == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final parts = goodsStockKpiParts(
       insight,
+      includeInventory: widget.showInventory,
       unitName: widget.unitName,
       weightText: formatWeightValue(
         insight.weightKg,
@@ -101,6 +130,8 @@ class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip> {
         runSpacing: UtenSpacing.s4,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          if (!widget.showInventory)
+            const Text('货品级分析参考（服务端全局口径，与当前仓库/颜色范围不同）：'),
           for (var i = 0; i < parts.length; i++) ...[
             if (i > 0)
               Text(
@@ -122,6 +153,7 @@ List<String> goodsStockKpiParts(
   GoodsStockInsight insight, {
   String? unitName,
   required String weightText,
+  bool includeInventory = true,
 }) {
   final unit = (insight.unitName ?? unitName ?? '').trim();
   String qty(double v) {
@@ -131,7 +163,7 @@ List<String> goodsStockKpiParts(
   }
 
   final parts = <String>[];
-  if (insight.qty != null) {
+  if (includeInventory && insight.qty != null) {
     parts.add('库存 ${qty(insight.qty!)} · $weightText');
   }
   final unitWeight = insight.unitWeightKg;

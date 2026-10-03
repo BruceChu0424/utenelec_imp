@@ -72,6 +72,7 @@ class AiGatewayTest {
         fake.reset();
         providers = mock(AiProviderService.class);
         callLogs = mock(AiCallLogService.class);
+        when(callLogs.captureResetGeneration()).thenReturn(12L);
         properties = new AiProperties();
         properties.setCallPermitWaitSeconds(1);
         runtime = AiTestRuntimes.openAi(fake, KEY);
@@ -116,6 +117,7 @@ class AiGatewayTest {
         assertThat(record.userId()).isEqualTo(userId);
         assertThat(record.providerId()).isEqualTo(runtime.id());
         assertThat(record.inputTokens()).isEqualTo(900);
+        assertThat(record.resetGeneration()).isEqualTo(12L);
         assertThat(record.toString()).doesNotContain(KEY).doesNotContain("customer file text");
     }
 
@@ -152,6 +154,7 @@ class AiGatewayTest {
 
     @Test
     void retriesOnceOnServerErrorAndLogsBothAttempts() {
+        when(callLogs.captureResetGeneration()).thenReturn(12L, 13L);
         fake.enqueue(FakeAiProviderServer.openAiError(502, "bad gateway"),
                 FakeAiProviderServer.openAiContent("{\"ok\":true}"));
 
@@ -163,6 +166,9 @@ class AiGatewayTest {
         assertThat(records.getAllValues()).extracting(AiCallLogService.CallRecord::ok).containsExactly(false, true);
         assertThat(records.getAllValues().get(0).errorCategory()).isEqualTo("SERVER");
         assertThat(records.getAllValues().get(0).httpStatus()).isEqualTo(502);
+        assertThat(records.getAllValues()).extracting(AiCallLogService.CallRecord::resetGeneration)
+                .containsExactly(12L, 12L);
+        verify(callLogs).captureResetGeneration();
     }
 
     @Test
@@ -174,6 +180,21 @@ class AiGatewayTest {
                 .extracting(error -> ((AiCallException) error).category())
                 .isEqualTo(AiErrorCategory.INVALID_RESPONSE);
         assertThat(fake.chatRequestCount()).isEqualTo(2);
+    }
+
+    @Test
+    void http200BusinessFailureIsNotRetriedAsInvalidJson() {
+        fake.enqueue(FakeAiProviderServer.json(200, "{\"code\":500,\"msg\":\"private upstream details\",\"success\":false}"),
+                FakeAiProviderServer.openAiContent("{\"ok\":true}"));
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("hello", false))))
+                .isInstanceOf(AiCallException.class).satisfies(error -> {
+                    AiCallException ai = (AiCallException) error;
+                    assertThat(ai.category()).isEqualTo(AiErrorCategory.BAD_REQUEST);
+                    assertThat(ai.httpStatus()).isEqualTo(200);
+                    assertThat(ai.getMessage()).doesNotContain("private upstream details");
+                });
+        assertThat(fake.chatRequestCount()).isEqualTo(1);
+        verify(callLogs, times(1)).record(any());
     }
 
     @Test

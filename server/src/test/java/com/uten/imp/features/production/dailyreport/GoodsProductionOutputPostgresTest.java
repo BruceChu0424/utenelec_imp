@@ -6,6 +6,8 @@ import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.security.OwnerVisibility.OwnerScope;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -140,6 +142,89 @@ class GoodsProductionOutputPostgresTest {
         when(access.scope()).thenReturn(new OwnerScope(false,Set.of(owner)));
         assertThat(service.summary(new Query(goods,null)).state()).isEqualTo("NONE");
     }
+
+    @Test void nullPlanOwnerHidesTheWholeFamilyFromRestrictedReaders(){
+        UUID root=segment("ZX-OWNER-ROOT"),child=segment("ZX-OWNER-CHILD");
+        linkSupplement(root,child);
+        report(root,1,"2026-09-29","4","0",null);
+        report(child,1,"2026-09-30","6","0",null);
+        db.update("UPDATE production_plans SET maker_id=NULL WHERE id="
+                +"(SELECT plan_id FROM production_execution_segments WHERE id=?)",child);
+
+        when(access.scope()).thenReturn(new OwnerScope(false,Set.of(owner)));
+        assertFamilyHidden(root);
+        // Explicit all-scope authority is different from treating a null owner as public.
+        when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
+        var visible=service.summary(new Query(goods,root));
+        assertThat(visible.scopeId()).isEqualTo(root);
+        assertThat(visible.effectiveCompletedQty()).isEqualByComparingTo("10");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints={0,1})
+    void nullDraftOrApprovedReportOwnerHidesTheWholeFamily(int status){
+        UUID root=segment("ZX-REPORT-OWNER-ROOT"),child=segment("ZX-REPORT-OWNER-CHILD");
+        linkSupplement(root,child);
+        report(root,1,"2026-09-29","4","0",null);
+        UUID restricted=report(child,status,"2026-09-30","6","0",null);
+        db.update("UPDATE production_daily_reports SET maker_id=NULL WHERE id=?",restricted);
+
+        when(access.scope()).thenReturn(new OwnerScope(false,Set.of(owner)));
+        assertFamilyHidden(root);
+        when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
+        var visible=service.summary(new Query(goods,root));
+        assertThat(visible.scopeId()).isEqualTo(root);
+        assertThat(visible.effectiveCompletedQty()).isEqualByComparingTo(status==1?"10":"4");
+        assertThat(visible.hasDraftReports()).isEqualTo(status==0);
+    }
+
+    @Test void reportOwnerOutsideTheScopeCannotExposeAnOtherwiseVisibleFamily(){
+        UUID root=segment("ZX-REPORT-OUTSIDER");
+        UUID approved=report(root,1,"2026-09-29","4","0",null);
+        db.update("UPDATE production_daily_reports SET maker_id=? WHERE id=?",UUID.randomUUID(),approved);
+        when(access.scope()).thenReturn(new OwnerScope(false,Set.of(owner)));
+        assertFamilyHidden(root);
+    }
+
+    @Test void removingAllScopeOrAnInheritedOwnerTakesEffectOnTheNextRead(){
+        UUID root=segment("ZX-GRANT-ROOT"),child=segment("ZX-GRANT-CHILD"),historicalOwner=UUID.randomUUID();
+        linkSupplement(root,child);
+        report(root,1,"2026-09-29","4","0",null);
+        UUID childReport=report(child,1,"2026-09-30","6","0",null);
+        db.update("UPDATE production_plans SET maker_id=? WHERE id="
+                +"(SELECT plan_id FROM production_execution_segments WHERE id=?)",historicalOwner,child);
+        db.update("UPDATE production_daily_reports SET maker_id=? WHERE id=?",historicalOwner,childReport);
+
+        when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
+        assertThat(service.summary(new Query(goods,root)).effectiveCompletedQty()).isEqualByComparingTo("10");
+        when(access.scope()).thenReturn(new OwnerScope(false,Set.of(owner)));
+        assertFamilyHidden(root);
+        // Historical owner identity stays intact; an explicitly granted read scope can see it.
+        when(access.scope()).thenReturn(new OwnerScope(false,Set.of(owner,historicalOwner),Set.of(owner)));
+        assertThat(service.summary(new Query(goods,root)).effectiveCompletedQty()).isEqualByComparingTo("10");
+        when(access.scope()).thenReturn(new OwnerScope(false,Set.of(owner)));
+        assertFamilyHidden(root);
+        when(access.scope()).thenReturn(new OwnerScope(false,Set.of()));
+        assertFamilyHidden(root);
+    }
+
+    private void assertFamilyHidden(UUID root){
+        for(Query query:List.of(new Query(goods,null),new Query(goods,root))){
+            var hidden=service.summary(query);
+            assertThat(hidden.state()).isEqualTo("NONE");
+            assertThat(hidden.scopeId()).isNull();
+            assertThat(hidden.effectiveCompletedQty()).isNull();
+            assertThat(hidden.approvedReportedQty()).isNull();
+            assertThat(hidden.memberCount()).isZero();
+            assertThat(hidden.approvedReportCount()).isZero();
+        }
+    }
+
+    private void linkSupplement(UUID root,UUID child){
+        db.update("INSERT INTO production_actual_output_supplement_proofs"
+                +"(id,source_execution_segment_id,supplement_execution_segment_id) VALUES(?,?,?)",UUID.randomUUID(),root,child);
+    }
+
     UUID segment(String code){UUID id=UUID.randomUUID(),plan=UUID.randomUUID();
         db.update("INSERT INTO production_plans(id,maker_id) VALUES(?,?)",plan,owner);
         db.update("INSERT INTO production_execution_segments(id,plan_id,segment_code,product_goods_id,product_unit_id,product_unit_rate,status) VALUES(?,?,?,?,?,10,'IN_PROGRESS')",id,plan,code,goods,unit);return id;}

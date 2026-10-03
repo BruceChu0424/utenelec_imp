@@ -51,7 +51,7 @@ class VisitorSmsServiceTest {
     }
 
     @Test
-    void definitiveProviderRejectionRemovesTheUnsentIssuance() {
+    void definitiveProviderRejectionRetainsTheUnsentIssuanceAndDisablesIt() {
         VisitorOtpVerifier verifier = mock(VisitorOtpVerifier.class);
         SmsGateway gateway = mock(SmsGateway.class);
         SystemSettingsService settings = mock(SystemSettingsService.class);
@@ -90,6 +90,7 @@ class VisitorSmsServiceTest {
         assertEquals(6, code.length());
         verify(gateway).sendCode("13800138000", code);
         verify(issuance, never()).reject(any());
+        verify(issuance).complete(issuanceId,SmsSendResult.UNCERTAIN);
     }
 
     @Test

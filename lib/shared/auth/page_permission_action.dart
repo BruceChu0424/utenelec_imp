@@ -27,7 +27,10 @@ class PagePermissionAction extends ConsumerWidget {
     final canManage = ref.watch(
       sessionSnapshotProvider.select(
         (snapshot) =>
-            snapshot.valueOrNull?.canDelegate(resolved.surfaceKey) ?? false,
+            confirmedSessionSnapshot(
+              snapshot,
+            )?.canDelegate(resolved.surfaceKey) ??
+            false,
       ),
     );
     return canManage

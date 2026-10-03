@@ -73,9 +73,16 @@ void main() {
     }
     // 日报审核改由服务端随详情下发 allowedActions(权限码 + 审核池对象范围 + 车间直送审核权
     // 一次算好，ADR-109 / permissions-15)，页面不再本地拼，也就不会误绑本人写范围。
-    expect(daily, contains('bool get _canApprove => _detail?.canApprove'));
-    expect(daily, isNot(contains('bool get _canApprove => _ordinaryWritable')));
-    expect(daily, contains('bool get _canReverse => _allows'));
+    final dailyApprove = RegExp(
+      r'bool\s+get\s+_canApprove\s*=>\s*([^;]+);',
+    ).firstMatch(daily)?.group(1);
+    final dailyReverse = RegExp(
+      r'bool\s+get\s+_canReverse\s*=>\s*([^;]+);',
+    ).firstMatch(daily)?.group(1);
+    expect(dailyApprove, contains('_detail?.canApprove'));
+    expect(dailyApprove, isNot(contains('_ordinaryWritable')));
+    expect(dailyReverse, contains('_allows(DocumentPermissionAction.reverse)'));
+    expect(dailyReverse, isNot(contains('_ordinaryWritable')));
     expect(stock, contains('detail.productionLinked || _ordinaryWritable'));
   });
 }

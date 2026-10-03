@@ -74,6 +74,20 @@ public class WorkshopMaterialSettingsService {
         return out;
     }
 
+    /** Setup may choose a placement without receiving the general warehouse-view or stock-view permission. */
+    @Transactional(readOnly = true)
+    public List<Map<String,Object>> mainWarehouses() {
+        if (!permissions.has(WorkshopMaterialPermissions.SETUP)) {
+            throw new ApiException(ErrorCode.FORBIDDEN,"没有车间内料仓设置权限");
+        }
+        return db.queryForList("""
+                SELECT id,code,name FROM warehouses
+                WHERE parent_id IS NULL AND is_accountable AND NOT is_line_side
+                  AND NOT is_deleted AND status='使用'
+                ORDER BY code,name,id
+                """,Map.of());
+    }
+
     @Transactional(readOnly = true)
     public SettingsView detail(UUID workshopId) {
         scope.requireWorkshop(workshopId);

@@ -25,6 +25,9 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import 'arrival_weight_test_support.dart';
+import 'package:uten_imp/shared/providers/uten_page_prefs_notifier.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 const _reportId = '20000000-0000-0000-0000-000000000001';
 const _row1 = '30000000-0000-0000-0000-000000000001';
@@ -587,9 +590,26 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // 账号记忆 (偏好键 production.finishedArrivalFill 不变) 记着上次选的备用成品仓。
+    // 记忆缓存键按 账号/服务器 作用域哈希（v2）：先用空 mock 算出同款键
+    // （服务器解析走 apiBaseUrlProvider 真实链、本地模式；无登录会话 scope=null），
+    // 再带着种好的键重新取 prefs 给页面。
+    SharedPreferences.setMockInitialValues({});
+    final probePrefs = await SharedPreferences.getInstance();
+    final probe = ProviderContainer(
+      overrides: [sharedPreferencesProvider.overrideWithValue(probePrefs)],
+    );
+    late final String scopedKey;
+    try {
+      scopedKey = scopedPagePreferenceCacheKey(
+        'page_prefs_cache_production.finishedArrivalFill',
+        probe.read(apiBaseUrlProvider),
+        probe.read(authenticatedScopeProvider),
+      );
+    } finally {
+      probe.dispose();
+    }
     SharedPreferences.setMockInitialValues({
-      'page_prefs_cache_production.finishedArrivalFill':
-          '{"warehouseId":"warehouse-2"}',
+      scopedKey: '{"warehouseId":"warehouse-2"}',
     });
     final prefs = await SharedPreferences.getInstance();
     final api = _ArrivalRegistrationApi(

@@ -74,6 +74,9 @@ class UtenStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (UtenStatusCellScope.isCell(context)) {
+      return Text(label, maxLines: 2, overflow: TextOverflow.ellipsis);
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = resolveStatusBadgeColors(type, isDark);
     final (padH, padV, textSize, iconSize) = _metrics(size);

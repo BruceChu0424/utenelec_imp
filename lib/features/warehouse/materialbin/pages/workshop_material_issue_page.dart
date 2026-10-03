@@ -33,12 +33,14 @@ import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/china_datetime.dart';
+import '../../../../shared/auth/permissions.dart';
 import '../../../employee/repositories/employee_repository.dart';
 import '../../providers/warehouse_count_refresh.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_line_grid.dart';
+import '../widgets/workshop_material_first_use_card.dart';
 
 /// 仓库任务中心「车间内料仓」大类 (发料完成后返回这里)。
 final String wmWarehouseTaskCenterPath = Uri(
@@ -80,8 +82,34 @@ class _WorkshopMaterialIssuePageState
   bool _saving = false;
   String? _submitError;
   bool _showValidation = false;
+  final Map<String, Map<String, dynamic>> _materialSetups = {};
+  int _materialSetupRevision = 0;
 
   bool get _direct => widget.requisitionId == null || widget.mode == 'direct';
+
+  bool get _canConfigureFirstUse =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).containsAll({
+        Perm.goodsEdit,
+        Perm.goodsBomEdit,
+      });
+
+  Map<String, WmRequisitionLine> get _firstUseGoods => {
+    if (!_direct && !_isReturn)
+      for (final row in _filledRows)
+        if (row.requisitionLine?.needsMaterialSetup == true)
+          row.goodsId!: row.requisitionLine!,
+  };
+
+  bool get _firstUseReady =>
+      _firstUseGoods.isEmpty ||
+      (_canConfigureFirstUse &&
+          _firstUseGoods.keys.every(_materialSetups.containsKey));
+
+  List<Map<String, dynamic>> get _materialSetupPayload {
+    final ids = _firstUseGoods.keys.toList()..sort();
+    return [for (final id in ids) _materialSetups[id]!];
+  }
 
   WorkshopMaterialRepository get _repo =>
       ref.read(workshopMaterialRepositoryProvider);
@@ -144,6 +172,8 @@ class _WorkshopMaterialIssuePageState
     setState(() {
       _loading = true;
       _loadError = null;
+      _materialSetups.clear();
+      _materialSetupRevision++;
     });
     try {
       if (_direct) {
@@ -167,7 +197,10 @@ class _WorkshopMaterialIssuePageState
         final workshopId = requisition.workshopDepartmentId;
         final binId = requisition.binWarehouseId;
         final results = await Future.wait<Object>([
-          if (workshopId != null) _repo.materials(workshopId),
+          if (workshopId != null)
+            requisition.isReturn
+                ? _repo.materials(workshopId)
+                : _loadRequestMaterials(workshopId, requisition.lines),
           if (binId != null) _repo.periods(binId),
         ]);
         if (!mounted) return;
@@ -212,6 +245,28 @@ class _WorkshopMaterialIssuePageState
           _loadError = '加载失败, 请重试';
         });
       }
+    }
+  }
+
+  /// 按申请精确读取申请里的料，包含仓库尚未确认用途的按单原料。
+  Future<List<WmMaterialOption>> _loadRequestMaterials(
+    String workshopId,
+    List<WmRequisitionLine> lines,
+  ) async {
+    final goodsIds = lines.map((line) => line.goodsId).toSet().toList();
+    if (goodsIds.isEmpty) return const [];
+    final materials = <WmMaterialOption>[];
+    var page = 1;
+    while (true) {
+      final result = await _repo.requestMaterials(
+        workshopId,
+        goodsIds: goodsIds,
+        page: page,
+        size: 100,
+      );
+      materials.addAll(result.items);
+      if (page >= result.totalPages) return materials;
+      page++;
     }
   }
 
@@ -322,13 +377,22 @@ class _WorkshopMaterialIssuePageState
           row.requisitionLine?.displayName ??
           '';
       if (row.goodsId == null) return '有一行还没选料';
-      if ((row.qtyValue ?? 0) <= 0) return '「$name」请填公斤数';
+      if ((row.qtyValue ?? 0) <= 0) {
+        final unit =
+            row.material.value?.unitName ?? row.requisitionLine?.unitName;
+        return '「$name」请填数量${unit == null || unit.isEmpty ? '' : '（$unit）'}';
+      }
       if (row.leafWarehouseId.value == null) {
         return '「$name」请选${_isReturn ? '退到哪个仓库' : '出库仓库'}';
       }
       final key =
           '${row.requisitionLine?.id ?? row.material.value?.key}|${row.leafWarehouseId.value}';
       if (!seen.add(key)) return '「$name」同一个仓库填了两行, 请合成一行';
+    }
+    if (!_firstUseReady) {
+      return _canConfigureFirstUse
+          ? '请先核对首次材料用途及全局 BOM 影响，再确认发料'
+          : '首次材料用途需要货品编辑和 BOM 编辑权限，请有权限的同事办理；申请继续保留';
     }
     if (_supplement) {
       if (_supplementPeriodId == null) return '请选补到哪一期';
@@ -349,6 +413,7 @@ class _WorkshopMaterialIssuePageState
       : null;
 
   Future<void> _submit() async {
+    if (_saving || _loading) return;
     final problem = _validate();
     if (problem != null) {
       setState(() {
@@ -389,6 +454,7 @@ class _WorkshopMaterialIssuePageState
         );
       } else {
         final requisition = _requisition!;
+        final materialSetup = _materialSetupPayload;
         final lines = [
           for (final row in _filledRows)
             {
@@ -401,11 +467,13 @@ class _WorkshopMaterialIssuePageState
           requisition.id,
           expectedVersion: requisition.rowVersion,
           lines: lines,
+          materialSetup: materialSetup,
           supplement: _supplementPayload,
           idempotencyKey: wmIdempotencyKey('fulfil', _nonce, {
             'id': requisition.id,
             'v': requisition.rowVersion,
             'lines': lines,
+            'materialSetup': materialSetup,
             'supplement': _supplementPayload?.toJson(),
           }),
         );
@@ -539,6 +607,8 @@ class _WorkshopMaterialIssuePageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(isSuperAdminProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return PopScope(
@@ -654,6 +724,33 @@ class _WorkshopMaterialIssuePageState
     }
     children.add(const SizedBox(height: UtenSpacing.s12));
 
+    if (editable && _firstUseGoods.isNotEmpty) {
+      for (final entry in _firstUseGoods.entries) {
+        children.add(
+          WorkshopMaterialFirstUseCard(
+            key: ValueKey('wm-first-use-$_materialSetupRevision-${entry.key}'),
+            goodsId: entry.key,
+            goodsName: entry.value.goodsName ?? entry.value.displayName,
+            canConfigure: _canConfigureFirstUse,
+            enabled: !_saving,
+            onChanged: (setup) {
+              if (setup == null && !_materialSetups.containsKey(entry.key)) {
+                return;
+              }
+              setState(() {
+                if (setup == null) {
+                  _materialSetups.remove(entry.key);
+                } else {
+                  _materialSetups[entry.key] = setup;
+                }
+                _submitError = null;
+              });
+            },
+          ),
+        );
+      }
+    }
+
     if (_counting && !_supplement && editable && !_isReturn) {
       children.add(
         UtenInlineNotice(
@@ -703,7 +800,7 @@ class _WorkshopMaterialIssuePageState
           showLeafWarehouse: true,
           leafLabel: _isReturn ? '退到哪个仓库' : '出库仓库',
           showWarehouseAvailable: !_isReturn,
-          qtyLabel: _isReturn ? '实收 (${l10n.wmKg})' : null,
+          qtyLabel: _isReturn ? '实收数量' : null,
           onChanged: () {
             if (_submitError != null && _showValidation) {
               setState(() => _submitError = null);
@@ -789,7 +886,9 @@ class _WorkshopMaterialIssuePageState
                   ? Icons.move_to_inbox_outlined
                   : Icons.local_shipping_outlined,
               isLoading: _saving,
-              onPressed: _saving ? null : _submit,
+              onPressed: _saving || _loading || !_firstUseReady
+                  ? null
+                  : _submit,
               child: Text(_isReturn ? '确认收退回' : '确认发料'),
             ),
         ],

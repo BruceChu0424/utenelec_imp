@@ -43,6 +43,7 @@ import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/repositories/public_settings_repository.dart';
+import '../../../shared/audit/audit_retention_presentation.dart';
 import '../models/audit_event_presentation.dart';
 import '../models/audit_field_labels.dart';
 import '../models/audit_log_entry.dart';
@@ -106,6 +107,18 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   final _scrollController = ScrollController();
   final _eventRows = MasterDataTableRowsController<AuditLogEntry>();
   final _sessionRows = MasterDataTableRowsController<AuditSessionSummary>();
+  final _scrollViewportKey = GlobalKey();
+  final _scrollTailKey = GlobalKey();
+  double _prependScrollPadding = 0;
+  final _eventTableKey = GlobalKey();
+  final _sessionTableKey = GlobalKey();
+  final _eventFirstRowKey = GlobalKey();
+  final _sessionFirstRowKey = GlobalKey();
+  String? _eventPrependAnchorId;
+  String? _sessionPrependAnchorId;
+  Object? _lastPaginationScope;
+  bool _loadingPreviousPage = false;
+  bool _visiblePageUpdateScheduled = false;
 
   Object get _paginationScope => (
     _actionFilter,
@@ -125,6 +138,38 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     ref.watch(masterDataSessionKeyProvider),
   );
 
+  void _onPageScrollPositionChanged() => _scheduleVisiblePageUpdate();
+
+  void _scheduleVisiblePageUpdate() {
+    if (_visiblePageUpdateScheduled ||
+        _activeLoading ||
+        _loadingPreviousPage ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final sessions = _sessionMode;
+    final scope = _lastPaginationScope;
+    _visiblePageUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visiblePageUpdateScheduled = false;
+      if (!mounted ||
+          sessions != _sessionMode ||
+          scope != _lastPaginationScope ||
+          _activeLoading ||
+          _loadingPreviousPage) {
+        return;
+      }
+      final viewport = _scrollViewportKey.currentContext?.findRenderObject();
+      if (viewport is! RenderBox || !viewport.hasSize) return;
+      if (sessions) {
+        if (!_sessionRows.isAppending) _sessionRows.updateVisiblePage(viewport);
+      } else {
+        if (!_eventRows.isAppending) _eventRows.updateVisiblePage(viewport);
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
   void _appendAtScrollEnd(ScrollMetrics metrics) {
     if (metrics.axis != Axis.vertical ||
         metrics.extentAfter > 0.5 ||
@@ -137,9 +182,161 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     );
   }
 
+  Rect? _globalRect(GlobalKey key) {
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return null;
+    return Rect.fromPoints(
+      renderObject.localToGlobal(Offset.zero),
+      renderObject.localToGlobal(renderObject.size.bottomRight(Offset.zero)),
+    );
+  }
+
+  Rect? _rectInScrollViewport(GlobalKey key) {
+    final row = key.currentContext?.findRenderObject();
+    final viewport = _scrollViewportKey.currentContext?.findRenderObject();
+    if (row is! RenderBox ||
+        !row.hasSize ||
+        viewport is! RenderBox ||
+        !viewport.hasSize) {
+      return null;
+    }
+    // ScrollPosition.pixels uses the viewport's unscaled logical coordinates.
+    // Global coordinates would overcompensate under display zoom.
+    return Rect.fromPoints(
+      row.localToGlobal(Offset.zero, ancestor: viewport),
+      row.localToGlobal(row.size.bottomRight(Offset.zero), ancestor: viewport),
+    );
+  }
+
+  void _prependAtTableStart(Offset pointerPosition) {
+    if (!_canLoad ||
+        _activeLoading ||
+        _loadingPreviousPage ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final sessions = _sessionMode;
+    final tableRect = _globalRect(sessions ? _sessionTableKey : _eventTableKey);
+    final rowRect = _globalRect(
+      sessions ? _sessionFirstRowKey : _eventFirstRowKey,
+    );
+    final viewportRect = _globalRect(_scrollViewportKey);
+    if (tableRect == null ||
+        rowRect == null ||
+        viewportRect == null ||
+        !tableRect.contains(pointerPosition) ||
+        rowRect.top < viewportRect.top - 0.5) {
+      return;
+    }
+    unawaited(
+      sessions
+          ? _sessionRows.loadPreviousPage()
+          : _eventRows.loadPreviousPage(),
+    );
+  }
+
+  Future<void> _loadTablePage(int page, {required bool sessions}) {
+    final extending = sessions
+        ? _sessionRows.isAppending
+        : _eventRows.isAppending;
+    final successfulPage = sessions ? _sessionPage?.page : _page?.page;
+    Future<void> load() => sessions ? _loadSessions(page) : _load(page);
+    final anchor = _rectInScrollViewport(
+      sessions ? _sessionFirstRowKey : _eventFirstRowKey,
+    );
+    if (!extending ||
+        successfulPage == null ||
+        page >= successfulPage ||
+        anchor == null ||
+        !_scrollController.hasClients) {
+      return load();
+    }
+    // Every prepend request passes here, including the table's retry button.
+    // Manual previous-page navigation does not set the extension flag.
+    return _loadPreviousPage(sessions, anchor.top, load);
+  }
+
+  Future<void> _loadPreviousPage(
+    bool sessions,
+    double anchorTop,
+    Future<void> Function() load,
+  ) async {
+    final anchorId = sessions
+        ? _sessionRows.items.firstOrNull?.sessionId
+        : _eventRows.items.firstOrNull?.id.toString();
+    if (anchorId == null) return;
+    final scope = _lastPaginationScope;
+    final initialPixels = _scrollController.position.pixels;
+    _loadingPreviousPage = true;
+    if (sessions) {
+      _sessionPrependAnchorId = anchorId;
+    } else {
+      _eventPrependAnchorId = anchorId;
+    }
+    try {
+      await load();
+      WidgetsBinding.instance.ensureVisualUpdate();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted ||
+          sessions != _sessionMode ||
+          scope != _lastPaginationScope ||
+          !_scrollController.hasClients) {
+        return;
+      }
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final anchor = _rectInScrollViewport(
+          sessions ? _sessionFirstRowKey : _eventFirstRowKey,
+        );
+        if (anchor == null) return;
+        final position = _scrollController.position;
+        // Keep the original first row under the same point, including any user
+        // scrolling while the previous page was being requested. Measuring the
+        // row excludes variable-height summary/filter cards above it.
+        final expectedTop = anchorTop - (position.pixels - initialPixels);
+        final correction = anchor.top - expectedTop;
+        final target = position.pixels + correction;
+        if (correction.abs() <= 0.5) break;
+        if (attempt == 0 && target > position.maxScrollExtent + 0.5) {
+          final viewport = _rectInScrollViewport(_scrollViewportKey);
+          final tail = _rectInScrollViewport(_scrollTailKey);
+          final unusedHeight = viewport == null || tail == null
+              ? 0.0
+              : math.max(0.0, viewport.bottom - tail.bottom);
+          // A short last page may not fill the viewport even after prepend.
+          // Extend the existing tail clearance so clamping cannot move the
+          // original row; this padding resets with the query or a manual page.
+          setState(
+            () => _prependScrollPadding +=
+                unusedHeight + target - position.maxScrollExtent + 1,
+          );
+          WidgetsBinding.instance.ensureVisualUpdate();
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted ||
+              sessions != _sessionMode ||
+              scope != _lastPaginationScope ||
+              !_scrollController.hasClients) {
+            return;
+          }
+          continue;
+        }
+        position.jumpTo(
+          target.clamp(position.minScrollExtent, position.maxScrollExtent),
+        );
+      }
+    } finally {
+      _loadingPreviousPage = false;
+      if (sessions) {
+        _sessionPrependAnchorId = null;
+      } else {
+        _eventPrependAnchorId = null;
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
   void _onPaginationWheel(PointerSignalEvent event) {
     if (event is! PointerScrollEvent ||
-        event.scrollDelta.dy <= 0 ||
+        event.scrollDelta.dy == 0 ||
         event.scrollDelta.dy.abs() < event.scrollDelta.dx.abs() ||
         !_scrollController.hasClients) {
       return;
@@ -150,7 +347,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     )) {
       return;
     }
-    _appendAtScrollEnd(_scrollController.position);
+    _scheduleVisiblePageUpdate();
+    if (event.scrollDelta.dy > 0) {
+      _appendAtScrollEnd(_scrollController.position);
+    } else {
+      _prependAtTableStart(event.position);
+    }
   }
 
   // 2026-09-22 全站表格滚动口径：会话/事件两张明细表表头吸顶；任一表置顶后
@@ -210,6 +412,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onPageScrollPositionChanged);
     _scheduleInitialRequestInvestigation();
   }
 
@@ -233,6 +436,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   Future<void> _load(int page, {bool silent = false}) async {
     if (!_canLoad) return;
     final generation = _loadRequests.begin();
+    if (!_eventRows.isAppending) _prependScrollPadding = 0;
     final requestedSnapshotId = _snapshotId;
     _pageNum = page;
     // silent（返回即刷新）：不翻 _loading、不重建，避免抢返回转场帧；数据到达后静默换。
@@ -332,6 +536,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     final range = _dateRange;
     if (!_canUseSessionView || actor == null || range == null) return;
     final generation = _sessionLoadRequests.begin();
+    if (!_sessionRows.isAppending) _prependScrollPadding = 0;
     final requestedSnapshotId = _snapshotId;
     _sessionPageNum = page;
     if (!silent) {
@@ -484,6 +689,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   void dispose() {
     _searchController.dispose();
     _requestIdController.dispose();
+    _scrollController.removeListener(_onPageScrollPositionChanged);
     _scrollController.dispose();
     _sessionsPinned.dispose();
     _eventsPinned.dispose();
@@ -900,6 +1106,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
 
   @override
   Widget build(BuildContext context) {
+    final paginationScope = _paginationScope;
+    if (_lastPaginationScope != paginationScope) _prependScrollPadding = 0;
+    _lastPaginationScope = paginationScope;
+    // The embedded table can mount or receive a new page without any outer
+    // scroll event. Bind the real page viewport after that layout as well.
+    _scheduleVisiblePageUpdate();
     // 返回即刷新：从其它页面回到审计中心时重拉当前页（保留筛选/页码），
     // 保证看到最新审计记录。本页路由为静态路径，直接用 RouteName 常量。
     ref.onPageResume(RouteName.adminAuditLogs, () {
@@ -952,6 +1164,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
               final content = RefreshIndicator(
                 onRefresh: _refresh,
                 child: CustomScrollView(
+                  key: _scrollViewportKey,
                   controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   slivers: [
@@ -1176,14 +1389,18 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                         child: _AuditSessionTable(
                           sessions: sessions,
                           rowsController: _sessionRows,
+                          tableAnchorKey: _sessionTableKey,
+                          firstRowKey: _sessionFirstRowKey,
+                          prependAnchorId: _sessionPrependAnchorId,
                           paginationRevision: _sessionPage,
-                          paginationScope: _paginationScope,
+                          paginationScope: paginationScope,
                           currentPage: _sessionPage?.page ?? 1,
                           totalPages: _sessionPage?.totalPages ?? 1,
                           loadingMore: _sessionLoading,
                           error: _sessionError,
                           onRetry: () => _loadSessions(_sessionPageNum),
-                          onPageChange: _loadSessions,
+                          onPageChange: (page) =>
+                              _loadTablePage(page, sessions: true),
                           stickyHeaderPinned: _sessionsPinned,
                           onOpen: (session) => showUtenAdaptivePanel<void>(
                             context: context,
@@ -1223,14 +1440,18 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                         child: _AuditEventTable(
                           items: items,
                           rowsController: _eventRows,
+                          tableAnchorKey: _eventTableKey,
+                          firstRowKey: _eventFirstRowKey,
+                          prependAnchorId: _eventPrependAnchorId,
                           paginationRevision: _page,
-                          paginationScope: _paginationScope,
+                          paginationScope: paginationScope,
                           currentPage: _page?.page ?? 1,
                           totalPages: _page?.totalPages ?? 1,
                           loadingMore: _loading,
                           error: _error,
                           onRetry: () => _load(_pageNum),
-                          onPageChange: _load,
+                          onPageChange: (page) =>
+                              _loadTablePage(page, sessions: false),
                           stickyHeaderPinned: _eventsPinned,
                           onOpen: _openDetail,
                         ),
@@ -1248,10 +1469,13 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     // compact 悬浮胶囊避让：滚到底末行要能越过胶囊
                     SliverToBoxAdapter(
                       child: SizedBox(
-                        height: math.max(
-                          UtenSpacing.s32,
-                          UtenCapsuleNavScope.occlusionOf(context),
-                        ),
+                        key: _scrollTailKey,
+                        height:
+                            _prependScrollPadding +
+                            math.max(
+                              UtenSpacing.s32,
+                              UtenCapsuleNavScope.occlusionOf(context),
+                            ),
                       ),
                     ),
                   ],
@@ -1262,6 +1486,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                 behavior: HitTestBehavior.translucent,
                 child: NotificationListener<ScrollNotification>(
                   onNotification: (notification) {
+                    if (notification.depth == 0 &&
+                        notification.metrics.axis == Axis.vertical &&
+                        (notification is ScrollUpdateNotification ||
+                            notification is OverscrollNotification)) {
+                      _scheduleVisiblePageUpdate();
+                    }
                     final forward =
                         notification is ScrollUpdateNotification &&
                             notification.dragDetails != null &&
@@ -1269,6 +1499,21 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                         notification is OverscrollNotification &&
                             notification.overscroll > 0;
                     if (forward) _appendAtScrollEnd(notification.metrics);
+                    if (notification is ScrollUpdateNotification &&
+                        notification.metrics.axis == Axis.vertical &&
+                        notification.dragDetails != null &&
+                        (notification.scrollDelta ?? 0) < 0) {
+                      _prependAtTableStart(
+                        notification.dragDetails!.globalPosition,
+                      );
+                    } else if (notification is OverscrollNotification &&
+                        notification.metrics.axis == Axis.vertical &&
+                        notification.dragDetails != null &&
+                        notification.overscroll < 0) {
+                      _prependAtTableStart(
+                        notification.dragDetails!.globalPosition,
+                      );
+                    }
                     return false;
                   },
                   child: content,

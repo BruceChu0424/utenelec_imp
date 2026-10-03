@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 // 委外单据详情页 2026-09-11 折叠头改版回归：
 // 「先滚页面收头部（表头卡/横幅/进度/附件）、再滚明细表内部」+ 三视口叠 textScale 1.5 不溢出。
 import 'package:dio/dio.dart';
@@ -70,6 +71,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         subcontractWriteAllDocumentScope(),
         currentPermissionsProvider.overrideWithValue(const <String>{
           Perm.subcontractReceiptView,

@@ -106,6 +106,45 @@ public class ProductionExecutionReadinessService
                          AND demand.is_deleted = FALSE
                         WHERE origin.id = :originEventId
                           AND origin.event_type IN ('ORIGIN_IQC', 'ORIGIN_MAKE')
+                          -- A proven workshop-self transfer has its own exact
+                          -- handover after the inbound status is flushed. This
+                          -- generic origin hook runs earlier, while that inbound
+                          -- is still a draft. Keep other origins and all other
+                          -- entitlement priority hooks unchanged.
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM stock_documents direct_document
+                              JOIN stock_document_items direct_stock
+                                ON direct_stock.doc_id=direct_document.id
+                               AND direct_stock.id=origin.source_stock_document_item_id
+                               AND direct_stock.bill_type='FINISHED_IN'
+                               AND NOT direct_stock.is_deleted
+                              JOIN warehouses direct_place
+                                ON direct_place.id=direct_document.warehouse_id
+                               AND direct_place.id=source_reservation.warehouse_id
+                               AND direct_place.is_line_side AND NOT direct_place.is_deleted
+                              JOIN production_fqc_release_commands self_release
+                                ON self_release.stock_document_item_id=direct_stock.id
+                               AND self_release.source_report_item_id=direct_stock.source_daily_report_item_id
+                              JOIN production_fqc_inspections self_inspection
+                                ON self_inspection.id=self_release.inspection_id
+                               AND self_inspection.inspection_kind='WORKSHOP_SELF'
+                               AND self_inspection.source_report_item_id=direct_stock.source_daily_report_item_id
+                               AND self_inspection.warehouse_id=direct_document.warehouse_id
+                              JOIN production_workshop_direct_transfer_items direct_item
+                                ON direct_item.source_report_item_id=self_inspection.source_report_item_id
+                               AND direct_item.to_execution_segment_id=segment.id
+                               AND direct_item.reversal_id IS NULL
+                              JOIN production_workshop_direct_transfers direct_header
+                                ON direct_header.id=direct_item.transfer_id
+                               AND direct_header.source_report_id=direct_document.source_daily_report_id
+                               AND self_inspection.source_report_id=direct_header.source_report_id
+                               AND direct_header.line_side_warehouse_id=direct_document.warehouse_id
+                              WHERE origin.event_type='ORIGIN_MAKE'
+                                AND direct_document.id=origin.source_stock_document_id
+                                AND direct_document.doc_type='FINISHED_IN'
+                                AND NOT direct_document.is_deleted
+                          )
                         ORDER BY segment.id
                         """).setParameter("originEventId", originEventId));
         for (Object[] row : segments) {
@@ -1305,10 +1344,11 @@ public class ProductionExecutionReadinessService
                 .toList();
         // Every supply source follows the same remaining-demand budget. Direct transfer
         // changes physical handoff, not the material quantity needed for production.
-        List<DemandRow> demands = continuous
+        ContinuousIncrementSnapshot increment = continuous
                 ? continuousIncrement(warehouseId, allDemands, analysisId, analysisItemId,
                         triggeringReceiptId, triggeringKind,reclaimReturnedCustody)
-                : unreservedDemand(allDemands);
+                : null;
+        List<DemandRow> demands = increment == null ? unreservedDemand(allDemands) : increment.demands();
         if (continuous && demands.isEmpty()) return;
         if (!continuous && !allDemands.isEmpty() && demands.isEmpty()) {
             // Fixed-batch growth can require no additional material. Existing physical
@@ -1337,7 +1377,16 @@ public class ProductionExecutionReadinessService
         }
 
         boolean incremental = continuous || !demands.equals(allDemands);
-        if (!isFullyAvailable(warehouseId, demands, analysisId, analysisItemId,
+        // The continuous budget and this check belong to one locked promotion.
+        // Only SELECTs (including receipt/peg row locks) and in-memory calculations
+        // occur between them; no entities are changed or postings flushed here.
+        // Reuse those rows only in this invocation. The next promotion, origin
+        // hook, transfer block or retry must query again after its own locks.
+        List<Object[]> availability = increment == null
+                ? availabilityRows(warehouseId, demands.stream().map(DemandRow::id).toList(),
+                        analysisId, analysisItemId)
+                : increment.availabilityRows();
+        if (!isFullyAvailable(demands, availability,
                 !continuous && (!tolerateShortage
                         && triggeringKind == ReceiptKind.RECHECK),reclaimReturnedCustody)) {
             return;
@@ -1856,9 +1905,16 @@ public class ProductionExecutionReadinessService
      * supply commitments. A purchase peg is consumed only by its qualified receipt.
      * The material dimension budget is shared by repeated BOM demands in this task.
      */
-    private List<DemandRow> continuousIncrement(UUID warehouseId, List<DemandRow> allDemands,
+    private record ContinuousIncrementSnapshot(List<DemandRow> demands, List<Object[]> availabilityRows) {
+        private ContinuousIncrementSnapshot {
+            demands = List.copyOf(demands);
+            availabilityRows = List.copyOf(availabilityRows);
+        }
+    }
+
+    private ContinuousIncrementSnapshot continuousIncrement(UUID warehouseId, List<DemandRow> allDemands,
             UUID analysisId, UUID analysisItemId, UUID receiptId, ReceiptKind kind,boolean reclaimReturnedCustody) {
-        if (allDemands.isEmpty()) return List.of();
+        if (allDemands.isEmpty()) return new ContinuousIncrementSnapshot(List.of(), List.of());
         Map<UUID, BigDecimal[]> covered = new HashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT demand.id,
@@ -1878,7 +1934,9 @@ public class ProductionExecutionReadinessService
         // With neither physical budget, every increment is necessarily zero; receipt
         // lineage cannot manufacture stock. Avoid three receipt scans per empty demand.
         if (available.values().stream().noneMatch(qty -> qty.signum() > 0)
-                && privateCustody.values().stream().noneMatch(qty -> qty.signum() > 0)) return List.of();
+                && privateCustody.values().stream().noneMatch(qty -> qty.signum() > 0)) {
+            return new ContinuousIncrementSnapshot(List.of(), availableRows);
+        }
         Map<UUID, List<ReceiptContribution>> receipts = receiptContributions(allDemands, receiptId, kind, warehouseId,true);
         Map<ProductionMaterialAllocationFacade.MaterialDimension, BigDecimal> claimed = new HashMap<>();
         List<DemandRow> increments = new ArrayList<>();
@@ -1900,7 +1958,7 @@ public class ProductionExecutionReadinessService
             increments.add(new DemandRow(demand.id(), demand.goodsId(), demand.colorId(), demand.unitId(), take, demand.directSupply()));
             claimed.merge(dimension, decision.sharedQuantity(), BigDecimal::add);
         }
-        return increments;
+        return new ContinuousIncrementSnapshot(increments, availableRows);
     }
 
     private static Map<UUID, BigDecimal> availabilityBudgets(List<Object[]> rows) {
@@ -1940,10 +1998,10 @@ public class ProductionExecutionReadinessService
         return result;
     }
 
-    private boolean isFullyAvailable(UUID warehouseId, List<DemandRow> demands,
-                                     UUID analysisId, UUID analysisItemId, boolean explainShortage,boolean reclaimReturnedCustody) {
-        List<Object[]> rows = availabilityRows(warehouseId,
-                demands.stream().map(DemandRow::id).toList(), analysisId, analysisItemId);
+    private boolean isFullyAvailable(List<DemandRow> demands, List<Object[]> availability,
+                                     boolean explainShortage,boolean reclaimReturnedCustody) {
+        Set<UUID> selected = demands.stream().map(DemandRow::id).collect(java.util.stream.Collectors.toSet());
+        List<Object[]> rows = availability.stream().filter(row -> selected.contains(uuid(row[0]))).toList();
         Map<UUID, BigDecimal> available = availabilityBudgets(rows);
         Map<UUID,BigDecimal> custody=reclaimReturnedCustody?custodyBudgets(rows):Map.of();
         Map<ProductionMaterialAllocationFacade.MaterialDimension, BigDecimal> required =

@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 委外退货单详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class ReturnDetail
+public class ReturnDetail extends com.uten.imp.common.history.DocumentHistoryMetadata
         implements com.uten.imp.common.web.StandardDocumentLifecycleCapabilities {
     private UUID id;
     private Integer legacyId;
@@ -44,4 +44,7 @@ public class ReturnDetail
     private java.time.Instant createdAt;
     /** 当前用户无委外商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

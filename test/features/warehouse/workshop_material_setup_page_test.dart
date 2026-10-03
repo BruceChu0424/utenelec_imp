@@ -3,13 +3,84 @@
 // 上线准备按克输入、异常单重二次确认、与货品资料单重差 20% 标黄;
 // "勾选行用货品资料单重填入"只填空着的行并标黄。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/pages/workshop_material_setup_page.dart';
+import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
+import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_machines_tab.dart';
+import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_prep_tab.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import '../../helpers/badge_summary_fixture.dart';
 import 'workshop_material_test_support.dart';
+
+class _StubSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
+
+class _SetupRepository extends FakeWorkshopMaterialRepository {
+  int preparationReads = 0;
+
+  @override
+  Future<WmPreparation> preparation(String workshopId) {
+    preparationReads++;
+    return super.preparation(workshopId);
+  }
+}
+
+Future<ProviderContainer> _pumpSetupPage(
+  WidgetTester tester,
+  Widget page, {
+  required FakeWorkshopMaterialRepository repo,
+  Size size = const Size(1400, 900),
+  Set<String> permissions = const {Perm.workshopMaterialSetup, Perm.goodsView},
+  StateProvider<Set<String>>? livePermissions,
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  SharedPreferences.setMockInitialValues({});
+  final prefs = await SharedPreferences.getInstance();
+  final container = ProviderContainer(
+    overrides: [
+      sessionProvider.overrideWith(() => _StubSession()),
+      apiBaseUrlProvider.overrideWithValue('https://workshop.test/api'),
+      sharedPreferencesProvider.overrideWithValue(prefs),
+      currentPermissionsProvider.overrideWith(
+        (ref) =>
+            livePermissions == null ? permissions : ref.watch(livePermissions),
+      ),
+      isSuperAdminProvider.overrideWithValue(false),
+      fixedBadgeSummaryOverride(),
+      workshopMaterialRepositoryProvider.overrideWithValue(repo),
+    ],
+  );
+  addTearDown(container.dispose);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: page,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return container;
+}
 
 WmMachine _machine(int i) => WmMachine(
   id: 'm$i',
@@ -35,7 +106,7 @@ WmMachine _machine(int i) => WmMachine(
   ],
 );
 
-FakeWorkshopMaterialRepository _repo() => FakeWorkshopMaterialRepository()
+_SetupRepository _repo() => _SetupRepository()
   ..settingsResult = const [wmTestWorkshop]
   ..machinesByWorkshop = {
     'w1': [_machine(1), _machine(2), _machine(3)],
@@ -100,9 +171,195 @@ TextEditingController _controller(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.byKey(Key(key))).controller!;
 
 void main() {
+  testWidgets('仅设置权限保留开启和机台，隐藏上线准备且不读取产品资料', (tester) async {
+    final repo = _repo();
+    await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(),
+      repo: repo,
+      permissions: {Perm.workshopMaterialSetup},
+    );
+    expect(find.text('上线准备'), findsNothing);
+    expect(find.byKey(const Key('wm-setup-enable-table')), findsOneWidget);
+    expect(repo.preparationReads, 0);
+    await _openTab(tester, '机台与容器');
+    expect(find.byType(WmMachinesTab), findsOneWidget);
+    expect(repo.preparationReads, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final permissions in <Set<String>>[
+    {Perm.workshopMaterialSetup},
+    {Perm.goodsView},
+  ]) {
+    testWidgets('上线准备深链缺少配套权限时回开启页且零产品请求 $permissions', (tester) async {
+      final repo = _repo();
+      await _pumpSetupPage(
+        tester,
+        const WorkshopMaterialSetupPage(initialTab: 'prep'),
+        repo: repo,
+        permissions: permissions,
+      );
+      expect(find.text('上线准备'), findsNothing);
+      expect(find.byType(WmPrepTab), findsNothing);
+      expect(find.byKey(const Key('wm-setup-enable-table')), findsOneWidget);
+      expect(repo.preparationReads, 0);
+      await tester.tap(find.byTooltip('刷新'));
+      await tester.pumpAndSettle();
+      expect(repo.preparationReads, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('上线准备期间撤销货品查看权限会卸载产品表，刷新不会继续请求', (tester) async {
+    final grants = StateProvider<Set<String>>(
+      (_) => {Perm.workshopMaterialSetup, Perm.goodsView},
+    );
+    final repo = _repo();
+    final container = await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(initialTab: 'prep'),
+      repo: repo,
+      livePermissions: grants,
+    );
+    expect(find.byType(WmPrepTab), findsOneWidget);
+    expect(repo.preparationReads, 1);
+    container.read(grants.notifier).state = {Perm.workshopMaterialSetup};
+    await tester.pumpAndSettle();
+    expect(find.byType(WmPrepTab), findsNothing);
+    expect(find.text('上线准备'), findsNothing);
+    expect(find.byKey(const Key('wm-setup-enable-table')), findsOneWidget);
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+    expect(repo.preparationReads, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('explicit workshop is preserved across setup tabs and reload', (
+    tester,
+  ) async {
+    final repo = _repo()
+      ..settingsResult = const [
+        WmSetting(
+          workshopDepartmentId: 'other',
+          workshopName: '另一车间',
+          periodicEnabled: true,
+          binWarehouseId: 'other-bin',
+        ),
+        wmTestWorkshop,
+      ];
+    await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(initialWorkshopId: 'w1'),
+      repo: repo,
+      size: const Size(1600, 1000),
+    );
+    expect(find.text('注塑车间'), findsOneWidget);
+    expect(find.text('另一车间'), findsNothing);
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+    await _openTab(tester, '机台与容器');
+    final machines = tester.widget<WmMachinesTab>(find.byType(WmMachinesTab));
+    expect(machines.workshopId, 'w1');
+    await _openTab(tester, '上线准备');
+    final preparation = tester.widget<WmPrepTab>(find.byType(WmPrepTab));
+    expect(preparation.workshopId, 'w1');
+  });
+
+  testWidgets('unavailable requested workshop does not show another setup', (
+    tester,
+  ) async {
+    await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(initialWorkshopId: 'not-visible'),
+      repo: _repo(),
+    );
+    expect(find.text('指定车间当前不可用或无权查看'), findsOneWidget);
+    expect(find.text('注塑车间'), findsNothing);
+    expect(find.byKey(const Key('wm-setup-enable-table')), findsNothing);
+  });
+
+  testWidgets('上线余料说明明确原账衔接且不为工单重新领料', (tester) async {
+    await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(),
+      repo: _repo(),
+      size: const Size(800, 900),
+    );
+    await tester.tap(find.byKey(const Key('wm-setup-opening-guide')));
+    await tester.pumpAndSettle();
+    expect(find.text('上线前清点车间余料'), findsOneWidget);
+    expect(find.textContaining('不要求生产员工为每张工单重新领料'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    expect(find.text('上线前清点车间余料'), findsNothing);
+  });
+
+  testWidgets(
+    'machine and preparation facts retain raw inputs and their listeners',
+    (tester) async {
+      await _pumpSetupPage(
+        tester,
+        const WorkshopMaterialSetupPage(),
+        repo: _repo(),
+        size: const Size(1600, 1000),
+      );
+      await _openTab(tester, '机台与容器');
+      final machines = tester.widget<UtenEditableGrid<WmMachineRow>>(
+        find.byType(UtenEditableGrid<WmMachineRow>),
+      );
+      final machine = machines.controller.rows.first;
+      final tonnage = machines.columns.singleWhere(
+        (column) => column.key == 'tonnage',
+      );
+      final order = machines.columns.singleWhere(
+        (column) => column.key == 'sortOrder',
+      );
+      expect(tonnage.exactListenableOf!(machine), same(machine.tonnage));
+      expect(order.exactListenableOf!(machine), same(machine.sortOrder));
+      machine.tonnage.text = '123.0000000001';
+      machine.sortOrder.text = '7';
+      expect(tonnage.exactValueOf!(machine), '123.0000000001');
+      expect(order.exactValueOf!(machine), '7');
+      expect(machine.machine.tonnage, isNull);
+      // Container names have no stable registered fact identity; never invent
+      // positional aliases which could point to another container after reorder.
+      expect(
+        machines.columns.where((column) => column.key.startsWith('cap-')),
+        everyElement(
+          isA<EditableGridColumn<WmMachineRow>>().having(
+            (column) => column.exactValueOf,
+            'no invented container fact',
+            isNull,
+          ),
+        ),
+      );
+
+      await _openTab(tester, '上线准备');
+      final preparations = tester.widget<UtenEditableGrid<WmPrepRow>>(
+        find.byType(UtenEditableGrid<WmPrepRow>),
+      );
+      final row = preparations.controller.rows.first;
+      final grams = preparations.columns.singleWhere(
+        (column) => column.key == 'grams',
+      );
+      final reference = preparations.columns.singleWhere(
+        (column) => column.key == 'goodsWeight',
+      );
+      expect(grams.exactListenableOf!(row), same(row.grams));
+      row.grams.text = '1.23456789';
+      expect(grams.exactValueOf!(row), '1.23456789');
+      expect(reference.exactValueOf!(row), '12.0');
+      row.grams.clear();
+      expect(grams.exactValueOf!(row), isEmpty);
+      expect(row.source.unitWeightGrams, isNull);
+    },
+  );
+
   testWidgets('批量新增机台: 默认 21 台, 每台干燥机料斗 50 + 储料桶 100', (tester) async {
     final repo = _repo();
-    await pumpWorkshopMaterialPage(
+    await _pumpSetupPage(
       tester,
       const WorkshopMaterialSetupPage(),
       repo: repo,
@@ -126,7 +383,7 @@ void main() {
 
   testWidgets('勾选两行改一格容量, 两行一起改, 没勾的不动, 提交的就是这两行', (tester) async {
     final repo = _repo();
-    await pumpWorkshopMaterialPage(
+    await _pumpSetupPage(
       tester,
       const WorkshopMaterialSetupPage(),
       repo: repo,
@@ -165,7 +422,7 @@ void main() {
 
   testWidgets('上线准备: 一键填入只填空着的勾选行并标黄; 差 20% 也标黄', (tester) async {
     final repo = _repo();
-    await pumpWorkshopMaterialPage(
+    await _pumpSetupPage(
       tester,
       const WorkshopMaterialSetupPage(),
       repo: repo,
@@ -195,7 +452,7 @@ void main() {
 
   testWidgets('上线准备: 按克输入, 超过 5000 克先确认再保存', (tester) async {
     final repo = _repo();
-    await pumpWorkshopMaterialPage(
+    await _pumpSetupPage(
       tester,
       const WorkshopMaterialSetupPage(),
       repo: repo,
@@ -232,7 +489,7 @@ void main() {
 
   testWidgets('上线准备: 改已有 BOM 单重的行带上 BOM 行号; 已填单重的不能清空只选料', (tester) async {
     final repo = _repo();
-    await pumpWorkshopMaterialPage(
+    await _pumpSetupPage(
       tester,
       const WorkshopMaterialSetupPage(),
       repo: repo,
@@ -272,7 +529,7 @@ void main() {
           ),
         ],
       );
-    await pumpWorkshopMaterialPage(
+    await _pumpSetupPage(
       tester,
       const WorkshopMaterialSetupPage(),
       repo: repo,

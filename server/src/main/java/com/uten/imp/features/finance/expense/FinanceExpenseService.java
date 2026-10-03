@@ -56,6 +56,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinanceExpenseService implements EmployeeClaimPostingPort {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -85,7 +89,9 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<FinanceExpense> p = expenseRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<FinanceExpenseListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(FinanceExpense::isDeleted) ? result
+                : retainedRecords.page(result, "finance_expenses", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -101,7 +107,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         return (Root<FinanceExpense> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -115,17 +122,24 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "amountLocal", true, null, false, null, true);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public FinanceExpenseDetail detail(UUID id) {
-        FinanceExpense e = require(id);
+    public FinanceExpenseDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public FinanceExpenseDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private FinanceExpenseDetail readDetail(UUID id, boolean historyRead) {
+        FinanceExpense e = require(id, historyRead);
         access.requireReadable(e.getMakerId(), "一般费用单不存在");
         List<FinanceExpenseItemDto> items = itemRepo.findByExpenseIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(e, items);
+        return finishHistory(toDetail(e, items), e, historyRead);
     }
 
     @Transactional
@@ -479,7 +493,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         return new FinanceExpenseItemDto(it.getId(), it.getLineNo(), it.getExpenseStyleId(),
                 it.getDepartmentId(), it.getCounterpartAccountId(), it.getCounterpartName(),
                 it.getQty(), it.getPrice(), it.getAmountOriginal(), it.getAmountLocal(),
-                it.getSummary(), it.getRemark());
+                it.getSummary(), it.getRemark(), null);
     }
 
     private FinanceExpenseListItem toList(FinanceExpense e) {
@@ -488,6 +502,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     }
 
     private FinanceExpenseDetail toDetail(FinanceExpense e, List<FinanceExpenseItemDto> items) {
+        var departments = com.uten.imp.features.finance.FinanceDepartmentNames.referenced(
+                em, items.stream().map(FinanceExpenseItemDto::getDepartmentId).toList());
+        items.forEach(item -> item.setDepartmentName(item.getDepartmentId() == null
+                ? null : departments.get(item.getDepartmentId())));
         return new FinanceExpenseDetail(e.getId(), e.getLegacyId(), e.getBillNo(), e.getBillDate(),
                 e.getAccountId(), e.getCounterpartAccountId(), e.getCurrencyId(), e.getExchangeRate(),
                 e.getAmountOriginal(), e.getAmountLocal(), e.getPaymentMethodId(), e.getPaymentMethodLegacyId(),
@@ -496,8 +514,10 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 nameResolver.nameOf(e.getMakerId()), e.getCreatedAt());
     }
 
-    private FinanceExpense require(UUID id) {
-        return expenseRepo.findById(id).filter(e -> !e.isDeleted())
+    private FinanceExpense require(UUID id) { return require(id, false); }
+
+    private FinanceExpense require(UUID id, boolean includeDeleted) {
+        return expenseRepo.findById(id).filter(e -> includeDeleted || !e.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "一般费用单不存在"));
     }
 
@@ -530,5 +550,16 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     private static BigDecimal nz(BigDecimal x) {
         return x == null ? BigDecimal.ZERO : x;
+    }
+
+    private FinanceExpenseDetail finishHistory(FinanceExpenseDetail view, FinanceExpense entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "finance_expenses", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        return retainedRecords.children("finance_expenses",id,beforeId,size);
     }
 }

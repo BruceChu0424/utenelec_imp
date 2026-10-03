@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
@@ -11,7 +14,13 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pages.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('order stages filter the server aggregate and reset pagination', (
     tester,
   ) async {
@@ -159,6 +168,7 @@ void main() {
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': -1});
         await _tap(tester, '清除状态筛选');
         expect(api.lastQuery, {'page': 1, 'size': 20});
+        await _showHeader(tester);
         expect(
           tester
               .widget<UtenHistoryTimeFilter>(find.byType(UtenHistoryTimeFilter))
@@ -174,7 +184,14 @@ void main() {
   testWidgets('order draft deep link still loads only unsubmitted drafts', (
     tester,
   ) async {
-    final api = await _mount(tester, query: '?status=draft');
+    final api = await _mount(
+      tester,
+      query: '?status=draft',
+      permissions: const {
+        Perm.subcontractOrderView,
+        Perm.subcontractOrderCreate,
+      },
+    );
     expect(api.lastQuery, {
       'page': 1,
       'size': 20,
@@ -183,6 +200,9 @@ void main() {
     });
     expect(find.byType(UtenFilterPlaceholder), findsNothing);
     expect(find.text('等待财务审核'), findsNothing);
+    expect(find.text('创建新委外单'), findsNothing);
+    await _tap(tester, '进行中');
+    expect(find.text('创建新委外单'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -192,6 +212,7 @@ Future<_RecordingApi> _mount(
   String pathSegment = 'orders',
   Widget? page,
   String query = '',
+  Set<String> permissions = const {},
 }) async {
   tester.view.physicalSize = const Size(1500, 1000);
   tester.view.devicePixelRatio = 1;
@@ -215,7 +236,11 @@ Future<_RecordingApi> _mount(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        currentPermissionsProvider.overrideWithValue(const {}),
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
+        currentPermissionsProvider.overrideWithValue(permissions),
         apiClientProvider.overrideWithValue(api),
       ],
       child: MaterialApp.router(routerConfig: router),
@@ -241,12 +266,13 @@ MasterDataTableView<SubcontractDocListItem> _table(WidgetTester tester) =>
     );
 
 Future<void> _tap(WidgetTester tester, String label) async {
+  await _showHeader(tester);
   await tester.tap(find.text(label));
   await tester.pumpAndSettle();
 }
 
 Future<void> _showHeader(WidgetTester tester) async {
-  // 翻页会把表体回顶并收起联动页头，重新展开后再操作分类。
+  // 分类筛选和翻页都会把表体回顶并收起联动页头，先展开再操作分类。
   tester
       .state<NestedScrollViewState>(find.byType(NestedScrollView))
       .outerController

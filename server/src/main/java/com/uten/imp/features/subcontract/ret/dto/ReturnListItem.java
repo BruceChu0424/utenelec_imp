@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 委外退货单列表项。 */
 @Getter
 @AllArgsConstructor
-public class ReturnListItem {
+public class ReturnListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -23,4 +23,7 @@ public class ReturnListItem {
     private Integer legacyId;
     /** 当前用户无委外商业金额权限时为 true，合计金额同时置 null。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

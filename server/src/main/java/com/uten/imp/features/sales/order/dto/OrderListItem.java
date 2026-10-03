@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 销售订货列表项。 */
 @Getter
 @AllArgsConstructor
-public class OrderListItem {
+public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -42,4 +42,8 @@ public class OrderListItem {
     private boolean financeConfirmed;
     /** 财务驳回（V300）：已审未确认且被财务驳回，待销售修正；前端列表显示驳回徽章。 */
     private boolean financeRejected;
+
+    @Override public void disableHistoryActions() {
+        writable = false;
+    }
 }

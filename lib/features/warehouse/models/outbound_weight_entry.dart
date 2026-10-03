@@ -28,6 +28,9 @@ class OutboundWeightEntry extends EditableGridRow {
     Listenable? qtyListenable,
     this.unitRate,
     this.supplierId,
+    this.colorId,
+    this.warehouseId,
+    this.warehouseIdOf,
     double? kg,
     bool qtyFromWeight = false,
     WeightUnit unit = WeightUnit.kg,
@@ -42,6 +45,10 @@ class OutboundWeightEntry extends EditableGridRow {
 
   /// 单重参数按供应商取时用 (出库一律 null = 全货品单重)。
   final String? supplierId;
+  final String? colorId;
+  String? warehouseId;
+  final String? Function()? warehouseIdOf;
+  String? get currentWarehouseId => warehouseIdOf?.call() ?? warehouseId;
 
   /// 1 个行单位 = 多少基本单位; null = 不知道换算 (不核对偏差, 只记重量)。
   final double? unitRate;
@@ -72,8 +79,12 @@ class OutboundWeightEntry extends EditableGridRow {
   /// 幂等键/指纹片段: `千克|是否按称重改数量`。
   String get keyPart => weight.canonicalKeyPart;
 
-  WeightParams? paramsIn(WeightParamsCache? cache) =>
-      cache?.of(goodsId, supplierId: supplierId);
+  WeightParams? paramsIn(WeightParamsCache? cache) => cache?.of(
+    goodsId,
+    supplierId: supplierId,
+    warehouseId: currentWarehouseId,
+    colorId: colorId,
+  );
 
   /// 数量 vs 实称核对 (按称重改过数量的行不核对)。
   WeightCheck? check(
@@ -81,16 +92,42 @@ class OutboundWeightEntry extends EditableGridRow {
     WeightCaptureMode mode = WeightCaptureMode.outbound,
   }) {
     if (weight.qtyFromWeight) return null;
-    return paramsIn(
-      cache,
-    )?.check(qtyBase: qtyBase, weightKg: weight.kg, mode: mode);
+    final params = paramsIn(cache);
+    // Exact inventory reference takes precedence; don't also warn against a
+    // different historical mean for the same outbound row.
+    if (suggestion(cache, mode: mode)?.inventoryBased == true) return null;
+    return params?.check(qtyBase: qtyBase, weightKg: weight.kg, mode: mode);
+  }
+
+  WeightSuggestion? suggestion(
+    WeightParamsCache? cache, {
+    WeightCaptureMode mode = WeightCaptureMode.outbound,
+  }) => paramsIn(cache)?.suggestionFor(qtyBase, mode: mode);
+
+  bool hasWeightDeviation(
+    WeightParamsCache? cache, {
+    WeightCaptureMode mode = WeightCaptureMode.outbound,
+  }) {
+    if (weight.qtyFromWeight || kg == null) return false;
+    final p = paramsIn(cache);
+    if (suggestion(cache, mode: mode)?.inventoryBased == true) {
+      return suggestion(cache, mode: mode)?.differsFrom(kg) ?? false;
+    }
+    return p?.alertsEnabled == true &&
+        (check(cache, mode: mode)?.level ?? WeightAlertLevel.none) !=
+            WeightAlertLevel.none;
   }
 
   /// 取参请求行 (没有货品时为 null)。
   WeightParamsLine? get paramsLine {
     final id = goodsId;
     if (id == null || id.isEmpty) return null;
-    return WeightParamsLine(goodsId: id, supplierId: supplierId);
+    return WeightParamsLine(
+      goodsId: id,
+      supplierId: supplierId,
+      warehouseId: currentWarehouseId,
+      colorId: colorId,
+    );
   }
 
   @override
@@ -119,8 +156,7 @@ WeightTotalsSummary outboundWeightTotals(
   var deviation = 0;
   for (final entry in list) {
     if (entry.kg == null) continue;
-    final check = entry.check(params, mode: mode);
-    if (check != null && check.level != WeightAlertLevel.none) deviation++;
+    if (entry.hasWeightDeviation(params, mode: mode)) deviation++;
   }
   return WeightTotalsSummary.of([
     for (final e in list) e.kg,

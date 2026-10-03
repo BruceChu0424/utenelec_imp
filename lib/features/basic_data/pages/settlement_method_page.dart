@@ -377,6 +377,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final items = _filtered;
     final total = _items?.length ?? 0;
@@ -443,6 +444,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<SettlementMethodAdminItem>(
+                    columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
                     columns: _columns,

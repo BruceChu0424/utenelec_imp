@@ -76,6 +76,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractReturnService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -117,8 +121,10 @@ public class SubcontractReturnService {
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
         Page<SubcontractReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+        PageResponse<ReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
+        return p.stream().noneMatch(SubcontractReturn::isDeleted) ? result
+                : retainedRecords.page(result, "subcontract_returns", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -135,7 +141,8 @@ public class SubcontractReturnService {
                                                  jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                  CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(SubcontractGoodsKeyword.predicate(
@@ -150,19 +157,26 @@ public class SubcontractReturnService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewSubcontractReturn(), null, true, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public ReturnDetail detail(UUID id) {
-        SubcontractReturn r = requireReturn(id);
+    public ReturnDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public ReturnDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private ReturnDetail readDetail(UUID id, boolean historyRead) {
+        SubcontractReturn r = requireReturn(id, historyRead);
         // V304：仓库执行的退货单对关联订货单归属人只读放行（委外进度点击溯源）。
         linkedOrderReadGate.requireReadableViaOrder(
                 r.getMakerId(), "委外退货单不存在", LinkedOrderReadGate.LinkedDocKind.RETURN, id);
         List<ReturnItemDto> items = itemRepo.findByReturnIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(r, items);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     @Transactional
@@ -675,9 +689,11 @@ public class SubcontractReturnService {
     }
 
 
-    private SubcontractReturn requireReturn(UUID id) {
+    private SubcontractReturn requireReturn(UUID id) { return requireReturn(id, false); }
+
+    private SubcontractReturn requireReturn(UUID id, boolean includeDeleted) {
         return returnRepo.findById(id)
-                .filter(r -> !r.isDeleted())
+                .filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外退货单不存在"));
     }
     private SubcontractReturn requireReturnForUpdate(UUID id) {
@@ -686,5 +702,17 @@ public class SubcontractReturnService {
         return subcontractReturn == null || subcontractReturn.isDeleted()
                 ? requireReturn(id)
                 : subcontractReturn;
+    }
+
+    private ReturnDetail finishHistory(ReturnDetail view, SubcontractReturn entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "subcontract_returns", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("subcontract_returns",id,beforeId,size);
     }
 }

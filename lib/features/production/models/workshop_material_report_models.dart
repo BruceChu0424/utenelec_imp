@@ -26,6 +26,44 @@ List<String> _strings(Object? raw) => [
 Map<String, dynamic>? _map(Object? raw) =>
     raw is Map<String, dynamic> ? raw : null;
 
+/// 耗用由期初与期末盘点相减推算，任一端估盘都会影响本期。
+/// 缺少来源的旧响应保持未知，不能默认成称重。
+mixin WmCountEvidence {
+  String? get openingCountBasis;
+  String? get closingCountBasis;
+
+  bool get hasEstimatedCount =>
+      openingCountBasis == 'ESTIMATED' || closingCountBasis == 'ESTIMATED';
+
+  bool get hasUnknownCount =>
+      !WmCountEvidence.knownBases.contains(openingCountBasis) ||
+      !WmCountEvidence.knownBases.contains(closingCountBasis);
+
+  static const knownBases = {
+    'WEIGHED',
+    'BAG_COUNT',
+    'WEIGHED_AND_BAGS',
+    'ESTIMATED',
+    'EMPTY_START',
+    'NO_BALANCE',
+    'APPROVED_OPENING',
+  };
+
+  static String basisLabel(String? basis) => switch (basis) {
+    'ESTIMATED' => '含容器估盘',
+    'WEIGHED' => '称重/公斤录入',
+    'BAG_COUNT' => '袋数 × 净重',
+    'WEIGHED_AND_BAGS' => '称重与袋数',
+    'EMPTY_START' => '空仓启用',
+    'APPROVED_OPENING' => '已审核期初盘点',
+    'NO_BALANCE' => '无上期结存',
+    _ => '来源未提供',
+  };
+
+  String get countEvidenceLabel =>
+      '期初：${basisLabel(openingCountBasis)}；期末：${basisLabel(closingCountBasis)}';
+}
+
 /// 可选的车间内料仓 (来自 GET /workshop-material/settings，只取已指定内料仓的车间)。
 class WmReportBin {
   const WmReportBin({
@@ -218,7 +256,7 @@ class WmReportCloseStatus {
 }
 
 /// 内料仓用量表一行 (每期 × 每种料)。
-class WmBinUsageRow {
+class WmBinUsageRow with WmCountEvidence {
   const WmBinUsageRow({
     this.periodId,
     this.periodNo,
@@ -251,6 +289,9 @@ class WmBinUsageRow {
     this.unitCost,
     this.currentValue,
     this.valueAtClose,
+    this.openingCountBasis,
+    this.closingCountBasis,
+    this.adjustmentQty,
   });
 
   final String? periodId;
@@ -280,8 +321,9 @@ class WmBinUsageRow {
   final double? returnQty;
   final double? otherIssueQty;
   final double? closingQty;
+  final double? adjustmentQty;
 
-  /// 实际用量 = 期初 + 领入 − 退回 − 其它耗用 − 期末。
+  /// 盘点推算耗用 = 期初 + 领入 − 退回 − 其它耗用 + 已审核修正 − 期末。
   final double? actualQty;
 
   /// 理论用量 (只主料有)。
@@ -293,7 +335,7 @@ class WmBinUsageRow {
   /// 差额 = 实际 − 理论。
   final double? diffQty;
 
-  /// 浪费率 (只算主料) = (实际 − 理论) / 理论，小数 (0.05 = 5%)。
+  /// 耗用差异率 (只算主料) = (盘点耗用 − 理论) / 理论，不等于报废率。
   final double? wasteRate;
 
   /// ALLOCATED / UNALLOCATED_LOSS / GAIN / NOTHING / EXPENSED；未结算为 null。
@@ -308,6 +350,10 @@ class WmBinUsageRow {
   final double? unitCost;
   final double? currentValue;
   final double? valueAtClose;
+  @override
+  final String? openingCountBasis;
+  @override
+  final String? closingCountBasis;
 
   bool get hasCost =>
       unitCost != null || currentValue != null || valueAtClose != null;
@@ -344,11 +390,14 @@ class WmBinUsageRow {
     unitCost: _d(json['unitCost']),
     currentValue: _d(json['currentValue']),
     valueAtClose: _d(json['valueAtClose']),
+    openingCountBasis: _s(json['openingCountBasis']),
+    closingCountBasis: _s(json['closingCountBasis']),
+    adjustmentQty: _d(json['adjustmentQty']),
   );
 }
 
 /// 产品用料表一行 (每期 × 产品 × 料)。
-class WmProductUsageRow {
+class WmProductUsageRow with WmCountEvidence {
   const WmProductUsageRow({
     this.periodId,
     this.periodNo,
@@ -371,6 +420,15 @@ class WmProductUsageRow {
     this.materialAmount,
     this.valueAtClose,
     this.unitMaterialCost,
+    this.materialAmountText,
+    this.valueAtCloseText,
+    this.unitMaterialCostText,
+    this.openingCountBasis,
+    this.closingCountBasis,
+    this.materialUnitName,
+    this.materialUnitKgFactor,
+    this.unitWeightBase,
+    this.actualPerUnitBase,
   });
 
   final String? periodId;
@@ -395,19 +453,32 @@ class WmProductUsageRow {
   final double? unitWeightGrams;
   final double? theoryQty;
 
-  /// 按理论比例分摊到的实际用量。
+  /// 按理论比例分摊的盘点推算耗用。
   final double? allocatedQty;
 
-  /// 独占期：本期这种料只有这一个产品用 → 标「真实单耗」。
+  /// 独占期：本期这种料只有这一个产品用，不表示逐件实测。
   final bool exclusivePeriod;
 
-  /// 独占期的真实单耗 = 实际 / 完工 (克)。
+  /// 独占期平均耗用 = 分摊耗用 / 完工 (克)，仍受盘点及报工误差影响。
   final double? actualPerUnitGrams;
 
   // —— 金额 (无看成本权限时服务端下发 null) ——
   final double? materialAmount;
   final double? valueAtClose;
   final double? unitMaterialCost;
+  final String? materialAmountText;
+  final String? valueAtCloseText;
+  final String? unitMaterialCostText;
+  @override
+  final String? openingCountBasis;
+  @override
+  final String? closingCountBasis;
+
+  /// 基本单位与权威计量档案的每单位千克数；不按单位名称猜换算率。
+  final String? materialUnitName;
+  final double? materialUnitKgFactor;
+  final double? unitWeightBase;
+  final double? actualPerUnitBase;
 
   bool get hasCost =>
       materialAmount != null ||
@@ -416,9 +487,14 @@ class WmProductUsageRow {
 
   factory WmProductUsageRow.fromJson(Map<String, dynamic> json) {
     final gramsRaw = _d(json['unitWeightGrams']);
-    final weightKg = _d(json['unitWeight']);
+    final weightBase = _d(json['unitWeight']);
     final actualPerUnitRaw = _d(json['actualPerUnitGrams']);
-    final actualPerUnitKg = _d(json['actualPerUnit']);
+    final actualPerUnitBase = _d(json['actualPerUnit']);
+    final kgFactor = _d(json['materialUnitKgFactor']);
+    double? grams(double? amount) =>
+        amount == null || kgFactor == null || kgFactor <= 0
+        ? null
+        : amount * kgFactor * 1000;
     return WmProductUsageRow(
       periodId: _s(json['periodId']),
       periodNo: _i(json['periodNo']),
@@ -433,22 +509,31 @@ class WmProductUsageRow {
       materialColorName: _s(json['materialColorName']),
       costBasis: _s(json['costBasis']),
       outputQty: _d(json['outputQty']),
-      unitWeightGrams: gramsRaw ?? (weightKg == null ? null : weightKg * 1000),
+      unitWeightGrams: gramsRaw ?? grams(weightBase),
       theoryQty: _d(json['theoryQty']),
       allocatedQty: _d(json['allocatedQty']),
       exclusivePeriod: json['exclusivePeriod'] == true,
-      actualPerUnitGrams:
-          actualPerUnitRaw ??
-          (actualPerUnitKg == null ? null : actualPerUnitKg * 1000),
+      actualPerUnitGrams: actualPerUnitRaw ?? grams(actualPerUnitBase),
       materialAmount: _d(json['materialAmount'] ?? json['currentValue']),
       valueAtClose: _d(json['valueAtClose']),
       unitMaterialCost: _d(json['unitMaterialCost']),
+      materialAmountText: _s(
+        json['materialAmountExact'] ?? json['currentValueExact'],
+      ),
+      valueAtCloseText: _s(json['valueAtCloseExact']),
+      unitMaterialCostText: _s(json['unitMaterialCostExact']),
+      openingCountBasis: _s(json['openingCountBasis']),
+      closingCountBasis: _s(json['closingCountBasis']),
+      materialUnitName: _s(json['materialUnitName']),
+      materialUnitKgFactor: kgFactor,
+      unitWeightBase: weightBase,
+      actualPerUnitBase: actualPerUnitBase,
     );
   }
 }
 
-/// 浪费率趋势的一个点 (按料、按期)。
-class WmWasteTrendPoint {
+/// 耗用差异率趋势的一个点 (按料、按期)。
+class WmWasteTrendPoint with WmCountEvidence {
   const WmWasteTrendPoint({
     this.periodId,
     this.periodNo,
@@ -460,6 +545,8 @@ class WmWasteTrendPoint {
     this.colorId,
     this.colorName,
     this.wasteRate,
+    this.openingCountBasis,
+    this.closingCountBasis,
   });
 
   final String? periodId;
@@ -472,6 +559,10 @@ class WmWasteTrendPoint {
   final String? colorId;
   final String? colorName;
   final double? wasteRate;
+  @override
+  final String? openingCountBasis;
+  @override
+  final String? closingCountBasis;
 
   /// 料的分组键 (货品 + 颜色)。
   String get materialKey => '${goodsId ?? ''}|${colorId ?? colorName ?? ''}';
@@ -491,6 +582,8 @@ class WmWasteTrendPoint {
         colorId: _s(json['colorId']),
         colorName: _s(json['colorName']),
         wasteRate: _d(json['wasteRate']),
+        openingCountBasis: _s(json['openingCountBasis']),
+        closingCountBasis: _s(json['closingCountBasis']),
       );
 }
 
@@ -585,6 +678,7 @@ class WmLedgerRow {
     if (parts.isNotEmpty) return parts.join(' / ');
     return switch (sourceKind) {
       'CONSUME' || 'CONSUME_REVERSE' || 'GAIN' || 'GAIN_REVERSE' => '盘点',
+      'OPENING' || 'ADJUSTMENT' => '盘点审核',
       _ => '',
     };
   }

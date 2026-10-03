@@ -100,6 +100,174 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @businessColumnAmountUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。'**
+  String get businessColumnAmountUnavailable;
+
+  /// No description provided for @businessColumnEditorSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'为单据补充信息，或让输入值参与每行正式金额计算。'**
+  String get businessColumnEditorSubtitle;
+
+  /// No description provided for @businessColumnBrowse.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择已有列'**
+  String get businessColumnBrowse;
+
+  /// No description provided for @businessColumnNew.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建列'**
+  String get businessColumnNew;
+
+  /// No description provided for @businessColumnManage.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单已添加'**
+  String get businessColumnManage;
+
+  /// No description provided for @businessColumnNoResults.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有匹配的列，可以切换到“新建列”。'**
+  String get businessColumnNoResults;
+
+  /// No description provided for @businessColumnNewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'先填写名称，再选择这列的用途。每行的实际数值在表格里填写。'**
+  String get businessColumnNewHint;
+
+  /// No description provided for @businessColumnOfficialAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'参与正式金额'**
+  String get businessColumnOfficialAmount;
+
+  /// No description provided for @businessColumnAmountTarget.
+  ///
+  /// In zh, this message translates to:
+  /// **'计算目标'**
+  String get businessColumnAmountTarget;
+
+  /// No description provided for @businessColumnRowAmount.
+  ///
+  /// In zh, this message translates to:
+  /// **'本行金额'**
+  String get businessColumnRowAmount;
+
+  /// No description provided for @businessColumnRecordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'每行分别填写，保存为单据补充信息。'**
+  String get businessColumnRecordHint;
+
+  /// No description provided for @businessColumnOfficialHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入值会计入本行金额；保存、财务审核和后续业务沿用计算后的金额。'**
+  String get businessColumnOfficialHint;
+
+  /// No description provided for @businessColumnExampleTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'试算一下'**
+  String get businessColumnExampleTitle;
+
+  /// No description provided for @businessColumnExampleBase.
+  ///
+  /// In zh, this message translates to:
+  /// **'原金额（示例）'**
+  String get businessColumnExampleBase;
+
+  /// No description provided for @businessColumnExampleValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'本列输入值（示例）'**
+  String get businessColumnExampleValue;
+
+  /// No description provided for @businessColumnExampleHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'示例只帮助理解计算，不会填入单据。留空不参与计算，填写 0 则按 0 计算。'**
+  String get businessColumnExampleHint;
+
+  /// No description provided for @businessColumnExampleInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写有效数值；不能除以 0，结果须为非负的精确有限小数。'**
+  String get businessColumnExampleInvalid;
+
+  /// No description provided for @businessColumnFixedFeeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'此值按每行收取一次。例如本行金额 100，填 20 后加到 120。'**
+  String get businessColumnFixedFeeHint;
+
+  /// No description provided for @businessColumnFactorHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'乘除填写倍率，例如乘 0.9 表示按原金额的 90% 计算。'**
+  String get businessColumnFactorHint;
+
+  /// No description provided for @businessColumnRemove.
+  ///
+  /// In zh, this message translates to:
+  /// **'从本单移除'**
+  String get businessColumnRemove;
+
+  /// No description provided for @businessColumnRemoveHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除后，本单各行的该列内容会清除，金额会重新计算。保存单据后生效；其他单据和可复用列不受影响。'**
+  String get businessColumnRemoveHint;
+
+  /// No description provided for @businessColumnUseExisting.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用已有列'**
+  String get businessColumnUseExisting;
+
+  /// No description provided for @businessColumnAlreadyAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单已经添加了相同定义的列，可到“本单已添加”查看。'**
+  String get businessColumnAlreadyAdded;
+
+  /// No description provided for @businessColumnOrderHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额按列的添加顺序计算。拖动表头只改变显示顺序；有值的费用列保持可见。'**
+  String get businessColumnOrderHint;
+
+  /// No description provided for @businessColumnNoAdded.
+  ///
+  /// In zh, this message translates to:
+  /// **'本单还没有添加自定义列。'**
+  String get businessColumnNoAdded;
+
+  /// No description provided for @businessColumnNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入列名称'**
+  String get businessColumnNameRequired;
+
+  /// No description provided for @businessColumnAmountRule.
+  ///
+  /// In zh, this message translates to:
+  /// **'金额运算'**
+  String get businessColumnAmountRule;
+
+  /// No description provided for @businessColumnSubtractHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写要从本行金额扣减的数值，例如 100 减 20 等于 80。'**
+  String get businessColumnSubtractHint;
+
   /// No description provided for @bomLearningTitle.
   ///
   /// In zh, this message translates to:
@@ -555,6 +723,54 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'确认领料申请'**
   String get materialDiscoveryRequestTitle;
+
+  /// No description provided for @productionDailyReportLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载详情失败，请重试'**
+  String get productionDailyReportLoadFailed;
+
+  /// No description provided for @productionDailyReportReverseConfirmation.
+  ///
+  /// In zh, this message translates to:
+  /// **'红冲将反向冲销，确认？'**
+  String get productionDailyReportReverseConfirmation;
+
+  /// No description provided for @productionDailyReportDeleteTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除日报'**
+  String get productionDailyReportDeleteTitle;
+
+  /// No description provided for @productionDailyReportDeleteConfirmation.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定删除该草稿日报吗？'**
+  String get productionDailyReportDeleteConfirmation;
+
+  /// No description provided for @productionDailyReportDeleteAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get productionDailyReportDeleteAction;
+
+  /// No description provided for @productionDailyReportApprovedStateVerified.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已审核，页面已刷新。'**
+  String get productionDailyReportApprovedStateVerified;
+
+  /// No description provided for @productionDailyReportReversedStateVerified.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前已红冲，页面已刷新。'**
+  String get productionDailyReportReversedStateVerified;
+
+  /// No description provided for @productionDailyReportStateChangedReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'日报状态已变化，页面已刷新，请核对当前状态。'**
+  String get productionDailyReportStateChangedReview;
 
   /// 应用标题
   ///
@@ -3808,7 +4024,7 @@ abstract class AppLocalizations {
   /// No description provided for @productionHubPlanSub.
   ///
   /// In zh, this message translates to:
-  /// **'引用销售订单或手工新建·历史记录'**
+  /// **'手工新建排产计划，可引用销售订单'**
   String get productionHubPlanSub;
 
   /// No description provided for @productionHubPlanHistory.
@@ -8270,7 +8486,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmFillGuide.
   ///
   /// In zh, this message translates to:
-  /// **'超过四分之三算满, 四分之一到四分之三算半, 不到四分之一算空'**
+  /// **'满按容量、半按一半估算；空按 0 记录，仅用于确实无料。容器有余料时可称重后直接填公斤。满/半/空属于估盘，会影响本期和下期耗用。'**
   String get wmFillGuide;
 
   /// No description provided for @wmMachineIdle.
@@ -8294,7 +8510,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmSubmitCount.
   ///
   /// In zh, this message translates to:
-  /// **'提交盘点'**
+  /// **'审核盘点并过账'**
   String get wmSubmitCount;
 
   /// No description provided for @wmWithdrawCount.
@@ -8480,7 +8696,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmReportTrend.
   ///
   /// In zh, this message translates to:
-  /// **'浪费率趋势'**
+  /// **'耗用差异率趋势'**
   String get wmReportTrend;
 
   /// No description provided for @wmReportMissingWeight.
@@ -8498,7 +8714,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmTrueUnitUsage.
   ///
   /// In zh, this message translates to:
-  /// **'真实单耗'**
+  /// **'独占期平均耗用'**
   String get wmTrueUnitUsage;
 
   /// No description provided for @wmAllocatedByTheory.
@@ -8510,7 +8726,7 @@ abstract class AppLocalizations {
   /// No description provided for @wmWasteRate.
   ///
   /// In zh, this message translates to:
-  /// **'浪费率'**
+  /// **'耗用差异率'**
   String get wmWasteRate;
 
   /// No description provided for @wmIncludeWorkshopStore.
@@ -8528,7 +8744,7 @@ abstract class AppLocalizations {
   /// No description provided for @workshopMaterialReportsHubDesc.
   ///
   /// In zh, this message translates to:
-  /// **'按期间看每种料用了多少、浪费率与结算状态'**
+  /// **'按期间看盘点推算耗用、耗用差异率与结算状态'**
   String get workshopMaterialReportsHubDesc;
 
   /// No description provided for @wmReceiveReturn.
@@ -10046,7 +10262,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusConvertConfirmBody.
   ///
   /// In zh, this message translates to:
-  /// **'会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?'**
+  /// **'根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。'**
   String get salesQuoteStatusConvertConfirmBody;
 
   /// No description provided for @salesQuoteStatusConfirm.
@@ -12049,7 +12265,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesIntakeQuotePriceHint.
   ///
   /// In zh, this message translates to:
-  /// **'单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。'**
+  /// **'单价由货品标价带入，可修改本次报价的单价和折扣，不改变货品资料。提交后由财务核价；没有单价可留空交财务填写。'**
   String get salesIntakeQuotePriceHint;
 
   /// No description provided for @salesIntakeFinancePriced.
@@ -14109,6 +14325,564 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。'**
   String get costMaterialPriceNotApplied;
+
+  /// No description provided for @salesQuoteCustomerConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记客户同意'**
+  String get salesQuoteCustomerConfirm;
+
+  /// No description provided for @salesQuoteCustomerConfirmBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认客户已同意当前版本的货品、数量、单价、折扣与商业条款。登记后可生成订货单草稿；报价再次修改后须重新核价并取得客户同意。'**
+  String get salesQuoteCustomerConfirmBody;
+
+  /// No description provided for @salesQuoteCustomerConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已登记客户同意，可生成订货单'**
+  String get salesQuoteCustomerConfirmed;
+
+  /// No description provided for @salesQuoteAwaitingCustomer.
+  ///
+  /// In zh, this message translates to:
+  /// **'待客户同意'**
+  String get salesQuoteAwaitingCustomer;
+
+  /// No description provided for @salesQuoteAwaitingConversion.
+  ///
+  /// In zh, this message translates to:
+  /// **'待生成订货单'**
+  String get salesQuoteAwaitingConversion;
+
+  /// No description provided for @salesQuoteAwaitingCustomerBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务已核价，请与客户确认当前报价；客户同意后登记确认并生成订货单，也可重新修改报价或取消。'**
+  String get salesQuoteAwaitingCustomerBody;
+
+  /// No description provided for @salesQuoteCancelQuote.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消报价'**
+  String get salesQuoteCancelQuote;
+
+  /// No description provided for @salesQuoteCancelReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消原因（如客户未接受报价、订单未取得）'**
+  String get salesQuoteCancelReason;
+
+  /// No description provided for @salesQuoteCancelReasonRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写取消原因'**
+  String get salesQuoteCancelReasonRequired;
+
+  /// No description provided for @salesQuoteCancelledDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'报价已取消，历史记录保留'**
+  String get salesQuoteCancelledDone;
+
+  /// No description provided for @quoteTemplateMissingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'此客户还没有报价模板'**
+  String get quoteTemplateMissingTitle;
+
+  /// No description provided for @quoteTemplateMissingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。'**
+  String get quoteTemplateMissingHint;
+
+  /// No description provided for @quoteTemplateUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传并学习模板'**
+  String get quoteTemplateUpload;
+
+  /// No description provided for @quoteTemplateReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对客户模板'**
+  String get quoteTemplateReviewTitle;
+
+  /// No description provided for @quoteTemplateReviewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对工作表和字段后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。'**
+  String get quoteTemplateReviewHint;
+
+  /// No description provided for @quoteTemplateSaveDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存模板并下载'**
+  String get quoteTemplateSaveDownload;
+
+  /// No description provided for @quoteTemplateSheet.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作表'**
+  String get quoteTemplateSheet;
+
+  /// No description provided for @quoteTemplateReference.
+  ///
+  /// In zh, this message translates to:
+  /// **'参考列（仅填本单同名信息）'**
+  String get quoteTemplateReference;
+
+  /// No description provided for @quoteTemplateFileRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请上传 15 MB 以内的 xlsx 或 xls 文件'**
+  String get quoteTemplateFileRequired;
+
+  /// No description provided for @quoteTemplateUnreadable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取可回填模板，请检查 Excel 表头'**
+  String get quoteTemplateUnreadable;
+
+  /// No description provided for @quoteTemplateSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户报价模板已保存'**
+  String get quoteTemplateSaved;
+
+  /// No description provided for @quoteTemplateLearningTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'学习客户报价模板'**
+  String get quoteTemplateLearningTitle;
+
+  /// No description provided for @aiChatTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 工作助手'**
+  String get aiChatTitle;
+
+  /// No description provided for @aiChatOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开 AI 工作助手（可上下拖动）'**
+  String get aiChatOpen;
+
+  /// No description provided for @aiChatClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'收起对话'**
+  String get aiChatClose;
+
+  /// No description provided for @aiChatReset.
+  ///
+  /// In zh, this message translates to:
+  /// **'新对话'**
+  String get aiChatReset;
+
+  /// No description provided for @aiChatResetTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始新对话？'**
+  String get aiChatResetTitle;
+
+  /// No description provided for @aiChatResetHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前对话和未使用的文件将从此窗口清除。已执行的业务操作不会撤销。'**
+  String get aiChatResetHint;
+
+  /// No description provided for @aiChatCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消'**
+  String get aiChatCancel;
+
+  /// No description provided for @aiChatConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认'**
+  String get aiChatConfirm;
+
+  /// No description provided for @aiChatWelcome.
+  ///
+  /// In zh, this message translates to:
+  /// **'今天需要处理什么？'**
+  String get aiChatWelcome;
+
+  /// No description provided for @aiChatBoundary.
+  ///
+  /// In zh, this message translates to:
+  /// **'按当前账号权限回答；数据查询与操作由系统逐次校验。'**
+  String get aiChatBoundary;
+
+  /// No description provided for @aiChatUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前使用基础助手，可查询已支持的业务信息。配置 AI 服务后可获得更完整的对话能力。'**
+  String get aiChatUnavailable;
+
+  /// No description provided for @aiChatLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时无法连接 AI 助手，请重试。'**
+  String get aiChatLoadFailed;
+
+  /// No description provided for @aiChatRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get aiChatRetry;
+
+  /// No description provided for @aiChatLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'对话内容'**
+  String get aiChatLabel;
+
+  /// No description provided for @aiChatHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入消息…'**
+  String get aiChatHint;
+
+  /// No description provided for @aiChatHintNoUpload.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入消息…'**
+  String get aiChatHintNoUpload;
+
+  /// No description provided for @aiChatSend.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送'**
+  String get aiChatSend;
+
+  /// No description provided for @aiChatAttach.
+  ///
+  /// In zh, this message translates to:
+  /// **'上传报价文件'**
+  String get aiChatAttach;
+
+  /// No description provided for @aiChatRemoveFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除文件'**
+  String get aiChatRemoveFile;
+
+  /// No description provided for @aiChatFileHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'支持 Excel、CSV；文件会用于生成待核对的订货单。'**
+  String get aiChatFileHint;
+
+  /// No description provided for @aiChatFileFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法读取文件，请重新选择 Excel 或 CSV 文件。'**
+  String get aiChatFileFailed;
+
+  /// No description provided for @aiChatFileLarge.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件不能超过 15 MB。'**
+  String get aiChatFileLarge;
+
+  /// No description provided for @aiChatFileMemory.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次对话的文件已达容量上限，请开始新对话后上传。'**
+  String get aiChatFileMemory;
+
+  /// No description provided for @aiChatSending.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在理解问题…'**
+  String get aiChatSending;
+
+  /// No description provided for @aiChatUploading.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取报价文件…'**
+  String get aiChatUploading;
+
+  /// No description provided for @aiChatStop.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止'**
+  String get aiChatStop;
+
+  /// No description provided for @aiChatStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停止本次处理'**
+  String get aiChatStopped;
+
+  /// No description provided for @aiChatFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理未完成，请稍后重试。'**
+  String get aiChatFailed;
+
+  /// No description provided for @aiChatTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理时间较长，已停止等待。请稍后重试。'**
+  String get aiChatTimeout;
+
+  /// No description provided for @aiChatGone.
+  ///
+  /// In zh, this message translates to:
+  /// **'这次处理已过期，请开始新对话。'**
+  String get aiChatGone;
+
+  /// No description provided for @aiChatPermissionChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前权限或会话已变化，对话已清除。请刷新后重试。'**
+  String get aiChatPermissionChanged;
+
+  /// No description provided for @aiChatOpenDraft.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对并新建订货单'**
+  String get aiChatOpenDraft;
+
+  /// No description provided for @aiChatDraftHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'将进入订货单核对页，确认客户、货品、数量和价格后由你保存。'**
+  String get aiChatDraftHint;
+
+  /// No description provided for @aiChatUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'此操作暂不支持，请到对应业务页面处理。'**
+  String get aiChatUnsupported;
+
+  /// No description provided for @aiChatEmptyReply.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次未返回可显示的答复，请重新描述你的问题。'**
+  String get aiChatEmptyReply;
+
+  /// No description provided for @aiChatYou.
+  ///
+  /// In zh, this message translates to:
+  /// **'你'**
+  String get aiChatYou;
+
+  /// No description provided for @aiChatAssistant.
+  ///
+  /// In zh, this message translates to:
+  /// **'助手'**
+  String get aiChatAssistant;
+
+  /// No description provided for @aiChatDraftUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法打开此草稿，请重新上传文件。'**
+  String get aiChatDraftUnavailable;
+
+  /// No description provided for @aiChatConfirmPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对授权内容'**
+  String get aiChatConfirmPermission;
+
+  /// No description provided for @aiChatPermissionDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权已完成'**
+  String get aiChatPermissionDone;
+
+  /// No description provided for @aiChatMoveUp.
+  ///
+  /// In zh, this message translates to:
+  /// **'向上移动助手'**
+  String get aiChatMoveUp;
+
+  /// No description provided for @aiChatMoveDown.
+  ///
+  /// In zh, this message translates to:
+  /// **'向下移动助手'**
+  String get aiChatMoveDown;
+
+  /// No description provided for @aiChatPageAware.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在帮助：当前页面'**
+  String get aiChatPageAware;
+
+  /// No description provided for @aiChatPageOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'结合当前页面回答'**
+  String get aiChatPageOff;
+
+  /// No description provided for @aiChatPageHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只使用页面与字段说明，不读取你的表单内容。'**
+  String get aiChatPageHint;
+
+  /// No description provided for @aiChatPageQuestion.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个页面怎么填写？请举个例子。'**
+  String get aiChatPageQuestion;
+
+  /// No description provided for @aiChatGrantDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对目标人员、权限和范围，确认后需重新验证密码。'**
+  String get aiChatGrantDetails;
+
+  /// No description provided for @aiChatGrantExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权建议已过期，请重新发起。'**
+  String get aiChatGrantExpired;
+
+  /// No description provided for @aiChatGrantUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权结果暂未确认。请在权限管理页核查，再决定是否重试。'**
+  String get aiChatGrantUnknown;
+
+  /// No description provided for @aiChatAttachmentQuestion.
+  ///
+  /// In zh, this message translates to:
+  /// **'请根据这份报价文件帮我生成订货单。'**
+  String get aiChatAttachmentQuestion;
+
+  /// No description provided for @aiChatLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次对话较长，请开始新对话后继续。'**
+  String get aiChatLimit;
+
+  /// No description provided for @aiChatPermissionTarget.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标人员'**
+  String get aiChatPermissionTarget;
+
+  /// No description provided for @aiChatPermissionItem.
+  ///
+  /// In zh, this message translates to:
+  /// **'授予权限'**
+  String get aiChatPermissionItem;
+
+  /// No description provided for @aiChatPermissionScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据范围'**
+  String get aiChatPermissionScope;
+
+  /// No description provided for @aiChatPermissionExpiry.
+  ///
+  /// In zh, this message translates to:
+  /// **'有效期至'**
+  String get aiChatPermissionExpiry;
+
+  /// No description provided for @aiChatPendingGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'待你核对确认'**
+  String get aiChatPendingGrant;
+
+  /// No description provided for @aiChatFileReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'已读取文件，可继续发送问题'**
+  String get aiChatFileReady;
+
+  /// No description provided for @aiChatSendAgain.
+  ///
+  /// In zh, this message translates to:
+  /// **'再次发送'**
+  String get aiChatSendAgain;
+
+  /// No description provided for @aiChatDraftOpened.
+  ///
+  /// In zh, this message translates to:
+  /// **'已打开核对页面'**
+  String get aiChatDraftOpened;
+
+  /// No description provided for @aiChatFileMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。'**
+  String get aiChatFileMissing;
+
+  /// No description provided for @aiChatPrivacyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。'**
+  String get aiChatPrivacyNotice;
+
+  /// No description provided for @aiChatReceived.
+  ///
+  /// In zh, this message translates to:
+  /// **'已送达，正在等待回复…'**
+  String get aiChatReceived;
+
+  /// No description provided for @aiChatRequestRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'这条消息未成功提交。'**
+  String get aiChatRequestRejected;
+
+  /// No description provided for @aiChatDeliveryUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'送达状态未确认；再次发送会发起新请求。'**
+  String get aiChatDeliveryUnknown;
+
+  /// No description provided for @aiChatReplyFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'消息已送达，AI 未能完成回复。'**
+  String get aiChatReplyFailed;
+
+  /// No description provided for @aiChatReplyInterrupted.
+  ///
+  /// In zh, this message translates to:
+  /// **'消息已受理，暂未能读取结果。'**
+  String get aiChatReplyInterrupted;
+
+  /// No description provided for @aiChatWaitingStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停止等待这条消息的回复。'**
+  String get aiChatWaitingStopped;
+
+  /// No description provided for @aiChatRetryMessage.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试此消息'**
+  String get aiChatRetryMessage;
+
+  /// No description provided for @aiChatCheckReply.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新查看结果'**
+  String get aiChatCheckReply;
+
+  /// No description provided for @aiChatInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 使用说明'**
+  String get aiChatInfo;
+
+  /// No description provided for @aiChatInfoDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'知道了'**
+  String get aiChatInfoDone;
 }
 
 class _AppLocalizationsDelegate

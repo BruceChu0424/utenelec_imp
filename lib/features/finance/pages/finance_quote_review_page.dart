@@ -29,6 +29,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -318,6 +319,11 @@ class _FinanceQuoteReviewPageState
     final l10n = AppLocalizations.of(context);
     final review = _review;
     if (review == null || _busy) return;
+    if (_drafts.values.isNotEmpty &&
+        _drafts.values.every((line) => line.removed)) {
+      context.appWarning('报价至少保留一条明细；无法成交请退回销售取消报价');
+      return;
+    }
     // 填错的行(dirty 含 error)先挡住：保存别的行时不能悄悄丢掉它。
     final invalid = _drafts.values.where((d) => d.dirty && !d.valid).length;
     if (invalid > 0) {
@@ -550,7 +556,10 @@ class _FinanceQuoteReviewPageState
   // --------------------------------------------------------- line editing
 
   void _onDealChanged(QuoteFinanceLineDraft draft, String text) {
-    setState(() => draft.onDealChanged(text));
+    setState(() {
+      draft.onDealChanged(text);
+      if (draft.error == null) draft.price.text = draft.effectivePrice ?? '';
+    });
   }
 
   /// 改折扣：本行已勾选且还勾了别的行 → 一并改全部勾选行(可按标价打折的行)。
@@ -1029,7 +1038,7 @@ class _FinanceQuoteReviewPageState
           factValuesOf: (line) {
             final draft = _drafts[line.itemId];
             return {
-              'qty': line.qty,
+              'qty': draft?.removed == true ? '0' : draft?.qty.text ?? line.qty,
               'price': draft == null ? line.storedPrice : draft.effectivePrice,
               'discount': draft == null
                   ? line.discount
@@ -1041,7 +1050,7 @@ class _FinanceQuoteReviewPageState
             final draft = _drafts[line.itemId];
             return draft == null
                 ? const <Listenable>[]
-                : [draft.deal, draft.discount];
+                : [draft.deal, draft.discount, draft.qty, draft.price];
           },
         );
 
@@ -1078,6 +1087,10 @@ class _FinanceQuoteReviewPageState
             ]
           : null,
       rowColor: (line) => _rowColor(theme, line),
+      rowDecorationBuilder: (context, line, child) =>
+          _drafts[line.itemId]?.removed == true
+          ? UtenRevisionStrike(color: theme.colorScheme.error, child: child)
+          : child,
       rowMenuBuilder: editable || review.canMaintainGoodsPrice
           ? (line) => _rowMenu(l10n, review, line, editable)
           : null,
@@ -1117,7 +1130,11 @@ class _FinanceQuoteReviewPageState
           label: l10n.quoteFinanceColQty,
           width: 90,
           type: 'number',
-          value: (line) => financeExactTrimmed(line.qty),
+          value: (line) =>
+              financeExactTrimmed(_drafts[line.itemId]?.qty.text ?? line.qty),
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (_, line) =>
+              _commercialCell(line, quantity: true, editable: editable),
         ),
         MasterColumnDef(
           key: 'unitName',
@@ -1125,6 +1142,17 @@ class _FinanceQuoteReviewPageState
           width: 80,
           value: (line) => UtenGoodsAttributeCell.text(line.unitName),
           cellBuilder: (_, line) => UtenGoodsAttributeCell(line.unitName),
+        ),
+        MasterColumnDef(
+          key: 'price',
+          label: '报价单价',
+          width: 140,
+          type: 'money',
+          info: '仅修改本次报价单价，不更新货品资料。折扣另行填写。',
+          value: (line) => _drafts[line.itemId]?.price.text ?? line.storedPrice,
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (_, line) =>
+              _commercialCell(line, quantity: false, editable: editable),
         ),
         MasterColumnDef(
           key: 'listPrice',
@@ -1291,6 +1319,11 @@ class _FinanceQuoteReviewPageState
     final draft = _drafts[line.itemId];
     return [
       if (editable && draft != null) ...[
+        UtenMenuItem(
+          label: draft.removed ? '恢复此行' : '删除此行',
+          icon: draft.removed ? Icons.undo_rounded : Icons.delete_outline,
+          onTap: () => setState(() => draft.removed = !draft.removed),
+        ),
         if (draft.priceEditable && draft.hasListPrice && !draft.isMaster)
           UtenMenuItem(
             label: l10n.quoteFinanceMenuMasterMode,
@@ -1333,12 +1366,50 @@ class _FinanceQuoteReviewPageState
         QuoteFinanceLineError.discount => l10n.quoteFinanceErrorDiscount,
         QuoteFinanceLineError.needPrice => l10n.quoteFinanceErrorNeedPrice,
         QuoteFinanceLineError.extraAmount => l10n.businessColumnInvalid,
+        QuoteFinanceLineError.quantity => '数量须大于 0',
         null => null,
       };
 
   static final _decimalInput = FilteringTextInputFormatter.allow(
     RegExp(r'^\d*\.?\d*$'),
   );
+
+  Widget _commercialCell(
+    SalesQuoteFinanceLine line, {
+    required bool quantity,
+    required bool editable,
+  }) {
+    final draft = _drafts[line.itemId];
+    if (draft == null) return const Text('—');
+    final controller = quantity ? draft.qty : draft.price;
+    if (!editable || draft.removed || (!quantity && !draft.priceEditable)) {
+      return Text(controller.text, textAlign: TextAlign.right);
+    }
+    return TextField(
+      key: ValueKey(
+        'quote-finance-${quantity ? 'qty' : 'price'}-${line.itemId}',
+      ),
+      controller: controller,
+      textAlign: TextAlign.right,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [_decimalInput],
+      onChanged: (text) => setState(() {
+        if (!quantity) draft.onPriceChanged(text);
+      }),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          isDense: true,
+          error: quantity && draft.error == QuoteFinanceLineError.quantity
+              ? const UtenFieldMessage.error('数量须大于 0')
+              : !quantity &&
+                    draft.directPricing &&
+                    !isValidFinancePrice(controller.text)
+              ? const UtenFieldMessage.error('单价须为非负数')
+              : null,
+        ),
+      ),
+    );
+  }
 
   Widget _dealCell(
     BuildContext context,
@@ -1425,7 +1496,9 @@ class _FinanceQuoteReviewPageState
     if (draft == null) return const Text('—');
     if (!editable || !draft.discountEditable) {
       return Text(
-        draft.isMaster ? financeTrim(draft.discount.text) : '1',
+        draft.isMaster || draft.directPricing
+            ? financeTrim(draft.discount.text)
+            : '1',
         textAlign: TextAlign.right,
       );
     }
@@ -1482,7 +1555,12 @@ class _FinanceQuoteReviewPageState
           measurementTotalsText(
             review.lines.map(
               (line) => MeasuredAmount(
-                value: double.tryParse(line.qty ?? '') ?? 0,
+                value: _drafts[line.itemId]?.removed == true
+                    ? 0
+                    : double.tryParse(
+                            _drafts[line.itemId]?.qty.text ?? line.qty ?? '',
+                          ) ??
+                          0,
                 unitId: line.unitKey,
                 unitName: line.unitName,
               ),

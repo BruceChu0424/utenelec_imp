@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
 import java.sql.SQLException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -12,11 +15,32 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
 
 /**
  * 调度壳的两条规则(ADR-105); 分区搬迁与完成事件由 AuditRetentionPostgresTest 在真库上证明。
  */
 class AuditRetentionSchedulerTest {
+
+    @Test
+    void legacyDestructiveAndUnknownCapabilitiesCannotExecuteMaintenance() throws Exception {
+        for(String mode:new String[]{"LEGACY_PURGE","UNKNOWN",null}) {
+            DataSource source=mock(DataSource.class);Connection connection=mock(Connection.class);
+            PreparedStatement lock=mock(PreparedStatement.class),capability=mock(PreparedStatement.class),unlock=mock(PreparedStatement.class);
+            ResultSet lockResult=mock(ResultSet.class),modeResult=mock(ResultSet.class);
+            when(source.getConnection()).thenReturn(connection);
+            when(connection.prepareStatement("SELECT pg_try_advisory_lock(?)")).thenReturn(lock);
+            when(connection.prepareStatement("SELECT pg_advisory_unlock(?)")).thenReturn(unlock);
+            when(connection.prepareStatement(AuditRetentionModeReader.READ_MODE_SQL)).thenReturn(capability);
+            when(lock.executeQuery()).thenReturn(lockResult);when(lockResult.next()).thenReturn(true);when(lockResult.getBoolean(1)).thenReturn(true);
+            when(capability.executeQuery()).thenReturn(modeResult);when(modeResult.next()).thenReturn(true);when(modeResult.getString(1)).thenReturn(mode);
+            var scheduler=new AuditRetentionScheduler(source,mock(AuditService.class));
+            assertThrows(SQLException.class,scheduler::execute);
+            verify(connection,never()).prepareStatement(contains("FROM fn_audit_retention_run()"));
+            verify(unlock).executeQuery();
+        }
+    }
 
     @Test
     void failureIsRecordedIndependentlyAndSurfacedToTheScheduler() {

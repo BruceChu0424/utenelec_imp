@@ -13,6 +13,7 @@ import '../../../../core/network/api_endpoints.dart';
 import '../../../../core/utils/idempotency_key.dart';
 import '../../../../shared/models/paged_result.dart';
 import '../models/workshop_material_models.dart';
+import '../models/workshop_main_warehouse_option.dart';
 
 /// 一次用户动作的幂等键: `wm-<动作>-<16 位指纹>`; [nonce] 为页面 (或对话框) 会话随机串。
 String wmIdempotencyKey(String action, String nonce, Object? payload) =>
@@ -39,6 +40,14 @@ class WorkshopMaterialRepository {
   Future<List<WmSetting>> settings() async {
     final list = await api.getList(ApiEndpoints.workshopMaterialSettings);
     return list.map(WmSetting.fromJson).toList(growable: false);
+  }
+
+  /// SETUP-only metadata: active, accountable top-level warehouses, without exposing stock or the full dictionary.
+  Future<List<WmMainWarehouseOption>> setupMainWarehouses() async {
+    final rows = await api.getList(
+      '${ApiEndpoints.workshopMaterialSettings}/main-warehouses',
+    );
+    return rows.map(WmMainWarehouseOption.fromJson).toList(growable: false);
   }
 
   /// 开启 / 停用整批领料 (一个原子命令; 开启时同一事务写在产产品的认料)。
@@ -163,6 +172,27 @@ class WorkshopMaterialRepository {
     return list.map(WmMaterialOption.fromJson).toList(growable: false);
   }
 
+  /// 申请只表达需要哪些料，不要求提前将货品配置为期间领料。
+  Future<PagedResult<WmMaterialOption>> requestMaterials(
+    String workshopId, {
+    String keyword = '',
+    List<String> goodsIds = const [],
+    int page = 1,
+    int size = 50,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.workshopMaterialRequestMaterials,
+      query: {
+        'workshopId': workshopId,
+        'page': page,
+        'size': size,
+        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
+      },
+    );
+    return PagedResult.fromJson(json, WmMaterialOption.fromJson);
+  }
+
   /// 内料仓页: 现存 + 顶部盘点 / 结算状态。
   Future<WmPosition> position(String binId) async {
     final json = await api.get(ApiEndpoints.workshopMaterialBinPosition(binId));
@@ -230,6 +260,7 @@ class WorkshopMaterialRepository {
     required int expectedVersion,
     required List<Map<String, dynamic>> lines,
     WmSupplement? supplement,
+    List<Map<String, dynamic>> materialSetup = const [],
     required String idempotencyKey,
   }) async {
     final json = await api.post(
@@ -238,6 +269,7 @@ class WorkshopMaterialRepository {
         'expectedVersion': expectedVersion,
         'lines': lines,
         if (supplement != null) 'supplement': supplement.toJson(),
+        if (materialSetup.isNotEmpty) 'materialSetup': materialSetup,
         'idempotencyKey': idempotencyKey,
       },
     );

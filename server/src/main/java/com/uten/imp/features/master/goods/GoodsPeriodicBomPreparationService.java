@@ -54,8 +54,13 @@ public class GoodsPeriodicBomPreparationService {
     private static final String STATUS_PENDING = "PENDING";
     private static final String SOURCE_BOM = "BOM";
     private static final String SOURCE_CHOICE = "CHOICE";
-    /** 上线准备列表的行数上限 (常做的产品按次数排前面)。 */
-    private static final int ROW_LIMIT = 3000;
+    /**
+     * 上线准备列表的行数上限 (常做的产品按次数排前面)。
+     * 2026-10-02 从 3000 收敛到 300：全量重导库后候选产品达 3.5 万，前端可编辑表
+     * 是 content-tall 全量布局，3000 行会同步构建上万个输入单元直接卡死页面；
+     * 进度三数 (total/chosen/weighed) 是独立聚合，不受行数截断影响，截断时前端有提示。
+     */
+    private static final int ROW_LIMIT = 300;
 
     private final NamedParameterJdbcTemplate db;
     private final GoodsBomService bom;

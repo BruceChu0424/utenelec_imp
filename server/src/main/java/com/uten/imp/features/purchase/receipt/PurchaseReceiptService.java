@@ -68,6 +68,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PurchaseReceiptService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -115,7 +119,9 @@ public class PurchaseReceiptService {
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
         Page<PurchaseReceipt> p = receiptRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<ReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(PurchaseReceipt::isDeleted) ? result
+                : retainedRecords.page(result, "purchase_receipts", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -131,7 +137,8 @@ public class PurchaseReceiptService {
         return (Root<PurchaseReceipt> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -146,20 +153,27 @@ public class PurchaseReceiptService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", priceMasker != null && priceMasker.canViewPurchaseReceipt(), null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public ReceiptDetail detail(UUID id) {
-        PurchaseReceipt r = requireReceipt(id);
+    public ReceiptDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public ReceiptDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private ReceiptDetail readDetail(UUID id, boolean historyRead) {
+        PurchaseReceipt r = requireReceipt(id, historyRead);
         access.requireReadable(r.getMakerId(), "采购收货单不存在");
         List<PurchaseReceiptItem> entities = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         Map<UUID, ReceiptSourceRef> orderRefs = orderRefsByItemIds(
                 entities.stream().map(PurchaseReceiptItem::getOrderItemId).toList());
         List<ReceiptItemDto> items = entities.stream()
                 .map(it -> toItemDto(it, orderRefs)).toList();
-        return toDetail(r, items);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     @Transactional
@@ -747,9 +761,11 @@ public class PurchaseReceiptService {
 
 
 
-    private PurchaseReceipt requireReceipt(UUID id) {
+    private PurchaseReceipt requireReceipt(UUID id) { return requireReceipt(id, false); }
+
+    private PurchaseReceipt requireReceipt(UUID id, boolean includeDeleted) {
         return receiptRepo.findById(id)
-                .filter(r -> !r.isDeleted())
+                .filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购收货单不存在"));
     }
     private PurchaseReceipt requireReceiptForUpdate(UUID id) {
@@ -758,5 +774,17 @@ public class PurchaseReceiptService {
         return receipt == null || receipt.isDeleted()
                 ? requireReceipt(id)
                 : receipt;
+    }
+
+    private ReceiptDetail finishHistory(ReceiptDetail view, PurchaseReceipt entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "purchase_receipts", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("purchase_receipts",id,beforeId,size);
     }
 }

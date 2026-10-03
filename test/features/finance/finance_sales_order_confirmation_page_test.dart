@@ -12,6 +12,9 @@ import 'package:uten_imp/shared/models/party_open_balance.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -198,6 +201,10 @@ Future<GoRouter> _pumpPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
@@ -254,6 +261,10 @@ Future<void> _pumpReview(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
@@ -281,7 +292,13 @@ Future<void> _pumpReview(
   }
 }
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   for (final size in [const Size(1200, 900), const Size(390, 844)]) {
     testWidgets(
       'pending category owns the full queue badge without the summary card at $size',
@@ -297,6 +314,7 @@ void main() {
               find.byWidgetPredicate(
                 (widget) =>
                     widget is UtenSegmentBadgeLabel && widget.label == '待确认',
+                skipOffstage: false,
               ),
             );
         expect(
@@ -312,6 +330,15 @@ void main() {
         await tester.enterText(search, 'XD-ONE');
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pumpAndSettle();
+        // Searching may scroll the collapsible filter header out of view.
+        await tester.ensureVisible(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenSegmentBadgeLabel && widget.label == '待确认',
+            skipOffstage: false,
+          ),
+        );
+        await tester.pumpAndSettle();
         expect(
           pendingBadge().count,
           2,
@@ -325,6 +352,7 @@ void main() {
           find.byWidgetPredicate(
             (widget) =>
                 widget is UtenSegmentBadgeLabel && widget.label == '已驳回',
+            skipOffstage: false,
           ),
         );
         // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数; ADR-100 起已驳回段
@@ -626,10 +654,21 @@ void main() {
     expect(
       find.ancestor(
         of: find.text('预收有余 美金 200.00'),
-        matching: find.byType(Tooltip),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip && (widget.message?.isNotEmpty ?? false),
+        ),
       ),
       findsNothing,
       reason: '没有补充说明时不挂提示',
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('sales-order-finance-desktop-table')),
+        matching: find.byIcon(Icons.info_outline_rounded),
+      ),
+      findsNothing,
+      reason: '客户应收的说明图标仅在表头，金额格保留悬停说明',
     );
   });
 
@@ -882,6 +921,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           isSuperAdminProvider.overrideWithValue(false),
           currentPermissionsProvider.overrideWithValue({
             Perm.salesOrderFinanceView,

@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.List;
 
 /**
  * 生产计划 API（生产管理）。
@@ -61,8 +62,11 @@ public class ProductionPlanController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
-        return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo), page, size, sort, order);
+            @RequestParam(required = false) String order,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+        return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo), page, size, sort, order,
+                includeDeleted, onlyDeleted);
     }
 
     /**
@@ -118,12 +122,27 @@ public class ProductionPlanController {
         return result;
     }
 
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public PlanDetail history(@PathVariable UUID id) {
+        PlanDetail result = service.history(id);
+        auditViews.record("view_production_plan_detail", "production_plans", id, result.getBillNo(), result.getLegacyId(), "生产计划历史");
+        return result;
+    }
+
+    @GetMapping("/{id}/history-records")
+    @PreAuthorize("hasAuthority('production_plan:view')")
+    public List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRecords(@PathVariable UUID id,
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size) {
+        return service.historyRecords(id, beforeId, size);
+    }
+
     @PostMapping
-    @PreAuthorize("hasAuthority('production_material_analysis:create')")
+    @PreAuthorize("hasAuthority('production_material_analysis:create') or hasAuthority('production_plan:create')")
     public PlanDetail create(@Valid @RequestBody PlanSaveRequest req) {
-        throw new com.uten.imp.common.web.ApiException(
-                com.uten.imp.common.web.ErrorCode.CONFLICT,
-                "新增生产计划必须先完成物料分析，请使用 /api/production/material-analyses");
+        // 2026-10-01 恢复手工空白新建（用户口径：新建单据进去都是默认新建页）。
+        // 手工计划没有来源物料分析，排产时按 v_goods_bom_item_usage.effective_qty 展开分段。
+        return service.create(req);
     }
 
     @PutMapping("/{id}")

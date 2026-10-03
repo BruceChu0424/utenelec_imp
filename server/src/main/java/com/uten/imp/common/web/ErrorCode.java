@@ -23,6 +23,8 @@ public enum ErrorCode {
     /** 路径存在但不支持这种请求方式 (如已删除的写接口只剩查询)。 */
     METHOD_NOT_ALLOWED(405, "不支持这种请求方式"),
     CONFLICT(409, "数据冲突"),
+    DAILY_REPORT_REVIEW_VERSION_CONFLICT(409, "这张日报已经变化，请刷新并重新核对后审核"),
+    DAILY_REPORT_LEGACY_APPROVAL_RECEIPT(409, "原审核按旧规则登记，请先核对原回执；所见版本未被验证"),
     ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待财务审核组处理"),
     SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED(409, "到货数量明显少于订货量，需仓库确认后登记并通知委外判定"),
     VALIDATION_FAILED(422, "参数校验失败"),

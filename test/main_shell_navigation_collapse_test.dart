@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
 import 'package:uten_imp/features/shell/widgets/floating_capsule_nav_bar.dart';
@@ -9,51 +10,73 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
 
 void main() {
-  for (final width in [1440.0, 1920.0]) {
-    testWidgets('collapsing navigation gives content more space at $width', (
-      tester,
-    ) async {
-      final router = await _pumpShell(
+  for (final variant in _ContentVariant.values) {
+    for (final width in [1440.0, 1920.0, 2560.0]) {
+      testWidgets('collapsing navigation widens ${variant.name} body at $width', (
         tester,
-        width: width,
-        height: width == 1440 ? 360 : 1000,
-        brightness: width == 1440 ? Brightness.dark : Brightness.light,
-      );
-      final expandedWidth = tester.getSize(find.byKey(_surfaceKey)).width;
-      expect(
-        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-        isTrue,
-      );
+      ) async {
+        final router = await _pumpShell(
+          tester,
+          width: width,
+          variant: variant,
+          height: width == 1440 ? 360 : 1000,
+          brightness: width == 1440 ? Brightness.dark : Brightness.light,
+        );
+        final expandedWidth = tester.getSize(find.byKey(_surfaceKey)).width;
+        final expandedBodyWidth = tester.getSize(find.byKey(_bodyKey)).width;
+        final expandedRailWidth = tester
+            .getSize(find.byType(NavigationRail))
+            .width;
+        // Both the shell and the business page retain 32dp side gutters, but
+        // neither may absorb available desktop space with a maximum width.
+        expect(expandedWidth, closeTo(width - expandedRailWidth - 64, 0.01));
+        expect(expandedBodyWidth, closeTo(expandedWidth - 64, 0.01));
+        expect(
+          tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+          isTrue,
+        );
 
-      await tester.tap(find.byTooltip('收起导航栏'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('收起导航栏'));
+        await tester.pumpAndSettle();
 
-      final collapsedWidth = tester.getSize(find.byKey(_surfaceKey)).width;
-      expect(collapsedWidth, greaterThan(expandedWidth + 100));
-      if (width == 1920) {
-        // The old shell's 1600dp cap otherwise absorbs the recovered rail width.
-        expect(collapsedWidth, greaterThan(1600));
-      }
-      expect(
-        tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
-        isFalse,
-      );
-      expect(find.byTooltip('展开导航栏'), findsOneWidget);
-      expect(find.byTooltip('工作台'), findsOneWidget);
-      expect(find.byTooltip('通知'), findsOneWidget);
-      expect(router.routeInformationProvider.value.uri.path, '/shell-probe');
+        final collapsedWidth = tester.getSize(find.byKey(_surfaceKey)).width;
+        final collapsedBodyWidth = tester.getSize(find.byKey(_bodyKey)).width;
+        expect(collapsedWidth, greaterThan(expandedWidth + 100));
+        expect(collapsedBodyWidth, closeTo(collapsedWidth - 64, 0.01));
+        expect(
+          collapsedBodyWidth - expandedBodyWidth,
+          closeTo(collapsedWidth - expandedWidth, 0.01),
+        );
+        if (width >= 1920) {
+          // Inspect actual page content: an expanding outer Scaffold alone did
+          // not catch the nested business container's old 1600dp / 1120dp caps.
+          expect(collapsedBodyWidth, greaterThan(1600));
+        }
+        expect(
+          tester.widget<NavigationRail>(find.byType(NavigationRail)).extended,
+          isFalse,
+        );
+        expect(find.byTooltip('展开导航栏'), findsOneWidget);
+        expect(find.byTooltip('工作台'), findsOneWidget);
+        expect(find.byTooltip('通知'), findsOneWidget);
+        expect(router.routeInformationProvider.value.uri.path, '/shell-probe');
 
-      await tester.tap(find.byTooltip('展开导航栏'));
-      await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('展开导航栏'));
+        await tester.pumpAndSettle();
 
-      expect(
-        tester.getSize(find.byKey(_surfaceKey)).width,
-        closeTo(expandedWidth, 0.01),
-      );
-      expect(find.byTooltip('收起导航栏'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
-    });
+        expect(
+          tester.getSize(find.byKey(_surfaceKey)).width,
+          closeTo(expandedWidth, 0.01),
+        );
+        expect(
+          tester.getSize(find.byKey(_bodyKey)).width,
+          closeTo(expandedBodyWidth, 0.01),
+        );
+        expect(find.byTooltip('收起导航栏'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
   }
 
   testWidgets('collapse and business navigation keep input and scroll state', (
@@ -63,6 +86,7 @@ void main() {
     final probe = tester.state<_BusinessProbeState>(
       find.byType(_BusinessProbe),
     );
+    final expandedBodyWidth = tester.getSize(find.byKey(_bodyKey)).width;
     await tester.enterText(find.byKey(_inputKey), '保留正在编辑的内容');
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.drag(find.byKey(_listKey), const Offset(0, -500));
@@ -79,6 +103,10 @@ void main() {
     );
     expect(probe.textController.text, '保留正在编辑的内容');
     expect(probe.scrollController.offset, closeTo(offset, 0.01));
+    expect(
+      tester.getSize(find.byKey(_bodyKey)).width,
+      greaterThan(expandedBodyWidth),
+    );
 
     router.push('/shell-probe/detail');
     await tester.pumpAndSettle();
@@ -107,6 +135,10 @@ void main() {
     );
     expect(probe.textController.text, '保留正在编辑的内容');
     expect(probe.scrollController.offset, closeTo(offset, 0.01));
+    expect(
+      tester.getSize(find.byKey(_bodyKey)).width,
+      closeTo(expandedBodyWidth, 0.01),
+    );
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -161,14 +193,25 @@ void main() {
 }
 
 const _surfaceKey = Key('business-surface');
+const _bodyKey = Key('business-body');
 const _inputKey = Key('business-input');
 const _listKey = Key('business-list');
+
+enum _ContentVariant { standard, narrow, wide }
+
+Widget _pageContainer(_ContentVariant variant, Widget child) =>
+    switch (variant) {
+      _ContentVariant.standard => UtenContentContainer(child: child),
+      _ContentVariant.narrow => UtenContentContainer.narrow(child: child),
+      _ContentVariant.wide => UtenContentContainer.wide(child: child),
+    };
 
 Future<GoRouter> _pumpShell(
   WidgetTester tester, {
   double width = 1920,
   double height = 1000,
   Brightness brightness = Brightness.light,
+  _ContentVariant variant = _ContentVariant.standard,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(width, height);
@@ -184,7 +227,7 @@ Future<GoRouter> _pumpShell(
         routes: [
           GoRoute(
             path: '/shell-probe',
-            builder: (_, _) => const _BusinessProbe(),
+            builder: (_, _) => _BusinessProbe(variant: variant),
             routes: [
               GoRoute(
                 path: 'detail',
@@ -233,7 +276,9 @@ class _PublicSettingsRepository implements PublicSettingsRepository {
 }
 
 class _BusinessProbe extends StatefulWidget {
-  const _BusinessProbe();
+  const _BusinessProbe({required this.variant});
+
+  final _ContentVariant variant;
 
   @override
   State<_BusinessProbe> createState() => _BusinessProbeState();
@@ -255,19 +300,25 @@ class _BusinessProbeState extends State<_BusinessProbe> {
     return Scaffold(
       body: SizedBox.expand(
         key: _surfaceKey,
-        child: Column(
-          children: [
-            TextField(key: _inputKey, controller: textController),
-            Expanded(
-              child: ListView.builder(
-                key: _listKey,
-                controller: scrollController,
-                itemCount: 100,
-                itemExtent: 48,
-                itemBuilder: (_, index) => Text('业务记录 $index'),
-              ),
+        child: _pageContainer(
+          widget.variant,
+          SizedBox.expand(
+            key: _bodyKey,
+            child: Column(
+              children: [
+                TextField(key: _inputKey, controller: textController),
+                Expanded(
+                  child: ListView.builder(
+                    key: _listKey,
+                    controller: scrollController,
+                    itemCount: 100,
+                    itemExtent: 48,
+                    itemBuilder: (_, index) => Text('业务记录 $index'),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

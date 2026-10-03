@@ -34,4 +34,18 @@ public class RequestItemDto {
     private String remark;
     private BigDecimal pendingQty;
     private BigDecimal remainingQty;
+    private long rowVersion;
+
+    /** Existing internal readers remain source-compatible; live ORM rows supply the persistent version. */
+    public RequestItemDto(UUID id, Integer lineNo, UUID goodsId, String goodsCodeSnapshot,
+            String goodsNameSnapshot, String goodsSnapshotSource, OffsetDateTime goodsSnapshotLockedAt,
+            UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal price,
+            BigDecimal amountOriginal, BigDecimal amountLocal, BigDecimal orderedQty, BigDecimal giftQty,
+            BigDecimal weight, String sourceDocNo, LocalDate deliverDate, String productionPlanNo,
+            String salesOrderNo, String remark, BigDecimal pendingQty, BigDecimal remainingQty) {
+        this(id, lineNo, goodsId, goodsCodeSnapshot, goodsNameSnapshot, goodsSnapshotSource,
+                goodsSnapshotLockedAt, colorId, unitId, unitRate, qty, price, amountOriginal, amountLocal,
+                orderedQty, giftQty, weight, sourceDocNo, deliverDate, productionPlanNo, salesOrderNo,
+                remark, pendingQty, remainingQty, 0);
+    }
 }

@@ -10,6 +10,8 @@
 //   - ProductionFqcInspectionPage：单条 FQC 任务（含无检查单的历史任务）的
 //     详情 + 办理页。摘要卡展示送检登记事实，检验图片/文件就近挂载；决定表单
 //     与检查单页同一套数量/处置口径。
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,6 +38,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -44,6 +47,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
@@ -105,19 +109,59 @@ String _dispositionLabel(String code) =>
     code;
 
 /// 决定能力 = 审批权限 + 服务端品质组织校验（canDecide），与列表页同一口径。
+bool _hasFqcApprovalPermission(WidgetRef ref) =>
+    ref.read(isSuperAdminProvider) ||
+    ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.productionQualityInspectionApprove);
+
 Future<bool> _canDecideFqc(WidgetRef ref) async {
-  final mayApprove =
-      ref.read(isSuperAdminProvider) ||
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.productionQualityInspectionApprove);
-  if (!mayApprove) return false;
+  if (!_hasFqcApprovalPermission(ref)) return false;
   try {
     return await ref.read(productionFqcRepositoryProvider).canDecide();
   } catch (_) {
     return false;
   }
 }
+
+enum FqcSubmissionState { notSent, rejected, unknown, confirmed }
+
+class _FqcSubmissionNotSent implements Exception {
+  const _FqcSubmissionNotSent();
+}
+
+/// A late original-server response may finish there, but must not notify or pop
+/// a different user's/server's page or a route pushed over this editor.
+bool Function() _captureFqcResponseView(
+  BuildContext context,
+  WidgetRef ref,
+  String Function() documentId, {
+  required bool Function() identityIsCurrent,
+}) {
+  final scope = ref.read(authenticatedScopeProvider);
+  final server = ref.read(apiBaseUrlProvider);
+  final route = ModalRoute.of(context);
+  final originalDocumentId = documentId();
+  return () =>
+      context.mounted &&
+      identityIsCurrent() &&
+      documentId() == originalDocumentId &&
+      ref.read(authenticatedScopeProvider) == scope &&
+      ref.read(apiBaseUrlProvider) == server &&
+      (route == null || route.isCurrent);
+}
+
+// These structured application responses reject this attempt. After an earlier
+// unknown attempt, even a later rejection cannot disprove that earlier commit.
+bool _isFqcRejection(ApiException error) =>
+    switch ((error.httpStatus, error.code)) {
+      (400, 'MALFORMED_REQUEST' || 'BUSINESS' || 'VALIDATION_FAILED') ||
+      (422, 'VALIDATION_FAILED') ||
+      (409, 'CONFLICT') ||
+      (401, 'UNAUTHORIZED') ||
+      (403, 'FORBIDDEN') => true,
+      _ => false,
+    };
 
 /// 一行可编辑的 FQC 检验报告（合格默认=待检、不合格默认=0），与 IQC 报告行同构。
 class FqcReportRow {
@@ -132,11 +176,106 @@ class FqcReportRow {
   /// 不合格处置方式（含不合格数量的行在提交时必带；REWORK 为默认）。
   String disposition = 'REWORK';
 
-  /// 行级幂等键：确认报告后冻结，重试不换键（与服务端按 用户+键 去重配合）。
+  /// 行级幂等键：确认报告后冻结；服务端按 inspection + key 核对 request_hash。
   String idempotencyKey = 'fqc-report-${const Uuid().v4()}';
   bool selected = true;
   bool completed = false;
   Map<String, dynamic>? submission;
+  FqcSubmissionState submissionState = FqcSubmissionState.notSent;
+  String? submissionMessage;
+  String? decisionEventId;
+  int confirmedSubmissionCount = 0;
+  Map<String, dynamic>? lastConfirmedSubmission;
+
+  int get totalConfirmedSubmissions =>
+      confirmedSubmissionCount + (completed ? 1 : 0);
+
+  bool get needsReconciliation =>
+      !completed && submissionState == FqcSubmissionState.unknown;
+
+  String get submissionLabel => completed
+      ? '已确认'
+      : switch (submissionState) {
+          FqcSubmissionState.notSent => '未提交',
+          FqcSubmissionState.rejected => '明确拒绝',
+          FqcSubmissionState.unknown => '待核对',
+          FqcSubmissionState.confirmed => '已确认',
+        };
+
+  /// The guard durably checkpoints this row before the network closure begins.
+  /// Its return value confirms the business write; later local work is separate.
+  Future<ProductionFqcDecisionResult?> send({
+    required String reason,
+    required ProductionFqcRepository repository,
+    required Future<ProductionFqcDecisionResult> Function(
+      Future<ProductionFqcDecisionResult> Function() send,
+      bool Function(ApiException) isDefiniteRejection,
+    )
+    guard,
+  }) async {
+    if (completed) return null;
+    final wasUnknown = needsReconciliation;
+    var dispatched = false;
+    ApiException? definiteRejection;
+    freezeSubmission(reason);
+    submissionState = FqcSubmissionState.unknown;
+    submissionMessage = null;
+    try {
+      if (idempotencyKey.trim().isEmpty) {
+        throw StateError('旧草稿缺少原提交标识，请保留草稿并联系管理员核对');
+      }
+      final value = command;
+      final result = await guard(
+        () {
+          dispatched = true;
+          return repository.decide(
+            id: inspection.id,
+            decision: value.decision,
+            idempotencyKey: idempotencyKey,
+            passQty: value.passQty,
+            failQty: value.failQty,
+            dispositionCode: submission?['disposition'] as String?,
+            reason: submission?['reason'] as String?,
+          );
+        },
+        (error) {
+          final rejected = !wasUnknown && _isFqcRejection(error);
+          if (rejected) definiteRejection = error;
+          return rejected;
+        },
+      );
+      if (result.decisionEventId.isEmpty ||
+          result.inspection.id != inspection.id) {
+        throw StateError('服务器回执不完整');
+      }
+      completed = true;
+      selected = false;
+      submissionState = FqcSubmissionState.confirmed;
+      decisionEventId = result.decisionEventId;
+      return result;
+    } catch (error) {
+      if (!wasUnknown && error is ApiException && _isFqcRejection(error)) {
+        definiteRejection ??= error;
+      }
+      if (definiteRejection != null) {
+        submissionState = FqcSubmissionState.rejected;
+        submission = null;
+        submissionMessage = definiteRejection!.message;
+      } else if (!dispatched && !wasUnknown) {
+        submissionState = FqcSubmissionState.notSent;
+        submission = null;
+        submissionMessage = error is _FqcSubmissionNotSent
+            ? '页面已变化，本行未发送。返回原页面后可继续办理。'
+            : '本机草稿尚未保存，本行未发送。请保留页面后重试。';
+      } else {
+        submissionState = FqcSubmissionState.unknown;
+        submissionMessage = error is ApiException
+            ? error.message
+            : '暂时未收到可确认的结果';
+      }
+      return null;
+    }
+  }
 
   void freezeSubmission(String reason) {
     if (submission != null) return;
@@ -159,10 +298,52 @@ class FqcReportRow {
     'selected': selected,
     'completed': completed,
     'submission': submission,
+    'submissionState': submissionState.name,
+    'submissionMessage': submissionMessage,
+    'decisionEventId': decisionEventId,
+    'confirmedSubmissionCount': confirmedSubmissionCount,
+    if (lastConfirmedSubmission != null)
+      'lastConfirmedSubmission': lastConfirmedSubmission,
   };
 
-  void restoreFormDraft(Map<String, dynamic> data) {
+  void restoreFormDraft(
+    Map<String, dynamic> data, {
+    bool allowConfirmedRemainder = false,
+  }) {
     if (data['inspectionId'] != inspection.id) return;
+    confirmedSubmissionCount =
+        (data['confirmedSubmissionCount'] as num?)?.toInt() ?? 0;
+    lastConfirmedSubmission = data['lastConfirmedSubmission'] is Map
+        ? draftMap(data['lastConfirmedSubmission'])
+        : null;
+    if (allowConfirmedRemainder &&
+        data['completed'] == true &&
+        inspection.active &&
+        inspection.remainingQty > 0) {
+      // A confirmed command is not a completed inspection. Only a fresh read
+      // may start its remaining quantity as a new, initially unselected command.
+      if (lastConfirmedSubmission?['idempotencyKey'] !=
+          data['idempotencyKey']) {
+        confirmedSubmissionCount++;
+      }
+      lastConfirmedSubmission = {
+        'idempotencyKey': data['idempotencyKey'],
+        'decisionEventId': data['decisionEventId'],
+        'submission': data['submission'],
+      };
+      pass.text = fqty(inspection.remainingQty);
+      fail.text = '0';
+      disposition = 'REWORK';
+      idempotencyKey = 'fqc-report-${const Uuid().v4()}';
+      selected = false;
+      completed = false;
+      submission = null;
+      submissionState = FqcSubmissionState.notSent;
+      submissionMessage =
+          '上次提交已确认，仍有待检 ${fqty(inspection.remainingQty)}；可继续办理剩余数量。';
+      decisionEventId = null;
+      return;
+    }
     pass.text = draftText(data, 'pass');
     fail.text = draftText(data, 'fail');
     disposition = draftText(data, 'disposition');
@@ -172,6 +353,21 @@ class FqcReportRow {
     submission = data['submission'] is Map
         ? draftMap(data['submission'])
         : null;
+    // Earlier drafts only stored completed + frozen body. Conservatively keep
+    // every unfinished frozen command pending, regardless of a fresh GET state.
+    submissionState = completed
+        ? FqcSubmissionState.confirmed
+        : submission != null
+        ? FqcSubmissionState.unknown
+        : data['submissionState'] == 'rejected'
+        ? FqcSubmissionState.rejected
+        : FqcSubmissionState.notSent;
+    submissionMessage = data['submissionMessage'] as String?;
+    decisionEventId = data['decisionEventId'] as String?;
+    if (submission != null) {
+      pass.text = fqty(command.passQty ?? 0);
+      fail.text = fqty(command.failQty ?? 0);
+    }
   }
 
   double get passValue => double.tryParse(pass.text.trim()) ?? 0;
@@ -216,6 +412,25 @@ class FqcReportRow {
         : (decision: 'PARTIAL', passQty: passValue, failQty: failValue);
   }
 
+  /// Bind the confirmation to the command it displayed. Pending commands use
+  /// their frozen body, so factual refreshes cannot change a recovery request.
+  String get _reviewFingerprint {
+    final value = command;
+    return jsonEncode({
+      'key': idempotencyKey,
+      'completed': completed,
+      'selected': selected,
+      'body':
+          submission ??
+          {
+            'decision': value.decision,
+            'passQty': value.passQty,
+            'failQty': value.failQty,
+            'disposition': value.decision == 'PASS' ? null : disposition,
+          },
+    });
+  }
+
   String get label => [
     inspection.reportNo == null || inspection.reportNo!.isEmpty
         ? inspection.id
@@ -229,6 +444,88 @@ class FqcReportRow {
     fail.dispose();
   }
 }
+
+Widget? _fqcSubmissionNotice(
+  List<FqcReportRow> rows, {
+  required Key key,
+  required bool canDecide,
+}) {
+  if (!rows.any(
+    (row) =>
+        row.totalConfirmedSubmissions > 0 ||
+        row.needsReconciliation ||
+        row.submissionMessage != null,
+  )) {
+    return null;
+  }
+  final completedRows = rows.where((row) => row.completed).length;
+  final confirmed = rows.fold<int>(
+    0,
+    (count, row) => count + row.totalConfirmedSubmissions,
+  );
+  final unknown = rows.where((row) => row.needsReconciliation).length;
+  final rejected = rows
+      .where((row) => row.submissionState == FqcSubmissionState.rejected)
+      .length;
+  final notSent = rows.length - completedRows - unknown - rejected;
+  return UtenInlineNotice(
+    key: key,
+    level: unknown > 0 || rejected > 0
+        ? UtenInlineNoticeLevel.warning
+        : UtenInlineNoticeLevel.info,
+    title: unknown > 0
+        ? '提交结果待核对'
+        : rejected > 0
+        ? '本次提交未通过'
+        : '提交进度',
+    message: [
+      '已确认 $confirmed 次提交 · 明确拒绝 $rejected 行 · 待核对 $unknown 行 · 未提交 $notSent 行。',
+      for (final row
+          in rows.where((row) => row.submissionMessage != null).take(3))
+        '${row.label}：${row.submissionMessage}',
+      if (unknown > 0)
+        canDecide
+            ? '原提交内容已保留。刷新可查看当前进度；点击「核对并继续原提交」按原内容继续办理。'
+            : '原提交内容已保留，当前无办理权限；请恢复权限后继续核对。',
+      if (rejected > 0) '已明确拒绝的行可以修改后重新提交。',
+      if (confirmed > 0) '已确认的原提交不会重发；剩余待检数量刷新后另行办理。',
+    ].join('\n'),
+  );
+}
+
+/// A recovery action only handles frozen rows. New rows keep their ordinary
+/// report confirmation and are submitted after the uncertain command is settled.
+Future<bool> _confirmOriginalFqcReport(
+  BuildContext context,
+  List<FqcReportRow> rows,
+) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        scrollable: true,
+        title: const Text('核对并继续原提交'),
+        content: Text(
+          [
+            '将按以下原内容继续办理。服务器已登记的决定会返回已有结果，其余行继续登记；遇到未确认或拒绝时停止。',
+            for (final row in rows)
+              '${row.label}：合格 ${fqty(row.command.passQty ?? 0)}，不合格 ${fqty(row.command.failQty ?? 0)}'
+                  '${row.submission?['reason'] == null ? '' : '；${row.submission!['reason']}'}',
+            '本次先核对待确认行，尚未提交的其他行保留，核对完成后可继续提交。',
+          ].join('\n\n'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('继续原提交'),
+          ),
+        ],
+      ),
+    ) ??
+    false;
 
 /// 按单位分组的数量合计文本（跨单位绝不相加，与全站口径一致）。
 String _fqcTotalsText(
@@ -264,6 +561,16 @@ String _joinRowLabels(List<String> labels) {
 class ProductionFqcSheetHandlingPage extends ConsumerStatefulWidget {
   const ProductionFqcSheetHandlingPage({super.key, required this.sheetId});
 
+  /// GoRouter's page key identifies the route pattern, not its dynamic ID.
+  /// A different document/draft must own a new State and draft lifecycle.
+  static Widget route(BuildContext context, GoRouterState state) {
+    final id = state.pathParameters['sheetId']!;
+    return ProductionFqcSheetHandlingPage(
+      key: ValueKey((id, state.uri.queryParameters['draftId'])),
+      sheetId: id,
+    );
+  }
+
   final String sheetId;
 
   @override
@@ -276,7 +583,11 @@ class _ProductionFqcSheetHandlingPageState
     with FormDraftMixin<ProductionFqcSheetHandlingPage> {
   String _draftReason = '';
   @override
-  bool get formDraftBusy => _submitting || _loading;
+  bool get formDraftBusy => _confirming || _submitting || _loading;
+  @override
+  bool get formDraftHasUnknownSubmission => _rows == null
+      ? super.formDraftHasUnknownSubmission
+      : _rows!.any((row) => row.needsReconciliation);
   @override
   bool get formDraftCanReplaySubmission => true;
   @override
@@ -302,8 +613,7 @@ class _ProductionFqcSheetHandlingPageState
     for (final inspection
         in _detail?.inspections ?? <ProductionFqcInspection>[]) {
       final value = saved[inspection.id];
-      if (value?['submission'] is Map &&
-          value?['completed'] != true &&
+      if ((value?['submission'] is Map || value?['completed'] == true) &&
           !(_rows ?? <FqcReportRow>[]).any(
             (row) => row.inspection.id == inspection.id,
           )) {
@@ -312,20 +622,25 @@ class _ProductionFqcSheetHandlingPageState
     }
     for (final row in _rows ?? <FqcReportRow>[]) {
       final value = saved[row.inspection.id];
-      if (value != null) row.restoreFormDraft(value);
+      if (value != null) {
+        row.restoreFormDraft(value, allowConfirmedRemainder: true);
+      }
     }
   }
 
   ProductionFqcInspectionSheetDetail? _detail;
   List<FqcReportRow>? _rows;
   bool _loading = true;
+  bool _confirming = false;
   bool _submitting = false;
+  int _loadGeneration = 0;
   bool _canDecide = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     _load();
   }
 
@@ -335,7 +650,21 @@ class _ProductionFqcSheetHandlingPageState
     super.dispose();
   }
 
-  Future<void> _load({bool preserveInput = true}) async {
+  Future<void> _load({
+    bool preserveInput = true,
+    bool afterSubmission = false,
+  }) async {
+    if (!formDraftIdentityIsCurrent ||
+        _confirming ||
+        (_submitting && !afterSubmission)) {
+      return;
+    }
+    final generation = ++_loadGeneration;
+    bool accepts() =>
+        formDraftIdentityIsCurrent &&
+        generation == _loadGeneration &&
+        !_confirming &&
+        (!_submitting || afterSubmission);
     setState(() {
       _loading = true;
       _error = null;
@@ -344,9 +673,9 @@ class _ProductionFqcSheetHandlingPageState
       final detail = await ref
           .read(productionFqcRepositoryProvider)
           .sheetDetail(widget.sheetId);
-      if (!mounted) return;
+      if (!accepts()) return;
       final canDecide = await _canDecideFqc(ref);
-      if (!mounted) return;
+      if (!accepts()) return;
       final rows = [
         for (final inspection in detail.activeInspections)
           FqcReportRow(inspection),
@@ -358,15 +687,23 @@ class _ProductionFqcSheetHandlingPageState
         };
         for (final inspection in detail.inspections) {
           final value = saved[inspection.id];
-          if (value?['submission'] is Map &&
-              value?['completed'] != true &&
+          if ((value?['submission'] is Map || value?['completed'] == true) &&
               !rows.any((row) => row.inspection.id == inspection.id)) {
             rows.add(FqcReportRow(inspection));
           }
         }
         for (final row in rows) {
           if (saved[row.inspection.id] case final value?) {
-            row.restoreFormDraft(value);
+            row.restoreFormDraft(value, allowConfirmedRemainder: true);
+          }
+        }
+        for (final previous in previousRows) {
+          if ((previous.submission != null || previous.completed) &&
+              !rows.any((row) => row.inspection.id == previous.inspection.id)) {
+            rows.add(
+              FqcReportRow(previous.inspection)
+                ..restoreFormDraft(previous.toFormDraft()),
+            );
           }
         }
       }
@@ -381,13 +718,13 @@ class _ProductionFqcSheetHandlingPageState
       }
       await initializeFormDraft();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!accepts()) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!accepts()) return;
       setState(() {
         _error = '品质检查单加载失败，请检查网络后重试';
         _loading = false;
@@ -400,108 +737,146 @@ class _ProductionFqcSheetHandlingPageState
       .toList();
 
   Future<void> _submitReport() async {
-    if (_submitting) return;
-    final selected = _selected;
+    if (_loading ||
+        _confirming ||
+        _submitting ||
+        !_canDecide ||
+        !_hasFqcApprovalPermission(ref) ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
+    final requested = _selected;
+    final pending = requested.where((row) => row.needsReconciliation).toList();
+    final selected = pending.isEmpty ? requested : pending;
     if (selected.isEmpty) {
       context.appWarning('请先勾选要提交的明细行');
       return;
     }
-    // 一次可勾十几行：问题行按类别收齐后一次讲完，逐行 return 只暴露第一行，
-    // 用户改一行提交一次。行内红字本就对每行常亮，这里只补「还差哪几行」。
     final problems = <String, List<String>>{};
     for (final row in selected) {
       final problem = row.problem;
-      if (problem == null) continue;
-      problems.putIfAbsent(problem.category, () => <String>[]).add(row.label);
+      if (problem != null) {
+        problems.putIfAbsent(problem.category, () => []).add(row.label);
+      }
     }
     if (problems.isNotEmpty) {
       context.appWarning(
         [
           for (final entry in problems.entries)
-            '以下 ${entry.value.length} 行${entry.key}，请改正后再提交：'
-                '${_joinRowLabels(entry.value)}',
+            '以下 ${entry.value.length} 行${entry.key}，请改正后再提交：${_joinRowLabels(entry.value)}',
         ].join('\n'),
       );
       return;
     }
-    final hasFail = selected.any((row) => row.failValue > 0);
-    final reason = await showInspectionReportConfirmDialog(
+    final reviewed = {for (final row in selected) row: row._reviewFingerprint};
+    final canPublish = _captureFqcResponseView(
       context,
-      lineCount: selected.length,
-      passTotalText: _fqcTotalsText(selected, (row) => row.passValue),
-      failTotalText: _fqcTotalsText(selected, (row) => row.failValue),
-      requireReason: hasFail,
-      initialReason: _draftReason,
-      onReasonChanged: (value) => setState(() => _draftReason = value),
-      lines: [
-        for (final row in selected)
-          InspectionReportConfirmLine(
-            label: row.label,
-            passText: fqty(row.passValue),
-            failText: fqty(row.failValue),
-            dim: row.inspection.unitName,
-          ),
-      ],
+      ref,
+      () => widget.sheetId,
+      identityIsCurrent: () => formDraftIdentityIsCurrent,
     );
-    if (reason == null || !mounted) return;
-    if (hasFail && reason.trim().length < 2) {
+    // A queued or older read cannot replace the rows owned by this review.
+    ++_loadGeneration;
+    setState(() => _confirming = true);
+    String? reason;
+    try {
+      if (pending.isNotEmpty) {
+        if (!await _confirmOriginalFqcReport(context, selected) || !mounted) {
+          return;
+        }
+        reason = '';
+      } else {
+        reason = await showInspectionReportConfirmDialog(
+          context,
+          lineCount: selected.length,
+          passTotalText: _fqcTotalsText(selected, (row) => row.passValue),
+          failTotalText: _fqcTotalsText(selected, (row) => row.failValue),
+          requireReason: selected.any((row) => row.failValue > 0),
+          initialReason: _draftReason,
+          onReasonChanged: (value) => setState(() => _draftReason = value),
+          lines: [
+            for (final row in selected)
+              InspectionReportConfirmLine(
+                label: row.label,
+                passText: fqty(row.passValue),
+                failText: fqty(row.failValue),
+                dim: row.inspection.unitName,
+              ),
+          ],
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _confirming = false);
+    }
+    if (reason == null ||
+        !mounted ||
+        !canPublish() ||
+        !_canDecide ||
+        !_hasFqcApprovalPermission(ref)) {
+      return;
+    }
+    if (!reviewed.entries.every(
+      (entry) =>
+          (_rows?.contains(entry.key) ?? false) &&
+          entry.key._reviewFingerprint == entry.value,
+    )) {
+      context.appWarning('明细已变化，请重新核对检验数量后确认');
+      return;
+    }
+    if (pending.isEmpty &&
+        selected.any((row) => row.failValue > 0) &&
+        reason.trim().length < 2) {
       context.appWarning('含不合格数量时结论原因至少 2 个字');
       return;
     }
     setState(() => _submitting = true);
-    var done = 0;
+    var confirmed = 0;
     try {
       for (final row in selected) {
-        row.freezeSubmission(reason);
-        final command = row.command;
-        await runFormDraftSubmission(
-          () => ref
-              .read(productionFqcRepositoryProvider)
-              .decide(
-                id: row.inspection.id,
-                decision: command.decision,
-                idempotencyKey: row.idempotencyKey,
-                passQty: command.passQty,
-                failQty: command.failQty,
-                dispositionCode: row.submission?['disposition'] as String?,
-                reason: row.submission?['reason'] as String?,
-              ),
+        if (!mounted || !canPublish()) return;
+        final result = await row.send(
+          reason: reason,
+          repository: ref.read(productionFqcRepositoryProvider),
+          guard: (send, reject) => runFormDraftSubmission(() {
+            if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
+              throw const _FqcSubmissionNotSent();
+            }
+            return send();
+          }, isDefiniteRejection: reject),
         );
-        row.completed = true;
-        row.selected = false;
-        done++;
-        if (mounted) setState(() {});
-        await saveFormDraftNow();
+        if (!mounted || !canPublish()) return;
+        setState(() {});
+        if (result == null) {
+          try {
+            await saveFormDraftNow();
+          } catch (_) {
+            _error = '本机恢复记录暂存失败，请保留页面；提交结果见上方说明';
+          }
+          await _load(afterSubmission: true);
+          return;
+        }
+        confirmed++;
+        // Confirmed rows are fenced in memory before any local checkpoint.
+        await checkpointFormDraftAfterCreation();
       }
-      if (!mounted) return;
-      refreshBadges(ref);
-      context.appSuccess('检验报告已提交：$done 行决定已登记；合格部分已转仓库待最终点收');
-      final hasUnfinished = (_rows ?? <FqcReportRow>[]).any(
-        (row) => !row.completed,
+      if (!mounted || !canPublish()) return;
+      context.appSuccess(
+        pending.isNotEmpty
+            ? '原提交已确认：$confirmed 行；请以当前任务状态为准'
+            : '检验报告已确认：$confirmed 行决定已登记',
       );
-      if (hasUnfinished) {
-        await _load();
-      } else {
+      refreshBadges(ref);
+      await _load(afterSubmission: true);
+      if (_error == null &&
+          !(_rows ?? <FqcReportRow>[]).any((row) => !row.completed)) {
         await completeFormDraft();
-        await _load(preserveInput: false);
-        _draftReason = '';
-        await resetFormDraftAfterSubmission();
       }
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      refreshBadges(ref);
-      if ((error.httpStatus == 400 || error.httpStatus == 422) &&
-          done < selected.length) {
-        selected[done].submission = null;
-        markFormDraftChanged();
-      }
-      context.appError(
-        '已提交 $done 行；「${selected[done].label}」登记被拒：${error.message}。'
-        '可直接重试，已成功行不会重复决定',
-      );
-      await _load();
     } catch (_) {
-      if (mounted) context.appError('提交未确认（已提交 $done 行），请重试剩余行');
+      // This boundary contains only local persistence, refresh and navigation.
+      // Every successful response has already fenced its row as confirmed.
+      if (canPublish()) {
+        setState(() => _error = '提交结果已保留，页面更新或本机保存未完成，请刷新查看；已确认行不会再次提交');
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -527,7 +902,7 @@ class _ProductionFqcSheetHandlingPageState
               label: '刷新',
               icon: Icons.refresh_rounded,
               isLoading: _loading,
-              onPressed: _loading || _submitting ? null : _load,
+              onPressed: _loading || _confirming || _submitting ? null : _load,
             ),
           ],
         ),
@@ -543,7 +918,7 @@ class _ProductionFqcSheetHandlingPageState
               : Stack(
                   children: [
                     AbsorbPointer(
-                      absorbing: _submitting,
+                      absorbing: _loading || _confirming || _submitting,
                       child: _buildBody(context),
                     ),
                     // 2026-09-12 用户口径：逐行提交期间屏幕中间加载动画。
@@ -588,6 +963,16 @@ class _ProductionFqcSheetHandlingPageState
               const SizedBox(height: UtenSpacing.s8),
             ],
             _buildSummaryCard(theme, detail, activeRows.length),
+            if (_fqcSubmissionNotice(
+                  rows,
+                  key: const Key('fqc-sheet-submission-result'),
+                  canDecide: _canDecide,
+                )
+                case final notice?)
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: notice,
+              ),
             if (_error != null) ...[
               const SizedBox(height: UtenSpacing.s8),
               Padding(
@@ -609,13 +994,25 @@ class _ProductionFqcSheetHandlingPageState
               child: activeRows.isEmpty
                   ? UtenEmpty(
                       icon: Icons.verified_outlined,
-                      message: '本检查单待检已全部处理完成',
-                      description: '合格部分已转仓库待最终点收；返回待检处置继续下一单。',
-                      actionLabel: '返回待检处置',
-                      onAction: () => popOrBackTo(
-                        context,
-                        defaultPath: RouteName.warehouseInspections,
-                      ),
+                      message:
+                          _error == null && detail.activeInspections.isEmpty
+                          ? '本检查单当前待检已全部处理完成'
+                          : '本次提交已确认，待检状态尚未刷新',
+                      description:
+                          _error == null && detail.activeInspections.isEmpty
+                          ? '请以当前品质结果与仓库记录为准；返回待检处置继续下一单。'
+                          : '刷新后核对剩余待检数量，再继续办理。已确认的原提交不会重发。',
+                      actionLabel:
+                          _error == null && detail.activeInspections.isEmpty
+                          ? '返回待检处置'
+                          : '刷新待检状态',
+                      onAction:
+                          _error == null && detail.activeInspections.isEmpty
+                          ? () => popOrBackTo(
+                              context,
+                              defaultPath: RouteName.warehouseInspections,
+                            )
+                          : _load,
                     )
                   : AbsorbPointer(
                       absorbing: !_canDecide,
@@ -678,11 +1075,15 @@ class _ProductionFqcSheetHandlingPageState
         type: UtenButtonType.danger,
         icon: Icons.fact_check_outlined,
         isLoading: _submitting,
-        onPressed: _submitting || selectedIds.isEmpty ? null : _submitReport,
+        onPressed: _loading || _confirming || _submitting || selectedIds.isEmpty
+            ? null
+            : _submitReport,
         onDisabledTap: selectedIds.isEmpty
             ? () => context.appWarning('请先勾选要提交的明细行')
             : null,
-        child: const Text('提交报告'),
+        child: Text(
+          _selected.any((row) => row.needsReconciliation) ? '核对并继续原提交' : '提交报告',
+        ),
       ),
     ];
   }
@@ -794,7 +1195,7 @@ class _ProductionFqcSheetHandlingPageState
                   child: Text(
                     _canDecide
                         ? '行内直接修改合格数量/不合格数量（默认全合格），含不合格的行另选处置'
-                              '方式；勾选后点「提交报告」一次办结。'
+                              '方式；勾选后点「提交报告」逐行登记，遇到未确认或拒绝时停止。'
                         : '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.primary,
@@ -811,6 +1212,12 @@ class _ProductionFqcSheetHandlingPageState
   }
 
   List<MasterColumnDef<FqcReportRow>> _rowColumns(ThemeData theme) => [
+    MasterColumnDef<FqcReportRow>(
+      key: 'submissionState',
+      label: '提交状态',
+      width: 100,
+      value: (row) => row.submissionLabel,
+    ),
     MasterColumnDef<FqcReportRow>(
       key: 'reportNo',
       label: '报工单',
@@ -860,6 +1267,7 @@ class _ProductionFqcSheetHandlingPageState
       width: 100,
       type: 'number',
       value: (row) => fqty(row.inspection.reportedQty),
+      exactValueOf: (row) => row.inspection.reportedQty.toString(),
     ),
     // 先入库后检(V597)：已上架行红字「已入库 · 仓 / 库位」，品质部按此到储放区域检验。
     MasterColumnDef<FqcReportRow>(
@@ -885,6 +1293,7 @@ class _ProductionFqcSheetHandlingPageState
       width: 90,
       type: 'number',
       value: (row) => fqty(row.inspection.passedQty),
+      exactValueOf: (row) => row.inspection.passedQty.toString(),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'failedQty',
@@ -892,6 +1301,7 @@ class _ProductionFqcSheetHandlingPageState
       width: 95,
       type: 'number',
       value: (row) => fqty(row.inspection.failedQty),
+      exactValueOf: (row) => row.inspection.failedQty.toString(),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'remainingQty',
@@ -899,12 +1309,16 @@ class _ProductionFqcSheetHandlingPageState
       width: 100,
       type: 'number',
       value: (row) => fqty(row.inspection.remainingQty),
+      exactValueOf: (row) => row.inspection.remainingQty.toString(),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'pass',
       label: '合格数量',
       width: 120,
+      type: 'number',
       value: (row) => row.pass.text,
+      exactValueOf: (row) => row.pass.text,
+      exactListenableOf: (row) => row.pass,
       cellBuilder: (context, row) => _qtyField(
         context,
         row,
@@ -917,7 +1331,10 @@ class _ProductionFqcSheetHandlingPageState
       key: 'fail',
       label: '不合格数量',
       width: 120,
+      type: 'number',
       value: (row) => row.fail.text,
+      exactValueOf: (row) => row.fail.text,
+      exactListenableOf: (row) => row.fail,
       cellBuilder: (context, row) => _qtyField(
         context,
         row,
@@ -944,6 +1361,8 @@ class _ProductionFqcSheetHandlingPageState
         ],
         enabled:
             _canDecide &&
+            !_loading &&
+            !_confirming &&
             !_submitting &&
             row.failValue > 0 &&
             row.submission == null,
@@ -966,7 +1385,12 @@ class _ProductionFqcSheetHandlingPageState
       child: TextField(
         key: key,
         controller: controller,
-        enabled: _canDecide && !_submitting && row.submission == null,
+        enabled:
+            _canDecide &&
+            !_loading &&
+            !_confirming &&
+            !_submitting &&
+            row.submission == null,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         textAlign: TextAlign.right,
         decoration: UtenInputDecoration(
@@ -1008,6 +1432,15 @@ class ProductionFqcInspectionPage extends ConsumerStatefulWidget {
     this.extra,
   });
 
+  static Widget route(BuildContext context, GoRouterState state) {
+    final id = state.pathParameters['inspectionId']!;
+    return ProductionFqcInspectionPage(
+      key: ValueKey((id, state.uri.queryParameters['draftId'])),
+      inspectionId: id,
+      extra: state.extra,
+    );
+  }
+
   final String inspectionId;
 
   /// 列表行携带的任务快照（加载中先显示单号）；深链直达时为空。
@@ -1023,7 +1456,11 @@ class _ProductionFqcInspectionPageState
     with FormDraftMixin<ProductionFqcInspectionPage> {
   String _draftReason = '';
   @override
-  bool get formDraftBusy => _saving || _loading;
+  bool get formDraftBusy => _confirming || _saving || _loading;
+  @override
+  bool get formDraftHasUnknownSubmission => _row == null
+      ? super.formDraftHasUnknownSubmission
+      : _row!.needsReconciliation;
   @override
   bool get formDraftCanReplaySubmission => true;
   @override
@@ -1047,13 +1484,15 @@ class _ProductionFqcInspectionPageState
     if (_row == null && saved['submission'] is Map && _inspection != null) {
       _row = FqcReportRow(_inspection!);
     }
-    _row?.restoreFormDraft(saved);
+    _row?.restoreFormDraft(saved, allowConfirmedRemainder: true);
   }
 
   ProductionFqcInspection? _inspection;
   FqcReportRow? _row;
   bool _loading = true;
+  bool _confirming = false;
   bool _saving = false;
+  int _loadGeneration = 0;
   bool _canDecide = false;
   String? _error;
 
@@ -1066,6 +1505,7 @@ class _ProductionFqcInspectionPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     _inspection = widget.extra is ProductionFqcInspection
         ? widget.extra! as ProductionFqcInspection
         : null;
@@ -1081,7 +1521,21 @@ class _ProductionFqcInspectionPageState
     super.dispose();
   }
 
-  Future<void> _load({bool preserveInput = true}) async {
+  Future<void> _load({
+    bool preserveInput = true,
+    bool afterSubmission = false,
+  }) async {
+    if (!formDraftIdentityIsCurrent ||
+        _confirming ||
+        (_saving && !afterSubmission)) {
+      return;
+    }
+    final generation = ++_loadGeneration;
+    bool accepts() =>
+        formDraftIdentityIsCurrent &&
+        generation == _loadGeneration &&
+        !_confirming &&
+        (!_saving || afterSubmission);
     setState(() {
       _loading = true;
       _error = null;
@@ -1090,16 +1544,19 @@ class _ProductionFqcInspectionPageState
       final inspection = await ref
           .read(productionFqcRepositoryProvider)
           .detail(widget.inspectionId);
-      if (!mounted) return;
+      if (!accepts()) return;
       final canDecide = await _canDecideFqc(ref);
-      if (!mounted) return;
+      if (!accepts()) return;
       final oldRow = _row;
       final row =
           inspection.active || (preserveInput && oldRow?.submission != null)
           ? FqcReportRow(inspection)
           : null;
       if (preserveInput && row != null && oldRow != null) {
-        row.restoreFormDraft(oldRow.toFormDraft());
+        row.restoreFormDraft(
+          oldRow.toFormDraft(),
+          allowConfirmedRemainder: true,
+        );
       }
       setState(() {
         _inspection = inspection;
@@ -1110,13 +1567,13 @@ class _ProductionFqcInspectionPageState
       });
       await initializeFormDraft();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!accepts()) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!accepts()) return;
       setState(() {
         _error = '生产成品质检详情加载失败，请检查网络后重试';
         _loading = false;
@@ -1126,79 +1583,119 @@ class _ProductionFqcInspectionPageState
 
   Future<void> _submitReport() async {
     final row = _row;
-    if (_saving || row == null || !_canDecide) return;
+    if (_loading ||
+        _confirming ||
+        _saving ||
+        row == null ||
+        row.completed ||
+        !_canDecide ||
+        !_hasFqcApprovalPermission(ref) ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
     final problem = row.validate();
     if (problem != null) {
       context.appWarning(problem);
       return;
     }
-    final hasFail = row.failValue > 0;
-    final reason = await showInspectionReportConfirmDialog(
+    final reviewed = row._reviewFingerprint;
+    final canPublish = _captureFqcResponseView(
       context,
-      lineCount: 1,
-      passTotalText:
-          '${fqty(row.passValue)}'
-          '${row.inspection.unitName == null ? '' : ' ${row.inspection.unitName}'}',
-      failTotalText:
-          '${fqty(row.failValue)}'
-          '${row.inspection.unitName == null ? '' : ' ${row.inspection.unitName}'}',
-      requireReason: hasFail,
-      initialReason: _draftReason,
-      onReasonChanged: (value) => setState(() => _draftReason = value),
-      lines: [
-        InspectionReportConfirmLine(
-          label: row.label,
-          passText: fqty(row.passValue),
-          failText: fqty(row.failValue),
-          dim: row.inspection.unitName,
-        ),
-      ],
+      ref,
+      () => widget.inspectionId,
+      identityIsCurrent: () => formDraftIdentityIsCurrent,
     );
-    if (reason == null || !mounted) return;
-    if (hasFail && reason.trim().length < 2) {
+    ++_loadGeneration;
+    setState(() => _confirming = true);
+    String? reason;
+    try {
+      if (row.needsReconciliation) {
+        if (!await _confirmOriginalFqcReport(context, [row]) || !mounted) {
+          return;
+        }
+        reason = '';
+      } else {
+        reason = await showInspectionReportConfirmDialog(
+          context,
+          lineCount: 1,
+          passTotalText: _fqcTotalsText([row], (row) => row.passValue),
+          failTotalText: _fqcTotalsText([row], (row) => row.failValue),
+          requireReason: row.failValue > 0,
+          initialReason: _draftReason,
+          onReasonChanged: (value) => setState(() => _draftReason = value),
+          lines: [
+            InspectionReportConfirmLine(
+              label: row.label,
+              passText: fqty(row.passValue),
+              failText: fqty(row.failValue),
+              dim: row.inspection.unitName,
+            ),
+          ],
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _confirming = false);
+    }
+    if (reason == null ||
+        !mounted ||
+        !canPublish() ||
+        !_canDecide ||
+        !_hasFqcApprovalPermission(ref)) {
+      return;
+    }
+    if (!identical(_row, row) || row._reviewFingerprint != reviewed) {
+      context.appWarning('明细已变化，请重新核对检验数量后确认');
+      return;
+    }
+    if (!row.needsReconciliation &&
+        row.failValue > 0 &&
+        reason.trim().length < 2) {
       context.appWarning('含不合格数量时结论原因至少 2 个字');
       return;
     }
     setState(() => _saving = true);
     try {
-      row.freezeSubmission(reason);
-      final command = row.command;
-      final result = await runFormDraftSubmission(
-        () => ref
-            .read(productionFqcRepositoryProvider)
-            .decide(
-              id: row.inspection.id,
-              decision: command.decision,
-              idempotencyKey: row.idempotencyKey,
-              passQty: command.passQty,
-              failQty: command.failQty,
-              dispositionCode: row.submission?['disposition'] as String?,
-              reason: row.submission?['reason'] as String?,
-            ),
+      final result = await row.send(
+        reason: reason,
+        repository: ref.read(productionFqcRepositoryProvider),
+        guard: (send, reject) => runFormDraftSubmission(() {
+          if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
+            throw const _FqcSubmissionNotSent();
+          }
+          return send();
+        }, isDefiniteRejection: reject),
       );
-      await completeFormDraft();
-      if (!mounted) return;
+      if (!mounted || !canPublish()) return;
+      setState(() {
+        if (result != null) _inspection = result.inspection;
+      });
+      if (result == null) {
+        try {
+          await saveFormDraftNow();
+        } catch (_) {
+          _error = '本机恢复记录暂存失败，请保留页面；提交结果见上方说明';
+        }
+        await _load(afterSubmission: true);
+        return;
+      }
+      await checkpointFormDraftAfterCreation();
+      if (!mounted || !canPublish()) return;
+      context.appSuccess(result.replay ? '原提交已确认，请以当前任务状态为准' : '质检决定已确认保存');
       refreshBadges(ref);
-      context.appSuccess(
-        row.command.decision == 'PASS' ? '质检决定已保存；合格部分已转仓库待最终点收' : '质检决定已保存',
-      );
-      // 从列表双击进来的（正常路径）：带决定结果直接返回，列表先本地落位再刷新
-      //（刷新失败也保得住「已决定」事实）；深链直达无栈可弹时留在本页看结果。
       if (context.canPop()) {
+        await completeFormDraft();
+        if (!mounted || !canPublish()) return;
         context.pop(result.inspection);
         return;
       }
-      await _load(preserveInput: false);
-      _draftReason = '';
-      await resetFormDraftAfterSubmission();
-    } on ApiException catch (error) {
-      if (error.httpStatus == 400 || error.httpStatus == 422) {
-        row.submission = null;
-        markFormDraftChanged();
+      await _load(afterSubmission: true);
+      if (_error == null && !(_inspection?.active ?? true)) {
+        await completeFormDraft();
       }
-      if (mounted) context.appError(error.message);
     } catch (_) {
-      if (mounted) context.appError('质检决定保存失败，请保持本页并重试');
+      if (canPublish()) {
+        setState(() => _error = '提交结果已保留，页面更新或本机保存未完成，请刷新查看；已确认行不会再次提交');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1223,13 +1720,13 @@ class _ProductionFqcInspectionPageState
               label: '刷新',
               icon: Icons.refresh_rounded,
               isLoading: _loading && inspection != null,
-              onPressed: _loading || _saving ? null : _load,
+              onPressed: _loading || _confirming || _saving ? null : _load,
             ),
           ],
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: _canDecide && _row != null
+        floatingActionButton: _canDecide && _row != null && !_row!.completed
             ? UtenFloatingActionGroup(
                 children: [
                   UtenButton(
@@ -1238,8 +1735,12 @@ class _ProductionFqcInspectionPageState
                     size: UtenButtonSize.large,
                     icon: Icons.fact_check_outlined,
                     isLoading: _saving,
-                    onPressed: _saving ? null : _submitReport,
-                    child: const Text('提交报告'),
+                    onPressed: _loading || _confirming || _saving
+                        ? null
+                        : _submitReport,
+                    child: Text(
+                      _row!.needsReconciliation ? '核对并继续原提交' : '提交报告',
+                    ),
                   ),
                 ],
               )
@@ -1279,7 +1780,25 @@ class _ProductionFqcInspectionPageState
                         ],
                         _buildFactsCard(theme, inspection),
                         const SizedBox(height: UtenSpacing.s12),
-                        if (_canDecide && _row != null) ...[
+                        if (_fqcSubmissionNotice(
+                              [?_row],
+                              key: const Key(
+                                'fqc-inspection-submission-result',
+                              ),
+                              canDecide: _canDecide,
+                            )
+                            case final notice?) ...[
+                          notice,
+                          const SizedBox(height: UtenSpacing.s12),
+                        ],
+                        if (_error != null) ...[
+                          Text(
+                            '刷新或本机保存未完成：$_error',
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                          const SizedBox(height: UtenSpacing.s12),
+                        ],
+                        if (_canDecide && _row != null && !_row!.completed) ...[
                           _buildDecisionForm(theme, _row!),
                           const SizedBox(height: UtenSpacing.s12),
                         ] else
@@ -1461,7 +1980,9 @@ class _ProductionFqcInspectionPageState
             ),
             const SizedBox(height: UtenSpacing.s8),
             Text(
-              '合格部分提交后转仓库待最终点收。',
+              row.inspection.preStocked != null
+                  ? '已上架货品的合格部分由系统自动点收，不合格部分交仓库处理。'
+                  : '合格部分提交后转仓库待最终点收，不合格部分按处置方式办理。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -1512,6 +2033,8 @@ class _ProductionFqcInspectionPageState
                   type: 'number',
                   info: '本次判定合格的数量；与不合格数量合计不能超过本行待检量。',
                   value: (row) => row.pass.text,
+                  exactValueOf: (row) => row.pass.text,
+                  exactListenableOf: (row) => row.pass,
                   cellBuilder: (context, row) =>
                       _singleQuantityField(row, passed: true),
                 ),
@@ -1522,6 +2045,8 @@ class _ProductionFqcInspectionPageState
                   type: 'number',
                   info: '含不合格数量时，选择不合格处置并在提交时说明原因。',
                   value: (row) => row.fail.text,
+                  exactValueOf: (row) => row.fail.text,
+                  exactListenableOf: (row) => row.fail,
                   cellBuilder: (context, row) =>
                       _singleQuantityField(row, passed: false),
                 ),
@@ -1541,7 +2066,11 @@ class _ProductionFqcInspectionPageState
                         UtenDropdownItem(value: entry.$1, label: entry.$2),
                     ],
                     enabled:
-                        !_saving && row.failValue > 0 && row.submission == null,
+                        !_loading &&
+                        !_confirming &&
+                        !_saving &&
+                        row.failValue > 0 &&
+                        row.submission == null,
                     onChanged: (value) =>
                         setState(() => row.disposition = value ?? 'REWORK'),
                   ),
@@ -1552,6 +2081,7 @@ class _ProductionFqcInspectionPageState
                   width: 110,
                   type: 'number',
                   value: (row) => fqty(row.inspection.remainingQty),
+                  exactValueOf: (row) => row.inspection.remainingQty.toString(),
                 ),
                 MasterColumnDef(
                   key: 'unit',
@@ -1572,27 +2102,28 @@ class _ProductionFqcInspectionPageState
     );
   }
 
-  Widget _singleQuantityField(FqcReportRow row, {required bool passed}) =>
-      Semantics(
-        textField: true,
-        label:
-            '${row.inspection.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
-        child: TextField(
-          key: Key('fqc-inspection-${passed ? 'pass' : 'fail'}'),
-          controller: passed ? row.pass : row.fail,
-          enabled: !_saving && row.submission == null,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          textAlign: TextAlign.right,
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              isDense: true,
-              error: row.validate() == null
-                  ? null
-                  : UtenFieldMessage.error(row.validate()!),
-            ),
-          ),
+  Widget _singleQuantityField(
+    FqcReportRow row, {
+    required bool passed,
+  }) => Semantics(
+    textField: true,
+    label: '${row.inspection.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
+    child: TextField(
+      key: Key('fqc-inspection-${passed ? 'pass' : 'fail'}'),
+      controller: passed ? row.pass : row.fail,
+      enabled: !_loading && !_confirming && !_saving && row.submission == null,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      textAlign: TextAlign.right,
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          isDense: true,
+          error: row.validate() == null
+              ? null
+              : UtenFieldMessage.error(row.validate()!),
         ),
-      );
+      ),
+    ),
+  );
 
   List<Widget> _readOnlyHint(
     ThemeData theme,

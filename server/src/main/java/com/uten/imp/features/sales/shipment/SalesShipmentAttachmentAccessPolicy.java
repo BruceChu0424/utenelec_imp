@@ -48,15 +48,19 @@ public class SalesShipmentAttachmentAccessPolicy implements AttachmentOwnerAcces
         inventory.requireNoUnreleased(ownerId);
     }
 
-    private SalesShipment document(UUID id) {
+    private SalesShipment document(UUID id) { return document(id, false); }
+
+    private SalesShipment document(UUID id, boolean includeDeleted) {
         if (id == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定销售出货单");
         SalesShipment document = em.find(SalesShipment.class, id);
-        if (document == null || document.isDeleted()) throw missing();
+        if (document == null || (!includeDeleted && document.isDeleted())) throw missing();
         return document;
     }
-    private void readable(SalesShipment document, AuthUser user) {
+    private void readable(SalesShipment document, AuthUser user) { readable(document,user,false); }
+
+    private void readable(SalesShipment document, AuthUser user, boolean includeDeleted) {
         boolean finance = has(user, "sales_shipment_finance:view") && enteredFinanceFlow(document);
-        if (document.isDeleted() || !(has(user, permission(document, "view")) || finance
+        if ((!includeDeleted && document.isDeleted()) || !(has(user, permission(document, "view")) || finance
                 || has(user, "warehouse_sales_outbound:view"))) throw missing();
         if (finance) {
             access.requireReadable(document.getOwnerEmployeeId(), "销售出货单不存在", "sales_shipment_finance:view");
@@ -95,4 +99,11 @@ public class SalesShipmentAttachmentAccessPolicy implements AttachmentOwnerAcces
         return user != null && (user.isSuperAdmin() || user.getPermissions().contains(permission));
     }
     private static ApiException missing() { return new ApiException(ErrorCode.NOT_FOUND, "销售出货单不存在"); }
+
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        readable(document(ownerId,true),user,true);
+    }
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        requireCanViewHistory(ownerId,user);
+    }
 }

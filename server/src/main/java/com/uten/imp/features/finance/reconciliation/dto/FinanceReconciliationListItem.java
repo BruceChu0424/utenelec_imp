@@ -26,4 +26,7 @@ public class FinanceReconciliationListItem {
     private Integer legacyBstyle;
     private String entryKind;
     private UUID reversalOfId;
+
+    public String getInAmountExact() { return inAmount == null ? null : inAmount.toPlainString(); }
+    public String getOutAmountExact() { return outAmount == null ? null : outAmount.toPlainString(); }
 }

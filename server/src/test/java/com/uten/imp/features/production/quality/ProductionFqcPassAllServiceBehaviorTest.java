@@ -6,7 +6,7 @@ import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
-import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.application.port.ProductionPreStockedInboundPort;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -149,7 +149,7 @@ class ProductionFqcPassAllServiceBehaviorTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static ObjectProvider<StockDocService> stockDocServiceProvider() {
+    private static ObjectProvider<ProductionPreStockedInboundPort> stockDocServiceProvider() {
         return mock(ObjectProvider.class);
     }
 

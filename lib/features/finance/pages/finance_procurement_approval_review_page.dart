@@ -936,13 +936,22 @@ class _FinanceProcurementApprovalReviewPageState
             MasterColumnDef(
               key: 'price',
               label: '单价',
-              width: 110,
+              width:
+                  [
+                    ...r.previousItems,
+                    ...r.items,
+                  ].any((it) => it.totalAmountInput != null)
+                  ? 190
+                  : 110,
               type: 'money',
-              value: (it) => _trimNum(it.price),
+              info: '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。',
+              value: (it) => it.totalAmountInput == null
+                  ? _trimNum(it.price)
+                  : '${_trimNum(it.price)}（参考）',
             ),
             MasterColumnDef(
               key: 'amountOriginal',
-              label: comparing ? '原币金额' : '金额(${r.currencyLabel})',
+              label: comparing ? '原币总金额' : '总金额(${r.currencyLabel})',
               width: 120,
               type: 'money',
               value: (it) => _trimNum(it.amountOriginal),
@@ -956,7 +965,7 @@ class _FinanceProcurementApprovalReviewPageState
               ),
             MasterColumnDef(
               key: 'amountLocal',
-              label: '金额(本币)',
+              label: '总金额(本币)',
               width: 120,
               type: 'money',
               value: (it) => _trimNum(it.amountLocal),

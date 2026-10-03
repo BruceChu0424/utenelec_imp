@@ -6,6 +6,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.List;
 import java.util.UUID;
@@ -49,7 +50,7 @@ class ProductionBomLearningPostgresTest {
                 "production_material_demands","production_material_stock_postings","production_material_settlement_events","production_material_settlement_postings",
                 "production_execution_segment_splits","production_actual_output_supplement_requests","production_actual_output_supplement_proofs",
                 "production_actual_output_supplement_reversals","production_material_return_requests","production_material_return_request_items",
-                "production_material_return_request_cancellations","stock_documents","business_outbox")) {
+                "production_material_return_request_cancellations","production_execution_periodic_materials","stock_documents","business_outbox")) {
             com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(db,table);
             // Preserve real scalar defaults, while intentionally omitting the
             // unrelated business guards in this focused projection fixture.
@@ -76,7 +77,9 @@ class ProductionBomLearningPostgresTest {
         for(String function:List.of("fn_production_execution_cost_scope(uuid)","fn_production_execution_cost_members(uuid)",
                 "fn_material_issue_pending_return(uuid,uuid)","fn_bom_learning_manual_ownership()","fn_enqueue_bom_learning(uuid)",
                 "fn_publish_learned_bom(uuid,boolean)","fn_refresh_bom_learning(uuid,boolean)","fn_drain_bom_learning_queue()",
-                "fn_touch_bom_learning()","fn_goods_bom_material_cost(uuid)","fn_relearn_bom_actual_usage(uuid,uuid,uuid)")) {
+                "fn_touch_bom_learning()","fn_goods_bom_material_cost(uuid)","fn_relearn_bom_actual_usage(uuid,uuid,uuid)",
+                "fn_bom_learning_uncovered_output(uuid[],uuid,uuid)",
+                "fn_bom_learning_periodic_exposure_is_proven(uuid[],uuid,uuid)")) {
             String definition=scalar("SELECT pg_get_functiondef(CAST(? AS regprocedure))","public."+function);
             sql(definition.replace("FUNCTION public.","FUNCTION "+schema+"."));
         }
@@ -505,6 +508,223 @@ class ProductionBomLearningPostgresTest {
         amount("1",scalar("SELECT fn_goods_bom_material_cost(?)",product));
     }
 
+    @Test void manualPeriodicRecipeDoesNotBlockLearningAnActuallyConsumedOrderInsert()throws Exception {
+        UUID pellets=goods("采购");
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",pellets);
+        UUID periodic=manualEdge(product,pellets,"0.05");
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE id=?",periodic);
+        batch(product,"100","100","100",true);
+        amount("1",actual(material));
+        amount("1",bomQty(material));
+        amount("0.05",bomQty(pellets));
+        assertNull(scalar("SELECT learning_profile_goods_id FROM goods_bom_items WHERE id=?",periodic));
+    }
+
+    @Test void historicalOrderUseDoesNotPublishAPeriodicRecipeOrBlockTheReportTransaction()throws Exception {
+        // An old ORDER demand is fully cleared, but its family still has an
+        // unapproved report when the material becomes PERIODIC.
+        Batch old=batch(product,"100","50","20",true);
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",material);
+        String guard=scalar("SELECT pg_get_functiondef('public.fn_guard_periodic_bom_edge()'::regprocedure)");
+        sql(guard.replace("FUNCTION public.","FUNCTION "+schema+"."));
+        sql("CREATE TRIGGER periodic_shape BEFORE INSERT OR UPDATE ON goods_bom_items FOR EACH ROW EXECUTE FUNCTION fn_guard_periodic_bom_edge()");
+        report(old.segment,"50",1,false);
+        amount("0.2",actual(material));
+        assertNull(bomQty(material));
+        assertEquals("0",scalar("SELECT count(*) FROM production_bom_learning_refresh_queue"));
+    }
+
+    @Test void mixedDiscoveryDoesNotTreatPeriodicConsumptionAsZeroOrderConsumption()throws Exception {
+        batch(product,"100","100","20",true);
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",material);
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE goods_id=? AND component_goods_id=?",product,material);
+        UUID insert=goods("采购");
+        onSite(insert,"100");
+        // No ORDER demand for pellets in the later mixed batch says nothing
+        // about their actual PERIODIC use; preserve the historical observation.
+        amount("0.2",actual(material));
+        amount("100",scalar("SELECT exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("0.5",actual(insert));
+    }
+
+    @Test void newHistoricalPeriodicObservationDoesNotBackfillUnrelatedDiscoveryFamilies()throws Exception {
+        batch(product,"100","100","20",true);
+        UUID pellets=goods("采购");
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",pellets);
+        onSite(pellets,"10");
+        amount("0.1",actual(pellets));
+        amount("100",scalar("SELECT exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,pellets));
+        assertNull(bomQty(pellets));
+    }
+
+    @Test void manualOrderRecipeStillProtectsItsStructureAlongsidePeriodicWeights()throws Exception {
+        manualEdge(product,material,"0.25");
+        UUID pellets=goods("采购");
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",pellets);
+        UUID periodic=manualEdge(product,pellets,"0.05");
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE id=?",periodic);
+        UUID insert=goods("采购");
+        onSite(insert,"100");
+        amount("1",actual(insert));
+        assertNull(bomQty(insert));
+        amount("0.25",bomQty(material));
+        amount("0.05",bomQty(pellets));
+    }
+
+    @Test void forwardRepairWithdrawsOnlyUnsupportedPeriodicZerosAndPreservesRelearnWindow()throws Exception {
+        restoreV739LearningFunctions();
+        batch(product,"100","100","20",true);
+        Batch oldPending=batch(product,"100","50","10",false);
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",material);
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE goods_id=? AND component_goods_id=?",product,material);
+        UUID insert=goods("采购");
+        Batch mixed=onSite(insert,"100");
+        bindPeriodic(mixed.segment,material,0);
+        amount("0.1",actual(material)); // V739 incorrectly counted mixed as zero pellets.
+        assertNull(bomQty(insert)); // Its manual PERIODIC edge blocked the insert.
+        sql("SELECT fn_relearn_bom_actual_usage(?,?,NULL)",product,material);
+        report(oldPending.segment,"50",1,false);
+        String rawStock=scalar("SELECT sum(qty_base) FROM production_material_stock_postings");
+        String rawUse=scalar("SELECT sum(qty_base) FROM production_material_settlement_postings");
+        String rawOutput=scalar("SELECT sum(qty) FROM production_daily_report_items");
+        amount("0.1",scalar("SELECT actual_qty FROM v_goods_bom_actual_usage WHERE goods_id=? AND component_goods_id=?",product,material));
+        applyPeriodicIsolationMigration();
+        amount("30",scalar("SELECT net_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("200",scalar("SELECT exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("100",scalar("SELECT baseline_exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("0.1",scalar("SELECT actual_qty FROM v_goods_bom_actual_usage WHERE goods_id=? AND component_goods_id=?",product,material));
+        assertFalse(scalar("SELECT materials::text FROM production_bom_learning_samples WHERE execution_root_id=?",mixed.segment).contains(material.toString()));
+        assertTrue(scalar("SELECT entry_generations::text FROM production_bom_learning_samples WHERE execution_root_id=?",mixed.segment).contains(material.toString()));
+        assertEquals(rawStock,scalar("SELECT sum(qty_base) FROM production_material_stock_postings"));
+        assertEquals(rawUse,scalar("SELECT sum(qty_base) FROM production_material_settlement_postings"));
+        assertEquals(rawOutput,scalar("SELECT sum(qty) FROM production_daily_report_items"));
+        assertNotNull(bomQty(insert));
+        assertEquals("0",scalar("SELECT count(*) FROM production_bom_learning_refresh_queue"));
+        // Replaying the same physical facts neither changes the repaired totals
+        // nor leaks a withdrawn old-generation exposure into the current window.
+        sql("SELECT fn_enqueue_bom_learning(?)",mixed.segment);
+        amount("100",scalar("SELECT exposure_output_qty FROM v_goods_bom_actual_usage WHERE goods_id=? AND component_goods_id=?",product,material));
+    }
+
+    @Test void forwardRepairPublishesCompletedMixedRecipeWithoutRewritingItsFacts()throws Exception {
+        restoreV739LearningFunctions();
+        UUID pellets=goods("采购");
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",pellets);
+        UUID periodic=manualEdge(product,pellets,"0.05");
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE id=?",periodic);
+        Batch completed=batch(product,"100","100","100",true);
+        assertNull(bomQty(material));
+        String sample=scalar("SELECT row_to_json(sample)::text FROM production_bom_learning_samples sample WHERE execution_root_id=?",completed.segment);
+        applyPeriodicIsolationMigration();
+        amount("1",bomQty(material));
+        amount("0.05",bomQty(pellets));
+        assertEquals(sample,scalar("SELECT row_to_json(sample)::text FROM production_bom_learning_samples sample WHERE execution_root_id=?",completed.segment));
+    }
+
+    @Test void forwardRepairRemovesUnsupportedPeriodicZeroFromAReopenedFamily()throws Exception {
+        restoreV739LearningFunctions();
+        batch(product,"100","100","20",true);
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",material);
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE goods_id=? AND component_goods_id=?",product,material);
+        UUID insert=goods("采购");
+        Batch mixed=onSite(insert,"100");
+        bindPeriodic(mixed.segment,material,0);
+        report(mixed.segment,"10",0,false);
+        assertEquals("PENDING_REPORT",state(mixed));
+        amount("0.1",actual(material));
+        applyPeriodicIsolationMigration();
+        amount("0.2",actual(material));
+        amount("0.5",actual(insert));
+        assertEquals("PENDING_REPORT",state(mixed));
+        assertFalse(scalar("SELECT materials::text FROM production_bom_learning_samples WHERE execution_root_id=?",mixed.segment).contains(material.toString()));
+    }
+
+    @Test void forwardRepairAndRefreshPreserveAnEarlierOrderZeroWhenPeriodicBindingStartsLater()throws Exception {
+        restoreV739LearningFunctions();
+        batch(product,"100","100","20",true);
+        UUID insert=goods("采购");
+        Batch earlier=onSite(insert,"100");
+        amount("0.1",actual(material)); // This zero was a legitimate ORDER observation.
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",material);
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE goods_id=? AND component_goods_id=?",product,material);
+        bindPeriodic(earlier.segment,material,1); // The old report predates PERIODIC use.
+        applyPeriodicIsolationMigration();
+        amount("0.1",actual(material));
+        sql("SELECT fn_enqueue_bom_learning(?)",earlier.segment);
+        amount("0.1",actual(material));
+        amount("200",scalar("SELECT exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        assertTrue(scalar("SELECT materials::text FROM production_bom_learning_samples WHERE execution_root_id=?",earlier.segment).contains(material.toString()));
+    }
+
+    @Test void forwardRepairBoundsMixedDateZeroWithoutErasingTheEarlierOrderExposure()throws Exception {
+        restoreV739LearningFunctions();
+        batch(product,"100","100","20",true);
+        UUID insert=goods("采购");
+        Batch mixed=onSite(insert,"100");
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",material);
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE goods_id=? AND component_goods_id=?",product,material);
+        bindPeriodic(mixed.segment,material,1);
+        UUID later=report(mixed.segment,"100",1,false);
+        sql("UPDATE production_daily_reports SET bill_date=current_date+1 WHERE id=?",later);
+        amount("300",scalar("SELECT exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        applyPeriodicIsolationMigration();
+        amount("200",scalar("SELECT exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("0.1",actual(material));
+        assertTrue(scalar("SELECT materials::text FROM production_bom_learning_samples WHERE execution_root_id=?",mixed.segment).contains(material.toString()));
+    }
+
+    private void bindPeriodic(UUID segment,UUID component,int daysFromToday)throws Exception {
+        sql("INSERT INTO production_execution_periodic_materials(execution_segment_id,bin_warehouse_id,material_goods_id,unit_id,origin,effective_from) VALUES(?,?,?,?,'CHOICE',current_date+?)",
+                segment,UUID.randomUUID(),component,unit,daysFromToday);
+    }
+
+    @Test void preservedHistoricalZeroShrinksAfterPartialOutputReversalWithoutLeakingPastRelearn()throws Exception {
+        restoreV739LearningFunctions();
+        batch(product,"100","100","20",true);
+        UUID insert=goods("采购");
+        Batch earlier=onSite(insert,"100");
+        sql("UPDATE production_daily_report_items SET defect_qty=10 WHERE report_id=?",earlier.report);
+        sql("SELECT fn_relearn_bom_actual_usage(?,?,NULL)",product,material);
+        sql("UPDATE goods SET issue_method='PERIODIC',periodic_cost_basis='OWN' WHERE id=?",material);
+        sql("UPDATE goods_bom_items SET hard_gate=false WHERE goods_id=? AND component_goods_id=?",product,material);
+        bindPeriodic(earlier.segment,material,1);
+        applyPeriodicIsolationMigration();
+        // Later PERIODIC output keeps the family total above the old exposure;
+        // it must not hide a reversal of the earlier ORDER report.
+        UUID later=report(earlier.segment,"100",1,false);
+        sql("UPDATE production_daily_reports SET bill_date=current_date+1 WHERE id=?",later);
+        sql("UPDATE production_daily_report_items SET defect_qty=20 WHERE report_id=?",later);
+        // The family stays closed via its explicit final report, but some
+        // previously approved output and defects have been disproven.
+        sql("UPDATE production_daily_report_items SET qty=50,defect_qty=4,is_final=true WHERE report_id=?",earlier.report);
+        assertEquals("READY",state(earlier));
+        amount("150",scalar("SELECT exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("150",scalar("SELECT baseline_exposure_output_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("4",scalar("SELECT exposure_defect_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("4",scalar("SELECT baseline_exposure_defect_qty FROM goods_bom_actual_usages WHERE goods_id=? AND component_goods_id=?",product,material));
+        amount("0",scalar("SELECT exposure_output_qty FROM v_goods_bom_actual_usage WHERE goods_id=? AND component_goods_id=?",product,material));
+        assertNull(scalar("SELECT actual_qty FROM v_goods_bom_actual_usage WHERE goods_id=? AND component_goods_id=?",product,material));
+    }
+
+    private void restoreV739LearningFunctions()throws Exception {
+        String migration=migrationText("V739__bom_design_and_actual_usage.sql");
+        for(String name:List.of("fn_publish_learned_bom","fn_refresh_bom_learning","fn_drain_bom_learning_queue")) {
+            int start=migration.indexOf("CREATE FUNCTION "+name+"(");
+            int end=migration.indexOf("END $$;",start)+"END $$;".length();
+            assertTrue(start>=0&&end>start,name);
+            sql(migration.substring(start,end).replace("CREATE FUNCTION "+name+"(","CREATE OR REPLACE FUNCTION "+schema+"."+name+"("));
+        }
+    }
+    private void applyPeriodicIsolationMigration()throws Exception {
+        sql(migrationText("V789__bom_learning_periodic_material_isolation.sql"));
+    }
+    private String migrationText(String name)throws Exception {
+        try(var stream=getClass().getResourceAsStream("/db/migration/"+name)) {
+            assertNotNull(stream,name);
+            return new String(stream.readAllBytes(),StandardCharsets.UTF_8).replace("\r\n","\n");
+        }
+    }
+
     private void assertWindow(String net,String exposure,String samples)throws Exception {
         String window="SELECT %s FROM v_goods_bom_actual_usage WHERE goods_id=? AND component_goods_id=?";
         amount(net,scalar(window.formatted("net_qty"),product,material));
@@ -559,7 +779,7 @@ class ProductionBomLearningPostgresTest {
         sql("INSERT INTO production_material_settlement_postings(id,event_id,demand_id,settlement_type,qty_base) VALUES(?,?,?,?,?)",posting,event,demand,kind,new BigDecimal(qty));return posting;
     }
     private UUID report(UUID segment,String qty,int status,boolean finished)throws Exception {
-        UUID id=UUID.randomUUID();sql("INSERT INTO production_daily_reports(id,status,is_deleted) VALUES(?,?,false)",id,status);
+        UUID id=UUID.randomUUID();sql("INSERT INTO production_daily_reports(id,status,is_deleted,bill_date) VALUES(?,?,false,current_date)",id,status);
         sql("INSERT INTO production_daily_report_items(report_id,execution_segment_id,goods_id,unit_id,unit_rate,qty,is_final,is_deleted) VALUES(?,?,?,?,1,?,?,false)",id,segment,product,unit,new BigDecimal(qty),finished);return id;
     }
     private String state(Batch batch)throws Exception{return scalar("SELECT state FROM production_bom_learning_samples WHERE execution_root_id=?",batch.segment);}

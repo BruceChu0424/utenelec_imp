@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'session_snapshot_provider.dart';
+import '../providers/authenticated_scope_provider.dart';
 
 /// Server-whitelisted document owner scopes. Keep values aligned with
 /// DocumentScopeCapabilityService; arbitrary caller-provided scopes are not accepted.
@@ -77,10 +78,10 @@ final documentScopeCapabilityProvider = FutureProvider.autoDispose
 bool documentOwnerCanWrite(
   AsyncValue<DocumentScopeCapability> capability,
   String? ownerEmployeeId,
-) => capability.maybeWhen(
-  data: (value) => value.canWrite(ownerEmployeeId),
-  orElse: () => false,
-);
+) =>
+    !capability.isLoading &&
+    !capability.hasError &&
+    (capability.valueOrNull?.canWrite(ownerEmployeeId) ?? false);
 
 /// Direct edit routes must not render an editable fallback while capability is
 /// loading or unavailable. A failed capability request is therefore read-only.
@@ -89,11 +90,20 @@ Future<bool> loadDocumentOwnerCanWrite(
   DocumentDataScope scope,
   String? ownerEmployeeId,
 ) async {
+  final ownerScope = ref.read(authenticatedScopeProvider);
   try {
     final capability = await ref.read(
       documentScopeCapabilityProvider(scope).future,
     );
-    return capability.canWrite(ownerEmployeeId);
+    final current = ref.read(documentScopeCapabilityProvider(scope));
+    if (ref.read(authenticatedScopeProvider) != ownerScope ||
+        current.isLoading ||
+        current.hasError ||
+        !identical(current.valueOrNull, capability)) {
+      return false;
+    }
+    return documentOwnerCanWrite(current, ownerEmployeeId) &&
+        capability.canWrite(ownerEmployeeId);
   } catch (_) {
     return false;
   }

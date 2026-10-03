@@ -7,6 +7,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'procurement_inbound_count_providers.dart';
+import 'warehouse_stock_count_review_count_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 /// 仓库写操作成功后(或任务中心返回时)调用：徽章汇总重拉 + 入库任务中心分来源计数失效。
@@ -14,4 +15,5 @@ import '../../../shared/badges/badge_registry.dart';
 void invalidateWarehouseTaskCounts(WidgetRef ref) {
   refreshBadges(ref);
   ref.invalidate(warehouseInboundExpectationTypeCountsProvider);
+  ref.invalidate(warehouseScopedStockCountReviewCountProvider);
 }

@@ -372,7 +372,8 @@ public class ServerStatusProbe {
                 "SELECT (SELECT count(*) FROM business_outbox WHERE status=0),"
                 +"(SELECT min(available_at) FROM business_outbox WHERE status=0),"
                 +"(SELECT count(*) FROM attachment_object_outbox WHERE status IN ('PENDING','FAILED')),"
-                +"(SELECT min(available_at) FROM attachment_object_outbox WHERE status IN ('PENDING','FAILED'))")) {
+                +"(SELECT min(available_at) FROM attachment_object_outbox WHERE status IN ('PENDING','FAILED')),"
+                +"(SELECT count(*) FROM business_outbox WHERE status=2)")) {
             statement.setQueryTimeout(2);
             try(ResultSet result=statement.executeQuery()) {
                 if(!result.next())throw new IllegalStateException();
@@ -380,7 +381,7 @@ public class ServerStatusProbe {
                 Instant oldest=earliest(result.getObject(2,OffsetDateTime.class),result.getObject(4,OffsetDateTime.class));
                 long backlog=business+attachments;
                 long oldestMinutes=oldest==null?0:Math.max(0,Duration.between(oldest,now).toMinutes());
-                return outboxMetric(backlog,business,attachments,oldestMinutes);
+                return outboxMetric(backlog,business,attachments,oldestMinutes,result.getLong(5));
             }
         }catch(Exception unavailable) {
             return count("outbox","待处理事件积压",null,(double)OUTBOX_WARNING_COUNT,(double)OUTBOX_CRITICAL_COUNT,"UNKNOWN",
@@ -388,12 +389,15 @@ public class ServerStatusProbe {
         }
     }
 
-    static Metric outboxMetric(long backlog,long business,long attachments,long oldestMinutes) {
-        String status=backlog>OUTBOX_CRITICAL_COUNT||oldestMinutes>OUTBOX_CRITICAL_MINUTES?"CRITICAL"
-                :backlog>OUTBOX_WARNING_COUNT||oldestMinutes>OUTBOX_WARNING_MINUTES?"WARNING":"NORMAL";
-        String detail="业务通知 "+business+" · 附件清理 "+attachments+"；最早一条已等待 "+oldestMinutes
-                +" 分钟。超过 50 条或等待超过 5 分钟提醒，超过 500 条或 30 分钟告警；每 60 秒更新。";
-        return count("outbox","待处理事件积压",(double)backlog,(double)OUTBOX_WARNING_COUNT,(double)OUTBOX_CRITICAL_COUNT,status,detail);
+    static Metric outboxMetric(long backlog,long business,long attachments,long oldestMinutes,long deadLetters) {
+        long unresolved=backlog+deadLetters;
+        String status=unresolved>OUTBOX_CRITICAL_COUNT||oldestMinutes>OUTBOX_CRITICAL_MINUTES?"CRITICAL"
+                :deadLetters>0||unresolved>OUTBOX_WARNING_COUNT||oldestMinutes>OUTBOX_WARNING_MINUTES?"WARNING":"NORMAL";
+        String detail="待处理业务通知 "+business+" · 附件清理 "+attachments+" · 已停止重试 "+deadLetters
+                +"；最早待处理事件已等待 "+oldestMinutes
+                +" 分钟。停止重试的事件需要管理员核查，不会自行消失。"
+                +"超过 50 条或等待超过 5 分钟提醒，超过 500 条或 30 分钟告警；每 60 秒更新。";
+        return count("outbox","待处理事件积压",(double)unresolved,(double)OUTBOX_WARNING_COUNT,(double)OUTBOX_CRITICAL_COUNT,status,detail);
     }
 
     private static Instant earliest(OffsetDateTime left,OffsetDateTime right) {

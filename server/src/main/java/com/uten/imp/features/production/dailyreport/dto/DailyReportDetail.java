@@ -2,6 +2,7 @@ package com.uten.imp.features.production.dailyreport.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -10,7 +11,7 @@ import java.util.UUID;
 /** 生产日报详情（含明细行）。 */
 @Getter
 @AllArgsConstructor
-public class DailyReportDetail {
+public class DailyReportDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -51,4 +52,11 @@ public class DailyReportDetail {
      * permissions-15)：页面按钮只按它显隐，不再本地拼权限。目前下发 APPROVE。
      */
     private List<String> allowedActions;
+    /** The installed application implements seen-version approval and receipt resolution. */
+    private int approvalCommandVersion;
+    /** Only approval/receipt responses attach a command fact; ordinary detail is not a receipt. */
+    @Setter
+    private DailyReportApprovalReceipt approvalReceipt;
+
+    @Override public void disableHistoryActions() { allowedActions = List.of(); }
 }

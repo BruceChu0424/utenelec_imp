@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -133,6 +134,16 @@ void main() {
       expect(find.text('待检产品'), findsOneWidget);
       expect(find.text('已上架产品'), findsNothing);
       expect(find.text('已结案产品'), findsNothing);
+      final grid = tester.widget<UtenEditableGrid<WarehousePreStockRow>>(
+        find.byType(UtenEditableGrid<WarehousePreStockRow>),
+      );
+      final received = grid.columns.singleWhere(
+        (column) => column.key == 'received',
+      );
+      expect(
+        received.exactValueOf!(grid.controller.rows.single),
+        grid.controller.rows.single.line.receivedBaseQty.toString(),
+      );
       expect(
         find.byKey(const Key('warehouse-quality-pre-stock-notice')),
         findsOneWidget,

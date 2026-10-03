@@ -79,6 +79,7 @@ class ProductionDrawRequestPostgresTest {
                     is_line_side boolean NOT NULL DEFAULT FALSE);
                 CREATE TABLE units(id uuid PRIMARY KEY,name text);
                 CREATE TABLE colors(id uuid PRIMARY KEY,name text);
+                CREATE FUNCTION fn_segment_bin_material_state(uuid) RETURNS text LANGUAGE sql AS 'SELECT ''NO_BIN''::text';
                 """);
         jdbc.execute(Files.readString(Path.of("src/main/resources/db/migration/V559__production_workshop_draw_request.sql")));
         jdbc.execute(Files.readString(Path.of("src/main/resources/db/migration/V564__production_draw_requested_quantities.sql")));

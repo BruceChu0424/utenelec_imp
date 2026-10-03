@@ -10,8 +10,9 @@ import java.util.UUID;
  * 如 下单人/审核人/执行人/采购人）+ 发生时间 + 状态 + 补充说明 + 可跳转单据锚点。
  *
  * <p>state 取值：DONE（已完成）/ CURRENT（当前进行）/ PENDING（未到该阶段）/ REJECTED（被驳回/红冲）。
- * seq 为业务顺序（下单=10 起按链路递增），用于同刻事件的稳定排序与 PENDING 占位排序；
- * 列表展示顺序由服务端排好：已发生事件按时间倒序（最新在最上），PENDING 占位按业务顺序垫底。
+ * seq 为业务顺序（下单=10 起按链路递增）。列表展示顺序由服务端排好：未开始的 PENDING
+ * 占位整块置顶（阶段最靠后的在最顶），其下已发生事件按时间倒序（无时间的当前/驳回环
+ * 置顶该块），销售下单垫底。
  */
 public record OrderProgressTimelineEvent(
         int seq,

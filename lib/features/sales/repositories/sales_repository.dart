@@ -497,8 +497,14 @@ class SalesRepository {
   /// 报价转订货（POST /quotes/{id}/convert；SOP §三1，仅 quote 类型可用）。
   /// 只接受财务已核价的报价；返回新建订货草稿(单价与财务核定折扣锁定带入 +
   /// sourceDocNo 回联来源报价，ADR-134)。
-  Future<SalesDocDetail> convertToOrder(String id) async {
-    final json = await api.post('${_doc(id)}/convert');
+  Future<SalesDocDetail> convertToOrder(
+    String id, {
+    required int expectedRevision,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/convert',
+      body: {'expectedRevision': expectedRevision},
+    );
     return SalesDocDetail.fromJson(json);
   }
 
@@ -514,6 +520,27 @@ class SalesRepository {
   /// 已核价报价重新修改(1 → 0，未转订货单前)：回草稿，改完须重新提交核价。
   Future<SalesDocDetail> reopenQuote(String id, int expectedRevision) =>
       _quoteTransition(id, 'reopen', expectedRevision);
+
+  Future<void> deleteQuote(String id, int expectedRevision) =>
+      api.delete(_doc(id), query: {'expectedRevision': expectedRevision});
+
+  Future<SalesDocDetail> requote(String id, int revision) =>
+      _quoteTransition(id, 'requote', revision);
+
+  Future<SalesDocDetail> confirmQuoteCustomer(String id, int revision) =>
+      _quoteTransition(id, 'customer-confirm', revision);
+
+  Future<SalesDocDetail> cancelQuote(
+    String id,
+    int revision,
+    String reason,
+  ) async {
+    final json = await api.post(
+      '${_doc(id)}/cancel',
+      body: {'expectedRevision': revision, 'reason': reason.trim()},
+    );
+    return SalesDocDetail.fromJson(json);
+  }
 
   Future<SalesDocDetail> _quoteTransition(
     String id,

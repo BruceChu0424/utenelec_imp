@@ -256,7 +256,7 @@ void main() {
     expect(api.decisionBody?['decision'], 'PASS');
     expect(api.decisionBody?['passQty'], 10);
     // 单内已无待检行 → 完成态；返回队列后检查单行消失。
-    expect(find.text('本检查单待检已全部处理完成'), findsOneWidget);
+    expect(find.text('本检查单当前待检已全部处理完成'), findsOneWidget);
     await tester.tap(find.byType(UtenBackButton));
     await tester.pumpAndSettle();
     expect(find.text(_sheetNo), findsNothing);

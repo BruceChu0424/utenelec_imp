@@ -113,7 +113,7 @@ class ProductionDrawOwnershipAndReverseGuardContractTest {
                 "private StockDocDetail approveInternal(",
                 "/** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先取消全部出库。 */");
         assertThat(approve)
-                .contains("isProductionLinked(id)\n                && !allowProductionDrawApproveAndIssue")
+                .contains("!allowProductionDrawApproveAndIssue\n                && isProductionLinked(id)")
                 .contains("if (\"DRAW\".equals(d.getDocType()) "
                         + "|| \"FINISHED_IN\".equals(d.getDocType())) {\n"
                         + "            requireApprovedLinkedProductionPlan(d);");

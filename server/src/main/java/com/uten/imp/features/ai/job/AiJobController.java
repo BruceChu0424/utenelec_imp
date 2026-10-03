@@ -80,6 +80,8 @@ public class AiJobController {
     public AiJobView get(@PathVariable UUID id) {
         return service.view(id, user());
     }
+    @GetMapping("/{id}/history")
+    public Map<String,Object> history(@PathVariable UUID id){return service.history(id,user());}
 
     @PostMapping("/{id}/cancel")
     public AiJobView cancel(@PathVariable UUID id) {

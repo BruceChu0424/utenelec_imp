@@ -22,7 +22,7 @@ import java.util.UUID;
  * - POST /api/master/goods/{id}/bom/import/detect?mode= → 只读解析 + 逐行校验报告
  * - POST /api/master/goods/{id}/bom/import/commit?mode= → 重新解析复检后一个事务按层写入
  *
- * <p>格式 = 「导出组件」的 13 列；序号列的级联段（1 / 2 / 2.1）表达层级，
+ * <p>格式 = 「导出组件」的 14 列；序号列的级联段（1 / 2 / 2.1）表达层级，
  * 导出改完可直接导回。mode：REPLACE（按文件为准，替换各级现有组件）/
  * APPEND（在现有组件后追加）。
  */
@@ -51,6 +51,7 @@ public class GoodsBomImportController {
     @PreAuthorize("hasAuthority('goods:bom:create')")
     public BomImportResult commit(@PathVariable UUID id,
                                   @RequestParam(defaultValue = "REPLACE") String mode,
+                                  @RequestParam(required = false) String stateFingerprint,
                                   HttpServletRequest request)
             throws IOException {
         BomPasteRequest.Mode parsedMode;
@@ -60,7 +61,7 @@ public class GoodsBomImportController {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "mode 必须为 REPLACE 或 APPEND");
         }
         BomPasteRequest.Mode finalMode = parsedMode;
-        return withImportSlot(() -> service.commit(id, read(request), finalMode));
+        return withImportSlot(() -> service.commit(id, read(request), finalMode, stateFingerprint));
     }
 
     private byte[] read(HttpServletRequest request) throws IOException {

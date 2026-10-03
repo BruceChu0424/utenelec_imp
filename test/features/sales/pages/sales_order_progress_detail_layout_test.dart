@@ -66,6 +66,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('销售下单').hitTestable(), findsOneWidget);
 
+      // 新口径：未开始的阶段整块在最上（最后的阶段在最顶）、进度开始（销售下单）垫底。
+      final productionTop = tester.getTopLeft(find.text('生产开工')).dy;
+      final supplyTop = tester.getTopLeft(find.text('物料准备-采购/委外下单')).dy;
+      final latestTop = tester.getTopLeft(find.text('财务审核通过')).dy;
+      final startTop = tester.getTopLeft(find.text('销售下单')).dy;
+      expect(productionTop, lessThan(supplyTop));
+      expect(supplyTop, lessThan(latestTop));
+      expect(latestTop, lessThan(startTop));
+
+      // 「最新」徽章仍落在第一条已发生事件（财务审核通过）上，不被 PENDING 抢走。
+      expect(find.text('最新'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('最新')).dy, greaterThan(supplyTop));
+
       // 产品表行单击只选中（去发货计数联动），不弹进度弹窗。
       await tester.tap(find.text('产品甲'));
       await tester.pumpAndSettle();
@@ -110,7 +123,23 @@ class _LayoutApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path.contains('progress-timeline')) {
+      // 服务端口径（2026-10-01）：未开始的 PENDING 整块置顶（最后的阶段在最顶），
+      // 其下已发生事件按时间倒序、下单垫底。
       return const [
+        {
+          'seq': 70,
+          'code': 'PRODUCTION_PROGRESS',
+          'title': '生产开工',
+          'state': 'PENDING',
+          'detail': '已产 0 / 订货 10',
+        },
+        {
+          'seq': 50,
+          'code': 'SUPPLY_ORDER',
+          'title': '物料准备-采购/委外下单',
+          'state': 'PENDING',
+          'detail': '物料分析缺口待采购/委外在任务中心下单',
+        },
         {
           'seq': 3,
           'code': 'FINANCE_CONFIRMED',

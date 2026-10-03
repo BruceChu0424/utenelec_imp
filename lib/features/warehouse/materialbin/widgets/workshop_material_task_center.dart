@@ -1,6 +1,6 @@
 // 仓库任务中心 · 「车间内料仓」大类正文 (ADR-131 §8.1)。
 //
-// 小类: 待发料 (红) / 待收退回 (红) / 盘点 (黄 = 盘点中) / 记录; 行尾"直接发料"。
+// 小类: 待发料 / 待收退回 / 盘点审核 (红) / 周期盘点 (黄 = 盘点中) / 记录。
 // 计数随徽章汇总一次带回 (来源键 workshopMaterial), 页面不做加法; 列表按顶栏仓库范围
 // 过滤 (服务端按仓管负责的仓分发)。双击待发料 / 待收退回进入办理页。
 import 'package:flutter/material.dart';
@@ -8,18 +8,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_context_menu.dart';
 import '../../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../core/router/route_access_policy.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/utils/china_datetime.dart';
 import '../../../../shared/badges/badge_registry.dart';
+import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/models/paged_result.dart';
 import '../../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
+import '../../../stock/counts/pages/stock_count_review_page.dart';
 import '../../providers/warehouse_count_refresh.dart';
+import '../../providers/warehouse_stock_count_review_count_provider.dart';
 import '../../widgets/warehouse_task_center_scaffold.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
@@ -31,10 +36,12 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
     this.externalKeyword,
     this.externalRefreshTick,
     this.externalHeader,
+    this.initialSection,
   });
 
   final String? externalKeyword;
   final int? externalRefreshTick;
+  final String? initialSection;
 
   /// 宿主 (仓库任务中心合并页) 的大类行。
   final Widget? externalHeader;
@@ -42,6 +49,17 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final superAdmin = ref.watch(isSuperAdminProvider);
+    bool canOpen(String route) =>
+        locationAllowedFor(permissions, superAdmin, route);
+    final canIssue = canOpen(RouteName.workshopMaterialIssue);
+    final canReview = canOpen(RouteName.warehouseStockCountReview);
+    final canCycleCount =
+        canOpen(RouteName.workshopMaterialBin) &&
+        canOpen(RouteName.workshopMaterialCount);
+    final reviewCount = ref.watch(warehouseStockCountReviewCountProvider);
+    final warehouseScope = ref.watch(warehouseTaskScopeProvider);
     final pendingIssue = ref.watch(
       badgeFactOrNullProvider(BadgeFact.workshopMaterialPendingIssue),
     );
@@ -55,35 +73,51 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
       location: RouteName.warehouseTasks,
       title: l10n.workshopMaterialGroup,
       searchHint: '搜索单号 / 车间 / 料',
+      initialSegment: initialSection,
       segments: [
-        WarehouseTaskSegmentSpec(
-          value: 'pendingIssue',
-          label: l10n.wmPendingIssue,
-          count: pendingIssue,
-        ),
-        WarehouseTaskSegmentSpec(
-          value: 'pendingReturn',
-          label: l10n.wmPendingReturn,
-          count: pendingReturn,
-        ),
-        WarehouseTaskSegmentSpec(
-          value: 'count',
-          label: l10n.wmCount,
-          inProgressCount: counting,
-        ),
-        WarehouseTaskSegmentSpec(value: 'history', label: l10n.wmHistory),
+        if (canIssue)
+          WarehouseTaskSegmentSpec(
+            value: 'pendingIssue',
+            label: l10n.wmPendingIssue,
+            count: pendingIssue,
+          ),
+        if (canIssue)
+          WarehouseTaskSegmentSpec(
+            value: 'pendingReturn',
+            label: l10n.wmPendingReturn,
+            count: pendingReturn,
+          ),
+        if (canReview)
+          WarehouseTaskSegmentSpec(
+            value: 'count',
+            label: '盘点审核',
+            count: reviewCount,
+          ),
+        if (canCycleCount)
+          WarehouseTaskSegmentSpec(
+            value: 'periodCount',
+            label: '周期盘点',
+            inProgressCount: counting,
+          ),
+        if (canIssue)
+          WarehouseTaskSegmentSpec(value: 'history', label: l10n.wmHistory),
       ],
       embedded: true,
       externalKeyword: externalKeyword,
       externalRefreshTick: externalRefreshTick,
       externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
-      trailingBuilder: (_) => UtenButton(
-        key: const Key('wm-task-direct-issue'),
-        icon: Icons.local_shipping_outlined,
-        onPressed: () => context.push(RoutePath.workshopMaterialDirectIssue()),
-        child: Text(l10n.wmDirectIssue),
-      ),
+      trailingBuilder: !canIssue
+          ? null
+          : (_) => UtenButton(
+              key: const Key('wm-task-direct-issue'),
+              icon: Icons.local_shipping_outlined,
+              onPressed: () async {
+                await context.push(RoutePath.workshopMaterialDirectIssue());
+                if (context.mounted) invalidateWarehouseTaskCounts(ref);
+              },
+              child: Text(l10n.wmDirectIssue),
+            ),
       bodyBuilder: (segment, keyword, refreshTick, headerPrefix) =>
           switch (segment) {
             'pendingIssue' => WmRequisitionSegment(
@@ -102,7 +136,18 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
               refreshTick: refreshTick,
               header: headerPrefix,
             ),
-            'count' => WmBinStatusSegment(
+            'count' => StockCountReviewPage(
+              key: const ValueKey('wm-stock-count-review'),
+              reviewRoute: 'WAREHOUSE',
+              embedded: true,
+              externalHeader: headerPrefix,
+              externalRefreshTick: refreshTick,
+              warehouseScope: warehouseScope,
+              keyword: keyword,
+              onChanged: () =>
+                  ref.invalidate(warehouseScopedStockCountReviewCountProvider),
+            ),
+            'periodCount' => WmBinStatusSegment(
               refreshTick: refreshTick,
               header: headerPrefix,
             ),
@@ -283,6 +328,10 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
               label: '状态',
               width: 90,
               value: (r) => wmRequisitionStatusLabel(r.status),
+              cellColor: (context, r) => udenStatusBadgeCellColor(
+                context,
+                wmRequisitionStatusBadgeType(r.status),
+              ),
             ),
             MasterColumnDef(
               key: 'receiver',
@@ -449,7 +498,10 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
         ),
       );
     }
-    if (mounted) _load();
+    if (mounted) {
+      invalidateWarehouseTaskCounts(ref);
+      _load();
+    }
   }
 
   @override
@@ -493,6 +545,14 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
             width: 130,
             value: (r) =>
                 r.period == null ? null : wmPeriodStatusLabel(r.period!.status),
+            // 2026-10-01 口径「不同状态不同颜色」：开着绿 / 盘点中蓝 /
+            // 已盘点待结算琥珀 / 已结算灰。
+            cellColor: (context, r) => r.period == null
+                ? null
+                : udenStatusBadgeCellColor(
+                    context,
+                    wmPeriodStatusBadgeType(r.period!.status),
+                  ),
           ),
           MasterColumnDef(
             key: 'close',
@@ -501,6 +561,15 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
             value: (r) => r.period == null
                 ? null
                 : wmCloseStateLabel(r.period!.closeState),
+            // 自动结算中蓝 / 差资料琥珀 / 结算没成功红 / 已撤销灰；开着不上色。
+            cellColor: (context, r) {
+              final type = r.period == null
+                  ? null
+                  : wmCloseStateBadgeType(r.period!.closeState);
+              return type == null
+                  ? null
+                  : udenStatusBadgeCellColor(context, type);
+            },
           ),
         ],
         items: rows,

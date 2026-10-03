@@ -18,6 +18,11 @@ class DocumentReversedDeleteProtectionContractTest {
         for (Contract contract : contracts()) {
             String command = method(source(contract.relativePath()),
                     "public void delete(UUID id)");
+            if (command.contains("delete(id, null)")) {
+                // V788 报价 delete(UUID) 是便捷重载，属主+草稿守卫在两参版本里。
+                command = method(source(contract.relativePath()),
+                        "public void delete(UUID id, Integer expectedRevision)");
+            }
             if (command.contains("deleteLocked(id)")) {
                 // ADR-109：生产计划单张删除与批量删除共用同一个加锁内核。
                 command = method(source(contract.relativePath()),

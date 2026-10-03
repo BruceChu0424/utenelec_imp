@@ -33,7 +33,7 @@ void main() {
   );
 
   test(
-    'plan creation leaves the number to the server after wizard retirement',
+    'plan creation leaves the number to the server (direct create, 2026-10-01)',
     () {
       final editPage = File(
         'lib/features/production/pages/production_plan_edit_page.dart',
@@ -50,7 +50,10 @@ void main() {
             ),
       ].map((p) => File(p).readAsStringSync()).join('\n');
 
-      expect(editPage, contains('initialProductNo: row.productNo.text.trim()'));
+      // 2026-10-01 新建态直接 repo.create：productNo 只作为可选初值随行提交，
+      // 空值由服务端按计划单号原子分配；不再经分析 seed 携带编号。
+      expect(editPage, contains("'productNo': r.productNo.text.trim()"));
+      expect(editPage, isNot(contains('ProductionMaterialAnalysisSeed')));
       // 2026-09-04 起「填写生产计划单」向导页下线（可安排桶直接生成+下发），
       // 分析侧不再手工指定产品编号——统一留空由服务端按计划单号生成；
       // 分析链路不得再引用向导专属的产品编号 seed。

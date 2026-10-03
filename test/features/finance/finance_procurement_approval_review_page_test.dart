@@ -239,6 +239,50 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  for (final type in ['PURCHASE', 'SUBCONTRACT']) {
+    testWidgets('$type 总金额计价在财审中标记参考单价并保持金额原文', (tester) async {
+      final json = _pendingReviewJson();
+      final original = Map<String, dynamic>.from(
+        (json['items'] as List).single as Map,
+      );
+      final review = FinanceProcurementApprovalReview.fromJson({
+        ...json,
+        'orderType': type,
+        'items': [
+          {
+            ...original,
+            'qty': '3000',
+            'price': '0.0333333333',
+            'totalAmountInput': '100.000000000000000001',
+            'amountOriginal': '100.000000000000000001',
+          },
+        ],
+      });
+      await _pumpReviewPage(tester, _FakeWorkflowRepo(review));
+      final finder = find.byKey(
+        const Key('procurement-approval-revision-table'),
+      );
+      await tester.scrollUntilVisible(
+        finder,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final table = tester
+          .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(finder);
+      final row = table.rows.single.value;
+      expect(
+        table.columns.singleWhere((column) => column.key == 'price').value(row),
+        '0.0333333333（参考）',
+      );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'amountOriginal')
+            .value(row),
+        '100.000000000000000001',
+      );
+    });
+  }
+
   testWidgets('loss allowance only and cleared header remark remain visible', (
     tester,
   ) async {

@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_page.dart';
@@ -15,7 +18,13 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import '../../../support/filter_segment_tap.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('finance task page defaults to pending and uses desktop table', (
     tester,
   ) async {
@@ -55,6 +64,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
             warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
           ],
           child: const MaterialApp(home: WarehouseSalesOutboundPage()),
@@ -146,6 +159,10 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         apiClientProvider.overrideWithValue(api),
         currentPermissionsProvider.overrideWithValue({permission}),
         isSuperAdminProvider.overrideWithValue(false),

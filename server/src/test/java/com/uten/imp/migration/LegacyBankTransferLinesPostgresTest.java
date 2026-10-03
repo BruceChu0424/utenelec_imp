@@ -53,10 +53,10 @@ class LegacyBankTransferLinesPostgresTest {
         rejected(()->line(UUID.randomUUID(),HISTORY,"YC20250102000001","1"));
         rejected(()->jdbc.update("UPDATE finance_bank_transfer_lines SET amount_original=4,amount_local=4 WHERE id=?",OLD_LINE));
         rejected(()->jdbc.update("DELETE FROM finance_bank_transfer_lines WHERE id=?",OLD_LINE));
-        rejected(()->jdbc.update("UPDATE finance_bank_transfer_lines SET transfer_id=? WHERE id=?",NATIVE,OLD_LINE));
+        rejectedRebinding(()->jdbc.update("UPDATE finance_bank_transfer_lines SET transfer_id=? WHERE id=?",NATIVE,OLD_LINE));
         UUID nativeLine=UUID.randomUUID();
         line(nativeLine,NATIVE,"YC20250102000002","2");
-        rejected(()->jdbc.update("UPDATE finance_bank_transfer_lines SET transfer_id=? WHERE id=?",HISTORY,nativeLine));
+        rejectedRebinding(()->jdbc.update("UPDATE finance_bank_transfer_lines SET transfer_id=? WHERE id=?",HISTORY,nativeLine));
         assertThat(jdbc.update("UPDATE finance_bank_transfer_lines SET amount_original=4,amount_local=4 WHERE id=?",nativeLine)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT amount_local FROM finance_bank_transfer_lines WHERE id=?",BigDecimal.class,nativeLine)).isEqualByComparingTo("4");
         assertThat(jdbc.update("DELETE FROM finance_bank_transfer_lines WHERE id=?",nativeLine)).isEqualTo(1);
@@ -69,6 +69,13 @@ class LegacyBankTransferLinesPostgresTest {
     }
     private static List<String> rows(String table,String column,UUID id) {
         return jdbc.queryForList("SELECT to_jsonb(fact)::text FROM "+table+" fact WHERE "+column+"=? ORDER BY id",String.class,id);
+    }
+    private static void rejectedRebinding(Runnable action) {
+        DataAccessException error=assertThrows(DataAccessException.class,action::run);
+        assertThat(error.getMostSpecificCause()).isInstanceOf(SQLException.class);
+        assertThat(((SQLException)error.getMostSpecificCause()).getSQLState()).isEqualTo("23514");
+        assertThat(error.getMostSpecificCause().getMessage())
+                .contains("A retained record identity cannot move to another parent; create a new identity");
     }
     private static void rejected(Runnable action) {
         DataAccessException error=assertThrows(DataAccessException.class,action::run);

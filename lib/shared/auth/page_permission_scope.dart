@@ -21,6 +21,24 @@ final class PagePermissionScope {
 PagePermissionScope? pagePermissionScopeFor(String location) {
   final path = _normalizedPath(location);
   if (path == null) return null;
+  if (path == '/stock/count-requests') {
+    return const PagePermissionScope(
+      surfaceKey: 'warehouse.stock-item',
+      title: '我的盘点',
+    );
+  }
+  if (path == '/finance/stock-count-review') {
+    return const PagePermissionScope(
+      surfaceKey: 'finance.stock-count-review',
+      title: '普通仓盘点财务审核',
+    );
+  }
+  if (path == '/warehouse/stock-count-review') {
+    return const PagePermissionScope(
+      surfaceKey: 'warehouse.stock-count-review',
+      title: '车间内料仓盘点审核',
+    );
+  }
 
   // 人事与组织。
   if (path == '/employee' || _isDescendant(path, '/employee')) {
@@ -256,6 +274,11 @@ PagePermissionScope? _purchaseScopeFor(List<String> segments) {
 }
 
 PagePermissionScope? _stockScopeFor(List<String> segments) {
+  if (segments.length == 3 &&
+      segments[1] == 'instant-inventory' &&
+      segments[2] == 'overview') {
+    return _instantInventoryScope;
+  }
   if (segments.length == 2) {
     return switch (segments[1]) {
       'balance' => _stockBalanceScope,

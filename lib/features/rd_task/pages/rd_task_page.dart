@@ -17,7 +17,8 @@
 // 结构克隆：
 //  - operations_workbench_page.dart —— race-guard _load / LayoutBuilder 宽窄分栏
 //    （expanded → MasterDataTableView，否则卡片列表）/ connectionRecovery 重载 /
-//    _Overview 指标卡（即便为 0 也展示）/ _Filters（关键词 + 类别）/ _MobilePager。
+//    _Filters（关键词 + 类别）/ _MobilePager。原克隆自它的 _Overview 指标卡
+//    已按 2026-10-01 用户口径删除（分段徽章计数已给同口径数字）。
 //
 // 路由：/rd/tasks → RouteName.rdTaskCenter。
 import 'package:flutter/material.dart';
@@ -43,7 +44,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -412,22 +412,12 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
 
     // 2026-09-29「大小屏共用一张表」：统一用 MasterDataTableView，窄屏
     // （<840，原卡片阈值）由表格内建卡片形态接管，同一份列定义驱动。
+    // 2026-10-01 用户口径：删除列表上方的「待处理/进行中/已完成任务」总数
+    // 指标卡——分段工具条上的计数徽章已给出同口径数字，指标卡重复展示。
     final sel = _selectedRow;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Overview(
-          total: data.total,
-          label: '${widget.seg.label}任务',
-          // 指标卡配色跟着分段语义走: 待处理沿用主色, 进行中用琥珀(与黄徽章
-          // 同一族), 已完成绿色。
-          tone: switch (widget.seg) {
-            _RdTaskSeg.done => 'success',
-            _RdTaskSeg.inProgress => 'warning',
-            _RdTaskSeg.pending || _RdTaskSeg.draft => 'primary',
-          },
-        ),
-        const SizedBox(height: UtenSpacing.s16),
         _Filters(
           keyword: _keyword,
           category: _category,
@@ -475,77 +465,6 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
           ),
         ),
       ],
-    );
-  }
-}
-
-// ═══════════════════════ 概览指标卡（单卡，显示 total，即便为 0） ═══════════════════════
-
-class _Overview extends StatelessWidget {
-  const _Overview({
-    required this.total,
-    required this.label,
-    required this.tone,
-  });
-
-  final int total;
-  final String label;
-  final String tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = _toneColor(tone, theme);
-    return SizedBox(
-      width: 220,
-      child: Semantics(
-        label: '$label，$total',
-        child: Container(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            boxShadow: UtenElevation.low(
-              isDark: theme.brightness == Brightness.dark,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: UtenRadius.mdAll,
-                ),
-                child: Icon(Icons.science_outlined, color: color, size: 22),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      total.toString(),
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: color,
-                      ),
-                    ),
-                    Text(
-                      label,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -897,14 +816,4 @@ String _priorityLabel(String priority) {
     default:
       return '普通';
   }
-}
-
-Color _toneColor(String tone, ThemeData theme) {
-  return switch (tone.toLowerCase()) {
-    'success' || 'ready' => UtenColors.success,
-    'warning' || 'attention' => UtenColors.warning,
-    'error' || 'danger' || 'critical' => theme.colorScheme.error,
-    'info' => UtenColors.info,
-    _ => theme.colorScheme.primary,
-  };
 }

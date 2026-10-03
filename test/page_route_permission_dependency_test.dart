@@ -310,29 +310,50 @@ void main() {
       },
     );
 
-    test('legacy plan creation requires both analysis create and view', () {
-      final location = RoutePath.productionPlanNew();
-      for (final permissions in [
-        <String>[],
-        [Perm.productionMaterialAnalysisCreate],
-        [Perm.productionMaterialAnalysisView],
-      ]) {
+    test(
+      'plan creation accepts either analysis create or plan create (2026-10-01)',
+      () {
+        final location = RoutePath.productionPlanNew();
+        // 空权限 → 拒绝。
         expect(
-          employeePermissionRedirect(_userWith(permissions), location),
+          employeePermissionRedirect(_userWith(<String>[]), location),
           RouteName.accessDenied,
         );
-      }
-      expect(
-        employeePermissionRedirect(
-          _userWith([
-            Perm.productionMaterialAnalysisCreate,
-            Perm.productionMaterialAnalysisView,
-          ]),
-          location,
-        ),
-        isNull,
-      );
-    });
+        // 任一创建码即可进（either-of，与服务端 @PreAuthorize 同口径）。
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.productionMaterialAnalysisCreate]),
+            location,
+          ),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.productionPlanCreate]),
+            location,
+          ),
+          isNull,
+        );
+        // 仅有查看码不能进（创建是写操作）。
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.productionMaterialAnalysisView]),
+            location,
+          ),
+          RouteName.accessDenied,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([
+              Perm.productionMaterialAnalysisCreate,
+              Perm.productionMaterialAnalysisView,
+            ]),
+            location,
+          ),
+          isNull,
+        );
+      },
+    );
 
     test('material analysis requires view besides action permissions', () {
       final summaryPath = RoutePath.productionMaterialAnalysisSummary(

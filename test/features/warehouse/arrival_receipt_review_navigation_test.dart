@@ -9,6 +9,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -54,7 +57,13 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
   await tester.pump();
 }
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   test('预计到货行解析基本单位与 allocations，旧响应保持空列表', () {
     final legacy = InboundExpectationItem.fromJson(const {
       'id': 'legacy-item',
@@ -184,6 +193,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
@@ -276,6 +289,10 @@ void main() {
     );
     final container = ProviderContainer(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_testArrivalPermissionsProvider),
@@ -411,6 +428,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
@@ -540,6 +561,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
@@ -654,6 +679,10 @@ void main() {
     addTearDown(router.dispose);
     final container = ProviderContainer(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_testArrivalPermissionsProvider),
@@ -776,6 +805,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
@@ -1005,6 +1038,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
@@ -1081,6 +1118,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),
@@ -1114,6 +1155,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           ...warehouseWeightTestOverrides(api),

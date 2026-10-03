@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -761,8 +761,10 @@ class AuditActorPicker extends ConsumerStatefulWidget {
 class _AuditActorPickerState extends ConsumerState<AuditActorPicker> {
   final _controller = TextEditingController();
   final _requests = LatestRequestGuard();
+  final _rows = MasterDataTableRowsController<AuditActorOption>();
   Timer? _searchDebounce;
   AuditActorPage? _page;
+  int _retryPage = 1;
   String _keyword = '';
   bool _loading = false;
   String? _error;
@@ -782,6 +784,7 @@ class _AuditActorPickerState extends ConsumerState<AuditActorPicker> {
 
   Future<void> _load(int page) async {
     final generation = _requests.begin();
+    _retryPage = page;
     setState(() {
       _loading = true;
       _error = null;
@@ -889,132 +892,72 @@ class _AuditActorPickerState extends ConsumerState<AuditActorPicker> {
             ),
           ),
           const SizedBox(height: UtenSpacing.s8),
-          if (_loading) const LinearProgressIndicator(minHeight: 2),
           Expanded(
-            child: _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.error_outline_rounded,
-                            color: theme.colorScheme.error,
-                          ),
-                          const SizedBox(height: UtenSpacing.s8),
-                          Text(_error!, textAlign: TextAlign.center),
-                          const SizedBox(height: UtenSpacing.s12),
-                          OutlinedButton(
-                            onPressed: () => _load(_page?.page ?? 1),
-                            child: const Text('重试'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : !_loading && items.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s24),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.person_off_outlined, size: 40),
-                          const SizedBox(height: UtenSpacing.s8),
-                          Text(_keyword.isEmpty ? '暂时没有可选择的人员' : '没有找到匹配的人员'),
-                          const SizedBox(height: UtenSpacing.s4),
-                          Text(
-                            '可检查姓名或账号后重新搜索。',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12,
-                      vertical: UtenSpacing.s8,
-                    ),
-                    itemCount: items.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final actor = items[index];
-                      final actorKind =
-                          actor.actorType == 'visitor' ||
-                              actor.department == '外部访客'
-                          ? '访客'
-                          : '员工';
-                      final secondary = [
-                        actorKind,
-                        if (actor.account?.trim().isNotEmpty == true)
-                          '账号 ${actor.account!.trim()}',
-                        if (actor.department?.trim().isNotEmpty == true)
-                          actor.department!.trim(),
-                        if (actor.position?.trim().isNotEmpty == true)
-                          actor.position!.trim(),
-                      ].join(' · ');
-                      return Semantics(
-                        button: true,
-                        label: '选择 ${actor.primaryLabel}',
-                        child: ListTile(
-                          key: ValueKey('audit-actor-${actor.actorId}'),
-                          minVerticalPadding: UtenSpacing.s12,
-                          leading: CircleAvatar(
-                            child: Text(actor.primaryLabel.characters.first),
-                          ),
-                          title: Text(
-                            actor.primaryLabel,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (secondary.isNotEmpty) Text(secondary),
-                              if (actor.lastActivityAt != null)
-                                Text(
-                                  '最近操作：${_auditBeijingTime(actor.lastActivityAt)}',
-                                ),
-                            ],
-                          ),
-                          trailing: const Icon(Icons.chevron_right_rounded),
-                          onTap: () => Navigator.pop(context, actor),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-          if (_page != null)
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: !_loading && _page!.page > 1
-                        ? () => _load(_page!.page - 1)
-                        : null,
-                    icon: const Icon(Icons.chevron_left_rounded),
-                    label: const Text('上一页'),
-                  ),
-                  Expanded(
-                    child: Text(
-                      '第 ${_page!.page} / ${math.max(_page!.totalPages, 1)} 页',
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: !_loading && _page!.page < _page!.totalPages
-                        ? () => _load(_page!.page + 1)
-                        : null,
-                    icon: const Icon(Icons.chevron_right_rounded),
-                    label: const Text('下一页'),
-                  ),
-                ],
+            child: UtenPagedPickerList<AuditActorOption>(
+              key: const Key('audit-actor-paged-list'),
+              items: items,
+              idOf: (actor) => actor.actorId,
+              rowsController: _rows,
+              currentPage: _page?.page ?? 1,
+              totalPages: _page?.totalPages ?? 1,
+              onPageChange: _load,
+              paginationScope: _keyword,
+              paginationRevision: _page,
+              loading: _loading,
+              error: _error,
+              onRetry: () => _load(_retryPage),
+              emptyMessage: _keyword.isEmpty
+                  ? '暂时没有可选择的人员'
+                  : '没有找到匹配的人员，可检查姓名或账号后重新搜索。',
+              padding: const EdgeInsets.symmetric(
+                horizontal: UtenSpacing.s12,
+                vertical: UtenSpacing.s8,
               ),
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, actor) {
+                final actorKind =
+                    actor.actorType == 'visitor' || actor.department == '外部访客'
+                    ? '访客'
+                    : '员工';
+                final secondary = [
+                  actorKind,
+                  if (actor.account?.trim().isNotEmpty == true)
+                    '账号 ${actor.account!.trim()}',
+                  if (actor.department?.trim().isNotEmpty == true)
+                    actor.department!.trim(),
+                  if (actor.position?.trim().isNotEmpty == true)
+                    actor.position!.trim(),
+                ].join(' · ');
+                return Semantics(
+                  button: true,
+                  label: '选择 ${actor.primaryLabel}',
+                  child: ListTile(
+                    key: ValueKey('audit-actor-${actor.actorId}'),
+                    minVerticalPadding: UtenSpacing.s12,
+                    leading: CircleAvatar(
+                      child: Text(actor.primaryLabel.characters.first),
+                    ),
+                    title: Text(
+                      actor.primaryLabel,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (secondary.isNotEmpty) Text(secondary),
+                        if (actor.lastActivityAt != null)
+                          Text(
+                            '最近操作：${_auditBeijingTime(actor.lastActivityAt)}',
+                          ),
+                      ],
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.pop(context, actor),
+                  ),
+                );
+              },
             ),
+          ),
         ],
       ),
     );

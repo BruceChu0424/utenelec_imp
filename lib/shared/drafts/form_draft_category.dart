@@ -154,6 +154,7 @@ Map<String, dynamic> formDraftHeader(FormDraft draft) => {
 
 String formDraftFieldKey(String key) =>
     const {
+      'apReverse': 'apPosted',
       'client': 'clientId',
       'clientName': 'clientId',
       'customer': 'clientId',
@@ -179,7 +180,14 @@ String formDraftFieldKey(String key) =>
 
 /// Match UUID identities, including row-level suppliers in multi-order drafts.
 Set<String> formDraftColumnRawValues(FormDraft draft, String key) {
+  // Local editor documents belong to the current system, never the imported archive.
+  if (key == 'recordOrigin') return {'CURRENT'};
   final canonical = formDraftFieldKey(key);
+  if (canonical == 'apPosted') {
+    // Source receipt/return snapshots do not establish this draft's AP state.
+    final posted = formDraftHeader(draft)['apPosted'];
+    return {if (posted is bool) posted.toString()};
+  }
   final values = <String>{};
   void collect(Object? node, int depth) {
     if (depth > 5) return;
@@ -223,6 +231,7 @@ Set<String> formDraftColumnRawValues(FormDraft draft, String key) {
 /// fabricated zeroes, invoice numbers, approval states or inventory quantities.
 String? formDraftColumnValue(FormDraft draft, String key) {
   final values = formDraftHeader(draft);
+  if (key == 'recordOrigin') return '本机草稿';
   if (key == 'billNo' || key == 'number' || key == 'no') {
     return '未提交草稿';
   }

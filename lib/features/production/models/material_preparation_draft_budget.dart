@@ -11,6 +11,7 @@ class MaterialPreparationBudgetLine {
     required this.uncoveredBeforeSharedQty,
     required this.requestedQty,
     required this.selected,
+    this.useAvailableQty = true,
     this.inputKey,
     this.priority = 0,
     this.adoptableSharedQty,
@@ -23,6 +24,10 @@ class MaterialPreparationBudgetLine {
   final double uncoveredBeforeSharedQty;
   final double requestedQty;
   final bool selected;
+
+  /// Extra purchasing can keep the shared pool available for future demand.
+  /// This choice affects draft reservations, not existing private coverage.
+  final bool useAvailableQty;
   final String? inputKey;
   final int priority;
   final double? adoptableSharedQty;
@@ -182,7 +187,9 @@ class MaterialPreparationDraftBudget {
       });
     }
     final groupedInputs = <String, List<MaterialPreparationBudgetLine>>{};
-    for (final line in ordered.where((line) => line.selected)) {
+    for (final line in ordered.where(
+      (line) => line.selected && line.useAvailableQty,
+    )) {
       groupedInputs
           .putIfAbsent(line.inputKey ?? line.materialLineId, () => [])
           .add(line);

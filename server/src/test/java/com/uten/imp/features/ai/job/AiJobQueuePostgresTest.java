@@ -160,7 +160,7 @@ class AiJobQueuePostgresTest extends AiPlatformPostgresTestSupport {
                 usage.markUsed(id, ownerId, "quote", quoteId));
         assertThat(getJson("/api/ai/jobs/" + jobId, owner.token()).path("result").isNull()).isTrue();
         assertThat(usage.resultFor(id, ownerId)).isEmpty();
-        assertThat(jdbc.queryForObject("SELECT result IS NULL AND result_purged_at IS NOT NULL FROM ai_jobs "
+        assertThat(jdbc.queryForObject("SELECT result IS NOT NULL AND result_purged_at IS NULL FROM ai_jobs "
                 + "WHERE id = ?::uuid", Boolean.class, jobId)).isTrue();
         // 第二张单据既读不到, 也改写不了去向; 同一张单据重放无害。
         UUID orderId = UUID.randomUUID();
@@ -393,11 +393,12 @@ class AiJobQueuePostgresTest extends AiPlatformPostgresTestSupport {
     }
 
     @Test
-    void housekeepingClearsStaleQueuedJobsOldResultsOldJobsAndOldCallLogs() throws Exception {
+    void housekeepingFailsStaleQueueAndArchivesOldResultsJobsAndCallLogsWithoutDestroyingThem() throws Exception {
         Staff owner = aiUser();
         awaitNoActiveJobs();
         // 排队 1 小时(超过 30 分钟未开始, 但还没到 7 天删除期)。
         UUID stale = insertPending(owner, java.time.OffsetDateTime.now().minusHours(1).toString());
+        jdbc.update("UPDATE ai_jobs SET updated_at=created_at WHERE id=?",stale);
         UUID oldResult = UUID.randomUUID();
         UUID ancient = UUID.randomUUID();
         insertFinished(owner, oldResult, "now() - interval '3 days'", "now() - interval '3 days'");
@@ -410,11 +411,12 @@ class AiJobQueuePostgresTest extends AiPlatformPostgresTestSupport {
         housekeeping.purge();
 
         assertThat(statusOf(stale)).isEqualTo("FAILED:QUEUE_TIMEOUT:true");
-        assertThat(jdbc.queryForObject("SELECT result IS NULL AND result_purged_at IS NOT NULL FROM ai_jobs "
+        assertThat(jdbc.queryForObject("SELECT result IS NOT NULL AND result_purged_at IS NULL AND archived_at IS NOT NULL FROM ai_jobs "
                 + "WHERE id = ?", Boolean.class, oldResult)).isTrue();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id = ?", Integer.class, ancient)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE id = ?", Integer.class, ancient)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_call_logs WHERE purpose = 'OLD'", Integer.class))
-                .isZero();
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT archived_at IS NOT NULL FROM ai_call_logs WHERE purpose='OLD'",Boolean.class)).isTrue();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_call_logs WHERE purpose = 'NEW'", Integer.class))
                 .isPositive();
     }

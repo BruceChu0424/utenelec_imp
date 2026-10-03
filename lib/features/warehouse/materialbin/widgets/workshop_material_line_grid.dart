@@ -114,6 +114,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
   bool showWarehouseAvailable = true,
   Map<String, WmPositionRow> positionByKey = const {},
   String? qtyLabel,
+  Future<WmMaterialOption?> Function()? pickMaterial,
   VoidCallback? onChanged,
 }) {
   final byKey = {for (final m in materials) m.key: m};
@@ -150,6 +151,29 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
             row.requisitionLine?.displayName ??
                 row.material.value?.displayName ??
                 '',
+          );
+        }
+        if (pickMaterial != null) {
+          return ValueListenableBuilder<WmMaterialOption?>(
+            valueListenable: row.material,
+            builder: (context, selected, _) => RequiredCellFrame(
+              listenable: row.material,
+              isEmpty: () => row.material.value == null,
+              child: TextButton(
+                key: ValueKey('wm-line-material-${row.id}'),
+                onPressed: !enabled
+                    ? null
+                    : () async {
+                        final material = await pickMaterial();
+                        if (!context.mounted || material == null) return;
+                        for (final target in targets(row)) {
+                          target.applyMaterial(material);
+                        }
+                        onChanged?.call();
+                      },
+                child: Text(selected?.displayName ?? '选择物料'),
+              ),
+            ),
           );
         }
         return ValueListenableBuilder<WmMaterialOption?>(
@@ -211,7 +235,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
                       UtenDropdownItem(
                         value: w.warehouseId,
                         label: w.availableQty > 0
-                            ? '${w.warehouseName} (${wmQty(w.availableQty)} ${l10n.wmKg})'
+                            ? '${w.warehouseName} (${wmQty(w.availableQty)} ${material?.unitName ?? row.requisitionLine?.unitName ?? ''})'
                             : w.warehouseName,
                       ),
                   ],
@@ -233,6 +257,19 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
           ),
         ),
       ),
+    EditableGridColumn<WmIssueLineRow>(
+      key: 'unit',
+      label: '单位',
+      width: 75,
+      listenableOf: (row) => row.material,
+      textOf: (row) =>
+          row.material.value?.unitName ?? row.requisitionLine?.unitName ?? '',
+      cellBuilder: (_, row) => ValueListenableBuilder<WmMaterialOption?>(
+        valueListenable: row.material,
+        builder: (_, material, _) =>
+            Text(material?.unitName ?? row.requisitionLine?.unitName ?? ''),
+      ),
+    ),
     EditableGridColumn<WmIssueLineRow>(
       key: 'bags',
       exactValueOf: (r) => r.bags.text,
@@ -261,7 +298,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
       key: 'qty',
       exactValueOf: (r) => r.qty.text,
       exactListenableOf: (r) => r.qty,
-      label: qtyLabel ?? l10n.wmKg,
+      label: qtyLabel ?? '数量',
       width: 120,
       numeric: true,
       required: true,
@@ -361,13 +398,19 @@ String _hintText(
         }
       }
     }
-    parts.add(l10n.wmWarehouseAvailable(wmQty(available)));
+    parts.add('仓库可发 ${wmQty(available)} ${material.unitName ?? ''}');
   }
   final position = key == null ? null : positionByKey[key];
   if (position != null) {
-    parts.add(l10n.wmEstimatedRemaining(wmQty(position.estimatedRemainingQty)));
+    parts.add(
+      '内料仓估计还剩 ${wmQty(position.estimatedRemainingQty)} ${material?.unitName ?? row.requisitionLine?.unitName ?? ''}',
+    );
   }
   final net = row.bagNet;
-  if (net != null && net > 0) parts.add('每袋 ${wmQty(net)} ${l10n.wmKg}');
+  if (net != null && net > 0) {
+    parts.add(
+      '每袋 ${wmQty(net)} ${material?.unitName ?? row.requisitionLine?.unitName ?? ''}',
+    );
+  }
   return parts.join(' · ');
 }

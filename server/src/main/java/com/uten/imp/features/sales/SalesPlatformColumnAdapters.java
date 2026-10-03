@@ -33,7 +33,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_quote:view"),Set.of("sales_quote:edit"),Set.of("sales_order:price:view","sales_quote_finance:view"),
                 com.uten.imp.features.sales.quote.SalesQuote.class,
                 null,
-                quoteService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("allowedActions").toString().contains("\"edit\""),HEADER);
+                quoteService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("allowedActions").toString().contains("\"edit\""),HEADER).history(quoteService::detailHistory,null);
     }
 
     @Bean
@@ -42,7 +42,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_order:view"),Set.of("sales_order:edit"),Set.of("sales_order:price:view"),
                 com.uten.imp.features.sales.order.SalesOrder.class,
                 null,
-                orderService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false),HEADER);
+                orderService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false),HEADER).history(orderService::detailHistory,null);
     }
 
     @Bean
@@ -51,7 +51,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_shipment:view","sales_other_shipment:view","sales_shipment_finance:view","warehouse_sales_outbound:view"),Set.of("sales_shipment:edit","sales_other_shipment:edit"),Set.of("sales_order:price:view"),
                 com.uten.imp.features.sales.shipment.SalesShipment.class,
                 null,
-                shipmentService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false) && !header.path("rejected").asBoolean(false) && header.path("financeAudit").asInt(0)==0,HEADER);
+                shipmentService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false) && !header.path("rejected").asBoolean(false) && header.path("financeAudit").asInt(0)==0,HEADER).history(shipmentService::detailHistory,null);
     }
 
     @Bean
@@ -60,7 +60,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_shipment:view","sales_other_shipment:view","sales_shipment_finance:view","warehouse_sales_outbound:view"),Set.of("sales_shipment:edit","sales_other_shipment:edit"),Set.of("sales_order:price:view"),
                 com.uten.imp.features.sales.shipment.SalesShipment.class,
                 "SELECT id,shipment_id FROM sales_shipment_items WHERE id IN (:ids) AND NOT is_deleted",
-                shipmentService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false) && !header.path("rejected").asBoolean(false) && header.path("financeAudit").asInt(0)==0,LINE)
+                shipmentService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false) && !header.path("rejected").asBoolean(false) && header.path("financeAudit").asInt(0)==0,LINE).history(shipmentService::detailHistory,"SELECT live.id,live.shipment_id FROM sales_shipment_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='sales_shipment_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='sales_shipment_items' AND parent_table='sales_shipments' AND CAST(CASE WHEN source_table='sales_shipment_items' AND parent_table='sales_shipments' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM sales_shipment_items WHERE shipment_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest.class,shipmentService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("sales_shipment:create", "sales_other_shipment:create"));
@@ -72,7 +72,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_return:view"),Set.of("sales_return:edit"),Set.of("sales_order:price:view"),
                 com.uten.imp.features.sales.ret.SalesReturn.class,
                 null,
-                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false),HEADER);
+                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false),HEADER).history(retService::detailHistory,null);
     }
 
     @Bean
@@ -81,7 +81,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_return:view"),Set.of("sales_return:edit"),Set.of("sales_order:price:view"),
                 com.uten.imp.features.sales.ret.SalesReturn.class,
                 "SELECT id,return_id FROM sales_return_items WHERE id IN (:ids) AND NOT is_deleted",
-                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false),LINE)
+                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("writable").asBoolean(false),LINE).history(retService::detailHistory,"SELECT live.id,live.return_id FROM sales_return_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='sales_return_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='sales_return_items' AND parent_table='sales_returns' AND CAST(CASE WHEN source_table='sales_return_items' AND parent_table='sales_returns' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM sales_return_items WHERE return_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.sales.ret.dto.ReturnSaveRequest.class,retService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("sales_return:create"));
@@ -93,7 +93,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_other_shipment:view"),Set.of(),Set.of("sales_order:price:view"),
                 com.uten.imp.features.sales.other_shipment.SalesOtherShipment.class,
                 null,
-                othershipmentService::detail,(id,header)->false,HEADER);
+                othershipmentService::detail,(id,header)->false,HEADER).history(othershipmentService::detailHistory,null);
     }
 
     @Bean
@@ -102,7 +102,7 @@ public class SalesPlatformColumnAdapters {
                 Set.of("sales_other_shipment:view"),Set.of(),Set.of("sales_order:price:view"),
                 com.uten.imp.features.sales.other_shipment.SalesOtherShipment.class,
                 "SELECT id,shipment_id FROM sales_other_shipment_items WHERE id IN (:ids) AND NOT is_deleted",
-                othershipmentService::detail,(id,header)->false,LINE)
+                othershipmentService::detail,(id,header)->false,LINE).history(othershipmentService::detailHistory,"SELECT live.id,live.shipment_id FROM sales_other_shipment_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='sales_other_shipment_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='sales_other_shipment_items' AND parent_table='sales_other_shipments' AND CAST(CASE WHEN source_table='sales_other_shipment_items' AND parent_table='sales_other_shipments' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM sales_other_shipment_items WHERE shipment_id=:document AND NOT is_deleted")
                 .documentCreateAuthorities(Set.of());
     }

@@ -54,6 +54,7 @@ void main() {
             sharedPreferencesProvider.overrideWithValue(preferences),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.purchaseOrderView,
+              Perm.purchaseOrderCreate,
             }),
             isSuperAdminProvider.overrideWithValue(false),
           ],
@@ -61,6 +62,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+
+      expect(find.text('新建'), findsNothing, reason: '草稿只处理已有单据');
 
       // 深链落在「草稿」段：列表请求带 NONE 切片（在审单与退回件不算草稿）。
       expect(
@@ -121,6 +124,7 @@ void main() {
       api.listQueries.clear();
       await tester.tap(segment('财务已退回'));
       await tester.pumpAndSettle();
+      expect(find.text('新建'), findsOneWidget);
       var listQuery = api.listQueries.lastWhere(
         (q) => q['size'] == 20,
         orElse: () => const {},

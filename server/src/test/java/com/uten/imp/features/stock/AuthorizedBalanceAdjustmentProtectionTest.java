@@ -38,6 +38,12 @@ class AuthorizedBalanceAdjustmentProtectionTest {
         StockDocService service = service(documents, entityManager, currentUser);
 
         UUID documentId = UUID.randomUUID();
+        Query count = mock(Query.class);
+        when(entityManager.createNativeQuery(contains("FROM stock_count_requests request JOIN stock_count_request_events event")))
+                .thenReturn(count);
+        when(count.setParameter("document", documentId)).thenReturn(count);
+        when(count.getSingleResult()).thenReturn(false);
+
         StockDocument document = authorizedDocument(documentId, (short) 1);
         Query productionLinked = mock(Query.class);
         when(entityManager.createNativeQuery(contains(

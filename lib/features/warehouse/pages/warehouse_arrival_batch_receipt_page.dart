@@ -276,14 +276,20 @@ class _WarehouseArrivalBatchReceiptPageState
   Map<String, WeightUnit> get _massUnits =>
       ref.read(warehouseUnitMassUnitsProvider).valueOrNull ?? const {};
 
-  WeightParams? _paramsOf(_BatchArrivalLine line) =>
-      _weightCache.of(line.goodsId, supplierId: line.prefill.supplierId);
+  WeightParams? _paramsOf(_BatchArrivalLine line) => _weightCache.of(
+    line.goodsId,
+    supplierId: line.prefill.supplierId,
+    warehouseId: line.warehouseId,
+    colorId: line.colorId,
+  );
 
   Iterable<WeightParamsLine> _weightParamsLines() => [
     for (final line in _lines)
       WeightParamsLine(
         goodsId: line.goodsId,
         supplierId: line.prefill.supplierId,
+        warehouseId: line.warehouseId,
+        colorId: line.colorId,
       ),
   ];
 
@@ -394,7 +400,6 @@ class _WarehouseArrivalBatchReceiptPageState
     // 进页默认全选（2026-09-17，与订货单编辑页同款）：勾选=本次要登记送检的行，
     // 右下两个提交按钮只认勾选行；默认全选让「进来直接提交」行为不变。
     _lineGrid.setSelected(_lineGrid.rows, true);
-    _ensureWeightParams();
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
     ).selectableIds;
@@ -411,6 +416,7 @@ class _WarehouseArrivalBatchReceiptPageState
         line.setWarehouse(rememberedWarehouse, autofilled: true);
       }
     }
+    _ensureWeightParams();
     _removedLineCount = 0;
     if (mounted) setState(() => _loading = false);
     // 按行上的仓带出库位(该仓记住的库位 → 货品资料通用库位；手填/草稿值不覆盖)。
@@ -490,6 +496,7 @@ class _WarehouseArrivalBatchReceiptPageState
         target.setWarehouse(picked.id);
       }
     });
+    _ensureWeightParams();
     ref
         .read(
           inboundWarehouseFillMemoryProvider(
@@ -1199,7 +1206,6 @@ class _WarehouseArrivalBatchReceiptPageState
         textOf: (line) => line.series.text,
         listenableOf: (line) => line.series,
         // 预填黄标 ⓘ(44)计入量宽。
-        chromeWidth: UtenEditableGridCellSpec.hintIconWidth,
         cellBuilder: (context, line) => Semantics(
           textField: true,
           label: '${line.goodsName} 物料系列',

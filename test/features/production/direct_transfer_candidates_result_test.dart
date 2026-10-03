@@ -74,7 +74,7 @@ void main() {
     expect(candidate.optionLabel(60), endsWith('持续生产中'));
   });
 
-  test('no eligible receiver carries the server reason as the red text', () {
+  test('no eligible receiver carries the server reason for the tooltip', () {
     final result = DirectTransferCandidatesResult.fromJson(const {
       'candidates': <dynamic>[],
       'unavailableReasonCode': 'DIFFERENT_WORKSHOP',

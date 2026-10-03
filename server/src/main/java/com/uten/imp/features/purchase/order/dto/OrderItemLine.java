@@ -43,6 +43,8 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private BigDecimal unitRate;
     @NotNull private BigDecimal qty;
     private BigDecimal price;
+    /** Agreed original-currency total before extra-column adjustments; null means unit-price pricing. */
+    private BigDecimal totalAmountInput;
     private BigDecimal giftQty;
     /** 关联申请明细（单来源行；审核时回写 ordered_qty）。 */
     @NotNull private UUID requestItemId;

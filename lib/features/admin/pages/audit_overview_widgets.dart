@@ -1,16 +1,8 @@
 part of 'admin_audit_log_page.dart';
 
-final _auditRetentionHintProvider = FutureProvider.autoDispose<String>((
-  ref,
-) async {
-  try {
-    final settings = await ref.watch(publicSettingsRepositoryProvider).fetch();
-    return '日志分为在线与冷归档两段保留；本页面只查询在线记录。超过在线期后需走受控调查/恢复流程查询归档；'
-        '总保留期最长 ${settings.auditReceiptRetentionMonths} 个月，在线与归档分段以系统设置为准。';
-  } catch (_) {
-    return '本页面只查询在线审计记录；超过在线期的记录进入冷归档，'
-        '需要通过受控调查/恢复流程查询。';
-  }
+final _auditRetentionHintProvider = Provider.autoDispose<String>((ref) {
+  final mode = ref.watch(auditArchivePurgeModeProvider);
+  return AuditRetentionPresentation.historyHint(mode);
 });
 
 /// 列表底部的保留策略说明，让"为什么查不到很早的日志"有明确答案。
@@ -21,52 +13,49 @@ class _AuditRetentionHint extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final hint = ref.watch(_auditRetentionHintProvider);
-    return hint.maybeWhen(
-      data: (text) => UtenCard(
-        variant: UtenCardVariant.outlined,
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerLow,
-                borderRadius: UtenRadius.mdAll,
-              ),
-              child: Icon(
-                Icons.auto_delete_outlined,
-                size: 20,
-                color: theme.colorScheme.primary,
-              ),
+    return UtenCard(
+      variant: UtenCardVariant.outlined,
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: UtenRadius.mdAll,
             ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '留存与归档',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    text,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
+            child: Icon(
+              Icons.auto_delete_outlined,
+              size: 20,
+              color: theme.colorScheme.primary,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: UtenSpacing.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '留存与归档',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  hint,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-      orElse: () => const SizedBox.shrink(),
     );
   }
 }
@@ -1057,6 +1046,9 @@ class _AuditEventTable extends StatelessWidget {
     required this.onOpen,
     this.stickyHeaderPinned,
     required this.rowsController,
+    required this.tableAnchorKey,
+    required this.firstRowKey,
+    required this.prependAnchorId,
     required this.paginationScope,
     required this.paginationRevision,
     required this.currentPage,
@@ -1070,6 +1062,9 @@ class _AuditEventTable extends StatelessWidget {
   final List<AuditLogEntry> items;
   final ValueChanged<AuditLogEntry> onOpen;
   final MasterDataTableRowsController<AuditLogEntry> rowsController;
+  final GlobalKey tableAnchorKey;
+  final GlobalKey firstRowKey;
+  final String? prependAnchorId;
   final Object paginationScope;
   final Object? paginationRevision;
   final int currentPage;
@@ -1091,125 +1086,134 @@ class _AuditEventTable extends StatelessWidget {
       '${entry.actionLabel ?? _AdminAuditLogPageState._actionLabel(entry.action)} · ${entry.objectLabel ?? _objectTypeLabel(entry.targetType)}';
 
   @override
-  Widget build(BuildContext context) => MasterDataTableView<AuditLogEntry>(
-    tableKey:
-        'features.admin.pages.audit_overview_widgets.AuditEventTable.build.1',
-    key: const Key('audit-event-table'),
-    embedded: true,
-    rowsController: rowsController,
-    paginationScope: paginationScope,
-    paginationRevision: paginationRevision,
-    currentPage: currentPage,
-    totalPages: totalPages,
-    loadingMore: loadingMore,
-    error: error,
-    onRetry: onRetry,
-    onPageChange: onPageChange,
-    stickyHeaderPinned: stickyHeaderPinned,
-    columns: [
-      MasterColumnDef(
-        key: 'summary',
-        label: '操作内容',
-        width: 290,
-        value: _summary,
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (context, row) => Semantics(
-          button: true,
-          excludeSemantics: true,
-          label:
-              '${AuditEventPresentation.actorLabel(actorDisplay: row.actorDisplay, actorName: row.actorName, actorAccount: row.actorAccount)}，'
-              '在${_AdminAuditLogPageState._fmtTime(row.createdAt)}，${_summary(row)}，'
-              '${_auditOutcomeLabel(row.result, row.resultLabel, row.statusCode)}，点击查看详情',
-          onTap: () => onOpen(row),
-          child: Text(
-            _summary(row),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+  Widget build(BuildContext context) => KeyedSubtree(
+    key: tableAnchorKey,
+    child: MasterDataTableView<AuditLogEntry>(
+      tableKey:
+          'features.admin.pages.audit_overview_widgets.AuditEventTable.build.1',
+      key: const Key('audit-event-table'),
+      embedded: true,
+      rowsController: rowsController,
+      rowDecorationBuilder: (_, row, child) =>
+          row.id.toString() ==
+              (prependAnchorId ??
+                  rowsController.items.firstOrNull?.id.toString())
+          ? KeyedSubtree(key: firstRowKey, child: child)
+          : child,
+      paginationScope: paginationScope,
+      paginationRevision: paginationRevision,
+      currentPage: currentPage,
+      totalPages: totalPages,
+      loadingMore: loadingMore,
+      error: error,
+      onRetry: onRetry,
+      onPageChange: onPageChange,
+      stickyHeaderPinned: stickyHeaderPinned,
+      columns: [
+        MasterColumnDef(
+          key: 'summary',
+          label: '操作内容',
+          width: 290,
+          value: _summary,
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (context, row) => Semantics(
+            button: true,
+            excludeSemantics: true,
+            label:
+                '${AuditEventPresentation.actorLabel(actorDisplay: row.actorDisplay, actorName: row.actorName, actorAccount: row.actorAccount)}，'
+                '在${_AdminAuditLogPageState._fmtTime(row.createdAt)}，${_summary(row)}，'
+                '${_auditOutcomeLabel(row.result, row.resultLabel, row.statusCode)}，点击查看详情',
+            onTap: () => onOpen(row),
+            child: Text(
+              _summary(row),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
-      ),
-      MasterColumnDef(
-        key: 'time',
-        label: '北京时间',
-        width: 190,
-        value: (row) => _AdminAuditLogPageState._fmtTime(row.createdAt),
-      ),
-      MasterColumnDef(
-        key: 'actor',
-        label: '操作人',
-        width: 150,
-        value: (row) => AuditEventPresentation.actorLabel(
-          actorDisplay: row.actorDisplay,
-          actorName: row.actorName,
-          actorAccount: row.actorAccount,
+        MasterColumnDef(
+          key: 'time',
+          label: '北京时间',
+          width: 190,
+          value: (row) => _AdminAuditLogPageState._fmtTime(row.createdAt),
         ),
-      ),
-      MasterColumnDef(
-        key: 'object',
-        label: '业务对象',
-        width: 230,
-        value: (row) => auditEventObjectEvidence(row) ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'outcome',
-        label: '结果',
-        width: 120,
-        value: (row) =>
-            _auditOutcomeLabel(row.result, row.resultLabel, row.statusCode),
-        // 2026-09-27 用户口径「表格状态列整格底色」：失败=红 / 成功=绿 /
-        // 未知结果=中性灰。
-        cellColor: (context, row) => udenStatusBadgeCellColor(
-          context,
-          _isAuditFailure(row.result, row.statusCode)
-              ? UtenStatusBadgeType.danger
-              : (row.statusCode != null &&
-                        row.statusCode! >= 200 &&
-                        row.statusCode! < 400) ||
-                    _isAuditSuccess(row.result, row.statusCode)
-              ? UtenStatusBadgeType.success
-              : UtenStatusBadgeType.neutral,
+        MasterColumnDef(
+          key: 'actor',
+          label: '操作人',
+          width: 150,
+          value: (row) => AuditEventPresentation.actorLabel(
+            actorDisplay: row.actorDisplay,
+            actorName: row.actorName,
+            actorAccount: row.actorAccount,
+          ),
         ),
-      ),
-      MasterColumnDef(
-        key: 'risk',
-        label: '风险',
-        width: 100,
-        value: (row) => _riskLabel(row.riskLevel),
-        // 风险分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
-        cellColor: (context, row) =>
-            udenStatusBadgeCellColor(context, switch (row.riskLevel) {
-              'critical' || 'high' => UtenStatusBadgeType.danger,
-              'medium' => UtenStatusBadgeType.warning,
-              _ => UtenStatusBadgeType.success,
-            }),
-      ),
-      MasterColumnDef(
-        key: 'department',
-        label: '部门',
-        width: 140,
-        value: (row) => row.actorDepartment ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'device',
-        label: '设备',
-        width: 190,
-        value: (row) => row.deviceLabel ?? '未提供设备信息',
-      ),
-      MasterColumnDef(
-        key: 'change',
-        label: '变化摘要',
-        width: 300,
-        value: (row) => row.changeSummary ?? '—',
-      ),
-    ],
-    items: items,
-    facets: const {},
-    nullCounts: const {},
-    filters: const {},
-    onFilterChanged: (_, _) {},
-    onRowTap: onOpen,
-    rowKeyOf: (row) => row.id.toString(),
-    emptyMessage: '当前范围内没有审计事件',
+        MasterColumnDef(
+          key: 'object',
+          label: '业务对象',
+          width: 230,
+          value: (row) => auditEventObjectEvidence(row) ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'outcome',
+          label: '结果',
+          width: 120,
+          value: (row) =>
+              _auditOutcomeLabel(row.result, row.resultLabel, row.statusCode),
+          // 2026-09-27 用户口径「表格状态列整格底色」：失败=红 / 成功=绿 /
+          // 未知结果=中性灰。
+          cellColor: (context, row) => udenStatusBadgeCellColor(
+            context,
+            _isAuditFailure(row.result, row.statusCode)
+                ? UtenStatusBadgeType.danger
+                : (row.statusCode != null &&
+                          row.statusCode! >= 200 &&
+                          row.statusCode! < 400) ||
+                      _isAuditSuccess(row.result, row.statusCode)
+                ? UtenStatusBadgeType.success
+                : UtenStatusBadgeType.neutral,
+          ),
+        ),
+        MasterColumnDef(
+          key: 'risk',
+          label: '风险',
+          width: 100,
+          value: (row) => _riskLabel(row.riskLevel),
+          // 风险分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
+          cellColor: (context, row) =>
+              udenStatusBadgeCellColor(context, switch (row.riskLevel) {
+                'critical' || 'high' => UtenStatusBadgeType.danger,
+                'medium' => UtenStatusBadgeType.warning,
+                _ => UtenStatusBadgeType.success,
+              }),
+        ),
+        MasterColumnDef(
+          key: 'department',
+          label: '部门',
+          width: 140,
+          value: (row) => row.actorDepartment ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'device',
+          label: '设备',
+          width: 190,
+          value: (row) => row.deviceLabel ?? '未提供设备信息',
+        ),
+        MasterColumnDef(
+          key: 'change',
+          label: '变化摘要',
+          width: 300,
+          value: (row) => row.changeSummary ?? '—',
+        ),
+      ],
+      items: items,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      onRowTap: onOpen,
+      rowKeyOf: (row) => row.id.toString(),
+      emptyMessage: '当前范围内没有审计事件',
+    ),
   );
 }
 
@@ -1219,6 +1223,9 @@ class _AuditSessionTable extends StatelessWidget {
     required this.onOpen,
     this.stickyHeaderPinned,
     required this.rowsController,
+    required this.tableAnchorKey,
+    required this.firstRowKey,
+    required this.prependAnchorId,
     required this.paginationScope,
     required this.paginationRevision,
     required this.currentPage,
@@ -1232,6 +1239,9 @@ class _AuditSessionTable extends StatelessWidget {
   final List<AuditSessionSummary> sessions;
   final ValueChanged<AuditSessionSummary> onOpen;
   final MasterDataTableRowsController<AuditSessionSummary> rowsController;
+  final GlobalKey tableAnchorKey;
+  final GlobalKey firstRowKey;
+  final String? prependAnchorId;
   final Object paginationScope;
   final Object? paginationRevision;
   final int currentPage;
@@ -1245,97 +1255,103 @@ class _AuditSessionTable extends StatelessWidget {
   final ValueNotifier<bool>? stickyHeaderPinned;
 
   @override
-  Widget build(
-    BuildContext context,
-  ) => MasterDataTableView<AuditSessionSummary>(
-    tableKey:
-        'features.admin.pages.audit_overview_widgets.AuditSessionTable.build.1',
-    key: const Key('audit-session-table'),
-    embedded: true,
-    rowsController: rowsController,
-    paginationScope: paginationScope,
-    paginationRevision: paginationRevision,
-    currentPage: currentPage,
-    totalPages: totalPages,
-    loadingMore: loadingMore,
-    error: error,
-    onRetry: onRetry,
-    onPageChange: onPageChange,
-    stickyHeaderPinned: stickyHeaderPinned,
-    columns: [
-      const MasterColumnDef(
-        key: 'actor',
-        label: '操作人',
-        width: 170,
-        value: auditSessionActor,
-      ),
-      MasterColumnDef(
-        key: 'login',
-        label: '登录时间 (北京时间)',
-        width: 200,
-        value: (row) => auditBeijingTime(row.loginAt, fallback: '开始时间未知'),
-      ),
-      const MasterColumnDef(
-        key: 'status',
-        label: '会话状态',
-        width: 130,
-        value: auditSessionStatusLabel,
-      ),
-      MasterColumnDef(
-        key: 'device',
-        label: '设备',
-        width: 210,
-        value: (row) => row.deviceLabel ?? '未提供设备信息',
-      ),
-      MasterColumnDef(
-        key: 'operations',
-        label: '人工操作',
-        width: 110,
-        type: 'number',
-        value: (row) => '${row.operationCount}',
-        exactValueOf: (row) => row.operationCount.toString(),
-      ),
-      MasterColumnDef(
-        key: 'failures',
-        label: '失败操作',
-        width: 110,
-        type: 'number',
-        value: (row) => '${row.failureCount}',
-        exactValueOf: (row) => row.failureCount.toString(),
-      ),
-      MasterColumnDef(
-        key: 'postLogout',
-        label: '退出后操作',
-        width: 130,
-        type: 'number',
-        value: (row) => '${row.postLogoutCount}',
-        exactValueOf: (row) => row.postLogoutCount.toString(),
-      ),
-      MasterColumnDef(
-        key: 'logout',
-        label: '退出 / 最后活动',
-        width: 210,
-        value: (row) => auditBeijingTime(
-          row.logoutAt ?? row.lastActivityAt ?? row.firstActivityAt,
-          fallback: '暂无活动时间',
+  Widget build(BuildContext context) => KeyedSubtree(
+    key: tableAnchorKey,
+    child: MasterDataTableView<AuditSessionSummary>(
+      tableKey:
+          'features.admin.pages.audit_overview_widgets.AuditSessionTable.build.1',
+      key: const Key('audit-session-table'),
+      embedded: true,
+      rowsController: rowsController,
+      rowDecorationBuilder: (_, row, child) =>
+          row.sessionId ==
+              (prependAnchorId ?? rowsController.items.firstOrNull?.sessionId)
+          ? KeyedSubtree(key: firstRowKey, child: child)
+          : child,
+      paginationScope: paginationScope,
+      paginationRevision: paginationRevision,
+      currentPage: currentPage,
+      totalPages: totalPages,
+      loadingMore: loadingMore,
+      error: error,
+      onRetry: onRetry,
+      onPageChange: onPageChange,
+      stickyHeaderPinned: stickyHeaderPinned,
+      columns: [
+        const MasterColumnDef(
+          key: 'actor',
+          label: '操作人',
+          width: 170,
+          value: auditSessionActor,
         ),
-      ),
-      MasterColumnDef(
-        key: 'credential',
-        label: '凭证状态',
-        width: 170,
-        value: (row) => row.refreshCredentialStatusLabel ?? '—',
-      ),
-    ],
-    items: sessions,
-    facets: const {},
-    nullCounts: const {},
-    filters: const {},
-    onFilterChanged: (_, _) {},
-    onRowTap: onOpen,
-    rowKeyOf: (row) => row.sessionId,
-    rowWidgetKeyOf: (row) => ValueKey('audit-session-${row.sessionId}'),
-    emptyMessage: '当前范围内没有登录会话',
+        MasterColumnDef(
+          key: 'login',
+          label: '登录时间 (北京时间)',
+          width: 200,
+          value: (row) => auditBeijingTime(row.loginAt, fallback: '开始时间未知'),
+        ),
+        const MasterColumnDef(
+          key: 'status',
+          label: '会话状态',
+          width: 130,
+          value: auditSessionStatusLabel,
+        ),
+        MasterColumnDef(
+          key: 'device',
+          label: '设备',
+          width: 210,
+          value: (row) => row.deviceLabel ?? '未提供设备信息',
+        ),
+        MasterColumnDef(
+          key: 'operations',
+          label: '人工操作',
+          width: 110,
+          type: 'number',
+          value: (row) => '${row.operationCount}',
+          exactValueOf: (row) => row.operationCount.toString(),
+        ),
+        MasterColumnDef(
+          key: 'failures',
+          label: '失败操作',
+          width: 110,
+          type: 'number',
+          value: (row) => '${row.failureCount}',
+          exactValueOf: (row) => row.failureCount.toString(),
+        ),
+        MasterColumnDef(
+          key: 'postLogout',
+          label: '退出后操作',
+          width: 130,
+          type: 'number',
+          value: (row) => '${row.postLogoutCount}',
+          exactValueOf: (row) => row.postLogoutCount.toString(),
+        ),
+        MasterColumnDef(
+          key: 'logout',
+          label: '退出 / 最后活动',
+          width: 210,
+          value: (row) => auditBeijingTime(
+            row.logoutAt ?? row.lastActivityAt ?? row.firstActivityAt,
+            fallback: '暂无活动时间',
+          ),
+        ),
+        MasterColumnDef(
+          key: 'credential',
+          label: '凭证状态',
+          width: 170,
+          value: (row) => row.refreshCredentialStatusLabel ?? '—',
+        ),
+      ],
+      items: sessions,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      onRowTap: onOpen,
+      rowKeyOf: (row) => row.sessionId,
+      rowWidgetKeyOf: (row) => ValueKey('audit-session-${row.sessionId}'),
+      emptyMessage: '当前范围内没有登录会话',
+    ),
   );
 }
 

@@ -37,15 +37,23 @@ final class ProcurementInspectionEvents {
     static void append(EntityManager em, UUID eventId, UUID inspectionItemId, String action,
                        BigDecimal baseQty, String reason, UUID actorEmployeeId, OffsetDateTime occurredAt,
                        BigDecimal releasedAmountLocal, BigDecimal releasedWeight, String batchRequestHash) {
+        append(em,eventId,inspectionItemId,action,baseQty,reason,actorEmployeeId,occurredAt,
+                releasedAmountLocal,releasedWeight,batchRequestHash,null);
+    }
+
+    static void append(EntityManager em, UUID eventId, UUID inspectionItemId, String action,
+                       BigDecimal baseQty, String reason, UUID actorEmployeeId, OffsetDateTime occurredAt,
+                       BigDecimal releasedAmountLocal, BigDecimal releasedWeight, String batchRequestHash,
+                       UUID actorUserId) {
         em.createNativeQuery("""
                 INSERT INTO procurement_inspection_events (
                     id, inspection_item_id, action, base_qty, reason,
                     actor_employee_id, occurred_at, requires_warehouse_stock_in,
-                    released_amount_local, released_weight, batch_request_hash
+                    released_amount_local, released_weight, batch_request_hash, actor_user_id
                 ) VALUES (
                     :id, :iid, :action, :qty, :reason,
                     :actor, :at, :requiresWarehouseStockIn,
-                    :releasedAmountLocal, :releasedWeight, :batchRequestHash)
+                    :releasedAmountLocal, :releasedWeight, :batchRequestHash, :actorUserId)
                 """)
                 .setParameter("id", eventId)
                 .setParameter("iid", inspectionItemId)
@@ -58,6 +66,7 @@ final class ProcurementInspectionEvents {
                 .setParameter("releasedAmountLocal", releasedAmountLocal)
                 .setParameter("releasedWeight", releasedWeight)
                 .setParameter("batchRequestHash", batchRequestHash)
+                .setParameter("actorUserId", actorUserId)
                 .executeUpdate();
     }
 }

@@ -71,4 +71,7 @@ public record HealthRow(
         boolean dead,
         BigDecimal amountLocal,
         boolean costMasked) {
+    public String getAmountLocalExact() {
+        return costMasked || amountLocal == null ? null : amountLocal.toPlainString();
+    }
 }

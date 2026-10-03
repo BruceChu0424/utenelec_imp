@@ -406,21 +406,18 @@ public class WorkshopMaterialCountService {
                 .addValue("bin", period.binWarehouseId()).addValue("previousNo", period.no() - 1)
                 .addValue("closing", MoneyPolicy.quantity(closing));
         Map<String, Object> figures = db.queryForMap("""
-                SELECT COALESCE((SELECT previous_line.closing_qty
-                                 FROM workshop_material_periods previous
-                                 JOIN workshop_material_period_lines previous_line
-                                   ON previous_line.period_id = previous.id AND previous_line.goods_id = :goods
-                                  AND previous_line.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
-                                 WHERE previous.bin_warehouse_id = :bin AND previous.period_no = :previousNo), 0) AS opening,
+                SELECT fn_workshop_material_period_opening(:period,:goods,CAST(:color AS uuid)) AS opening,
                        COALESCE(sum(ledger.signed_qty) FILTER (WHERE ledger.source_kind = 'ISSUE'), 0) AS transfer_in,
                        COALESCE(-sum(ledger.signed_qty) FILTER (WHERE ledger.source_kind = 'RETURN'), 0) AS returned,
-                       COALESCE(-sum(ledger.signed_qty) FILTER (WHERE ledger.source_kind = 'OTHER_ISSUE'), 0) AS other
+                       COALESCE(-sum(ledger.signed_qty) FILTER (WHERE ledger.source_kind = 'OTHER_ISSUE'), 0) AS other,
+                       COALESCE(sum(ledger.signed_qty) FILTER (WHERE ledger.source_kind = 'ADJUSTMENT'), 0) AS adjustment
                 FROM v_workshop_material_bin_ledger ledger
                 WHERE ledger.period_id = :period AND ledger.goods_id = :goods
                   AND ledger.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                 """, params);
         params.addValue("opening", figures.get("opening")).addValue("transferIn", figures.get("transfer_in"))
-                .addValue("returned", figures.get("returned")).addValue("other", figures.get("other"));
+                .addValue("returned", figures.get("returned")).addValue("other", figures.get("other"))
+                .addValue("adjustment", figures.get("adjustment"));
         List<UUID> existing = db.queryForList("""
                 SELECT id FROM workshop_material_period_lines
                 WHERE period_id = :period AND goods_id = :goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
@@ -431,7 +428,7 @@ public class WorkshopMaterialCountService {
             WorkshopMaterialGuards.guarded(() -> db.update("""
                     UPDATE workshop_material_period_lines
                     SET opening_qty = :opening, transfer_in_qty = :transferIn, return_qty = :returned,
-                        other_issue_qty = :other, closing_qty = :closing, row_version = row_version + 1
+                        other_issue_qty = :other, adjustment_qty = :adjustment, closing_qty = :closing, row_version = row_version + 1
                     WHERE id = :line
                     """, params.addValue("line", id)));
             return id;
@@ -444,9 +441,9 @@ public class WorkshopMaterialCountService {
         WorkshopMaterialGuards.guarded(() -> db.update("""
                 INSERT INTO workshop_material_period_lines(
                     id, period_id, goods_id, color_id, unit_id, cost_basis, opening_qty, transfer_in_qty, return_qty,
-                    other_issue_qty, closing_qty)
+                    other_issue_qty, adjustment_qty, closing_qty)
                 VALUES (:line, :period, :goods, CAST(:color AS uuid), :unit, :basis, :opening, :transferIn, :returned,
-                        :other, :closing)
+                        :other, :adjustment, :closing)
                 """, params.addValue("line", id).addValue("unit", info.unitId()).addValue("basis", info.costBasis())));
         return id;
     }
@@ -736,6 +733,8 @@ public class WorkshopMaterialCountService {
         List<String> actions = new ArrayList<>();
         if ("DRAFT".equals(count.status()) && permissions.has(WorkshopMaterialPermissions.COUNT)) {
             actions.add("EDIT_COUNT");
+        }
+        if ("DRAFT".equals(count.status()) && permissions.has(WorkshopMaterialPermissions.COUNT_REVIEW)) {
             actions.add("SUBMIT_COUNT");
         }
         return new CountDetail(count.id(), period.id(), period.no(), period.startDate(), period.endDate(),

@@ -456,7 +456,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                     }
                     if (request.fromRowId() != null) {
                         List<Map<String, Object>> fromRows = db.queryForList("""
-                                SELECT material_goods_id, material_color_id, effective_from
+                                SELECT material_goods_id, material_color_id, effective_from, unit_id
                                 FROM production_execution_periodic_materials
                                 WHERE id = :row AND execution_segment_id = :segment AND effective_to IS NULL
                                 FOR UPDATE
@@ -471,6 +471,16 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                         if (Objects.equals(fromRow.get("material_goods_id"), material.goodsId())
                                 && Objects.equals(fromRow.get("material_color_id"), request.toMaterialColorId())) {
                             throw new ApiException(ErrorCode.VALIDATION_FAILED, "新料和原来的料一样, 不用换");
+                        }
+                        if ("FROM_REPLACED".equals(basis) && !Objects.equals(fromRow.get("unit_id"), material.unitId())) {
+                            BigDecimal factor = db.queryForObject(
+                                    "SELECT fn_workshop_material_convert_weight(1, :sourceUnit, :targetUnit)",
+                                    new MapSqlParameterSource("sourceUnit", fromRow.get("unit_id"))
+                                            .addValue("targetUnit", material.unitId()), BigDecimal.class);
+                            if (factor == null) {
+                                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                                        "原料和新料的重量单位换算尚未配置，请先配置重量单位，或选择按新料自己的 BOM 单个重量");
+                            }
                         }
                     }
                     UUID changeId = UUID.randomUUID();

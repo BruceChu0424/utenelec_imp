@@ -23,7 +23,7 @@ class BusinessAttachmentResetCompletionPostgresTest {
         try(var c=DriverManager.getConnection(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());var st=c.createStatement()) {
             st.execute("""
                     CREATE TABLE attachments(id UUID,owner_type TEXT,owner_id UUID,lifecycle_state TEXT,
-                        storage_provider TEXT,storage_key TEXT,storage_version TEXT);
+                        storage_provider TEXT,storage_key TEXT,storage_version TEXT,delete_reason TEXT);
                     CREATE TABLE attachment_upload_sessions(id UUID,owner_type TEXT,owner_id UUID,status TEXT,
                         expires_at TIMESTAMPTZ,storage_provider TEXT,storage_key TEXT,staging_version TEXT,final_version TEXT,
                         last_failure_code TEXT);
@@ -48,7 +48,7 @@ class BusinessAttachmentResetCompletionPostgresTest {
                     .as("V549 protected owner set must equal BusinessAttachmentResetPreparation.PROTECTED_OWNER_TYPES")
                     .isEqualTo(new TreeSet<>(BusinessAttachmentResetPreparation.PROTECTED_OWNER_TYPES));
             st.execute("""
-                    INSERT INTO attachments VALUES
+                    INSERT INTO attachments(id,owner_type,owner_id,lifecycle_state,storage_provider,storage_key,storage_version) VALUES
                       ('00000000-0000-0000-0000-000000000001','SALES_ORDER','00000000-0000-0000-0000-000000000010','CLEAN','internal','contract','v1'),
                       ('00000000-0000-0000-0000-000000000002','EMPLOYEE','00000000-0000-0000-0000-000000000020','CLEAN','internal','human','h1'),
                       ('00000000-0000-0000-0000-00000000000a','GOODS','00000000-0000-0000-0000-0000000000a0','CLEAN','local','drawing','g1'),

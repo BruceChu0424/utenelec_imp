@@ -20,7 +20,7 @@ public class BusinessAttachmentResetPreparationService {
 
     public Preview preview(UUID actor) {
         feature.requireEnabled();
-        return attachments.preview(actor);
+        return attachments.previewTestReset(actor);
     }
 
     public Preview prepare(UUID actor, String account, Confirmation confirmation) {
@@ -33,7 +33,17 @@ public class BusinessAttachmentResetPreparationService {
             Thread.currentThread().interrupt();
             throw new ApiException(ErrorCode.CONFLICT, "等待中的文件准备已中断，请重试");
         }
-        try { return attachments.prepare(actor, account, confirmation); }
+        try {
+            UUID attempt = UUID.randomUUID();
+            attachments.prepareTestReset(actor, account, attempt, confirmation);
+            long deadline = System.nanoTime() + BusinessDataResetService.ATTACHMENT_PURGE_BUDGET.toNanos();
+            int processed = 0;
+            while (processed < BusinessDataResetService.ATTACHMENT_PURGE_MAX_DRAIN_PER_ROUND
+                    && System.nanoTime() < deadline && attachments.drainTestResetNext(attempt)) {
+                processed++;
+            }
+            return attachments.previewTestReset(actor);
+        }
         finally { drain.endReset(); }
     }
 }

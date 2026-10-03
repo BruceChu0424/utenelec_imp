@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 委外损耗单列表项。 */
 @Getter
 @AllArgsConstructor
-public class WasteListItem {
+public class WasteListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -23,4 +23,7 @@ public class WasteListItem {
     private Integer legacyId;
     /** 当前用户无委外商业金额权限时为 true，总金额置 null；数量和重量仍可见。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

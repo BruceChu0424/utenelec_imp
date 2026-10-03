@@ -180,7 +180,9 @@ void main() {
     expect(host.requests, [2, 2]);
     host.responses.last.complete(['A-20']);
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+    // The response advances the loaded boundary; the viewport still starts
+    // within page 1, so its displayed page must not advance prematurely.
+    expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
     expect(host.rows.items.length, 21);
   });
 
@@ -221,13 +223,13 @@ void main() {
     host.responses.last.complete(['A-20']);
     await tester.pumpAndSettle();
     expect(host.rows.items.length, 21);
-    expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   for (final mode in ['table', 'primary', 'cards']) {
     testWidgets(
-      '$mode appends once, retains position and updates page only on success',
+      '$mode appends once and shows the page actually reached by scrolling',
       (tester) async {
         final key = GlobalKey<_HarnessState>();
         await tester.pumpWidget(
@@ -256,8 +258,13 @@ void main() {
         expect(host.page, 2);
         expect(host.rows.items, List.generate(40, (i) => 'A-$i'));
         expect(_vertical(tester).position.pixels, closeTo(before, 0.5));
-        expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+        expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
         await _bottom(tester);
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+        expect(host.requests, [
+          2,
+        ], reason: 'scrolling cached rows does not fetch');
         await _wheel(tester);
         host.responses.last.complete(['A-40']);
         await tester.pumpAndSettle();

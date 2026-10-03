@@ -44,12 +44,17 @@ class UtenMenuItem extends UtenContextMenuEntry {
     this.icon,
     this.enabled = true,
     this.destructive = false,
+    this.preserveSelectionAfterAction = false,
   });
 
   final String label;
   final IconData? icon;
   final bool enabled;
   final bool destructive;
+
+  /// 动作自行建立了需要保留的选择（例如选中新粘贴的货品），菜单宿主不再清理
+  /// 该选择。默认 false，普通菜单动作继续在完成后清除临时上下文选择。
+  final bool preserveSelectionAfterAction;
 
   /// 点击回调（菜单先关闭，再执行回调——回调里可以安全弹对话框）。
   ///
@@ -74,11 +79,13 @@ enum UtenContextMenuCloseReason {
 
 /// 在 [globalPosition]（全局坐标，通常取手势事件的 globalPosition）弹出菜单。
 /// 条目为空时什么都不弹。返回的 Future 在菜单关闭后完成；选择条目时会继续等待
-/// 条目的动作回调完成，并返回 [UtenContextMenuCloseReason.actionCompleted]。
+/// 条目的动作回调及 [onActionCompleted] 完成，再返回
+/// [UtenContextMenuCloseReason.actionCompleted]。取消菜单不调用完成回调。
 Future<UtenContextMenuCloseReason> showUtenContextMenu(
   BuildContext context, {
   required Offset globalPosition,
   required List<UtenContextMenuEntry> entries,
+  FutureOr<void> Function(UtenMenuItem item)? onActionCompleted,
 }) {
   if (entries.isEmpty) {
     return Future.value(UtenContextMenuCloseReason.dismissed);
@@ -109,7 +116,11 @@ Future<UtenContextMenuCloseReason> showUtenContextMenu(
     try {
       await Future<void>.sync(item.onTap);
     } finally {
-      completer.complete(UtenContextMenuCloseReason.actionCompleted);
+      try {
+        await Future<void>.sync(() => onActionCompleted?.call(item));
+      } finally {
+        completer.complete(UtenContextMenuCloseReason.actionCompleted);
+      }
     }
   }
 
@@ -148,14 +159,16 @@ class UtenContextMenuRegion extends StatelessWidget {
     final entries = entriesBuilder();
     if (entries.isEmpty) return;
     onMenuOpening?.call();
-    final reason = await showUtenContextMenu(
+    await showUtenContextMenu(
       context,
       globalPosition: globalPosition,
       entries: entries,
+      onActionCompleted: (item) async {
+        if (!item.preserveSelectionAfterAction) {
+          await Future<void>.sync(() => onActionCompleted?.call());
+        }
+      },
     );
-    if (reason == UtenContextMenuCloseReason.actionCompleted) {
-      await Future<void>.sync(() => onActionCompleted?.call());
-    }
   }
 
   /// 本次右键手势的指针 id（静态：开菜单会触发宿主 setState 重建换掉闭包，

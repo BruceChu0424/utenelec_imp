@@ -172,8 +172,10 @@ class PurchaseDocItem {
     this.unitRateText,
     this.qty,
     this.qtyText,
+    this.rowVersion,
     this.price,
     this.priceText,
+    this.totalAmountInputText,
     this.amountOriginal,
     this.amountOriginalText,
     this.amountLocal,
@@ -208,8 +210,15 @@ class PurchaseDocItem {
   final String? unitRateText;
   final double? qty;
   final String? qtyText;
+
+  /// Persistent request-line CAS version. Missing/invalid versions stay unknown;
+  /// they must never become an invented zero when editing an older DTO.
+  final int? rowVersion;
   final double? price;
   final String? priceText;
+
+  /// Recorded base total before additional columns; unit price may be a reference.
+  final String? totalAmountInputText;
   final double? amountOriginal;
   final String? amountOriginalText;
   final double? amountLocal;
@@ -240,48 +249,52 @@ class PurchaseDocItem {
   /// 稳定顺序与 sources.line_no 一致；单来源行一条、手工/历史行为空。
   final List<PurchaseSourceRequestRef> sourceRequests;
 
-  factory PurchaseDocItem.fromJson(Map<String, dynamic> json) =>
-      PurchaseDocItem(
-        extraColumns: BusinessColumn.read(json['extraColumns']),
-        id: json['id'] as String?,
-        lineNo: (json['lineNo'] as num?)?.toInt(),
-        goodsId: json['goodsId'] as String?,
-        colorId: json['colorId'] as String?,
-        unitId: json['unitId'] as String?,
-        unitRate: (json['unitRate'] as num?)?.toDouble(),
-        unitRateText: receiptRecordedDecimal(json, 'unitRate'),
-        qty: (json['qty'] as num?)?.toDouble(),
-        qtyText: receiptRecordedDecimal(json, 'qty'),
-        price: (json['price'] as num?)?.toDouble(),
-        priceText: receiptRecordedDecimal(json, 'price'),
-        amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-        amountOriginalText: receiptRecordedDecimal(json, 'amountOriginal'),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        amountLocalText: receiptRecordedDecimal(json, 'amountLocal'),
-        orderedQty: (json['orderedQty'] as num?)?.toDouble(),
-        pendingQty: (json['pendingQty'] as num?)?.toDouble(),
-        remainingQty: (json['remainingQty'] as num?)?.toDouble(),
-        receivedQty: (json['receivedQty'] as num?)?.toDouble(),
-        returnedQty: (json['returnedQty'] as num?)?.toDouble(),
-        giftQty: (json['giftQty'] as num?)?.toDouble(),
-        requestItemId: json['requestItemId'] as String?,
-        orderItemId: json['orderItemId'] as String?,
-        orderId: json['orderId'] as String?,
-        orderBillNo: json['orderBillNo'] as String?,
-        receiptItemId: json['receiptItemId'] as String?,
-        deliverDate: json['deliverDate'] as String?,
-        weight: (json['weight'] as num?)?.toDouble(),
-        sourceDocNo: json['sourceDocNo'] as String?,
-        productionPlanNo: json['productionPlanNo'] as String?,
-        salesOrderNo: json['salesOrderNo'] as String?,
-        remark: json['remark'] as String?,
-        sourceRequests: [
-          for (final entry
-              in (json['sourceRequests'] as List<dynamic>? ??
-                  const <dynamic>[]))
-            PurchaseSourceRequestRef.fromJson(entry as Map<String, dynamic>),
-        ],
-      );
+  factory PurchaseDocItem.fromJson(
+    Map<String, dynamic> json,
+  ) => PurchaseDocItem(
+    extraColumns: BusinessColumn.read(json['extraColumns']),
+    id: json['id'] as String?,
+    lineNo: (json['lineNo'] as num?)?.toInt(),
+    goodsId: json['goodsId'] as String?,
+    colorId: json['colorId'] as String?,
+    unitId: json['unitId'] as String?,
+    unitRate: (json['unitRate'] as num?)?.toDouble(),
+    unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+    qty: (json['qty'] as num?)?.toDouble(),
+    qtyText: receiptRecordedDecimal(json, 'qty'),
+    rowVersion: json['rowVersion'] is int && (json['rowVersion'] as int) >= 0
+        ? json['rowVersion'] as int
+        : null,
+    price: (json['price'] as num?)?.toDouble(),
+    priceText: receiptRecordedDecimal(json, 'price'),
+    totalAmountInputText: receiptRecordedDecimal(json, 'totalAmountInput'),
+    amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountOriginalText: receiptRecordedDecimal(json, 'amountOriginal'),
+    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    amountLocalText: receiptRecordedDecimal(json, 'amountLocal'),
+    orderedQty: (json['orderedQty'] as num?)?.toDouble(),
+    pendingQty: (json['pendingQty'] as num?)?.toDouble(),
+    remainingQty: (json['remainingQty'] as num?)?.toDouble(),
+    receivedQty: (json['receivedQty'] as num?)?.toDouble(),
+    returnedQty: (json['returnedQty'] as num?)?.toDouble(),
+    giftQty: (json['giftQty'] as num?)?.toDouble(),
+    requestItemId: json['requestItemId'] as String?,
+    orderItemId: json['orderItemId'] as String?,
+    orderId: json['orderId'] as String?,
+    orderBillNo: json['orderBillNo'] as String?,
+    receiptItemId: json['receiptItemId'] as String?,
+    deliverDate: json['deliverDate'] as String?,
+    weight: (json['weight'] as num?)?.toDouble(),
+    sourceDocNo: json['sourceDocNo'] as String?,
+    productionPlanNo: json['productionPlanNo'] as String?,
+    salesOrderNo: json['salesOrderNo'] as String?,
+    remark: json['remark'] as String?,
+    sourceRequests: [
+      for (final entry
+          in (json['sourceRequests'] as List<dynamic>? ?? const <dynamic>[]))
+        PurchaseSourceRequestRef.fromJson(entry as Map<String, dynamic>),
+    ],
+  );
 }
 
 /// 订货行的来源采购申请引用（V463 合并行多来源）。

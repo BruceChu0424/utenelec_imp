@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 // AI 程序业务界面截图: 识别核对面板 / 编辑页导入后 / 报价核价队列与详情 / 报价详情状态 /
 // 客户货品对照 / 货品英文名称。由 ai_program_visual_review_test.dart 调用。
 import 'package:flutter/material.dart';
@@ -107,6 +108,7 @@ Future<void> _pumpEditAfterIntake(
   await tester.pumpWidget(
     captureRouterApp(
       overrides: [
+        ...nativeDetailReaderOverrides(includeSession: false),
         ...await baseOverrides(),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
@@ -352,6 +354,7 @@ void businessScreenTests() {
         captureRouterApp(
           router: router,
           overrides: [
+            ...nativeDetailReaderOverrides(),
             ...await baseOverrides(),
             ..._financeOverrides(FinanceClaimFixture()),
             fixedBadgeSummaryOverride(
@@ -393,6 +396,7 @@ void businessScreenTests() {
             dark: dark,
             router: router,
             overrides: [
+              ...nativeDetailReaderOverrides(),
               ...await baseOverrides(),
               ..._financeOverrides(FinanceClaimFixture()),
               fixedBadgeSummaryOverride(),
@@ -488,6 +492,7 @@ void businessScreenTests() {
           captureRouterApp(
             router: router,
             overrides: [
+              ...nativeDetailReaderOverrides(),
               ...await baseOverrides(),
               apiClientProvider.overrideWithValue(api),
               salesMasterNameServiceProvider.overrideWithValue(
@@ -517,6 +522,7 @@ void businessScreenTests() {
         await tester.pumpWidget(
           captureApp(
             overrides: [
+              ...nativeDetailReaderOverrides(),
               ...await baseOverrides(),
               clientGoodsAliasRepositoryProvider.overrideWithValue(
                 AliasRepo(empty: empty),

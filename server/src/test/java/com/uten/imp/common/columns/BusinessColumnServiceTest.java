@@ -47,7 +47,31 @@ class BusinessColumnServiceTest {
         permissions("sales_order:create");
         assertThatThrownBy(() -> service.create(new BusinessColumnService.Create("sales_order", "参考费用", "AMOUNT", "NONE")))
                 .isInstanceOf(ApiException.class).hasMessageContaining("价格权限");
-        assertThat(service.capabilities("sales_order").arithmetic()).isTrue();
+        assertThat(service.capabilities("sales_order").arithmetic()).isFalse();
+        verifyNoInteractions(em);
+    }
+    @Test void officialAmountCapabilityRequiresTheSamePriceAuthorityAsDefinitionCreation() {
+        for (String scope : List.of("sales_quote", "sales_order", "purchase_order", "subcontract_order")) {
+            permissions(scope + ":view");
+            assertThat(service.capabilities(scope).arithmetic()).as(scope + " view without prices").isFalse();
+            permissions(scope + ":create", "goods:price:view");
+            assertThat(service.capabilities(scope).arithmetic()).as(scope + " unrelated price permission").isFalse();
+            String priceScope = "sales_quote".equals(scope) ? "sales_order" : scope;
+            permissions(scope + ":create", priceScope + ":price:view");
+            assertThat(service.capabilities(scope).arithmetic()).as(scope + " matching price permission").isTrue();
+        }
+        permissions("sales_quote:view", "sales_quote_finance:view");
+        assertThat(service.capabilities("sales_quote").arithmetic()).isTrue();
+        permissions("finance:view:all");
+        assertThat(service.capabilities("purchase_order").arithmetic()).isTrue();
+        verifyNoInteractions(em);
+    }
+    @Test void visitorCannotAcquireCommercialColumnCapabilitiesThroughStaffPermissionStrings() {
+        when(user.get()).thenReturn(Optional.of(AuthUser.visitor(UUID.randomUUID(), "visitor", "V001",
+                Set.of("sales_order:view", "sales_order:create", "sales_order:price:view", "finance:view:all"))));
+        assertThatThrownBy(() -> service.capabilities("sales_order")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.create(new BusinessColumnService.Create("sales_order", "运费", "AMOUNT", "ADD")))
+                .isInstanceOf(ApiException.class);
         verifyNoInteractions(em);
     }
     @Test void omissionPreservesSnapshotAndEmptyArrayExplicitlyDeletes() {

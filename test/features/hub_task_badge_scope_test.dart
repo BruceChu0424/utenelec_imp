@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/cards/uten_hub_card.dart';
-import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/pages/finance_hub_page.dart';
 import 'package:uten_imp/features/production/pages/production_hub_page.dart';
@@ -97,17 +97,16 @@ void main() {
     );
 
     expect(redCounts(tester, '仓库任务中心'), [30]);
+    // 2026-10 口径：任务中心卡只展示待办（进行中是另一种状态，不与待办相加
+    // 造成重复），本模块「进行中 11」由 hub 顶栏黄签 UtenModuleProgressChip 呈现。
     expect(
-      tester
-          .widget<UtenInProgressBadge>(
-            find.descendant(
-              of: card('仓库任务中心'),
-              matching: find.byType(UtenInProgressBadge),
-            ),
-          )
-          .count,
-      11,
+      find.descendant(
+        of: card('仓库任务中心'),
+        matching: find.byType(UtenInProgressBadge),
+      ),
+      findsNothing,
     );
+    expect(find.text('进行中 11'), findsOneWidget);
     expect(find.text('待办 30'), findsOneWidget);
     expectNewCardsWithoutCounts(tester);
   });
@@ -138,17 +137,15 @@ void main() {
     expect(redCounts(tester, '超产比例审批'), [3]);
     expect(redCounts(tester, '追加用料审批'), [7]);
     expect(find.text('逾期 1'), findsOneWidget);
-    expect(
-      tester
-          .widget<UtenInProgressBadge>(
-            find.descendant(
-              of: card('生产任务中心'),
-              matching: find.byType(UtenInProgressBadge),
-            ),
-          )
-          .count,
-      13,
+    // 在制批次的黄数走卡片 progressBadge 槽（UtenScopedBadges 按 badgeScope
+    // 渲染），不与待排产红数（ProductionPendingBadge 覆盖 todo 槽）混在一枚里。
+    final taskCenterYellow = tester.widgetList<UtenInProgressBadge>(
+      find.descendant(
+        of: card('生产任务中心'),
+        matching: find.byType(UtenInProgressBadge),
+      ),
     );
+    expect(taskCenterYellow.map((b) => b.count), contains(13));
     expect(find.text('待办 28'), findsOneWidget);
     expectNewCardsWithoutCounts(tester);
   });

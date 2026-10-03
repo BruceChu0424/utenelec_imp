@@ -75,9 +75,12 @@ class GoodsCategoryRootScopeTest {
         verify(goodsRepo).findAll(captor.capture(), pageableCaptor.capture());
 
         List<Sort.Order> orders = pageableCaptor.getValue().getSort().stream().toList();
-        assertEquals(List.of("createdAt", "id"),
+        // 2026-10-02 用户口径：默认排序恢复编号升序（与货品选择弹窗、复制/新建后
+        // 「跳末页看新货品」一致；此前临时改成创建时间倒序让新货品置顶，与
+        // 「复制落最后面」相反）。
+        assertEquals(List.of("code", "id"),
                 orders.stream().map(Sort.Order::getProperty).toList());
-        assertEquals(List.of(Sort.Direction.DESC, Sort.Direction.DESC),
+        assertEquals(List.of(Sort.Direction.ASC, Sort.Direction.ASC),
                 orders.stream().map(Sort.Order::getDirection).toList());
 
         Root<Goods> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);

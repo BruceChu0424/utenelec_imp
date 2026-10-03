@@ -25,7 +25,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
@@ -106,19 +105,10 @@ public class StockWeightController {
         return profiles.resetRegime(goodsId);
     }
 
-    /** 核重: 只改重量不动数量, 记一行人工核重调整; 按重量计量的货品与没有库存的维度会被拒绝。 */
+    /** 旧快捷核重入口退役，保留明确指引；库存目标重量须送盘点审核。 */
     @PostMapping("/balances/set")
     @PreAuthorize("hasAuthority('stock:weight:manage')")
     public BalanceWeightView setBalanceWeight(@Valid @RequestBody SetBalanceWeightRequest request) {
-        String reason = request.reason() == null ? "" : request.reason().strip();
-        if (reason.length() < 2 || reason.length() > 200) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "核重原因请填写 2-200 个字");
-        }
-        UUID adjustmentId = adjustments.setWeight(new StockWeightAdjustmentService.SetWeightCommand(
-                StockWeightAdjustmentService.KIND_MANUAL, request.warehouseId(), request.goodsId(),
-                request.colorId(), request.targetWeightKg(), request.expectedWeightKg(), true,
-                null, null, null, OffsetDateTime.now(), reason, request.idempotencyKey(),
-                currentUser.requireId()));
-        return estimates.balanceWeight(adjustmentId, request.warehouseId(), request.goodsId(), request.colorId());
+        throw new ApiException(ErrorCode.CONFLICT, "库存核重已改为盘点审批，请通过盘点模式录入目标重量并提交审核");
     }
 }

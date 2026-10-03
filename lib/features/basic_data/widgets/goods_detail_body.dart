@@ -14,7 +14,7 @@
 //   ([GoodsDetailTab.parse])；按权限隐藏的页签回落基本信息。
 // - 头部：返回键 + 货品名（「预览」A4 产品配件清单 2026-09-12 起在组装信息
 //   表格工具条「全屏」旁，goods_bom_tab.dart）。
-// - 布局：页签靠左；基本信息限宽 960 居中；组装信息和成本表使用完整内容宽度。
+// - 布局：页签靠左；基本信息、附件、组装信息和成本表随可用内容宽度铺满。
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -53,6 +53,7 @@ import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
 import 'goods_issue_method_dialog.dart';
 import 'goods_name_en_field.dart';
+import 'goods_quote_history_tab.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
 import 'mould_picker_field.dart';
@@ -69,7 +70,8 @@ enum GoodsDetailTab {
   bom('bom', '组装信息'),
   cost('cost', '成本预算'),
   files('files', '图片和文件'),
-  stock('stock', '库存与出入库');
+  stock('stock', '库存与出入库'),
+  quotes('quotes', '报价记录');
 
   const GoodsDetailTab(this.key, this.label);
 
@@ -815,6 +817,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
                       GoodsDetailTab.cost => _buildCostTab(theme),
                       GoodsDetailTab.files => _buildFilesTab(),
                       GoodsDetailTab.stock => _buildStockTab(),
+                      GoodsDetailTab.quotes => GoodsQuoteHistoryTab(
+                        goodsId: _goodsId!,
+                      ),
                     },
                 ],
               ),
@@ -846,6 +851,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         GoodsDetailTab.files,
       if (saved && (isAdmin || permissions.contains(Perm.stockView)))
         GoodsDetailTab.stock,
+      if (saved &&
+          (isAdmin ||
+              (permissions.contains(Perm.goodsView) &&
+                  permissions.contains(Perm.salesQuoteFinanceView))))
+        GoodsDetailTab.quotes,
     ];
   }
 
@@ -881,7 +891,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     ),
     child: Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 960),
+        constraints: const BoxConstraints.tightFor(width: double.infinity),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -985,10 +995,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     return Column(
       children: [
         Expanded(
-          // 宽屏下表单限宽居中，避免字段被拉成超长一行。
+          // 表单随可用内容宽度扩展，字段继续由表单内部响应式分列。
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 960),
+              constraints: const BoxConstraints.tightFor(
+                width: double.infinity,
+              ),
               child: MasterEditForm(
                 key: _formKey,
                 fields: _goodsFields(
@@ -1080,10 +1092,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(UtenSpacing.s16),
-            // 宽屏下只读网格限宽居中，与编辑态表单同宽（960）。
+            // 只读网格与编辑态表单同样使用完整可用内容宽度。
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 960),
+                constraints: const BoxConstraints.tightFor(
+                  width: double.infinity,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: bodyChildren,

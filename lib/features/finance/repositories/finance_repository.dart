@@ -30,6 +30,19 @@ abstract final class FinanceEndpoints {
 
 // ===== 5 单据仓库（按 docType family）=====
 
+enum FinanceRecordOrigin {
+  current('CURRENT'),
+  legacy('LEGACY');
+
+  const FinanceRecordOrigin(this.wireValue);
+  final String wireValue;
+  static FinanceRecordOrigin? fromWire(String? value) => switch (value) {
+    'CURRENT' => current,
+    'LEGACY' => legacy,
+    _ => null,
+  };
+}
+
 class FinanceDocFilter {
   const FinanceDocFilter({
     this.keyword,
@@ -38,6 +51,7 @@ class FinanceDocFilter {
     this.outAccountId, // bankTransfer
     this.departmentId, // expense/income
     this.status,
+    this.recordOrigin,
     this.receiptKind, // receipt：收款类型（AR_SETTLEMENT/CUSTOMER_PREPAYMENT）
     this.dateFrom,
     this.dateTo,
@@ -50,6 +64,7 @@ class FinanceDocFilter {
   final String? departmentId;
   final int? status;
   final String? receiptKind;
+  final FinanceRecordOrigin? recordOrigin;
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
 
@@ -98,6 +113,8 @@ class FinanceRepository {
       if (type == FinanceDocType.receipt && filter.receiptKind != null)
         'receiptKind': filter.receiptKind,
       if (filter.status != null) 'status': filter.status,
+      if (filter.recordOrigin != null)
+        'hf.recordOrigin': filter.recordOrigin!.wireValue,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
@@ -125,6 +142,8 @@ class FinanceRepository {
       if (type == FinanceDocType.receipt && filter.receiptKind != null)
         'receiptKind': filter.receiptKind,
       if (filter.status != null) 'status': filter.status,
+      if (filter.recordOrigin != null)
+        'hf.recordOrigin': filter.recordOrigin!.wireValue,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
     };

@@ -44,6 +44,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SalesOtherShipmentService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
@@ -71,9 +75,11 @@ public class SalesOtherShipmentService {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SalesOtherShipment> p = shipmentRepo.findAll(spec, pageable);
         boolean canEdit = hasObjectActionAuthority();
-        return new PageResponse<>(p.map(s -> toList(s,
+        PageResponse<OtherShipmentListItem> result = new PageResponse<>(p.map(s -> toList(s,
                         canEdit && accessPolicy.canWrite(s.getOwnerEmployeeId(), readScope))).getContent(),
                 p);
+        return p.stream().noneMatch(SalesOtherShipment::isDeleted) ? result
+                : retainedRecords.page(result, "sales_other_shipments", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -90,7 +96,8 @@ public class SalesOtherShipmentService {
         return (Root<SalesOtherShipment> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
@@ -113,14 +120,23 @@ public class SalesOtherShipmentService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
+            f.headerFilters().apply(root, cb, ps, "totalLocal", true, null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_other_shipment:view')")
-    public OtherShipmentDetail detail(UUID id) {
-        SalesOtherShipment s = requireReadableShipment(id);
+    public OtherShipmentDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_other_shipment:view')")
+    public OtherShipmentDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private OtherShipmentDetail readDetail(UUID id, boolean historyRead) {
+        SalesOtherShipment s = requireReadableShipment(id, historyRead);
         List<SalesOtherShipmentItem> entities = itemRepo.findByShipmentIdOrderByLineNoAsc(id);
         Set<UUID> readableOrderItems = readableOrderItemIds(entities.stream()
                 .map(SalesOtherShipmentItem::getOrderItemId).filter(Objects::nonNull).toList());
@@ -129,9 +145,9 @@ public class SalesOtherShipmentService {
                         item.getOrderItemId() == null || readableOrderItems.contains(item.getOrderItemId())))
                 .toList();
         boolean headerSourceReadable = isOrderSourceReadable(s.getSourceOrderId());
-        return toDetail(s, items, headerSourceReadable,
+        return finishHistory(toDetail(s, items, headerSourceReadable,
                 hasObjectActionAuthority()
-                        && accessPolicy.canWrite(s.getOwnerEmployeeId()));
+                        && accessPolicy.canWrite(s.getOwnerEmployeeId())), s, historyRead);
     }
 
     @Transactional
@@ -245,7 +261,7 @@ public class SalesOtherShipmentService {
     private OtherShipmentListItem toList(SalesOtherShipment s, boolean writable) {
         return new OtherShipmentListItem(s.getId(), s.getBillNo(), s.getBillDate(), s.getClientId(),
                 s.getWarehouseId(), s.getOutType(), s.getTotalLocal(), s.getStatus(), s.isClosed(),
-                s.getLegacyId(), writable && s.getStatus()!=null && s.getStatus()==STATUS_APPROVED);
+                s.getLegacyId(), writable && s.getStatus()!=null && s.getStatus()==STATUS_APPROVED, s.getCurrencyId());
     }
 
     private OtherShipmentItemDto toItemDto(SalesOtherShipmentItem it, boolean sourceReadable) {
@@ -279,13 +295,17 @@ public class SalesOtherShipmentService {
         return accessPolicy.hasAuthority("sales_other_shipment:reverse");
     }
 
-    private SalesOtherShipment requireShipment(UUID id) {
-        return shipmentRepo.findById(id).filter(s -> !s.isDeleted())
+    private SalesOtherShipment requireShipment(UUID id) { return requireShipment(id, false); }
+
+    private SalesOtherShipment requireShipment(UUID id, boolean includeDeleted) {
+        return shipmentRepo.findById(id).filter(s -> includeDeleted || !s.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "其它出货单不存在"));
     }
 
-    private SalesOtherShipment requireReadableShipment(UUID id) {
-        SalesOtherShipment shipment = requireShipment(id);
+    private SalesOtherShipment requireReadableShipment(UUID id) { return requireReadableShipment(id, false); }
+
+    private SalesOtherShipment requireReadableShipment(UUID id, boolean includeDeleted) {
+        SalesOtherShipment shipment = requireShipment(id, includeDeleted);
         accessPolicy.requireReadable(shipment.getOwnerEmployeeId(), "其它出货单不存在");
         return shipment;
     }
@@ -321,4 +341,17 @@ public class SalesOtherShipmentService {
     }
 
 
+
+    private OtherShipmentDetail finishHistory(OtherShipmentDetail view, SalesOtherShipment entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "sales_other_shipments", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_other_shipment:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(false);
+        return retainedRecords.children("sales_other_shipments",id,beforeId,size);
+    }
 }

@@ -25,6 +25,7 @@ class SubcontractDocFilter {
     this.closed,
     this.financeApproval,
     this.billNo,
+    this.apPosted,
   });
   final String? keyword;
   final String? supplierId;
@@ -44,12 +45,16 @@ class SubcontractDocFilter {
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
 
+  /// Native returns list: true/false are real posted states, null is no filter.
+  final bool? apPosted;
+
   Map<String, dynamic> toQuery() => <String, dynamic>{
     if (keyword != null && keyword!.trim().isNotEmpty)
       'keyword': keyword!.trim(),
     if (supplierId != null) 'supplierId': supplierId,
     if (warehouseId != null) 'warehouseId': warehouseId,
     if (status != null) 'status': status,
+    if (apPosted != null) 'hf.apPosted': apPosted,
     if (dateFrom != null) 'dateFrom': dateFrom,
     if (dateTo != null) 'dateTo': dateTo,
     if (closed != null) 'closed': closed,
@@ -101,6 +106,7 @@ class SubcontractRepository {
       dateTo: filter.dateTo,
       closed: filter.closed,
       financeApproval: filter.financeApproval,
+      apPosted: filter.apPosted,
     ).toQuery();
     final json = await api.get('$_base/facets', query: query);
     return parseFacetBuckets(json, 'billNo');

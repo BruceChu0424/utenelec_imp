@@ -42,7 +42,7 @@ import 'display_zoom_pointer_binding.dart';
 abstract final class UtenDisplayZoom {
   /// 基准画布宽(逻辑像素)。窗口比它宽就整体放大到「看起来像 1920 宽」。
   /// 取 1920 = 1080p@100% 与 2K/4K 常见缩放后的主流桌面逻辑宽；≤1920 的窗口不放大，
-  /// 现有布局(含内容区 1600 钳制)在这些机器上保持不变。
+  /// 这些机器不触发宽屏自动放大；正文仍按父容器可用宽度布局。
   static const double designWidth = 1920;
 
   /// 自动放大上限(3840@100% 的 4K 恰好 2.0；更宽的带鱼屏不再继续放大)。

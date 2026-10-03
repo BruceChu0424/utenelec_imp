@@ -13,6 +13,7 @@
 import '../../core/router/route_names.dart';
 import '../../features/basic_data/models/master_facet.dart';
 import '../measurement/weight_predictor.dart';
+import '../../features/stock/models/instant_inventory_scope.dart';
 
 /// 库存面板三个分段 (路由 ?tab= 用 [key])。
 enum GoodsStockLedgerSegment {
@@ -48,6 +49,7 @@ class StockLedgerQuery {
     this.includeWeightAdjustments = false,
     this.page = 1,
     this.size = 50,
+    this.scope,
   });
 
   /// 仓库 (服务端按含下级展开); null = 全部。
@@ -71,10 +73,14 @@ class StockLedgerQuery {
 
   /// 服务端上限 100。
   final int size;
+  final InstantInventoryScope? scope;
 
   Map<String, dynamic> toQueryParameters() => {
-    'warehouseId': ?warehouseId,
-    if (colorNull) 'colorNull': true else 'colorId': ?colorId,
+    if (scope == null) ...{
+      'warehouseId': ?warehouseId,
+      if (colorNull) 'colorNull': true else 'colorId': ?colorId,
+    } else
+      ...scope!.toQueryParameters(),
     if (dateFrom != null) 'dateFrom': _isoDate(dateFrom!),
     if (dateTo != null) 'dateTo': _isoDate(dateTo!),
     if (movementTypes.isNotEmpty) 'movementTypes': movementTypes.join(','),

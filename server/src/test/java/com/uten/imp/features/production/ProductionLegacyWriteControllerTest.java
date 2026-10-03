@@ -47,17 +47,17 @@ class ProductionLegacyWriteControllerTest {
     }
 
     @Test
-    void directPlanCreateIsPermanentlyRejectedWithoutCallingTheService() {
+    void directPlanCreateDelegatesToTheServiceForManualBlankPlans() {
+        // 2026-10-01 用户口径恢复手工空白新建：直接 create 不再整体拒绝，改为
+        // either-of 创建权限（analysis:create 或 production_plan:create，V714/V716），
+        // 授权注解由 ProductionMaterialAnalysisWorkflowContractTest 源码契约锁定。
         ProductionPlanService service = mock(ProductionPlanService.class);
         ProductionPlanController controller = new ProductionPlanController(
                 service, mock(AuditDetailViewRecorder.class));
 
-        ApiException error = assertThrows(ApiException.class,
-                () -> controller.create(null));
+        controller.create(null);
 
-        assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(error.getCode().getHttpStatus()).isEqualTo(409);
-        verifyNoInteractions(service);
+        org.mockito.Mockito.verify(service).create(null);
     }
 
     @Test

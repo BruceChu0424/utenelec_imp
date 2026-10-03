@@ -47,13 +47,13 @@ public class WorkshopMaterialCountController {
     }
 
     @GetMapping("/periods")
-    @PreAuthorize("hasAuthority('workshop_material:view')")
+    @PreAuthorize("hasAnyAuthority('workshop_material:view','workshop_material:count','stock:count:warehouse_review')")
     public PeriodList periods(@RequestParam UUID binId) {
         return periods.list(binId);
     }
 
     @GetMapping("/periods/{periodId}")
-    @PreAuthorize("hasAuthority('workshop_material:view')")
+    @PreAuthorize("hasAnyAuthority('workshop_material:view','workshop_material:count','stock:count:warehouse_review')")
     public PeriodView period(@PathVariable UUID periodId) {
         return periods.detail(periodId);
     }
@@ -65,7 +65,7 @@ public class WorkshopMaterialCountController {
     }
 
     @PostMapping("/periods/{periodId}/withdraw-count")
-    @PreAuthorize("hasAuthority('workshop_material:count')")
+    @PreAuthorize("hasAnyAuthority('workshop_material:count','stock:count:warehouse_review')")
     public PeriodView withdrawCount(@PathVariable UUID periodId, @RequestBody VersionRequest request) {
         return periods.withdrawCount(periodId, request);
     }
@@ -77,7 +77,7 @@ public class WorkshopMaterialCountController {
     }
 
     @GetMapping("/counts/{countId}")
-    @PreAuthorize("hasAuthority('workshop_material:view')")
+    @PreAuthorize("hasAnyAuthority('workshop_material:view','workshop_material:count','stock:count:warehouse_review')")
     public CountDetail count(@PathVariable UUID countId) {
         return counts.detail(countId);
     }
@@ -112,7 +112,7 @@ public class WorkshopMaterialCountController {
     }
 
     @PostMapping("/counts/{countId}/submit")
-    @PreAuthorize("hasAuthority('workshop_material:count')")
+    @PreAuthorize("hasAuthority('stock:count:warehouse_review')")
     public PeriodView submit(@PathVariable UUID countId, @RequestBody VersionRequest request) {
         return counts.submit(countId, request);
     }

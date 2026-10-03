@@ -1,7 +1,7 @@
 // 入职办理页（真实后端）：单表单分组提交 → 后端原子建 employee+敏感+薪资+合同+轨迹+账号。
-// 工号提交时自动生成（UT 前缀）；登录账号 = 手机号；初始密码 = 系统随机临时密码（只显示一次、限时有效，首登强制改）。
+// 工号提交时自动生成（UT 前缀）；登录账号 = 手机号；初始密码 = 证件号后六位（只显示一次、限时有效，首登强制改）。
 // 岗位为空起步：可选择部门已有岗位，也可填写新岗位，确认后再回填表单。
-// 表单页全断点套 UtenContentContainer.narrow（maxWidth 1120），分组为 UtenSectionHeader + UtenCard。
+// 表单页全断点套 UtenContentContainer.narrow（无固定最大宽度），分组为 UtenSectionHeader + UtenCard。
 // 2026-09-18 UI 统一收口：日期字段改 UtenDateField（与其它编辑页 outlined 同款）、
 // 吸底提交按钮改右下悬浮操作组（2026-09-14 全站口径），日期必填校验移到提交时。
 // 文档：docs/03-页面/入职流程页.md
@@ -340,7 +340,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
           ),
         ],
       ),
-      // 表单页全断点窄版收敛（1120），避免宽屏表单被拉得过长
+      // 表单正文随父容器扩宽，保留响应式 gutter。
       body: !canOnboard
           ? const UtenEmpty(
               icon: Icons.lock_outline_rounded,

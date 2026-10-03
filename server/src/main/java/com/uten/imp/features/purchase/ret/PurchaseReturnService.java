@@ -63,6 +63,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PurchaseReturnService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -104,8 +108,10 @@ public class PurchaseReturnService {
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
         Page<PurchaseReturn> p = returnRepo.findAll(spec, pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+        PageResponse<ReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
+        return p.stream().noneMatch(PurchaseReturn::isDeleted) ? result
+                : retainedRecords.page(result, "purchase_returns", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -121,7 +127,8 @@ public class PurchaseReturnService {
         return (Root<PurchaseReturn> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
@@ -135,16 +142,23 @@ public class PurchaseReturnService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewPurchaseReturn(), null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public ReturnDetail detail(UUID id) {
-        PurchaseReturn r = requireReturn(id);
+    public ReturnDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public ReturnDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private ReturnDetail readDetail(UUID id, boolean historyRead) {
+        PurchaseReturn r = requireReturn(id, historyRead);
         access.requireReadable(r.getMakerId(), "采购退货单不存在");
         List<ReturnItemDto> items = itemRepo.findByReturnIdOrderByLineNoAsc(id).stream().map(this::toItemDto).toList();
-        return toDetail(r, items);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     @Transactional
@@ -630,8 +644,10 @@ public class PurchaseReturnService {
     }
 
 
-    private PurchaseReturn requireReturn(UUID id) {
-        return returnRepo.findById(id).filter(r -> !r.isDeleted())
+    private PurchaseReturn requireReturn(UUID id) { return requireReturn(id, false); }
+
+    private PurchaseReturn requireReturn(UUID id, boolean includeDeleted) {
+        return returnRepo.findById(id).filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "采购退货单不存在"));
     }
     private PurchaseReturn requireReturnForUpdate(UUID id) {
@@ -640,5 +656,17 @@ public class PurchaseReturnService {
         return purchaseReturn == null || purchaseReturn.isDeleted()
                 ? requireReturn(id)
                 : purchaseReturn;
+    }
+
+    private ReturnDetail finishHistory(ReturnDetail view, PurchaseReturn entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "purchase_returns", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("purchase_returns",id,beforeId,size);
     }
 }

@@ -9,6 +9,93 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get businessColumnAmountUnavailable =>
+      '当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。';
+
+  @override
+  String get businessColumnEditorSubtitle => '为单据补充信息，或让输入值参与每行正式金额计算。';
+
+  @override
+  String get businessColumnBrowse => '选择已有列';
+
+  @override
+  String get businessColumnNew => '新建列';
+
+  @override
+  String get businessColumnManage => '本单已添加';
+
+  @override
+  String get businessColumnNoResults => '没有匹配的列，可以切换到“新建列”。';
+
+  @override
+  String get businessColumnNewHint => '先填写名称，再选择这列的用途。每行的实际数值在表格里填写。';
+
+  @override
+  String get businessColumnOfficialAmount => '参与正式金额';
+
+  @override
+  String get businessColumnAmountTarget => '计算目标';
+
+  @override
+  String get businessColumnRowAmount => '本行金额';
+
+  @override
+  String get businessColumnRecordHint => '每行分别填写，保存为单据补充信息。';
+
+  @override
+  String get businessColumnOfficialHint => '输入值会计入本行金额；保存、财务审核和后续业务沿用计算后的金额。';
+
+  @override
+  String get businessColumnExampleTitle => '试算一下';
+
+  @override
+  String get businessColumnExampleBase => '原金额（示例）';
+
+  @override
+  String get businessColumnExampleValue => '本列输入值（示例）';
+
+  @override
+  String get businessColumnExampleHint =>
+      '示例只帮助理解计算，不会填入单据。留空不参与计算，填写 0 则按 0 计算。';
+
+  @override
+  String get businessColumnExampleInvalid => '请填写有效数值；不能除以 0，结果须为非负的精确有限小数。';
+
+  @override
+  String get businessColumnFixedFeeHint => '此值按每行收取一次。例如本行金额 100，填 20 后加到 120。';
+
+  @override
+  String get businessColumnFactorHint => '乘除填写倍率，例如乘 0.9 表示按原金额的 90% 计算。';
+
+  @override
+  String get businessColumnRemove => '从本单移除';
+
+  @override
+  String get businessColumnRemoveHint =>
+      '移除后，本单各行的该列内容会清除，金额会重新计算。保存单据后生效；其他单据和可复用列不受影响。';
+
+  @override
+  String get businessColumnUseExisting => '使用已有列';
+
+  @override
+  String get businessColumnAlreadyAdded => '本单已经添加了相同定义的列，可到“本单已添加”查看。';
+
+  @override
+  String get businessColumnOrderHint => '金额按列的添加顺序计算。拖动表头只改变显示顺序；有值的费用列保持可见。';
+
+  @override
+  String get businessColumnNoAdded => '本单还没有添加自定义列。';
+
+  @override
+  String get businessColumnNameRequired => '请输入列名称';
+
+  @override
+  String get businessColumnAmountRule => '金额运算';
+
+  @override
+  String get businessColumnSubtractHint => '填写要从本行金额扣减的数值，例如 100 减 20 等于 80。';
+
+  @override
   String get bomLearningTitle => 'BOM 学习记录';
 
   @override
@@ -257,6 +344,31 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestTitle => '确认领料申请';
+
+  @override
+  String get productionDailyReportLoadFailed => '加载详情失败，请重试';
+
+  @override
+  String get productionDailyReportReverseConfirmation => '红冲将反向冲销，确认？';
+
+  @override
+  String get productionDailyReportDeleteTitle => '删除日报';
+
+  @override
+  String get productionDailyReportDeleteConfirmation => '确定删除该草稿日报吗？';
+
+  @override
+  String get productionDailyReportDeleteAction => '删除';
+
+  @override
+  String get productionDailyReportApprovedStateVerified => '当前已审核，页面已刷新。';
+
+  @override
+  String get productionDailyReportReversedStateVerified => '当前已红冲，页面已刷新。';
+
+  @override
+  String get productionDailyReportStateChangedReview =>
+      '日报状态已变化，页面已刷新，请核对当前状态。';
 
   @override
   String get appTitle => '优腾·综合管理平台';
@@ -1966,7 +2078,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubPlan => '新建生产计划单';
 
   @override
-  String get productionHubPlanSub => '引用销售订单或手工新建·历史记录';
+  String get productionHubPlanSub => '手工新建排产计划，可引用销售订单';
 
   @override
   String get productionHubPlanHistory => '生产计划历史';
@@ -4413,7 +4525,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmWeighLoose => '散料';
 
   @override
-  String get wmFillGuide => '超过四分之三算满, 四分之一到四分之三算半, 不到四分之一算空';
+  String get wmFillGuide =>
+      '满按容量、半按一半估算；空按 0 记录，仅用于确实无料。容器有余料时可称重后直接填公斤。满/半/空属于估盘，会影响本期和下期耗用。';
 
   @override
   String get wmMachineIdle => '本机停机、全空';
@@ -4425,7 +4538,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmPrintBlank => '打印空白盘点表';
 
   @override
-  String get wmSubmitCount => '提交盘点';
+  String get wmSubmitCount => '审核盘点并过账';
 
   @override
   String get wmWithdrawCount => '撤回盘点';
@@ -4532,7 +4645,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmReportProduct => '产品用料';
 
   @override
-  String get wmReportTrend => '浪费率趋势';
+  String get wmReportTrend => '耗用差异率趋势';
 
   @override
   String get wmReportMissingWeight => '缺单重清单';
@@ -4541,13 +4654,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmReportLedger => '收发明细';
 
   @override
-  String get wmTrueUnitUsage => '真实单耗';
+  String get wmTrueUnitUsage => '独占期平均耗用';
 
   @override
   String get wmAllocatedByTheory => '按理论比例分摊';
 
   @override
-  String get wmWasteRate => '浪费率';
+  String get wmWasteRate => '耗用差异率';
 
   @override
   String get wmIncludeWorkshopStore => '含内料仓';
@@ -4556,7 +4669,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get workshopMaterialSetupHubDesc => '开启车间整批领料、机台与容器、上线准备 (产品的颗粒与单个重量)';
 
   @override
-  String get workshopMaterialReportsHubDesc => '按期间看每种料用了多少、浪费率与结算状态';
+  String get workshopMaterialReportsHubDesc => '按期间看盘点推算耗用、耗用差异率与结算状态';
 
   @override
   String get wmReceiveReturn => '收退回';
@@ -5415,7 +5528,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesQuoteStatusConvertConfirmBody =>
-      '会按财务核定的单价和折扣生成订货单草稿。单价和折扣已由财务核定, 不能修改; 数量和交货信息可以在订货单里补充。确定转入?';
+      '根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。';
 
   @override
   String get salesQuoteStatusConfirm => '确定';
@@ -6613,7 +6726,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesIntakeQuotePriceHint =>
-      '单价按货品资料标价带入, 销售不能修改; 没有标价的货品由财务核价时定价。折扣按客户文件单价计算, 也可以留空交财务核价。';
+      '单价由货品标价带入，可修改本次报价的单价和折扣，不改变货品资料。提交后由财务核价；没有单价可留空交财务填写。';
 
   @override
   String get salesIntakeFinancePriced => '财务定价';
@@ -7666,4 +7779,287 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get costMaterialPriceNotApplied => '汇总件或客供材料不单独计入材料单价；查看计算依据了解本行口径。';
+
+  @override
+  String get salesQuoteCustomerConfirm => '登记客户同意';
+
+  @override
+  String get salesQuoteCustomerConfirmBody =>
+      '确认客户已同意当前版本的货品、数量、单价、折扣与商业条款。登记后可生成订货单草稿；报价再次修改后须重新核价并取得客户同意。';
+
+  @override
+  String get salesQuoteCustomerConfirmed => '已登记客户同意，可生成订货单';
+
+  @override
+  String get salesQuoteAwaitingCustomer => '待客户同意';
+
+  @override
+  String get salesQuoteAwaitingConversion => '待生成订货单';
+
+  @override
+  String get salesQuoteAwaitingCustomerBody =>
+      '财务已核价，请与客户确认当前报价；客户同意后登记确认并生成订货单，也可重新修改报价或取消。';
+
+  @override
+  String get salesQuoteCancelQuote => '取消报价';
+
+  @override
+  String get salesQuoteCancelReason => '取消原因（如客户未接受报价、订单未取得）';
+
+  @override
+  String get salesQuoteCancelReasonRequired => '请填写取消原因';
+
+  @override
+  String get salesQuoteCancelledDone => '报价已取消，历史记录保留';
+
+  @override
+  String get quoteTemplateMissingTitle => '此客户还没有报价模板';
+
+  @override
+  String get quoteTemplateMissingHint =>
+      '上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。';
+
+  @override
+  String get quoteTemplateUpload => '上传并学习模板';
+
+  @override
+  String get quoteTemplateReviewTitle => '核对客户模板';
+
+  @override
+  String get quoteTemplateReviewHint =>
+      '核对工作表和字段后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。';
+
+  @override
+  String get quoteTemplateSaveDownload => '保存模板并下载';
+
+  @override
+  String get quoteTemplateSheet => '工作表';
+
+  @override
+  String get quoteTemplateReference => '参考列（仅填本单同名信息）';
+
+  @override
+  String get quoteTemplateFileRequired => '请上传 15 MB 以内的 xlsx 或 xls 文件';
+
+  @override
+  String get quoteTemplateUnreadable => '无法读取可回填模板，请检查 Excel 表头';
+
+  @override
+  String get quoteTemplateSaved => '客户报价模板已保存';
+
+  @override
+  String get quoteTemplateLearningTitle => '学习客户报价模板';
+
+  @override
+  String get aiChatTitle => 'AI 工作助手';
+
+  @override
+  String get aiChatOpen => '打开 AI 工作助手（可上下拖动）';
+
+  @override
+  String get aiChatClose => '收起对话';
+
+  @override
+  String get aiChatReset => '新对话';
+
+  @override
+  String get aiChatResetTitle => '开始新对话？';
+
+  @override
+  String get aiChatResetHint => '当前对话和未使用的文件将从此窗口清除。已执行的业务操作不会撤销。';
+
+  @override
+  String get aiChatCancel => '取消';
+
+  @override
+  String get aiChatConfirm => '确认';
+
+  @override
+  String get aiChatWelcome => '今天需要处理什么？';
+
+  @override
+  String get aiChatBoundary => '按当前账号权限回答；数据查询与操作由系统逐次校验。';
+
+  @override
+  String get aiChatUnavailable => '当前使用基础助手，可查询已支持的业务信息。配置 AI 服务后可获得更完整的对话能力。';
+
+  @override
+  String get aiChatLoadFailed => '暂时无法连接 AI 助手，请重试。';
+
+  @override
+  String get aiChatRetry => '重试';
+
+  @override
+  String get aiChatLabel => '对话内容';
+
+  @override
+  String get aiChatHint => '输入消息…';
+
+  @override
+  String get aiChatHintNoUpload => '输入消息…';
+
+  @override
+  String get aiChatSend => '发送';
+
+  @override
+  String get aiChatAttach => '上传报价文件';
+
+  @override
+  String get aiChatRemoveFile => '移除文件';
+
+  @override
+  String get aiChatFileHint => '支持 Excel、CSV；文件会用于生成待核对的订货单。';
+
+  @override
+  String get aiChatFileFailed => '无法读取文件，请重新选择 Excel 或 CSV 文件。';
+
+  @override
+  String get aiChatFileLarge => '文件不能超过 15 MB。';
+
+  @override
+  String get aiChatFileMemory => '本次对话的文件已达容量上限，请开始新对话后上传。';
+
+  @override
+  String get aiChatSending => '正在理解问题…';
+
+  @override
+  String get aiChatUploading => '正在读取报价文件…';
+
+  @override
+  String get aiChatStop => '停止';
+
+  @override
+  String get aiChatStopped => '已停止本次处理';
+
+  @override
+  String get aiChatFailed => '处理未完成，请稍后重试。';
+
+  @override
+  String get aiChatTimeout => '处理时间较长，已停止等待。请稍后重试。';
+
+  @override
+  String get aiChatGone => '这次处理已过期，请开始新对话。';
+
+  @override
+  String get aiChatPermissionChanged => '当前权限或会话已变化，对话已清除。请刷新后重试。';
+
+  @override
+  String get aiChatOpenDraft => '核对并新建订货单';
+
+  @override
+  String get aiChatDraftHint => '将进入订货单核对页，确认客户、货品、数量和价格后由你保存。';
+
+  @override
+  String get aiChatUnsupported => '此操作暂不支持，请到对应业务页面处理。';
+
+  @override
+  String get aiChatEmptyReply => '本次未返回可显示的答复，请重新描述你的问题。';
+
+  @override
+  String get aiChatYou => '你';
+
+  @override
+  String get aiChatAssistant => '助手';
+
+  @override
+  String get aiChatDraftUnavailable => '无法打开此草稿，请重新上传文件。';
+
+  @override
+  String get aiChatConfirmPermission => '核对授权内容';
+
+  @override
+  String get aiChatPermissionDone => '授权已完成';
+
+  @override
+  String get aiChatMoveUp => '向上移动助手';
+
+  @override
+  String get aiChatMoveDown => '向下移动助手';
+
+  @override
+  String get aiChatPageAware => '正在帮助：当前页面';
+
+  @override
+  String get aiChatPageOff => '结合当前页面回答';
+
+  @override
+  String get aiChatPageHint => '只使用页面与字段说明，不读取你的表单内容。';
+
+  @override
+  String get aiChatPageQuestion => '这个页面怎么填写？请举个例子。';
+
+  @override
+  String get aiChatGrantDetails => '请核对目标人员、权限和范围，确认后需重新验证密码。';
+
+  @override
+  String get aiChatGrantExpired => '授权建议已过期，请重新发起。';
+
+  @override
+  String get aiChatGrantUnknown => '授权结果暂未确认。请在权限管理页核查，再决定是否重试。';
+
+  @override
+  String get aiChatAttachmentQuestion => '请根据这份报价文件帮我生成订货单。';
+
+  @override
+  String get aiChatLimit => '本次对话较长，请开始新对话后继续。';
+
+  @override
+  String get aiChatPermissionTarget => '目标人员';
+
+  @override
+  String get aiChatPermissionItem => '授予权限';
+
+  @override
+  String get aiChatPermissionScope => '数据范围';
+
+  @override
+  String get aiChatPermissionExpiry => '有效期至';
+
+  @override
+  String get aiChatPendingGrant => '待你核对确认';
+
+  @override
+  String get aiChatFileReady => '已读取文件，可继续发送问题';
+
+  @override
+  String get aiChatSendAgain => '再次发送';
+
+  @override
+  String get aiChatDraftOpened => '已打开核对页面';
+
+  @override
+  String get aiChatFileMissing => '原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。';
+
+  @override
+  String get aiChatPrivacyNotice => '对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。';
+
+  @override
+  String get aiChatReceived => '已送达，正在等待回复…';
+
+  @override
+  String get aiChatRequestRejected => '这条消息未成功提交。';
+
+  @override
+  String get aiChatDeliveryUnknown => '送达状态未确认；再次发送会发起新请求。';
+
+  @override
+  String get aiChatReplyFailed => '消息已送达，AI 未能完成回复。';
+
+  @override
+  String get aiChatReplyInterrupted => '消息已受理，暂未能读取结果。';
+
+  @override
+  String get aiChatWaitingStopped => '已停止等待这条消息的回复。';
+
+  @override
+  String get aiChatRetryMessage => '重试此消息';
+
+  @override
+  String get aiChatCheckReply => '重新查看结果';
+
+  @override
+  String get aiChatInfo => 'AI 使用说明';
+
+  @override
+  String get aiChatInfoDone => '知道了';
 }

@@ -62,8 +62,12 @@ public class SalesQuoteController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
-            @RequestParam(required = false) String bucket) {
-        return service.list(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket),
+            @RequestParam(required = false) String bucket,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, billNo, bucket).withHistory(includeDeleted, onlyDeleted).withCurrency(currencyId).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)),
                 page, size, sort, order);
     }
 
@@ -83,8 +87,12 @@ public class SalesQuoteController {
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @RequestParam(required = false) String bucket) {
-        return service.facets(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, null, bucket));
+            @RequestParam(required = false) String bucket,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new QuoteQueryFilter(keyword, clientId, status, dateFrom, dateTo, null, bucket).withHistory(includeDeleted, onlyDeleted).withCurrency(currencyId).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")
@@ -92,6 +100,16 @@ public class SalesQuoteController {
     public QuoteDetail detail(@PathVariable UUID id) {
         QuoteDetail detail = service.detail(id);
         viewAudit.record(
+                "view_sales_quote_detail", "sales_quotes", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售报价单");
+        return detail;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public QuoteDetail history(@PathVariable UUID id) {
+        QuoteDetail detail = service.detailHistory(id);
+        viewAudit.recordHistory(
                 "view_sales_quote_detail", "sales_quotes", id,
                 detail.getBillNo(), detail.getLegacyId(), "销售报价单");
         return detail;
@@ -111,15 +129,15 @@ public class SalesQuoteController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('sales_quote:delete')")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
+    public void delete(@PathVariable UUID id, @RequestParam Integer expectedRevision) {
+        service.delete(id, expectedRevision);
     }
 
     /** 提交财务核价; body 可选(带 expectedRevision 时校验)。 */
     @PostMapping("/{id}/submit")
     @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail submit(@PathVariable UUID id,
-                              @Valid @RequestBody(required = false) QuoteActionRequest req) {
+                              @Valid @RequestBody QuoteActionRequest req) {
         return service.submit(id, req);
     }
 
@@ -143,10 +161,39 @@ public class SalesQuoteController {
         return service.reverse(id);
     }
 
+    @PostMapping("/{id}/customer-confirm")
+    @PreAuthorize("hasAuthority('sales_quote:edit')")
+    public QuoteDetail customerConfirm(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.customerConfirm(id, req);
+    }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('sales_quote:edit') or hasAuthority('sales_quote:reverse')")
+    public QuoteDetail cancel(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.cancel(id, req);
+    }
+
+    @PostMapping("/{id}/requote")
+    @PreAuthorize("hasAuthority('sales_quote:create') and hasAuthority('sales_quote:edit')")
+    public QuoteDetail requote(@PathVariable UUID id, @Valid @RequestBody QuoteActionRequest req) {
+        return service.requote(id, req);
+    }
+
     /** 报价转订货(SOP §三1)：财务已核价的报价一键生成订货草稿(表头+行+核定折扣带入，来源回联)。 */
     @PostMapping("/{id}/convert")
     @PreAuthorize("hasAuthority('sales_quote:convert') and hasAuthority('sales_order:create')")
-    public com.uten.imp.features.sales.order.dto.OrderDetail convert(@PathVariable UUID id) {
-        return service.convertToOrder(id);
+    public com.uten.imp.features.sales.order.dto.OrderDetail convert(@PathVariable UUID id,
+            @Valid @RequestBody QuoteActionRequest req) {
+        return service.convertToOrder(id, req);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('sales_quote:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        viewAudit.recordHistory("view_sales_quote_detail", "sales_quotes", id, null, null, "单据历史明细");
+        return rows;
     }
 }

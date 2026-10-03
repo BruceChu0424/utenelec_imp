@@ -1,3 +1,4 @@
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
 // 钱流单据详情页（全页路由，按 docType 参数化）：主表头卡 + 只读明细子表 + 状态门控操作。
 //
 // 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。
@@ -15,8 +16,9 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
-import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -24,6 +26,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
@@ -59,7 +62,8 @@ class FinanceDocDetailPage extends ConsumerStatefulWidget {
       _FinanceDocDetailPageState();
 }
 
-class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
+class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
+    with NativeReadViewScopeMixin<FinanceDocDetailPage> {
   FinanceDocConfig get _cfg => FinanceDocConfig.by(widget.docType);
   FinanceDocDetail? _detail;
   bool _loading = false;
@@ -71,13 +75,22 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
   @override
   void initState() {
     super.initState();
+    initializeNativeReadScope();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   bool _hasPermission(String? code) =>
-      code != null && ref.read(currentPermissionsProvider).contains(code);
+      code != null &&
+      nativeReadAccessConfirmed &&
+      ((code.endsWith(':view') ||
+              code.contains(':view:') ||
+              code.endsWith(':print') ||
+              code.endsWith(':download')) ||
+          nativeReadCanWrite) &&
+      ref.read(currentPermissionsProvider).contains(code);
 
-  bool get _canMutate => _detail != null && !_detail!.legacyImported;
+  bool get _canMutate =>
+      nativeReadCanWrite && _detail != null && !_detail!.legacyImported;
 
   bool get _ordinaryWritable =>
       _canMutate &&
@@ -101,7 +114,26 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     FinanceDocType.bankTransfer => 'FINANCE_BANK_TRANSFER',
   };
 
+  @override
+  void nativeReadOwnerChanged() => setState(() {
+    _detail = null;
+    _loading = false;
+    _busy = false;
+    _error = '登录身份或服务器已变化，原页面信息已隐藏，请重新加载';
+  });
+  @override
+  void nativeReadPermissionChanged() => setState(() {
+    _busy = false;
+  });
+  @override
+  Future<void> nativeReadReload() => _load();
+
   Future<void> _load() async {
+    final acceptsRead = captureNativeRead(
+      '${widget.docType.name}/${widget.id}',
+      () => '${widget.docType.name}/${widget.id}',
+    );
+    if (!acceptsRead()) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -109,7 +141,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     try {
       await ref
           .read(financeNameServiceProvider)
-          .ensureLoaded(refreshAccounts: true);
+          .ensureLoaded(
+            refreshAccounts: true,
+            includeCounterparties: !_cfg.isAllocate,
+          );
+      if (!acceptsRead()) return;
       // 费用/收入单及销售收款的其它费用项目：预载类别名称。
       if (_cfg.isAllocate || _cfg.type == FinanceDocType.receipt) {
         await ref
@@ -118,22 +154,24 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
               _cfg.type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
             );
       }
+      if (!acceptsRead()) return;
       final d = await ref
           .read(financeRepositoryProvider(widget.docType))
           .detail(widget.id);
-      if (!mounted) return;
+      if (!acceptsRead()) return;
+      acceptNativeRead();
       setState(() {
         _detail = d;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!acceptsRead()) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!acceptsRead()) return;
       setState(() {
         _error = '加载详情失败';
         _loading = false;
@@ -196,74 +234,84 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
     String reviewerActionLabel = '审核',
     String? busyTitle,
   }) async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (_busy || !_canMutate) return;
     final c = reviewerResponsibility
-        ? await showUtenReviewerConfirmDialog(
+        ? await showNativeReadReviewerConfirm(
             context,
             message: confirm,
             actionLabel: reviewerActionLabel,
           )
         : await showDialog<bool>(
             context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('确认'),
-              content: Text(confirm),
-              actionsAlignment: MainAxisAlignment.center,
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('确认'),
-                ),
-              ],
+            builder: (ctx) => trackNativeReadDialog(
+              ctx,
+              AlertDialog(
+                title: const Text('确认'),
+                content: Text(confirm),
+                actionsAlignment: MainAxisAlignment.center,
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('确认'),
+                  ),
+                ],
+              ),
             ),
           );
-    if (c != true) return;
+    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
     setState(() {
       _busy = true;
       _busyTitle = busyTitle ?? '正在处理，请稍候';
     });
     try {
       await fn(ref.read(financeRepositoryProvider(widget.docType)));
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess(ok);
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('操作失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('操作失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
   Future<void> _delete() async {
+    if (!nativeReadCanWrite) return;
+    final ownsNative = captureNativeOwnership();
     if (!_canMutate) return;
     if (_busy) return;
     final c = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除单据'),
-        content: const Text('确定删除该草稿单据吗？'),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除'),
-          ),
-        ],
+      builder: (ctx) => trackNativeReadDialog(
+        ctx,
+        AlertDialog(
+          title: const Text('删除单据'),
+          content: const Text('确定删除该草稿单据吗？'),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除'),
+            ),
+          ],
+        ),
       ),
     );
-    if (c != true) return;
+    if (c != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
     setState(() {
       _busy = true;
       _busyTitle = '正在删除，请稍候';
@@ -272,7 +320,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       await ref
           .read(financeRepositoryProvider(widget.docType))
           .delete(widget.id);
-      if (!mounted) return;
+      if (!mounted || !ownsNative()) return;
       context.appSuccess('已删除');
       // 删除也 bump：来源列表立即去掉这行，草稿计数/徽章即时重拉
       // （其余写动作都有 bump，唯独删除漏了）。
@@ -280,11 +328,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       // 返回键契约（路由设计 §十一）：pop 回来源，栈空回钱流 hub。
       popOrBackTo(context, defaultPath: RouteName.finance);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && ownsNative()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('删除失败，请稍后重试');
+      if (mounted && ownsNative()) context.appError('删除失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && ownsNative()) setState(() => _busy = false);
     }
   }
 
@@ -317,11 +365,21 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
           children: [
             UtenContentContainer(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ? Semantics(
+                      label: AppLocalizations.of(context).commonLoading,
+                      liveRegion: true,
+                      child: const UtenSkeletonList(),
                     )
                   : _error != null
-                  ? Center(child: Text(_error!))
+                  ? UtenEmpty.error(
+                      message: _error,
+                      actionLabel: AppLocalizations.of(context).commonRetry,
+                      onAction: () async {
+                        if (!_loading) await _load();
+                      },
+                    )
+                  : !nativeReadAccessConfirmed
+                  ? nativeReadAccessNotice()
                   : _detail == null
                   ? const SizedBox.shrink()
                   : _body(theme, names, scopeCapability, canViewFiles),
@@ -336,7 +394,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组，大小/高度/禁用态全站统一。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _busy ? null : _actions(theme),
+      floatingActionButton:
+          !nativeReadAccessConfirmed ||
+              _detail == null ||
+              _busy ||
+              _loading ||
+              _error != null
+          ? null
+          : _actions(theme),
     );
   }
 
@@ -929,12 +994,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage> {
               names.styleName(it.expenseStyleId ?? it.incomeStyleId, styleCat),
         ),
         MasterColumnDef(
-          key: 'dept',
+          key: 'department',
           label: '部门',
           width: 140,
-          value: (it) => names
-              .client(it.departmentId)
-              .replaceAll('—', it.departmentId ?? '—'),
+          value: (it) => it.departmentLabel,
         ),
         MasterColumnDef(
           key: 'qty',

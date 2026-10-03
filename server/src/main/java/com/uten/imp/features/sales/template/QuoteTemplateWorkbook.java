@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.template;
 
 import com.uten.imp.common.files.document.DocumentGrid;
+import com.uten.imp.common.columns.ExtraColumnSnapshot;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -23,7 +24,12 @@ public final class QuoteTemplateWorkbook {
 
     public record Candidate(byte[] xlsx, String fingerprint, Map<String, Object> mapping,
                             Set<String> features) { }
-    public record ExportLine(Map<String, String> values) { }
+    public record ExportLine(Map<String, String> values, List<ExtraColumnSnapshot> extraColumns) {
+        public ExportLine {
+            extraColumns = extraColumns == null ? List.of() : List.copyOf(extraColumns);
+        }
+        public ExportLine(Map<String, String> values) { this(values, List.of()); }
+    }
     public record DisplayColumn(String key, String label, double width, String role, String sourceRole, String extraName) { }
 
     /** Retain template presentation, while current visible schema owns detail columns and their order. */
@@ -418,6 +424,7 @@ public final class QuoteTemplateWorkbook {
             int start = ((Number) mapping.get("dataRow")).intValue();
             Map<String, String> roles = (Map<String, String>) mapping.get("roles");
             Map<String, String> extras = new LinkedHashMap<>((Map<String, String>) mapping.getOrDefault("extraHeaders", Map.of()));
+            extras.entrySet().removeIf(entry -> !isExtraTemplatePosition(roles.get(entry.getKey()), lines));
             Map<String, String> roleHeaders = (Map<String, String>) mapping.getOrDefault("roleHeaders", Map.of());
             Map<String, String> fields = (Map<String, String>) mapping.getOrDefault("headerCells", Map.of());
             int columns = ((Number) mapping.getOrDefault("maxColumn", 20)).intValue();
@@ -426,15 +433,41 @@ public final class QuoteTemplateWorkbook {
             for (String label : roleHeaders.values()) included.add(normalize(label));
             int headerRow = ((Number) mapping.get("headerRow")).intValue();
             int headerSpan = ((Number) mapping.get("headerSpan")).intValue();
+            Map<UUID, ExtraColumnSnapshot> savedColumns = new LinkedHashMap<>();
+            for (ExportLine line : lines) for (var column : line.extraColumns())
+                if (column.name() != null) savedColumns.putIfAbsent(column.columnId(), column);
+            Set<String> savedNames = new HashSet<>();
+            savedColumns.values().forEach(column -> savedNames.add(normalize(column.name())));
+            Map<String, ExtraColumnSnapshot> boundExtras = new LinkedHashMap<>();
+            Map<String, String> templateExtraLabels = new LinkedHashMap<>(extras);
+            roleHeaders.forEach((letter, label) -> {
+                if (isExtraTemplatePosition(roles.get(letter), lines)) templateExtraLabels.putIfAbsent(letter, label);
+            });
+            if (!Boolean.TRUE.equals(mapping.get("projectionApplied"))) for (var column : savedColumns.values()) {
+                // Older customer templates remember labels only. Bind each available
+                // extra position once; names never merge two saved column identities.
+                String letter = templateExtraLabels.entrySet().stream()
+                        .filter(entry -> isExtraTemplatePosition(roles.get(entry.getKey()), lines)
+                                && !boundExtras.containsKey(entry.getKey())
+                                && normalize(entry.getValue()).equals(normalize(column.name())))
+                        .map(Map.Entry::getKey).min(Comparator.comparingInt(DocumentGrid::columnIndex)).orElse(null);
+                if (letter == null) {
+                    if (columns >= MAX_COLUMNS) throw new IllegalArgumentException("额外列超过模板列数上限");
+                    letter = DocumentGrid.columnLetter(columns);
+                    extras.put(letter, column.name());
+                    appendExtraHeading(sheet, headerRow + headerSpan - 1, columns, column.name());
+                    columns++;
+                }
+                extras.putIfAbsent(letter, column.name());
+                boundExtras.put(letter, column);
+                included.add(normalize(column.name()));
+            }
             for (ExportLine line : Boolean.TRUE.equals(mapping.get("projectionApplied")) ? List.<ExportLine>of() : lines) for (var value : line.values().entrySet()) {
                 if (!value.getKey().startsWith("extra-label:") || !included.add(normalize(value.getValue()))) continue;
                 if (columns >= MAX_COLUMNS) throw new IllegalArgumentException("额外列超过模板列数上限");
                 String letter = DocumentGrid.columnLetter(columns);
                 extras.put(letter, value.getValue());
-                Cell heading = getCell(sheet, headerRow + headerSpan - 1, columns);
-                heading.setCellValue(value.getValue());
-                if (columns > 0) heading.setCellStyle(getCell(sheet, headerRow + headerSpan - 1, columns - 1).getCellStyle());
-                sheet.setColumnWidth(columns, 18 * 256);
+                appendExtraHeading(sheet, headerRow + headerSpan - 1, columns, value.getValue());
                 columns++;
             }
             int blockRows = ((Number) mapping.getOrDefault("blockRows", 1)).intValue();
@@ -465,13 +498,16 @@ public final class QuoteTemplateWorkbook {
                     String value = "LINE_NO".equals(role) ? Integer.toString(i + 1) : lines.get(i).values().get(role);
                     if ("UNIT_PRICE".equals(role) && !roles.containsValue("DISCOUNT") && !Boolean.TRUE.equals(mapping.get("projectionApplied")))
                         value = lines.get(i).values().getOrDefault("UNIT_PRICE_NET", value);
-                    if (value == null && roleHeaders.containsKey(entry.getKey()))
+                    if (value == null && roleHeaders.containsKey(entry.getKey())
+                            && !savedNames.contains(normalize(roleHeaders.get(entry.getKey()))))
                         value = lines.get(i).values().get("extra:" + normalize(roleHeaders.get(entry.getKey())));
                     setValue(getCell(sheet, target, DocumentGrid.columnIndex(entry.getKey())), value,
                             Set.of("QTY", "UNIT_PRICE", "AMOUNT", "DISCOUNT", "PCS_PER_CTN", "CTN").contains(role));
                 }
                 for (var entry : extras.entrySet()) {
-                    String value = lines.get(i).values().get("extra:" + normalize(entry.getValue()));
+                    var saved = boundExtras.get(entry.getKey());
+                    String key = saved == null ? "extra:" + normalize(entry.getValue()) : "EXTRA_ID:" + saved.columnId();
+                    String value = lines.get(i).values().get(key);
                     setValue(getCell(sheet, target, DocumentGrid.columnIndex(entry.getKey())), value, false);
                 }
             }
@@ -520,8 +556,11 @@ public final class QuoteTemplateWorkbook {
             }
             Map<String, String> monetaryRoles = new LinkedHashMap<>(roles);
             for (var extra : extras.entrySet()) {
-                String key = "extra-money:" + normalize(extra.getValue());
-                if (lines.stream().anyMatch(line -> line.values().containsKey(key))) monetaryRoles.put(extra.getKey(), "AMOUNT");
+                var saved = boundExtras.get(extra.getKey());
+                boolean monetary = saved == null
+                        ? lines.stream().anyMatch(line -> line.values().containsKey("extra-money:" + normalize(extra.getValue())))
+                        : Set.of("ADD", "SUBTRACT").contains(saved.operation());
+                if (monetary) monetaryRoles.put(extra.getKey(), "AMOUNT");
             }
             List<String> projectedMoney = (List<String>) mapping.getOrDefault("moneyRoles", List.of());
             for (var entry : roles.entrySet()) if (projectedMoney.contains(entry.getValue())) monetaryRoles.put(entry.getKey(), "AMOUNT");
@@ -529,6 +568,20 @@ public final class QuoteTemplateWorkbook {
             workbook.setPrintArea(0, 0, Math.max(0, columns - 1), 0, Math.max(totalAt, sheet.getLastRowNum()));
             return bytes(workbook);
         } catch (Exception e) { throw new IllegalArgumentException("报价模板生成失败", e); }
+    }
+
+    private static boolean isExtraTemplatePosition(String role, List<ExportLine> lines) {
+        // Intake recognizes these reference columns without making them native
+        // quote amounts. Retain their old template positions when no real fact owns them.
+        return role == null || Set.of("IGNORED", "PCS_PER_CTN", "CTN", "COLOR_ALT").contains(role)
+                && lines.stream().noneMatch(line -> line.values().get(role) != null);
+    }
+
+    private static void appendExtraHeading(Sheet sheet, int row, int column, String label) {
+        Cell heading = getCell(sheet, row, column);
+        heading.setCellValue(label);
+        if (column > 0) heading.setCellStyle(getCell(sheet, row, column - 1).getCellStyle());
+        sheet.setColumnWidth(column, 18 * 256);
     }
 
     private static void applyCurrentCurrency(XSSFWorkbook workbook, Sheet sheet, Map<String, String> roles,

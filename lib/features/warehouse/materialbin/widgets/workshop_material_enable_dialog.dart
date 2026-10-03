@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
+import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/inputs/uten_date_field.dart';
 import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
@@ -17,8 +18,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/china_datetime.dart';
-import '../../../basic_data/models/warehouse_node.dart';
-import '../../../basic_data/repositories/warehouse_repository.dart';
+import '../models/workshop_main_warehouse_option.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import 'workshop_material_labels.dart';
@@ -51,7 +51,7 @@ class _WorkshopMaterialEnableDialogState
   final _nonce = const Uuid().v4();
   bool _loading = true;
   String? _loadError;
-  List<WarehouseListItem> _mainWarehouses = const [];
+  List<WmMainWarehouseOption> _mainWarehouses = const [];
   List<WmPendingProductChoice> _pending = const [];
   String? _mainWarehouseId;
   DateTime _goLive = ChinaDateTime.today();
@@ -76,20 +76,22 @@ class _WorkshopMaterialEnableDialogState
     });
     try {
       final results = await Future.wait<Object>([
-        ref.read(warehouseRepositoryProvider).dict(),
+        ref.read(workshopMaterialRepositoryProvider).setupMainWarehouses(),
         ref
             .read(workshopMaterialRepositoryProvider)
             .inProgressPending(widget.setting.workshopDepartmentId),
       ]);
       if (!mounted) return;
-      final warehouses = results[0] as List<WarehouseListItem>;
+      final warehouses = results[0] as List<WmMainWarehouseOption>;
       final pending = results[1] as List<WmPendingProductChoice>;
       setState(() {
-        // 主仓 = 顶层、参与核算、不是内料仓的仓库。
-        _mainWarehouses = [
-          for (final w in warehouses)
-            if (w.parentId == null && !w.lineSide && w.accountable) w,
-        ];
+        // 专用接口只返回启用、参与核算、非内料仓的顶层仓；选择身份仍是原仓库 UUID。
+        _mainWarehouses = warehouses;
+        if (!_mainWarehouses.any(
+          (warehouse) => warehouse.id == _mainWarehouseId,
+        )) {
+          _mainWarehouseId = null;
+        }
         _pending = pending;
         for (final p in pending) {
           _choice[p.productGoodsId] = p.prefillMaterials.isEmpty
@@ -124,7 +126,8 @@ class _WorkshopMaterialEnableDialogState
   }
 
   Future<void> _submit() async {
-    if (_mainWarehouseId == null) {
+    if (_mainWarehouseId == null ||
+        !_mainWarehouses.any((warehouse) => warehouse.id == _mainWarehouseId)) {
       setState(() => _error = '请选择放在哪个主仓下');
       return;
     }
@@ -268,6 +271,14 @@ class _WorkshopMaterialEnableDialogState
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const UtenInlineNotice(
+          key: Key('wm-enable-flow-notice'),
+          message:
+              '开启后，使用内料仓原料的产品首次只需认料，不需要先提交工单领料。'
+              '缺单重可先生产，补齐后才能计算预计用量和结算。'
+              '需要嵌件等按单材料的产品，仍按原规则领这些材料。',
+        ),
+        const SizedBox(height: UtenSpacing.s12),
         Text(
           '开启时内料仓必须是空的; 启用日当天由仓库把要用的料"${l10n.wmDirectIssue}"进内料仓。',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -275,6 +286,13 @@ class _WorkshopMaterialEnableDialogState
           ),
         ),
         const SizedBox(height: UtenSpacing.s12),
+        if (_mainWarehouses.isEmpty) ...[
+          const UtenInlineNotice(
+            level: UtenInlineNoticeLevel.warning,
+            message: '没有可选的启用主仓，请联系仓库资料负责人核对参与核算的顶层仓库。',
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+        ],
         Wrap(
           spacing: UtenSpacing.s12,
           runSpacing: UtenSpacing.s12,
@@ -290,10 +308,7 @@ class _WorkshopMaterialEnableDialogState
                 value: _mainWarehouseId,
                 items: [
                   for (final w in _mainWarehouses)
-                    UtenDropdownItem(
-                      value: w.id,
-                      label: w.name ?? w.code ?? '',
-                    ),
+                    UtenDropdownItem(value: w.id, label: w.name),
                 ],
                 onChanged: (v) => setState(() => _mainWarehouseId = v),
               ),

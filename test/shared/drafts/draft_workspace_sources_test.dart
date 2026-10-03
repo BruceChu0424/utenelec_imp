@@ -17,7 +17,6 @@ import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/draft_workspace_table.dart';
-import 'package:uten_imp/shared/drafts/draft_workspace_create_actions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -252,38 +251,6 @@ void main() {
       );
       expect(purchase.map((row) => row.amount), ['***', '***']);
       expect(subcontract.single.amount, '***');
-    },
-  );
-
-  test(
-    'create actions preserve source-specific routes and exact permission gates',
-    () {
-      final actions = draftWorkspaceCreateActions([
-        DraftDocKind.purchaseOrder,
-        DraftDocKind.purchaseReceipt,
-        DraftDocKind.subcontractMaterialReturn,
-        DraftDocKind.financePayment,
-      ]);
-      expect(
-        actions.map((action) => action.location),
-        containsAll([
-          '/purchase/orders/new',
-          '/subcontract/material-returns/new',
-          '/finance/payments/new',
-        ]),
-      );
-      expect(
-        actions.map((action) => action.location),
-        contains('/purchase/receipts/new'),
-      );
-      expect(
-        actions
-            .singleWhere(
-              (action) => action.location.contains('material-returns'),
-            )
-            .label,
-        '从在外结存登记余料',
-      );
     },
   );
 

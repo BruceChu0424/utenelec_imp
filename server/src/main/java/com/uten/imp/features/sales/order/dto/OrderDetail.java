@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 销售订货详情（主表全字段 + 明细列表 + BOM 展开只读列表）。 */
 @Getter
 @AllArgsConstructor
-public class OrderDetail {
+public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -92,4 +92,8 @@ public class OrderDetail {
     public String getLegacyDepositSnapshotExact() { return com.uten.imp.common.util.DecimalText.of(legacyDepositSnapshot); }
     public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+    @Override public void disableHistoryActions() {
+        writable = false;
+    }
 }

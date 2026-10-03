@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,7 +43,7 @@ void main() {
 
     expect(api.putCalls, hasLength(1));
     expect(api.putCalls.single.$1, endsWith('/items/item-1/qty'));
-    expect(api.putCalls.single.$2, {'qty': 12.5});
+    expect(api.putCalls.single.$2, {'qty': 12.5, 'expectedVersion': 7});
     // 保存成功后回填详情并清掉待保存标记。
     expect(find.text('1 行待保存'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -76,6 +77,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        ...nativeDetailReaderOverrides(),
         currentPermissionsProvider.overrideWithValue(permissions),
         purchaseRepositoryProvider(
           PurchaseDocType.request,
@@ -98,6 +100,8 @@ class _AdjustApi extends ApiClient {
   _AdjustApi() : super(Dio());
 
   final List<(String, Map<String, dynamic>)> putCalls = [];
+  double _savedQty = 10;
+  int _rowVersion = 7;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -117,6 +121,8 @@ class _AdjustApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     putCalls.add((path, (body as Map<String, dynamic>?) ?? const {}));
+    _savedQty = (putCalls.last.$2['qty'] as num).toDouble();
+    _rowVersion++;
     return _detail();
   }
 
@@ -137,7 +143,8 @@ class _AdjustApi extends ApiClient {
         'goodsId': 'goods-1',
         'colorId': 'color-1',
         'unitId': 'unit-1',
-        'qty': 10,
+        'qty': _savedQty,
+        'rowVersion': _rowVersion,
         'orderedQty': 0,
         'productionPlanNo': 'PLAN-1',
         'salesOrderNo': 'SO-1',
@@ -148,6 +155,7 @@ class _AdjustApi extends ApiClient {
         'colorId': 'color-1',
         'unitId': 'unit-1',
         'qty': 6,
+        'rowVersion': 3,
         'orderedQty': 4,
         'productionPlanNo': 'PLAN-1',
         'salesOrderNo': 'SO-1',

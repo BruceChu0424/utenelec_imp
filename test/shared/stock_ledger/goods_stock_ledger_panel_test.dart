@@ -10,6 +10,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/measurement/weight_prefs.dart';
@@ -65,6 +67,74 @@ class _PanelApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     switch (path) {
+      case '/stock/goods/g1/inventory-context':
+        return {
+          'items': [
+            {
+              'goodsId': 'g1',
+              'name': '螺丝',
+              'goodsCode': 'S-001',
+              'unitName': '个',
+              'qty': 5000,
+              'weight': 11.55,
+              'weightEstimated': true,
+              'colorId': 'c1',
+              'colorName': '红',
+              'moreQty': 0,
+            },
+            {
+              'goodsId': 'g1',
+              'name': '螺丝',
+              'goodsCode': 'S-001',
+              'unitName': '个',
+              'qty': 20,
+              'weight': null,
+              'moreQty': 0,
+            },
+          ],
+          'page': 1,
+          'size': 500,
+          'total': 2,
+          'totalPages': 1,
+          'totals': [
+            {
+              'key': 'qty',
+              'label': '合计库存数量',
+              'type': 'number',
+              'groupKey': 'unit_name',
+              'groups': [
+                {'unit': '个', 'value': 5020},
+              ],
+            },
+            {
+              'key': 'weight',
+              'label': '合计库存重量',
+              'type': 'weight',
+              'groupKey': null,
+              'groups': [
+                {'unit': null, 'value': 11.55},
+              ],
+            },
+            {
+              'key': 'weight_unknown_rows',
+              'label': '重量未知',
+              'type': 'count',
+              'groupKey': null,
+              'groups': [
+                {'unit': null, 'value': 1},
+              ],
+            },
+            {
+              'key': 'weight_estimated_rows',
+              'label': '重量含估算',
+              'type': 'count',
+              'groupKey': null,
+              'groups': [
+                {'unit': null, 'value': 1},
+              ],
+            },
+          ],
+        };
       case '/stock/insights/goods/g1':
         return {
           'qty': 12500,
@@ -293,12 +363,28 @@ Future<_PanelApi> _pump(
   WidgetTester tester, {
   Set<String> permissions = const {Perm.stockView},
   GoodsStockLedgerSegment initialSegment = GoodsStockLedgerSegment.balance,
+  bool withNavigation = false,
 }) async {
   tester.view.physicalSize = const Size(1600, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final api = _PanelApi();
+  final home = Scaffold(
+    body: GoodsStockLedgerPanel(goodsId: 'g1', initialSegment: initialSegment),
+  );
+  final router = withNavigation
+      ? GoRouter(
+          routes: [
+            GoRoute(path: '/', builder: (_, _) => home),
+            GoRoute(
+              path: RouteName.stockInstantInventory,
+              builder: (_, _) => const Scaffold(body: Text('即时库存盘点目标页')),
+            ),
+          ],
+        )
+      : null;
+  if (router != null) addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -309,14 +395,9 @@ Future<_PanelApi> _pump(
           _MemoryWeightUnitsPrefs.new,
         ),
       ],
-      child: MaterialApp(
-        home: Scaffold(
-          body: GoodsStockLedgerPanel(
-            goodsId: 'g1',
-            initialSegment: initialSegment,
-          ),
-        ),
-      ),
+      child: router == null
+          ? MaterialApp(home: home)
+          : MaterialApp.router(routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();
@@ -324,11 +405,44 @@ Future<_PanelApi> _pump(
 }
 
 void main() {
+  testWidgets('parent rebuild preserves the selected inventory scope', (
+    tester,
+  ) async {
+    await _pump(tester);
+    final panel = tester.state<GoodsStockLedgerPanelState>(
+      find.byType(GoodsStockLedgerPanel),
+    );
+    final selected = panel.scope.withDimensions(
+      warehouseId: 'w1',
+      colorNull: true,
+    );
+    panel.selectScope(selected);
+    await tester.pumpAndSettle();
+
+    // The goods detail host can rebuild for permissions or other master data
+    // while its initial scope remains the same. Keep the employee's range.
+    await _pump(tester);
+    expect(
+      tester.state<GoodsStockLedgerPanelState>(
+        find.byType(GoodsStockLedgerPanel),
+      ),
+      same(panel),
+    );
+    expect(panel.scope, selected);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('balance segment shows KPI, estimated and unknown weights, '
       'and actions by permission', (tester) async {
     await _pump(tester);
 
-    expect(find.textContaining('库存 12,500'), findsOneWidget);
+    expect(find.byKey(const ValueKey('stock-scoped-totals')), findsOneWidget);
+    expect(
+      find.textContaining('库存 12,500'),
+      findsNothing,
+      reason:
+          'Global insight stock totals cannot be mixed into the current scope.',
+    );
     expect(find.text('单重 2.312 g (可参考 ±1.8%)'), findsOneWidget);
     for (final label in ['库存余额', '出入库流水', '单重学习']) {
       expect(find.text(label), findsWidgets);
@@ -344,20 +458,22 @@ void main() {
     expect(find.byKey(const ValueKey('balance-weigh-b1')), findsNothing);
   });
 
-  testWidgets('weight managers and balance adjusters see their actions', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      permissions: const {
-        Perm.stockView,
-        Perm.stockBalanceAdjust,
-        Perm.stockWeightManage,
-      },
-    );
-    expect(find.byKey(const ValueKey('balance-adjust-b1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('balance-weigh-b1')), findsOneWidget);
-  });
+  testWidgets(
+    'old weight and balance permissions no longer reveal retired direct edits',
+    (tester) async {
+      await _pump(
+        tester,
+        permissions: const {
+          Perm.stockView,
+          Perm.stockBalanceAdjust,
+          Perm.stockWeightManage,
+        },
+      );
+      expect(find.byKey(const ValueKey('balance-adjust-b1')), findsNothing);
+      expect(find.byKey(const ValueKey('balance-weigh-b1')), findsNothing);
+      expect(find.byKey(const ValueKey('balance-count-b1')), findsNothing);
+    },
+  );
 
   testWidgets('view ledger filters to the balance dimension and the '
       'adjustments toggle reaches the query', (tester) async {
@@ -390,43 +506,27 @@ void main() {
     expect(api.ledgerQueries.last['warehouseId'], 'w1');
   });
 
-  testWidgets('weigh posts a manual balance weight in kg with the current '
-      'weight as the optimistic check', (tester) async {
-    final api = await _pump(
-      tester,
-      permissions: const {Perm.stockView, Perm.stockWeightManage},
-    );
-    final balanceCallsBefore = api.balanceCalls;
-
-    await tester.tap(find.byKey(const ValueKey('balance-weigh-b1')));
-    await tester.pumpAndSettle();
-    expect(find.text('核重'), findsWidgets);
-
-    await tester.enterText(
-      find.byKey(const ValueKey('stock-balance-target-weight')),
-      '850g',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('stock-balance-reason')),
-      '整批过磅',
-    );
-    await tester.tap(find.byKey(const ValueKey('stock-balance-submit')));
-    await tester.pumpAndSettle();
-
-    final post = api.posts.lastWhere(
-      (p) => p.$1 == '/stock/weight/balances/set',
-    );
-    final body = post.$2! as Map<String, Object?>;
-    expect(body['warehouseId'], 'w1');
-    expect(body['goodsId'], 'g1');
-    expect(body['colorId'], 'c1');
-    expect(body['targetWeightKg'], 0.85);
-    expect(body['expectedWeightKg'], 11.55);
-    expect(body['reason'], '整批过磅');
-    expect(body['idempotencyKey'], startsWith('stock-balance-weigh-'));
-    // 核重成功后余额重新取。
-    expect(api.balanceCalls, greaterThan(balanceCallsBefore));
-  });
+  testWidgets(
+    'count submitter goes to inventory approval mode without calling retired adjustment APIs',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        permissions: const {Perm.stockView, Perm.stockCountSubmit},
+        withNavigation: true,
+      );
+      await tester.tap(find.byKey(const ValueKey('balance-count-b1')));
+      await tester.pumpAndSettle();
+      expect(find.text('即时库存盘点目标页'), findsOneWidget);
+      expect(
+        api.posts.where(
+          (post) =>
+              post.$1 == '/stock/weight/balances/set' ||
+              post.$1 == '/stock/balances/adjust',
+        ),
+        isEmpty,
+      );
+    },
+  );
 
   testWidgets('weight learning card, permission-gated buttons and record '
       'statuses', (tester) async {

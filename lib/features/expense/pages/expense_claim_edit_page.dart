@@ -1,7 +1,7 @@
 // 新建/编辑报销页（V608 合并：claimId 为空 = 新建，非空 = 编辑 DRAFT/REJECTED）
 // 文档：docs/03-页面/新建报销页.md · docs/03-页面/报销列表页.md（编辑入口）
 //
-// 表单页口径：UtenContentContainer.narrow（1120 钳制居中）；
+// 表单页口径：UtenContentContainer.narrow（保留兼容入口，正文随可用宽度铺满）；
 // 结构：驳回横幅（编辑模式）→ 表头卡（标题/事由）→ 明细区（弹窗添加/点击改）→
 // 合计卡（小写 + 人民币大写，银发〔1997〕393 号）→ 发票提示卡；
 // 右下悬浮组：新建=[存草稿/提交]、编辑=[保存]；纯网络段挂 UtenBusyOverlay。
@@ -342,7 +342,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
           const SizedBox(height: UtenSpacing.s16),
 
           // 明细
-          _itemsSection(theme),
+          _itemsSection(theme, columnEditingEnabled: canSave && !_busy),
           const SizedBox(height: UtenSpacing.s16),
 
           // 合计：小写 + 大写
@@ -474,7 +474,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     );
   }
 
-  Widget _itemsSection(ThemeData theme) {
+  Widget _itemsSection(ThemeData theme, {required bool columnEditingEnabled}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -501,6 +501,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         ),
         const SizedBox(height: UtenSpacing.s8),
         MasterDataTableView<ExpenseItem>(
+          columnEditingEnabled: columnEditingEnabled,
           tableKey: 'expense.claim.items',
           platformBinding: PlatformTableBinding<ExpenseItem>(
             tableKey: 'expense.claim.items',

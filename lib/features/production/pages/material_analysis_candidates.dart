@@ -1043,6 +1043,7 @@ abstract class _MaterialAnalysisCandidatesState
       width: 110,
       type: 'number',
       value: (line) => _qty(line.remainingQty),
+      exactValueOf: (line) => line.remainingQty?.toString(),
     ),
     // ADR-130：勾选即出现本次分析数量输入框(默认 = 待排数量)，只改例外；
     // 取代原先表格下方单独一块「已选产品」数量列表。
@@ -1053,6 +1054,9 @@ abstract class _MaterialAnalysisCandidatesState
       type: 'number',
       info: '勾选后默认等于待排数量，只需改要分析的例外数量',
       value: (line) => _sourceQtyControllers[line.salesOrderItemId]?.text,
+      exactValueOf: (line) =>
+          _sourceQtyControllers[line.salesOrderItemId]?.text,
+      exactListenableOf: (line) => _sourceQtyControllers[line.salesOrderItemId],
       cellBuilder: (context, line) {
         final controller = _sourceQtyControllers[line.salesOrderItemId];
         if (controller == null) {

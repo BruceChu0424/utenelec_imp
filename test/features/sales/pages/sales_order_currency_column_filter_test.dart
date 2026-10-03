@@ -5,6 +5,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -12,8 +15,15 @@ import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
+
+late SharedPreferences _preferences;
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('order headers send currency filter to API', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -35,6 +45,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           apiClientProvider.overrideWithValue(api),
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),
@@ -46,9 +60,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    MasterDataTableView<SalesDocListItem> tableWidget() => tester.widget(
+    // 草稿段经 FormDraftCategoryTable 渲染合并表，双形态 finder 同款口径。
+    MasterDataTableView<dynamic> tableWidget() => tester.widget(
       find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<SalesDocListItem>,
+        (widget) =>
+            widget is MasterDataTableView<SalesDocListItem> ||
+            widget
+                is MasterDataTableView<FormDraftCategoryRow<SalesDocListItem>>,
       ),
     );
     final table = tableWidget();

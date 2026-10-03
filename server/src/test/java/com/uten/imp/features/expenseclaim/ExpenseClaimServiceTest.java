@@ -403,11 +403,11 @@ class ExpenseClaimServiceTest {
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
         when(itemRepository.findByClaimIdInOrderByClaimIdAscLineNoAsc(any()))
                 .thenReturn(List.of());
-        when(attachmentService.list("EXPENSE_CLAIM", claim.getId())).thenReturn(List.of());
+        when(attachmentService.list("EXPENSE_CLAIM", claim.getId(),false,false)).thenReturn(List.of());
 
         service.detail(claim.getId());
 
-        verify(attachmentService).list("EXPENSE_CLAIM", claim.getId());
+        verify(attachmentService).list("EXPENSE_CLAIM", claim.getId(),false,false);
     }
 
     @Test
@@ -479,7 +479,7 @@ class ExpenseClaimServiceTest {
     @Test
     void mineFacetsUseOnlyTheCurrentApplicantsClaimNumbers() {
         when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
-        when(applicantQuery.mineClaimNoFacets(actorId)).thenReturn(List.of(
+        when(applicantQuery.mineClaimNoFacets(actorId,false,false)).thenReturn(List.of(
                 new ExpenseApplicantQuery.FacetRow("BX-MINE", "BX-MINE", 2)));
 
         var facets = service.facets("mine");
@@ -488,7 +488,7 @@ class ExpenseClaimServiceTest {
         assertTrue(facets.months().isEmpty());
         assertTrue(facets.categories().isEmpty());
         assertEquals("BX-MINE", facets.claimNos().getFirst().value());
-        verify(applicantQuery).mineClaimNoFacets(actorId);
+        verify(applicantQuery).mineClaimNoFacets(actorId,false,false);
     }
 
     // ---- 发票登记（V608） ---------------------------------------------------------
@@ -672,7 +672,7 @@ class ExpenseClaimServiceTest {
     @Test void precheckNeverLeaksSomeoneElsesApplicantAndClaimNumber() {
         when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
         when(invoiceRepository.findDuplicateHolder("26310000000000000001",null,null,""))
-            .thenReturn(Optional.of(new Object[]{UUID.randomUUID(),"PRIVATE","DRAFT","PRIVATE"}));
+            .thenReturn(java.util.Collections.singletonList(new Object[]{UUID.randomUUID(),"PRIVATE","DRAFT","PRIVATE"}));
         var result=service.checkInvoiceDuplicate("26310000000000000001",null,null);
         assertEquals(true,result.duplicated());assertNull(result.heldByClaimNo());assertNull(result.heldByApplicantName());
     }

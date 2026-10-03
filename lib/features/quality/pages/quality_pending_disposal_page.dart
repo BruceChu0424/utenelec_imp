@@ -526,10 +526,14 @@ class _QualityPendingDisposalPageState
           collapsingHeader: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_error != null)
-                _InlineWorkbenchError(message: _error!, onRetry: _load),
-              _buildAuxHints(),
-              const SizedBox(height: UtenSpacing.s12),
+              // 2026-10-01 用户口径：删除分类栏上方常驻的操作说明提示行。折叠头
+              // 只在出错或 FQC 截断告警时有内容，平时零高度、工具条直接顶到页首。
+              if (_error != null || _fqcTruncated) ...[
+                if (_error != null)
+                  _InlineWorkbenchError(message: _error!, onRetry: _load),
+                if (_fqcTruncated) _buildFqcTruncatedWarning(),
+                const SizedBox(height: UtenSpacing.s12),
+              ],
             ],
           ),
           body: Column(
@@ -729,66 +733,33 @@ class _QualityPendingDisposalPageState
     );
   }
 
-  /// 提示行与截断告警：放折叠头（随页滚走），不再常驻占表体高度。
-  Widget _buildAuxHints() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  /// FQC 截断告警：放折叠头（随页滚走），只在待检任务超过单次拉取上限的异常时
+  /// 出现。原与常驻说明提示行同住 _buildAuxHints，2026-10-01 用户口径删除说明
+  /// 行后仅剩本告警。
+  Widget _buildFqcTruncatedWarning() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.info_outline_rounded,
-              size: 18,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                _hintText,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ],
+        Icon(
+          Icons.warning_amber_rounded,
+          size: 18,
+          color: Theme.of(context).colorScheme.error,
         ),
-        if (_fqcTruncated) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                size: 18,
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(
+          child: Semantics(
+            liveRegion: true,
+            child: Text(
+              '自制产成品待检任务共 $_fqcTotal 条，超过单次拉取上限，'
+              '仅显示前 $_fqcFetchSize 条；请先处理当前任务后刷新。',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.error,
               ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    '自制产成品待检任务共 $_fqcTotal 条，超过单次拉取上限，'
-                    '仅显示前 $_fqcFetchSize 条；请先处理当前任务后刷新。',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ],
+        ),
       ],
     );
-  }
-
-  String get _hintText {
-    if (!_canHandleIqc && !_canDecideFqc) {
-      return '当前为只读查看；IQC 处置需要 procurement_inspection:handle 权限，'
-          '自制产成品决定需要 production_quality_inspection:approve 权限。';
-    }
-    return '采购/委外收货与自制产成品送检后出现在这里：自制产成品一行一张品质检查单'
-        '（同仓一次送检合并），双击进入处置；勾选多张后点「批量审批」——汇总到一个页面'
-        '逐行填合格/不合格数量，一次「提交报告」办结。';
   }
 
   /// 已上架待检的行数：IQC 按收货单、检查单按单、无检查单的历史 FQC 任务按行。
@@ -947,6 +918,11 @@ class _QualityPendingDisposalPageState
       width: 95,
       type: 'number',
       value: (row) => row.isSheet
+          ? row.sheet!.activeCount.toString()
+          : row.isFqc
+          ? '1'
+          : row.receipt!.itemCount.toString(),
+      exactValueOf: (row) => row.isSheet
           ? row.sheet!.activeCount.toString()
           : row.isFqc
           ? '1'
@@ -1754,6 +1730,7 @@ class _ProcurementInspectionDetailPageState
       width: 100,
       type: 'number',
       value: (item) => _fmt(item.receivedBaseQty ?? 0),
+      exactValueOf: (item) => item.receivedBaseQty?.toString(),
     ),
     MasterColumnDef(
       key: 'passQty',
@@ -1763,6 +1740,8 @@ class _ProcurementInspectionDetailPageState
       // 2026-09-11：提示 ⓘ 统一挂表头，行内只留报错（行内 ⓘ 把输入框挤窄）。
       info: inspectionQuantityColumnHint(context, passed: true),
       value: (item) => _reportRows[item.id]?.pass.text ?? '0',
+      exactValueOf: (item) => _reportRows[item.id]?.pass.text,
+      exactListenableOf: (item) => _reportRows[item.id]?.pass,
       cellBuilder: (context, item) {
         final row = _reportRows[item.id];
         if (row == null) return const Text('—');
@@ -1789,6 +1768,8 @@ class _ProcurementInspectionDetailPageState
       type: 'number',
       info: inspectionQuantityColumnHint(context, passed: false),
       value: (item) => _reportRows[item.id]?.fail.text ?? '0',
+      exactValueOf: (item) => _reportRows[item.id]?.fail.text,
+      exactListenableOf: (item) => _reportRows[item.id]?.fail,
       cellBuilder: (context, item) {
         final row = _reportRows[item.id];
         if (row == null) return const Text('—');
@@ -1819,6 +1800,7 @@ class _ProcurementInspectionDetailPageState
       width: 110,
       type: 'number',
       value: (item) => _fmt(item.remainingBaseQty ?? 0),
+      exactValueOf: (item) => item.remainingBaseQty?.toString(),
     ),
     MasterColumnDef(
       key: 'status',

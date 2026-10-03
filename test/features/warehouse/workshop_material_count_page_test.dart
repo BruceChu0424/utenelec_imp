@@ -3,6 +3,7 @@
 // 逐行保存 409 回显最新值; 窄屏 (375) 与大字体无截断。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
 import 'package:uten_imp/features/warehouse/materialbin/pages/workshop_material_count_page.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/machine_count_card.dart';
@@ -68,6 +69,43 @@ Set<String>? _selected(WidgetTester tester, String containerId) => tester
     .selected;
 
 void main() {
+  testWidgets('周期盘点录入与审核按钮分权，审核者不能修改草稿行', (tester) async {
+    final repo = _repo(machines: 1);
+    final base = repo.countById['c1']!;
+    repo.countById['c1'] = WmCount(
+      id: base.id,
+      periodId: base.periodId,
+      status: 'DRAFT',
+      machines: base.machines,
+      materials: base.materials,
+      allowedActions: const ['SUBMIT_COUNT'],
+    );
+    await pumpWorkshopMaterialPage(
+      tester,
+      const WorkshopMaterialCountPage(periodId: 'p1'),
+      repo: repo,
+    );
+    expect(find.text('审核盘点并过账'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byKey(const Key('wm-count-submit')),
+        matching: find.byType(UtenFloatingActionGroup),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Scaffold>(find.byType(Scaffold).first)
+          .floatingActionButtonLocation,
+      FloatingActionButtonLocation.endFloat,
+    );
+    expect(find.byKey(const Key('wm-count-zero-rest')), findsNothing);
+    expect(
+      tester.widget<MachineCountCard>(find.byType(MachineCountCard)).enabled,
+      isFalse,
+    );
+  });
+
   testWidgets('21 台机卡片都在, 每台点 2 下就录完', (tester) async {
     final repo = _repo();
     await pumpWorkshopMaterialPage(
@@ -75,7 +113,7 @@ void main() {
       const WorkshopMaterialCountPage(periodId: 'p1'),
       repo: repo,
       // 两列卡片一屏放下全部 21 台 (ListView 只建可见的卡)。
-      size: const Size(1400, 4200),
+      size: const Size(1400, 5000),
     );
 
     expect(find.byType(MachineCountCard), findsNWidgets(21));
@@ -170,11 +208,43 @@ void main() {
     // 页面回显的是别人刚存的"半", 不是自己点的"满"。
     expect(_selected(tester, 'm1-hopper'), {WmFillLevel.half});
     expect(find.byKey(const Key('wm-container-qty-m1-hopper')), findsOneWidget);
-    expect(find.text('25 公斤'), findsOneWidget);
+    expect(find.text('≈ 25 公斤'), findsOneWidget);
     expect(
       find.byKey(const Key('wm-container-error-m1-hopper')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('机桶估盘显示约数，直接填公斤保存称重来源和残料量', (tester) async {
+    final repo = _repo(machines: 1);
+    await pumpWorkshopMaterialPage(
+      tester,
+      const WorkshopMaterialCountPage(periodId: 'p1'),
+      repo: repo,
+    );
+    expect(find.textContaining('仅用于确实无料'), findsNothing);
+    await tester.tap(find.byKey(const Key('wm-count-help')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('仅用于确实无料'), findsOneWidget);
+    await tester.tap(find.text('知道了'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('wm-fill-m1-hopper-HALF')));
+    await tester.pumpAndSettle();
+    expect(find.text('≈ 25 公斤'), findsOneWidget);
+    expect(find.text('容器估盘，按容量折算'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('wm-fill-m1-hopper-weigh')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('wm-weigh-m1-hopper')), '8.25');
+    await tester.tap(find.byKey(const Key('wm-weigh-save-m1-hopper')));
+    await tester.pumpAndSettle();
+    final saved = repo.savedLines.last;
+    expect(saved.fillLevel, WmFillLevel.weighed);
+    expect(saved.weighedQty, 8.25);
+    expect(saved.qtyBase, 8.25);
+    expect(find.text('8.25 公斤'), findsOneWidget);
+    expect(find.text('称重/公斤录入'), findsOneWidget);
+    expect(find.text('≈ 25 公斤'), findsNothing);
   });
 
   testWidgets('窄屏 375 + 大字体: 卡片不截断、不溢出', (tester) async {

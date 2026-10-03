@@ -395,8 +395,18 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         UUID firstItem=db.queryForObject("SELECT external_item_id FROM preplan_supply_action_allocations WHERE action_id=?",UUID.class,firstAction);
         qty("600",db.queryForObject("SELECT qty FROM purchase_request_items WHERE id=?",BigDecimal.class,firstItem));
         qty("400",material(view,t.buyLine()).additionalSupplyRecommendedQty());
+        long firstVersion=db.queryForObject("SELECT row_version FROM purchase_request_items WHERE id=?",Long.class,firstItem);
+        // V781's generated metadata advances, while V640 still requires the exact source and unordered action.
+        assertTrue(requestGrowthProof(firstItem,"{}"));
+        assertFalse(requestGrowthProof(firstItem,"{\"row_version\":"+firstVersion+"}"));
+        assertFalse(requestGrowthProof(firstItem,"{\"row_version\":"+(firstVersion+2)+"}"));
+        assertFalse(requestGrowthProof(firstItem,"{\"goods_id\":\""+UUID.randomUUID()+"\"}"));
+        assertFalse(requestGrowthProof(firstItem,"{\"request_id\":\""+UUID.randomUUID()+"\"}"));
+        assertFalse(requestGrowthProof(firstItem,"{\"qty\":599}"));
+        assertFalse(requestGrowthProof(firstItem,"{\"ordered_qty\":1}"));
         // 申请还没人动过：追加 400 直接改到同一条明细上，不另立新单。
         view=commands.notifySupply(t.analysis(),notify(view,t,"second-400","400"));
+        assertEquals(firstVersion+1,db.queryForObject("SELECT row_version FROM purchase_request_items WHERE id=?",Long.class,firstItem));
         qty("1000",db.queryForObject("SELECT qty FROM purchase_request_items WHERE id=?",BigDecimal.class,firstItem));
         qty("1000",db.queryForObject("SELECT requested_qty FROM preplan_supply_actions WHERE id=?",BigDecimal.class,firstAction));
         qty("1000",db.queryForObject("SELECT SUM(allocated_qty) FROM preplan_supply_action_allocations WHERE action_id=?",BigDecimal.class,firstAction));
@@ -409,6 +419,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                 db.queryForObject("SELECT request_id FROM purchase_request_items WHERE id=?",UUID.class,firstItem)));
         // 采购部把这条明细分解成订货单(哪怕还在等财务审核)之后，它就不能再被改大。
         approveOrder(w,firstItem,w.goodsD(),"1000",BusinessTime.today().plusDays(5));
+        assertFalse(requestGrowthProof(firstItem,"{}"),"ordered sources must still reject in-place growth");
         fixture.loginAs(w.superAdminUserId());
         view=analyses.detail(t.analysis());
         commands.issueWorkshopPlans(t.analysis(),issue(view,t,"root-over",new IssueWorkshopPlansRequest.IssuePlanLine(t.rootLine(),new BigDecimal("1500"))));
@@ -1176,5 +1187,12 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         return db.queryForObject("SELECT jsonb_build_array(to_jsonb(s),(SELECT jsonb_agg(to_jsonb(d) ORDER BY d.id) FROM production_material_demands d WHERE d.execution_segment_id=s.id))::text FROM production_execution_segments s WHERE s.id=?",String.class,segment);
     }
     private static ProductView product(AnalysisView view,UUID line) { return view.products().stream().filter(p->p.analysisLineId().equals(line)).findFirst().orElseThrow(); }
+    private boolean requestGrowthProof(UUID item, String patch) {
+        return Boolean.TRUE.equals(db.queryForObject("""
+                SELECT fn_is_preplan_supply_line_growth('purchase_request_items',to_jsonb(item),
+                    to_jsonb(item) || jsonb_build_object('qty',item.qty+1,'row_version',item.row_version+1) || ?::jsonb)
+                FROM purchase_request_items item WHERE item.id=?
+                """,Boolean.class,patch,item));
+    }
     private static void qty(String expected,BigDecimal actual) { assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(actual),"expected "+expected+", actual "+actual); }
 }

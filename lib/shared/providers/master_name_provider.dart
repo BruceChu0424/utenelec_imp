@@ -132,6 +132,21 @@ class MasterDictionaryService {
   final Map<String, String> _goods = {};
   final Map<String, GoodsDictEntry> _goodsInfo = {};
   final Map<String, String> _employees = {};
+  bool _disposed = false;
+  static const maxCachedLookupRows = 4096;
+
+  void _boundLookupCaches() {
+    for (final cache in <Map<String, Object?>>[
+      _goods,
+      _goodsInfo,
+      _employees,
+    ]) {
+      while (cache.length > maxCachedLookupRows) {
+        cache.remove(cache.keys.first);
+      }
+    }
+  }
+
   final Map<String, Future<void>> _dictionaryLoads = {};
   // 100 UUIDs stay below ordinary HTTP request-line limits. Employees retain
   // their object-authorized detail endpoint and at most four concurrent reads.
@@ -142,12 +157,14 @@ class MasterDictionaryService {
         ApiEndpoints.goodsLookup,
         query: {'ids': ids.join(',')},
       );
+      if (_disposed) return;
       for (final entry in entries) {
         final id = entry['id'] as String;
         final info = GoodsDictEntry.fromJson(entry);
         _goods.putIfAbsent(id, () => info.name);
         _goodsInfo[id] = info;
       }
+      _boundLookupCaches();
     },
   );
   late final _employeeLookup = MasterLookupQueue(
@@ -155,7 +172,9 @@ class MasterDictionaryService {
     fetch: (ids) async {
       final id = ids.single;
       final employee = await api.get(ApiEndpoints.employee(id));
+      if (_disposed) return;
       _employees[id] = (employee['fullName'] as String?) ?? '';
+      _boundLookupCaches();
     },
   );
 
@@ -166,6 +185,7 @@ class MasterDictionaryService {
     void Function(List<Map<String, dynamic>>) apply, {
     bool reload = false,
   }) {
+    if (_disposed) return Future.value();
     _appliers[key] = apply;
     if (reload) dictionaries.invalidate(key);
     final existing = _dictionaryLoads[key];
@@ -176,7 +196,9 @@ class MasterDictionaryService {
     unawaited(() async {
       try {
         final rows = await dictionaries.load(key);
-        if (identical(_dictionaryLoads[key], pending)) apply(rows);
+        if (!_disposed && identical(_dictionaryLoads[key], pending)) {
+          apply(rows);
+        }
       } catch (_) {
         if (identical(_dictionaryLoads[key], pending)) {
           _dictionaryLoads.remove(key);
@@ -197,7 +219,15 @@ class MasterDictionaryService {
   }
 
   /// provider 释放时取消对仓库作废通知的订阅。
-  void dispose() => unawaited(_invalidations.cancel());
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _goodsLookup.dispose();
+    _employeeLookup.dispose();
+    _dictionaryLoads.clear();
+    _appliers.clear();
+    unawaited(_invalidations.cancel());
+  }
 
   /// Load just the actual warehouse tree for operations that already have
   /// product and counterparty display snapshots in their task DTO.
@@ -243,6 +273,7 @@ class MasterDictionaryService {
       ApiEndpoints.goods,
       query: {'keyword': keyword.trim(), 'page': 1, 'size': size},
     );
+    if (_disposed) return const [];
     final items = json['items'];
     if (items is! List) return const [];
     final result = items
@@ -251,6 +282,7 @@ class MasterDictionaryService {
     for (final goods in result) {
       if (goods.name?.isNotEmpty == true) _goods[goods.id] = goods.name!;
     }
+    _boundLookupCaches();
     return result;
   }
 

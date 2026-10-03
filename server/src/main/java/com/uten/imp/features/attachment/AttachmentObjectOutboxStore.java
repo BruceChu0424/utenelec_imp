@@ -44,6 +44,18 @@ class AttachmentObjectOutboxStore {
     }
 
     /** An expired upload needs a fresh physical check after its last possible staging write. */
+    void enqueueExpiryVerification(UUID sessionId,String key,Instant verifyAt,String provider) {
+        // A separate identity survives an earlier successful/absent staging lookup.
+        // Repeated expiry lookup retries reuse this intent rather than multiply deletes.
+        String dedupe=provider+"|EXPIRY_VERIFY|DELETE_STAGING|"+sessionId;
+        jdbc.update("""
+                INSERT INTO attachment_object_outbox(upload_session_id,operation,storage_key,
+                    dedupe_key,available_at,storage_provider)
+                VALUES (?,'DELETE_STAGING',?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING
+                """,sessionId,key,dedupe,Timestamp.from(verifyAt),provider);
+    }
+
+    /** An expired upload needs a fresh physical check after its last possible staging write. */
     void enqueueResetVerification(UUID sessionId, String operation, String key, String version,
                                   Instant expiresAt, String provider) {
         String dedupe = provider + "|TEST_RESET_VERIFY|" + operation + "|" + sessionId + "|" + expiresAt;

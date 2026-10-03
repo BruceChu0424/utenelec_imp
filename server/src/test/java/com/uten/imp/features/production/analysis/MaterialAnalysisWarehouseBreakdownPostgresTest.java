@@ -79,9 +79,9 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute("CREATE TABLE preplan_supply_action_allocations(action_id uuid,external_item_id uuid)");
         jdbc.execute("CREATE INDEX ON preplan_supply_action_allocations(action_id)");
         jdbc.execute("CREATE TABLE purchase_requests(id uuid PRIMARY KEY,is_deleted boolean,status integer,is_stopped boolean)");
-        jdbc.execute("CREATE TABLE purchase_request_items(id uuid PRIMARY KEY,request_id uuid,qty numeric,ordered_qty numeric,unit_rate numeric,is_deleted boolean)");
+        jdbc.execute("CREATE TABLE purchase_request_items(row_version bigint NOT NULL DEFAULT 0, id uuid PRIMARY KEY,request_id uuid,qty numeric,ordered_qty numeric,unit_rate numeric,is_deleted boolean)");
         jdbc.execute("CREATE TABLE purchase_orders(id uuid PRIMARY KEY,status integer,is_deleted boolean)");
-        jdbc.execute("CREATE TABLE purchase_order_items(id uuid PRIMARY KEY,order_id uuid,qty numeric,received_qty numeric,returned_qty numeric,unit_rate numeric,is_deleted boolean,extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb)");
+        jdbc.execute("CREATE TABLE purchase_order_items(total_amount_input numeric, id uuid PRIMARY KEY,order_id uuid,qty numeric,received_qty numeric,returned_qty numeric,unit_rate numeric,is_deleted boolean,extra_columns jsonb NOT NULL DEFAULT '[]'::jsonb)");
         jdbc.execute("CREATE TABLE purchase_receipts(id uuid PRIMARY KEY,status integer,is_deleted boolean,legacy_import_run_id uuid)");
         jdbc.execute("CREATE TABLE purchase_receipt_items(id uuid PRIMARY KEY,order_item_id uuid,receipt_id uuid,qty numeric,unit_rate numeric,is_deleted boolean,legacy_import_run_id uuid)");
         jdbc.execute("CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY,receipt_item_id uuid,receipt_type text,status text,warehouse_stocked_base_qty numeric,failed_base_qty numeric,received_base_qty numeric)");
@@ -174,7 +174,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute("INSERT INTO goods SELECT md5('perf-g-'||i)::uuid,0 FROM generate_series(0,79)g(i)");
         jdbc.update("INSERT INTO production_material_analysis_materials SELECT md5('perf-m-'||i)::uuid,?,md5('perf-g-'||((i-1)%80))::uuid,NULL,?,TRUE FROM generate_series(1,8000)g(i)",ANALYSIS,UNIT);
         jdbc.execute("INSERT INTO purchase_requests SELECT md5('perf-a-'||i)::uuid,FALSE,0,FALSE FROM generate_series(1,1000)g(i)");
-        jdbc.execute("INSERT INTO purchase_request_items SELECT id,id,1,0,1,FALSE FROM purchase_requests WHERE id NOT IN (SELECT request_id FROM purchase_request_items)");
+        jdbc.execute("INSERT INTO purchase_request_items(id,request_id,qty,ordered_qty,unit_rate,is_deleted) SELECT id,id,1,0,1,FALSE FROM purchase_requests WHERE id NOT IN (SELECT request_id FROM purchase_request_items)");
         jdbc.update("""
                 INSERT INTO preplan_supply_actions
                 SELECT md5('perf-a-'||i)::uuid,'BUY','CREATED',?,
@@ -259,7 +259,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
     private static Action action(String seed,UUID goods,UUID color,UUID warehouse,String safety,String quantity,boolean safetySlice,boolean stopped,boolean deleted,String status) {
         UUID action=id(seed+"-action"),request=id(seed+"-request"),item=id(seed+"-item");
         jdbc.update("INSERT INTO purchase_requests VALUES (?,?,0,?)",request,deleted,stopped);
-        jdbc.update("INSERT INTO purchase_request_items VALUES (?,?,?,0,1,FALSE)",item,request,new BigDecimal(quantity));
+        jdbc.update("INSERT INTO purchase_request_items(id,request_id,qty,ordered_qty,unit_rate,is_deleted) VALUES (?,?,?,0,1,FALSE)",item,request,new BigDecimal(quantity));
         jdbc.update("INSERT INTO preplan_supply_actions VALUES (?,'BUY',?,?,?,?,?,?,?,?)",action,status,warehouse,goods,color,
                 safetySlice?BigDecimal.ZERO:new BigDecimal(quantity),new BigDecimal(safety),safetySlice?item:null,request);
         if(!safetySlice)jdbc.update("INSERT INTO preplan_supply_action_allocations VALUES (?,?)",action,item);return new Action(action,item);
@@ -267,7 +267,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
     private static UUID orderedReceipt(String seed,String quantity,String received,String qualified,String failed,String returnedFailure) {
         UUID order=id(seed+"-order"),item=id(seed+"-order-item"),receipt=id(seed+"-receipt"),receiptItem=id(seed+"-receipt-item");
         jdbc.update("INSERT INTO purchase_orders VALUES (?,1,FALSE)",order);
-        jdbc.update("INSERT INTO purchase_order_items VALUES (?,?,?,?,0,1,FALSE)",item,order,new BigDecimal(quantity),new BigDecimal(received));
+        jdbc.update("INSERT INTO purchase_order_items(id,order_id,qty,received_qty,returned_qty,unit_rate,is_deleted) VALUES (?,?,?,?,0,1,FALSE)",item,order,new BigDecimal(quantity),new BigDecimal(received));
         jdbc.update("INSERT INTO purchase_receipts VALUES (?,1,FALSE)",receipt);
         jdbc.update("INSERT INTO purchase_receipt_items VALUES (?,?,?,?,1,FALSE)",receiptItem,item,receipt,new BigDecimal(received));
         String status=new BigDecimal(qualified).add(new BigDecimal(failed)).compareTo(new BigDecimal(received))==0?"RESOLVED":"PARTIAL";

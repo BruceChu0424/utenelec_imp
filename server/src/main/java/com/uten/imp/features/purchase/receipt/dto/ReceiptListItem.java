@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 收货单列表项。 */
 @Getter
 @AllArgsConstructor
-public class ReceiptListItem implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
+public class ReceiptListItem extends com.uten.imp.common.history.DocumentHistoryMetadata implements com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities {
     private UUID id;
     private String billNo;
     private LocalDate billDate;
@@ -22,4 +22,7 @@ public class ReceiptListItem implements com.uten.imp.common.web.ImportedDocument
     private Integer legacyId;
     /** 价格已对当前用户脱敏（合计金额置 null，前端渲染 ***；V302 收货单价格脱敏）。 */
     private boolean priceMasked;
+
+    @Override public void disableHistoryActions() {
+    }
 }

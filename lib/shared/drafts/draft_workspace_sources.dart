@@ -44,6 +44,7 @@ class DraftWorkspaceRow {
     this.deletable = false,
     this.stockType,
     this.local,
+    this.expectedRevision,
   });
   final DraftDocKind? kind;
   final String id;
@@ -56,6 +57,7 @@ class DraftWorkspaceRow {
   final bool deletable;
   final StockDocType? stockType;
   final FormDraft? local;
+  final int? expectedRevision;
   String get key => kind == null ? 'local:$id' : '${kind!.name}:$id';
 
   DraftWorkspaceRow withRecovery(FormDraft draft) => DraftWorkspaceRow(
@@ -67,9 +69,10 @@ class DraftWorkspaceRow {
     billDate: billDate,
     party: party,
     amount: amount,
-    deletable: deletable,
+    deletable: deletable && !draft.hasUnknownSubmission,
     stockType: stockType,
     local: draft,
+    expectedRevision: expectedRevision,
   );
 }
 
@@ -414,6 +417,9 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
                 party: salesNames.client(row.clientId),
                 amount: money(row.totalLocal, row.priceMasked),
                 deletable: isDeletableSalesDraftRow(row, sales),
+                expectedRevision: sales == SalesDocType.quote
+                    ? row.quoteWorkflow.reviewRevision
+                    : null,
               ),
         ];
       }
@@ -455,6 +461,7 @@ Future<void> deleteDraftWorkspaceRow(
   WidgetRef ref,
   DraftWorkspaceRow row, {
   required bool Function() stillCurrent,
+  Future<void> Function()? beforeDelete,
 }) async {
   final kind = row.kind!;
   final scope = ref.read(authenticatedScopeProvider);
@@ -469,6 +476,11 @@ Future<void> deleteDraftWorkspaceRow(
   void verify(bool eligible) {
     if (!current()) throw ApiException('FORBIDDEN', '当前身份、选择范围或删除权限已变化');
     if (!eligible) throw ApiException('CONFLICT', '单据已不是可删除草稿，请刷新后重试');
+  }
+
+  Future<void> beforeDispatch() async {
+    await beforeDelete?.call();
+    verify(true);
   }
 
   Future<void> owner(DocumentDataScope dataScope, String? makerId) async {
@@ -492,6 +504,7 @@ Future<void> deleteDraftWorkspaceRow(
               detail.financeApproval!.status == 'DRAFT'),
     );
     await owner(DocumentDataScope.purchase, detail.makerId);
+    await beforeDispatch();
     return repo.delete(row.id);
   }
   final subcontract = _subcontractType(kind);
@@ -507,6 +520,7 @@ Future<void> deleteDraftWorkspaceRow(
               detail.financeApproval!.status == 'DRAFT'),
     );
     await owner(DocumentDataScope.subcontract, detail.makerId);
+    await beforeDispatch();
     return repo.delete(row.id);
   }
   final finance = _financeType(kind);
@@ -515,6 +529,7 @@ Future<void> deleteDraftWorkspaceRow(
     final detail = await repo.detail(row.id);
     verify(detail.status == 0 && !detail.legacyImported);
     await owner(DocumentDataScope.finance, detail.makerId);
+    await beforeDispatch();
     return repo.delete(row.id);
   }
   final sales = _salesType(kind);
@@ -523,7 +538,9 @@ Future<void> deleteDraftWorkspaceRow(
       ref.read(salesRepositoryProvider(sales)),
       sales,
       row.id,
+      expectedRevision: row.expectedRevision,
       stillCurrent: current,
+      beforeDelete: beforeDispatch,
     );
   }
   if (kind == DraftDocKind.productionPlan) {
@@ -537,6 +554,7 @@ Future<void> deleteDraftWorkspaceRow(
           detail.legacyId == null,
     );
     await owner(DocumentDataScope.productionPlan, detail.makerId);
+    await beforeDispatch();
     return repo.delete(row.id);
   }
   if (kind == DraftDocKind.productionDailyReport) {
@@ -549,6 +567,7 @@ Future<void> deleteDraftWorkspaceRow(
           detail.legacyId == null,
     );
     await owner(DocumentDataScope.productionPlan, detail.makerId);
+    await beforeDispatch();
     return repo.delete(row.id);
   }
   return deleteStockDraft(
@@ -557,5 +576,6 @@ Future<void> deleteDraftWorkspaceRow(
     id: row.id,
     isMounted: stillCurrent,
     stillCurrent: current,
+    beforeDelete: beforeDispatch,
   );
 }

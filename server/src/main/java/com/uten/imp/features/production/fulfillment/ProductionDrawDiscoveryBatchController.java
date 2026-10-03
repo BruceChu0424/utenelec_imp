@@ -16,4 +16,11 @@ public class ProductionDrawDiscoveryBatchController {
     public StockDocIssueBatchResponse issue(@RequestBody ProductionDrawDiscoveryBatchContracts.Request request) {
         return service.issue(request);
     }
+
+    @GetMapping("/issue-discovery-batch/receipt")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution receipt(
+            @RequestParam String idempotencyKey) {
+        return service.receipt(idempotencyKey);
+    }
 }

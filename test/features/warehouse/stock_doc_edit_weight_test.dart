@@ -203,15 +203,14 @@ void main() {
     await tester.pump();
     expect(inbound.weight.qtyFromWeight, isTrue);
 
-    // 出库: 数量是应发量, 不推算; 占位「应称」。
+    // 出库: 数量是应发量, 按可信单重预填，建议不记实称。
     final outbound = await pumpGrid(WeightCaptureMode.outbound);
     await tester.enterText(find.byKey(const ValueKey('stock-grid-qty')), '10');
-    await tester.pump();
-    final hint = tester
-        .widget<TextField>(find.byKey(const ValueKey('weight-cell-input')))
-        .decoration!
-        .hintText;
-    expect(hint, startsWith('应称'));
+    await tester.pumpAndSettle();
+    expect(outbound.weight.text.text, '0.02');
+    expect(outbound.weight.kg, isNull);
+    expect(outbound.weight.isSuggested, isTrue);
+    expect(outbound.weight.canonicalKeyPart, '|0');
     await tester.enterText(
       find.byKey(const ValueKey('weight-cell-input')),
       '0.02',
@@ -229,8 +228,12 @@ class _StaticParams extends WeightParamsCache {
   final Map<String, WeightParams> byGoods;
 
   @override
-  WeightParams? of(String? goodsId, {String? supplierId}) =>
-      goodsId == null ? null : byGoods[goodsId];
+  WeightParams? of(
+    String? goodsId, {
+    String? supplierId,
+    String? warehouseId,
+    String? colorId,
+  }) => goodsId == null ? null : byGoods[goodsId];
 }
 
 class _Api extends ApiClient {

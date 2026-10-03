@@ -255,6 +255,10 @@ void main() {
         find.byKey(const Key('warehouse-sales-outbound-batch-submit')),
         findsNothing,
       );
+      await tester.ensureVisible(
+        find.textContaining('批量作业已停止', skipOffstage: false),
+      );
+      await tester.pumpAndSettle();
       expect(find.textContaining('批量作业已停止'), findsOneWidget);
       final table = tester
           .widget<MasterDataTableView<WarehouseSalesOutboundTableRow>>(
@@ -439,8 +443,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(gateway.workStatuses.last, 'CANCELLED');
       expect(gateway.listPages.last, 1);
-
       // 切回「已出库」段：表头状态桶被清，回分段口径。
+      await tester.ensureVisible(find.text('已出库', skipOffstage: false));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('已出库'));
       await tester.pumpAndSettle();
       expect(gateway.workStatuses.last, 'SHIPPED');

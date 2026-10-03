@@ -53,8 +53,11 @@ public class SalesOrderController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
-        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo), page, size, sort, order);
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.list(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, billNo).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -70,8 +73,11 @@ public class SalesOrderController {
             @RequestParam(required = false) java.util.List<Short> chain,
             @RequestParam(required = false) UUID sellerId,
             @RequestParam(required = false) String chainGroup,
-            @RequestParam(required = false) UUID currencyId) {
-        return service.facets(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, null));
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam java.util.Map<String, String> headerParams) {
+        return service.facets(new OrderQueryFilter(keyword, clientId, status, closed, dateFrom, dateTo, chain, sellerId, chainGroup, currencyId, null).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     /** 工作台统计卡：待生产 / 生产中 / 待发货 / 本月完成（同列表数据范围）。 */
@@ -128,7 +134,7 @@ public class SalesOrderController {
      * 一张订单推导; 与采购/委外 /last-terms 同一模式、按客户维度。主档三项全空返回空 body。
      */
     @GetMapping("/last-terms")
-    @PreAuthorize("hasAuthority('sales_order:view')")
+    @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.READ)
     public SalesOrderService.MasterDefaultTermsForClient masterDefaultTerms(
             @RequestParam UUID clientId) {
         return service.masterDefaultTermsForClient(clientId);
@@ -139,6 +145,16 @@ public class SalesOrderController {
     public OrderDetail detail(@PathVariable UUID id) {
         OrderDetail detail = service.detail(id);
         viewAudit.record(
+                "view_sales_order_detail", "sales_orders", id,
+                detail.getBillNo(), detail.getLegacyId(), "销售订货单");
+        return detail;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public OrderDetail history(@PathVariable UUID id) {
+        OrderDetail detail = service.detailHistory(id);
+        viewAudit.recordHistory(
                 "view_sales_order_detail", "sales_orders", id,
                 detail.getBillNo(), detail.getLegacyId(), "销售订货单");
         return detail;
@@ -253,5 +269,15 @@ public class SalesOrderController {
             @RequestParam UUID goodsId,
             @RequestParam(required = false) UUID colorId) {
         return service.scarceReservations(goodsId, colorId);
+    }
+
+    @GetMapping("/{id}/history/rows")
+    @PreAuthorize("hasAuthority('sales_order:view')")
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
+            @PathVariable UUID id, @RequestParam(required=false) Long beforeId,
+            @RequestParam(defaultValue="50") int size) {
+        var rows = service.historyRows(id,beforeId,size);
+        viewAudit.recordHistory("view_sales_order_detail", "sales_orders", id, null, null, "单据历史明细");
+        return rows;
     }
 }

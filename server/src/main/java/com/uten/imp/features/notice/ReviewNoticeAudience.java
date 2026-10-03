@@ -149,6 +149,8 @@ public class ReviewNoticeAudience {
             case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");
             case "PAYROLL_BATCH_PENDING_PUBLISH" -> permissions.contains("payroll:publish");
             case "SUGGESTION_SUBMITTED" -> permissions.contains("suggestion:reply");
+            case "STOCK_COUNT_PENDING_FINANCE_REVIEW" -> permissions.contains("stock:count:finance_review");
+            case "STOCK_COUNT_PENDING_WAREHOUSE_REVIEW" -> permissions.contains("stock:count:warehouse_review");
             // ===== ADR-131 车间内料仓 (WorkshopMaterialNoticeService): 收件人在发卡时已按对象范围精确算好
             // (领料单预填叶仓的仓管 / 该车间的报工审核人与这些草稿的制单人 / BOM 维护人 / 内料仓所在主仓的仓管
             // 与本车间的认料人 / 设置负责人), 这里在弹卡时复核「现在还能不能动手」: 发卡时凭的那件事的动手权限

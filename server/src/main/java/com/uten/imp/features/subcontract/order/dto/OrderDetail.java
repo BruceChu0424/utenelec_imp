@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 委外订货单详情（主表全字段 + 明细列表；BOM 成本子表只读走 /cost-items 端点）。 */
 @Getter
 @AllArgsConstructor
-public class OrderDetail {
+public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -68,5 +68,12 @@ public class OrderDetail {
             int caseCount,
             String summary,
             boolean overdue) {
+    }
+
+    @Override public void disableHistoryActions() {
+        if(financeApproval!=null)financeApproval=financeApproval.readOnly();
+        canEdit = false;
+        canDelete = false;
+        canReverse = false;
     }
 }

@@ -825,8 +825,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                   icon: null,
                   type: UtenButtonType.primary,
                   queryParams: const {},
-                  requiredPermission:
-                      CostWorkbenchCapability.exportPermission,
+                  requiredPermission: CostWorkbenchCapability.exportPermission,
                   enabled: !_loading,
                   tableKey: 'master.goods.cost.actual.$_tab',
                   label: format == 'xlsx'

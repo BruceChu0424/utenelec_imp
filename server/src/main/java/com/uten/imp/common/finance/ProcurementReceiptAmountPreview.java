@@ -48,7 +48,7 @@ public class ProcurementReceiptAmountPreview {
         if (orderItemId == null) return MoneyPolicy.line(qty, price, null, rate);
         @SuppressWarnings("unchecked")
         List<Object[]> sources = em.createNativeQuery("SELECT i.qty,i.price,i.amount_original,i.amount_local,"
-                + "h.exchange_rate,COALESCE(i.arrival_overage_posted_qty,0),i.extra_columns::text "
+                + "h.exchange_rate,COALESCE(i.arrival_overage_posted_qty,0),i.extra_columns::text,i.total_amount_input "
                 + "FROM " + prefix + "_order_items i JOIN " + prefix + "_orders h ON h.id=i.order_id "
                 + "WHERE i.id=:id AND NOT i.is_deleted AND NOT h.is_deleted")
                 .setParameter("id", orderItemId).getResultList();
@@ -56,7 +56,7 @@ public class ProcurementReceiptAmountPreview {
         Object[] source = sources.getFirst();
         // Ordinary documents retain the established preview behavior. Additional
         // consideration always comes from the source, never a caller's amount.
-        if (source[6] == null || "[]".equals(source[6].toString()))
+        if (source[7] == null && (source[6] == null || "[]".equals(source[6].toString())))
             return MoneyPolicy.line(qty, price, null, rate);
         BigDecimal sourceQty = decimal(source[0]);
         BigDecimal sourcePrice = decimal(source[1]);
@@ -96,7 +96,8 @@ public class ProcurementReceiptAmountPreview {
                 .setParameter("kind", kind).setParameter("receipt", receiptId)
                 .setParameter("id", orderItemId).getSingleResult());
         BigDecimal overage = decimal(source[5]).add(allowance);
-        BigDecimal overageOriginal = MoneyPolicy.exactProduct(overage, sourcePrice);
+        BigDecimal overageOriginal = MoneyPolicy.orderOverageAmount(
+                overage, sourcePrice, decimal(source[7]), sourceQty);
         MoneyPolicy.LineAmounts result = allocated(qty, priorQty, sourceQty.add(overage), sourceOriginal.add(overageOriginal),
                 sourceLocal.add(MoneyPolicy.local(overageOriginal, sourceRate)), priorOriginal, priorLocal);
         boolean unresolved = result.original() == null || result.local() == null;

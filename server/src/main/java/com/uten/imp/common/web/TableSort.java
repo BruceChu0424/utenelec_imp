@@ -28,13 +28,21 @@ public final class TableSort {
      */
     public static Sort resolve(String sort, String order, Sort defaultSort, Map<String, String> allowed) {
         if (sort == null || sort.isBlank() || allowed == null || !allowed.containsKey(sort)) {
-            return defaultSort;
+            return stable(defaultSort);
         }
         String prop = allowed.get(sort);
         if (prop == null || prop.isBlank()) {
-            return defaultSort;
+            return stable(defaultSort);
         }
         Sort.Direction dir = "desc".equalsIgnoreCase(order) ? Sort.Direction.DESC : Sort.Direction.ASC;
-        return Sort.by(dir, prop);
+        return stable(Sort.by(dir, prop));
+    }
+
+    /** Every current caller pages an entity with a scalar id. Preserve custom
+     * Criteria ordering signalled by unsorted, and don't duplicate an explicit id. */
+    private static Sort stable(Sort value) {
+        if (value == null || value.isUnsorted() || value.getOrderFor("id") != null) return value;
+        Sort.Direction direction=value.iterator().next().getDirection();
+        return value.and(Sort.by(direction,"id"));
     }
 }

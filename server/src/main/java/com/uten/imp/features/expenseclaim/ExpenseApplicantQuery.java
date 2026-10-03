@@ -109,7 +109,7 @@ public class ExpenseApplicantQuery {
                         SELECT c.applicant_department_id, d.name, COUNT(*)
                         FROM expense_claims c
                         JOIN departments d ON d.id = c.applicant_department_id
-                        WHERE c.status IN (:statuses)
+                        WHERE c.is_deleted = false AND c.status IN (:statuses)
                           AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                         GROUP BY c.applicant_department_id, d.name
@@ -139,7 +139,7 @@ public class ExpenseApplicantQuery {
                         SELECT to_char(c.created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM') AS ym,
                                COUNT(*)
                         FROM expense_claims c
-                        WHERE c.status IN (:statuses)
+                        WHERE c.is_deleted = false AND c.status IN (:statuses)
                           AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                         GROUP BY ym
@@ -170,7 +170,7 @@ public class ExpenseApplicantQuery {
                         SELECT i.category, COUNT(DISTINCT i.claim_id)
                         FROM expense_claim_items i
                         JOIN expense_claims c ON c.id = i.claim_id
-                        WHERE c.status IN (:statuses)
+                        WHERE c.is_deleted = false AND c.status IN (:statuses)
                           AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                         GROUP BY i.category
@@ -199,7 +199,7 @@ public class ExpenseApplicantQuery {
         List<Object[]> rows = entityManager.createNativeQuery("""
                         SELECT c.claim_no, COUNT(*)
                         FROM expense_claims c
-                        WHERE c.status IN (:statuses)
+                        WHERE c.is_deleted = false AND c.status IN (:statuses)
                           AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                         GROUP BY c.claim_no
@@ -221,16 +221,18 @@ public class ExpenseApplicantQuery {
      * 本人报销单按单号聚合（我的报销列表「报销单号」筛选桶，2026-09-25 单号列统一）。
      * 返回 [claim_no, claim_no, count]，按单号升序；单号恒非空，上限 500。
      */
-    public List<FacetRow> mineClaimNoFacets(UUID actor) {
+    public List<FacetRow> mineClaimNoFacets(UUID actor) { return mineClaimNoFacets(actor,false,false); }
+
+    public List<FacetRow> mineClaimNoFacets(UUID actor, boolean includeDeleted, boolean onlyDeleted) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = entityManager.createNativeQuery("""
                         SELECT c.claim_no, COUNT(*)
                         FROM expense_claims c
-                        WHERE c.applicant_id = :actor
+                        WHERE (:onlyDeleted AND c.is_deleted OR NOT :onlyDeleted AND (:includeDeleted OR NOT c.is_deleted)) AND c.applicant_id = :actor
                         GROUP BY c.claim_no
                         ORDER BY c.claim_no
                         """)
-                .setParameter("actor", actor)
+                .setParameter("actor", actor).setParameter("includeDeleted",includeDeleted).setParameter("onlyDeleted",onlyDeleted)
                 .setMaxResults(500)
                 .getResultList();
         return rows.stream()
@@ -243,7 +245,7 @@ public class ExpenseApplicantQuery {
 
     public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto historyFacets(UUID actor,boolean approve,boolean pay) {
         String scope="""
-                WHERE c.status IN ('APPROVED','REJECTED','PAID')
+                WHERE c.is_deleted = false AND c.status IN ('APPROVED','REJECTED','PAID')
                   AND ((:approve=true AND (c.approved_by=:actor OR c.rejected_by=:actor)) OR (:pay=true AND c.status='PAID'))
                 """;
         return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(

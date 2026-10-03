@@ -484,6 +484,7 @@ class WmRequisitionLine {
     this.suggestedLeafWarehouseId,
     this.suggestedLeafWarehouseName,
     this.fulfilledQty = 0,
+    this.issueMethod = 'PERIODIC',
   });
 
   final String id;
@@ -500,6 +501,9 @@ class WmRequisitionLine {
   final String? suggestedLeafWarehouseId;
   final String? suggestedLeafWarehouseName;
   final double fulfilledQty;
+  final String issueMethod;
+
+  bool get needsMaterialSetup => issueMethod == 'ORDER';
 
   String get key => wmMaterialKey(goodsId, colorId);
 
@@ -524,6 +528,7 @@ class WmRequisitionLine {
         suggestedLeafWarehouseId: _s(json['suggestedLeafWarehouseId']),
         suggestedLeafWarehouseName: _s(json['suggestedLeafWarehouseName']),
         fulfilledQty: _d(json['fulfilledQty']),
+        issueMethod: _s(json['issueMethod']) ?? 'PERIODIC',
       );
 }
 

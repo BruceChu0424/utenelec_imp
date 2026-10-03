@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import struct
 import subprocess
@@ -62,12 +63,25 @@ class PairedDeleteChainContractTest(unittest.TestCase):
         self.assertLess(method.index("AttachmentLifecycleState.DELETE_PENDING"), method.index("objectOutbox.enqueueFinal"))
         self.assertLess(method.index("repository.saveAndFlush(attachment)"), method.index("objectOutbox.enqueueFinal"))
         processor = (feature / "AttachmentObjectOutboxProcessor.java").read_text(encoding="utf-8")
-        self.assertLess(processor.index("OutboxItem item = claimNext()"), processor.index("storage.delete(item.storageKey()"))
+        claim = re.search(r"OutboxItem\s+item\s*=\s*receiptTransactions\.execute\([^;]*claimNext\(\)\)", processor)
+        self.assertIsNotNone(claim, "The outbox item must be claimed in a committed receipt transaction")
+        self.assertIn("PROPAGATION_REQUIRES_NEW", processor)
+        self.assertLess(claim.start(), processor.index("deleteStaging(storage,item)"))
+        final_branch = processor[processor.index('if("DELETE_FINAL".equals(item.operation()))'):processor.index("StorageService storage")]
+        self.assertIn("retainHistory(item)", final_branch)
+        self.assertIn("return true", final_branch)
+        self.assertNotIn("storage.delete(", processor, "Ordinary FINAL deletion must retain original history")
         approval = (feature / "AttachmentReconciliationApprovalTransaction.java").read_text(encoding="utf-8")
         self.assertLess(approval.index("pg_advisory_xact_lock"), approval.index("AttachmentReconciliationService.isReferenced"))
         self.assertLess(approval.index("AttachmentReconciliationService.isReferenced"), approval.index("outbox.enqueueFinal"))
         reference = (feature / "AttachmentReconciliationService.java").read_text(encoding="utf-8")
-        self.assertIn("lifecycle_state <> 'DELETED'", reference)
+        start = reference.index("SELECT 1 FROM attachments")
+        attachment_reference = reference[start:reference.index("UNION ALL", start)]
+        self.assertIn("storage_provider = ?", attachment_reference)
+        self.assertIn("storage_key = ?", attachment_reference)
+        self.assertIn("storage_version IS NOT DISTINCT FROM ?", attachment_reference)
+        self.assertNotIn("lifecycle_state", attachment_reference,
+                         "All retained history references, including deleted rows, protect their exact original")
 
 
 @unittest.skipUnless(os.environ.get("UTEN_RUN_PAIRED_BACKUP_TESTS") == "1", "isolated Linux PG opt-in")
@@ -103,9 +117,19 @@ class PairedInternalBackupTest(unittest.TestCase):
                 CREATE TABLE business_facts (id integer PRIMARY KEY, exact_amount numeric(28,8));
                 INSERT INTO business_facts VALUES (1,123.12345678);
             """)
+            # Physical backup fixtures use the real producer PK/metadata shape, not a guessed id for every table.
             for table in paired.PRIVATE_TABLES:
-                cursor.execute("CREATE TABLE " + table + " (id uuid PRIMARY KEY, storage_provider text, "
-                               "storage_key text, storage_version text, storage_size bigint, storage_sha256 text)")
+                if table == "sales_quote_template_candidates":
+                    definition = "job_id uuid PRIMARY KEY, storage_provider text, storage_key text, storage_version text, storage_size bigint, storage_sha256 text"
+                elif table == "sales_quote_template_versions":
+                    definition = "template_id uuid,version int,storage_provider text,storage_key text,storage_version text,storage_size bigint,storage_sha256 text,PRIMARY KEY(template_id,version)"
+                elif table == "sales_quote_template_candidate_history":
+                    definition = "id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,job_id uuid,payload jsonb NOT NULL,storage_provider text,storage_key text,storage_version text"
+                elif table == "ai_input_originals":
+                    definition = "job_id uuid PRIMARY KEY,storage_provider text,storage_key text,storage_version text,storage_size bigint,storage_sha256 text,availability text DEFAULT 'AVAILABLE',lifecycle_state text DEFAULT 'AVAILABLE'"
+                else:
+                    definition = "id uuid PRIMARY KEY,storage_provider text,storage_key text,storage_version text,storage_size bigint,storage_sha256 text"
+                cursor.execute("CREATE TABLE " + table + " (" + definition + ")")
             cursor.execute("CREATE VIEW v_private_document_storage_references AS " + " UNION ".join(
                 "SELECT storage_provider,storage_key,storage_version FROM " + table + " WHERE storage_provider IS NOT NULL"
                 for table in paired.PRIVATE_TABLES))
@@ -156,7 +180,17 @@ class PairedInternalBackupTest(unittest.TestCase):
         if provider == "local":
             (self.local / "final" / key).write_bytes(data)
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("INSERT INTO " + table + " VALUES (%s,%s,%s,%s,%s,%s)", row)
+            if table == "sales_quote_template_versions":
+                cursor.execute("INSERT INTO sales_quote_template_versions VALUES (%s,1,%s,%s,%s,%s,%s)", row)
+                row = (row[0] + ":1", *row[1:])
+            elif table == "sales_quote_template_candidate_history":
+                cursor.execute("INSERT INTO sales_quote_template_candidate_history(job_id,payload,storage_provider,storage_key,storage_version) VALUES (%s,%s::jsonb,%s,%s,%s) RETURNING id",
+                               (row[0],json.dumps({"storage_size":row[4],"storage_sha256":row[5]}),row[1],row[2],row[3]))
+                row = (str(cursor.fetchone()[0]), *row[1:])
+            elif table in ("sales_quote_template_candidates", "ai_input_originals"):
+                cursor.execute("INSERT INTO " + table + "(job_id,storage_provider,storage_key,storage_version,storage_size,storage_sha256) VALUES (%s,%s,%s,%s,%s,%s)", row)
+            else:
+                cursor.execute("INSERT INTO " + table + " VALUES (%s,%s,%s,%s,%s,%s)", row)
         return row
 
     def test_private_cost_and_shared_quote_references_restore_exact_bytes(self):
@@ -165,10 +199,17 @@ class PairedInternalBackupTest(unittest.TestCase):
         attachment = self.add_object(compressed=True)
         self.add_private("sales_quote_template_candidates", data=attachment[3], key=attachment[1],
                          provider="internal", version="internal-v1:" + hashlib.sha256(attachment[3]).hexdigest())
+        self.add_private("sales_quote_template_candidate_history", key=row[2])
+        ai = self.add_private("ai_input_originals", data=b"synthetic AI input original")
+        retained = self.add_object()
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("UPDATE attachments SET lifecycle_state='RETAINED_HISTORY' WHERE id=%s", (retained[0],))
+            cursor.execute("INSERT INTO attachment_object_outbox VALUES (%s,%s,'DELETE_FINAL',%s,%s,'internal','RETAINED_HISTORY')",
+                           (str(uuid.uuid4()),retained[0],retained[1],"internal-v1:"+hashlib.sha256(retained[3]).hexdigest()))
         published = paired.backup(self.config)
         summary = paired.verify_set(published)
         self.assertEqual("uten-paired-internal-v2", summary["format"])
-        self.assertEqual((1, 3, 2), tuple(summary[k] for k in ("clean_objects", "private_document_references", "media_objects")))
+        self.assertEqual((2, 5, 4), tuple(summary[k] for k in ("clean_objects", "private_document_references", "media_objects")))
         restored = self.database + "_restore"
         self.create_database(restored)
         account = pwd.getpwnam("postgres")
@@ -180,6 +221,9 @@ class PairedInternalBackupTest(unittest.TestCase):
             references = paired.collect_references(cursor, lock=False)
             paired.verify_media(published, summary, references)
         self.assertEqual(b"synthetic cost workbook", (published / "media/local/final" / row[2]).read_bytes())
+        self.assertEqual(b"synthetic AI input original", (published / "media/local/final" / ai[2]).read_bytes())
+        retained_bytes = (published / "media/final" / paired.relative_key(retained[1])).read_bytes()
+        self.assertEqual(retained[3], retained_bytes[57:])
         with self.assertRaises(ValueError):
             paired.verify_media(published, summary, references[:-1])
 
@@ -200,7 +244,7 @@ class PairedInternalBackupTest(unittest.TestCase):
                         if fault == "size": cursor.execute("UPDATE goods_cost_imports SET storage_size=1")
                         elif fault == "version": cursor.execute("UPDATE goods_cost_imports SET storage_version='wrong'")
                         elif fault == "conflict":
-                            cursor.execute("INSERT INTO sales_quote_template_versions SELECT %s,storage_provider,storage_key,storage_version,1,storage_sha256 FROM goods_cost_imports", (str(uuid.uuid4()),))
+                            cursor.execute("INSERT INTO sales_quote_template_versions SELECT %s,1,storage_provider,storage_key,storage_version,1,storage_sha256 FROM goods_cost_imports", (str(uuid.uuid4()),))
                         elif fault == "outbox":
                             cursor.execute("INSERT INTO attachment_object_outbox VALUES (%s,NULL,'DELETE_FINAL',%s,NULL,'local','PENDING')", (str(uuid.uuid4()), row[2]))
                 with self.assertRaises(Exception): paired.backup(config)
@@ -228,7 +272,7 @@ class PairedInternalBackupTest(unittest.TestCase):
         def delete():
             try:
                 with delete_connection as connection, connection.cursor() as cursor:
-                    cursor.execute("DELETE FROM sales_quote_template_candidates WHERE id=%s", (row[0],))
+                    cursor.execute("DELETE FROM sales_quote_template_candidates WHERE job_id=%s", (row[0],))
                 (self.local / "final" / row[2]).unlink(); deleted.set()
             except BaseException as error: failures.append(error)
         with patch.object(paired, "copy_object", side_effect=slow_copy):
@@ -267,8 +311,8 @@ class PairedInternalBackupTest(unittest.TestCase):
             cursor.execute("DROP VIEW v_private_document_storage_references")
             for table in paired.PRIVATE_TABLES:
                 cursor.execute("DROP TABLE " + table)
-            cursor.execute("CREATE TABLE sales_quote_template_versions (id uuid PRIMARY KEY, workbook_bytes bytea)")
-            cursor.execute("INSERT INTO sales_quote_template_versions VALUES (%s,%s)",
+            cursor.execute("CREATE TABLE sales_quote_template_versions (template_id uuid,version int,workbook_bytes bytea,PRIMARY KEY(template_id,version))")
+            cursor.execute("INSERT INTO sales_quote_template_versions VALUES (%s,1,%s)",
                            (str(uuid.uuid4()), b"synthetic pre-V747 embedded document"))
         self.assertEqual(0, paired.verify_set(paired.backup(self.config))["media_objects"])
 

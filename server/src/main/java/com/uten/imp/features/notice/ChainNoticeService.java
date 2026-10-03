@@ -531,6 +531,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     // 单重学习重算(ADR-135)由库存模块的领域处理器在同一事务完成, 这里不发通知。
                     // 用字面量而非常量: notice 模块不得引用 stock 模块。
                 }
+                case "STOCK_COUNT_SUBMITTED", "STOCK_COUNT_APPROVED", "STOCK_COUNT_REJECTED", "STOCK_COUNT_CANCELLED" -> {
+                    // StockCountNoticeHandler delivers the scoped review tasks and resolves them in this outbox transaction.
+                }
                 default -> throw new IllegalArgumentException(
                         "Unsupported business outbox event: " + eventType);
             }

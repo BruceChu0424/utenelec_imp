@@ -51,7 +51,7 @@ Color utenTableSelectedRowColor(ThemeData theme) =>
 /// 列头「标签 + ⓘ 说明」（MasterDataTableView / UtenEditableGrid 共用，2026-09-10）。
 ///
 /// 全站列级通用说明（数量/单价/币种/税率等对所有行相同的口径）统一放列头 ⓘ，
-/// 格内只保留行特有的错误/预填图标。此前两张表各自用 Material `Tooltip`
+/// 格内错误/预填说明附着于单元格，保留边框颜色，不再重复显示提示图标。此前两张表各自用 Material `Tooltip`
 /// （默认长按触发，触屏与「长按拎起排序列」打架；无点按/键盘入口），输入框
 /// 用的却是 [UtenFieldHintIcon]，三套实现并存——现收敛为同一份：
 /// 悬停/点按/键盘同一行为，并吞掉长按避免 arm 排序。

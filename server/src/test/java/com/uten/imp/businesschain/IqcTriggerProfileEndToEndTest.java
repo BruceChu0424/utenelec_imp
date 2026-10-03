@@ -158,6 +158,32 @@ class IqcTriggerProfileEndToEndTest {
         assertTrue(decide.triggerCalls() <= DECIDE_BATCH_BUDGET, decide.line("decide-batch", LINES));
         assertTrue(pass.triggerCalls() <= PASS_BATCH_BUDGET, pass.line("pass-batch", LINES));
         assertTrue(confirm.triggerCalls() <= CONFIRM_BUDGET, confirm.line("iqc-confirm", 2 * LINES));
+        // Different order items of the same receipt must not rewrite the same
+        // order head seven times. Check actual executed SQL, not source spelling.
+        assertEquals(1, closureWrites(confirm.sample(), "purchase.order_closure"));
+        assertEquals(1, closureWrites(confirm.sample(), "subcontract.order_closure"));
+        for (var row : scenario.receipts()) {
+            BigDecimal expected = row.type().equals("PURCHASE") ? PASSED : RECEIPT_QTY;
+            assertEquals(0, expected.compareTo(jdbc.queryForObject(
+                    "SELECT warehouse_stocked_base_qty FROM procurement_inspection_items WHERE id=?",
+                    BigDecimal.class, row.inspectionId())));
+        }
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM purchase_orders o JOIN purchase_order_items i ON i.order_id=o.id
+                JOIN purchase_receipt_items r ON r.order_item_id=i.id
+                WHERE r.receipt_id=? AND o.is_closed
+                """, Integer.class, purchase.getFirst().id()));
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM subcontract_orders o JOIN subcontract_order_items i ON i.order_id=o.id
+                JOIN subcontract_receipt_items r ON r.order_item_id=i.id
+                WHERE r.receipt_id=? AND NOT o.is_closed
+                """, Integer.class, subcontract.getFirst().id()));
+    }
+
+    private static long closureWrites(ProductionJdbcMeasurement.Sample sample, String label) {
+        return sample.labelsByFingerprint.entrySet().stream()
+                .filter(entry -> label.equals(entry.getValue()))
+                .mapToLong(entry -> sample.fingerprints.getOrDefault(entry.getKey(), 0L)).sum();
     }
 
     /** 每个延迟校验函数平均每行被调几次(审计验收口径：N 行入库 ≤ N × 阶段数)。 */

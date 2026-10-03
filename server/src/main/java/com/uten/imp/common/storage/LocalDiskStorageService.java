@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -43,6 +45,7 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
         finalRoot = root.resolve("final");
         Files.createDirectories(stagingRoot);
         Files.createDirectories(finalRoot);
+        requireNamespaces();
         log.info("Local attachment storage enabled at {}", root);
     }
 
@@ -63,20 +66,20 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
     @Override
     public StoredObject describe(String storageKey) {
         Path target = resolveStaging(storageKey);
-        if (!Files.isRegularFile(target)) {
-            return new StoredObject(false, 0, null, null, null);
-        }
+        if (Files.notExists(target,LinkOption.NOFOLLOW_LINKS)) return new StoredObject(false,0,null,null,null);
+        if (!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))
+            throw new StorageResourceUnavailableException("本地原件不是普通文件，请核验后重试");
         try {
             return new StoredObject(true, Files.size(target), null, null, null);
         } catch (IOException e) {
-            return new StoredObject(false, 0, null, null, null);
+            throw new StorageResourceUnavailableException("本地原件状态无法确认，请核验后重试");
         }
     }
 
     @Override
     public InputStream openForValidation(String storageKey, String versionId) {
         try {
-            return Files.newInputStream(resolveStaging(storageKey));
+            return openExact(resolveStaging(storageKey));
         } catch (IOException e) {
             throw new IllegalStateException("Unable to read staged attachment: " + storageKey, e);
         }
@@ -186,7 +189,7 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
     @Override
     public InputStream read(String storageKey) {
         try {
-            return Files.newInputStream(resolveFinal(storageKey));
+            return openExact(resolveFinal(storageKey));
         } catch (IOException e) {
             throw new IllegalStateException("Unable to read final attachment: " + storageKey, e);
         }
@@ -206,7 +209,11 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
 
     private void deleteAt(Path target, String storageKey, String location) {
         try {
-            Files.deleteIfExists(target);
+            requireNamespaces();
+            if(Files.notExists(target,LinkOption.NOFOLLOW_LINKS))return;
+            if(!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))
+                throw new StorageResourceUnavailableException("本地原件不是普通文件，请核验后重试");
+            Files.delete(target);
         } catch (IOException e) {
             log.warn("Local attachment delete failed location={} key={} type={}",
                     location, storageKey, e.getClass().getSimpleName());
@@ -244,11 +251,38 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
     }
 
     private Path resolveStaging(String storageKey) {
+        requireNamespaces();
         return resolveUnder(stagingRoot, storageKey);
     }
 
     private Path resolveFinal(String storageKey) {
-        return resolveUnder(finalRoot, storageKey);
+        requireNamespaces();
+        Path finalObject=resolveUnder(finalRoot,storageKey);
+        // Neither current nor common-base LocalDisk reads flat root/key objects. Do not silently
+        // declare one lost (or delete a guessed layout) when its historical bytes still exist.
+        if(Files.notExists(finalObject,LinkOption.NOFOLLOW_LINKS)
+            && !Files.notExists(resolveUnder(root,storageKey),LinkOption.NOFOLLOW_LINKS))
+            throw new StorageResourceUnavailableException("发现历史本地平铺原件，请先对账确认存储身份");
+        return finalObject;
+    }
+
+    private void requireNamespaces() {
+        if(root==null || stagingRoot==null || finalRoot==null)
+            throw new StorageResourceUnavailableException("本地原件存储尚未初始化");
+        for(Path directory:List.of(root,stagingRoot,finalRoot)) {
+            try {
+                if(!Files.isDirectory(directory,LinkOption.NOFOLLOW_LINKS) || !directory.equals(directory.toRealPath()))
+                    throw new StorageResourceUnavailableException("本地原件存储目录缺失或身份异常，请核验后重试");
+            } catch(IOException unknown) {
+                // Missing/unknown root is not a typed missing leaf and cannot create an ABSENT ticket.
+                throw new StorageResourceUnavailableException("本地原件存储目录暂不可用，请核验后重试");
+            }
+        }
+    }
+    private static InputStream openExact(Path target) throws IOException {
+        if(Files.notExists(target,LinkOption.NOFOLLOW_LINKS))throw new NoSuchFileException(target.toString());
+        if(!Files.isRegularFile(target,LinkOption.NOFOLLOW_LINKS))throw new IOException("Object is not a regular file");
+        return Files.newInputStream(target,LinkOption.NOFOLLOW_LINKS);
     }
 
     private static Path resolveUnder(Path namespace, String storageKey) {

@@ -54,4 +54,39 @@ public final class StockWarehouseScope {
     static Set<UUID> resolve(UUID warehouseId, List<UUID> ids) {
         return ids == null || ids.isEmpty() ? Set.of(warehouseId) : Set.copyOf(ids);
     }
+
+    /** Same warehouse-type policy as instant inventory; an explicit leaf remains exact. */
+    public static String typePredicate(String alias, boolean inventoryOnly, boolean exactWarehouse,
+                                       boolean includeDefective, boolean includeLineSide) {
+        if (!inventoryOnly || exactWarehouse) return "";
+        return " AND " + alias + ".is_accountable"
+                + (includeDefective ? "" : " AND NOT " + alias + ".is_defective")
+                + (includeLineSide ? "" : " AND NOT " + alias + ".is_line_side");
+    }
+
+    /** Null means the legacy all-warehouse mode; an empty set means a selected scope with no eligible warehouses. */
+    public static Set<UUID> queryScopeOf(EntityManager em, UUID warehouseId, boolean inventoryOnly,
+                                        boolean includeDefective, boolean includeLineSide) {
+        Set<UUID> scope = subtreeOf(em, warehouseId);
+        if (!inventoryOnly || scope != null && scope.size() == 1) return scope;
+        var query = em.createNativeQuery(queryScopeSql(scope, includeDefective, includeLineSide));
+        if (scope != null) query.setParameter("scopeIds", scope);
+        @SuppressWarnings("unchecked") List<UUID> ids = query.getResultList();
+        return Set.copyOf(ids);
+    }
+
+    public static Set<UUID> queryScopeOf(NamedParameterJdbcTemplate db, UUID warehouseId, boolean inventoryOnly,
+                                        boolean includeDefective, boolean includeLineSide) {
+        Set<UUID> scope = subtreeOf(db, warehouseId);
+        if (!inventoryOnly || scope != null && scope.size() == 1) return scope;
+        var params = new MapSqlParameterSource();
+        if (scope != null) params.addValue("scopeIds", scope);
+        return Set.copyOf(db.queryForList(queryScopeSql(scope, includeDefective, includeLineSide), params, UUID.class));
+    }
+
+    private static String queryScopeSql(Set<UUID> scope, boolean includeDefective, boolean includeLineSide) {
+        return "SELECT w.id FROM warehouses w WHERE 1=1"
+                + (scope == null ? "" : " AND w.id IN (:scopeIds)")
+                + typePredicate("w", true, false, includeDefective, includeLineSide);
+    }
 }

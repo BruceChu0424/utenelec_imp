@@ -37,8 +37,8 @@ class ProductionLinkedStockDocumentServiceContractTest {
                 "src/main/java/com/uten/imp/features/stock/StockDocService.java")).replace("\r\n", "\n");
 
         assertTrue(source.contains(
-                "&& isProductionLinked(id)\n"
-                        + "                && !allowProductionDrawApproveAndIssue"));
+                "&& !allowProductionDrawApproveAndIssue\n"
+                        + "                && isProductionLinked(id)"));
         assertTrue(source.contains(
                 "生产领料单不能单独审核；请使用“出库”一次完成审核与实物出库"));
         assertTrue(source.contains(

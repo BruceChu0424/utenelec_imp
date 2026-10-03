@@ -334,8 +334,9 @@ void main() {
 
       // 2026-09-18 用户口径：批量页也要逐行看到储放位置；已上架行红字
       //「已入库 · 仓 / 库位」覆盖登记库位，与 FQC 办理页同口径。
+      // 2026-10-02 合一表：单张 batch-approval-unified-table（无 legacy 分表）。
       expect(
-        find.byKey(const Key('batch-approval-fqc-table-legacy')),
+        find.byKey(const Key('batch-approval-unified-table')),
         findsOneWidget,
       );
       expect(find.text('储放位置'), findsOneWidget);

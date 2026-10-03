@@ -122,6 +122,7 @@ class PurchaseRequestServiceUnitPolicyTest {
         item.setId(itemId);
         item.setRequestId(requestId);
         item.setQty(new BigDecimal("10"));
+        item.setUnitId(UUID.randomUUID()); item.setUnitRate(BigDecimal.ONE);
         item.setOrderedQty(new BigDecimal("4"));
         when(fixture.requestRepo.findById(requestId))
                 .thenReturn(java.util.Optional.of(request));
@@ -131,7 +132,7 @@ class PurchaseRequestServiceUnitPolicyTest {
         ApiException ordered = assertThrows(
                 ApiException.class,
                 () -> fixture.service.adjustItemQty(
-                        requestId, itemId, new BigDecimal("6")));
+                        requestId, itemId, new BigDecimal("6"), 0L));
         assertTrue(ordered.getMessage().contains("已生成订货单"));
 
         item.setOrderedQty(null);
@@ -145,7 +146,7 @@ class PurchaseRequestServiceUnitPolicyTest {
         ApiException pending = assertThrows(
                 ApiException.class,
                 () -> fixture.service.adjustItemQty(
-                        requestId, itemId, new BigDecimal("6")));
+                        requestId, itemId, new BigDecimal("6"), 0L));
         assertTrue(pending.getMessage().contains("待财务审核"));
     }
 
@@ -161,6 +162,7 @@ class PurchaseRequestServiceUnitPolicyTest {
         item.setId(itemId);
         item.setRequestId(requestId);
         item.setQty(new BigDecimal("10"));
+        item.setUnitId(UUID.randomUUID()); item.setUnitRate(BigDecimal.ONE);
         when(fixture.requestRepo.findById(requestId))
                 .thenReturn(java.util.Optional.of(request));
         when(fixture.itemRepo.findById(itemId))
@@ -175,8 +177,22 @@ class PurchaseRequestServiceUnitPolicyTest {
         when(fixture.itemRepo.findByRequestIdOrderByLineNoAsc(requestId))
                 .thenReturn(List.of(item));
 
+        Query changed = mock(Query.class);
+        when(changed.setParameter(anyString(), any())).thenReturn(changed);
+        when(changed.getResultList()).thenAnswer(invocation -> {
+            item.setQty(new BigDecimal("12.5")); item.setRowVersion(1L);
+            return List.of(1L);
+        });
+        when(fixture.em.createNativeQuery(contains("UPDATE purchase_request_items SET qty")))
+                .thenReturn(changed);
+        Query detailRows = mock(Query.class);
+        when(detailRows.setParameter(anyString(), any())).thenReturn(detailRows);
+        when(detailRows.getResultList()).thenReturn(java.util.Collections.singletonList(
+                new Object[]{itemId,BigDecimal.ZERO,1L}));
+        when(fixture.em.createNativeQuery(contains("SELECT i.id, pending.pending_qty")))
+                .thenReturn(detailRows);
         var detail = fixture.service.adjustItemQty(
-                requestId, itemId, new BigDecimal("12.5"));
+                requestId, itemId, new BigDecimal("12.5"), 0L);
 
         assertNotNull(detail);
         assertEquals(0, new BigDecimal("12.5").compareTo(item.getQty()));
@@ -191,7 +207,7 @@ class PurchaseRequestServiceUnitPolicyTest {
         when(query.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{goodsId, goodsId, "G-TEST", "测试货品"}));
         Query pending = mock(Query.class);
-        when(em.createNativeQuery(contains("pending.pending_qty FROM purchase_request_items"))).thenReturn(pending);
+        when(em.createNativeQuery(contains("SELECT i.id, pending.pending_qty"))).thenReturn(pending);
         when(pending.setParameter(anyString(), any())).thenReturn(pending);
         when(pending.getResultList()).thenReturn(List.of());
     }
@@ -225,5 +241,12 @@ class PurchaseRequestServiceUnitPolicyTest {
                 lineUnitPolicy,
                 mock(com.uten.imp.features.common.taskclaim.TaskClaimService.class),
                 mock(com.uten.imp.application.port.OrganizationReferencePort.class));
+        {
+            var locks = mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class);
+            var guard = mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard.class);
+            when(locks.orderInputs(anyString(), any(), org.mockito.ArgumentMatchers.anyCollection(),
+                    org.mockito.ArgumentMatchers.anyCollection(), any())).thenReturn(guard);
+            org.springframework.test.util.ReflectionTestUtils.setField(service, "mutationLocks", locks);
+        }
     }
 }

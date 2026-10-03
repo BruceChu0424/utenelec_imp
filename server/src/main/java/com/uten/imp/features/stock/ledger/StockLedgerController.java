@@ -36,6 +36,9 @@ public class StockLedgerController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) UUID colorId,
             @RequestParam(defaultValue = "false") boolean colorNull,
+            @RequestParam(defaultValue = "false") boolean inventoryOnly,
+            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeLineSide,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String movementTypes,
@@ -44,6 +47,6 @@ public class StockLedgerController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return service.ledger(goodsId, warehouseId, colorId, colorNull, dateFrom, dateTo, movementTypes,
-                direction, includeWeightAdjustments, page, size);
+                direction, includeWeightAdjustments, page, size, inventoryOnly, includeDefective, includeLineSide);
     }
 }

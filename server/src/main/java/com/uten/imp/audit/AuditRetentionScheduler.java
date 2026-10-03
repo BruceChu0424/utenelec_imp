@@ -19,7 +19,8 @@ import java.util.List;
  *
  * <p>audit_log / audit_log_archive 按北京时间月分区。每天由数据库函数
  * {@code fn_audit_retention_run()} 以表所有者身份一次完成: 整月都早于在线截止点的分区
- * DETACH 后 ATTACH 到归档表, 整月都早于最终截止点的归档分区直接 DROP, 预建之后 3 个月的在线分区,
+ * DETACH 后 ATTACH 到归档表, V770起超过原总留存期的混合归档分区只登记保全清单、不销毁,
+ * 预建之后 3 个月的在线分区,
  * 并在同一事务里写一条 {@code audit_retention_completed} 系统事件(截止点、分区、行数)。
  * 保留期由函数直接读系统设置 audit_hot_retention_months / audit_archive_retention_months,
  * 运行账号对审计表没有改删权限。不再 5000 行一批地复制和删除。
@@ -73,7 +74,7 @@ public class AuditRetentionScheduler {
         } catch (SQLException | RuntimeException exception) {
             auditFailureSafely("error=" + truncate(exception.getMessage(), 400));
             log.error("Audit retention failed; partitions are moved only as whole months", exception);
-            throw new IllegalStateException("审计日志归档与清理失败", exception);
+            throw new IllegalStateException("审计日志归档与保全失败", exception);
         }
     }
 
@@ -83,7 +84,9 @@ public class AuditRetentionScheduler {
             if (!tryAcquireLock(connection)) {
                 return RetentionResult.skipped();
             }
-            try (PreparedStatement statement = connection.prepareStatement(RUN_SQL);
+            try {
+                requireNonDestructiveCapability(connection);
+                try (PreparedStatement statement = connection.prepareStatement(RUN_SQL);
                  ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) {
                     throw new SQLException("Audit retention returned no summary row");
@@ -98,9 +101,19 @@ public class AuditRetentionScheduler {
                         rows.getLong("dropped_rows"),
                         texts(rows.getArray("created_partitions")),
                         rows.getLong("completion_event_id"));
+                }
             } finally {
                 releaseLock(connection);
             }
+        }
+    }
+
+    private static void requireNonDestructiveCapability(Connection connection) throws SQLException {
+        try (PreparedStatement statement=connection.prepareStatement(AuditRetentionModeReader.READ_MODE_SQL);
+             ResultSet rows=statement.executeQuery()) {
+            String mode=rows.next()?rows.getString(1):null;
+            if(!"PERMANENT_RETAIN".equals(mode)&&!"PRESERVE_UNCLASSIFIED".equals(mode))
+                throw new SQLException("Audit retention capability cannot prove non-destructive preservation; automatic maintenance is blocked");
         }
     }
 

@@ -115,6 +115,24 @@ final class SalesIntakePipeline {
         } else {
             throw fail(IntakeTexts.FAIL_UNSUPPORTED, "UNSUPPORTED_FILE");
         }
+        if (params.templateOnly()) {
+            if (ctx.cancelled()) return Map.of();
+            if (run.template == null) throw fail("未能提取可回填的 Excel 模板，请检查表头和明细区域", "NO_TEMPLATE");
+            // Template learning deliberately never resolves goods, prices or customer master changes.
+            // A failed stage is a failed job: the confirmation button must never promise an absent candidate.
+            data.stageTemplate(ctx.jobId(), ctx.submittedByUser(), input.fileName(), run.template);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("templateOnly", true);
+            result.put("sheetName", run.sheetName);
+            result.put("otherSheets", run.otherSheets);
+            result.put("mapping", run.template.mapping());
+            result.put("layoutSource", run.layoutSource);
+            result.put("extraction", Map.of("layoutSource", run.layoutSource, "layoutFingerprint", run.layout.fingerprint(),
+                    "headerTexts", run.layout.headerTexts(), "columnRoles", run.layout.columnRolesByLetter()));
+            result.put("notices", run.ai.allowed() ? List.copyOf(run.notices) : List.of(IntakeTexts.NOTICE_AI_OFF));
+            ctx.progress("DONE", 100);
+            return result;
+        }
         if (run.lines.isEmpty()) {
             throw fail(IntakeTexts.FAIL_NO_LINES, "NO_LINES");
         }
@@ -236,17 +254,17 @@ final class SalesIntakePipeline {
             SheetChoice choice = null;
             IntakeLayout layout = learnedLayout(sheet, learned, preselected);
             if (layout != null) {
-                choice = choice(sheet, layout);
+                choice = choice(sheet, layout, run.params.templateOnly());
             }
             if (choice == null) {
                 // 没有可信的学习版式, 或按它一行也取不出来: 按规则认。
                 layout = IntakeLayoutDetector.detect(sheet);
-                choice = layout == null ? null : choice(sheet, layout);
+                choice = layout == null ? null : choice(sheet, layout, run.params.templateOnly());
             }
             if (choice == null) {
                 // 规则也认不出: 同一表头只学到过一种列角色(例如别的客户保存过一次)时先用它, 省一次 AI; 始终排在规则之后。
                 layout = fallbackLearnedLayout(sheet, learned);
-                choice = layout == null ? null : choice(sheet, layout);
+                choice = layout == null ? null : choice(sheet, layout, run.params.templateOnly());
             }
             if (choice != null) {
                 choices.add(choice);
@@ -274,7 +292,7 @@ final class SalesIntakePipeline {
         }
         List<Map<String, Object>> others = new ArrayList<>();
         for (SheetChoice c : choices) {
-            if (c != chosen && c.hasPrice()) {
+            if (c != chosen && (c.hasPrice() || run.params.templateOnly())) {
                 Map<String, Object> o = new LinkedHashMap<>();
                 o.put("name", c.sheet().name());
                 o.put("index", c.sheet().index());
@@ -303,6 +321,7 @@ final class SalesIntakePipeline {
                     chosen.extraction().lines().stream().map(line -> line.sourceRow() - 1).toList()); }
             catch (RuntimeException ignored) { run.notices.add("此文件不能复用原表格样式，仍可识别和学习基础资料"); }
         }
+        if (run.params.templateOnly()) return;
         run.fileCurrency = chosen.layout().fileCurrency() != null ? chosen.layout().fileCurrency()
                 : chosen.extraction().currencyFromCells();
         run.header = IntakeHeaderRules.extract(chosen.sheet(), chosen.layout().headerRow0());
@@ -363,9 +382,9 @@ final class SalesIntakePipeline {
         return headers;
     }
 
-    private static SheetChoice choice(Sheet sheet, IntakeLayout layout) {
+    private static SheetChoice choice(Sheet sheet, IntakeLayout layout, boolean allowEmpty) {
         IntakeLineExtractor.Extraction extraction = IntakeLineExtractor.extract(sheet, layout);
-        return extraction.lines().isEmpty() ? null : new SheetChoice(sheet, layout, extraction);
+        return extraction.lines().isEmpty() && !allowEmpty ? null : new SheetChoice(sheet, layout, extraction);
     }
 
     /** 有版式且抽到货品行的工作表。 */
@@ -518,7 +537,7 @@ final class SalesIntakePipeline {
         }
         IntakeLayout layout = IntakeLayoutDetector.withRoles(target, headerRow0, 1, roles, IntakeLayout.SOURCE_AI);
         IntakeLineExtractor.Extraction extraction = IntakeLineExtractor.extract(target, layout);
-        return extraction.lines().isEmpty() ? null : new SheetChoice(target, layout, extraction);
+        return extraction.lines().isEmpty() && !run.params.templateOnly() ? null : new SheetChoice(target, layout, extraction);
     }
 
     private void readPdf(Run run, AiJobInput input) {

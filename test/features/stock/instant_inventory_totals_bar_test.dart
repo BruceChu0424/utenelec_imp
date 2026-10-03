@@ -1,177 +1,297 @@
-// 即时库存页「表格下方合计」契约。
+// 即时库存页「精简合计与详情」契约。
 //
-// 即时库存是本轮唯一一个非报表服务页也接上合计条的地方，它踩的正是最容易出错的那个坑：
 // 一行 = 一个货品×颜色跨仓聚合，所以合计必须与表格**同一批行**（同一分类/仓库/含不良品仓/
 // 关键字筛选）在**整个结果集**上算，而不是对当前这一页求和。
 //
-// 这里刻意让「当前页 2 行合计 12」而服务端合计是「900 个 · 20 箱」：哪天有人把合计改成
-// 前端对当前页求和，第一个断言就会红。
-import 'package:dio/dio.dart';
+// 当前页只有 10 个 / 2 箱，全集 137 行则有 900 个 / 20 箱。
+// 主界面只留重量与入口，详细数量必须仍来自服务端全集且按单位分别展示。
+import 'dart:async';
+
+import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/stock/models/stock_query.dart';
 import 'package:uten_imp/features/stock/pages/instant_inventory_page.dart';
+import 'package:uten_imp/features/stock/pages/instant_inventory_overview_page.dart';
+import 'package:uten_imp/features/stock/models/instant_inventory_scope.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'instant_inventory_test_fixture.dart';
+import 'package:uten_imp/features/stock/widgets/instant_inventory_summary_bar.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
-  testWidgets('服务端分页：合计条显示服务端合计，而不是对当前页求和', (tester) async {
-    await _pumpPage(tester, const Size(1500, 1000));
+  testWidgets('表格底部只保留服务端重量合计和详情入口', (tester) async {
+    final router = await _pumpPage(tester, const Size(1500, 1000));
 
-    expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
+    expect(find.byType(InstantInventorySummaryBar), findsOneWidget);
+    expect(find.text('查看详情'), findsOneWidget);
 
-    // 服务端合计（整个结果集 137 行）——不是当前页这 2 行的 10+2=12。
-    expect(find.text('900 个 · 20 箱'), findsOneWidget);
+    // 数量和等待阶段移到详情，不再在表格底部铺开。
+    expect(find.text('合计库存数量'), findsNothing);
+    expect(find.text('合计待检量'), findsNothing);
+    expect(find.text('合计合格待入库'), findsNothing);
+    expect(find.textContaining('900'), findsNothing);
+
+    // 这是 137 行全集的 3520 kg，不能退化为本页 4.5 kg。
     expect(
-      find.descendant(
-        of: find.byType(UtenTotalsSummaryBar),
-        matching: find.text('12'),
-      ),
-      findsNothing,
+      find.textContaining('≈3.52 t (另有 12 项未称)', findRichText: true),
+      findsOneWidget,
     );
-
-    // 920 = 跨单位相加，绝不允许出现。
-    expect(find.textContaining('920'), findsNothing);
-
-    // 重量 (千克) 按显示单位换算 (默认自动 → 吨)；含估算前缀「≈」，未称项数并进同一项，
-    // 两个伴随计数项不单独占位。
-    expect(find.text('≈3.52 t (另有 12 项未称)'), findsOneWidget);
     expect(find.text('重量未知'), findsNothing);
     expect(find.text('重量含估算'), findsNothing);
+    expect(router.state.uri.path, RouteName.stockInstantInventory);
+  });
+
+  testWidgets('点击详情查看同一筛选的全集，数量按单位分开并隐藏全零单位', (tester) async {
+    await _pumpPage(tester, const Size(1500, 1000));
+
+    await tester.tap(find.text('查看详情'));
+    await tester.pumpAndSettle();
+
+    final overview = find.byType(InstantInventoryOverviewPage);
+    Finder inOverview(Finder finder) =>
+        find.descendant(of: overview, matching: finder);
+    expect(overview, findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
+    expect(inOverview(find.text('库存总览与分析')), findsOneWidget);
+    expect(inOverview(find.text('137 项')), findsOneWidget);
+    expect(inOverview(find.text('当前筛选的全部结果 · 与翻页无关')), findsOneWidget);
+    expect(inOverview(find.text('900')), findsOneWidget);
+    expect(inOverview(find.text('20')), findsOneWidget);
+    expect(inOverview(find.text('11')), findsOneWidget);
+    expect(inOverview(find.text('7')), findsOneWidget);
+    expect(inOverview(find.text('个')), findsOneWidget);
+    expect(inOverview(find.text('箱')), findsOneWidget);
+    expect(inOverview(find.text('米')), findsNothing);
+    expect(inOverview(find.textContaining('920')), findsNothing);
+    expect(inOverview(find.text('100 项')), findsOneWidget);
+    expect(inOverview(find.text('35 项')), findsOneWidget);
+    expect(inOverview(find.text('88.2%')), findsOneWidget);
+    expect(inOverview(find.textContaining('3 处仓库余额为负')), findsOneWidget);
+    expect(inOverview(find.textContaining('零库存不等于缺货')), findsOneWidget);
+
+    await tester.ensureVisible(find.text('计算口径与分析边界'));
+    await tester.tap(find.text('计算口径与分析边界'));
+    await tester.pumpAndSettle();
+    expect(inOverview(find.textContaining('覆盖率不是称重准确率')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('详情为独立路由，返回保留原分类、搜索和表头筛选', (tester) async {
+    final api = InstantInventoryApiFixture(
+      withTotals: true,
+      withAnalysis: true,
+      withCategories: true,
+    );
+    final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
+    await tester.tap(find.text('原材料(RAW)'));
+    await tester.pumpAndSettle();
+    final search = find.descendant(
+      of: find.byKey(const Key('instant-inventory-search')),
+      matching: find.byType(EditableText),
+    );
+    await tester.enterText(search, '原材料');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    final tableFinder = find.byType(MasterDataTableView<InstantInventoryRow>);
+    tester
+        .widget<MasterDataTableView<InstantInventoryRow>>(tableFinder)
+        .onFilterChanged('series', 'GD');
+    await tester.pumpAndSettle();
+    final originalState = tester.state(find.byType(InstantInventoryPage));
+
+    await tester.tap(find.text('查看详情'));
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, '/stock/instant-inventory/overview');
+    expect(router.state.uri.queryParameters['categoryId'], 'raw');
+    expect(router.state.uri.queryParameters['series'], 'GD');
+    expect(find.byType(Dialog), findsNothing);
+    expect(find.byType(InstantInventoryOverviewPage), findsOneWidget);
+    expect(api.inventoryRequests.last['categoryId'], 'raw');
+
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, RouteName.stockInstantInventory);
+    expect(
+      tester.state(find.byType(InstantInventoryPage)),
+      same(originalState),
+    );
+    expect(find.text('原材料(RAW)'), findsOneWidget);
+    expect(tester.widget<EditableText>(search).controller.text, '原材料');
+    expect(
+      tester
+          .widget<MasterDataTableView<InstantInventoryRow>>(tableFinder)
+          .filters,
+      {'series': 'GD'},
+    );
+    expect(find.byType(InstantInventorySummaryBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('旧响应仍可看汇总，缺失分析指标时不显示零风险结论', (tester) async {
+    await _pumpPage(tester, const Size(1500, 1000), withAnalysis: false);
+
+    await tester.tap(find.text('查看详情'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('当前可查看汇总，分析指标暂未提供'), findsOneWidget);
+    expect(find.text('当前规则未发现优先处理事项'), findsNothing);
+    expect(find.text('暂无覆盖率'), findsOneWidget);
+    expect(find.text('900'), findsOneWidget);
+    expect(find.text('20'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('后端未下发 totals 时合计条整条不渲染（不伪造 0、不退化成本页合计）', (tester) async {
     await _pumpPage(tester, const Size(1500, 1000), withTotals: false);
-    expect(find.byType(UtenTotalsSummaryBar), findsNothing);
+    expect(find.byType(InstantInventorySummaryBar), findsNothing);
+    expect(find.text('查看详情'), findsNothing);
   });
 
-  testWidgets('窄屏 + 1.5× 字号：合计条仍在且不溢出', (tester) async {
+  testWidgets('刷新进行中或失败时不把旧合计当作当前值，也不能打开旧分析', (tester) async {
+    final api = InstantInventoryApiFixture(
+      withTotals: true,
+      withAnalysis: true,
+    );
+    await _pumpPage(tester, const Size(1500, 1000), api: api);
+    final request = Completer<Map<String, dynamic>>();
+    api.nextInventoryResponse = request.future;
+
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pump();
+
+    expect(find.textContaining('统计更新中…', findRichText: true), findsOneWidget);
+    expect(find.textContaining('3.52 t', findRichText: true), findsNothing);
+    final details = find.byKey(const Key('instant-inventory-summary-details'));
+    expect(tester.widget<TextButton>(details).onPressed, isNull);
+    expect(find.byType(InstantInventoryOverviewPage), findsNothing);
+
+    request.completeError(StateError('库存查询失败'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('统计暂不可用', findRichText: true), findsOneWidget);
+    expect(find.textContaining('3.52 t', findRichText: true), findsNothing);
+    expect(tester.widget<TextButton>(details).onPressed, isNull);
+    expect(find.byType(InstantInventoryOverviewPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('搜索防抖、定位请求和失败期间均禁用旧合计详情', (tester) async {
+    final api = InstantInventoryApiFixture(
+      withTotals: true,
+      withAnalysis: true,
+      withCategories: true,
+    );
+    await _pumpPage(tester, const Size(1500, 1000), api: api);
+    final request = Completer<List<String>>();
+    api.nextSearchResponse = request.future;
+    final search = find.descendant(
+      of: find.byKey(const Key('instant-inventory-search')),
+      matching: find.byType(EditableText),
+    );
+    final details = find.byKey(const Key('instant-inventory-summary-details'));
+
+    await tester.enterText(search, '新货品');
+    await tester.pump();
+    expect(tester.widget<TextButton>(details).onPressed, isNull);
+    expect(find.textContaining('3.52 t', findRichText: true), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 301));
+    expect(tester.widget<TextButton>(details).onPressed, isNull);
+    expect(find.textContaining('统计更新中…', findRichText: true), findsOneWidget);
+
+    request.completeError(StateError('分类定位失败'));
+    await tester.pumpAndSettle();
+    expect(find.text('重试搜索'), findsOneWidget);
+    expect(tester.widget<TextButton>(details).onPressed, isNull);
+    expect(find.textContaining('统计暂不可用', findRichText: true), findsOneWidget);
+    expect(find.textContaining('3.52 t', findRichText: true), findsNothing);
+    expect(find.byType(InstantInventoryOverviewPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('窄屏 + 1.5× 字号：合计条和详情均不溢出', (tester) async {
     await _pumpPage(tester, const Size(375, 812), textScale: 1.5);
 
-    expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
-    expect(find.text('900 个 · 20 箱'), findsOneWidget);
+    expect(find.byType(InstantInventorySummaryBar), findsOneWidget);
+    expect(find.text('查看详情'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.ensureVisible(find.text('查看详情'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('查看详情'));
+    await tester.pumpAndSettle();
+    expect(find.text('库存总览与分析'), findsOneWidget);
+    await tester.ensureVisible(find.text('按单位统计'));
+    await tester.pumpAndSettle();
+    expect(find.text('900'), findsOneWidget);
+    expect(find.text('20'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
 
-Future<void> _pumpPage(
+Future<GoRouter> _pumpPage(
   WidgetTester tester,
   Size size, {
   bool withTotals = true,
+  bool withAnalysis = true,
   double textScale = 1.0,
+  InstantInventoryApiFixture? api,
 }) async {
   SharedPreferences.setMockInitialValues(const {});
   final prefs = await SharedPreferences.getInstance();
 
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final router = GoRouter(
+    initialLocation: RouteName.stockInstantInventory,
+    routes: [
+      GoRoute(
+        path: RouteName.stockInstantInventory,
+        builder: (_, _) => const InstantInventoryPage(),
+      ),
+      GoRoute(
+        path: '/stock/instant-inventory/overview',
+        builder: (_, state) => InstantInventoryOverviewPage(
+          scope: InstantInventoryScope.fromQuery(state.uri.queryParameters),
+          scopeLabel: state.uri.queryParameters['scopeLabel'],
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(
-          _InstantInventoryApi(withTotals: withTotals),
+          api ??
+              InstantInventoryApiFixture(
+                withTotals: withTotals,
+                withAnalysis: withAnalysis,
+              ),
         ),
         sharedPreferencesProvider.overrideWithValue(prefs),
         currentPermissionsProvider.overrideWithValue(const <String>{}),
       ],
-      child: MaterialApp(
+      child: MaterialApp.router(
+        routerConfig: router,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
-        home: const InstantInventoryPage(),
       ),
     ),
   );
   await tester.pumpAndSettle();
-}
-
-class _InstantInventoryApi extends ApiClient {
-  _InstantInventoryApi({required this.withTotals}) : super(Dio());
-
-  final bool withTotals;
-
-  @override
-  Future<List<Map<String, dynamic>>> getList(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async => <Map<String, dynamic>>[];
-
-  @override
-  Future<Map<String, dynamic>> get(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    if (!path.contains('instant-inventory')) return <String, dynamic>{};
-    return <String, dynamic>{
-      // 当前页只有 2 行（数量合计 12），全集 137 行——合计条必须显示服务端的 900/20。
-      'items': <Object?>[
-        <String, dynamic>{
-          'goodsId': '11111111-1111-1111-1111-111111111111',
-          'name': '螺丝',
-          'unitName': '个',
-          'qty': 10,
-          'weight': 1.5,
-          'weightEstimated': true,
-        },
-        <String, dynamic>{
-          'goodsId': '22222222-2222-2222-2222-222222222222',
-          'name': '包装箱',
-          'unitName': '箱',
-          'qty': 2,
-          'weight': 3,
-        },
-      ],
-      'page': 1,
-      'size': 20,
-      'total': 137,
-      'totalPages': 7,
-      if (withTotals)
-        'totals': <Object?>[
-          <String, dynamic>{
-            'key': 'weight',
-            'label': '合计库存重量',
-            'type': 'weight',
-            'groupKey': null,
-            'groups': <Object?>[
-              <String, dynamic>{'unit': null, 'value': 3520},
-            ],
-          },
-          <String, dynamic>{
-            'key': 'weight_unknown_rows',
-            'label': '重量未知',
-            'type': 'count',
-            'groupKey': null,
-            'groups': <Object?>[
-              <String, dynamic>{'unit': null, 'value': 12},
-            ],
-          },
-          <String, dynamic>{
-            'key': 'weight_estimated_rows',
-            'label': '重量含估算',
-            'type': 'count',
-            'groupKey': null,
-            'groups': <Object?>[
-              <String, dynamic>{'unit': null, 'value': 3},
-            ],
-          },
-          <String, dynamic>{
-            'key': 'qty',
-            'label': '合计库存数量',
-            'type': 'number',
-            'groupKey': 'unit_name',
-            'groups': <Object?>[
-              <String, dynamic>{'unit': '个', 'value': 900},
-              <String, dynamic>{'unit': '箱', 'value': 20},
-            ],
-          },
-        ],
-    };
-  }
+  return router;
 }

@@ -424,15 +424,30 @@ class _WarehouseArrivalExceptionsViewState
         !_history &&
         (ref.watch(isSuperAdminProvider) ||
             permissions.contains(Perm.warehouseInboundStockIn));
-    return _loading && result == null
-        ? const UtenSkeletonList()
-        : _error != null && result == null
-        ? UtenEmpty.error(
-            message: _error,
-            actionLabel: '重新加载',
-            onAction: () => _load(1),
-          )
-        : _buildList(result, canBatchStockIn: canBatchStockIn);
+    // 骨架/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
+    // 整条分类栏不得消失），数据到位后照常走联动折叠容器。
+    final Widget fallback;
+    if (_loading && result == null) {
+      fallback = const UtenSkeletonList();
+    } else if (_error != null && result == null) {
+      fallback = UtenEmpty.error(
+        message: _error,
+        actionLabel: '重新加载',
+        onAction: () => _load(1),
+      );
+    } else {
+      return _buildList(result, canBatchStockIn: canBatchStockIn);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.externalHeader != null) ...[
+          widget.externalHeader!,
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        Expanded(child: fallback),
+      ],
+    );
   }
 
   Widget _buildList(

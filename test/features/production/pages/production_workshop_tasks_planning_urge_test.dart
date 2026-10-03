@@ -5,6 +5,9 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -209,6 +212,10 @@ Future<ProviderContainer> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.productionExecutionView,
@@ -227,7 +234,7 @@ Future<ProviderContainer> _pump(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('等待物料'));
+  await tester.tap(find.text('开工准备'));
   await tester.pumpAndSettle();
   return ProviderScope.containerOf(
     tester.element(find.byType(ProductionWorkshopTasksPage)),
@@ -245,7 +252,13 @@ Future<void> _openDetail(WidgetTester tester) async {
 Finder get _urgeButton =>
     find.byKey(const ValueKey('workshop-detail-urge-seg-1'));
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('计划没下单的缺料：状态列品红「等计划下单」、物料列点名、详情里能催', (tester) async {
     final server = _Server();
     final container = await _pump(tester, server);

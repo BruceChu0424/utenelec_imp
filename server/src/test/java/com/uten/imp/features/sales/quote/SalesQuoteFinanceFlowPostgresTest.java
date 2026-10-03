@@ -97,7 +97,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     private static final List<String> SALES_PERMS = List.of(
             "sales_quote:view", "sales_quote:create", "sales_quote:edit", "sales_quote:delete",
             "sales_quote:convert", "sales_quote:reverse",
-            "sales_order:view", "sales_order:create", "sales_order:edit", "sales_order:approve", "notice:read");
+            "sales_order:view", "sales_order:create", "sales_order:edit", "sales_order:delete", "sales_order:approve", "notice:read");
 
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PermissionResolver permissionResolver;
@@ -149,7 +149,7 @@ class SalesQuoteFinanceFlowPostgresTest {
                 maskedPermissions, false, true, false);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(masked, null, masked.getAuthorities()));
-        OrderDetail order = quotes.convertToOrder(quote.getId());
+        OrderDetail order = acceptAndConvert(quote.getId());
         assertThat(order.getItems().getFirst().getExtraColumns().getFirst().value()).isNull();
         assertThat(order.getItems().getFirst().getGoodsNameEn()).isEqualTo("Original clip");
         OrderSaveRequest edit = orderRequest(order);
@@ -161,7 +161,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         var orderReview = orderFinance.review(order.getId());
         assertThat(orderReview.items().getFirst().extraColumns().getFirst().value()).isEqualTo("5");
         assertThat(orderReview.items().getFirst().goodsNameEn()).isEqualTo("Original clip");
-        assertThat(orderReview.items().getFirst().matchesQuote()).isTrue();
+        assertThat(orderReview.items().getFirst().matchesQuote()).as("订货数量由报价 2 改为 3，不能再提示报价一致").isFalse();
     }
 
     // =====================================================================
@@ -169,7 +169,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     // =====================================================================
 
     @Test
-    void quotePricesComeFromTheGoodsMasterAndMissingPricesWaitForFinance() {
+    void salesCanProposeDocumentPricesWithoutChangingTheGoodsMaster() {
         Fixture f = fixture("price");
         loginAs(f.sales());
         UUID priced = goods("报价标价货品", new BigDecimal("10"));
@@ -193,23 +193,30 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(created.getStatusBucket()).isEqualTo("DRAFT");
         assertThat(created.getAllowedActions()).contains("edit", "submit", "delete").doesNotContain("convert");
 
-        // 页面预览价与权威价不一致(改包) → 409; 待定价的行带价格同样 409。
-        QuoteSaveRequest tampered = copy(created, request);
-        tampered.getItems().get(0).setPrice(new BigDecimal("11"));
-        assertConflict(() -> quotes.update(created.getId(), tampered));
-        QuoteSaveRequest tamperedPending = copy(created, request);
-        tamperedPending.getItems().get(1).setPrice(new BigDecimal("5"));
-        assertConflict(() -> quotes.update(created.getId(), tamperedPending));
-
-        // 主档调价后, 同一草稿的既有行保留冻结单价, 新增的同货品行取新价; 行 id 保持不变。
+        QuoteSaveRequest proposed = copy(created, request);
+        proposed.getItems().get(0).setPrice(new BigDecimal("11"));
+        proposed.getItems().get(1).setPrice(new BigDecimal("5"));
+        QuoteDetail repriced = quotes.update(created.getId(), proposed);
+        assertThat(repriced.getItems().getFirst().getPriceSource()).isEqualTo("SALES");
+        assertThat(repriced.getItems().getFirst().getPrice()).isEqualByComparingTo("11");
+        assertThat(repriced.getItems().get(1).getPrice()).isEqualByComparingTo("5");
+        assertThat(jdbc.queryForObject("SELECT price FROM goods WHERE id=?", BigDecimal.class, priced))
+                .isEqualByComparingTo("10");
+        assertConflict(() -> quotes.update(created.getId(), proposed));
         jdbc.update("UPDATE goods SET price = 12 WHERE id = ?", priced);
-        QuoteSaveRequest resave = copy(created, request);
+        QuoteSaveRequest resave = copy(repriced, request);
         resave.getItems().add(line(priced, "1", null, null, null));
         QuoteDetail updated = quotes.update(created.getId(), resave);
         assertThat(updated.getItems().get(0).getId()).isEqualTo(first.getId());
-        assertThat(updated.getItems().get(0).getPrice()).isEqualByComparingTo("10");
+        assertThat(updated.getItems().get(0).getPrice()).isEqualByComparingTo("11");
         assertThat(updated.getItems().get(2).getPrice()).isEqualByComparingTo("12");
         assertThat(updated.getItems().get(1).getId()).isEqualTo(second.getId());
+        assertConflict(() -> quotes.delete(updated.getId(), created.getReviewRevision()));
+        quotes.submit(updated.getId(), new QuoteActionRequest(updated.getReviewRevision()));
+        assertThat(jdbc.queryForObject("""
+                SELECT title FROM notices WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW'
+                  AND audience_user_id = ? AND aggregate_id = ?
+                """, String.class, f.finance(), updated.getId())).startsWith("报价待核价：");
     }
 
     // =====================================================================
@@ -353,32 +360,35 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(resaved.getItems().get(1).isFinancePriced()).isTrue();
         assertThat(resaved.getItems().get(1).getPrice()).isEqualByComparingTo("3.5");
         assertThat(resaved.getStatusBucket()).isEqualTo("FINANCE_REJECTED");
-        quotes.submit(quoteId, new QuoteActionRequest(5));
+        quotes.submit(quoteId, new QuoteActionRequest(6));
 
         loginAs(f.finance());
         var claim2 = claims.claim(CLAIM, quoteId.toString());
-        QuoteFinanceReviewDto confirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(6, claim2.claimId(), "按 9.2 折"));
+        QuoteFinanceReviewDto confirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(7, claim2.claimId(), "按 9.2 折"));
         assertThat(confirmed.statusBucket()).isEqualTo("APPROVED");
         assertThat(confirmed.financeActions()).containsExactly("reopen");
         assertThat(confirmed.financeRemark()).isEqualTo("按 9.2 折");
         assertThat(claims.activeClaimView(CLAIM, quoteId.toString())).isEmpty();
 
         // 财务撤销确认 → 待核价, 再确认: 上次确认折扣可对照。
-        finance.reopen(quoteId, new QuoteActionRequest(7, "客户追加折扣"));
+        finance.reopen(quoteId, new QuoteActionRequest(8, "客户追加折扣"));
         var claim3 = claims.claim(CLAIM, quoteId.toString());
-        QuoteFinanceReviewDto reconfirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(8, claim3.claimId(), null));
+        QuoteFinanceReviewDto reconfirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(9, claim3.claimId(), null));
         assertThat(reconfirmed.lines().getFirst().lastFinanceConfirmedDiscount()).isEqualByComparingTo("0.92");
         assertThat(reconfirmed.revisions()).extracting(r -> r.action()).containsExactly(
-                "SUBMIT", "WITHDRAW", "SUBMIT", "FINANCE_EDIT", "RETURN", "SUBMIT", "CONFIRM",
+                "SUBMIT", "WITHDRAW", "SUBMIT", "FINANCE_EDIT", "RETURN", "SALES_EDIT", "SUBMIT", "CONFIRM",
                 "FINANCE_REOPEN", "CONFIRM");
 
         loginAs(f.sales());
+        assertThat(quotes.counts().awaitingCustomerConfirmation()).isEqualTo(1);
+        assertThat(quotes.counts().awaitingConversion()).isZero();
+        QuoteDetail accepted = quotes.customerConfirm(quoteId, new QuoteActionRequest(10));
         assertThat(quotes.counts().awaitingConversion()).isEqualTo(1);
         QuoteQueryFilter awaiting = new QuoteQueryFilter(null, null, null, null, null, null, "awaiting_conversion");
         assertThat(quotes.list(awaiting, 1, 50, null, null).getItems())
                 .as("「从报价引入」的筛选与徽章同口径").extracting(item -> item.getId()).containsExactly(quoteId);
-        assertThat(quotes.detail(quoteId).getAllowedActions()).contains("convert", "reopen", "reverse");
-        OrderDetail order = quotes.convertToOrder(quoteId);
+        assertThat(quotes.detail(quoteId).getAllowedActions()).contains("convert", "reopen", "cancel");
+        OrderDetail order = quotes.convertToOrder(quoteId, new QuoteActionRequest(accepted.getReviewRevision()));
         assertThat(quotes.counts().awaitingConversion()).isZero();
         assertThat(quotes.list(awaiting, 1, 50, null, null).getItems()).isEmpty();
         assertThat(order.getSourceQuoteId()).isEqualTo(quoteId);
@@ -424,7 +434,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         var orderReview = orderFinance.review(order.getId());
         assertThat(orderReview.sourceQuote().billNo()).isEqualTo(draft.getBillNo());
         assertThat(orderReview.sourceQuote().allLinesMatch()).isFalse();
-        assertThat(orderReview.items().getFirst().matchesQuote()).isTrue();
+        assertThat(orderReview.items().getFirst().matchesQuote()).as("订货数量由报价 12 改为 15，不能再提示报价一致").isFalse();
         assertThat(orderReview.items().getFirst().quoteDiscount()).isEqualByComparingTo("0.92");
         assertThat(orderReview.items().getLast().matchesQuote()).isFalse();
         assertThat(orderReview.clientFileCurrency()).isEqualTo("CNY");
@@ -436,7 +446,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         UUID listed = goods("重新修改货品", new BigDecimal("8"));
         loginAs(f.sales());
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(listed, "3", null, null, null)));
-        quotes.submit(draft.getId(), null);
+        quotes.submit(draft.getId(), new QuoteActionRequest(draft.getReviewRevision()));
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
         finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
@@ -476,7 +486,7 @@ class SalesQuoteFinanceFlowPostgresTest {
 
         // 库里已有外币草稿(直接写库模拟): 提交核价同样拦下, 不等财务确认后转订货单才报错。
         jdbc.update("UPDATE sales_quotes SET currency_id = ? WHERE id = ?", usd, draft.getId());
-        assertCode(() -> quotes.submit(draft.getId(), null), ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> quotes.submit(draft.getId(), new QuoteActionRequest(draft.getReviewRevision())), ErrorCode.VALIDATION_FAILED);
         assertThat(jdbc.queryForObject("SELECT status FROM sales_quotes WHERE id = ?", Integer.class, draft.getId()))
                 .isZero();
     }
@@ -552,7 +562,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(currentPermissions()).doesNotContain("sales_order:price:view");
 
         QuoteSaveRequest request = quoteRequest(f.maskedClient(),
-                line(listed, "1", null, "0.5", "8"),   // 请求折扣被忽略, 按 8 ÷ 10 推出 0.8
+                line(listed, "1", null, null, "8"),    // 按文件单价 8 ÷ 10 推出 0.8
                 line(listed, "1", null, null, "1"),    // 0.1 不合理 → 原价 + 备注提示
                 line(listed, "1", null, null, null));  // 没有文件单价 → 原价
         QuoteDetail created = quotes.create(request);
@@ -572,6 +582,8 @@ class SalesQuoteFinanceFlowPostgresTest {
             item.setClientPrice(null);
         });
         resave.getItems().getFirst().setDiscount(new BigDecimal("1"));
+        assertForbidden(() -> quotes.update(created.getId(), resave));
+        resave.getItems().getFirst().setDiscount(null);
         quotes.update(created.getId(), resave);
         assertThat(storedDiscounts(created.getId()).getFirst()).isEqualByComparingTo("0.75");
         assertThat(jdbc.queryForObject("SELECT client_price FROM sales_quote_items WHERE id = ?",
@@ -742,7 +754,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         QuoteSaveRequest undo = copy(quotes.detail(id), request);
         undo.getItems().getFirst().setDiscount(new BigDecimal("0.95"));
         quotes.update(id, undo);
-        quotes.submit(id, new QuoteActionRequest(6));                                                        // 7
+        quotes.submit(id, new QuoteActionRequest(7));                                                        // 7
         loginAs(f.finance());
         QuoteFinanceReviewDto resubmitted = finance.review(id);
         QuoteFinanceReviewDto.Line changed = resubmitted.lines().getFirst();
@@ -772,7 +784,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         QuoteSaveRequest back = copy(quotes.detail(withdrawn), secondRequest);
         back.getItems().getFirst().setDiscount(new BigDecimal("0.95"));
         quotes.update(withdrawn, back);
-        quotes.submit(withdrawn, new QuoteActionRequest(3));                                                // 4
+        quotes.submit(withdrawn, new QuoteActionRequest(4));                                                // 4
         loginAs(f.finance());
         QuoteFinanceReviewDto.Line again = finance.review(withdrawn).lines().getFirst();
         assertThat(again.lastFinanceDiscount()).isEqualByComparingTo("0.9");
@@ -804,8 +816,11 @@ class SalesQuoteFinanceFlowPostgresTest {
         // 转单不学习; 转单后第一次保存(只改数量)也不把报价时已学过的文件原文再记一次。
         loginAs(f.sales());
         clearInvocations(learning);
-        OrderDetail order = quotes.convertToOrder(draft.getId());
+        OrderDetail order = acceptAndConvert(draft.getId());
         assertThat(order.getItems().getFirst().getClientModel()).isEqualTo("GZ23/D");
+        loginAs(f.finance());
+        assertThat(orderFinance.review(order.getId()).matchesQuote()).as("尚未改量时与客户确认报价一致").isTrue();
+        loginAs(f.sales());
         OrderSaveRequest qty = orderRequest(order);
         qty.getItems().getFirst().setQty(new BigDecimal("12"));
         orders.update(order.getId(), qty);
@@ -831,10 +846,10 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(source.billNo()).isEqualTo(draft.getBillNo());
         assertThat(source.financeConfirmedByName()).isNotBlank();
         assertThat(source.financeConfirmedAt()).isNotNull();
-        assertThat(source.allLinesMatch()).isTrue();
-        assertThat(listed1.getFirst().matchesQuote()).isTrue();
-        assertThat(orderFinance.review(order.getId()).sourceQuote().allLinesMatch()).isTrue();
-        assertThat(orderFinance.review(order.getId()).matchesQuote()).isTrue();
+        assertThat(source.allLinesMatch()).as("订货数量由报价 10 改成 12").isFalse();
+        assertThat(listed1.getFirst().matchesQuote()).isFalse();
+        assertThat(orderFinance.review(order.getId()).sourceQuote().allLinesMatch()).isFalse();
+        assertThat(orderFinance.review(order.getId()).matchesQuote()).isFalse();
 
         // 已审订单修订: 改报价核定行的折扣 409; 再加一行同货品同价同折扣(报价外) → 列表与审核页都「不一致」。
         loginAs(f.sales());
@@ -861,7 +876,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(listed2.getFirst().matchesQuote()).isFalse();
         var reviewAfter = orderFinance.review(order.getId());
         assertThat(reviewAfter.sourceQuote().allLinesMatch()).isFalse();
-        assertThat(reviewAfter.items()).extracting(line -> line.matchesQuote()).containsExactly(true, false);
+        assertThat(reviewAfter.items()).extracting(line -> line.matchesQuote()).containsExactly(false, false);
     }
 
     @Test
@@ -1053,6 +1068,175 @@ class SalesQuoteFinanceFlowPostgresTest {
     // 夹具
     // =====================================================================
 
+    @Test void deletedQuoteRetainsNativeMaskedDetailAndScopedFiltersWithNoActions() {
+        Fixture f=fixture("retained-history");loginAs(f.masked());
+        UUID goods=goods("历史品名",new BigDecimal("25.00"));
+        QuoteDetail draft=quotes.create(quoteRequest(f.maskedClient(),line(goods,"2",null,null,"25")));
+        quotes.delete(draft.getId(), draft.getReviewRevision());
+        assertNotFound(()->quotes.detail(draft.getId()));
+        QuoteDetail history=quotes.detailHistory(draft.getId());
+        assertThat(history.isDeleted()).isTrue();
+        assertThat(history.isHistoryReadOnly()).isTrue();
+        assertThat(history.isWritable()).isFalse();
+        assertThat(history.getStatus()).isEqualTo((short)0);
+        assertThat(history.isPriceMasked()).isTrue();
+        assertThat(history.getTotalLocal()).isNull();
+        assertThat(history.getItems()).hasSize(1);
+        assertThat(history.getItems().getFirst().getQty()).isEqualByComparingTo("2");
+        var filter=new QuoteQueryFilter(null,f.maskedClient(),null,null,null,draft.getBillNo(),null);
+        assertThat(quotes.list(filter,1,20,null,null).getItems()).isEmpty();
+        var page=quotes.list(filter.withHistory(false,true),1,20,null,null);
+        assertThat(page.getItems()).hasSize(1);
+        assertThat(page.getItems().getFirst().isDeleted()).isTrue();
+        assertThat(page.getItems().getFirst().isWritable()).isFalse();
+        assertThat(quotes.facets(filter.withHistory(false,true)).get("billNo")).isNotEmpty();
+        loginAs(f.outsider());assertNotFound(()->quotes.detailHistory(draft.getId()));
+    }
+
+    @Test
+    void customerAcceptanceIsRevisionBoundAndFinanceChangesInvalidateIt() {
+        Fixture f = fixture("customer-accept");
+        UUID goods = goods("议价货品", BigDecimal.TEN);
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", "12", "0.8", null)));
+        assertConflict(() -> quotes.submit(draft.getId(), null));
+        assertConflict(() -> quotes.customerConfirm(draft.getId(), new QuoteActionRequest(0)));
+        QuoteDetail submitted = quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, draft.getId().toString());
+        var confirmed = finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(submitted.getReviewRevision(), claim.claimId(), null));
+        loginAs(f.sales());
+        assertConflict(() -> quotes.convertToOrder(draft.getId(), new QuoteActionRequest(confirmed.reviewRevision())));
+        assertConflict(() -> quotes.customerConfirm(draft.getId(), new QuoteActionRequest(0)));
+        QuoteDetail accepted = quotes.customerConfirm(draft.getId(), new QuoteActionRequest(confirmed.reviewRevision()));
+        assertThat(accepted.getCustomerAcceptedRevision()).isEqualTo(accepted.getReviewRevision());
+        assertThat(accepted.getAllowedActions()).contains("convert").doesNotContain("customerConfirm");
+        assertConflict(() -> quotes.convertToOrder(draft.getId(), new QuoteActionRequest(confirmed.reviewRevision())));
+        loginAs(f.finance());
+        var reopened = finance.reopen(draft.getId(), new QuoteActionRequest(accepted.getReviewRevision()));
+        loginAs(f.sales());
+        assertThat(quotes.detail(draft.getId()).getCustomerAcceptedAt()).isNull();
+        assertBusiness(() -> quotes.convertToOrder(draft.getId(), new QuoteActionRequest(reopened.reviewRevision())));
+    }
+
+    @Test
+    void financeDealPriceUsesTheSalesBasePriceWithoutResettingItToMaster() {
+        Fixture f = fixture("sales-base");
+        UUID goods = goods("单据价基准", new BigDecimal("100"));
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", "80", "1", null)));
+        quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, draft.getId().toString());
+        var reviewed = finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(draft.getItems().getFirst().getId(), null, new BigDecimal("72"), null, null))));
+        assertThat(reviewed.lines().getFirst().listPrice()).isEqualByComparingTo("80");
+        assertThat(reviewed.lines().getFirst().discount()).isEqualByComparingTo("0.9");
+        assertThat(reviewed.lines().getFirst().priceSource()).isEqualTo("SALES");
+        assertThat(reviewed.lines().getFirst().amount()).isEqualByComparingTo("144");
+    }
+
+    @Test
+    void financeQuantityPriceDiscountAndDeletionPreserveInspectableSnapshots() {
+        Fixture f = fixture("cell-diff");
+        UUID first = goods("保留货品", BigDecimal.TEN);
+        UUID second = goods("删除货品", BigDecimal.TEN);
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(first, "2", "12", "0.8", null),
+                line(second, "3", "8", "1", null)));
+        quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, draft.getId().toString());
+        var firstId = draft.getItems().getFirst().getId();
+        var secondId = draft.getItems().getLast().getId();
+        assertCode(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(firstId, null, null, null, null, BigDecimal.ZERO, null, null)))),
+                ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(firstId, null, null, null, null, null, null, true),
+                new QuoteFinanceEditRequest.Line(secondId, null, null, null, null, null, null, true)))),
+                ErrorCode.VALIDATION_FAILED);
+        var edited = finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(firstId, new BigDecimal("0.9"), null, null, null,
+                        new BigDecimal("5"), new BigDecimal("11"), null),
+                new QuoteFinanceEditRequest.Line(secondId, null, null, null, null, null, null, true))));
+        assertThat(edited.lines()).hasSize(1);
+        assertThat(edited.lines().getFirst().amount()).isEqualByComparingTo("49.5");
+        assertThat(edited.revisions().getFirst().snapshot().path("lines")).hasSize(2);
+        assertThat(edited.revisions().getLast().snapshot().path("lines")).hasSize(1);
+        assertThat(edited.revisions().getFirst().snapshot().path("lines").get(0).path("price").asText()).isEqualTo("12");
+        assertThat(edited.revisions().getLast().snapshot().path("lines").get(0).path("price").asText()).isEqualTo("11");
+        assertThat(edited.revisions().getLast().snapshot().path("lines").get(0).path("unitName").asText()).isEqualTo("个");
+        assertThat(jdbc.queryForObject("SELECT price FROM goods WHERE id=?", BigDecimal.class, first)).isEqualByComparingTo("10");
+        assertConflict(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of())));
+        finance.returnToSales(draft.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), "请确认新方案"));
+        loginAs(f.sales());
+        AuthUser original = (AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var permissions = new java.util.HashSet<>(original.getPermissions());
+        permissions.remove("sales_order:price:view");
+        AuthUser masked = new AuthUser(original.getId(), original.getEmployeeId(), original.getLoginAccount(), permissions, false, true, false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(masked, null, masked.getAuthorities()));
+        var snapshot = quotes.detail(draft.getId()).getRevisions().getFirst().snapshot();
+        assertThat(snapshot.has("totalOriginal")).isFalse();
+        assertThat(snapshot.path("lines").get(0).has("price")).isFalse();
+        assertThat(snapshot.path("lines").get(0).has("discount")).isFalse();
+    }
+
+    @Test
+    void cancellationRequiresReasonRevisionAndReleasedClaimAndRemainsFinanceReadable() {
+        Fixture f = fixture("cancel");
+        UUID goods = goods("取消货品", BigDecimal.TEN);
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", null, null, null)));
+        assertCode(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(0, "  ")), ErrorCode.VALIDATION_FAILED);
+        quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, draft.getId().toString());
+        loginAs(f.sales());
+        assertConflict(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(0, "客户放弃")));
+        assertThatThrownBy(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(1, "客户放弃"))).isInstanceOf(ApiException.class);
+        loginAs(f.finance());
+        claims.release(CLAIM, draft.getId().toString(), claim.claimId());
+        loginAs(f.sales());
+        QuoteDetail cancelled = quotes.cancel(draft.getId(), new QuoteActionRequest(1, "客户放弃"));
+        assertThat(cancelled.getStatus()).isEqualTo((short) -1);
+        assertThat(cancelled.getCancelReason()).isEqualTo("客户放弃");
+        assertThat(cancelled.getAllowedActions()).doesNotContain("convert", "submit", "edit", "cancel");
+        loginAs(f.finance());
+        assertThat(finance.review(draft.getId()).financeActions()).isEmpty();
+        assertThat(finance.review(draft.getId()).revisions().getLast().action()).isEqualTo("CANCEL");
+    }
+
+    @Test
+    void expiredQuotesCannotBeAcceptedAndHistoricalOrdersRequireIndependentRequote() {
+        Fixture f = fixture("requote");
+        UUID goods = goods("重新议价货品", BigDecimal.TEN);
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", "12", "0.8", null)));
+        quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, draft.getId().toString());
+        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        jdbc.update("UPDATE sales_quotes SET valid_until=DATE '2020-01-01' WHERE id=?", draft.getId());
+        loginAs(f.sales());
+        assertConflict(() -> quotes.customerConfirm(draft.getId(), new QuoteActionRequest(2)));
+        jdbc.update("UPDATE sales_quotes SET valid_until=NULL WHERE id=?", draft.getId());
+        OrderDetail order = acceptAndConvert(draft.getId());
+        QuoteDetail original = quotes.detail(draft.getId());
+        assertConflict(() -> quotes.requote(draft.getId(), new QuoteActionRequest(original.getReviewRevision())));
+        orders.delete(order.getId());
+        assertConflict(() -> quotes.reopen(draft.getId(), new QuoteActionRequest(original.getReviewRevision())));
+        QuoteDetail copy = quotes.requote(draft.getId(), new QuoteActionRequest(original.getReviewRevision(), "客户要求重新谈价"));
+        assertThat(copy.getId()).isNotEqualTo(draft.getId());
+        assertThat(copy.getOriginQuoteId()).isEqualTo(draft.getId());
+        assertThat(copy.getCustomerAcceptedAt()).isNull();
+        assertThat(copy.getFinanceConfirmedAt()).isNull();
+        assertThat(copy.getItems().getFirst().getPrice()).isEqualByComparingTo("12");
+        assertThat(quotes.requote(draft.getId(), new QuoteActionRequest(original.getReviewRevision())).getId()).isEqualTo(copy.getId());
+        assertThat(quotes.detail(draft.getId()).getItems().getFirst().getPrice()).isEqualByComparingTo("12");
+        assertThat(jdbc.queryForObject("SELECT source_quote_id FROM sales_orders WHERE id=?", UUID.class, order.getId())).isEqualTo(draft.getId());
+    }
+
     private record Fixture(UUID sales, UUID masked, UUID finance, UUID outsider,
                            UUID client, UUID maskedClient) {
     }
@@ -1230,6 +1414,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     /** 按已保存详情重建保存请求(带行 id, 价格留空), 表头沿用原请求。 */
     private static QuoteSaveRequest copy(QuoteDetail detail, QuoteSaveRequest header) {
         QuoteSaveRequest request = new QuoteSaveRequest();
+        request.setExpectedRevision(detail.getReviewRevision());
         request.setBillDate(header.getBillDate());
         request.setClientId(header.getClientId());
         request.setContractNo(header.getContractNo());
@@ -1251,6 +1436,12 @@ class SalesQuoteFinanceFlowPostgresTest {
         }
         request.setItems(lines);
         return request;
+    }
+
+    private OrderDetail acceptAndConvert(UUID id) {
+        QuoteDetail current = quotes.detail(id);
+        QuoteDetail accepted = quotes.customerConfirm(id, new QuoteActionRequest(current.getReviewRevision()));
+        return quotes.convertToOrder(id, new QuoteActionRequest(accepted.getReviewRevision()));
     }
 
     private static OrderSaveRequest orderRequest(OrderDetail order) {

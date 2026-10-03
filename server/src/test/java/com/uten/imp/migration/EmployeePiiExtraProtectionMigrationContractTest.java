@@ -77,9 +77,13 @@ class EmployeePiiExtraProtectionMigrationContractTest {
                 .contains("if (cipher == null || cipher.isblank()) { return null;");
         assertThat(onboarding)
                 .contains("if (isblank(loginaccount))")
-                // ADR-110: 初始密码改为系统随机生成, 不再由证件号推导, 也就不存在「推不出密码」的分支。
-                .contains("temporarypasswordgenerator.generate()")
-                .doesNotContain("lastsix(");
+                // New onboarding/provisioning uses the normalized original identity; invalid/short identity must refuse.
+                .contains("initialpassword(p.idtype(), normalizedidnumber)")
+                .contains("initialpassword(e.getidtype(), tx.decrypt(s.getidcardenc()))")
+                .contains("idcardutil.normalize(idnumber)")
+                .contains("normalized == null || normalized.length() < 6")
+                .contains("!idcardutil.isvalid(normalized)")
+                .contains("return normalized.substring(normalized.length() - 6)");
         assertThat(writer)
                 .contains("if (idnumber == null || idnumber.isblank())")
                 .contains("chinamobilenumber.normalize(phone)")

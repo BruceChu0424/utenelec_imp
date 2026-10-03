@@ -7,6 +7,7 @@ import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
+import com.uten.imp.features.production.fulfillment.ProductionOrderMaterialGate;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -65,6 +66,7 @@ public class ProductionDrawRequestService {
         String requestHash = selectionRequestHash(items, request.previewFingerprint(), request.lines());
         Result replay = replay(request.idempotencyKey(), requestHash, items);
         if (replay != null) return replay;
+        before.forEach(segment -> ProductionOrderMaterialGate.requireResolved(segment.binMaterialState()));
         // 线边仓直送料的草稿领料单在这里就地出库(V595)：系统对账提升齐套时没有用户身份出库，
         // 车间提交领料申请是第一个带身份的动作；仓库只收到真正落在仓库的那部分。
         // 出库走仓库单据的审核/出库链，须先按计划预锁完整履约足迹(只在真有线边仓草稿时)。
@@ -80,6 +82,7 @@ public class ProductionDrawRequestService {
         requireAccess(locked); // Assignment or plan state may have changed while acquiring locks.
         // Explicit route confirmation gates picking; independent batches use their own request.
         for (Segment segment : locked) {
+            ProductionOrderMaterialGate.requireResolved(segment.binMaterialState());
             String route = (String) em.createNativeQuery("""
                     SELECT start_route FROM production_execution_segments
                     WHERE id = :id AND is_deleted = FALSE
@@ -191,7 +194,8 @@ public class ProductionDrawRequestService {
                        package.status, plan.status, plan.is_closed, plan.is_canceled, plan.is_stopped,
                        segment.material_requirement_mode,
                        plan.bill_no, segment.segment_code, department.name,
-                       goods.code, goods.name, segment.planned_qty, segment.start_route
+                       goods.code, goods.name, segment.planned_qty, segment.start_route,
+                       fn_segment_bin_material_state(segment.id)
                 FROM production_execution_segments segment
                 JOIN production_plans plan ON plan.id=segment.plan_id AND NOT plan.is_deleted
                 JOIN production_planning_packages package ON package.id=segment.package_id AND NOT package.is_deleted
@@ -206,7 +210,7 @@ public class ProductionDrawRequestService {
                 str(row[8]), ((Number) row[9]).intValue(), Boolean.TRUE.equals(row[10]),
                 Boolean.TRUE.equals(row[11]), Boolean.TRUE.equals(row[12]), str(row[13]),
                 str(row[14]), str(row[15]), str(row[16]), str(row[17]), str(row[18]), decimal(row[19]),
-                str(row[20]))).toList();
+                str(row[20]), str(row[21]))).toList();
     }
 
     private void requireAccess(List<Segment> segments) {
@@ -227,6 +231,7 @@ public class ProductionDrawRequestService {
         Map<UUID, Item> requested = new LinkedHashMap<>();
         items.forEach(item -> requested.put(item.segmentId(), item));
         for (Segment segment : segments) {
+            ProductionOrderMaterialGate.requireResolved(segment.binMaterialState());
             if (workshop == null || !workshop.equals(segment.workshopId())) {
                 throw validation("一次批量领料只能选择同一车间的任务，请按车间分别办理");
             }
@@ -411,5 +416,5 @@ public class ProductionDrawRequestService {
                            UUID workshopId, UUID responsibleId, UUID makerId, String packageStatus,
                            int planStatus, boolean closed, boolean canceled, boolean stopped, String materialMode,
                            String planNo, String code, String workshopName, String productCode,
-                           String productName, BigDecimal qty, String route) {}
+                           String productName, BigDecimal qty, String route, String binMaterialState) {}
 }

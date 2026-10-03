@@ -22,6 +22,9 @@ import java.util.UUID;
 @Setter
 public class QuoteSaveRequest {
 
+    /** Existing quote revision seen by the editor; required on updates. */
+    private Integer expectedRevision;
+
     private String billNo;
 
     @NotNull

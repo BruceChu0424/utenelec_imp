@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'package:uten_imp/components/layout/uten_paged_picker_list.dart';
+import 'package:uten_imp/features/production/models/production_fqc_replenishment_task.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -102,9 +104,68 @@ void main() {
 
     expect(api.requestedPages, containsAllInOrder([1, 2]));
     expect(find.textContaining('PLAN-2'), findsOneWidget);
-    expect(find.text('2 / 2'), findsOneWidget);
+    expect(
+      tester
+          .widget<UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>>(
+            find.byKey(const Key('fqc-replenishment-task-list')),
+          )
+          .currentPage,
+      2,
+    );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'FQC task sheet appends, retries, and prepends with stable task identities',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(720, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ReplenishmentApi(
+        status: 'AWAITING_CONFIRMATION',
+        pages: 3,
+        failFirstPageTwo: true,
+      );
+      final router = _router();
+      addTearDown(router.dispose);
+      await _pump(
+        tester,
+        api: api,
+        router: router,
+        permissions: const {Perm.productionFqcReplenishmentView},
+      );
+      await tester.tap(find.text('处理待办'));
+      await tester.pumpAndSettle();
+      final finder = find.byKey(const Key('fqc-replenishment-task-list'));
+      UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask> list() =>
+          tester.widget<
+            UtenPagedPickerList<ProductionFqcReplenishmentMaterialTask>
+          >(finder);
+      final next = list().rowsController!.loadNextPage();
+      await tester.pumpAndSettle();
+      await next;
+      expect(list().rowsController!.items.map((row) => row.authorizationId), [
+        'authorization-1',
+      ]);
+      await tester.tap(find.descendant(of: finder, matching: find.text('重试')));
+      await tester.pumpAndSettle();
+      expect(list().rowsController!.items.map((row) => row.authorizationId), [
+        'authorization-1',
+        'authorization-2',
+      ]);
+      await list().onPageChange(3);
+      await tester.pumpAndSettle();
+      final previous = list().rowsController!.loadPreviousPage();
+      await tester.pumpAndSettle();
+      await previous;
+      expect(list().rowsController!.items.map((row) => row.authorizationId), [
+        'authorization-2',
+        'authorization-3',
+      ]);
+      expect(api.requestedPages, [1, 2, 2, 3, 2]);
+      expect(find.text('确认用料并生成领料'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('ambiguous confirmation retry reuses the same idempotency key', (
     tester,
@@ -247,12 +308,15 @@ class _ReplenishmentApi extends ApiClient {
     this.pages = 1,
     this.failFirstConfirmation = false,
     this.becomeReadyAfterFirstLoad = false,
+    this.failFirstPageTwo = false,
   }) : super(Dio());
 
   final String status;
   final int pages;
   final bool failFirstConfirmation;
   final bool becomeReadyAfterFirstLoad;
+  final bool failFirstPageTwo;
+  bool _pageTwoFailed = false;
   String? createdAuthorizationId;
   int materialTaskLoads = 0;
   final List<int> requestedPages = [];
@@ -281,7 +345,7 @@ class _ReplenishmentApi extends ApiClient {
         (becomeReadyAfterFirstLoad && materialTaskLoads > 1 ? 'READY' : status);
     return {
       'taskId': 'task-$page',
-      'authorizationId': 'authorization-1',
+      'authorizationId': 'authorization-$page',
       'dispositionCode': 'SCRAP',
       'quantity': 2,
       'warehouseId': 'warehouse-1',
@@ -326,6 +390,10 @@ class _ReplenishmentApi extends ApiClient {
       materialTaskLoads += 1;
       final page = (query?['page'] as num?)?.toInt() ?? 1;
       requestedPages.add(page);
+      if (page == 2 && failFirstPageTwo && !_pageTwoFailed) {
+        _pageTwoFailed = true;
+        throw NetworkException();
+      }
       return {
         'items': [materialTask(page: page)],
         'page': page,

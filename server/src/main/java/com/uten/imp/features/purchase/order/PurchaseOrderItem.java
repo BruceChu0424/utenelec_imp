@@ -72,6 +72,9 @@ public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEn
     @Column(name = "price", columnDefinition = "numeric")
     private BigDecimal price;
 
+    @Column(name = "total_amount_input", columnDefinition = "numeric")
+    private BigDecimal totalAmountInput;
+
     @Column(name = "amount_original", columnDefinition = "numeric")
     private BigDecimal amountOriginal;
 

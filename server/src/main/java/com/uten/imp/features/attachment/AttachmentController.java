@@ -50,6 +50,7 @@ public class AttachmentController {
     private final AttachmentService service;
     private final AttachmentReconciliationService reconciliationService;
     private final AttachmentPreviewService previewService;
+    private final com.uten.imp.audit.AuditDetailViewRecorder detailViews;
 
     @PostMapping("/presign")
     @PreAuthorize("hasAuthority('attachment:upload')")
@@ -66,8 +67,24 @@ public class AttachmentController {
     @GetMapping
     @PreAuthorize("hasAuthority('attachment:view')")
     public List<AttachmentDto> list(@RequestParam String ownerType,
-                                    @RequestParam UUID ownerId) {
-        return service.list(ownerType, ownerId);
+                                    @RequestParam UUID ownerId,@RequestParam(defaultValue="false") boolean includeDeleted,
+                                    @RequestParam(defaultValue="false") boolean onlyDeleted) {
+        return service.list(ownerType,ownerId,includeDeleted,onlyDeleted);
+    }
+    @GetMapping("/{id}/history") @PreAuthorize("hasAuthority('attachment:view')")
+    public AttachmentDto history(@PathVariable UUID id){
+        AttachmentDto resolved=service.history(id);
+        detailViews.record("view_attachment_history_detail","attachments",id,null,null,"附件历史");
+        return resolved;
+    }
+    @GetMapping("/{id}/history/download") @PreAuthorize("hasAuthority('attachment:download')")
+    public ResponseEntity<Resource> historyDownload(@PathVariable UUID id) {
+        var download=service.openHistory(id);
+        String encoded=URLEncoder.encode(download.fileName(),StandardCharsets.UTF_8).replace("+","%20");
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(download.contentType())).contentLength(download.sizeBytes())
+                .header(HttpHeaders.CONTENT_DISPOSITION,"attachment; filename*=UTF-8''"+encoded)
+                .header("X-Content-Type-Options","nosniff").header(HttpHeaders.CACHE_CONTROL,"private, no-store")
+                .body(new InputStreamResource(download.stream()));
     }
 
     @GetMapping("/{id}/download-grant")

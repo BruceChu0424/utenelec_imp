@@ -8,13 +8,30 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/production/pages/production_plan_detail_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+
+class _AuthenticatedSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'reader', code: 'reader', name: '当前读者'),
+  );
+}
+
+class _ConfirmedSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+}
 
 /// 记录请求路径; 字典/货品查询/员工详情挂起, 直到测试手动放行。
 class _GatedApi {
@@ -102,6 +119,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_AuthenticatedSession.new),
+          sessionSnapshotProvider.overrideWith(_ConfirmedSnapshot.new),
+          apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
           apiClientProvider.overrideWithValue(api),
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),
@@ -158,6 +178,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          sessionProvider.overrideWith(_AuthenticatedSession.new),
+          sessionSnapshotProvider.overrideWith(_ConfirmedSnapshot.new),
           productionPlanRepositoryProvider.overrideWithValue(
             ProductionPlanRepository(api),
           ),

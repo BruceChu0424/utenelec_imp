@@ -510,6 +510,10 @@ class ProductionDailyReportDetail {
     this.canceled = false,
     this.sourceDocNo,
     this.rowVersion = 0,
+    this.rowVersionAvailable = false,
+    this.approvalCommandVersion,
+    this.approvalCapabilityMalformed = false,
+    this.approvalReceipt,
     this.items = const [],
     this.materialUsages = const [],
     this.surplusReturnRequested = false,
@@ -554,6 +558,20 @@ class ProductionDailyReportDetail {
   final bool canceled;
   final String? sourceDocNo;
   final int rowVersion;
+
+  /// The editing fallback value must not impersonate a server-provided approval version.
+  final bool rowVersionAvailable;
+  final int? approvalCommandVersion;
+  final bool approvalCapabilityMalformed;
+  final ProductionDailyReportApprovalReceipt? approvalReceipt;
+
+  bool get supportsReviewedApproval =>
+      !approvalCapabilityMalformed && approvalCommandVersion == 2;
+  bool get supportsLegacyApproval =>
+      !approvalCapabilityMalformed &&
+      (approvalCommandVersion == null || approvalCommandVersion == 1);
+  bool get canFreezeReviewedApproval =>
+      supportsReviewedApproval && rowVersionAvailable && rowVersion >= 0;
   final List<ProductionDailyReportItem> items;
 
   /// V583 报工同页登记的本次实际用料；历史日报为空。
@@ -593,6 +611,18 @@ class ProductionDailyReportDetail {
     canceled: (json['canceled'] as bool?) ?? false,
     sourceDocNo: json['sourceDocNo'] as String?,
     rowVersion: _asInt(json['rowVersion']) ?? 0,
+    rowVersionAvailable:
+        json['rowVersion'] is int && (json['rowVersion'] as int) >= 0,
+    approvalCommandVersion: _asInt(json['approvalCommandVersion']),
+    approvalCapabilityMalformed:
+        json['approvalCommandVersion'] != null &&
+        (json['approvalCommandVersion'] is! int ||
+            (json['approvalCommandVersion'] as int) < 1),
+    approvalReceipt: json['approvalReceipt'] is Map
+        ? ProductionDailyReportApprovalReceipt.fromJson(
+            Map<String, dynamic>.from(json['approvalReceipt'] as Map),
+          )
+        : null,
     items:
         (json['items'] as List?)
             ?.map(
@@ -621,6 +651,85 @@ class ProductionDailyReportDetail {
       for (final action in (json['allowedActions'] as List? ?? const []))
         if (action is String) action,
     },
+  );
+}
+
+class ProductionDailyReportApprovalReceipt {
+  const ProductionDailyReportApprovalReceipt({
+    required this.reportId,
+    required this.idempotencyKey,
+    required this.commandVersion,
+    required this.reviewedVersion,
+    required this.replay,
+    this.metadataMalformed = false,
+    this.reviewProtection,
+  });
+  final String reportId;
+  final String idempotencyKey;
+  final int? commandVersion;
+  final int? reviewedVersion;
+  final bool replay;
+  final bool metadataMalformed;
+  final String? reviewProtection;
+
+  bool get legacy => commandVersion == null || commandVersion == 1;
+  bool get valid =>
+      !metadataMalformed &&
+      reportId.isNotEmpty &&
+      idempotencyKey.isNotEmpty &&
+      (legacy
+          ? reviewedVersion == null &&
+                (reviewProtection == null ||
+                    reviewProtection == 'LEGACY_UNVERSIONED')
+          : commandVersion == 2 &&
+                reviewedVersion != null &&
+                reviewedVersion! >= 0 &&
+                (reviewProtection == null ||
+                    reviewProtection == 'REVIEWED_VERSION'));
+
+  factory ProductionDailyReportApprovalReceipt.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    bool invalidInteger(Object? value) =>
+        value != null && (value is! int || value < 0);
+    return ProductionDailyReportApprovalReceipt(
+      reportId: json['reportId'] as String? ?? '',
+      idempotencyKey: json['idempotencyKey'] as String? ?? '',
+      commandVersion: _asInt(json['commandVersion']),
+      reviewedVersion: _asInt(json['reviewedVersion']),
+      replay: json['replay'] == true,
+      reviewProtection: json['reviewProtection'] as String?,
+      metadataMalformed:
+          invalidInteger(json['commandVersion']) ||
+          invalidInteger(json['reviewedVersion']),
+    );
+  }
+}
+
+class ProductionDailyReportApprovalResolution {
+  const ProductionDailyReportApprovalResolution({
+    required this.status,
+    this.receipt,
+    this.detail,
+  });
+  final String status;
+  final ProductionDailyReportApprovalReceipt? receipt;
+  final ProductionDailyReportDetail? detail;
+
+  factory ProductionDailyReportApprovalResolution.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionDailyReportApprovalResolution(
+    status: json['status'] as String? ?? 'UNCONFIRMED',
+    receipt: json['receipt'] is Map
+        ? ProductionDailyReportApprovalReceipt.fromJson(
+            Map<String, dynamic>.from(json['receipt'] as Map),
+          )
+        : null,
+    detail: json['detail'] is Map
+        ? ProductionDailyReportDetail.fromJson(
+            Map<String, dynamic>.from(json['detail'] as Map),
+          )
+        : null,
   );
 }
 

@@ -23,8 +23,20 @@ final List<RegExp> _automaticWritePaths = [
   RegExp(r'/notices/[^/]+/(read|popup-ack|snooze)$'),
   RegExp(r'/user/preferences/'),
   RegExp(r'/auth/'),
-  RegExp(r'/preview$'),
-  RegExp(r'/resolve-batch$'),
+  // Exact read contracts: the material-analysis /preview endpoint persists a
+  // draft, so a generic preview/batch suffix must never suppress its refresh.
+  RegExp(r'/platform-columns/[^/]+/values:batch$'),
+  RegExp(
+    r'/production/material-analyses/[^/]+/(issue-plans|aggregate-orders)/preview$',
+  ),
+  RegExp(
+    r'/production/(execution-batches|workshop-tasks/draw-request|actual-output-supplements)/preview$',
+  ),
+  RegExp(r'/master/goods/cost-sheets/preview$'),
+  RegExp(r'/notices/audience/preview$'),
+  RegExp(
+    r'/procurement/inspection/[^/]+/[^/]+/(decide-batch|pass-batch)/receipt$',
+  ),
   // 公共 AI 作业(ADR-133): 提交与取消只进出识别队列，结果要用户确认保存后才落到单据。
   RegExp(r'/ai/jobs$'),
   RegExp(r'/ai/jobs/[^/]+/cancel$'),
@@ -37,6 +49,11 @@ bool isBusinessWrite(RequestOptions options) {
   final method = options.method.toUpperCase();
   if (method == 'GET' || method == 'HEAD' || method == 'OPTIONS') return false;
   final path = options.uri.path;
+  if (method == 'POST' &&
+      (path == '/production/daily-reports/create-receipt' ||
+          path == '/api/production/daily-reports/create-receipt')) {
+    return false;
+  }
   return !_automaticWritePaths.any((pattern) => pattern.hasMatch(path));
 }
 

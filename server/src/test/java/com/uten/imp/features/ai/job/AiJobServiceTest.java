@@ -55,6 +55,8 @@ class AiJobServiceTest {
     private final class RecordingHandler implements AiJobHandler {
         Map<String, Object> filtered = Map.of("filtered", true);
         boolean denyRead;
+        boolean acceptsJson;
+        boolean denyResult;
 
         @Override
         public String kind() {
@@ -81,7 +83,7 @@ class AiJobServiceTest {
 
         @Override
         public Set<String> acceptedKinds() {
-            return Set.of("CSV", "XLSX");
+            return acceptsJson ? Set.of("JSON") : Set.of("CSV", "XLSX");
         }
 
         @Override
@@ -94,6 +96,7 @@ class AiJobServiceTest {
 
         @Override
         public Map<String, Object> filterResultForReader(Map<String, Object> result) {
+            if (denyResult) throw new ApiException(ErrorCode.FORBIDDEN);
             calls.add("filter:" + result.keySet());
             return filtered;
         }
@@ -138,7 +141,7 @@ class AiJobServiceTest {
         PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new AiJobService(new AiJobHandlerRegistry(List.of(handler)), repository, restorer, properties,
-                events, new ObjectMapper(), transactions);
+                events, new ObjectMapper(), transactions,mock(AiInputOriginalStore.class));
         user = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "13900000001", Set.of("ai:use"), false, true,
                 false);
         when(restorer.currentStamps(user.getId()))
@@ -257,6 +260,29 @@ class AiJobServiceTest {
         assertThat(view.id()).isEqualTo(existing);
         verify(repository, never()).insert(any());
         verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void repeatedStructuredQuestionCreatesFreshJobsInsteadOfReusingStaleBusinessFacts() {
+        handler.acceptsJson = true;
+        byte[] question = "{\"message\":\"我的工作台\"}".getBytes(StandardCharsets.UTF_8);
+        AiJobView first = service.submitStructured("TEST_KIND", Map.of(), question, user);
+        AiJobView second = service.submitStructured("TEST_KIND", Map.of(), question, user);
+        assertThat(second.id()).isNotEqualTo(first.id());
+        verify(repository, never()).findReusable(any(), anyString(), anyString(), anyString(), anyInt());
+    }
+
+    @Test
+    void sameFileCanBeRecognizedAgainWhenStoredCandidateScopeWasRevoked() throws Exception {
+        UUID stale = UUID.randomUUID();
+        when(repository.findReusable(any(), anyString(), anyString(), anyString(), anyInt())).thenReturn(Optional.of(stale));
+        when(repository.findOwned(stale, user.getId())).thenReturn(Optional.of(row(stale, "SUCCEEDED", true)));
+        when(repository.resultJson(stale)).thenReturn(Optional.of("{\"client\":{\"name\":\"old\"}}"));
+        handler.denyResult = true;
+        AiJobView fresh = submit(Map.of(), new ByteArrayInputStream(CSV));
+        assertThat(fresh.id()).isNotEqualTo(stale);
+        assertThat(fresh.status()).isEqualTo("PENDING");
+        verify(repository).insert(any());
     }
 
     @Test

@@ -132,6 +132,7 @@ class InsightHealthRow {
     this.abc,
     this.dead = false,
     this.amountLocal,
+    this.amountLocalText,
     this.costMasked = true,
   });
 
@@ -175,6 +176,9 @@ class InsightHealthRow {
   /// 库存金额 (本币); 只有 goods:cost:view 才下发。
   final double? amountLocal;
 
+  /// Authorized decimal payload retained before a display-only double conversion.
+  final String? amountLocalText;
+
   /// 金额已按成本权限遮住 (服务端没说就当遮住)。
   final bool costMasked;
 
@@ -209,6 +213,10 @@ class InsightHealthRow {
     abc: _str(j['abc']),
     dead: j['dead'] == true,
     amountLocal: _num(j['amountLocal']),
+    amountLocalText:
+        (j['amountLocalExact'] ??
+                (j['amountLocal'] is String ? j['amountLocal'] : null))
+            ?.toString(),
     costMasked: j['costMasked'] != false,
   );
 }

@@ -20,7 +20,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class QuoteDetail {
+public class QuoteDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -61,6 +61,12 @@ public class QuoteDetail {
     private String financeConfirmedByName;
     private String financeRemark;
     private int reviewRevision;
+    private OffsetDateTime customerAcceptedAt;
+    private String customerAcceptedByName;
+    private Integer customerAcceptedRevision;
+    private String cancelReason;
+    private OffsetDateTime cancelledAt;
+    private UUID originQuoteId;
     private UUID convertedOrderId;
     private String convertedOrderNo;
     private List<String> allowedActions;
@@ -73,4 +79,9 @@ public class QuoteDetail {
     // Exact text is derived after permission masking; null stays null.
     public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+    @Override public void disableHistoryActions() {
+        writable = false;
+        allowedActions = java.util.List.of();
+    }
 }

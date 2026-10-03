@@ -10,6 +10,7 @@ import 'pages/production_board_page.dart';
 import 'pages/production_chain_health_page.dart';
 import 'pages/production_daily_report_detail_page.dart';
 import 'pages/production_daily_report_edit_page.dart';
+import 'pages/production_daily_report_create_recovery_page.dart';
 import 'pages/production_daily_report_list_page.dart';
 import 'pages/production_hub_page.dart';
 import 'pages/production_material_analysis_page.dart';
@@ -193,7 +194,9 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: '/production/plans/new',
     name: 'production-plan-new',
-    redirect: (_, _) => RouteName.productionMaterialAnalysis,
+    // 2026-10-01 恢复空白手工新建页（用户口径：新建单据进去都是默认新建页）。
+    // 此前该路由被重定向到物料分析工作台；计划列表「新建」与生产 hub 卡共用本页。
+    builder: (_, _) => const ProductionPlanEditPage(),
   ),
   DraftAwareGoRoute(
     path: '/production/plans/:id/edit',
@@ -220,6 +223,14 @@ final List<RouteBase> productionRoutes = [
     // ?status=draft：新建页「草稿(N)」按钮深链，直接落在草稿段。
     builder: (_, state) => ProductionPlanListPage(
       initialStatus: state.uri.queryParameters['status'],
+    ),
+  ),
+  DraftAwareGoRoute(
+    path: '/production/daily-reports/create-recovery',
+    name: 'production-daily-report-create-recovery',
+    builder: (_, state) => ProductionDailyReportCreateRecoveryPage(
+      draftId: state.uri.queryParameters['draftId'] ?? '',
+      returnToEditor: state.uri.queryParameters['returnToEditor'] == '1',
     ),
   ),
   DraftAwareGoRoute(
@@ -260,11 +271,7 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: '/production/daily-reports/:id',
     name: 'production-daily-report-detail',
-    builder: (_, state) => ProductionDailyReportDetailPage(
-      id: state.pathParameters['id']!,
-      returnToWorkshopTasks:
-          state.uri.queryParameters['from'] == 'workshop-tasks',
-    ),
+    builder: ProductionDailyReportDetailPage.route,
   ),
   DraftAwareGoRoute(
     path: RouteName.productionDailyReportList,

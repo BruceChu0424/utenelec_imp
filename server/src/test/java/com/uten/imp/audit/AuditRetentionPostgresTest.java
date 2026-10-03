@@ -44,6 +44,9 @@ class AuditRetentionPostgresTest {
     private static JdbcTemplate owner;
     private static LocalDate archivableMonth;
     private static LocalDate expiredMonth;
+    private static String originalFunctionIdentity;
+    private static String seededSnapshot;
+    private static List<String> originalHistory;
 
     @BeforeAll
     static void start() {
@@ -52,7 +55,7 @@ class AuditRetentionPostgresTest {
         // 与生产加固脚本同形: 运行账号不是所有者, 先拿通用业务授权, 再由迁移/加固脚本封口审计表。
         owner.execute("CREATE ROLE " + RUNTIME_ROLE + " LOGIN NOSUPERUSER PASSWORD '" + RUNTIME_PASSWORD + "'");
         Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
-                .locations("classpath:db/migration").load().migrate();
+                .locations("classpath:db/migration").target("766").load().migrate();
         owner.execute("GRANT USAGE ON SCHEMA public TO " + RUNTIME_ROLE);
         owner.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO " + RUNTIME_ROLE);
         owner.execute("GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO " + RUNTIME_ROLE);
@@ -69,11 +72,32 @@ class AuditRetentionPostgresTest {
         insertAudit("retention-archivable-1", archivableMonth.plusDays(2));
         insertAudit("retention-archivable-2", archivableMonth.plusDays(20));
         insertAudit("retention-expired", expiredMonth.plusDays(5));
+        originalFunctionIdentity = functionIdentity();
+        originalHistory = owner.queryForList("SELECT version||':'||checksum FROM flyway_schema_history "
+                + "WHERE success AND version::integer<=766 ORDER BY installed_rank", String.class);
+        seededSnapshot = allSeededRows();
+        // The before switch exists solely to reproduce destructive legacy behavior
+        // against this throwaway database with the same preservation assertions.
+        if (!Boolean.getBoolean("uten.audit.retention.beforeProtection")) {
+            Flyway.configure().dataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword())
+                    .locations("classpath:db/migration").load().migrate();
+        }
     }
 
     @AfterAll
     static void stop() {
         DB.stop();
+    }
+
+    @Test
+    @Order(0)
+    void forwardProtectionKeepsFunctionPrivilegesHistoryAndExistingEvidence() {
+        assertEquals(originalFunctionIdentity, functionIdentity(), "OID, owner and runtime grants survive replacement");
+        assertEquals(seededSnapshot, allSeededRows(), "installing protection must not move or remove existing evidence");
+        assertEquals(originalHistory, owner.queryForList("SELECT version||':'||checksum FROM flyway_schema_history "
+                + "WHERE success AND version::integer<=766 ORDER BY installed_rank", String.class));
+        assertTrue(owner.queryForObject("SELECT has_function_privilege(?, 'fn_audit_retention_run()', 'EXECUTE')",
+                Boolean.class, RUNTIME_ROLE));
     }
 
     @Test
@@ -92,37 +116,41 @@ class AuditRetentionPostgresTest {
         assertEquals(0, first.droppedRows());
         assertEquals(2, count("SELECT count(*) FROM audit_log WHERE target_id LIKE 'retention-archivable-%'"));
 
-        // 设置改回 6/30(默认口径): 10 个月前的整月移入归档, 40 个月前的归档整月超过 36 个月被删除。
+        // 缩短设置仍会归档，但混合历史证据不得仅因年龄被整区删除。
         String onlineSnapshot = snapshot("audit_log");
         setRetention(6, 30);
         AuditRetentionScheduler.RetentionResult second = runtimeScheduler().execute();
         assertEquals(2, second.archivedRows());
         assertEquals(List.of(partition("audit_log_archive", archivableMonth)), second.archivedPartitions());
-        assertEquals(1, second.droppedRows());
-        assertEquals(List.of(partition("audit_log_archive", expiredMonth)), second.droppedPartitions());
+        assertEquals(0, second.droppedRows());
+        assertTrue(second.droppedPartitions().isEmpty());
 
         assertEquals(1, count("SELECT count(*) FROM audit_log WHERE target_id = 'retention-current'"));
         assertEquals(0, count("SELECT count(*) FROM audit_log WHERE target_id LIKE 'retention-archivable-%'"));
         assertEquals(2, count("SELECT count(*) FROM audit_log_archive WHERE target_id LIKE 'retention-archivable-%'"));
         assertEquals(onlineSnapshot, snapshot("audit_log_archive"),
                 "archiving moves whole month partitions, so every column and the jsonb snapshots stay byte-identical");
-        assertEquals(0, count("""
+        assertEquals(1, count("""
                 SELECT count(*) FROM audit_log WHERE target_id = 'retention-expired'
                 """) + count("SELECT count(*) FROM audit_log_archive WHERE target_id = 'retention-expired'"));
-        assertFalse(exists(partition("audit_log_archive", expiredMonth)), "expired archive month is dropped whole");
+        assertTrue(exists(partition("audit_log_archive", expiredMonth)), "expired mixed evidence stays readable");
         assertFalse(exists(partition("audit_log", archivableMonth)), "archived month left the online table");
         assertTrue(exists(partition("audit_log_archive", archivableMonth)));
 
         var completion = owner.queryForMap("""
                 SELECT actor_account, event_source, risk_level, event_category,
                        "after"->>'archived_rows' AS archived, "after"->>'dropped_rows' AS dropped,
-                       "after"->>'hot_months' AS hot, "after"->>'archive_months' AS archive
+                       "after"->>'hot_months' AS hot, "after"->>'archive_months' AS archive,
+                       "after"->>'purge_mode' AS mode,
+                       "after"->'preserved_partitions' AS preserved
                 FROM audit_log WHERE id = ?
                 """, second.completionEventId());
         assertEquals("system", completion.get("actor_account"));
         assertEquals("system", completion.get("event_source"));
         assertEquals("2", completion.get("archived"));
-        assertEquals("1", completion.get("dropped"));
+        assertEquals("0", completion.get("dropped"));
+        assertEquals("PRESERVE_UNCLASSIFIED", completion.get("mode"));
+        assertTrue(completion.get("preserved").toString().contains(partition("audit_log_archive", expiredMonth)));
         assertEquals("6", completion.get("hot"));
         assertEquals("30", completion.get("archive"));
         assertEquals(completionsBefore + 2, count("""
@@ -171,7 +199,7 @@ class AuditRetentionPostgresTest {
 
     /**
      * 运行账号能改系统设置, 但压不破函数里的法定下限(在线 + 归档合计 6 个月):
-     * 把设置改成 1/0 后, 3 个月前的整月只移入归档、不删除, 8 个月前的整月才删除。
+     * 把设置改成 1/0 后仍保留最短6个月边界，超过该边界也只登记候选、不销毁混合证据。
      * 另一个会话占着审计表时, 分区 DDL 最多等 5 秒就放弃, 不做任何改动。
      */
     @Test
@@ -208,27 +236,126 @@ class AuditRetentionPostgresTest {
         assertEquals(1, run.hotMonths());
         assertEquals(5, run.archiveMonths(), "effective archive months are lifted to the 6 month floor");
         assertTrue(run.archivedPartitions().contains(partition("audit_log_archive", recentMonth)));
-        assertTrue(run.droppedPartitions().contains(partition("audit_log_archive", oldMonth)));
-        assertFalse(run.droppedPartitions().contains(partition("audit_log_archive", recentMonth)),
-                "a 3 month old month stays within the legal floor even though settings say 1+0");
+        assertTrue(run.droppedPartitions().isEmpty());
+        assertEquals(0, run.droppedRows());
         assertEquals(1, count("SELECT count(*) FROM audit_log_archive WHERE target_id = 'floor-recent'"));
-        assertEquals(0, count("SELECT count(*) FROM audit_log WHERE target_id = 'floor-old'")
+        assertEquals(1, count("SELECT count(*) FROM audit_log WHERE target_id = 'floor-old'")
                 + count("SELECT count(*) FROM audit_log_archive WHERE target_id = 'floor-old'"));
         var completion = owner.queryForMap("""
                 SELECT "after"->>'configured_hot_months' AS hot, "after"->>'configured_archive_months' AS archive,
-                       "after"->>'archive_months' AS effective, "after"->>'floor_applied' AS floor
+                       "after"->>'archive_months' AS effective, "after"->>'floor_applied' AS floor,
+                       "after"->'preserved_partitions' AS preserved,
+                       "after"->>'purge_mode' AS mode
                 FROM audit_log WHERE id = ?
                 """, run.completionEventId());
         assertEquals("1", completion.get("hot"));
         assertEquals("0", completion.get("archive"));
         assertEquals("5", completion.get("effective"));
         assertEquals("true", completion.get("floor"));
+        assertEquals("PRESERVE_UNCLASSIFIED", completion.get("mode"));
+        assertTrue(completion.get("preserved").toString().contains(partition("audit_log_archive", oldMonth)));
+        assertFalse(completion.get("preserved").toString().contains(partition("audit_log_archive", recentMonth)));
         assertEquals(1, count("""
                 SELECT count(*) FROM pg_constraint
                 WHERE conrelid = ('public.' || '%s')::regclass AND conname = 'audit_month_bound' AND convalidated
                 """.formatted(partition("audit_log_archive", recentMonth))),
                 "the month bound was validated before the exclusive DDL, so ATTACH skipped its scan");
         setRetention(6, 30);
+    }
+
+    @Test
+    @Order(11)
+    void repeatedRunsPreserveExactEvidenceAndDoNotRescanArchivedRows() throws Exception {
+        String before = owner.queryForObject("SELECT string_agg(to_jsonb(a)::text,'|' ORDER BY id) "
+                + "FROM audit_log_archive a", String.class);
+        var first = runtimeScheduler().execute();
+        var second = runtimeScheduler().execute();
+        assertEquals(0, first.droppedRows());
+        assertEquals(0, second.droppedRows());
+        assertEquals(before, owner.queryForObject("SELECT string_agg(to_jsonb(a)::text,'|' ORDER BY id) "
+                + "FROM audit_log_archive a", String.class));
+        // A BEFORE SELECT hook is unavailable in PostgreSQL; inspect the installed
+        // function's archive-only loop, alongside actual row-preservation assertions.
+        String definition = owner.queryForObject("SELECT pg_get_functiondef('fn_audit_retention_run()'::regprocedure)", String.class);
+        int archiveStart = definition.indexOf("'public.audit_log_archive'::regclass");
+        String archiveLoop = definition.substring(archiveStart, definition.indexOf("END LOOP;", archiveStart));
+        assertFalse(archiveLoop.contains("count(*)"), "daily preservation must not count decades of retained archive rows");
+        assertFalse(definition.contains("DROP TABLE"));
+    }
+
+    private static String functionIdentity() {
+        return owner.queryForObject("SELECT jsonb_build_object('oid',oid,'owner',proowner,'acl',proacl,"
+                + "'security_definer',prosecdef,'settings',proconfig,"
+                + "'result',pg_get_function_result(oid),'arguments',pg_get_function_arguments(oid))::text "
+                + "FROM pg_proc WHERE oid='fn_audit_retention_run()'::regprocedure", String.class);
+    }
+
+    @Test
+    @Order(12)
+    void expiredMonthContainingBusinessSecurityAndTechnicalEvidenceIsPreservedTogether() throws Exception {
+        LocalDate month = LocalDate.now(SHANGHAI).withDayOfMonth(1).minusMonths(50);
+        owner.queryForObject("SELECT fn_audit_ensure_partition('audit_log', ?)", String.class, month);
+        insertAudit("mixed-business", month.plusDays(1), "business", "business");
+        insertAudit("mixed-security", month.plusDays(2), "security", "security");
+        insertAudit("mixed-technical", month.plusDays(3), "request", "system");
+        String before = owner.queryForObject("SELECT string_agg(to_jsonb(a)::text,'|' ORDER BY id) "
+                + "FROM audit_log a WHERE target_id LIKE 'mixed-%'", String.class);
+        setRetention(6, 0);
+        var run = runtimeScheduler().execute();
+        assertEquals(0, run.droppedRows());
+        assertTrue(run.archivedPartitions().contains(partition("audit_log_archive", month)));
+        assertEquals(before, owner.queryForObject("SELECT string_agg(to_jsonb(a)::text,'|' ORDER BY id) "
+                + "FROM audit_log_archive a WHERE target_id LIKE 'mixed-%'", String.class));
+        var evidence = owner.queryForMap("SELECT \"after\"->'preserved_partitions' AS partitions, "
+                + "\"after\"->>'preserved_partition_count' AS total FROM audit_log WHERE id=?", run.completionEventId());
+        assertTrue(evidence.get("partitions").toString().contains(partition("audit_log_archive", month)));
+        assertTrue(Integer.parseInt(evidence.get("total").toString()) >= 1);
+        setRetention(6, 30);
+    }
+
+    @Test
+    @Order(13)
+    void readOnlyCapabilityTracksInstalledProtectionAndRejectsFunctionDrift() throws Exception {
+        long eventsBefore = count("SELECT count(*) FROM audit_log");
+        try (Connection connection = runtimeConnection(); Statement statement = connection.createStatement()) {
+            try (var rows = statement.executeQuery("SELECT fn_audit_retention_purge_mode()")) {
+                assertTrue(rows.next());
+                assertEquals("PERMANENT_RETAIN", rows.getString(1));
+            }
+        }
+        assertEquals(eventsBefore, count("SELECT count(*) FROM audit_log"), "capability read cannot execute retention");
+        String original = owner.queryForObject("SELECT pg_get_functiondef('fn_audit_retention_run()'::regprocedure)", String.class);
+        try {
+            assertTrue(original.contains("'PRESERVE_UNCLASSIFIED'"), "The installed runner must contain the exact protection marker checked by the permanent capability reader");
+            String drifted = original.replace("'PRESERVE_UNCLASSIFIED'", "'DRIFTED_TEST_POLICY'");
+            assertFalse(original.equals(drifted), "Drift probe must alter the actual installed function");
+            owner.execute(drifted);
+            assertEquals("UNKNOWN", owner.queryForObject("SELECT fn_audit_retention_purge_mode()", String.class));
+            String forward;
+            try (var input=getClass().getResourceAsStream("/db/migration/V786__guard_permanent_audit_retention_capability.sql")) {
+                assertTrue(input!=null);forward=new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            }
+            var refused=assertThrows(org.springframework.dao.DataAccessException.class,()->owner.execute(forward));
+            assertTrue(refused.getMostSpecificCause() instanceof SQLException);
+            assertEquals("55000",((SQLException)refused.getMostSpecificCause()).getSQLState());
+            assertTrue(refused.getMostSpecificCause().getMessage().contains("verified V770 retention runner"));
+            assertEquals("UNKNOWN",owner.queryForObject("SELECT fn_audit_retention_purge_mode()",String.class));
+        } finally {
+            owner.execute(original);
+        }
+        try {
+            owner.execute("ALTER FUNCTION fn_audit_retention_run() SET lock_timeout='6s'");
+            assertEquals("UNKNOWN",owner.queryForObject("SELECT fn_audit_retention_purge_mode()",String.class));
+            owner.execute(original);
+            owner.execute("ALTER FUNCTION fn_audit_retention_run() SECURITY INVOKER");
+            assertEquals("UNKNOWN",owner.queryForObject("SELECT fn_audit_retention_purge_mode()",String.class));
+        } finally { owner.execute(original); }
+        assertEquals("PERMANENT_RETAIN", owner.queryForObject("SELECT fn_audit_retention_purge_mode()", String.class));
+    }
+
+    private static String allSeededRows() {
+        return owner.queryForObject("SELECT string_agg(to_jsonb(a)::text,'|' ORDER BY id) "
+                + "FROM audit_log a WHERE target_id LIKE 'retention-%'", String.class);
     }
 
     private static AuditRetentionScheduler runtimeScheduler() {
@@ -247,13 +374,17 @@ class AuditRetentionPostgresTest {
     }
 
     private static void insertAudit(String targetId, LocalDate day) {
+        insertAudit(targetId, day, "database", "data_change");
+    }
+
+    private static void insertAudit(String targetId, LocalDate day, String source, String category) {
         owner.update("""
                 INSERT INTO audit_log(action, target_type, target_id, result, event_source,
                                       risk_level, event_category, created_at, "before", "after")
-                VALUES ('update', 'retention_test', ?, 'success', 'database', 'low', 'data_change',
+                VALUES ('update', 'retention_test', ?, 'success', ?, 'low', ?,
                         (?::date + time '10:00') AT TIME ZONE 'Asia/Shanghai',
                         '{"quantity": 1.2345, "bill_no": "RT-1"}', '{"quantity": 12.3456, "bill_no": "RT-1"}')
-                """, targetId, day);
+                """, targetId, source, category, day);
     }
 
     /** 两个父表列序相同(归档表按在线表 LIKE 建), 整行 to_jsonb 相等即完整快照原样保留。 */

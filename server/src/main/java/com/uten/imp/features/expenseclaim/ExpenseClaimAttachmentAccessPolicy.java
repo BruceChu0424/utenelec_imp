@@ -26,7 +26,14 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
 
     @Override
     public void requireCanView(UUID ownerId, AuthUser user) {
-        ExpenseClaim claim = requireClaim(ownerId);
+        readable(requireClaim(ownerId,false),user);
+    }
+    @Override public void requireCanViewHistory(UUID ownerId,AuthUser user) {
+        readable(requireClaim(ownerId,true),user);
+    }
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId,AuthUser user) { requireCanViewHistory(ownerId,user); }
+    private void readable(ExpenseClaim claim,AuthUser user) {
+
         if (claim.getApplicantId().equals(user.getEmployeeId()) && has(user, "expense:apply")) {
             return;
         }
@@ -60,7 +67,7 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
     }
 
     private static void requireEditableOwner(ExpenseClaim claim, AuthUser user) {
-        boolean editable = Set.of("DRAFT", "REJECTED").contains(claim.getStatus());
+        boolean editable = !claim.isDeleted() && Set.of("DRAFT", "REJECTED").contains(claim.getStatus());
         if (editable
                 && claim.getApplicantId().equals(user.getEmployeeId())
                 && has(user, "expense:apply")) {
@@ -69,11 +76,13 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
         throw new ApiException(ErrorCode.NOT_FOUND, "报销单不存在或当前状态不可修改附件");
     }
 
-    private ExpenseClaim requireClaim(UUID id) {
+    private ExpenseClaim requireClaim(UUID id) { return requireClaim(id,false); }
+
+    private ExpenseClaim requireClaim(UUID id, boolean includeDeleted) {
         if (id == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定业务单据");
         }
-        return claimRepository.findById(id)
+        return claimRepository.findById(id).filter(claim -> includeDeleted || !claim.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "报销单不存在"));
     }
 

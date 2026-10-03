@@ -32,6 +32,13 @@ public class DepartmentController {
         return service.employeePickerTree();
     }
 
+    /** Financial allocation references expose only identity and hierarchy, never HR management fields. */
+    @GetMapping("/finance-allocation-picker-tree")
+    @PreAuthorize("hasAnyAuthority('finance_expense:create', 'finance_expense:edit', 'finance_other_income:create', 'finance_other_income:edit')")
+    public List<DepartmentPickerNode> financeAllocationPickerTree() {
+        return service.employeePickerTree();
+    }
+
     @GetMapping("/{id}/subtree")
     @PreAuthorize("hasAuthority('department:view')")
     public List<DepartmentNode> subtree(@PathVariable UUID id) {

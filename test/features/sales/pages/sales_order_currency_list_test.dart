@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -9,8 +12,15 @@ import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
+
+late SharedPreferences _preferences;
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets('order list shows currency and original amount, not RMB total', (
     tester,
   ) async {
@@ -33,6 +43,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           apiClientProvider.overrideWithValue(api),
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),
@@ -49,20 +63,38 @@ void main() {
     await tester.tap(find.text('待生产'));
     await tester.pumpAndSettle();
 
-    final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
+    // 草稿段经 FormDraftCategoryTable 渲染合并表，双形态 finder 同款口径。
+    final table = tester.widget<MasterDataTableView<dynamic>>(
       find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<SalesDocListItem>,
+        (widget) =>
+            widget is MasterDataTableView<SalesDocListItem> ||
+            widget
+                is MasterDataTableView<FormDraftCategoryRow<SalesDocListItem>>,
       ),
     );
     final columns = {for (final column in table.columns) column.key: column};
-    final item = table.items.single;
+    // 合并表行可能是 FormDraftCategoryRow 包装（record 透传），也可能是原记录；
+    // 按行列实际类型取值。
+    String? valueOf(String key) {
+      final column = columns[key];
+      final rowItem = table.items.single;
+      if (column is MasterColumnDef<SalesDocListItem> &&
+          rowItem is SalesDocListItem) {
+        return column.value(rowItem);
+      }
+      if (column is MasterColumnDef<FormDraftCategoryRow<SalesDocListItem>> &&
+          rowItem is FormDraftCategoryRow<SalesDocListItem>) {
+        return column.value(rowItem);
+      }
+      return null;
+    }
 
     expect(columns['currency']?.label, '币种');
-    expect(columns['currency']?.value(item), '美元');
+    expect(valueOf('currency'), '美元');
     expect(columns['total']?.label, '订单金额');
-    expect(columns['total']?.value(item), '100.00');
+    expect(valueOf('total'), '100.00');
     expect(columns['total']?.sortable, isFalse);
-    expect(columns['total']?.value(item), isNot('720.00'));
+    expect(valueOf('total'), isNot('720.00'));
   });
 
   testWidgets('shipment list exposes finance audit before warehouse status', (
@@ -87,6 +119,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          localServerReachableProvider.overrideWith(
+            (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+          ),
+          sharedPreferencesProvider.overrideWithValue(_preferences),
           apiClientProvider.overrideWithValue(api),
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),
@@ -103,17 +139,34 @@ void main() {
     await tester.tap(find.text('草稿'));
     await tester.pumpAndSettle();
 
-    final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
+    // 草稿段经 FormDraftCategoryTable 渲染合并表，双形态 finder 同款口径。
+    final table = tester.widget<MasterDataTableView<dynamic>>(
       find.byWidgetPredicate(
-        (widget) => widget is MasterDataTableView<SalesDocListItem>,
+        (widget) =>
+            widget is MasterDataTableView<SalesDocListItem> ||
+            widget
+                is MasterDataTableView<FormDraftCategoryRow<SalesDocListItem>>,
       ),
     );
     final keys = table.columns.map((column) => column.key).toList();
     final columns = {for (final column in table.columns) column.key: column};
-    final item = table.items.single;
+    // 合并表行可能是 FormDraftCategoryRow 包装；按行列实际类型取值。
+    String? valueOf(String key) {
+      final column = columns[key];
+      final rowItem = table.items.single;
+      if (column is MasterColumnDef<SalesDocListItem> &&
+          rowItem is SalesDocListItem) {
+        return column.value(rowItem);
+      }
+      if (column is MasterColumnDef<FormDraftCategoryRow<SalesDocListItem>> &&
+          rowItem is FormDraftCategoryRow<SalesDocListItem>) {
+        return column.value(rowItem);
+      }
+      return null;
+    }
 
     expect(columns['financeAudit']?.label, '财务审核');
-    expect(columns['financeAudit']?.value(item), '待财务审核');
+    expect(valueOf('financeAudit'), '待财务审核');
     expect(
       keys.indexOf('financeAudit'),
       lessThan(keys.indexOf('warehouseWorkStatus')),

@@ -5,6 +5,7 @@
 // DailyGridRow：货品(选择)/完工申报量/实际重量；颜色/单位选货品后自动回填（只读）；
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -44,6 +45,17 @@ class DailyMaterialInput {
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
 /// 完工量是生产声明；颜色/单位为来源任务冻结值。
 class DailyGridRow extends EditableGridRow {
+  DailyGridRow({String? localRowId})
+    : localRowId = localRowId ?? const Uuid().v4();
+
+  /// Local draft identity only. Copies get a fresh ID; this is never submitted
+  /// as a server item ID or inferred from goods/source/visible row position.
+  final String localRowId;
+
+  /// Read-only accepted item projection, supplied only by the saved report.
+  /// Never recompute its destination from today's transfer availability.
+  String? acceptedDestinationLabel;
+
   final ValueNotifier<GoodsOption?> goodsNotifier = ValueNotifier<GoodsOption?>(
     null,
   );
@@ -146,7 +158,8 @@ class DailyGridRow extends EditableGridRow {
   int directTransferReceiverLimit = 1 << 30;
   int directTransferRequestVersion = 0;
 
-  /// 成品行「产出去向」格的红字：「无法转到下一道工序：<服务端原因>」或候选读取失败提示；
+  /// 成品行「产出去向」格的悬停原因：「无法转到下一道工序：<服务端原因>」；
+  /// 候选读取失败时仍在格内显示错误提示。
   /// 为空 = 有可送的上层工单，或还没读过候选(没选来源/货品)。
   String? directTransferBlockedText;
 
@@ -876,7 +889,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
         );
       },
     ),
-    // ===== V736/ADR-127 产出去向两列：成品行写摘要或红字，去向分配子行可改，物料子行留空 =====
+    // ===== V736/ADR-127 产出去向两列：成品行写摘要，无法流转的原因悬停显示，物料子行留空 =====
     EditableGridColumn<DailyGridRow>(
       key: 'destination',
       label: '产出去向',
@@ -888,26 +901,34 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           '系统按先急后缓把本行产量逐个分给还缺料的上层工单(黄框为系统建议)，分不完的送入仓库；'
           '改任一条的去向或数量，下面会自动补一条接着分，直到分完。\n'
           '下拉里「已分满」表示本张报工其它行已把它分满；红字是不能收的原因(例如委外件要先送入仓库、'
-          '上层工单在别的车间)。计划内公共备货与超出计划的产量一律送入仓库。',
-      textOf: (r) => r.isAllocationRow
-          ? _allocationOptionText(r)
-          : r.isMaterialRow
-          ? ''
-          : (r.directTransferBlockedText ?? outputAllocationSummary(r)),
+          '上层工单在别的车间)。无法车间内流转时默认送入仓库，去向不可修改，悬停查看原因。'
+          '计划内公共备货与超出计划的产量一律送入仓库。',
+      textOf: (r) =>
+          r.acceptedDestinationLabel ??
+          (r.isAllocationRow
+              ? _allocationOptionText(r)
+              : r.isMaterialRow
+              ? ''
+              : _productDestinationText(r)),
       listenableOf: (r) =>
           r.isAllocationRow ? r.allocationDemandNotifier : r.allocationRevision,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
+        if (row.acceptedDestinationLabel case final accepted?) {
+          return Text(accepted, maxLines: 1, overflow: TextOverflow.ellipsis);
+        }
         if (row.isMaterialRow) return const SizedBox.shrink();
         if (!row.isAllocationRow) {
           return ValueListenableBuilder<int>(
             valueListenable: row.allocationRevision,
             builder: (context, _, _) {
               final blocked = row.directTransferBlockedText;
-              // 不能转(或候选读不到)：红字写明原因，整句放在悬停提示里防截断。
-              if (blocked != null) return DirectTransferBlockedText(blocked);
-              final summary = outputAllocationSummary(row);
-              return Align(
+              // 读取失败需要处理；确认不可转则显示实际去向，原因只在悬停时展示。
+              if (row.directTransferLoadFailed && blocked != null) {
+                return DirectTransferBlockedText(blocked);
+              }
+              final summary = _productDestinationText(row);
+              final cell = Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   summary.isEmpty ? '—' : summary,
@@ -918,6 +939,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   ),
                 ),
               );
+              return row.directTransferUnavailable
+                  ? Tooltip(message: blocked!, child: cell)
+                  : cell;
             },
           );
         }
@@ -929,12 +953,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             builder: (context, issue, _) => ValueListenableBuilder<bool>(
               valueListenable: row.allocationAutofilled,
               builder: (context, autofilled, _) {
-                // 服务端判定一个可送的上层工单都没有：只能送入仓库，不给下拉(原因在成品行红字)。
+                // 服务端判定一个可送的上层工单都没有：只读显示送入仓库，悬停查看原因。
                 if (parent.directTransferUnavailable &&
                     row.allocationDemandId == null) {
-                  return const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('送入仓库', maxLines: 1),
+                  return Tooltip(
+                    message: parent.directTransferBlockedText!,
+                    child: const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('送入仓库', maxLines: 1),
+                    ),
                   );
                 }
                 return UtenDropdownField(
@@ -1111,6 +1138,18 @@ String _quantityText(double value) => outputAllocationQuantityText(value);
 /// 去向下拉里「送入仓库」那一项的值(下拉值不能为空，用它代表「不转给任何上层工单」)。
 const outputAllocationWarehouseValue = '__WAREHOUSE__';
 
+/// 成品行正文与列宽测量共用实际去向；不可转原因只放悬停提示，读取失败仍直接报错。
+String _productDestinationText(DailyGridRow product) {
+  if (product.directTransferLoadFailed &&
+      product.directTransferBlockedText != null) {
+    return product.directTransferBlockedText!;
+  }
+  final summary = outputAllocationSummary(product);
+  return summary.isEmpty && product.directTransferUnavailable
+      ? '送入仓库'
+      : summary;
+}
+
 /// 成品行「产出去向」格的摘要：转下一道工序几个工单共多少、送入仓库多少。
 String outputAllocationSummary(DailyGridRow product) {
   var direct = 0.0;
@@ -1245,7 +1284,7 @@ Widget _readOnlyMasterCell(
   );
 }
 
-/// 「转给工单」格的不可转红字(V736/ADR-127)：单行省略，整句放在悬停提示里。
+/// 「产出去向」格的读取失败提示：单行省略，整句放在悬停提示里。
 class DirectTransferBlockedText extends StatelessWidget {
   const DirectTransferBlockedText(this.text, {super.key});
 

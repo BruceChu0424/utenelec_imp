@@ -1,5 +1,6 @@
 // 路由名称常量
 // 文档：docs/05-架构/路由设计.md
+import '../../features/stock/models/instant_inventory_scope.dart';
 
 /// Defines which portal may consume a preserved post-authentication route.
 enum ReturnToScope { any, employee, visitor }
@@ -208,17 +209,30 @@ abstract final class RouteName {
   static const String stockBalance = '/stock/balance';
   static const String stockMovement = '/stock/movement';
   static const String stockInstantInventory = '/stock/instant-inventory';
+  static const String stockInstantInventoryOverview =
+      '/stock/instant-inventory/overview';
 
   /// 库存详情 (即时库存双击进入)：该货品各仓余额 + 出入库流水 + 单重学习。
   /// balance/movement 两页已并入 (旧路由重定向保深链)。
   /// [tab]：balance=库存余额(默认) / ledger=出入库流水 / weight=单重学习 (ADR-135)。
   static const String stockItemBase = '/stock/item';
-  static String stockItemDetail(String goodsId, {String? tab}) {
+  static String stockItemDetail(
+    String goodsId, {
+    String? tab,
+    InstantInventoryScope? scope,
+    String? returnTo,
+  }) {
     final path = '$stockItemBase/${Uri.encodeComponent(goodsId.trim())}';
     final key = tab?.trim() ?? '';
-    return key.isEmpty
+    final query = {
+      if (key.isNotEmpty) 'tab': key,
+      ...?scope?.toQuery(),
+      if (scope != null) 'inventoryOnly': '${scope.inventoryOnly}',
+      'returnTo': ?returnTo,
+    };
+    return query.isEmpty
         ? path
-        : Uri(path: path, queryParameters: {'tab': key}).toString();
+        : Uri(path: path, queryParameters: query).toString();
   }
 
   // 仓库管理（8 单据 hub + 列表 + new/detail/edit + 报表）。
@@ -389,6 +403,10 @@ abstract final class RouteName {
 
   /// 车间内料仓用量报表与结算页 (生产、钱流报表入口)。
   static const String workshopMaterialReports = '/reports/workshop-material';
+  static const String stockCountRequests = '/stock/count-requests';
+  static const String financeStockCountReview = '/finance/stock-count-review';
+  static const String warehouseStockCountReview =
+      '/warehouse/stock-count-review';
 
   static const String procurementArrivalExceptions =
       '/procurement/arrival-exceptions';
@@ -773,6 +791,16 @@ abstract final class RoutePath {
       '/production/actual-output-supplements/$id';
   static String productionPlanEdit(String id) => '/production/plans/$id/edit';
   static String productionDailyReportNew() => '/production/daily-reports/new';
+  static String productionDailyReportCreateRecovery(
+    String draftId, {
+    bool returnToEditor = false,
+  }) => Uri(
+    path: '/production/daily-reports/create-recovery',
+    queryParameters: {
+      'draftId': draftId,
+      if (returnToEditor) 'returnToEditor': '1',
+    },
+  ).toString();
   static String productionDailyReportDetail(String id) =>
       '/production/daily-reports/$id';
   static String productionDailyReportEdit(String id) =>

@@ -20,6 +20,34 @@ FinanceProcurementReviewLine line(
 );
 
 void main() {
+  test('计价依据变化应提示复核，金额原文精度及零金额均保留', () {
+    final before = FinanceProcurementReviewLine.fromJson({
+      'lineNo': 1,
+      'qty': '3000',
+      'price': '0.0333333333',
+      'amountOriginal': '100.000000000000000001',
+    });
+    final after = FinanceProcurementReviewLine.fromJson({
+      'lineNo': 1,
+      'qty': '3000',
+      'price': '0.0333333333',
+      'amountOriginal': '100.000000000000000001',
+      'totalAmountInput': '100.000000000000000001',
+    });
+    expect(after.totalAmountInput, '100.000000000000000001');
+    expect(procurementChangedFields(before, after), {
+      'price',
+      'amountOriginal',
+    });
+    expect(
+      FinanceProcurementReviewLine.fromJson({
+        'lineNo': 1,
+        'totalAmountInput': '0',
+      }).totalAmountInput,
+      '0',
+    );
+  });
+
   test(
     'changed cell keys normalize decimals and retain the changed currency',
     () {

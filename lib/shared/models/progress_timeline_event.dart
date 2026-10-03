@@ -2,8 +2,9 @@
 // 每条 = 阶段标题 + 责任人（operatorLabel/operatorName，如 下单人/审核人/采购人）
 // + 发生时间 + 状态 + 补充说明 + 可跳转单据锚点（docType/docId/docNo）。
 //
-// 服务端已排好展示顺序：已发生事件按时间倒序（最新在最上，无时间的当前阶段置顶），
-// PENDING 占位按业务顺序垫底；前端按数组顺序直接渲染，不再重排。
+// 服务端已排好展示顺序：未开始的 PENDING 阶段整块置顶（阶段最靠后的在最顶），
+// 其下已发生事件按时间倒序（无时间的当前/驳回环置顶该块），下单垫底。
+// 前端按数组顺序直接渲染，不再重排。
 class ProgressTimelineEvent {
   const ProgressTimelineEvent({
     required this.seq,

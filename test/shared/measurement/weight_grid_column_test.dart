@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_autofill_text_controller.dart';
-import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';
@@ -79,11 +79,24 @@ const _exactKg = WeightParams(
   massFactorKg: 1,
 );
 
+const _stock = WeightParams(
+  key: 'g1||w1|',
+  goodsId: 'g1',
+  stockBalance: WeightStockBalance(
+    warehouseId: 'w1',
+    qtyBase: 1000,
+    weightKg: 20,
+  ),
+);
+
 Future<UtenEditableGridController<_Row>> _pump(
   WidgetTester tester,
   List<_Row> rows, {
   WeightCaptureMode mode = WeightCaptureMode.inbound,
   bool autofill = false,
+  ValueNotifier<WeightParams?>? paramsNotifier,
+  bool enabled = true,
+  bool weighButton = false,
 }) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1;
@@ -126,7 +139,10 @@ Future<UtenEditableGridController<_Row>> _pump(
                         controllerOf: (r) => r.weight,
                         entryUnit: units.entry,
                         mode: mode,
-                        paramsOf: (r) => r.params,
+                        paramsOf: (r) => paramsNotifier?.value ?? r.params,
+                        paramsListenable: paramsNotifier,
+                        enabledOf: (_) => enabled,
+                        onWeighCount: weighButton ? (_, _) async {} : null,
                         qtyBaseOf: (r) => r.qtyBase,
                         qtyListenableOf: (r) => r.qty,
                         baseUnitNameOf: (_) => '个',
@@ -155,13 +171,250 @@ Finder get _inputs => find.byKey(const ValueKey('weight-cell-input'));
 TextField _input(WidgetTester tester, [int index = 0]) =>
     tester.widget<TextField>(_inputs.at(index));
 
-UtenFieldHintIcon? _status(WidgetTester tester) {
-  final f = find.byKey(const ValueKey('weight-cell-status'));
-  if (f.evaluate().isEmpty) return null;
-  return tester.widget<UtenFieldHintIcon>(f.first);
+String? _tooltip(WidgetTester tester) => tester
+    .widgetList<Tooltip>(
+      find.ancestor(of: _inputs.first, matching: find.byType(Tooltip)),
+    )
+    .firstOrNull
+    ?.message;
+
+String? _cellMessage(WidgetTester tester) {
+  final finder = find.byKey(const ValueKey('weight-cell-message'));
+  if (finder.evaluate().isNotEmpty) {
+    return tester.widget<UtenFieldMessage>(finder.first).message;
+  }
+  final suggestion = find.byKey(const ValueKey('weight-cell-suggestion'));
+  return suggestion.evaluate().isEmpty
+      ? null
+      : tester.widget<Text>(suggestion.first).data;
 }
 
 void main() {
+  test('建议值切换单位和规范文本不变实称，人工接管后不再覆盖', () {
+    final c = WeightEntryController();
+    addTearDown(c.dispose);
+    c.setSuggestedKg(20, source: '库存');
+    expect(c.text.text, '20');
+    expect(c.displayKg, 20);
+    expect(c.kg, isNull);
+    expect(c.canonicalKeyPart, '|0');
+    c.switchUnit(WeightUnit.g);
+    c.normalize();
+    expect(c.text.text, '20000');
+    expect(c.kg, isNull);
+    c.setSuggestedKg(10);
+    expect(c.text.text, '10000');
+    c.text.text = '9500';
+    c.setSuggestedKg(30);
+    expect(c.kg, 9.5);
+    expect(c.suggestedKg, isNull);
+    expect(c.text.text, '9500');
+  });
+
+  test('显式清空与恢复的实称不被后到建议覆盖', () {
+    final c = WeightEntryController(kg: 12);
+    addTearDown(c.dispose);
+    c.setSuggestedKg(20);
+    expect(c.text.text, '12');
+    c.text.clear();
+    c.setSuggestedKg(20);
+    expect(c.text.text, isEmpty);
+    final fresh = WeightEntryController();
+    addTearDown(fresh.dispose);
+    fresh.setSuggestedKg(20);
+    fresh.text.clear();
+    fresh.setSuggestedKg(30);
+    expect(fresh.text.text, isEmpty);
+    expect(fresh.kg, isNull);
+    expect(fresh.canonicalKeyPart, '|0');
+  });
+
+  test('人工明确输入同一建议数字才转换为实称，非法建议不会出现', () {
+    final c = WeightEntryController();
+    addTearDown(c.dispose);
+    for (final value in [double.nan, double.infinity, -1.0, 0.0]) {
+      c.setSuggestedKg(value);
+      expect(c.text.text, isEmpty);
+    }
+    c.setSuggestedKg(20);
+    c.acceptUserInput();
+    expect(c.kg, 20);
+    expect(c.isSuggested, isFalse);
+    expect(c.canonicalKeyPart, '20|0');
+  });
+
+  testWidgets('库存1000个20kg：实际预填随数量变化，输入1kg出现黄框文字', (tester) async {
+    final row = _Row(params: _stock, qty: '1000');
+    await _pump(tester, [row], mode: WeightCaptureMode.outbound);
+    expect(row.weight.text.text, '20');
+    expect(row.weight.kg, isNull);
+    expect(_tooltip(tester), contains('库存数量与重量比例'));
+    row.qty.text = '500';
+    await tester.pumpAndSettle();
+    expect(row.weight.text.text, '10');
+    row.qty.text = '0';
+    await tester.pumpAndSettle();
+    expect(row.weight.text.text, isEmpty);
+    row.qty.text = '1000';
+    await tester.pumpAndSettle();
+    await tester.enterText(_inputs.first, '1');
+    await tester.pump();
+    expect(_cellMessage(tester), '数值可能有问题');
+    expect(_input(tester).decoration!.errorText, isNull);
+    expect(_tooltip(tester), contains('预计 20 kg'));
+    expect(_tooltip(tester), contains('-95.0%'));
+    row.qty.text = '500';
+    await tester.pumpAndSettle();
+    expect(row.weight.text.text, '1');
+    expect(row.weight.kg, 1);
+    expect(
+      weightDeviationRowCount(
+        [row],
+        controllerOf: (r) => r.weight,
+        paramsOf: (r) => r.params,
+        qtyBaseOf: (r) => r.qtyBase,
+        mode: WeightCaptureMode.outbound,
+      ),
+      1,
+    );
+  });
+
+  testWidgets('真实表格150像素重量列带称重按钮，预估和黄色提示均在格内完整布局', (tester) async {
+    final row = _Row(params: _stock, qty: '1000');
+    await _pump(
+      tester,
+      [row],
+      mode: WeightCaptureMode.outbound,
+      weighButton: true,
+    );
+    final estimate = find.text('预估 · 请填实称');
+    expect(estimate, findsOneWidget);
+    expect(
+      tester.getRect(estimate).bottom,
+      lessThanOrEqualTo(
+        tester
+            .getRect(find.byKey(const ValueKey('weight-cell-content')))
+            .bottom,
+      ),
+    );
+    expect(
+      tester.getRect(estimate).right,
+      lessThanOrEqualTo(
+        tester.getRect(find.byKey(const ValueKey('weight-cell-content'))).right,
+      ),
+    );
+    await tester.enterText(_inputs.first, '1');
+    await tester.pumpAndSettle();
+    final warning = find.text('数值可能有问题');
+    expect(warning, findsOneWidget);
+    final fieldRect = tester.getRect(
+      find.byKey(const ValueKey('weight-cell-content')),
+    );
+    final warningRect = tester.getRect(warning);
+    expect(warningRect.bottom, lessThanOrEqualTo(fieldRect.bottom));
+    expect(warningRect.right, lessThanOrEqualTo(fieldRect.right));
+    expect(warningRect.left, greaterThanOrEqualTo(fieldRect.left));
+    expect(fieldRect.height, lessThan(100));
+    expect(find.byKey(const ValueKey('weight-cell-weigh')), findsOneWidget);
+    expect(find.byKey(const ValueKey('weight-cell-status')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('异步参数只更新当前数量的建议，不盖住已输入实称', (tester) async {
+    final params = ValueNotifier<WeightParams?>(null);
+    addTearDown(params.dispose);
+    final row = _Row(qty: '1000');
+    await _pump(
+      tester,
+      [row],
+      mode: WeightCaptureMode.outbound,
+      paramsNotifier: params,
+    );
+    expect(row.weight.text.text, isEmpty);
+    params.value = _stock;
+    row.qty.text = '500';
+    await tester.pumpAndSettle();
+    expect(row.weight.text.text, '10');
+    await tester.enterText(_inputs.first, '9.8');
+    params.value = _learned;
+    await tester.pumpAndSettle();
+    expect(row.weight.kg, 9.8);
+    expect(row.weight.text.text, '9.8');
+  });
+
+  testWidgets('禁用行和未有数量行不预填，卸载时排队同步不触发异常', (tester) async {
+    final row = _Row(params: _stock, qty: '1000');
+    await _pump(
+      tester,
+      [row],
+      enabled: false,
+      mode: WeightCaptureMode.outbound,
+    );
+    expect(row.weight.text.text, isEmpty);
+    final emptyQty = _Row(params: _stock);
+    await _pump(tester, [emptyQty], mode: WeightCaptureMode.outbound);
+    expect(emptyQty.weight.text.text, isEmpty);
+    emptyQty.qty.text = '1000';
+    await tester.pumpWidget(const SizedBox());
+    expect(tester.takeException(), isNull);
+  });
+
+  test(
+    'formula weight facts stay kilograms across suffixes unit changes and clearing',
+    () {
+      final row = _Row();
+      addTearDown(row.dispose);
+      final column = weightGridColumn<_Row>(
+        controllerOf: (row) => row.weight,
+        entryUnit: WeightUnit.g,
+      );
+      final observed = <String?>[];
+      void capture() => observed.add(column.exactValueOf!(row));
+      final changes = column.exactListenableOf!(row)!;
+      changes.addListener(capture);
+      row.weight.text.text = '850g';
+      expect(column.exactValueOf!(row), '0.85');
+      expect(observed.last, '0.85');
+      row.weight.switchUnit(WeightUnit.g);
+      expect(row.weight.text.text, '850');
+      expect(column.exactValueOf!(row), '0.85');
+      row.weight.text.clear();
+      expect(column.exactValueOf!(row), isNull);
+      expect(observed.last, isNull);
+      changes.removeListener(capture);
+    },
+  );
+
+  test(
+    'formula weight follows exact quantity and parameter changes without inventing learned weights',
+    () {
+      final row = _Row(kg: 7, qty: '25');
+      final params = ValueNotifier<WeightParams?>(_exactKg);
+      addTearDown(row.dispose);
+      addTearDown(params.dispose);
+      final column = weightGridColumn<_Row>(
+        controllerOf: (row) => row.weight,
+        entryUnit: WeightUnit.g,
+        paramsOf: (_) => params.value,
+        paramsListenable: params,
+        qtyBaseOf: (row) => row.qtyBase,
+        qtyListenableOf: (row) => row.qty,
+      );
+      final observed = <String?>[];
+      void capture() => observed.add(column.exactValueOf!(row));
+      final changes = column.exactListenableOf!(row)!;
+      changes.addListener(capture);
+      expect(column.exactValueOf!(row), '25.0');
+      row.qty.text = '26.0001';
+      expect(observed.last, '26.0001');
+      params.value = _learned;
+      expect(observed.last, '7.0');
+      row.weight.text.text = 'invalid';
+      expect(observed.last, isNull);
+      changes.removeListener(capture);
+    },
+  );
+
   testWidgets('带后缀输入换成千克, 失焦后规范成列单位', (tester) async {
     final row = _Row();
     await _pump(tester, [row]);
@@ -180,7 +433,8 @@ void main() {
     await tester.pump();
     expect(row.weight.kg, isNull);
     expect(row.weight.hasError, isTrue);
-    expect(_status(tester)?.errorMessage, weightInputErrorText);
+    expect(_cellMessage(tester), weightInputErrorText);
+    expect(find.byKey(const ValueKey('weight-cell-status')), findsNothing);
 
     // 0 = 没称。
     await tester.enterText(_inputs.first, '0');
@@ -218,9 +472,13 @@ void main() {
     expect(find.text('=30 kg'), findsOneWidget);
   });
 
-  testWidgets('占位: 入库「约」、出库「应称」、未学准「可选」', (tester) async {
-    await _pump(tester, [_Row(params: _learned, qty: '10000')]);
-    expect(_input(tester).decoration!.hintText, '约 19.993');
+  testWidgets('可信单重实际预填且标为预估，未学准保持可选空值', (tester) async {
+    final inbound = _Row(params: _learned, qty: '10000');
+    await _pump(tester, [inbound]);
+    expect(inbound.weight.text.text, '19.9926');
+    expect(inbound.weight.kg, isNull);
+    expect(inbound.weight.isSuggested, isTrue);
+    expect(_cellMessage(tester), '预估 · 请填实称');
 
     await _pump(tester, [
       _Row(params: _learned, qty: '10000'),
@@ -229,34 +487,41 @@ void main() {
 
     await _pump(tester, [_Row(params: _red, qty: '10000')]);
     expect(_input(tester).decoration!.hintText, '可选');
+    expect(_input(tester).controller!.text, isEmpty);
 
     await _pump(tester, [_Row(qty: '10000')]);
     expect(_input(tester).decoration!.hintText, '可选');
   });
 
-  testWidgets('偏差: ALERT 红 ⓘ / WARN 琥珀 ⓘ / 正常只给说明', (tester) async {
+  testWidgets('所有统计偏差均黄框文字提醒，正常只有悬停说明，无单元格提示图标', (tester) async {
     final row = _Row(params: _learned, qty: '10000');
     await _pump(tester, [row]);
 
     await tester.enterText(_inputs.first, '18.5');
     await tester.pump();
-    var status = _status(tester)!;
-    expect(status.errorMessage, contains('比登记少约'));
-    expect(status.errorMessage, contains('个'));
+    expect(_input(tester).decoration!.errorText, isNull);
+    expect(_cellMessage(tester), '数值可能有问题');
+    expect(_tooltip(tester), contains('比登记少约'));
+    expect(
+      _input(tester).decoration!.enabledBorder!.borderSide.color,
+      weightAlertColor(
+        Theme.of(tester.element(_inputs.first)),
+        WeightAlertLevel.warn,
+      ),
+    );
+    expect(find.byKey(const ValueKey('weight-cell-status')), findsNothing);
 
     await tester.enterText(_inputs.first, '19.3');
     await tester.pump();
-    status = _status(tester)!;
-    expect(status.errorMessage, isNull);
-    expect(status.autofillMessage, contains('比登记少约'));
-    expect(status.autofillMessage, contains('(-3.5%)'));
+    expect(_input(tester).decoration!.errorText, isNull);
+    expect(_cellMessage(tester), '数值可能有问题');
+    expect(_tooltip(tester), contains('(-3.5%)'));
 
     await tester.enterText(_inputs.first, '20');
     await tester.pump();
-    status = _status(tester)!;
-    expect(status.errorMessage, isNull);
-    expect(status.autofillMessage, isNull);
-    expect(status.info, contains('依据: 近12次称重'));
+    expect(_input(tester).decoration!.errorText, isNull);
+    expect(_cellMessage(tester), isNull);
+    expect(_tooltip(tester), contains('依据: 近12次称重'));
   });
 
   testWidgets('单重未学准: 不核对, 提示去称样', (tester) async {
@@ -265,10 +530,9 @@ void main() {
 
     await tester.enterText(_inputs.first, '18.5');
     await tester.pump();
-    final status = _status(tester)!;
-    expect(status.errorMessage, isNull);
-    expect(status.autofillMessage, isNull);
-    expect(status.info, weightNotLearnedHint);
+    expect(_input(tester).decoration!.errorText, isNull);
+    expect(_cellMessage(tester), isNull);
+    expect(_tooltip(tester), weightNotLearnedHint);
   });
 
   testWidgets('数量空着: 称重推算数量 (黄框), 改数量不恢复学习, 改重量才清标记', (tester) async {

@@ -553,6 +553,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final total = _page?.total ?? 0;
     return Scaffold(
@@ -617,6 +618,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<ColorListItem>(
+                    columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.color_page.ColorPageState._buildDraftHost.1',
                     columns: _columns,

@@ -30,6 +30,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../models/goods_bom_item.dart';
 import '../repositories/goods_bom_repository.dart';
 import 'master_data_table_view.dart';
+import 'goods_bom_material_evidence.dart';
 
 final goodsBomLearningProvider = FutureProvider.autoDispose
     .family<GoodsBomLearningSummary, String>(
@@ -42,12 +43,16 @@ Future<void> showGoodsBomLearning(
   BuildContext context,
   String goodsId, {
   VoidCallback? onRelearned,
+  bool showMaterialEvidence = false,
 }) => showUtenAdaptivePanel<void>(
   context: context,
   // 设计/真实/实产单耗与累计、不良列一屏放下(基准画布 1920)，不用横向滚动。
   drawerWidth: 1700,
-  builder: (_) =>
-      GoodsBomLearningPanel(goodsId: goodsId, onRelearned: onRelearned),
+  builder: (_) => GoodsBomLearningPanel(
+    goodsId: goodsId,
+    onRelearned: onRelearned,
+    showMaterialEvidence: showMaterialEvidence,
+  ),
 );
 
 /// 数量带单位展示(不知道单位时只给数)：悬停说明与面板头部共用。
@@ -114,12 +119,14 @@ class GoodsBomLearningPanel extends ConsumerStatefulWidget {
     super.key,
     required this.goodsId,
     this.onRelearned,
+    this.showMaterialEvidence = false,
   });
 
   final String goodsId;
 
   /// 重学成功后通知调用方(组装信息页签据此重读真实使用数量)。
   final VoidCallback? onRelearned;
+  final bool showMaterialEvidence;
 
   @override
   ConsumerState<GoodsBomLearningPanel> createState() =>
@@ -132,6 +139,22 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
 
   /// 重学接口返回的最新学习记录：有就优先展示，不再多读一次。
   GoodsBomLearningSummary? _latest;
+  bool? _showEvidence;
+
+  @override
+  void didUpdateWidget(covariant GoodsBomLearningPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.goodsId != widget.goodsId) {
+      _latest = null;
+      _showEvidence = null;
+    }
+  }
+
+  void _refresh() {
+    setState(() => _latest = null);
+    ref.invalidate(goodsBomLearningProvider(widget.goodsId));
+    widget.onRelearned?.call();
+  }
 
   Future<void> _relearn(GoodsBomLearningComponent row) async {
     final l10n = AppLocalizations.of(context);
@@ -180,6 +203,12 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
                     l10n.bomLearningTitle,
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
+                ),
+                IconButton(
+                  key: const Key('bom-learning-refresh'),
+                  tooltip: l10n.commonRefresh,
+                  onPressed: _relearning == null ? _refresh : null,
+                  icon: const Icon(Icons.refresh),
                 ),
                 IconButton(
                   onPressed: () => Navigator.of(context).pop(),
@@ -238,44 +267,74 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
     ];
     final blocked = profile?.blockedReason;
     final outputUnit = profile?.outputUnitName;
+    final showEvidence =
+        _showEvidence ??
+        (widget.showMaterialEvidence ||
+            (summary.components.isEmpty &&
+                summary.materialEvidence.isNotEmpty));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (profile == null)
-          Text(l10n.bomLearningInactive)
-        else
-          Text(
-            '${l10n.bomLearningOutput}: '
-            '${_qtyWithUnit(profile.totalOutputQty, outputUnit)} · '
-            '${l10n.bomLearningSamples}: ${profile.sampleCount} · '
-            '${l10n.bomLearningTotalDefect}: '
-            '${_qtyWithUnit(profile.totalDefectQty, outputUnit)}',
-          ),
-        if (blocked != null) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          UtenInlineNotice(
-            level: UtenInlineNoticeLevel.warning,
-            message: l10n.bomLearningPaused(_blockedText(l10n, blocked)),
-          ),
-        ],
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(
-          child: MasterDataTableView<GoodsBomLearningComponent>(
-            tableKey:
-                'features.basic_data.widgets.goods_bom_learning_panel.GoodsBomLearningPanelState._content.1',
-            items: rows,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            emptyMessage: l10n.bomLearningEmpty,
-            columns: _columns(
-              l10n,
-              outputUnit: outputUnit,
-              canRelearn: summary.canRelearn,
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          children: [
+            UtenButton(
+              key: const Key('bom-learning-usage-tab'),
+              onPressed: () => setState(() => _showEvidence = false),
+              child: const Text('用量学习'),
+            ),
+            UtenButton(
+              key: const Key('bom-learning-evidence-tab'),
+              onPressed: () => setState(() => _showEvidence = true),
+              child: Text('选料与结构 (${summary.materialEvidence.length})'),
+            ),
+          ],
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        if (showEvidence)
+          Expanded(
+            child: GoodsBomMaterialEvidenceTable(
+              rows: summary.materialEvidence,
+            ),
+          )
+        else ...[
+          if (profile == null)
+            Text(l10n.bomLearningInactive)
+          else
+            Text(
+              '${l10n.bomLearningOutput}: '
+              '${_qtyWithUnit(profile.totalOutputQty, outputUnit)} · '
+              '${l10n.bomLearningSamples}: ${profile.sampleCount} · '
+              '${l10n.bomLearningTotalDefect}: '
+              '${_qtyWithUnit(profile.totalDefectQty, outputUnit)}',
+            ),
+          if (blocked != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            UtenInlineNotice(
+              level: UtenInlineNoticeLevel.warning,
+              message: l10n.bomLearningPaused(_blockedText(l10n, blocked)),
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s12),
+          Expanded(
+            child: MasterDataTableView<GoodsBomLearningComponent>(
+              tableKey:
+                  'features.basic_data.widgets.goods_bom_learning_panel.GoodsBomLearningPanelState._content.1',
+              items: rows,
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              emptyMessage: l10n.bomLearningEmpty,
+              columns: _columns(
+                l10n,
+                outputUnit: outputUnit,
+                canRelearn: summary.canRelearn,
+              ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }

@@ -4,6 +4,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
@@ -20,7 +23,13 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 const _arrivalTaskId = '20000000-0000-0000-0000-000000000001';
 const _finalTaskId = '10000000-0000-0000-0000-000000000001';
 
+late SharedPreferences _preferences;
+
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
   testWidgets(
     'hub entry loads once and refresh search arrival return stay operable',
     (tester) async {
@@ -274,6 +283,10 @@ Widget _testApp({
   Set<String> extraPermissions = const {},
 }) => ProviderScope(
   overrides: [
+    localServerReachableProvider.overrideWith(
+      (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+    ),
+    sharedPreferencesProvider.overrideWithValue(_preferences),
     apiClientProvider.overrideWithValue(api),
     currentPermissionsProvider.overrideWithValue({
       Perm.stockDocView,

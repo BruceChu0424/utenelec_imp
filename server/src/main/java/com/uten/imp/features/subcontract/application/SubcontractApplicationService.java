@@ -57,6 +57,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractApplicationService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -84,7 +88,9 @@ public class SubcontractApplicationService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractApplication> p = applicationRepo.findAll(applicationSpec(f), pageable);
-        return new PageResponse<>(p.map(this::toList).getContent(), p);
+        PageResponse<ApplicationListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
+        return p.stream().noneMatch(SubcontractApplication::isDeleted) ? result
+                : retainedRecords.page(result, "subcontract_applications", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -100,7 +106,8 @@ public class SubcontractApplicationService {
                                                       jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 ps.add(SubcontractGoodsKeyword.predicate(
                         cb, q, root, SubcontractApplicationItem.class, "applicationId", f.keyword()));
@@ -114,16 +121,23 @@ public class SubcontractApplicationService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, null, false, null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public ApplicationDetail detail(UUID id) {
-        SubcontractApplication r = requireApplication(id);
+    public ApplicationDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public ApplicationDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private ApplicationDetail readDetail(UUID id, boolean historyRead) {
+        SubcontractApplication r = requireApplication(id, historyRead);
         List<ApplicationItemDto> items = itemRepo.findByApplicationIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(r, items);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量；ADR-038 后订货不携带仓库，跨仓申请行可同批分解。 */
@@ -456,9 +470,11 @@ public class SubcontractApplicationService {
         return value == null ? null : value.toString();
     }
 
-    private SubcontractApplication requireApplication(UUID id) {
+    private SubcontractApplication requireApplication(UUID id) { return requireApplication(id, false); }
+
+    private SubcontractApplication requireApplication(UUID id, boolean includeDeleted) {
         return applicationRepo.findById(id)
-                .filter(r -> !r.isDeleted())
+                .filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外申请单不存在"));
     }
     private SubcontractApplication requireApplicationForUpdate(UUID id) {
@@ -467,5 +483,17 @@ public class SubcontractApplicationService {
         return application == null || application.isDeleted()
                 ? requireApplication(id)
                 : application;
+    }
+
+    private ApplicationDetail finishHistory(ApplicationDetail view, SubcontractApplication entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "subcontract_applications", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(false);
+        return retainedRecords.children("subcontract_applications",id,beforeId,size);
     }
 }

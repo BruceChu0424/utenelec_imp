@@ -94,7 +94,7 @@ public enum SystemSettingKey {
             "日志在审计中心可查询、可导出的月数; 到期后自动转入冷归档"),
     AUDIT_ARCHIVE_RETENTION_MONTHS("audit_archive_retention_months", Type.INT, "30", 0L, 240L,
             Category.AUDIT, true, "归档追加保留期", "个月", 420,
-            "转入冷归档后继续保留的月数; 到期将在每日清理任务中永久删除且不可恢复"),
+            "转入冷归档后的追加月数; 超过总期的处置以服务器实际审计保全模式为准，修改月数不会开启或关闭保全"),
 
     // ===== 系统更新 =====
     UPDATER_CHECK_INTERVAL_DAYS("updater_check_interval_days", Type.INT, "7", 0L, 365L,

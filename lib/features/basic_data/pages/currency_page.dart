@@ -395,6 +395,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final total = _page?.total ?? 0;
     return Scaffold(
@@ -459,6 +460,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
                 ),
                 Expanded(
                   child: MasterDataTableView<CurrencyListItem>(
+                    columnEditingEnabled: _canEdit,
                     tableKey:
                         'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
                     columns: _columns,

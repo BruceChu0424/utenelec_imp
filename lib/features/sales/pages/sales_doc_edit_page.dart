@@ -78,6 +78,7 @@ import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/pricing/line_pricing_controller.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
@@ -154,15 +155,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   String? _directPurpose;
   final _freeReason = TextEditingController();
   int _shipmentRevision = 0;
+  int _quoteRevision = 0;
 
-  /// 订单/报价：金额 = 数量 × 只读单价 × 可编辑折扣；其它单据仍 = 数量 × 单价。
+  /// 与服务端一致：适用折扣的商业单据按数量 × 单价 × 折扣计算。
   bool get _amountUsesDiscount =>
       widget.docType == SalesDocType.order ||
       widget.docType == SalesDocType.quote ||
+      widget.docType == SalesDocType.returnDoc ||
       _isCustomerShipment;
 
-  /// 单价由货品资料标价锁定(服务端权威)的单据：订货、报价(ADR-134)。
-  bool get _lockedPrice =>
+  bool get _allowPricingInput =>
+      _isCustomerShipment || widget.docType == SalesDocType.returnDoc;
+
+  /// 报价和订货共用的客户文件、商业条款和精确计价字段。
+  bool get _hasClientPricing =>
       widget.docType == SalesDocType.order ||
       widget.docType == SalesDocType.quote;
 
@@ -170,7 +176,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 客户零星发货/退货借用同一条识别链只取货品+数量行(价格语义按各自单据口径)。
   /// 销售出货必须从订货单引入、历史其它出货是只读遗留，都不提供识别。
   bool get _aiIntakeSupported =>
-      _lockedPrice ||
+      _hasClientPricing ||
       widget.docType == SalesDocType.customerShipment ||
       widget.docType == SalesDocType.returnDoc;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
@@ -301,13 +307,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     return document.status == 0;
   }
 
-  /// 报价/订货当前账号看不到价格：已有单据以服务端 priceMasked 为准，新建单按权限判断。
+  /// 服务端脱敏与当前权限取交集，旧单据响应或草稿不能恢复已撤销的价格权限。
   bool get _priceMasked {
-    if (!_lockedPrice) return false;
+    if (!_hasClientPricing) return false;
+    if (!_salesPriceVisible(ref.read(currentPermissionsProvider))) return true;
     final document = _attachmentDocument;
     if (document != null) return document.priceMasked;
     if (_aiIntake?.priceMasked ?? false) return true;
-    return !_salesPriceVisible(ref.read(currentPermissionsProvider));
+    return false;
   }
 
   /// 「识别客户文件」入口：报价/订货的新建单与草稿(含财务退回的草稿)；已审核订单、
@@ -464,7 +471,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _validUntil = DateTime.tryParse(data['validUntil'] as String? ?? '');
     _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
     restoreDraftEmployees(_empCache, data['employees']);
-    restoreDraftGrid(_grid, data['rows'], SalesGridRow.fromDraft);
+    restoreDraftGrid(
+      _grid,
+      data['rows'],
+      (row) => SalesGridRow.fromDraft(
+        row,
+        allowPricingInput: _allowPricingInput,
+        amountUsesDiscount: _amountUsesDiscount,
+      ),
+    );
     _pendingFiles.restoreDraft(draftMap(data['attachments']));
     _batchIntentKey = data['batchIntentKey'] as String? ?? _batchIntentKey;
     _uncertainShipmentBody = data['uncertainShipmentBody'] is Map
@@ -552,6 +567,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     });
     try {
       await ref.read(salesMasterNameServiceProvider).ensureLoaded();
+      if (!mounted) return;
+      if (widget.id == null) _prefillQuoteCurrency();
       // 新建报价预填默认有效期(30 天)：必填但常用默认，黄框提醒核对、可改；
       // 草稿恢复/编辑既有单随后会覆盖为用户当时的值。
       if (widget.id == null && _cfg.validUntilRequired && _validUntil == null) {
@@ -614,6 +631,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         }
         _loadedCustomerShipment = d.shipmentWorkflow.isDirect;
         _shipmentRevision = d.shipmentWorkflow.revision;
+        _quoteRevision = d.quoteWorkflow.reviewRevision;
         _billingMode = d.shipmentWorkflow.billingMode;
         _directPurpose = d.shipmentWorkflow.purpose;
         _freeReason.text = d.shipmentWorkflow.freeReason ?? '';
@@ -663,20 +681,24 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _financeRejectedByName = d.financeRejectedByName;
         final rows = <SalesGridRow>[];
         for (final it in d.items) {
-          final row = SalesGridRow(amountUsesDiscount: _amountUsesDiscount)
-            ..documentItemId = it.id
-            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
-            ..goods = ref
-                .read(salesMasterNameServiceProvider)
-                .goodsOptionOf(it.goodsId)
-            ..orderItemId = it.orderItemId
-            ..outItemId = it.outItemId
-            ..colorId = it.colorId
-            ..unitId = it.unitId
-            ..unitRate = it.unitRate
-            ..unitRateExact = it.exactDecimals['unitRate']
-            ..solution = it.solution
-            ..responsible = it.responsible;
+          final row =
+              SalesGridRow(
+                  amountUsesDiscount: _amountUsesDiscount,
+                  allowPricingInput: _allowPricingInput,
+                )
+                ..documentItemId = it.id
+                // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+                ..goods = ref
+                    .read(salesMasterNameServiceProvider)
+                    .goodsOptionOf(it.goodsId)
+                ..orderItemId = it.orderItemId
+                ..outItemId = it.outItemId
+                ..colorId = it.colorId
+                ..unitId = it.unitId
+                ..unitRate = it.unitRate
+                ..unitRateExact = it.exactDecimals['unitRate']
+                ..solution = it.solution
+                ..responsible = it.responsible;
           row.qty.text =
               financeExactTrimmed(
                 it.exactDecimals['qty'] ?? it.qty?.toString(),
@@ -750,7 +772,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             // 绝不默认 1(否则会把财务/服务端算好的折扣改回原价)。
             row.discount.clear();
           }
-          if (_lockedPrice) {
+          if (_hasClientPricing) {
             row
               ..clientPrice = financeExactTrimmed(
                 it.exactDecimals['clientPrice'] ?? it.clientPrice?.toString(),
@@ -775,7 +797,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _grid.replaceAll(rows);
       }
       if (_grid.isEmpty) {
-        _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+        _grid.addRow(
+          SalesGridRow(
+            amountUsesDiscount: _amountUsesDiscount,
+            allowPricingInput: _allowPricingInput,
+          ),
+        );
       }
       if (widget.id == null &&
           widget.docType == SalesDocType.shipment &&
@@ -923,12 +950,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         ..unitRate = 1
         ..stockPlaceNotifier.value = g.stockPlace;
       // 订单/报价/出货：单价由货品主档自动带入、锁定(出货亦可由来源订货单引入)。
-      if (_lockedPrice || widget.docType == SalesDocType.shipment) {
+      if (_hasClientPricing || widget.docType == SalesDocType.shipment) {
         target.applyLockedPricePreview(g.price);
       }
       // 订单/报价折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整；
       // 看不到价格的账号留空(保存时服务端按文件单价计算)。
-      if (_lockedPrice) {
+      if (_hasClientPricing) {
         // 英文名称由基础列直接显示。文件品名只保留客户文件或用户明确输入，
         // 不把主档英文名称写进客户原文，避免未上传文件也展开文件列。
         String? pricingReason;
@@ -978,7 +1005,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final extraRows = <SalesGridRow>[];
     if (picked.length > 1) {
       for (final g in picked.skip(1)) {
-        final r = SalesGridRow(amountUsesDiscount: _amountUsesDiscount);
+        final r = SalesGridRow(
+          amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
+        );
         fill(r, g);
         extraRows.add(r);
       }
@@ -1046,6 +1076,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           li,
           goods,
           amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
         ),
       );
     }
@@ -1068,7 +1099,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
   }
 
-  /// 表头客户变更（手动选择或上游引入回填）：按客户「学习预填」上次订货条款（新建态，
+  /// 表头客户变更（手动选择或上游引入回填）：按客户主档默认条款预填（新建态，
   /// 只填空/未核对字段并黄标提醒）；出货类单据再按收货地址簿（V300 学习能力，最近使用
   /// 优先）带出收货地址/联系电话；地址簿为空再回退客户主档；都没有则留空不加载。
   /// 订货单不采集地址两字段（出货环节承载），仅做条款预填。
@@ -1092,6 +1123,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _autofillValues.remove('shipPhone');
       }
       _clientId = id;
+      if (widget.id == null) _prefillQuoteCurrency();
     });
     _clearError('client');
     if (id == null || id.isEmpty) return;
@@ -1146,6 +1178,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       });
     } catch (_) {
       // 查询失败静默：不阻塞开单，地址/电话可手填。
+    }
+  }
+
+  /// 报价使用本位币；自动显示实际计价币种，不带入客户的外币订货默认值。
+  /// 与客户条款一样只填空值或未人工核对的预填值，编辑历史单据不调用。
+  void _prefillQuoteCurrency() {
+    if (widget.docType != SalesDocType.quote ||
+        (_currencyId != null && !_autofilled.contains('currency'))) {
+      return;
+    }
+    final base = ref.read(salesMasterNameServiceProvider).baseCurrencyId;
+    if (base != null) {
+      _currencyId = base;
+      _autofilled.add('currency');
     }
   }
 
@@ -1373,6 +1419,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       final touched =
           r.qty.text.trim().isNotEmpty ||
           r.price.text.trim().isNotEmpty ||
+          (r.canEditTotal && r.pricing.totalAmount.text.trim().isNotEmpty) ||
           r.remark.text.trim().isNotEmpty;
       if (touched) {
         r.invalidNotifier.value = true;
@@ -1394,18 +1441,37 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       var badRow = 0;
       var badDiscountRow = 0;
       var copiedPriceRow = 0;
+      String? pricingError;
       for (var i = 0; i < rows.length; i++) {
         final r = rows[i];
+        if (_allowPricingInput &&
+            !_freeCustomerShipment &&
+            !masked &&
+            r.pricing.mode != LinePricingMode.calculateAmount) {
+          final error = r.pricing.validate();
+          if (error != null) {
+            r.invalidNotifier.value = true;
+            pricingError ??= '第 ${allRows.indexOf(r) + 1} 行明细：$error';
+          }
+        }
         final qtyOk = (double.tryParse(r.qty.text.trim()) ?? 0) > 0;
+        final quotePrice = r.price.text.trim();
+        final quotePriceOk =
+            widget.docType != SalesDocType.quote ||
+            masked ||
+            quotePrice.isEmpty ||
+            (RegExp(r'^\d+(?:\.\d+)?$').hasMatch(quotePrice));
         final priceOk =
-            !priceRequired ||
-            (r.price.text.trim().isNotEmpty &&
-                double.tryParse(r.price.text.trim()) != null);
+            quotePriceOk &&
+            (!priceRequired ||
+                (r.price.text.trim().isNotEmpty &&
+                    double.tryParse(r.price.text.trim()) != null));
         if (!qtyOk || !priceOk) {
           r.invalidNotifier.value = true;
           badRow = badRow == 0 ? i + 1 : badRow;
         }
-        if (_lockedPrice && r.requiresOrderPriceRefresh) {
+        if (widget.docType == SalesDocType.order &&
+            r.requiresOrderPriceRefresh) {
           r.invalidNotifier.value = true;
           copiedPriceRow = copiedPriceRow == 0 ? i + 1 : copiedPriceRow;
         }
@@ -1430,8 +1496,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           'items',
           '第 $copiedPriceRow 行是复制的新${_cfg.shortLabel}明细，请重新选择货品以取得当前主档单价',
         );
+      } else if (pricingError != null) {
+        fail('items', pricingError);
       } else if (badRow > 0) {
-        fail('items', '第 $badRow 行明细：数量须大于 0${priceRequired ? '，单价必填' : ''}');
+        fail(
+          'items',
+          '第 $badRow 行明细：数量须大于 0${priceRequired
+              ? '，单价必填'
+              : widget.docType == SalesDocType.quote
+              ? '，已填写的单价须为非负数'
+              : ''}',
+        );
       } else if (badDiscountRow > 0) {
         fail(
           'items',
@@ -1599,15 +1674,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       }
 
       final body = <String, dynamic>{
-        if ((_lockedPrice || widget.docType.isShipment) &&
+        if ((_hasClientPricing || widget.docType.isShipment) &&
             (r.documentItemId?.isNotEmpty ?? false))
           'id': r.documentItemId,
         'goodsId': r.goods!.id,
-        if (_lockedPrice)
+        if (_hasClientPricing)
           'extraColumns': r.extraColumnsPayload(priceMasked: _priceMasked),
         'qty': r.qty.text.trim(),
         // 只送单价原文; 金额由服务端按 数量 × 单价 × 折扣 精确派生(ADR-112), 请求不带金额。
-        if (price != null && !_freeCustomerShipment)
+        if (price != null && !_freeCustomerShipment && !_priceMasked)
           'price': r.price.text.trim(),
         if (r.orderItemId != null) 'orderItemId': r.orderItemId,
         if (r.outItemId != null) 'outItemId': r.outItemId,
@@ -1619,15 +1694,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         // 行备注：5 类单据通用（空文本不传，后端按 null 处理）。
         if (r.remark.text.trim().isNotEmpty) 'remark': r.remark.text.trim(),
       };
-      if (_lockedPrice) body.addAll(_clientLineFields(r));
+      if (_hasClientPricing) body.addAll(_clientLineFields(r));
       switch (widget.docType) {
         case SalesDocType.order:
           final mp = parseExtra(r.machiningPrice);
           final circ = parseExtra(r.circumference);
-          final inb = parseExtra(r.inboundQty);
           if (mp != null) body['machiningPrice'] = mp;
           if (circ != null) body['circumference'] = circ;
-          if (inb != null) body['inboundQty'] = inb;
+          // 订单折扣是可写字段（数量 × 单价 × 折扣 精确派生金额，ADR-112），但只经
+          // _clientLineFields 一处提交：看不到价格时它已按脱敏口径提交 null（服务端
+          // 按文件单价计算），这里再写一次原文会把 null 覆盖回明文折扣。
+          // 进仓量来自下游入库事实；旧草稿参考值不能伪装成订单可写字段。
           break;
         case SalesDocType.shipment:
         case SalesDocType.customerShipment:
@@ -1660,6 +1737,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       'billDate': _fmt(_billDate),
       if (widget.docType.isShipment && widget.id != null)
         'expectedRevision': _shipmentRevision,
+      if (widget.docType == SalesDocType.quote && widget.id != null)
+        'expectedRevision': _quoteRevision,
       if (_isCustomerShipment) ...{
         'shipmentKind': 'DIRECT_CUSTOMER',
         'billingMode': _billingMode,
@@ -1710,10 +1789,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       if (widget.docType == SalesDocType.returnDoc &&
           _returnReason.text.trim().isNotEmpty)
         'returnReason': _returnReason.text.trim(),
-      if (_lockedPrice && _clientFileCurrency != null)
+      if (_hasClientPricing && _clientFileCurrency != null)
         'clientFileCurrency': _clientFileCurrency,
       // 导入后换了表头客户：文件里的客户信息只补给识别时的那个客户，换了就不补。
-      if (_lockedPrice && (_aiIntake?.isValid ?? false))
+      if (_hasClientPricing && (_aiIntake?.isValid ?? false))
         'aiIntake': _aiIntake!.toSaveJson(currentClientId: _clientId),
       'items': itemsBody,
     };
@@ -2322,6 +2401,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       r.extraColumnSnapshots.any((c) => c.value?.trim().isNotEmpty ?? false) ||
       r.goods != null ||
       r.qty.text.trim().isNotEmpty ||
+      (r.canEditTotal && r.pricing.totalAmount.text.trim().isNotEmpty) ||
       r.remark.text.trim().isNotEmpty ||
       r.clientModel.text.trim().isNotEmpty;
 
@@ -2398,7 +2478,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       (row) => row.clientPrice?.trim().isNotEmpty ?? false,
     );
     if (!replace &&
-        _lockedPrice &&
+        _hasClientPricing &&
         existingFilePrices &&
         incomingFilePrices &&
         (_clientFileCurrency ?? '').toUpperCase() !=
@@ -2417,7 +2497,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
     // Resolve reusable definitions before replacing any user-entered lines.
     final intakeColumns = <String, BusinessColumn>{};
-    if (_lockedPrice && patch.extraColumns.isNotEmpty) {
+    if (_hasClientPricing && patch.extraColumns.isNotEmpty) {
       try {
         final repository = ref.read(businessColumnsRepositoryProvider);
         final scope = widget.docType == SalesDocType.quote
@@ -2457,7 +2537,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final names = ref.read(salesMasterNameServiceProvider);
     final rows = [
       for (final p in patch.rows)
-        SalesGridRow.fromIntake(p, amountUsesDiscount: _amountUsesDiscount),
+        SalesGridRow.fromIntake(
+          p,
+          amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
+        ),
     ];
     for (var index = 0; index < rows.length; index++) {
       final row = rows[index];
@@ -2496,7 +2580,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         }
       }
       // 报价/订货专属的识别会话与文件币种(其它单据没有折扣/标价语义，不参与)。
-      if (_lockedPrice) {
+      if (_hasClientPricing) {
         if (replace || !existingFilePrices) {
           _clientFileCurrency = patch.clientFileCurrency;
         }
@@ -2517,7 +2601,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       _grid.addRows(rows);
     }
     if (_grid.isEmpty) {
-      _grid.addRow(SalesGridRow(amountUsesDiscount: _amountUsesDiscount));
+      _grid.addRow(
+        SalesGridRow(
+          amountUsesDiscount: _amountUsesDiscount,
+          allowPricingInput: _allowPricingInput,
+        ),
+      );
     }
     _recalcQtyTotal();
     if (mounted) setState(() {});
@@ -2592,7 +2681,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 明细表底部合计条的金额项标签：订单/客户出货按单据币种，其余内部出库为本币。
   String _totalAmountLabel(SalesMasterNameService names) {
     const base = '总金额';
-    if (_freeCustomerShipment || (!_lockedPrice && !_isCustomerShipment)) {
+    if (_freeCustomerShipment || (!_hasClientPricing && !_isCustomerShipment)) {
       return base;
     }
     final resolved = names.currency(_currencyId);
@@ -2622,6 +2711,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
 
   Widget _buildDraftPage(BuildContext context) {
+    // 页面保持打开时撤权也必须重建列、固定列快照和合计条。
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final names = ref.watch(salesMasterNameServiceProvider);
     final compact = MediaQuery.sizeOf(context).width < 600;
@@ -2895,32 +2986,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                     ref,
                                                   ),
                                             ),
-                                            // 报价专属：有效期紧跟客户置顶且必填——
-                                            // 报价页顶部由此与订货页(币种/结账方式/交货
-                                            // 日期一串必填)明显区分开(2026-09-29)。
-                                            // 新建时预填 30 天(黄框可改)。
-                                            if (_cfg.hasValidUntil)
-                                              UtenDateField(
-                                                label: '有效期',
-                                                required:
-                                                    _cfg.validUntilRequired,
-                                                value: _validUntil,
-                                                autofilled: _autofilled
-                                                    .contains('validUntil'),
-                                                errorMessage:
-                                                    _errors.contains(
-                                                      'validUntil',
-                                                    )
-                                                    ? '请选择有效期'
-                                                    : null,
-                                                onChanged: (d) {
-                                                  setState(
-                                                    () => _validUntil = d,
-                                                  );
-                                                  _clearError('validUntil');
-                                                  _markConfirmed('validUntil');
-                                                },
-                                              ),
                                             if (_isCustomerShipment) ...[
                                               UtenDropdownField(
                                                 key: const ValueKey(
@@ -3225,6 +3290,29 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                       .contains('contractNo'),
                                                 ),
                                               ),
+                                            // 与订货共用字段顺序；报价有效期追加在共同信息之后。
+                                            if (_cfg.hasValidUntil)
+                                              UtenDateField(
+                                                label: '有效期',
+                                                required:
+                                                    _cfg.validUntilRequired,
+                                                value: _validUntil,
+                                                autofilled: _autofilled
+                                                    .contains('validUntil'),
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'validUntil',
+                                                    )
+                                                    ? '请选择有效期'
+                                                    : null,
+                                                onChanged: (d) {
+                                                  setState(
+                                                    () => _validUntil = d,
+                                                  );
+                                                  _clearError('validUntil');
+                                                  _markConfirmed('validUntil');
+                                                },
+                                              ),
                                             if (_cfg.hasContractInfo) ...[
                                               TextField(
                                                 controller: _signAddr,
@@ -3445,9 +3533,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                   return SavedDocumentFields(
                                     locked: _hasCreatedDocuments,
                                     child: UtenEditableGrid<SalesGridRow>(
+                                      columnEditingEnabled:
+                                          !_loading &&
+                                          !_saving &&
+                                          !_hasCreatedDocuments &&
+                                          !_editingApprovedOrder &&
+                                          _uncertainShipmentBody == null,
                                       tableKey:
                                           'sales.${widget.docType.name}.items',
-                                      onAddColumn: !_lockedPrice
+                                      onAddColumn: !_hasClientPricing
                                           ? null
                                           : (hidden) => addBusinessGridColumn(
                                               context,
@@ -3458,36 +3552,32 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   : 'sales_order',
                                               hiddenColumns: hidden,
                                               rows: _grid.rows,
+                                              currentRows: () => _grid.rows,
                                               createRow: () {
                                                 final row = SalesGridRow(
                                                   amountUsesDiscount:
                                                       _amountUsesDiscount,
+                                                  allowPricingInput:
+                                                      _allowPricingInput,
                                                 );
                                                 _grid.addRow(row);
                                                 return row;
                                               },
                                               priceMasked: _priceMasked,
+                                              isEditingEnabled: () =>
+                                                  mounted &&
+                                                  !_loading &&
+                                                  !_saving &&
+                                                  !_hasCreatedDocuments &&
+                                                  !_editingApprovedOrder &&
+                                                  _uncertainShipmentBody ==
+                                                      null,
                                               onChanged: () => setState(() {}),
                                             ),
-                                      forceVisibleColumnKeys: {
-                                        ...filledBusinessColumnKeys(_grid.rows),
-                                        if (_grid.rows.any(
-                                          (r) => r.clientModel.text
-                                              .trim()
-                                              .isNotEmpty,
-                                        ))
-                                          'clientModel',
-                                        if (_grid.rows.any(
-                                          (r) => r.clientGoodsName.text
-                                              .trim()
-                                              .isNotEmpty,
-                                        ))
-                                          'clientGoodsName',
-                                        if (_grid.rows.any(
-                                          (r) => r.clientPrice != null,
-                                        ))
-                                          'clientPrice',
-                                      },
+                                      forceVisibleColumnKeys:
+                                          filledSalesOptionalColumnKeys(
+                                            _grid.rows,
+                                          ),
                                       controller: _grid,
                                       stickyHeaderPinned: _gridPinned,
                                       columns: salesGridColumns(
@@ -3510,11 +3600,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                             SalesGridRow(
                                               amountUsesDiscount:
                                                   _amountUsesDiscount,
+                                              allowPricingInput:
+                                                  _allowPricingInput,
                                             ),
                                             _grid.rows,
                                           ),
                                       cloneRow: (r) => r.clone(
-                                        requireOrderPriceRefresh: _lockedPrice,
+                                        requireOrderPriceRefresh:
+                                            widget.docType ==
+                                            SalesDocType.order,
                                       ),
                                       toolbarActions: [
                                         if (_cfg.hasUpstreamLink)
@@ -3589,6 +3683,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   _totalAmountLabel(names),
                                                   _freeCustomerShipment
                                                       ? '不收费（货款 0）'
+                                                      : _priceMasked
+                                                      ? '***'
                                                       : financeExactMoneyDisplay(
                                                           exactAmountSumText(
                                                             _grid.rows.map(

@@ -16,6 +16,7 @@ import '../../features/basic_data/models/master_facet.dart';
 import 'form_draft_category.dart';
 import 'form_draft_store.dart';
 import 'form_draft_catalog.dart';
+import 'form_draft_history_view.dart';
 import 'draft_workspace_sources.dart' show formDraftCategoryLabel;
 
 export 'form_draft_category.dart';
@@ -34,13 +35,17 @@ Future<void> deleteFormDrafts(
 ) async {
   final drafts = values.toList();
   if (drafts.isEmpty) return;
+  if (drafts.any((draft) => draft.hasUnknownSubmission)) {
+    context.appWarning(formDraftUnknownSubmissionMessage);
+    return;
+  }
   final store = ref.read(formDraftsProvider.notifier);
   final owner = store.ownerKey;
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialog) => AlertDialog(
       title: Text(drafts.length == 1 ? '删除草稿？' : '删除所选 ${drafts.length} 份草稿？'),
-      content: const Text('删除后将无法继续填写这些内容。'),
+      content: const Text('删除后将无法继续填写，原内容仍保留在本机草稿历史。'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialog, false),
@@ -59,8 +64,22 @@ Future<void> deleteFormDrafts(
     return;
   }
   try {
+    bool current(FormDraft draft) {
+      final latest = ref
+          .read(formDraftsProvider)
+          .where((value) => value.id == draft.id)
+          .firstOrNull;
+      return latest != null &&
+          latest.revision == draft.revision &&
+          !latest.hasUnknownSubmission;
+    }
+
+    if (!drafts.every(current)) throw const FormDraftConflict();
     for (final draft in drafts) {
-      if (store.ownerKey != owner) throw StateError('登录身份已变化');
+      if (!context.mounted || store.ownerKey != owner) {
+        throw StateError('登录身份已变化');
+      }
+      if (!current(draft)) throw const FormDraftConflict();
       await store.delete(draft.id, expectedRevision: draft.revision);
     }
   } catch (error) {
@@ -80,6 +99,7 @@ class FormDraftCategoryTable<T> extends ConsumerStatefulWidget {
     this.search = '',
     this.localPredicate,
     this.includeConfirmedWithoutRecord = false,
+    this.standalone = false,
   });
   final FormDraftCategoryScope scope;
   final MasterDataTableView<T> table;
@@ -88,6 +108,12 @@ class FormDraftCategoryTable<T> extends ConsumerStatefulWidget {
   final String search;
   final bool Function(FormDraft)? localPredicate;
   final bool includeConfirmedWithoutRecord;
+
+  /// 纯草稿列表（宿主没有自家业务表，[FormDraftCategoryList]）：恒渲染包装表，
+  /// 「已选 N 项」胶囊与删除按钮的右下悬浮组在空表/筛选空态也常驻（2026-10-01
+  /// 用户口径：任务中心各分类的草稿里胶囊不得滞留表头工具条）。业务列表保持
+  /// 早退——无草稿可合并时原样返回宿主表。
+  final bool standalone;
   @override
   ConsumerState<FormDraftCategoryTable<T>> createState() =>
       _FormDraftCategoryTableState<T>();
@@ -174,10 +200,10 @@ class _FormDraftCategoryTableState<T>
     final paginated = table.onPageChange != null;
     final formalItems = table.error == null ? table.items : <T>[];
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
-    // Keep the wrapper's runtime type stable while a paginated table appends.
-    // Local drafts are outside server pagination and remain actionable above
-    // the complete loaded sequence, including after reaching page two.
-    if (drafts.isEmpty && table.onPageChange == null) return table;
+    // Keep the adapter and its history entry when the last active draft is
+    // completed/deleted or a filter hides it. History remains independently
+    // readable even when the formal list is empty, loading or unavailable.
+    final historyInHeader = table.isLoading || table.error != null;
     final recovering = <String, FormDraft>{
       for (final draft in drafts)
         for (final id in formDraftConfirmedIds(draft)) id: draft,
@@ -203,12 +229,14 @@ class _FormDraftCategoryTableState<T>
       for (final item in formalItems)
         FormDraftCategoryRow(record: item, draft: recovering[_id(item)]),
     ];
-    if (table.onPageChange == null &&
-        local.isEmpty &&
-        !table.items.any((item) => recovering.containsKey(_id(item)))) {
-      return table;
-    }
-    final selected = {...table.selectedIds, ..._localSelected};
+    final protectedFormalIds = {
+      for (final entry in recovering.entries)
+        if (entry.value.hasUnknownSubmission) entry.key,
+    };
+    final selected = {
+      ...table.selectedIds.where((id) => !protectedFormalIds.contains(id)),
+      ..._localSelected,
+    };
     final binding =
         table.platformBinding ??
         PlatformTableCatalogScope.resolve(
@@ -248,6 +276,7 @@ class _FormDraftCategoryTableState<T>
               canEditValues: binding.canEditValues,
               canEditRow: (row) =>
                   !row.isLocal &&
+                  row.draft?.hasUnknownSubmission != true &&
                   (binding.canEditRow?.call(row.record as T) ?? true),
               snapshotOf: binding.snapshotOf == null
                   ? null
@@ -273,7 +302,18 @@ class _FormDraftCategoryTableState<T>
               defaultColumnOrder: binding.defaultColumnOrder,
               revealPopulatedColumnKeys: binding.revealPopulatedColumnKeys,
             ),
-      scrollingHeader: table.scrollingHeader,
+      scrollingHeader: historyInHeader
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (table.scrollingHeader != null) table.scrollingHeader!,
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FormDraftHistoryButton(scope: widget.scope),
+                ),
+              ],
+            )
+          : table.scrollingHeader,
       platformCellDecorator: table.platformCellDecorator == null
           ? null
           : (context, row, key, value, child) => row.record == null
@@ -366,9 +406,10 @@ class _FormDraftCategoryTableState<T>
                 onTap: () => _open(row.draft!),
               ),
               UtenMenuItem(
-                label: '删除草稿',
+                label: row.draft!.hasUnknownSubmission ? '先核对提交' : '删除草稿',
                 icon: Icons.delete_outline,
                 destructive: true,
+                enabled: !row.draft!.hasUnknownSubmission,
                 onTap: () => deleteFormDrafts(context, ref, [row.draft!]),
               ),
             ]
@@ -379,7 +420,22 @@ class _FormDraftCategoryTableState<T>
                   icon: Icons.edit_outlined,
                   onTap: () => _open(row.draft!),
                 ),
-              ...?table.rowMenuBuilder?.call(row.record as T),
+              for (final entry
+                  in table.rowMenuBuilder?.call(row.record as T) ??
+                      <UtenContextMenuEntry>[])
+                if (row.draft?.hasUnknownSubmission == true &&
+                    entry is UtenMenuItem &&
+                    entry.destructive)
+                  UtenMenuItem(
+                    label: '先核对提交',
+                    icon: entry.icon,
+                    destructive: true,
+                    enabled: false,
+                    onTap: () =>
+                        context.appWarning(formDraftUnknownSubmissionMessage),
+                  )
+                else
+                  entry,
             ],
       canShowRowMenu: (row) =>
           row.draft != null ||
@@ -396,18 +452,25 @@ class _FormDraftCategoryTableState<T>
           : table.rowWidgetKeyOf?.call(row.record as T),
       selectedIds: selected,
       onSelectedIdsChanged:
-          table.onSelectedIdsChanged == null && table.batchActionsBuilder != null
+          table.onSelectedIdsChanged == null &&
+              table.batchActionsBuilder != null
           ? null
           : (next) {
-        setState(() {
-          _localSelected
-            ..clear()
-            ..addAll(next.where((id) => id.startsWith(_prefix)));
-        });
-        table.onSelectedIdsChanged?.call(
-          next.where((id) => !id.startsWith(_prefix)).toSet(),
-        );
-      },
+              setState(() {
+                _localSelected
+                  ..clear()
+                  ..addAll(next.where((id) => id.startsWith(_prefix)));
+              });
+              table.onSelectedIdsChanged?.call(
+                next
+                    .where(
+                      (id) =>
+                          !id.startsWith(_prefix) &&
+                          !protectedFormalIds.contains(id),
+                    )
+                    .toSet(),
+              );
+            },
       onRowSelectionChanged: table.onRowSelectionChanged == null
           ? null
           : (row, checked) {
@@ -421,6 +484,7 @@ class _FormDraftCategoryTableState<T>
                   }
                 });
               } else {
+                if (row.draft?.hasUnknownSubmission == true && checked) return;
                 table.onRowSelectionChanged!(row.record as T, checked);
               }
             },
@@ -433,11 +497,13 @@ class _FormDraftCategoryTableState<T>
           : table.selectionSummaryCount! + _localSelected.length,
       showSelectionSummary: table.showSelectionSummary,
       preserveSelectionOnContextMenu: table.preserveSelectionOnContextMenu,
-      selectionStateOf: table.selectionStateOf == null
+      selectionStateOf: (row) =>
+          !row.isLocal && row.draft?.hasUnknownSubmission == true
           ? null
-          : (row) => row.isLocal
-                ? _localSelected.contains('$_prefix${row.draft!.id}')
-                : table.selectionStateOf!(row.record as T),
+          : row.isLocal
+          ? _localSelected.contains('$_prefix${row.draft!.id}')
+          : table.selectionStateOf?.call(row.record as T) ??
+                selected.contains(_id(row.record as T)),
       unselectableLeadingBuilder: table.unselectableLeadingBuilder == null
           ? null
           : (ctx, row) => row.isLocal
@@ -448,29 +514,48 @@ class _FormDraftCategoryTableState<T>
           : (ctx, row) => row.isLocal
                 ? null
                 : table.leadingOverlayBuilder!(ctx, row.record as T),
-      batchActionsBuilder: (ctx, ids) => [
-        ...?table.batchActionsBuilder?.call(
-          ctx,
-          ids.where((id) => !id.startsWith(_prefix)).toSet(),
-        ),
-        // 纯草稿页（宿主表没有自家批量动作）删除按钮常驻：悬浮组（已选胶囊+
-        // 按钮）恒在右下角、未选时按钮禁用但可见——2026-09-27 用户口径「已选
-        // N 项放右下角悬浮」。业务列表保持原条件：选中草稿行才追加。
-        if (table.batchActionsBuilder == null || _localSelected.isNotEmpty)
-          UtenButton(
-            type: UtenButtonType.danger,
-            onPressed: _localSelected.isEmpty
-                ? null
-                : () => deleteFormDrafts(
-                    context,
-                    ref,
-                    local.where(
-                      (d) => _localSelected.contains('$_prefix${d.id}'),
-                    ),
-                  ),
-            child: Text('删除填写草稿 (${_localSelected.length})'),
-          ),
-      ],
+      batchActionsBuilder: table.batchActionsBuilder == null && local.isEmpty
+          ? null
+          : (ctx, ids) => [
+              ...?table.batchActionsBuilder?.call(
+                ctx,
+                ids
+                    .where(
+                      (id) =>
+                          !id.startsWith(_prefix) &&
+                          !protectedFormalIds.contains(id),
+                    )
+                    .toSet(),
+              ),
+              // 纯草稿页（宿主表没有自家批量动作）删除按钮常驻：悬浮组（已选胶囊+
+              // 按钮）恒在右下角、未选时按钮禁用但可见——2026-09-27 用户口径「已选
+              // N 项放右下角悬浮」。业务列表保持原条件：选中草稿行才追加。
+              if (table.batchActionsBuilder == null ||
+                  _localSelected.isNotEmpty)
+                UtenButton(
+                  type: UtenButtonType.danger,
+                  onPressed:
+                      _localSelected.isEmpty ||
+                          local.any(
+                            (draft) =>
+                                _localSelected.contains(
+                                  '$_prefix${draft.id}',
+                                ) &&
+                                draft.hasUnknownSubmission,
+                          )
+                      ? null
+                      : () => deleteFormDrafts(
+                          context,
+                          ref,
+                          local.where(
+                            (d) => _localSelected.contains('$_prefix${d.id}'),
+                          ),
+                        ),
+                  onDisabledTap: () =>
+                      context.appWarning(formDraftUnknownSubmissionMessage),
+                  child: Text('删除填写草稿 (${_localSelected.length})'),
+                ),
+            ],
       rowColor: table.rowColor == null
           ? null
           : (row) => row.isLocal ? null : table.rowColor!(row.record as T),
@@ -550,9 +635,13 @@ class _FormDraftCategoryTableState<T>
             )
           : table.summaryBar,
       summaryBarInline: table.summaryBarInline,
-      toolbarActions: table.toolbarActions,
+      toolbarActions: [
+        ...?table.toolbarActions,
+        if (!historyInHeader) FormDraftHistoryButton(scope: widget.scope),
+      ],
       toolbarLeadingActions: table.toolbarLeadingActions,
       embedded: table.embedded,
+      singleTapRows: table.singleTapRows,
       primary: table.primary,
       virtualized: table.virtualized,
       showFullscreenToggle: table.showFullscreenToggle,
@@ -634,6 +723,7 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
     final table = FormDraftCategoryTable<Object>(
       scope: widget.scope,
       search: search,
+      standalone: true,
       localPredicate: (draft) => _filters.entries.every((filter) {
         final expected = filter.value;
         if (expected == null || expected.isEmpty) return true;

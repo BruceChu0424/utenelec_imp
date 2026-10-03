@@ -51,7 +51,8 @@ import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/order_duplicate_goods_review.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
-import '../../basic_data/widgets/uten_goods_picker.dart';
+import '../../basic_data/models/goods_node.dart' show GoodsListItem;
+import '../widgets/purchase_goods_picker.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
@@ -204,7 +205,11 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     _purchaserId = data['purchaserId'] as String?;
     _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
     restoreDraftEmployees(_empCache, data['employees']);
-    restoreDraftGrid(_grid, data['rows'], PurchaseGridRow.fromDraft);
+    restoreDraftGrid(
+      _grid,
+      data['rows'],
+      (row) => PurchaseGridRow.fromDraft(row, supportsTotalInput: true),
+    );
     _pendingFiles.restoreDraft(draftMap(data['attachments']));
     final created = draftMaps(data['createdOrders']);
     _createdOrders = created.isEmpty
@@ -259,7 +264,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     } else {
       await _loadExisting();
     }
-    if (_grid.isEmpty) _grid.addRow(PurchaseGridRow());
+    if (_grid.isEmpty) _grid.addRow(PurchaseGridRow(supportsTotalInput: true));
     if (mounted && widget.id == null) await initializeFormDraft();
     if (mounted) setState(() => _loading = false);
   }
@@ -351,6 +356,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           linked,
           // 名称+编号（编号列数据源；goodsInfo 未解析时编号为 null 显 '—'）。
           names.goodsOptionOf(item.goodsId)!,
+          supportsTotalInput: true,
         );
         row
           ..sourceRequestNo = item.sourceDocumentNo
@@ -443,30 +449,37 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       _createdAt = d.createdAt;
       final rows = <PurchaseGridRow>[];
       for (final it in d.items) {
-        final row = PurchaseGridRow(sourceLocked: it.requestItemId != null)
-          // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
-          ..goods = ref
-              .read(masterNameServiceProvider)
-              .goodsOptionOf(it.goodsId)
-          ..upstreamItemId = it.requestItemId
-          ..colorId = it.colorId
-          ..unitId = it.unitId
-          ..unitRate = it.unitRate
-          // V463：多来源合并行回显（来源明细 ids + 单号逐条带回）。
-          ..upstreamItemIds = [
-            if (it.requestItemId != null) it.requestItemId!,
-            ...it.sourceRequests
-                .map((source) => source.requestItemId)
-                .where((id) => id != it.requestItemId),
-          ]
-          ..sourceDocs = it.sourceRequests;
-        row.qty.text = financeExactTrimmed(it.qty?.toString()) ?? '';
+        final row =
+            PurchaseGridRow(
+                supportsTotalInput: true,
+                sourceLocked: it.requestItemId != null,
+              )
+              // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+              ..goods = ref
+                  .read(masterNameServiceProvider)
+                  .goodsOptionOf(it.goodsId)
+              ..upstreamItemId = it.requestItemId
+              ..colorId = it.colorId
+              ..unitId = it.unitId
+              ..unitRate = it.unitRate
+              // V463：多来源合并行回显（来源明细 ids + 单号逐条带回）。
+              ..upstreamItemIds = [
+                if (it.requestItemId != null) it.requestItemId!,
+                ...it.sourceRequests
+                    .map((source) => source.requestItemId)
+                    .where((id) => id != it.requestItemId),
+              ]
+              ..sourceDocs = it.sourceRequests;
+        row.qty.text =
+            financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '';
         row.weight.text = financeExactTrimmed(it.weight?.toString()) ?? '';
-        row.price.text = financeExactTrimmed(it.price?.toString()) ?? '';
+        row.price.text =
+            financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? '';
         row.documentItemId = it.id;
         row.restoreExtraColumns(
           it.extraColumns.map((c) => c.toSnapshot()).toList(),
         );
+        row.pricing.restoreRecordedTotal(it.totalAmountInputText);
         row.remark.text = it.remark ?? '';
         // 既有单一套条款：明细不落条款，编辑回显按单头条款回填各行。
         row
@@ -498,22 +511,35 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
 
   Future<void> _pickGoods(PurchaseGridRow row) async {
     if (row.sourceLocked) return;
-    final g = await showUtenGoodsPicker(
+    final picked = await ref.read(purchaseGridGoodsPickerProvider)(
       context,
       ref,
-      scope: UtenGoodsPickerScope.material,
     );
-    if (g == null) return;
-    row
-      ..goods = GoodsOption(id: g.id, code: g.code, name: g.name)
-      ..colorId = g.colorId
-      ..unitId = g.unitId
-      ..unitRate = 1
-      ..stockPlaceNotifier.value = g.stockPlace;
-    row.revalidateDefaultPrice();
+    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    void fill(PurchaseGridRow target, GoodsListItem goods) {
+      target
+        ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)
+        ..colorId = goods.colorId
+        ..unitId = goods.unitId
+        ..unitRate = 1
+        ..stockPlaceNotifier.value = goods.stockPlace;
+      target.revalidateDefaultPrice();
+    }
+
+    fill(row, picked.first);
+    final extra = <PurchaseGridRow>[];
+    for (final goods in picked.skip(1)) {
+      final added = PurchaseGridRow(supportsTotalInput: true)
+        ..currencyId = _defaultCurrencyId
+        ..exchangeRate.text = '1'
+        ..taxRate.text = '0';
+      fill(added, goods);
+      extra.add(added);
+    }
+    if (extra.isNotEmpty) _grid.addRows(extra);
     // 新建态手工选了货品 = 这行要进本次订货：自动勾上，避免用户填完一行
     // 还得回头补勾选（保存按钮只认勾选行）。
-    if (_isCreate) _grid.setSelected([row], true);
+    if (_isCreate) _grid.setSelected([row, ...extra], true);
     // 换货品后按主档默认值预填该货品的整套条款 (不覆盖已选值)。
     await _prefillRememberedTerms();
   }
@@ -636,6 +662,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                 ) ??
                 false);
         if (r.price.text.trim().isEmpty &&
+            r.pricing.totalAmount.text.trim().isEmpty &&
             terms.purchasePrice != null &&
             matchesPriceContext()) {
           r.price.text =
@@ -849,7 +876,11 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       for (final existing in _grid.rows) {
         final existingKey =
             '${existing.goods?.id ?? ''}|${existing.colorId ?? ''}|${existing.unitId ?? ''}|${existing.unitRate ?? 1}';
-        if (existingKey != key) continue;
+        if (existingKey != key ||
+            existing.pricing.totalAmountInput != null ||
+            existing.extraColumnsPreventMerge) {
+          continue;
+        }
         final total =
             (double.tryParse(existing.qty.text) ?? 0) +
             (double.tryParse(row.qty.text) ?? 0);
@@ -872,7 +903,11 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final goods = ref
           .read(masterNameServiceProvider)
           .goodsOptionOf(li.goodsId)!;
-      final row = PurchaseGridRow.fromLinked(li, goods);
+      final row = PurchaseGridRow.fromLinked(
+        li,
+        goods,
+        supportsTotalInput: true,
+      );
       row
         ..sourceRequestId = result.sourceDocId
         ..sourceRequestNo = result.sourceDocNo
@@ -890,7 +925,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       (r) =>
           r.goods == null &&
           r.qty.text.trim().isEmpty &&
-          r.price.text.trim().isEmpty,
+          r.price.text.trim().isEmpty &&
+          r.pricing.totalAmount.text.trim().isEmpty,
     );
     if (_isCreate) _grid.setSelected(touched, true);
     await _prefillRememberedTerms();
@@ -991,7 +1027,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       groupKey: (r) =>
           '${_comboKey(r)}|${r.goods?.id ?? ''}|${r.colorId ?? ''}|'
           '${r.unitId ?? ''}|${r.unitRate ?? 1}|${r.extraColumnsSignature}|'
-          '${r.extraColumnsPreventMerge ? identityHashCode(r) : ''}',
+          '${(r.extraColumnsPreventMerge || r.pricing.totalAmountInput != null) ? identityHashCode(r) : ''}',
       identityLabel: (r) {
         final parts = <String>[
           if ((r.goods?.name ?? '').isNotEmpty) r.goods!.name!,
@@ -1208,13 +1244,20 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     // 逐行校验已全部通过，这里只组装提交体。
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
-      final qty = double.tryParse(r.qty.text) ?? 0;
-      final price = double.tryParse(r.price.text)!;
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       final rate = double.tryParse(rateTextOf(r))!;
       final tax = double.tryParse(taxTextOf(r))!;
-      if (!r.extraColumnsValid(exactLineAmountText(r.qty.text, r.price.text))) {
+      final pricingError = r.pricing.validate();
+      if (pricingError != null) {
+        if (!mounted) return;
+        context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
+        return;
+      }
+      if (!r.extraColumnsValid(
+        r.pricing.totalAmountInput ??
+            exactLineAmountText(r.qty.text, r.price.text),
+      )) {
         if (!mounted) return;
         context.appError('附加列数字或计算有误，请检查数字、除数以及最终金额');
         return;
@@ -1224,8 +1267,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         'goodsId': r.goods!.id,
         'extraColumns': r.extraColumnsPayload(),
         if (r.documentItemId != null) 'id': r.documentItemId,
-        'qty': qty,
-        'price': price,
+        'qty': r.qty.text.trim(),
+        'price': r.price.text.trim(),
+        if (r.pricing.totalAmountInput != null)
+          'totalAmountInput': r.pricing.totalAmountInput,
         if (r.upstreamItemId != null) 'requestItemId': r.upstreamItemId,
         // V463 同货品合并行：多来源申请明细逐条提交，服务端按剩余量 FIFO 拆分。
         if (r.upstreamItemIds.length > 1) 'requestItemIds': r.upstreamItemIds,
@@ -1311,8 +1356,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       );
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+    } catch (error, stack) {
+      // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
+      debugPrint('保存采购订货单失败: $error\n$stack');
+      if (mounted) {
+        context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1629,6 +1678,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                               return SavedDocumentFields(
                                 locked: _hasCreatedDocuments,
                                 child: UtenEditableGrid<PurchaseGridRow>(
+                                  columnEditingEnabled:
+                                      !_loading &&
+                                      !_saving &&
+                                      !_hasCreatedDocuments,
                                   tableKey: 'purchase.order.items',
                                   onAddColumn: (hidden) =>
                                       addBusinessGridColumn(
@@ -1636,11 +1689,21 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                         scope: 'purchase_order',
                                         hiddenColumns: hidden,
                                         rows: _grid.rows,
+                                        currentRows: () => _grid.rows,
+                                        isEditingEnabled: () =>
+                                            mounted &&
+                                            !_loading &&
+                                            !_saving &&
+                                            !_hasCreatedDocuments,
                                         createRow: () {
-                                          final row = PurchaseGridRow()
-                                            ..currencyId = _defaultCurrencyId
-                                            ..exchangeRate.text = '1'
-                                            ..taxRate.text = '0';
+                                          final row =
+                                              PurchaseGridRow(
+                                                  supportsTotalInput: true,
+                                                )
+                                                ..currencyId =
+                                                    _defaultCurrencyId
+                                                ..exchangeRate.text = '1'
+                                                ..taxRate.text = '0';
                                           _grid.addRow(row);
                                           return row;
                                         },
@@ -1773,10 +1836,11 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                       ];
                                     },
                                   ),
-                                  createBlankRow: () => PurchaseGridRow()
-                                    ..currencyId = _defaultCurrencyId
-                                    ..exchangeRate.text = '1'
-                                    ..taxRate.text = '0',
+                                  createBlankRow: () =>
+                                      PurchaseGridRow(supportsTotalInput: true)
+                                        ..currencyId = _defaultCurrencyId
+                                        ..exchangeRate.text = '1'
+                                        ..taxRate.text = '0',
                                   cloneRow: (r) => r.clone(),
                                 ),
                               );

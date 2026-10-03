@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 销售出货详情（主表全字段 + 明细列表）。 */
 @Getter
 @AllArgsConstructor
-public class ShipmentDetail {
+public class ShipmentDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     @com.fasterxml.jackson.annotation.JsonUnwrapped
     private final ShipmentWorkflowView workflow=new ShipmentWorkflowView();
     private UUID id;
@@ -74,4 +74,12 @@ public class ShipmentDetail {
     public String getTaxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
     public String getTotalOriginalExact() { return com.uten.imp.common.util.DecimalText.of(totalOriginal); }
     public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
+
+    @Override public void disableHistoryActions() {
+        workflow.setCanConfirmSales(false);
+        workflow.setCanResubmitAfterFinanceReject(false);
+        writable = false;
+        canReject = false;
+        canManageWarehouseWork = false;
+    }
 }

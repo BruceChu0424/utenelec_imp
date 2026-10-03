@@ -4,6 +4,7 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import 'uten_table_cell_hints.dart';
 
 /// In-field disclosure shared by text inputs, dropdowns and pickers.
 class UtenFieldHintIcon extends StatefulWidget {
@@ -33,6 +34,7 @@ class UtenFieldHintIcon extends StatefulWidget {
 class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
   final _tooltipKey = GlobalKey<TooltipState>();
   final _focusNode = FocusNode(debugLabel: 'uten-field-hint');
+  UtenTableCellHintRegistration? _cellHints;
 
   @override
   void initState() {
@@ -54,6 +56,7 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
 
   @override
   void dispose() {
+    _cellHints?.removeMessage(this);
     _focusNode
       ..removeListener(_onFocusChanged)
       ..dispose();
@@ -74,11 +77,30 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
       if (autofillMessage?.isNotEmpty ?? false) autofillMessage!,
       if (widget.info?.isNotEmpty ?? false) widget.info!,
     };
+    // Nested tables can live inside a cell; their compact column headers still
+    // own visible guidance, even under an outer table's cell scope.
+    final cellHints = widget.dense
+        ? null
+        : UtenTableCellHints.registrationOf(context);
+    if (_cellHints != cellHints) {
+      _cellHints?.removeMessage(this);
+      _cellHints = cellHints;
+    }
+    final message = messages.join('\n\n');
+    if (cellHints != null) {
+      cellHints.setMessage(
+        this,
+        message,
+        liveRegion:
+            (widget.errorMessage?.isNotEmpty ?? false) ||
+            (autofillMessage?.isNotEmpty ?? false),
+      );
+      return const SizedBox.shrink();
+    }
     if (messages.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final isError = widget.errorMessage?.isNotEmpty ?? false;
     final isWarning = autofillMessage?.isNotEmpty ?? false;
-    final message = messages.join('\n\n');
     final color = isError
         ? theme.colorScheme.error
         : isWarning

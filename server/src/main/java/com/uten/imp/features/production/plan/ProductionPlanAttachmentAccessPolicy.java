@@ -38,6 +38,17 @@ public class ProductionPlanAttachmentAccessPolicy implements AttachmentOwnerAcce
         readable(plan(ownerId), user);
     }
 
+    @Override public void requireCanViewHistory(UUID ownerId, AuthUser user) {
+        if (ownerId == null || !has(user, "production_plan:view")) throw missing();
+        ProductionPlan plan = em.find(ProductionPlan.class, ownerId);
+        if (plan == null) throw missing();
+        access.requireReadable(plan.getMakerId(), "生产计划不存在", "production_plan:approve");
+    }
+
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
+        requireCanViewHistory(ownerId, user);
+    }
+
     @Override public void requireCanManage(UUID ownerId, AuthUser user) {
         editable(plan(ownerId), user);
     }

@@ -112,4 +112,17 @@ public class ProductionFqcInspectionController {
             @Valid @RequestBody DecisionRequest request) {
         return service.decide(id, request);
     }
+
+    @GetMapping("/{id}/decision-receipt")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public ProductionFqcContracts.DecisionResolution decisionReceipt(
+            @PathVariable UUID id, @RequestParam String idempotencyKey) {
+        return service.decisionReceipt(id, idempotencyKey);
+    }
+
+    @GetMapping("/decisions/pass-all/receipt")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public ProductionFqcContracts.PassAllResolution passAllReceipt(@RequestParam String idempotencyKey) {
+        return service.passAllReceipt(idempotencyKey);
+    }
 }

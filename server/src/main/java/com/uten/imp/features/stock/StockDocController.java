@@ -71,12 +71,14 @@ public class StockDocController {
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId,
-            @RequestParam(required = false) String billNo) {
+            @RequestParam(required = false) String billNo,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         // 仓库任务中心的「仓库范围」(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
         // 与表头的 warehouseId(精确发出仓)是两件事，二者可同时生效。
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), billNo), page, size, sort, order);
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), billNo), page, size, sort, order, includeDeleted, onlyDeleted);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（docType 维度）分组计数。 */
@@ -94,10 +96,12 @@ public class StockDocController {
             @RequestParam(required = false) Boolean productionReturnRequests,
             @RequestParam(required = false) UUID toWarehouseId,
             @RequestParam(required = false) String warehouseScope,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
+            @RequestParam(required = false) UUID scopeWarehouseId,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         return service.facets(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), null));
+                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), null), includeDeleted, onlyDeleted);
     }
 
     @GetMapping("/{id}")
@@ -112,6 +116,21 @@ public class StockDocController {
                 result.getLegacyId(),
                 "库存单据");
         return result;
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public StockDocDetail history(@PathVariable UUID id) {
+        StockDocDetail result = service.history(id);
+        auditViews.record("view_stock_document_detail", "stock_documents", id, result.getBillNo(), result.getLegacyId(), "库存单据历史");
+        return result;
+    }
+
+    @GetMapping("/{id}/history-records")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRecords(@PathVariable UUID id,
+            @RequestParam(required = false) Long beforeId, @RequestParam(defaultValue = "20") int size) {
+        return service.historyRecords(id, beforeId, size);
     }
 
     @PostMapping
@@ -216,6 +235,20 @@ public class StockDocController {
     public com.uten.imp.features.stock.dto.StockDocIssueBatchResponse issueBatch(
             @Valid @RequestBody com.uten.imp.features.stock.dto.StockDocIssueBatchRequest req) {
         return service.issueFullBatch(req);
+    }
+
+    @GetMapping("/issue-batch/receipt")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution issueBatchReceipt(
+            @RequestParam String idempotencyKey) {
+        return service.issueBatchReceipt(idempotencyKey);
+    }
+
+    @GetMapping("/issue-batch/review")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Review issueBatchReview(
+            @RequestParam List<UUID> docIds) {
+        return service.issueBatchReview(docIds);
     }
 
     /** DRAW 取消出库：兼容路径下对称回退已出库量（红冲前须全部取消）。 */

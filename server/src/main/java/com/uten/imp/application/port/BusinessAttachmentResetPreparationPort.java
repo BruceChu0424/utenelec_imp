@@ -39,4 +39,11 @@ public interface BusinessAttachmentResetPreparationPort {
 
     /** 清空成功后清理内部存储遗留的私有临时文件（仅 provider=internal 时有效，否则返回 0）。 */
     int cleanupAbandonedScratch();
+
+    /** Explicit test-reset exception. Ordinary deletion/expiry remains non-destructive. */
+    Preview previewTestReset(UUID operatorId);
+    List<UnpurgeableGroup> unpurgeableTestResetBlockers(UUID operatorId);
+    Preview prepareTestReset(UUID operatorId, String operatorAccount, UUID attemptId, Confirmation confirmation);
+    boolean drainTestResetNext(UUID attemptId);
+    long succeededTestDeletionCount(UUID attemptId);
 }

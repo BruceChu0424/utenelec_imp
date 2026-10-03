@@ -156,7 +156,7 @@ void main() {
       expect(find.text('保存'), findsOneWidget);
     });
 
-    testWidgets('production editor keeps its analysis action', (tester) async {
+    testWidgets('production editor keeps its create action', (tester) async {
       await _pumpEditor(
         tester,
         _FailingDetailApi(),
@@ -167,7 +167,8 @@ void main() {
         find.byKey(const ValueKey('production-plan-edit-load-error')),
         findsNothing,
       );
-      expect(find.text('进入物料分析'), findsOneWidget);
+      // 2026-10-01 新建态直接落库（服务端 status=0 草稿），按钮文案「创建」。
+      expect(find.text('创建'), findsOneWidget);
     });
   });
 }

@@ -30,6 +30,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @Entity
 @Table(name = "subcontract_material_issue_items")
+@org.hibernate.annotations.SQLRestriction("is_deleted = false")
 public class SubcontractMaterialIssueItem extends BaseEntity {
 
     private Integer legacyId;

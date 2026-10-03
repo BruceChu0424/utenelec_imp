@@ -19,8 +19,13 @@ public class SalesMasterReferenceValidator {
 
     private final MasterReferenceValidationPort references;
 
+    /** Customer defaults and saved documents share the same object scope and active-state contract. */
+    public void validateClientForNewBusiness(java.util.UUID clientId) {
+        references.requireVisibleActiveClient(clientId);
+    }
+
     public void validate(QuoteSaveRequest request) {
-        references.requireVisibleActiveClient(request.getClientId());
+        validateClientForNewBusiness(request.getClientId());
         List<QuoteItemLine> lines = request.getItems();
         if (lines == null) return;
         references.lockGoodsQuantityBasis(lines.stream().map(line -> line.getGoodsId()).toList());
@@ -36,7 +41,7 @@ public class SalesMasterReferenceValidator {
     }
 
     public void validate(OrderSaveRequest request) {
-        references.requireVisibleActiveClient(request.getClientId());
+        validateClientForNewBusiness(request.getClientId());
         List<OrderItemLine> lines = request.getItems();
         if (lines == null) return;
         references.lockGoodsQuantityBasis(lines.stream().map(line -> line.getGoodsId()).toList());
@@ -53,7 +58,7 @@ public class SalesMasterReferenceValidator {
 
     /** 审核前重验已保存引用，防止草稿期间主档被停用、软删或收回归属授权。 */
     public void validateStoredQuote(java.util.UUID clientId, List<SalesQuoteItem> lines) {
-        references.requireVisibleActiveClient(clientId);
+        validateClientForNewBusiness(clientId);
         for (SalesQuoteItem line : lines) {
             normalizeStoredLine(line.getGoodsId(), line.getUnitId(), line.getUnitRate(),
                     line.getLineNo(), line::setUnitId, line::setUnitRate);
@@ -62,7 +67,7 @@ public class SalesMasterReferenceValidator {
 
     /** 审核前重验已保存引用，防止草稿期间主档被停用、软删或收回归属授权。 */
     public void validateStoredOrder(java.util.UUID clientId, List<SalesOrderItem> lines) {
-        references.requireVisibleActiveClient(clientId);
+        validateClientForNewBusiness(clientId);
         for (SalesOrderItem line : lines) {
             normalizeStoredLine(line.getGoodsId(), line.getUnitId(), line.getUnitRate(),
                     line.getLineNo(), line::setUnitId, line::setUnitRate);

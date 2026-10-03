@@ -27,20 +27,24 @@ public class ProductionPlatformColumnResources {
     private final ProductionDailyReportService reports;
 
     @Bean PlatformColumnResourceAdapter productionPlanFields() {
-        return resource("production_plan", "生产计划", ProductionPlan.class, null, plans::detail);
+        return resource("production_plan", "生产计划", ProductionPlan.class, null, plans::detail)
+                .history(plans::history, null);
     }
     @Bean PlatformColumnResourceAdapter productionPlanLineFields() {
         return resource("production_plan_item", "生产计划明细", ProductionPlan.class,
                 "SELECT id, plan_id FROM production_plan_items WHERE id IN (:ids)", plans::detail)
+                .history(plans::history, historicalParent("production_plan_items", "production_plans", "plan_id"))
                 .documentRows("SELECT id FROM production_plan_items WHERE plan_id=:document")
                 .documentSaveLocks(com.uten.imp.features.production.plan.dto.PlanSaveRequest.class,plans::lockPlatformColumnSave);
     }
     @Bean PlatformColumnResourceAdapter productionReportFields() {
-        return resource("production_daily_report", "生产报工", ProductionDailyReport.class, null, reports::detail);
+        return resource("production_daily_report", "生产报工", ProductionDailyReport.class, null, reports::detail)
+                .history(reports::history, null);
     }
     @Bean PlatformColumnResourceAdapter productionReportLineFields() {
         return resource("production_daily_report_item", "生产报工明细", ProductionDailyReport.class,
                 "SELECT id, report_id FROM production_daily_report_items WHERE id IN (:ids)", reports::detail)
+                .history(reports::history, historicalParent("production_daily_report_items", "production_daily_reports", "report_id"))
                 .documentRows("SELECT id FROM production_daily_report_items WHERE report_id=:document");
     }
 
@@ -55,5 +59,16 @@ public class ProductionPlatformColumnResources {
                         new FactDefinition("oqty", "订货数量", false),
                         new FactDefinition("defectQty", "不良数量", false), new FactDefinition("weight", "重量(kg)", false)))
                 .documentCreateAuthorities(Set.of(permission + ":create"));
+    }
+
+    /** Fixed registrations only. Both old existing rows and permanently retired rows keep their exact parent. */
+    private static String historicalParent(String table, String parentTable, String parentColumn) {
+        String uuid = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+        return "SELECT id," + parentColumn + " FROM " + table + " WHERE id IN (:ids)"
+                + " UNION SELECT identity.record_id,identity.parent_record_id FROM ("
+                + " SELECT CASE WHEN source_id ~ '" + uuid + "' THEN source_id::uuid END AS record_id,"
+                + " CASE WHEN parent_id ~ '" + uuid + "' THEN parent_id::uuid END AS parent_record_id"
+                + " FROM business_record_identities WHERE source_table='" + table + "' AND parent_table='" + parentTable + "'"
+                + ") identity WHERE identity.record_id IN (:ids)";
     }
 }

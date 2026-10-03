@@ -287,6 +287,8 @@ final class ProductionJdbcMeasurement {
                 || normalized.startsWith("with recursive roots(") && normalized.contains(", walk as (")) return "bom.validation";
         if (normalized.startsWith("with recursive roots as")) return "bom.lock_footprint";
         if (normalized.startsWith("with recursive roots(")) return "bom.expansion";
+        if (normalized.startsWith("update purchase_orders order_doc set is_closed")) return "purchase.order_closure";
+        if (normalized.startsWith("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
         String verb = normalized.startsWith("insert")
                 || normalized.startsWith("with incoming ") && normalized.contains("insert into production_material_analysis_materials")
                 ? "insert" : normalized.startsWith("update") ? "update" : "read";

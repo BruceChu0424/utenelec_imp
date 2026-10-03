@@ -1052,6 +1052,19 @@ def verify_jar_migrations(jar_path: Path, flyway: dict[str, Any]) -> None:
         fail("executable JAR Flyway migrations differ from signed source metadata")
 
 
+def verify_release_migrations(
+    payload_root: Path, migration_dir: Path, flyway_checksum_file: Path
+) -> dict[str, Any]:
+    """Check the exact application and migrator bytes before either release path signs."""
+    flyway = migration_metadata(migration_dir, flyway_checksum_file)
+    for executable in (
+        payload_root / "server/uten-imp-server.jar",
+        payload_root / "server/uten-imp-migrator.jar",
+    ):
+        verify_jar_migrations(executable, flyway)
+    return flyway
+
+
 def build_manifest(args: argparse.Namespace) -> None:
     version = args.version
     sequence = validate_version(version)
@@ -1075,12 +1088,9 @@ def build_manifest(args: argparse.Namespace) -> None:
         if parsed.get("bomFormat") != "CycloneDX":
             fail(f"SBOM is not CycloneDX: {sbom_path}")
     checksums_path = args.payload_root / "SHA256SUMS"
-    flyway = migration_metadata(args.flyway_dir, args.flyway_checksums)
-    for executable in (
-        args.payload_root / "server/uten-imp-server.jar",
-        args.payload_root / "server/uten-imp-migrator.jar",
-    ):
-        verify_jar_migrations(executable, flyway)
+    flyway = verify_release_migrations(
+        args.payload_root, args.flyway_dir, args.flyway_checksums
+    )
     checksum_by_path = {entry["path"]: entry for entry in checksums}
     manifest = {
         "artifact": {
@@ -1189,6 +1199,11 @@ def parser() -> argparse.ArgumentParser:
     checksums.add_argument("--root", required=True, type=Path)
     checksums.add_argument("--output", required=True, type=Path)
 
+    migrations = subcommands.add_parser("verify-migrations")
+    migrations.add_argument("--payload-root", required=True, type=Path)
+    migrations.add_argument("--flyway-dir", required=True, type=Path)
+    migrations.add_argument("--flyway-checksums", required=True, type=Path)
+
     manifest = subcommands.add_parser("manifest")
     manifest.add_argument("--payload-root", required=True, type=Path)
     manifest.add_argument("--artifact", required=True, type=Path)
@@ -1225,6 +1240,12 @@ def main() -> int:
             stamp_web_release(args)
         elif args.command == "checksums":
             write_checksums(args.root.resolve(), args.output.resolve())
+        elif args.command == "verify-migrations":
+            flyway = verify_release_migrations(
+                args.payload_root.resolve(), args.flyway_dir.resolve(),
+                args.flyway_checksums.resolve(),
+            )
+            print(f"Verified {flyway['migrationCount']} migrations through V{flyway['headVersion']} in both release JARs")
         elif args.command == "manifest":
             args.payload_root = args.payload_root.resolve()
             args.artifact = args.artifact.resolve()

@@ -165,7 +165,6 @@ public class AttachmentReconciliationService {
                     SELECT 1 FROM attachments
                     WHERE (storage_provider = ? OR storage_provider='legacy_unknown') AND storage_key = ?
                       AND storage_version IS NOT DISTINCT FROM ?
-                      AND lifecycle_state <> 'DELETED'
                     UNION ALL
                     SELECT 1 FROM attachment_upload_sessions
                     WHERE (storage_provider = ? OR storage_provider='legacy_unknown')

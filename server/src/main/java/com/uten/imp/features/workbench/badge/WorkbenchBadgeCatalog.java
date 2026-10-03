@@ -46,6 +46,8 @@ enum WorkbenchBadgeCatalog {
     expenseFinance(Module.finance, facts("expense.pendingApprovalCount", "expense.pendingPaymentCount"), none()),
     /** 销售报价核价(ADR-134): 待核价的报价(只算有核价权限的人的待办)。挂在财务「销售报价核价」卡。 */
     financeQuoteReview(Module.finance, facts("salesQuoteFinance.pending"), none()),
+    /** 财务侧盘点审核: 待财务复核的盘点差异。 */
+    financeStockCountReview(Module.finance, facts("stockCountFinance.count"), none()),
     /** 钱流草稿: 收款/付款/费用/其它收入/银行转账。 */
     financeDrafts(Module.finance, facts(
             "drafts.financeReceipt",
@@ -93,6 +95,8 @@ enum WorkbenchBadgeCatalog {
     warehouseWorkshopMaterial(Module.warehouse,
             facts("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
             facts("workshopMaterial.counting")),
+    /** 仓库侧盘点审核: 待仓库复盘确认的盘点任务。 */
+    warehouseStockCountReview(Module.warehouse, facts("stockCountWarehouse.count"), none()),
     /** 品质部检查结果: 红 = 轮到仓库动手(待入库 + 部分合格 + 需退回); 黄 = 等待检查结果。 */
     warehouseQualityResult(Module.warehouse, facts("qualityResult.actionable.*"), facts("qualityResult.inProgress.*")),
     /** 仓库草稿: stock_documents 全类型合计(不能用调拨/盘点切片, 会双计)。 */
@@ -140,7 +144,9 @@ enum WorkbenchBadgeCatalog {
     salesShipmentFinanceRejected(Module.sales, facts("financeRejected.salesShipment"), none()),
     /** 销售报价「财务已退回」(ADR-134): 退回待修改的报价(不再计入报价草稿)。 */
     salesQuoteFinanceRejected(Module.sales, facts("financeRejected.salesQuote"), none()),
-    /** 销售报价已核价、还没转订货单(ADR-134): 下一步轮到负责销售转单。 */
+    /** 财务已核价、等待销售向客户确认当前版本。 */
+    salesQuoteAwaitingCustomerConfirmation(Module.sales, facts("salesQuote.awaitingCustomerConfirmation"), none()),
+    /** 财务与客户已同意当前版、还没转订货单: 下一步轮到负责销售转单。 */
     salesQuoteAwaitingConversion(Module.sales, facts("salesQuote.awaitingConversion"), none()),
     /** 销售草稿: 订货/发货/退货/报价(报价草稿不含财务退回件)。 */
     salesDrafts(Module.sales, facts("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn", "drafts.salesQuote"), none()),

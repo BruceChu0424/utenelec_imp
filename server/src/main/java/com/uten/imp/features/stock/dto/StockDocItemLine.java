@@ -59,6 +59,12 @@ public class StockDocItemLine extends com.uten.imp.common.platformcolumns.Platfo
 
     private String place;
 
+    /**
+     * 行级仓库（V787）：手工出入库单逐行选仓，空 = 沿用表头仓；
+     * TRANSFER/CHECK 不接受该字段（两腿/账面按表头）。
+     */
+    private UUID warehouseId;
+
     /** 链路：退料→领料明细 等。 */
     private UUID upstreamItemId;
     private UUID executionSegmentId;

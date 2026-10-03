@@ -50,6 +50,7 @@ public class AnthropicMessagesClient implements AiProtocolClient {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
         JsonNode root = parse(exchange.body());
+        AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("content").isArray());
         StringBuilder text = new StringBuilder();
         for (JsonNode block : root.path("content")) {
             if ("text".equals(block.path("type").asText()) && block.path("text").isTextual()) {
@@ -70,7 +71,9 @@ public class AnthropicMessagesClient implements AiProtocolClient {
             throw AiErrorMapper.fromStatus(exchange.status(), exchange.body(), runtime.apiKey());
         }
         List<String> models = new ArrayList<>();
-        for (JsonNode item : parse(exchange.body()).path("data")) {
+        JsonNode root = parse(exchange.body());
+        AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("data").isArray());
+        for (JsonNode item : root.path("data")) {
             String id = item.path("id").asText("");
             if (!id.isBlank() && id.length() <= 128) {
                 models.add(id);
@@ -87,6 +90,7 @@ public class AnthropicMessagesClient implements AiProtocolClient {
     byte[] requestBody(AiProviderRuntime runtime, ChatRequest request) {
         ObjectNode body = json.createObjectNode();
         body.put("model", runtime.model());
+        body.put("stream", false);
         body.put("max_tokens", request.maxOutputTokens());
         body.put("system", request.systemPrompt());
         ArrayNode content = body.putArray("messages").addObject().put("role", "user").putArray("content");

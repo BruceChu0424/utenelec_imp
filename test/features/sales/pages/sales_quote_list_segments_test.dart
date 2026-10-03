@@ -103,7 +103,10 @@ void main() {
           ),
           fixedBadgeSummaryOverride(
             badgeSummaryFixture(
-              entries: {BadgeEntry.salesQuoteAwaitingConversion: (5, 0)},
+              entries: {
+                BadgeEntry.salesQuoteAwaitingConversion: (5, 0),
+                BadgeEntry.salesQuoteAwaitingCustomerConfirmation: (6, 0),
+              },
             ),
           ),
         ],
@@ -138,8 +141,11 @@ void main() {
     expect(seg(tester, '待财务核价').count, 2);
     expect(seg(tester, '待财务核价').countForm, UtenSegmentCountForm.inProgress);
     // 已核价段的红数只数「待转订货单」，与任务中心报价大类同源。
-    expect(seg(tester, '已核价').count, 5);
-    expect(seg(tester, '已核价').countForm, UtenSegmentCountForm.actionable);
+    expect(seg(tester, '待生成订货单').count, 5);
+    expect(seg(tester, '待生成订货单').countForm, UtenSegmentCountForm.actionable);
+    expect(seg(tester, '待客户同意').count, 6);
+    expect(seg(tester, '待客户同意').countForm, UtenSegmentCountForm.actionable);
+    expect(seg(tester, '已核价').countForm, UtenSegmentCountForm.browsing);
     expect(seg(tester, '作废').count, 4);
     expect(seg(tester, '作废').countForm, UtenSegmentCountForm.browsing);
     expect(find.text('已审'), findsNothing);

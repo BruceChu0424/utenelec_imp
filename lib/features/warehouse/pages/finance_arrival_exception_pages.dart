@@ -119,17 +119,23 @@ class _FinanceArrivalExceptionTasksPageState
       ref.onPageResume(_myLocation!, () => _load(_result?.page ?? 1));
     }
     final result = _result;
-    final body = SafeArea(
-      child: _loading && result == null
-          ? const UtenSkeletonList()
-          : _error != null && result == null
-          ? UtenEmpty.error(
-              message: _error,
-              actionLabel: '重新加载',
-              onAction: () => _load(1),
-            )
-          : _buildList(result),
-    );
+    // 骨架/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
+    // 整条分类栏不得消失），数据到位后照常进列表随页滚走。
+    final Widget content;
+    if (_loading && result == null) {
+      content = _pinHostHeader(const UtenSkeletonList());
+    } else if (_error != null && result == null) {
+      content = _pinHostHeader(
+        UtenEmpty.error(
+          message: _error,
+          actionLabel: '重新加载',
+          onAction: () => _load(1),
+        ),
+      );
+    } else {
+      content = _buildList(result);
+    }
+    final body = SafeArea(child: content);
     if (widget.embedded) return body;
     return Scaffold(
       appBar: UtenAppBar(
@@ -150,6 +156,19 @@ class _FinanceArrivalExceptionTasksPageState
       body: body,
     );
   }
+
+  /// 骨架/错误态钉住宿主分类栏：分类栏在、内容区给 [child]（数据到位后由
+  /// [_buildList] 接管，分类栏随页滚走）。
+  Widget _pinHostHeader(Widget child) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (widget.externalHeader != null) ...[
+        widget.externalHeader!,
+        const SizedBox(height: UtenSpacing.s12),
+      ],
+      Expanded(child: child),
+    ],
+  );
 
   Widget _buildList(PagedResult<ProcurementArrivalException>? value) {
     final result =

@@ -20,6 +20,7 @@ public class WorkshopMaterialPermissions {
     public static final String ISSUE = "workshop_material:issue";
     public static final String REQUEST = "workshop_material:request";
     public static final String COUNT = "workshop_material:count";
+    public static final String COUNT_REVIEW = "stock:count:warehouse_review";
     public static final String CHOOSE = "workshop_material:choose";
     public static final String SETUP = "workshop_material:setup";
     public static final String REOPEN = "workshop_material:reopen";

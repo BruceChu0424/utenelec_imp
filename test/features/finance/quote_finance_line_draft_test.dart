@@ -41,6 +41,50 @@ SalesQuoteFinanceLine _line({
 }
 
 void main() {
+  test(
+    'finance can change base price, quantity and discount without mutating master reference',
+    () {
+      final draft = QuoteFinanceLineDraft(
+        _line(priceSource: QuotePriceSource.sales),
+      );
+      addTearDown(draft.dispose);
+      draft.price.text = '80.25';
+      draft.onPriceChanged('80.25');
+      draft.qty.text = '4';
+      draft.discount.text = '0.9';
+      draft.onDiscountChanged('0.9');
+      expect(draft.line.currentMasterPrice, '100');
+      expect(draft.amountPreview, '288.9');
+      expect(draft.toEdit()!.toJson(), {
+        'itemId': 'line-1',
+        'qty': '4',
+        'price': '80.25',
+        'discount': '0.9000',
+      });
+      draft.removed = true;
+      expect(draft.amountPreview, '0');
+      expect(draft.toEdit()!.toJson(), {'itemId': 'line-1', 'removed': true});
+      draft.restore();
+      expect(draft.qty.text, '3');
+      expect(draft.price.text, '100');
+      expect(draft.dirty, isFalse);
+    },
+  );
+
+  test(
+    'quantity-only edits preserve server prices; zero quantity never masquerades as deletion',
+    () {
+      final draft = QuoteFinanceLineDraft(_line(discount: '0.85'));
+      addTearDown(draft.dispose);
+      draft.qty.text = '4';
+      expect(draft.toEdit()!.toJson(), {'itemId': 'line-1', 'qty': '4'});
+      draft.qty.text = '0';
+      expect(draft.valid, isFalse);
+      expect(draft.error, QuoteFinanceLineError.quantity);
+      expect(draft.toEdit(), isNull);
+    },
+  );
+
   test('frozen list price: deal price derives a 4-place discount', () {
     final draft = QuoteFinanceLineDraft(_line());
     expect(draft.deal.text, '100');

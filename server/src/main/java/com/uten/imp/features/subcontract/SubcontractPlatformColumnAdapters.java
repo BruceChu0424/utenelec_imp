@@ -38,7 +38,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_application:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.application.SubcontractApplication.class,
                 null,
-                applicationService::detail,(id,header)->false,HEADER);
+                applicationService::detail,(id,header)->false,HEADER).history(applicationService::detailHistory,null);
     }
 
     @Bean
@@ -47,7 +47,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_application:view"),Set.of(),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.application.SubcontractApplication.class,
                 "SELECT id,application_id FROM subcontract_application_items WHERE id IN (:ids) AND NOT is_deleted",
-                applicationService::detail,(id,header)->false,LINE)
+                applicationService::detail,(id,header)->false,LINE).history(applicationService::detailHistory,"SELECT live.id,live.application_id FROM subcontract_application_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_application_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_application_items' AND parent_table='subcontract_applications' AND CAST(CASE WHEN source_table='subcontract_application_items' AND parent_table='subcontract_applications' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_application_items WHERE application_id=:document AND NOT is_deleted");
     }
 
@@ -57,7 +57,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_inquiry:view"),Set.of("subcontract_inquiry:edit"),Set.of("subcontract_inquiry:price:view","finance:view:all"),
                 com.uten.imp.features.subcontract.inquiry.SubcontractInquiry.class,
                 null,
-                inquiryService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                inquiryService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(inquiryService::detailHistory,null);
     }
 
     @Bean
@@ -66,7 +66,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_inquiry:view"),Set.of("subcontract_inquiry:edit"),Set.of("subcontract_inquiry:price:view","finance:view:all"),
                 com.uten.imp.features.subcontract.inquiry.SubcontractInquiry.class,
                 "SELECT id,inquiry_id FROM subcontract_inquiry_items WHERE id IN (:ids) AND NOT is_deleted",
-                inquiryService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
+                inquiryService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(inquiryService::detailHistory,"SELECT live.id,live.inquiry_id FROM subcontract_inquiry_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_inquiry_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_inquiry_items' AND parent_table='subcontract_inquiries' AND CAST(CASE WHEN source_table='subcontract_inquiry_items' AND parent_table='subcontract_inquiries' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_inquiry_items WHERE inquiry_id=:document AND NOT is_deleted")
                 .documentCreateAuthorities(Set.of("subcontract_inquiry:create"));
     }
@@ -77,7 +77,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_order:view"),Set.of("subcontract_order:edit"),Set.of("subcontract_order:price:view","finance:view:all"),
                 com.uten.imp.features.subcontract.order.SubcontractOrder.class,
                 null,
-                orderService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                orderService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && header.path("canEdit").asBoolean(false) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(orderService::detailHistory,null);
     }
 
     @Bean
@@ -86,7 +86,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_receipt:view"),Set.of("subcontract_receipt:edit"),Set.of("subcontract_receipt:price:view","finance:view:all"),
                 com.uten.imp.features.subcontract.receipt.SubcontractReceipt.class,
                 null,
-                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(receiptService::detailHistory,null);
     }
 
     @Bean
@@ -95,7 +95,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_receipt:view"),Set.of("subcontract_receipt:edit"),Set.of("subcontract_receipt:price:view","finance:view:all"),
                 com.uten.imp.features.subcontract.receipt.SubcontractReceipt.class,
                 "SELECT id,receipt_id FROM subcontract_receipt_items WHERE id IN (:ids) AND NOT is_deleted",
-                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
+                receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(receiptService::detailHistory,"SELECT live.id,live.receipt_id FROM subcontract_receipt_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_receipt_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_receipt_items' AND parent_table='subcontract_receipts' AND CAST(CASE WHEN source_table='subcontract_receipt_items' AND parent_table='subcontract_receipts' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_receipt_items WHERE receipt_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest.class,receiptService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_receipt:create"));
@@ -107,7 +107,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_return:view"),Set.of("subcontract_return:edit"),Set.of("subcontract_return:price:view","finance:view:all"),
                 com.uten.imp.features.subcontract.ret.SubcontractReturn.class,
                 null,
-                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(retService::detailHistory,null);
     }
 
     @Bean
@@ -116,7 +116,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_return:view"),Set.of("subcontract_return:edit"),Set.of("subcontract_return:price:view","finance:view:all"),
                 com.uten.imp.features.subcontract.ret.SubcontractReturn.class,
                 "SELECT id,return_id FROM subcontract_return_items WHERE id IN (:ids) AND NOT is_deleted",
-                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
+                retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(retService::detailHistory,"SELECT live.id,live.return_id FROM subcontract_return_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_return_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_return_items' AND parent_table='subcontract_returns' AND CAST(CASE WHEN source_table='subcontract_return_items' AND parent_table='subcontract_returns' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_return_items WHERE return_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.subcontract.ret.dto.ReturnSaveRequest.class,retService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_return:create"));
@@ -128,7 +128,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_material_issue:view","subcontract_outbound:view"),Set.of("subcontract_material_issue:edit"),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssue.class,
                 null,
-                materialissueService::detail,(id,header)->materialissueService.platformFieldsWritable(id),HEADER);
+                materialissueService::detail,(id,header)->materialissueService.platformFieldsWritable(id),HEADER).history(materialissueService::detailHistory,null);
     }
 
     @Bean
@@ -137,7 +137,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_material_issue:view","subcontract_outbound:view"),Set.of("subcontract_material_issue:edit"),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssue.class,
                 "SELECT id,issue_id FROM subcontract_material_issue_items WHERE id IN (:ids) AND NOT is_deleted",
-                materialissueService::detail,(id,header)->materialissueService.platformFieldsWritable(id),LINE)
+                materialissueService::detail,(id,header)->materialissueService.platformFieldsWritable(id),LINE).history(materialissueService::detailHistory,"SELECT live.id,live.issue_id FROM subcontract_material_issue_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_material_issue_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_material_issue_items' AND parent_table='subcontract_material_issues' AND CAST(CASE WHEN source_table='subcontract_material_issue_items' AND parent_table='subcontract_material_issues' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_material_issue_items WHERE issue_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest.class,materialissueService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of());
@@ -149,7 +149,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_material_return:view"),Set.of("subcontract_material_return:edit"),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturn.class,
                 null,
-                materialreturnService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                materialreturnService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(materialreturnService::detailHistory,null);
     }
 
     @Bean
@@ -158,7 +158,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_material_return:view"),Set.of("subcontract_material_return:edit"),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.material_return.SubcontractMaterialReturn.class,
                 "SELECT id,material_return_id FROM subcontract_material_return_items WHERE id IN (:ids) AND NOT is_deleted",
-                materialreturnService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
+                materialreturnService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(materialreturnService::detailHistory,"SELECT live.id,live.material_return_id FROM subcontract_material_return_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_material_return_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_material_return_items' AND parent_table='subcontract_material_returns' AND CAST(CASE WHEN source_table='subcontract_material_return_items' AND parent_table='subcontract_material_returns' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_material_return_items WHERE material_return_id=:document AND NOT is_deleted")
                 .documentSaveLocks(com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest.class,materialreturnService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_material_return:create"));
@@ -170,7 +170,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_waste:view"),Set.of("subcontract_waste:edit"),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.waste.SubcontractWaste.class,
                 null,
-                wasteService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER);
+                wasteService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),HEADER).history(wasteService::detailHistory,null);
     }
 
     @Bean
@@ -179,7 +179,7 @@ public class SubcontractPlatformColumnAdapters {
                 Set.of("subcontract_waste:view"),Set.of("subcontract_waste:edit"),Set.of("finance:view:all"),
                 com.uten.imp.features.subcontract.waste.SubcontractWaste.class,
                 "SELECT id,waste_id FROM subcontract_waste_items WHERE id IN (:ids) AND NOT is_deleted",
-                wasteService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE)
+                wasteService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(wasteService::detailHistory,"SELECT live.id,live.waste_id FROM subcontract_waste_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_waste_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_waste_items' AND parent_table='subcontract_wastes' AND CAST(CASE WHEN source_table='subcontract_waste_items' AND parent_table='subcontract_wastes' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_waste_items WHERE waste_id=:document AND NOT is_deleted")
                 .documentCreateAuthorities(Set.of("subcontract_waste:create"));
     }

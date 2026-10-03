@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/uten_table_cell_hints.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_tokens.dart';
 import 'master_data_table_view.dart';
@@ -38,6 +40,11 @@ class MasterDataCardList<T> extends StatelessWidget {
     this.bottomPadding = UtenSpacing.s8,
     this.header,
     this.footer,
+    this.overlay,
+    this.physics,
+    this.itemKey,
+    this.rowDecorator,
+    this.layoutWrapper,
   });
 
   /// 可见且有序的列（MasterDataTableView._visibleIndices 的产物）。
@@ -68,19 +75,44 @@ class MasterDataCardList<T> extends StatelessWidget {
   final double bottomPadding;
   final Widget? header;
   final Widget? footer;
+  final Widget? overlay;
+  final ScrollPhysics? physics;
+  final Key Function(T)? itemKey;
+  final Widget Function(T, Widget)? rowDecorator;
+  final Widget Function(Widget, Widget Function(T))? layoutWrapper;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty && !loadingMore && header == null) {
       return const SizedBox.shrink();
     }
-    return ListView.builder(
+    Widget buildCard(T item) => _Card<T>(
+      columns: columns,
+      item: item,
+      isSelected: isSelected?.call(item) ?? false,
+      checkboxEnabled: canSelect?.call(item) ?? true,
+      onCheckboxChanged: onCheckboxChanged,
+      onOpen: onOpen,
+      rowMenuBuilder: rowMenuBuilder,
+      onMenuOpening: onMenuOpening,
+      onActionCompleted: onActionCompleted,
+    );
+    final indexes = itemKey == null
+        ? null
+        : {
+            for (var i = 0; i < items.length; i++)
+              itemKey!(items[i]): i + (header == null ? 0 : 1),
+          };
+    Widget list = ListView.builder(
       controller: controller,
       primary: primary,
       shrinkWrap: !primary,
-      physics: primary
-          ? const AlwaysScrollableScrollPhysics()
-          : const ClampingScrollPhysics(),
+      physics:
+          physics ??
+          (primary
+              ? const AlwaysScrollableScrollPhysics()
+              : const ClampingScrollPhysics()),
+      findChildIndexCallback: indexes == null ? null : (key) => indexes[key],
       padding: EdgeInsets.only(
         left: UtenSpacing.s4,
         right: UtenSpacing.s4,
@@ -111,19 +143,19 @@ class MasterDataCardList<T> extends StatelessWidget {
           );
         }
         final item = items[itemIndex];
-        return _Card<T>(
-          columns: columns,
-          item: item,
-          isSelected: isSelected?.call(item) ?? false,
-          checkboxEnabled: canSelect?.call(item) ?? true,
-          onCheckboxChanged: onCheckboxChanged,
-          onOpen: onOpen,
-          rowMenuBuilder: rowMenuBuilder,
-          onMenuOpening: onMenuOpening,
-          onActionCompleted: onActionCompleted,
-        );
+        final card = buildCard(item);
+        return rowDecorator?.call(item, card) ?? card;
       },
     );
+    list = layoutWrapper?.call(list, buildCard) ?? list;
+    list = Stack(
+      children: [
+        list,
+        if (overlay != null)
+          Positioned(left: 0, right: 0, top: 0, child: overlay!),
+      ],
+    );
+    return list;
   }
 }
 
@@ -216,16 +248,18 @@ class _Card<T> extends StatelessWidget {
                     if (entries.isEmpty) return;
                     onMenuOpening?.call(item);
                     final box = buttonContext.findRenderObject() as RenderBox;
-                    final result = await showUtenContextMenu(
+                    await showUtenContextMenu(
                       buttonContext,
                       globalPosition: box.localToGlobal(
                         Offset(box.size.width, box.size.height),
                       ),
                       entries: entries,
+                      onActionCompleted: (item) async {
+                        if (!item.preserveSelectionAfterAction) {
+                          await onActionCompleted?.call();
+                        }
+                      },
                     );
-                    if (result == UtenContextMenuCloseReason.actionCompleted) {
-                      await onActionCompleted?.call();
-                    }
                   },
                 ),
               ),
@@ -295,17 +329,29 @@ class _Card<T> extends StatelessWidget {
     if (value.isEmpty && !c.cardRendersBuilder) {
       return const SizedBox.shrink();
     }
-    if (c.cardRendersBuilder && c.cellBuilder != null) {
+    if (c.cardRendersBuilder &&
+        c.cellBuilder != null &&
+        !utenIsStatusColumn(c.key, c.label)) {
       return DefaultTextStyle.merge(
         style: theme.textTheme.bodySmall!,
         child: MasterDataTableCellScope(
           selected: isSelected,
           foregroundColor: theme.colorScheme.onSurface,
-          child: Builder(builder: (ctx) => c.cellBuilder!(ctx, item)),
+          child: UtenTableCellHints(
+            child: Builder(builder: (ctx) => c.cellBuilder!(ctx, item)),
+          ),
         ),
       );
     }
-    final cellColor = c.cellColor?.call(context, item);
+    final cellColor = isSelected
+        ? null
+        : c.cellColor?.call(context, item) ??
+              (utenIsStatusColumn(c.key, c.label)
+                  ? udenStatusBadgeCellColor(
+                      context,
+                      utenStatusLabelType(value),
+                    )
+                  : null);
     if (cellColor == null) {
       return Text.rich(
         TextSpan(
@@ -326,10 +372,7 @@ class _Card<T> extends StatelessWidget {
         ),
       );
     }
-    final onCell =
-        ThemeData.estimateBrightnessForColor(cellColor) == Brightness.dark
-        ? Colors.white
-        : Colors.black87;
+    final onCell = utenSemanticCellForeground(context, cellColor);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

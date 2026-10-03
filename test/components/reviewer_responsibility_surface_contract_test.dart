@@ -28,7 +28,7 @@ void main() {
         "reviewerActionLabel: '费用单总账确认'",
       ],
       'lib/features/production/pages/production_daily_report_detail_page.dart':
-          ['reviewerResponsibility: true'],
+          ['showUtenReviewerConfirmDialog('],
       'lib/features/production/pages/production_plan_detail_page.dart': [
         'reviewerResponsibility: true',
       ],
@@ -66,11 +66,25 @@ void main() {
 
     for (final entry in expectedMarkers.entries) {
       final source = _source(entry.key);
-      expect(
-        source,
-        contains('uten_reviewer_responsibility_notice.dart'),
-        reason: '${entry.key} must import the shared responsibility notice',
-      );
+      if (source.contains('with NativeReadViewScopeMixin<')) {
+        expect(source, contains('native_read_view_scope_mixin.dart'));
+        expect(source, contains('showNativeReadReviewerConfirm('));
+        final nativeGuard = _source(
+          'lib/shared/auth/native_read_view_scope_mixin.dart',
+        );
+        expect(
+          nativeGuard,
+          contains('uten_reviewer_responsibility_notice.dart'),
+        );
+        expect(nativeGuard, contains('UtenReviewerResponsibilityNotice('));
+        expect(nativeGuard, contains('actionLabel: actionLabel'));
+      } else {
+        expect(
+          source,
+          contains('uten_reviewer_responsibility_notice.dart'),
+          reason: '${entry.key} must import the shared responsibility notice',
+        );
+      }
       for (final marker in entry.value) {
         expect(source, contains(marker), reason: '${entry.key}: $marker');
       }

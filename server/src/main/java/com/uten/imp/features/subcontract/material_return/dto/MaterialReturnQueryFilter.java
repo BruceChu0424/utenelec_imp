@@ -12,7 +12,40 @@ public record MaterialReturnQueryFilter(
         LocalDate dateFrom,
         LocalDate dateTo,
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
-        String billNo) {
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted,
+        com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
+    public MaterialReturnQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
+    }
+    public MaterialReturnQueryFilter(String keyword,
+        UUID supplierId,
+        UUID warehouseId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo,
+        boolean includeDeleted, boolean onlyDeleted) {
+        this(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+    public MaterialReturnQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new MaterialReturnQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo, includeDeleted, onlyDeleted, headers);
+    }
+
+    public MaterialReturnQueryFilter(
+        String keyword,
+        UUID supplierId,
+        UUID warehouseId,
+        Short status,
+        LocalDate dateFrom,
+        LocalDate dateTo,
+        /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
+        String billNo) { this(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo, false, false); }
+    public MaterialReturnQueryFilter withHistory(boolean includeDeleted, boolean onlyDeleted) {
+        return new MaterialReturnQueryFilter(keyword, supplierId, warehouseId, status, dateFrom, dateTo, billNo, includeDeleted || onlyDeleted, onlyDeleted, headerFilters);
+    }
+
 
     /** 兼容旧签名（无单号筛选）。 */
     public MaterialReturnQueryFilter(

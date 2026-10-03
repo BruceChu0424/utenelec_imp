@@ -9,6 +9,101 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get businessColumnAmountUnavailable =>
+      '현재 계정은 이 열을 금액 계산에 사용할 수 없습니다. 가격 권한을 복구하거나 문자 또는 숫자 기록을 명시적으로 선택하세요.';
+
+  @override
+  String get businessColumnEditorSubtitle =>
+      '문서 정보를 추가하거나 입력값을 각 행의 공식 금액에 반영합니다.';
+
+  @override
+  String get businessColumnBrowse => '기존 열 선택';
+
+  @override
+  String get businessColumnNew => '새 열';
+
+  @override
+  String get businessColumnManage => '이 문서에 추가됨';
+
+  @override
+  String get businessColumnNoResults => '일치하는 열이 없습니다. 새 열을 선택하여 만드세요.';
+
+  @override
+  String get businessColumnNewHint =>
+      '이름을 입력한 후 용도를 선택하세요. 실제 값은 표의 각 행에 입력합니다.';
+
+  @override
+  String get businessColumnOfficialAmount => '공식 금액에 반영';
+
+  @override
+  String get businessColumnAmountTarget => '계산 대상';
+
+  @override
+  String get businessColumnRowAmount => '현재 행 금액';
+
+  @override
+  String get businessColumnRecordHint => '각 행에 입력한 값은 문서의 추가 정보로 저장됩니다.';
+
+  @override
+  String get businessColumnOfficialHint =>
+      '입력값은 현재 행 금액과 저장, 재무 검토 및 후속 업무에 반영됩니다.';
+
+  @override
+  String get businessColumnExampleTitle => '계산 예시';
+
+  @override
+  String get businessColumnExampleBase => '기본 금액 (예시)';
+
+  @override
+  String get businessColumnExampleValue => '이 열의 입력값 (예시)';
+
+  @override
+  String get businessColumnExampleHint =>
+      '예시는 문서에 입력되지 않습니다. 빈 값은 제외되며 0은 그대로 계산됩니다.';
+
+  @override
+  String get businessColumnExampleInvalid =>
+      '유효한 숫자를 입력하세요. 0으로 나누기, 무한소수 및 음수 결과는 허용되지 않습니다.';
+
+  @override
+  String get businessColumnFixedFeeHint =>
+      '이 값은 행마다 한 번 적용됩니다. 예를 들어 100에 20을 더하면 120입니다.';
+
+  @override
+  String get businessColumnFactorHint =>
+      '곱셈과 나눗셈에는 배율을 입력합니다. 0.9를 곱하면 원래 금액의 90%가 됩니다.';
+
+  @override
+  String get businessColumnRemove => '이 문서에서 제거';
+
+  @override
+  String get businessColumnRemoveHint =>
+      '제거하면 모든 행에서 이 열의 값이 지워지고 금액이 다시 계산됩니다. 문서를 저장하면 적용되며 다른 문서와 재사용 열에는 영향이 없습니다.';
+
+  @override
+  String get businessColumnUseExisting => '기존 열 사용';
+
+  @override
+  String get businessColumnAlreadyAdded => '이미 추가된 열입니다. 이 문서에 추가됨에서 확인하세요.';
+
+  @override
+  String get businessColumnOrderHint =>
+      '금액은 열을 추가한 순서대로 계산됩니다. 머리글 이동은 표시 순서만 바꾸며 값이 있는 비용 열은 계속 표시됩니다.';
+
+  @override
+  String get businessColumnNoAdded => '이 문서에 추가된 사용자 정의 열이 없습니다.';
+
+  @override
+  String get businessColumnNameRequired => '열 이름을 입력하세요';
+
+  @override
+  String get businessColumnAmountRule => '금액 연산';
+
+  @override
+  String get businessColumnSubtractHint =>
+      '이 행에서 뺄 값을 입력하세요. 예를 들어 100에서 20을 빼면 80입니다.';
+
+  @override
   String get bomLearningTitle => 'BOM 학습 기록';
 
   @override
@@ -264,6 +359,35 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestTitle => '자재 요청 확인';
+
+  @override
+  String get productionDailyReportLoadFailed =>
+      '상세 정보를 불러오지 못했습니다. 다시 시도해 주세요.';
+
+  @override
+  String get productionDailyReportReverseConfirmation =>
+      '이 일보를 역분개합니다. 계속하시겠습니까?';
+
+  @override
+  String get productionDailyReportDeleteTitle => '생산 일보 삭제';
+
+  @override
+  String get productionDailyReportDeleteConfirmation => '이 생산 일보 초안을 삭제하시겠습니까?';
+
+  @override
+  String get productionDailyReportDeleteAction => '삭제';
+
+  @override
+  String get productionDailyReportApprovedStateVerified =>
+      '현재 승인된 상태이며 페이지를 새로 고쳤습니다.';
+
+  @override
+  String get productionDailyReportReversedStateVerified =>
+      '현재 역분개된 상태이며 페이지를 새로 고쳤습니다.';
+
+  @override
+  String get productionDailyReportStateChangedReview =>
+      '일보 상태가 변경되어 페이지를 새로 고쳤습니다. 현재 상태를 확인해 주세요.';
 
   @override
   String get appTitle => '우텅 통합 관리 플랫폼';
@@ -1981,7 +2105,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionHubPlan => '새 생산 계획';
 
   @override
-  String get productionHubPlanSub => '판매 주문 참조 또는 수동 생성·이력';
+  String get productionHubPlanSub => '판매 주문을 참조해 직접 생성';
 
   @override
   String get productionHubPlanHistory => '생산 계획 이력';
@@ -4514,7 +4638,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmWeighLoose => '산물 자재';
 
   @override
-  String get wmFillGuide => '3/4 이상은 가득, 1/4~3/4는 절반, 1/4 미만은 비어 있음';
+  String get wmFillGuide =>
+      '가득은 용량 전체, 절반은 용량의 절반으로 추정합니다. 비어 있음은 0으로 기록하므로 잔량이 없을 때만 선택하세요. 잔량은 가능하면 무게를 재어 kg으로 입력하세요. 수준 추정은 이번 기간과 다음 기간 사용량에 영향을 줍니다.';
 
   @override
   String get wmMachineIdle => '설비 정지, 전부 비어 있음';
@@ -4526,7 +4651,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmPrintBlank => '빈 재고 조사표 인쇄';
 
   @override
-  String get wmSubmitCount => '재고 조사 제출';
+  String get wmSubmitCount => '재고 조사 승인 및 반영';
 
   @override
   String get wmWithdrawCount => '재고 조사 철회';
@@ -4633,7 +4758,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmReportProduct => '제품별';
 
   @override
-  String get wmReportTrend => '손실률 추이';
+  String get wmReportTrend => '사용량 차이율 추이';
 
   @override
   String get wmReportMissingWeight => '개당 중량 누락';
@@ -4642,13 +4767,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmReportLedger => '입출고 내역';
 
   @override
-  String get wmTrueUnitUsage => '실제 개당 사용량';
+  String get wmTrueUnitUsage => '단독 사용 기간 평균';
 
   @override
   String get wmAllocatedByTheory => '표준 비율 배분';
 
   @override
-  String get wmWasteRate => '손실률';
+  String get wmWasteRate => '사용량 차이율';
 
   @override
   String get wmIncludeWorkshopStore => '작업장 자재창고 포함';
@@ -4657,7 +4782,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get workshopMaterialSetupHubDesc => '일괄 출고 사용, 설비·용기, 도입 준비';
 
   @override
-  String get workshopMaterialReportsHubDesc => '기간별 자재 사용량, 손실률, 결산 상태';
+  String get workshopMaterialReportsHubDesc => '기간별 실사 기반 추산 사용량, 차이율, 결산 상태';
 
   @override
   String get wmReceiveReturn => '반납 수령';
@@ -5539,7 +5664,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get salesQuoteStatusConvertConfirmBody =>
-      '재무가 확정한 단가와 할인으로 주문 초안을 만듭니다. 단가와 할인은 바꿀 수 없고 수량과 납기 정보는 주문에서 보완할 수 있습니다. 전환할까요?';
+      '양측이 동의한 현재 견적의 단가, 할인율, 조건으로 주문 초안을 생성합니다. 정보를 확인하고 저장 및 검토 후 재무 승인에 제출하세요.';
 
   @override
   String get salesQuoteStatusConfirm => '확인';
@@ -6760,7 +6885,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get salesIntakeQuotePriceHint =>
-      '단가는 품목 표준가로 들어오며 영업은 바꿀 수 없습니다. 표준가가 없는 품목은 재무가 정합니다. 할인율은 고객 파일 단가로 계산하며 비워 두고 재무에 맡길 수도 있습니다.';
+      '품목 표준가가 초기값입니다. 품목 정보를 바꾸지 않고 이번 견적의 단가와 할인율을 수정할 수 있습니다. 제출 후 재무가 검토하며 빈 단가를 입력할 수 있습니다.';
 
   @override
   String get salesIntakeFinancePriced => '재무 가격';
@@ -7823,4 +7948,292 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get costMaterialPriceNotApplied =>
       '집계 조립품 또는 고객 지급 자재는 별도 자재 단가를 적용하지 않습니다. 행 계산 근거를 확인하세요.';
+
+  @override
+  String get salesQuoteCustomerConfirm => '고객 동의 등록';
+
+  @override
+  String get salesQuoteCustomerConfirmBody =>
+      '고객이 현재 버전의 품목, 수량, 단가, 할인율 및 조건에 동의했는지 확인합니다. 이후 주문 초안을 생성할 수 있습니다. 변경 시 재무 검토와 고객 동의가 다시 필요합니다.';
+
+  @override
+  String get salesQuoteCustomerConfirmed => '고객 동의가 등록되어 주문을 생성할 수 있습니다';
+
+  @override
+  String get salesQuoteAwaitingCustomer => '고객 동의 대기';
+
+  @override
+  String get salesQuoteAwaitingConversion => '주문 생성 대기';
+
+  @override
+  String get salesQuoteAwaitingCustomerBody =>
+      '재무 검토가 완료되었습니다. 고객에게 현재 견적을 확인받고 동의를 등록하여 주문을 생성하거나, 견적을 수정 또는 취소하세요.';
+
+  @override
+  String get salesQuoteCancelQuote => '견적 취소';
+
+  @override
+  String get salesQuoteCancelReason => '취소 사유 (고객 거절, 수주 실패 등)';
+
+  @override
+  String get salesQuoteCancelReasonRequired => '취소 사유를 입력하세요';
+
+  @override
+  String get salesQuoteCancelledDone => '견적이 취소되었으며 이력은 보존됩니다';
+
+  @override
+  String get quoteTemplateMissingTitle => '이 고객의 견적 양식이 없습니다';
+
+  @override
+  String get quoteTemplateMissingHint =>
+      '고객의 Excel 양식을 업로드하고 열 매핑을 확인한 후 저장하세요. 표준 형식으로 다운로드할 수도 있습니다.';
+
+  @override
+  String get quoteTemplateUpload => '양식 업로드 및 학습';
+
+  @override
+  String get quoteTemplateReviewTitle => '고객 양식 확인';
+
+  @override
+  String get quoteTemplateReviewHint =>
+      '워크시트와 필드를 확인한 후 저장하세요. 유사한 레이아웃은 버전을 갱신하고 다른 레이아웃은 선택할 수 있도록 보관됩니다.';
+
+  @override
+  String get quoteTemplateSaveDownload => '양식 저장 및 다운로드';
+
+  @override
+  String get quoteTemplateSheet => '워크시트';
+
+  @override
+  String get quoteTemplateReference => '참고 열 (견적의 동일한 필드만 입력)';
+
+  @override
+  String get quoteTemplateFileRequired => '15 MB 이하의 xlsx 또는 xls 파일을 업로드하세요';
+
+  @override
+  String get quoteTemplateUnreadable =>
+      '재사용 가능한 양식을 읽을 수 없습니다. Excel 머리글을 확인하세요.';
+
+  @override
+  String get quoteTemplateSaved => '고객 견적 양식이 저장되었습니다';
+
+  @override
+  String get quoteTemplateLearningTitle => '고객 견적 양식 학습';
+
+  @override
+  String get aiChatTitle => 'AI 업무 도우미';
+
+  @override
+  String get aiChatOpen => '도우미 열기 (위아래로 이동 가능)';
+
+  @override
+  String get aiChatClose => '채팅 최소화';
+
+  @override
+  String get aiChatReset => '새 대화';
+
+  @override
+  String get aiChatResetTitle => '새 대화를 시작할까요?';
+
+  @override
+  String get aiChatResetHint => '이 창의 대화와 사용하지 않은 파일을 지웁니다. 완료된 업무 작업은 유지됩니다.';
+
+  @override
+  String get aiChatCancel => '취소';
+
+  @override
+  String get aiChatConfirm => '확인';
+
+  @override
+  String get aiChatWelcome => '어떤 업무를 도와드릴까요?';
+
+  @override
+  String get aiChatBoundary => '현재 계정 권한에 따라 답변하며, 조회와 작업마다 접근 권한을 확인합니다.';
+
+  @override
+  String get aiChatUnavailable =>
+      '지원되는 업무 조회를 위한 기본 도우미 모드입니다. 전체 대화 기능을 사용하려면 AI 서비스를 설정하세요.';
+
+  @override
+  String get aiChatLoadFailed => '도우미에 연결할 수 없습니다. 다시 시도하세요.';
+
+  @override
+  String get aiChatRetry => '다시 시도';
+
+  @override
+  String get aiChatLabel => '메시지';
+
+  @override
+  String get aiChatHint => '메시지 입력…';
+
+  @override
+  String get aiChatHintNoUpload => '메시지 입력…';
+
+  @override
+  String get aiChatSend => '보내기';
+
+  @override
+  String get aiChatAttach => '견적 파일 첨부';
+
+  @override
+  String get aiChatRemoveFile => '파일 제거';
+
+  @override
+  String get aiChatFileHint => 'Excel과 CSV를 지원합니다. 파일로 검토할 주문서를 준비합니다.';
+
+  @override
+  String get aiChatFileFailed => '파일을 읽을 수 없습니다. Excel 또는 CSV 파일을 다시 선택하세요.';
+
+  @override
+  String get aiChatFileLarge => '파일은 15MB 이하여야 합니다.';
+
+  @override
+  String get aiChatFileMemory => '대화 파일 용량이 가득 찼습니다. 새 대화를 시작하여 첨부하세요.';
+
+  @override
+  String get aiChatSending => '질문을 처리하는 중…';
+
+  @override
+  String get aiChatUploading => '견적 파일을 읽는 중…';
+
+  @override
+  String get aiChatStop => '중지';
+
+  @override
+  String get aiChatStopped => '처리가 중지되었습니다';
+
+  @override
+  String get aiChatFailed => '처리를 완료하지 못했습니다. 다시 시도하세요.';
+
+  @override
+  String get aiChatTimeout => '처리 시간이 초과되었습니다. 나중에 다시 시도하세요.';
+
+  @override
+  String get aiChatGone => '요청이 만료되었습니다. 새 대화를 시작하세요.';
+
+  @override
+  String get aiChatPermissionChanged =>
+      '권한 또는 세션이 변경되어 대화를 지웠습니다. 새로고침 후 다시 시도하세요.';
+
+  @override
+  String get aiChatOpenDraft => '검토 후 주문서 만들기';
+
+  @override
+  String get aiChatDraftHint => '주문 편집기에서 고객, 품목, 수량, 가격을 검토한 후 저장하세요.';
+
+  @override
+  String get aiChatUnsupported => '이 작업은 해당 업무 페이지에서 처리하세요.';
+
+  @override
+  String get aiChatEmptyReply => '답변이 반환되지 않았습니다. 질문을 다시 작성하세요.';
+
+  @override
+  String get aiChatYou => '나';
+
+  @override
+  String get aiChatAssistant => '도우미';
+
+  @override
+  String get aiChatDraftUnavailable => '초안을 열 수 없습니다. 파일을 다시 첨부하세요.';
+
+  @override
+  String get aiChatConfirmPermission => '권한 부여 검토';
+
+  @override
+  String get aiChatPermissionDone => '권한 부여 완료';
+
+  @override
+  String get aiChatMoveUp => '도우미 위로 이동';
+
+  @override
+  String get aiChatMoveDown => '도우미 아래로 이동';
+
+  @override
+  String get aiChatPageAware => '현재 페이지 도움말';
+
+  @override
+  String get aiChatPageOff => '현재 페이지 사용';
+
+  @override
+  String get aiChatPageHint => '입력 값을 읽지 않고 페이지와 필드 안내를 사용합니다.';
+
+  @override
+  String get aiChatPageQuestion => '이 페이지는 어떻게 작성하나요? 예를 보여주세요.';
+
+  @override
+  String get aiChatGrantDetails =>
+      '대상 직원, 권한, 범위를 검토하세요. 확인하려면 비밀번호 인증이 필요합니다.';
+
+  @override
+  String get aiChatGrantExpired => '권한 제안이 만료되었습니다. 다시 요청하세요.';
+
+  @override
+  String get aiChatGrantUnknown => '결과를 확인하지 못했습니다. 다시 시도하기 전에 권한 관리에서 확인하세요.';
+
+  @override
+  String get aiChatAttachmentQuestion => '이 견적 파일로 주문서를 준비해 주세요.';
+
+  @override
+  String get aiChatLimit => '대화가 길어졌습니다. 새 대화를 시작해 주세요.';
+
+  @override
+  String get aiChatPermissionTarget => '대상 직원';
+
+  @override
+  String get aiChatPermissionItem => '부여할 권한';
+
+  @override
+  String get aiChatPermissionScope => '데이터 범위';
+
+  @override
+  String get aiChatPermissionExpiry => '만료 시간';
+
+  @override
+  String get aiChatPendingGrant => '확인 대기 중';
+
+  @override
+  String get aiChatFileReady => '파일 준비 완료. 질문을 보내세요';
+
+  @override
+  String get aiChatSendAgain => '다시 보내기';
+
+  @override
+  String get aiChatDraftOpened => '검토 페이지 열림';
+
+  @override
+  String get aiChatFileMissing => '원본을 보존하려면 주문서를 만들기 전에 파일을 다시 첨부하세요.';
+
+  @override
+  String get aiChatPrivacyNotice =>
+      '대화는 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요.';
+
+  @override
+  String get aiChatReceived => '전송 완료. 답변을 기다리는 중…';
+
+  @override
+  String get aiChatRequestRejected => '메시지를 제출하지 못했습니다.';
+
+  @override
+  String get aiChatDeliveryUnknown => '전달 여부를 확인하지 못했습니다. 다시 보내면 새 요청을 시작합니다.';
+
+  @override
+  String get aiChatReplyFailed => '전달되었지만 AI가 답변을 완료하지 못했습니다.';
+
+  @override
+  String get aiChatReplyInterrupted => '접수되었지만 결과를 가져오지 못했습니다.';
+
+  @override
+  String get aiChatWaitingStopped => '이 답변 기다리기를 중지했습니다.';
+
+  @override
+  String get aiChatRetryMessage => '이 메시지 다시 시도';
+
+  @override
+  String get aiChatCheckReply => '결과 다시 확인';
+
+  @override
+  String get aiChatInfo => 'AI 사용 안내';
+
+  @override
+  String get aiChatInfoDone => '확인';
 }

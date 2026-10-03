@@ -12,6 +12,8 @@ Map<String, dynamic> weightEntryDraft(
   UtenAutofillTextController? qty,
 }) => {
   'kg': weight.kg,
+  'userEdited': weight.userEdited,
+  if (weight.hasError) 'inputText': weight.text.text,
   'qtyFromWeight': weight.qtyFromWeight,
   'qtyNote': weight.qtyEstimateNote,
   if (qty != null)
@@ -31,7 +33,14 @@ void restoreWeightEntryDraft(
   final kg = raw['kg'];
   final fromWeight = raw['qtyFromWeight'] == true;
   final note = raw['qtyNote'];
-  weight.setKg(kg is num ? kg.toDouble() : null, qtyFromWeight: fromWeight);
+  weight.setKg(
+    kg is num ? kg.toDouble() : null,
+    qtyFromWeight: fromWeight,
+    userEdited: raw['userEdited'] == true || kg is num,
+  );
+  if (kg == null && raw['inputText'] is String) {
+    weight.text.text = raw['inputText'] as String;
+  }
   if (qty != null && raw['qtyDerived'] == true && qty.text.isNotEmpty) {
     final text = qty.text;
     qty.setAutomaticText(text);

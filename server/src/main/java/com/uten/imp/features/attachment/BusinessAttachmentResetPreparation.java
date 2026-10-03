@@ -24,7 +24,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 
-/** Explicit test-data maintenance. The ordinary deletion worker remains the sole physical deleter. */
+/** Ordinary preparation retains originals. Explicit test reset uses a separate signed exact-object chain. */
 @Service
 @RequiredArgsConstructor
 public class BusinessAttachmentResetPreparation implements BusinessAttachmentResetPreparationPort {
@@ -39,6 +39,7 @@ public class BusinessAttachmentResetPreparation implements BusinessAttachmentRes
     public static final Set<String> PROTECTED_OWNER_TYPES = Set.of("EMPLOYEE", "EMPLOYEE_CONTRACT", "GOODS");
     static final String PROTECTED_OWNER_TYPES_CSV = String.join(",", new TreeSet<>(PROTECTED_OWNER_TYPES));
 
+    private final BusinessTestObjectCleanup testCleanup;
     private final JdbcTemplate jdbc;
     private final StorageProviderRegistry storage;
     private final AttachmentObjectOutboxStore outbox;
@@ -241,6 +242,14 @@ public class BusinessAttachmentResetPreparation implements BusinessAttachmentRes
                 Long.class);
         return count == null ? 0 : count;
     }
+
+    @Override public Preview previewTestReset(UUID operatorId) { return testCleanup.preview(operatorId); }
+    @Override public List<UnpurgeableGroup> unpurgeableTestResetBlockers(UUID operatorId) { return testCleanup.blockers(operatorId); }
+    @Override public Preview prepareTestReset(UUID operatorId,String account,UUID attemptId,Confirmation confirmation) {
+        return testCleanup.prepare(operatorId,account,attemptId,confirmation);
+    }
+    @Override public boolean drainTestResetNext(UUID attemptId) { return testCleanup.drain(attemptId); }
+    @Override public long succeededTestDeletionCount(UUID attemptId) { return testCleanup.succeeded(attemptId); }
 
     @Override
     public int cleanupAbandonedScratch() {

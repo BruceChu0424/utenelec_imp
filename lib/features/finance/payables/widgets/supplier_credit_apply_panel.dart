@@ -5,6 +5,7 @@ import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
+import '../../../../components/layout/uten_load_more_boundary.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
@@ -292,82 +293,87 @@ class _SupplierCreditApplyPanelState
     if (_loading && _page == 0) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      itemCount: _targets.length + 1,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        if (index == _targets.length) {
-          return Column(
-            children: [
-              if (_targets.isEmpty && _error == null)
-                UtenEmpty(
-                  message: _page < _totalPages
-                      ? '当前页暂无符合条件的正应付，可继续加载'
-                      : '暂无同供应商、同币种、同立账汇率的正应付',
-                ),
-              if (_error != null) Text(_error!),
-              if (_page < _totalPages)
-                TextButton.icon(
-                  key: const ValueKey('supplier-offset-load-more'),
-                  onPressed: _loading ? null : () => _load(more: true),
-                  icon: const Icon(Icons.expand_more_rounded),
-                  label: Text(
-                    _loading
-                        ? '加载中'
-                        : _error != null
-                        ? '重试'
-                        : '加载更多',
+    return UtenLoadMoreBoundary(
+      enabled: !_loading && _error == null && _page < _totalPages,
+      scope: (widget.source.supplierId, widget.source.currencyId),
+      onLoadMore: () => _load(more: true),
+      child: ListView.separated(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        itemCount: _targets.length + 1,
+        separatorBuilder: (_, _) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          if (index == _targets.length) {
+            return Column(
+              children: [
+                if (_targets.isEmpty && _error == null)
+                  UtenEmpty(
+                    message: _page < _totalPages
+                        ? '当前页暂无符合条件的正应付，可继续加载'
+                        : '暂无同供应商、同币种、同立账汇率的正应付',
                   ),
-                ),
-              const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
-            ],
+                if (_error != null) Text(_error!),
+                if (_page < _totalPages)
+                  TextButton.icon(
+                    key: const ValueKey('supplier-offset-load-more'),
+                    onPressed: _loading ? null : () => _load(more: true),
+                    icon: const Icon(Icons.expand_more_rounded),
+                    label: Text(
+                      _loading
+                          ? '加载中'
+                          : _error != null
+                          ? '重试'
+                          : '加载更多',
+                    ),
+                  ),
+                const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
+              ],
+            );
+          }
+          final target = _targets[index];
+          final selected = _selected.contains(target.id);
+          final controller = _amounts.putIfAbsent(
+            target.id,
+            () => TextEditingController(),
           );
-        }
-        final target = _targets[index];
-        final selected = _selected.contains(target.id);
-        final controller = _amounts.putIfAbsent(
-          target.id,
-          () => TextEditingController(),
-        );
-        return CheckboxListTile(
-          key: ValueKey('supplier-offset-target-${target.id}'),
-          value: selected,
-          onChanged: (value) => setState(() {
-            if (value == true) {
-              _selected.add(target.id);
-              if (controller.text.isEmpty) {
-                controller.text = target.outstandingOriginal ?? '';
+          return CheckboxListTile(
+            key: ValueKey('supplier-offset-target-${target.id}'),
+            value: selected,
+            onChanged: (value) => setState(() {
+              if (value == true) {
+                _selected.add(target.id);
+                if (controller.text.isEmpty) {
+                  controller.text = target.outstandingOriginal ?? '';
+                }
+              } else {
+                _selected.remove(target.id);
               }
-            } else {
-              _selected.remove(target.id);
-            }
-          }),
-          title: Text(
-            '${target.sourceDocNo ?? '—'} · ${target.sourceTypeLabel}',
-          ),
-          subtitle: Text(
-            '未付 ${target.outstandingOriginal ?? '—'}'
-            ' · 汇率 ${target.bookingRate ?? '—'}',
-          ),
-          secondary: SizedBox(
-            width: 150,
-            child: TextField(
-              key: ValueKey('supplier-offset-amount-${target.id}'),
-              controller: controller,
-              enabled: selected,
-              textAlign: TextAlign.right,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: '应用原币金额',
+            }),
+            title: Text(
+              '${target.sourceDocNo ?? '—'} · ${target.sourceTypeLabel}',
+            ),
+            subtitle: Text(
+              '未付 ${target.outstandingOriginal ?? '—'}'
+              ' · 汇率 ${target.bookingRate ?? '—'}',
+            ),
+            secondary: SizedBox(
+              width: 150,
+              child: TextField(
+                key: ValueKey('supplier-offset-amount-${target.id}'),
+                controller: controller,
+                enabled: selected,
+                textAlign: TextAlign.right,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: '应用原币金额',
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

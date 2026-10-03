@@ -6,6 +6,7 @@ import com.uten.imp.features.stock.dto.InstantInventoryRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,11 +34,33 @@ public class StockQueryController {
     public PageResponse<BalanceRow> balances(
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) UUID goodsId,
+            @RequestParam(required = false) UUID colorId,
+            @RequestParam(defaultValue = "false") boolean colorNull,
+            @RequestParam(defaultValue = "false") boolean inventoryOnly,
+            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeLineSide,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.balances(warehouseId, goodsId, page, size, sort, order);
+        return service.balances(warehouseId, goodsId, colorId, colorNull, inventoryOnly, includeDefective,
+                includeLineSide, page, size, sort, order);
+    }
+
+    @GetMapping("/goods/{goodsId}/inventory-context")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public com.uten.imp.features.stock.dto.InventoryContextPage inventoryContext(
+            @PathVariable UUID goodsId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(required = false) UUID colorId,
+            @RequestParam(defaultValue = "false") boolean colorNull,
+            @RequestParam(defaultValue = "false") boolean inventoryOnly,
+            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeLineSide,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "500") int size) {
+        return service.inventoryContext(goodsId, warehouseId, colorId, colorNull, inventoryOnly,
+                includeDefective, includeLineSide, page, size);
     }
 
     /**
@@ -62,12 +85,40 @@ public class StockQueryController {
             @RequestParam(required = false) UUID colorId,
             @RequestParam(required = false) String series,
             @RequestParam(required = false) UUID unitId,
+            // 风险/跟进行动清单，白名单校验在共享查询入口执行。
+            @RequestParam(required = false) String attention,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
-                owningWarehouse, owningWarehouseNull, colorId, series, unitId, page, size, sort, order);
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order);
+    }
+
+    /**
+     * 行动清单使用独立路由，旧服务端返回 404，不能静默忽略 attention 后把全部库存冒充风险。
+     * 查询与原接口复用同一个服务；attention 缺失或非法均返回 400。
+     */
+    @GetMapping("/instant-inventory/attention")
+    @PreAuthorize("hasAuthority('stock:view')")
+    public PageResponse<InstantInventoryRow> instantInventoryAttention(
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeLineSide,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) UUID owningWarehouse,
+            @RequestParam(required = false) Boolean owningWarehouseNull,
+            @RequestParam(required = false) UUID colorId,
+            @RequestParam(required = false) String series,
+            @RequestParam(required = false) UUID unitId,
+            @RequestParam String attention,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order) {
+        return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order);
     }
 
     /**

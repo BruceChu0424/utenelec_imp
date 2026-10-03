@@ -219,6 +219,8 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                   width: 150,
                   type: 'number',
                   value: (r) => r.price.text,
+                  exactValueOf: (r) => r.kind == 'SKIP' ? null : r.price.text,
+                  exactListenableOf: (r) => r.price,
                   cellBuilder: (_, r) =>
                       r.kind == 'SKIP' ? _text('—') : _input(r.price),
                 ),
@@ -228,6 +230,9 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                   width: 170,
                   type: 'number',
                   value: (r) => r.rate.text,
+                  exactValueOf: (r) =>
+                      r.kind == 'MATERIAL' ? r.rate.text : null,
+                  exactListenableOf: (r) => r.rate,
                   cellBuilder: (_, r) =>
                       r.kind == 'MATERIAL' ? _input(r.rate) : _text('—'),
                 ),

@@ -1,6 +1,8 @@
 package com.uten.imp.features.production.dailyreport.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
@@ -17,4 +19,13 @@ public class DailyReportApproveRequest {
     @NotNull
     @Size(min = 8, max = 128)
     private String idempotencyKey;
+
+    /** Omitted with expectedVersion for the unchanged V1 compatibility lane. */
+    @Min(1)
+    @Max(2)
+    private Integer commandVersion;
+
+    /** V2 binds the version shown before confirmation; never inferred by the server. */
+    @Min(0)
+    private Long expectedVersion;
 }

@@ -1128,23 +1128,9 @@ public class ProcurementIqcStockInService {
     }
 
     private void recalculateOrderClosure(String type, UUID receiptId) {
-        String receiptItemTable = PURCHASE.equals(type)
-                ? "purchase_receipt_items"
-                : "subcontract_receipt_items";
-        @SuppressWarnings("unchecked")
-        List<UUID> orderItemIds = em.createNativeQuery("""
-                        SELECT DISTINCT order_item_id
-                        FROM %s
-                        WHERE receipt_id=:receiptId
-                          AND order_item_id IS NOT NULL
-                          AND COALESCE(is_deleted,FALSE)=FALSE
-                        ORDER BY order_item_id
-                        """.formatted(receiptItemTable))
-                .setParameter("receiptId", receiptId)
-                .getResultList();
-        for (UUID orderItemId : orderItemIds) {
-            ProcurementOrderClosurePolicy.recalculate(em, type, orderItemId);
-        }
+        // The shared receipt policy selects distinct order heads. All source
+        // locks and warehouse postings are already complete at this point.
+        ProcurementOrderClosurePolicy.recalculateReceipt(em, type, receiptId);
     }
 
     private static short movementType(String type) {

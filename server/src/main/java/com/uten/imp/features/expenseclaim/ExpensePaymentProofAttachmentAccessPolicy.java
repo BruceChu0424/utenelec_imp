@@ -25,9 +25,12 @@ public class ExpensePaymentProofAttachmentAccessPolicy implements AttachmentOwne
         requirePayer(claims.findByIdForUpdate(ownerId).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND,"报销单不存在")),user);
     }
     private static void requirePayer(ExpenseClaim claim,AuthUser user){
-        if(user.isVisitor() || user.getEmployeeId()==null || (!user.isSuperAdmin() && !user.getPermissions().contains("expense:pay"))
+        if(claim.isDeleted() || user.isVisitor() || user.getEmployeeId()==null || (!user.isSuperAdmin() && !user.getPermissions().contains("expense:pay"))
                 || !"APPROVED".equals(claim.getStatus()) || user.getEmployeeId().equals(claim.getApplicantId())
                 || user.getEmployeeId().equals(claim.getApprovedBy()))
             throw new ApiException(ErrorCode.NOT_FOUND,"报销单不存在或当前不可维护付款凭据");
     }
+
+    @Override public void requireCanViewHistory(UUID ownerId,AuthUser user){claimReadPolicy.requireCanViewHistory(ownerId,user);}
+    @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId,AuthUser user){requireCanViewHistory(ownerId,user);}
 }

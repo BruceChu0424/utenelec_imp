@@ -9,6 +9,105 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get businessColumnAmountUnavailable =>
+      'This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.';
+
+  @override
+  String get businessColumnEditorSubtitle =>
+      'Add document information or apply entered values to each line\'s official amount.';
+
+  @override
+  String get businessColumnBrowse => 'Existing columns';
+
+  @override
+  String get businessColumnNew => 'New column';
+
+  @override
+  String get businessColumnManage => 'Added to this document';
+
+  @override
+  String get businessColumnNoResults =>
+      'No matching columns. Choose New column to create one.';
+
+  @override
+  String get businessColumnNewHint =>
+      'Enter a name, then choose its purpose. Enter actual values in each table row.';
+
+  @override
+  String get businessColumnOfficialAmount => 'Affects official amount';
+
+  @override
+  String get businessColumnAmountTarget => 'Calculation target';
+
+  @override
+  String get businessColumnRowAmount => 'This line\'s amount';
+
+  @override
+  String get businessColumnRecordHint =>
+      'Values are stored with each document line as additional information.';
+
+  @override
+  String get businessColumnOfficialHint =>
+      'Entered values affect this line\'s amount, including saving, finance review and downstream processing.';
+
+  @override
+  String get businessColumnExampleTitle => 'Try an example';
+
+  @override
+  String get businessColumnExampleBase => 'Base amount (example)';
+
+  @override
+  String get businessColumnExampleValue => 'Column value (example)';
+
+  @override
+  String get businessColumnExampleHint =>
+      'Examples are not copied into the document. Blank values are skipped; zero is applied as entered.';
+
+  @override
+  String get businessColumnExampleInvalid =>
+      'Use valid numbers. Division by zero, inexact division and negative results are not allowed.';
+
+  @override
+  String get businessColumnFixedFeeHint =>
+      'The value applies once per line. For example, adding 20 to 100 gives 120.';
+
+  @override
+  String get businessColumnFactorHint =>
+      'Enter a multiplier or divisor. Multiplying by 0.9 applies 90% of the original amount.';
+
+  @override
+  String get businessColumnRemove => 'Remove from document';
+
+  @override
+  String get businessColumnRemoveHint =>
+      'Removing clears this column\'s values from all lines and recalculates amounts. Save the document to persist the change. Other documents and reusable definitions are unaffected.';
+
+  @override
+  String get businessColumnUseExisting => 'Use existing column';
+
+  @override
+  String get businessColumnAlreadyAdded =>
+      'This definition is already added. Open Added to this document to review it.';
+
+  @override
+  String get businessColumnOrderHint =>
+      'Amounts follow the order columns were added. Dragging headers changes display order only; populated fee columns remain visible.';
+
+  @override
+  String get businessColumnNoAdded =>
+      'No custom columns have been added to this document.';
+
+  @override
+  String get businessColumnNameRequired => 'Enter a column name';
+
+  @override
+  String get businessColumnAmountRule => 'Amount operation';
+
+  @override
+  String get businessColumnSubtractHint =>
+      'Enter the value to deduct from this line, for example 100 minus 20 equals 80.';
+
+  @override
   String get bomLearningTitle => 'BOM learning';
 
   @override
@@ -279,6 +378,36 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get materialDiscoveryRequestTitle => 'Review material request';
+
+  @override
+  String get productionDailyReportLoadFailed =>
+      'Could not load the details. Please retry.';
+
+  @override
+  String get productionDailyReportReverseConfirmation =>
+      'This will reverse the report. Continue?';
+
+  @override
+  String get productionDailyReportDeleteTitle => 'Delete daily report';
+
+  @override
+  String get productionDailyReportDeleteConfirmation =>
+      'Delete this draft daily report?';
+
+  @override
+  String get productionDailyReportDeleteAction => 'Delete';
+
+  @override
+  String get productionDailyReportApprovedStateVerified =>
+      'The report is currently approved. The page has been refreshed.';
+
+  @override
+  String get productionDailyReportReversedStateVerified =>
+      'The report is currently reversed. The page has been refreshed.';
+
+  @override
+  String get productionDailyReportStateChangedReview =>
+      'The report status has changed. The page has been refreshed; please check its current status.';
 
   @override
   String get appTitle => 'Uten Integrated Management Platform';
@@ -2031,7 +2160,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get productionHubPlanSub =>
-      'Reference a sales order or create manually; history';
+      'Create a plan manually, optionally referencing a sales order';
 
   @override
   String get productionHubPlanHistory => 'Production plan history';
@@ -4631,7 +4760,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get wmFillGuide =>
-      'Over 3/4 is full, 1/4 to 3/4 is half, under 1/4 is empty';
+      'Full estimates capacity; half estimates half capacity. Empty records zero: use only when no material remains. Weigh residual material and enter kilograms when possible. Level estimates affect this period and the next.';
 
   @override
   String get wmMachineIdle => 'Machine idle, all empty';
@@ -4643,7 +4772,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmPrintBlank => 'Print blank count sheet';
 
   @override
-  String get wmSubmitCount => 'Submit count';
+  String get wmSubmitCount => 'Approve count and post';
 
   @override
   String get wmWithdrawCount => 'Withdraw count';
@@ -4750,7 +4879,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmReportProduct => 'By product';
 
   @override
-  String get wmReportTrend => 'Waste trend';
+  String get wmReportTrend => 'Consumption variance trend';
 
   @override
   String get wmReportMissingWeight => 'Missing unit weights';
@@ -4759,13 +4888,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmReportLedger => 'Movements';
 
   @override
-  String get wmTrueUnitUsage => 'Actual per-unit usage';
+  String get wmTrueUnitUsage => 'Exclusive-period average';
 
   @override
   String get wmAllocatedByTheory => 'Allocated by standard';
 
   @override
-  String get wmWasteRate => 'Waste rate';
+  String get wmWasteRate => 'Consumption variance rate';
 
   @override
   String get wmIncludeWorkshopStore => 'Include workshop stores';
@@ -4776,7 +4905,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workshopMaterialReportsHubDesc =>
-      'Usage, waste rate and settlement status by period';
+      'Count-derived consumption, variance and settlement status by period';
 
   @override
   String get wmReceiveReturn => 'Receive return';
@@ -5684,7 +5813,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesQuoteStatusConvertConfirmBody =>
-      'An order draft will be created with the price and discount set by finance. Those cannot be changed; quantity and delivery details can still be completed on the order. Convert now?';
+      'Create an order draft from the accepted version, carrying approved prices, discounts and terms. Review the information, save and submit the order for finance approval.';
 
   @override
   String get salesQuoteStatusConfirm => 'OK';
@@ -7005,7 +7134,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesIntakeQuotePriceHint =>
-      'The unit price comes from the goods list price and sales cannot change it; goods without a list price are priced by finance. The discount is worked out from the customer\'s file price, or can be left empty for finance to decide.';
+      'The list price is the starting point. Edit this quote’s price and discount without changing goods master data. Finance reviews submitted quotes and can fill in missing prices.';
 
   @override
   String get salesIntakeFinancePriced => 'Finance price';
@@ -8105,4 +8234,318 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get costMaterialPriceNotApplied =>
       'Summary assemblies and customer-supplied material do not carry a separate material price; see row evidence.';
+
+  @override
+  String get salesQuoteCustomerConfirm => 'Record customer acceptance';
+
+  @override
+  String get salesQuoteCustomerConfirmBody =>
+      'Confirm that the customer accepts the goods, quantities, prices, discounts and terms in this version. You can then create an order draft. Further changes require finance review and fresh customer acceptance.';
+
+  @override
+  String get salesQuoteCustomerConfirmed =>
+      'Customer acceptance recorded; ready to create an order';
+
+  @override
+  String get salesQuoteAwaitingCustomer => 'Awaiting customer acceptance';
+
+  @override
+  String get salesQuoteAwaitingConversion => 'Ready to create order';
+
+  @override
+  String get salesQuoteAwaitingCustomerBody =>
+      'Finance has priced this quote. Confirm this version with the customer, record acceptance and create an order, or revise or cancel the quote.';
+
+  @override
+  String get salesQuoteCancelQuote => 'Cancel quote';
+
+  @override
+  String get salesQuoteCancelReason =>
+      'Reason (for example, customer declined or opportunity lost)';
+
+  @override
+  String get salesQuoteCancelReasonRequired => 'Enter a cancellation reason';
+
+  @override
+  String get salesQuoteCancelledDone => 'Quote cancelled; history retained';
+
+  @override
+  String get quoteTemplateMissingTitle =>
+      'No quotation template for this customer';
+
+  @override
+  String get quoteTemplateMissingHint =>
+      'Upload the customer\'s Excel template and review the field mapping before saving, or download the standard format.';
+
+  @override
+  String get quoteTemplateUpload => 'Upload and learn template';
+
+  @override
+  String get quoteTemplateReviewTitle => 'Review customer template';
+
+  @override
+  String get quoteTemplateReviewHint =>
+      'Review the worksheet and fields before saving. Similar layouts update the template; different layouts remain selectable.';
+
+  @override
+  String get quoteTemplateSaveDownload => 'Save template and download';
+
+  @override
+  String get quoteTemplateSheet => 'Worksheet';
+
+  @override
+  String get quoteTemplateReference =>
+      'Reference column (matching quotation fields only)';
+
+  @override
+  String get quoteTemplateFileRequired =>
+      'Upload an xlsx or xls file up to 15 MB';
+
+  @override
+  String get quoteTemplateUnreadable =>
+      'Unable to read a reusable template. Check the Excel headers.';
+
+  @override
+  String get quoteTemplateSaved => 'Customer quotation template saved';
+
+  @override
+  String get quoteTemplateLearningTitle => 'Learn customer quotation template';
+
+  @override
+  String get aiChatTitle => 'AI work assistant';
+
+  @override
+  String get aiChatOpen => 'Open assistant (drag vertically)';
+
+  @override
+  String get aiChatClose => 'Minimize chat';
+
+  @override
+  String get aiChatReset => 'New chat';
+
+  @override
+  String get aiChatResetTitle => 'Start a new chat?';
+
+  @override
+  String get aiChatResetHint =>
+      'This clears this window’s conversation and unused files. Completed business actions remain in effect.';
+
+  @override
+  String get aiChatCancel => 'Cancel';
+
+  @override
+  String get aiChatConfirm => 'Confirm';
+
+  @override
+  String get aiChatWelcome => 'What can I help with today?';
+
+  @override
+  String get aiChatBoundary =>
+      'Answers follow your account permissions. The system checks access for every query and action.';
+
+  @override
+  String get aiChatUnavailable =>
+      'Basic assistant mode is active for supported business queries. Configure an AI service for full conversation support.';
+
+  @override
+  String get aiChatLoadFailed =>
+      'The assistant could not connect. Please retry.';
+
+  @override
+  String get aiChatRetry => 'Retry';
+
+  @override
+  String get aiChatLabel => 'Message';
+
+  @override
+  String get aiChatHint => 'Message…';
+
+  @override
+  String get aiChatHintNoUpload => 'Message…';
+
+  @override
+  String get aiChatSend => 'Send';
+
+  @override
+  String get aiChatAttach => 'Attach a quotation';
+
+  @override
+  String get aiChatRemoveFile => 'Remove file';
+
+  @override
+  String get aiChatFileHint =>
+      'Excel and CSV supported. Files prepare an order for your review.';
+
+  @override
+  String get aiChatFileFailed =>
+      'Could not read the file. Choose an Excel or CSV file again.';
+
+  @override
+  String get aiChatFileLarge => 'The file must be 15 MB or smaller.';
+
+  @override
+  String get aiChatFileMemory =>
+      'This chat has reached its file capacity. Start a new chat to attach another file.';
+
+  @override
+  String get aiChatSending => 'Working on your question…';
+
+  @override
+  String get aiChatUploading => 'Reading the quotation…';
+
+  @override
+  String get aiChatStop => 'Stop';
+
+  @override
+  String get aiChatStopped => 'Processing stopped';
+
+  @override
+  String get aiChatFailed => 'Processing did not finish. Please try again.';
+
+  @override
+  String get aiChatTimeout =>
+      'Processing took too long. Please try again later.';
+
+  @override
+  String get aiChatGone => 'This request has expired. Start a new chat.';
+
+  @override
+  String get aiChatPermissionChanged =>
+      'Your access or session changed. This chat was cleared. Refresh and try again.';
+
+  @override
+  String get aiChatOpenDraft => 'Review and create order';
+
+  @override
+  String get aiChatDraftHint =>
+      'Review the customer, items, quantities and prices in the order editor, then save.';
+
+  @override
+  String get aiChatUnsupported =>
+      'Use the relevant business page to perform this action.';
+
+  @override
+  String get aiChatEmptyReply =>
+      'No answer was returned. Please rephrase your question.';
+
+  @override
+  String get aiChatYou => 'You';
+
+  @override
+  String get aiChatAssistant => 'Assistant';
+
+  @override
+  String get aiChatDraftUnavailable =>
+      'This draft cannot be opened. Attach the file again.';
+
+  @override
+  String get aiChatConfirmPermission => 'Review authorization';
+
+  @override
+  String get aiChatPermissionDone => 'Authorization completed';
+
+  @override
+  String get aiChatMoveUp => 'Move assistant up';
+
+  @override
+  String get aiChatMoveDown => 'Move assistant down';
+
+  @override
+  String get aiChatPageAware => 'Helping with this page';
+
+  @override
+  String get aiChatPageOff => 'Use the current page';
+
+  @override
+  String get aiChatPageHint =>
+      'Uses page and field guidance, without reading your form values.';
+
+  @override
+  String get aiChatPageQuestion =>
+      'How do I fill in this page? Show an example.';
+
+  @override
+  String get aiChatGrantDetails =>
+      'Review the person, permission and scope. Confirmation requires password verification.';
+
+  @override
+  String get aiChatGrantExpired => 'This proposal expired. Request a new one.';
+
+  @override
+  String get aiChatGrantUnknown =>
+      'The result could not be confirmed. Check permission management before retrying.';
+
+  @override
+  String get aiChatAttachmentQuestion =>
+      'Prepare a sales order from this quotation.';
+
+  @override
+  String get aiChatLimit =>
+      'This chat is getting long. Start a new chat to continue.';
+
+  @override
+  String get aiChatPermissionTarget => 'Person';
+
+  @override
+  String get aiChatPermissionItem => 'Permission';
+
+  @override
+  String get aiChatPermissionScope => 'Data scope';
+
+  @override
+  String get aiChatPermissionExpiry => 'Expires';
+
+  @override
+  String get aiChatPendingGrant => 'Awaiting your confirmation';
+
+  @override
+  String get aiChatFileReady => 'File ready; send your question';
+
+  @override
+  String get aiChatSendAgain => 'Send again';
+
+  @override
+  String get aiChatDraftOpened => 'Review page opened';
+
+  @override
+  String get aiChatFileMissing =>
+      'Attach the file again before creating the order so its source is preserved.';
+
+  @override
+  String get aiChatPrivacyNotice =>
+      'Your messages are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information.';
+
+  @override
+  String get aiChatReceived => 'Delivered. Waiting for a reply…';
+
+  @override
+  String get aiChatRequestRejected =>
+      'This message was not submitted successfully.';
+
+  @override
+  String get aiChatDeliveryUnknown =>
+      'Delivery is unconfirmed. Sending again starts a new request.';
+
+  @override
+  String get aiChatReplyFailed =>
+      'Delivered, but AI could not complete the reply.';
+
+  @override
+  String get aiChatReplyInterrupted =>
+      'Accepted, but the result could not be retrieved.';
+
+  @override
+  String get aiChatWaitingStopped => 'Stopped waiting for this reply.';
+
+  @override
+  String get aiChatRetryMessage => 'Retry this message';
+
+  @override
+  String get aiChatCheckReply => 'Check the result again';
+
+  @override
+  String get aiChatInfo => 'About this assistant';
+
+  @override
+  String get aiChatInfoDone => 'Got it';
 }

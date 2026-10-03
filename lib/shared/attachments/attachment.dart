@@ -14,6 +14,9 @@ class Attachment {
     this.contentType,
     required this.sizeBytes,
     this.uploadedAt,
+    this.uploadedBy,
+    this.sha256,
+    this.deleted = false,
     this.downloadUrl,
     this.category,
     this.avatar = false,
@@ -27,6 +30,9 @@ class Attachment {
   final String? contentType;
   final int sizeBytes;
   final DateTime? uploadedAt;
+  final String? uploadedBy;
+  final String? sha256;
+  final bool deleted;
   final String? downloadUrl;
 
   /// 文档分类（员工档案：合同/身份证件/学历证书/照片/其他）；报销附件为 null。
@@ -50,6 +56,9 @@ class Attachment {
       contentType: json['contentType'] as String?,
       sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
       uploadedAt: _dateTime(json['uploadedAt']),
+      uploadedBy: json['uploadedBy'] as String?,
+      sha256: json['sha256'] as String?,
+      deleted: json['deleted'] == true,
       downloadUrl: json['downloadUrl'] as String?,
       category: json['category'] as String?,
       avatar: json['avatar'] as bool? ?? false,

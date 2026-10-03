@@ -11,6 +11,8 @@ import com.uten.imp.features.webinquiry.dto.StatusUpdateRequest;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryDetail;
 import com.uten.imp.features.webinquiry.dto.WebsiteInquiryListItem;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.data.domain.Page;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,10 +43,17 @@ public class WebsiteInquiryService {
     private final EmployeeNameLookupPort employeeNames;
     private final SecurityContextCurrentUser currentUser;
     private final AuditService audit;
+    private final EntityManager entityManager;
 
     /** 官网推送落库；sourceId 已存在时幂等返回 false（不重复建行、不报错）。 */
     @Transactional
     public boolean ingest(IngestRequest request) {
+        // There is no inquiry row to lock on its first delivery. Serialize only
+        // this source identity before checking/inserting; a replay never changes
+        // the original contact snapshot or a later follow-up/conversion result.
+        entityManager.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))::text")
+                .setParameter("key", "WEBSITE-INQUIRY-SOURCE:" + request.sourceId())
+                .getSingleResult();
         if (repository.findBySourceId(request.sourceId()).isPresent()) {
             return false;
         }
@@ -94,15 +104,24 @@ public class WebsiteInquiryService {
     @PreAuthorize("hasAuthority(#request.requiredPermission()) and (#request.assignToMe() != true or hasAuthority('webinquiry:claim'))")
     @Transactional
     public WebsiteInquiryDetail updateStatus(UUID id, StatusUpdateRequest request) {
-        WebsiteInquiry inquiry = require(id);
+        boolean assignToMe = Boolean.TRUE.equals(request.assignToMe());
+        // Capture the UUID, not a reference to the entity that refresh mutates.
+        UUID assigneeToLock = assignToMe
+                ? currentUser.employeeId().orElse(null) : require(id).getAssigneeEmployeeId();
+        WebsiteInquiry inquiry = requireForUpdate(id, assigneeToLock);
         if ("converted".equals(inquiry.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "已转客户的询盘不能再改状态");
+        }
+        if (!assignToMe && !Objects.equals(assigneeToLock, inquiry.getAssigneeEmployeeId())) {
+            // A handover/claim changed the responsibility while we waited.
+            // Never acquire its new employee lock after the inquiry row lock.
+            throw new ApiException(ErrorCode.CONFLICT, "询盘跟进人已变更，请刷新后重试");
         }
         inquiry.setStatus(request.status());
         if (request.note() != null && !request.note().isBlank()) {
             inquiry.setNote(request.note().trim());
         }
-        if (Boolean.TRUE.equals(request.assignToMe())) {
+        if (assignToMe) {
             inquiry.setAssigneeEmployeeId(currentUser.requireEmployeeId());
         }
         repository.save(inquiry);
@@ -119,7 +138,7 @@ public class WebsiteInquiryService {
     @PreAuthorize("hasAuthority('webinquiry:convert_client')")
     @Transactional
     public WebsiteInquiryDetail convert(UUID id) {
-        WebsiteInquiry inquiry = require(id);
+        WebsiteInquiry inquiry = requireForUpdate(id, currentUser.employeeId().orElse(null));
         if ("converted".equals(inquiry.getStatus()) && inquiry.getClientId() != null) {
             return toDetail(inquiry); // 幂等：重复点击直接回详情
         }
@@ -150,6 +169,27 @@ public class WebsiteInquiryService {
     private WebsiteInquiry require(UUID id) {
         return repository.findById(id).orElseThrow(
                 () -> new ApiException(ErrorCode.NOT_FOUND, "询盘不存在"));
+    }
+
+    private WebsiteInquiry requireForUpdate(UUID id, UUID referencedEmployeeId) {
+        if (referencedEmployeeId != null) {
+            // Data handover and offboarding lock employees before responsibility
+            // rows. The client-owner/inquiry-assignee triggers take this shared
+            // lock too, so pre-lock it in that order before locking the inquiry.
+            // Do not require an active employee here: closing a historical
+            // inquiry may retain an inactive assignee. The existing write
+            // triggers still enforce active responsibility where applicable.
+            entityManager.createNativeQuery("SELECT id FROM employees WHERE id=:employeeId FOR SHARE")
+                    .setParameter("employeeId", referencedEmployeeId)
+                    .getResultList();
+        }
+        WebsiteInquiry inquiry = require(id);
+        // Both writers use this row as the serialization boundary. Refresh also
+        // replaces a snapshot already managed by the caller's persistence
+        // context: taking a lock alone would leave that cached state unchanged.
+        // Check the conversion/state guards only after the lock and fresh read.
+        entityManager.refresh(inquiry, LockModeType.PESSIMISTIC_WRITE);
+        return inquiry;
     }
 
     private String currentAccount() {

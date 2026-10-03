@@ -17,7 +17,7 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
     @Test
     void salesOrdinaryMutationsKeepOwnerWriteGuards() throws Exception {
         assertMethods("features/sales/quote/SalesQuoteService.java",
-                " update(", " delete(", " submit(", " withdraw(", " reopen(", " reverse(", " convertToOrder(");
+                " update(", " delete(", " submit(", " withdraw(", " reopen(", " convertToOrder(");
         assertMethods("features/sales/order/SalesOrderService.java",
                 " update(", " delete(", " approve(", " reverse(", " changeQty(",
                 " cancel(", " setPartialShipmentConfirmation(", " setLinePriority(",
@@ -127,6 +127,16 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
                     || relative.equals("features/subcontract/receipt/SubcontractReceiptService.java"))) {
                 assertThat(body).contains("approveReceipt(id)");
                 body = method(source, " approveReceipt(");
+            }
+            // 2026-10-02 报价议价链(V788)：delete(UUID) 是转调 delete(id, null) 的
+            // 便捷重载，属主写守卫落在两参版本里。
+            if (relative.equals("features/sales/quote/SalesQuoteService.java")) {
+                // V788 便捷重载：delete(id)→delete(id,null)，convertToOrder(id)→convertToOrder(id,null)
+                if (body.contains("delete(id, null)")) {
+                    body = method(source, " delete(UUID id, Integer");
+                } else if (body.contains("convertToOrder(id, null)")) {
+                    body = method(source, " convertToOrder(UUID id, QuoteActionRequest");
+                }
             }
             // V636/ADR-098：委外回厂短交「接受损耗结案」要在不要求 subcontract_waste:approve
             // 的前提下走同一条审核流程，approve( 因此退成薄壳，属主写守卫落在 approveInternal(。

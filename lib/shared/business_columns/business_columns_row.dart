@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../components/inputs/uten_field_message.dart';
+import '../../components/inputs/uten_input_decoration.dart';
 import '../../components/layout/uten_editable_grid.dart';
 import '../../core/ui/app_notification.dart';
 import '../../core/l10n/gen/app_localizations.dart';
@@ -48,6 +51,19 @@ mixin BusinessColumnsRow on EditableGridRow {
     _extraDefinitions.add(column);
     extraColumnController(column);
     extraColumnsChanged.changed();
+  }
+
+  /// Removing a document column also removes its operand. Hiding a header is
+  /// a separate layout action and must never change the agreed amount.
+  bool removeExtraColumn(String columnId) {
+    final index = _extraDefinitions.indexWhere((c) => c.id == columnId);
+    if (index < 0) return false;
+    _extraDefinitions.removeAt(index);
+    final controller = _extraControllers.remove(columnId);
+    controller?.removeListener(extraColumnsChanged.changed);
+    controller?.dispose();
+    extraColumnsChanged.changed();
+    return true;
   }
 
   void restoreExtraColumns(Object? raw) {
@@ -99,11 +115,7 @@ mixin BusinessColumnsRow on EditableGridRow {
   bool extraColumnsValid(String? base) {
     for (final column in extraColumnSnapshots) {
       final raw = column.value?.trim() ?? '';
-      if (raw.isEmpty || !column.numeric) continue;
-      if (businessExactDecimal(raw) == null) return false;
-      if (column.operation == 'DIVIDE' && businessExactDecimal(raw) == '0') {
-        return false;
-      }
+      if (!_businessColumnValueValid(column, raw)) return false;
     }
     return base == null || applyExtraColumnAmount(base) != null;
   }
@@ -138,24 +150,71 @@ List<EditableGridColumn<T>> businessEditableColumns<T extends EditableGridRow>(
       listenableOf: (row) => rowOf(row).extraColumnController(column),
       cellBuilder: (context, row) => priceMasked && column.financial
           ? const Text('***')
-          : TextField(
+          : _BusinessColumnInput(
+              column: column,
               controller: rowOf(row).extraColumnController(column),
-              textAlign: column.numeric ? TextAlign.right : TextAlign.left,
-              keyboardType: column.numeric
-                  ? const TextInputType.numberWithOptions(
-                      decimal: true,
-                      signed: true,
-                    )
-                  : TextInputType.text,
-              decoration: InputDecoration(
+            ),
+    ),
+];
+
+int _businessColumnMaxLength(BusinessColumn column) =>
+    column.numeric ? 120 : 2000;
+
+bool _businessColumnValueValid(BusinessColumn column, String raw) {
+  if (raw.length > _businessColumnMaxLength(column)) return false;
+  if (raw.isEmpty || !column.numeric) return true;
+  final value = businessExactDecimal(raw);
+  return value != null && !(column.operation == 'DIVIDE' && value == '0');
+}
+
+class _BusinessColumnInput extends StatelessWidget {
+  const _BusinessColumnInput({required this.column, required this.controller});
+
+  final BusinessColumn column;
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) {
+          final text =
+              Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+              AppLocalizationsZh();
+          final raw = value.text.trim();
+          final limit = _businessColumnMaxLength(column);
+          final error = raw.length > limit
+              ? text.aiSettingsTooLong(limit)
+              : !_businessColumnValueValid(column, raw)
+              ? text.businessColumnInvalid
+              : null;
+          return TextField(
+            controller: controller,
+            textAlign: column.numeric ? TextAlign.right : TextAlign.left,
+            keyboardType: column.numeric
+                ? const TextInputType.numberWithOptions(
+                    decimal: true,
+                    signed: true,
+                  )
+                : TextInputType.text,
+            maxLength: limit,
+            // Preserve pasted/imported input for correction instead of silently
+            // truncating a numeric operand or a customer's reference code.
+            maxLengthEnforcement: MaxLengthEnforcement.none,
+            decoration: UtenInputDecoration(
+              InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 hintText: column.name,
+                counterText: '',
+                error: utenFieldError(error),
               ),
             ),
-    ),
-];
+          );
+        },
+      );
+}
 
 List<BusinessColumn> businessColumnsOf(Iterable<BusinessColumnsRow> rows) {
   final columns = <String, BusinessColumn>{};
@@ -199,20 +258,48 @@ Future<String?> addBusinessGridColumn<T extends EditableGridRow>(
   required List<EditableGridColumn<T>> hiddenColumns,
   required Iterable<BusinessColumnsRow> rows,
   required VoidCallback onChanged,
+  Iterable<BusinessColumnsRow> Function()? currentRows,
   BusinessColumnsRow Function()? createRow,
   bool priceMasked = false,
+  bool Function()? isEditingEnabled,
 }) async {
-  final current = rows.toList();
+  if (!(isEditingEnabled?.call() ?? true)) return null;
+  final initial = (currentRows?.call() ?? rows).toList();
   final choice = await showBusinessColumnPicker(
     context,
     scope: scope,
     systemColumns: hiddenColumns.map(
       (c) => BusinessSystemColumn(c.key, c.label),
     ),
-    existingIds: businessColumnsOf(current).map((c) => c.id).toSet(),
+    existingIds: businessColumnsOf(initial).map((c) => c.id).toSet(),
+    existingColumns: businessColumnsOf(initial),
     priceMasked: priceMasked,
+    isEditingEnabled: isEditingEnabled,
   );
-  if (choice == null || !context.mounted) return null;
+  if (choice == null ||
+      !context.mounted ||
+      !(isEditingEnabled?.call() ?? true)) {
+    return null;
+  }
+  // The document can refresh while the picker is open. Apply to its current
+  // rows, never the previous snapshot's potentially disposed controllers.
+  final current = (currentRows?.call() ?? rows).toList();
+  final removeId = choice.removeColumnId;
+  if (removeId != null) {
+    final existing = [
+      for (final row in current)
+        ...row.extraColumnDefinitions.where((column) => column.id == removeId),
+    ];
+    if (existing.isEmpty ||
+        (priceMasked && existing.any((column) => column.financial))) {
+      return null;
+    }
+    for (final row in current) {
+      row.removeExtraColumn(removeId);
+    }
+    onChanged();
+    return null;
+  }
   if (choice.systemKey != null) return choice.systemKey;
   final column = choice.column;
   if (column == null) return null;

@@ -65,6 +65,10 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractMaterialIssueService {
+    private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -153,8 +157,10 @@ public class SubcontractMaterialIssueService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
         Page<SubcontractMaterialIssue> p = issueRepo.findAll(issueSpec(f), pageable);
-        return new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
+        PageResponse<MaterialIssueListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
+        return p.stream().noneMatch(SubcontractMaterialIssue::isDeleted) ? result
+                : retainedRecords.page(result, "subcontract_material_issues", p.getContent());
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一份谓词分组计数。 */
@@ -172,7 +178,8 @@ public class SubcontractMaterialIssueService {
                                                         jakarta.persistence.criteria.CriteriaQuery<?> q,
                                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
-            ps.add(cb.isFalse(root.get("deleted")));
+            if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
+            else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             Predicate owned = access.readablePredicate(root, cb, "makerId", readScope);
             ps.add(outboundPool
                     ? cb.or(owned, cb.equal(root.get("ownerPool"), SubcontractMaterialIssue.POOL_WAREHOUSE_OUTBOUND))
@@ -190,17 +197,24 @@ public class SubcontractMaterialIssueService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            f.headerFilters().apply(root, cb, ps, null, false, null, false, null, false);
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
 
     @Transactional(readOnly = true)
-    public MaterialIssueDetail detail(UUID id) {
-        SubcontractMaterialIssue r = requireIssue(id);
+    public MaterialIssueDetail detail(UUID id) { return readDetail(id, false); }
+
+
+    @Transactional(readOnly = true)
+    public MaterialIssueDetail detailHistory(UUID id) { return readDetail(id, true); }
+
+    private MaterialIssueDetail readDetail(UUID id, boolean historyRead) {
+        SubcontractMaterialIssue r = requireIssue(id, historyRead);
         requireIssueReadable(r);
         List<MaterialIssueItemDto> items = itemRepo.findByIssueIdOrderByLineNoAsc(id).stream()
                 .map(this::toItemDto).toList();
-        return toDetail(r, items);
+        return finishHistory(toDetail(r, items), r, historyRead);
     }
 
     /** Preserve the business prefix, header lock and source check before the field snapshot. */
@@ -226,10 +240,13 @@ public class SubcontractMaterialIssueService {
         }
         mutationGuard.verifyUnchanged();
         canonicalizePlanLines(req.getItems(), existingPlanItemIds, !existingPlanItemIds.isEmpty());
+        MaterialIssueDraftRows.Reconciled reconciled = MaterialIssueDraftRows.reconcile(id,
+                itemRepo.findByIssueIdOrderByLineNoAsc(id), req.getItems());
         applyHeader(req, r);
-        itemRepo.deleteByIssueId(id);
+        if (!reconciled.removed().isEmpty()) itemRepo.deleteAll(reconciled.removed());
         itemRepo.flush();
-        List<MaterialIssueItemDto> items = saveItems(r, req.getItems());
+        List<MaterialIssueItemDto> items = saveItems(r, req.getItems(), reconciled.targets());
+        itemRepo.flush();
         planService.reserveDraft(r.getId(), r.getWarehouseId());
         applyTotals(r, items);
         return toDetail(r, items);
@@ -681,7 +698,8 @@ public class SubcontractMaterialIssueService {
         issue.setApproverName(nameResolver.nameOf(issue.getApproverId()));
     }
 
-    private List<MaterialIssueItemDto> saveItems(SubcontractMaterialIssue r, List<MaterialIssueItemLine> lines) {
+    private List<MaterialIssueItemDto> saveItems(SubcontractMaterialIssue r, List<MaterialIssueItemLine> lines,
+                                                List<SubcontractMaterialIssueItem> targets) {
         List<MaterialIssueItemDto> out = new ArrayList<>(lines.size());
         Map<UUID, SubcontractGoodsSnapshot> orderSnapshots =
                 SubcontractGoodsSnapshot.fromOrderItems(
@@ -698,7 +716,7 @@ public class SubcontractMaterialIssueService {
         List<BigDecimal> weights = capturedWeights(lines);
         int autoLine = 1;
         for (MaterialIssueItemLine l : lines) {
-            SubcontractMaterialIssueItem it = new SubcontractMaterialIssueItem();
+            SubcontractMaterialIssueItem it = targets.get(autoLine - 1);
             it.setIssueId(r.getId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
@@ -917,9 +935,11 @@ public class SubcontractMaterialIssueService {
                 it.getOrderNo());
     }
 
-    private SubcontractMaterialIssue requireIssue(UUID id) {
+    private SubcontractMaterialIssue requireIssue(UUID id) { return requireIssue(id, false); }
+
+    private SubcontractMaterialIssue requireIssue(UUID id, boolean includeDeleted) {
         return issueRepo.findById(id)
-                .filter(r -> !r.isDeleted())
+                .filter(r -> includeDeleted || !r.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "委外材料出仓单不存在"));
     }
     private SubcontractMaterialIssue requireIssueForUpdate(UUID id) {
@@ -928,5 +948,17 @@ public class SubcontractMaterialIssueService {
         return issue == null || issue.isDeleted()
                 ? requireIssue(id)
                 : issue;
+    }
+
+    private MaterialIssueDetail finishHistory(MaterialIssueDetail view, SubcontractMaterialIssue entity, boolean historyRead) {
+        if (!historyRead && !entity.isDeleted()) return view;
+        return retainedRecords.detail(view, "subcontract_material_issues", entity.getId(), entity.isDeleted(), entity.getDeletedAt(), historyRead);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(UUID id, Long beforeId, int size) {
+        var document=detailHistory(id);
+        com.uten.imp.common.history.RetainedRecordAccess.requireUnmaskedCostOriginal(document.isPriceMasked());
+        return retainedRecords.children("subcontract_material_issues",id,beforeId,size);
     }
 }

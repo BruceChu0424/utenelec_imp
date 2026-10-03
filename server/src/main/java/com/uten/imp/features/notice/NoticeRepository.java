@@ -84,6 +84,19 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,
             Pageable pageable);
 
+    @Query("""
+            SELECT n FROM Notice n LEFT JOIN NoticeUserState s
+              ON s.id.noticeId=n.id AND s.id.userId=:userId
+            WHERE ((n.audienceUserId IS NULL AND n.audienceScope='all') OR n.audienceUserId=:userId
+                OR (n.audienceScope='selected' AND s IS NOT NULL))
+              AND (:includeDeleted=true OR s IS NULL OR s.deletedAt IS NULL)
+              AND (:onlyDeleted=false OR s.deletedAt IS NOT NULL)
+              AND (:onlyUnread=false OR s IS NULL OR s.readAt IS NULL)
+            """+WORKSHOP_VISIBILITY+" ORDER BY n.topPriority DESC,n.publishedAt DESC")
+    List<Notice> findVisibleHistory(@Param("userId") UUID userId,@Param("onlyUnread") boolean onlyUnread,
+            @Param("includeDeleted") boolean includeDeleted,@Param("onlyDeleted") boolean onlyDeleted,
+            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,Pageable pageable);
+
 
     @Query("""
             SELECT n

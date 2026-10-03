@@ -1,3 +1,4 @@
+import '../../support/native_detail_reader_overrides.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +21,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             apiClientProvider.overrideWithValue(api),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.financeViewAll,
@@ -68,6 +70,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             apiClientProvider.overrideWithValue(api),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.financeViewAll,

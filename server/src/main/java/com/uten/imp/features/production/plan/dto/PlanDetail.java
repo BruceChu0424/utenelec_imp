@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 生产计划详情（含明细行）。 */
 @Getter
 @AllArgsConstructor
-public class PlanDetail {
+public class PlanDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -53,4 +53,6 @@ public class PlanDetail {
     private List<PlanTraceLink> traceSubcontractApplications;
     /** 部分溯源投影：已审核生产报工单（按计划行归属聚合，去重）。 */
     private List<PlanTraceLink> traceDailyReports;
+
+    @Override public void disableHistoryActions() { allowedActions = List.of(); }
 }

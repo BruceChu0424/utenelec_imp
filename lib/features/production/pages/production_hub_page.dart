@@ -145,7 +145,9 @@ class ProductionHubPage extends ConsumerWidget {
                     icon: Icons.assignment_outlined,
                     label: '新建生产计划单',
                     description: l10n.productionHubPlanSub,
-                    location: RouteName.productionMaterialAnalysis,
+                    // 2026-10-01 恢复空白手工新建页（原来重定向到物料分析工作台，
+                    // 与「新建单据进去都是默认新建页」口径冲突）。
+                    location: RoutePath.productionPlanNew(),
                   ),
                   _Entry(
                     icon: Icons.edit_calendar_outlined,

@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -163,6 +164,14 @@ class AiJobRepository {
         return jdbc.queryForList("SELECT result::text FROM ai_jobs WHERE id = :id AND result IS NOT NULL",
                 new MapSqlParameterSource("id", id), String.class).stream().findFirst();
     }
+    Map<String,Object> historyMetadata(UUID id,UUID user) {
+        var rows=jdbc.queryForList("""
+                SELECT used_at AS "usedAt",used_doc_type AS "usedDocumentKind",used_doc_id AS "usedDocumentId",
+                    archived_at AS "archivedAt",archived_by AS "archivedBy",archive_reason AS "archiveReason"
+                FROM ai_jobs WHERE id=:id AND submitted_by_user=:user
+                """,new MapSqlParameterSource("id",id).addValue("user",user));
+        return rows.isEmpty()?Map.of():rows.getFirst();
+    }
 
     /** 排队中的任务直接取消(同一语句清空上传文件)。 */
     int cancelPending(UUID id, UUID userId) {
@@ -226,7 +235,7 @@ class AiJobRepository {
         return jdbc.update("""
                 UPDATE ai_jobs
                 SET used_at = COALESCE(used_at, now()), used_doc_type = :docType, used_doc_id = :docId,
-                    result = NULL, result_purged_at = COALESCE(result_purged_at, now()), learning_retry_until=NULL, updated_at = now()
+                    learning_retry_until=NULL, updated_at = now()
                 WHERE id = :id AND submitted_by_user = :user AND status = 'SUCCEEDED'
                   AND (used_doc_id IS NULL OR (used_doc_type=:docType AND used_doc_id=:docId))
                   AND (used_at IS NULL OR (used_doc_type = :docType AND used_doc_id = :docId))
@@ -416,7 +425,7 @@ class AiJobRepository {
                 SET status = 'FAILED', error_code = 'QUEUE_TIMEOUT',
                     error_message = '识别任务排队太久没有开始, 请稍后重新上传',
                     input_bytes = NULL, finished_at = now(), updated_at = now()
-                WHERE status = 'PENDING' AND created_at < now() - make_interval(mins => :minutes)
+                WHERE status = 'PENDING' AND updated_at < now() - make_interval(mins => :minutes)
                 """, new MapSqlParameterSource("minutes", minutes));
     }
 
@@ -426,22 +435,54 @@ class AiJobRepository {
      */
     int purgeResults(int retentionHours) {
         return jdbc.update("""
-                UPDATE ai_jobs
-                SET result = NULL, result_purged_at = now(), updated_at = now()
-                WHERE result IS NOT NULL AND (learning_retry_until IS NULL OR learning_retry_until < now())
-                  AND (used_at IS NOT NULL OR finished_at < now() - make_interval(hours => :hours))
+                WITH candidates AS (
+                    SELECT id FROM ai_jobs job
+                    WHERE archived_at IS NULL AND status IN ('SUCCEEDED','FAILED','CANCELLED') AND finished_at>=created_at AND finished_at<=now()
+                      AND result IS NOT NULL AND (learning_retry_until IS NULL OR learning_retry_until < now())
+                      AND (used_at IS NOT NULL OR finished_at < now() - make_interval(hours => :hours))
+                      AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
+                          WHERE ((receipt.doc_type=job.used_doc_type AND receipt.doc_id=job.used_doc_id)
+                              OR (receipt.actor_user_id=job.submitted_by_user
+                                  AND (receipt.request_payload->>'intakeJobId'=CAST(job.id AS text)
+                                      OR jsonb_exists(receipt.request_payload->'additionalIntakeJobIds',CAST(job.id AS text)))))
+                            AND EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING'))
+                    ORDER BY finished_at,id LIMIT 1000 FOR UPDATE SKIP LOCKED
+                )
+                UPDATE ai_jobs job
+                SET archived_at=now(),archived_by='system:ai-housekeeping',archive_reason='RESULT_RETENTION_WINDOW',updated_at=now()
+                FROM candidates WHERE job.id=candidates.id
                 """, new MapSqlParameterSource("hours", retentionHours));
     }
 
-    /** 删除超过保留期的已结束任务, 每批 1000 行。 */
+    /**
+     * 从实际结束时间计算任务保留期；缺少结束时间的历史行保留待核验。
+     * 结果及学习重试各有自己的期限，任务期限不能越过它们删除载体。
+     * 每批最多 1000 行，跳过正在使用/更新的任务，避免清理阻塞前台。
+     */
     int deleteFinishedOlderThan(int days) {
         return jdbc.update("""
-                DELETE FROM ai_jobs
-                WHERE id IN (SELECT id FROM ai_jobs
-                             WHERE status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
-                               AND (learning_retry_until IS NULL OR learning_retry_until < now())
-                               AND created_at < now() - make_interval(days => :days)
-                             LIMIT 1000)
+                WITH candidates AS (
+                    SELECT id FROM ai_jobs job
+                    WHERE archived_at IS NULL AND status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+                      AND finished_at < now() - make_interval(days => :days)
+                      AND finished_at >= created_at
+                      AND result IS NULL
+                      AND (learning_retry_until IS NULL OR learning_retry_until < now())
+                      AND NOT EXISTS(SELECT 1 FROM sales_quote_template_candidates candidate
+                          WHERE candidate.job_id=job.id AND candidate.expires_at>now())
+                      AND NOT EXISTS(SELECT 1 FROM sales_document_learning_receipts receipt
+                          WHERE ((receipt.doc_type=job.used_doc_type AND receipt.doc_id=job.used_doc_id)
+                              OR (receipt.actor_user_id=job.submitted_by_user
+                                  AND (receipt.request_payload->>'intakeJobId'=CAST(job.id AS text)
+                                      OR jsonb_exists(receipt.request_payload->'additionalIntakeJobIds',CAST(job.id AS text)))))
+                            AND EXISTS(SELECT 1 FROM jsonb_each(receipt.steps) step WHERE step.value->>'status'='RUNNING'))
+                    ORDER BY finished_at, id
+                    LIMIT 1000
+                    FOR UPDATE SKIP LOCKED
+                )
+                UPDATE ai_jobs job SET archived_at=now(),archived_by='system:ai-housekeeping',archive_reason='JOB_RETENTION_WINDOW',updated_at=now()
+                FROM candidates
+                WHERE job.id = candidates.id
                 """, new MapSqlParameterSource("days", days));
     }
 

@@ -14521,7 +14521,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatUnavailable.
   ///
   /// In zh, this message translates to:
-  /// **'当前使用基础助手，可查询已支持的业务信息。配置 AI 服务后可获得更完整的对话能力。'**
+  /// **'暂时只能回答部分业务问题。'**
   String get aiChatUnavailable;
 
   /// No description provided for @aiChatLoadFailed.
@@ -14581,7 +14581,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatFileFailed.
   ///
   /// In zh, this message translates to:
-  /// **'无法读取文件，请重新选择 Excel 或 CSV 文件。'**
+  /// **'无法读取文件，请重新选择。'**
   String get aiChatFileFailed;
 
   /// No description provided for @aiChatFileLarge.
@@ -14653,7 +14653,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatDraftHint.
   ///
   /// In zh, this message translates to:
-  /// **'将进入订货单核对页，确认客户、货品、数量和价格后由你保存。'**
+  /// **'请核对客户、货品、数量和价格后保存。'**
   String get aiChatDraftHint;
 
   /// No description provided for @aiChatUnsupported.
@@ -14923,7 +14923,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatDocumentManualSave.
   ///
   /// In zh, this message translates to:
-  /// **'请核对填写结果；保存、提交和审核由你操作。'**
+  /// **'尚未保存，请核对后保存。'**
   String get aiChatDocumentManualSave;
 
   /// No description provided for @aiChatDocumentPlanSteps.
@@ -14941,7 +14941,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatDocumentOpened.
   ///
   /// In zh, this message translates to:
-  /// **'已打开对应表单；请回到该表单或任务中心继续处理。'**
+  /// **'表单已打开，请到表单或任务中心继续。'**
   String get aiChatDocumentOpened;
 
   /// No description provided for @aiChatGuidedParsing.
@@ -14953,7 +14953,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatGuidedValidating.
   ///
   /// In zh, this message translates to:
-  /// **'正在核对权限和原文件'**
+  /// **'正在检查文件'**
   String get aiChatGuidedValidating;
 
   /// No description provided for @aiChatGuidedRecognizing.
@@ -14995,13 +14995,13 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatGuidedFilled.
   ///
   /// In zh, this message translates to:
-  /// **'已填入，等待你核对'**
+  /// **'已填写'**
   String get aiChatGuidedFilled;
 
   /// No description provided for @aiChatGuidedManualSave.
   ///
   /// In zh, this message translates to:
-  /// **'等待你手动保存'**
+  /// **'核对后保存'**
   String get aiChatGuidedManualSave;
 
   /// No description provided for @aiChatGuidedWaiting.
@@ -15037,7 +15037,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatGuidedFilledFields.
   ///
   /// In zh, this message translates to:
-  /// **'已填入的内容'**
+  /// **'已填写内容'**
   String get aiChatGuidedFilledFields;
 
   /// No description provided for @aiChatGuidedLocalSaveFailed.
@@ -15049,7 +15049,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatGuidedExpenseSaved.
   ///
   /// In zh, this message translates to:
-  /// **'报销单已由你保存，可继续登记票据'**
+  /// **'报销单已保存'**
   String get aiChatGuidedExpenseSaved;
 
   /// No description provided for @aiChatGuidedInvoiceRegister.
@@ -15073,13 +15073,13 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatGuidedInvoiceFields.
   ///
   /// In zh, this message translates to:
-  /// **'原件票面信息（待核对）'**
+  /// **'发票信息'**
   String get aiChatGuidedInvoiceFields;
 
   /// No description provided for @aiChatGuidedInvoiceReview.
   ///
   /// In zh, this message translates to:
-  /// **'以上为识别建议，请与原票核对。登记发票仍需你确认。'**
+  /// **'请对照原发票核对。'**
   String get aiChatGuidedInvoiceReview;
 
   /// No description provided for @aiChatInvoiceInvoiceType.
@@ -15189,6 +15189,36 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'其他票据'**
   String get aiChatInvoiceTypeOther;
+
+  /// No description provided for @aiChatGuidedQuoteRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'请根据这份文件新建销售报价单，供我核对。'**
+  String get aiChatGuidedQuoteRequest;
+
+  /// No description provided for @aiChatGuidedOrderRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'请根据这份文件填写当前销售订货单，供我核对。'**
+  String get aiChatGuidedOrderRequest;
+
+  /// No description provided for @aiChatDocumentLongRequest.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件处理说明较长，尚未完整分析全部要求。请明确选择要继续的流程。'**
+  String get aiChatDocumentLongRequest;
+
+  /// No description provided for @quoteTemplateMappingRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请保留数量，以及型号或品名字段'**
+  String get quoteTemplateMappingRequired;
+
+  /// No description provided for @quoteTemplateMappingDuplicate.
+  ///
+  /// In zh, this message translates to:
+  /// **'同一字段只能对应一列，请调整重复对应'**
+  String get quoteTemplateMappingDuplicate;
 }
 
 class _AppLocalizationsDelegate

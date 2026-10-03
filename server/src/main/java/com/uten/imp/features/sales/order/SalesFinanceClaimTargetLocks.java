@@ -36,6 +36,7 @@ public class SalesFinanceClaimTargetLocks implements ReviewTaskTargetLockPort {
         String state=requireReviewable ? """
                  AND status=1 AND NOT is_deleted AND NOT finance_confirmed AND NOT finance_rejected
                  AND NOT is_stopped AND (NOT is_closed OR finance_review_revision>0)
+                 AND requoted_to_id IS NULL
                 """ : "";
         var rows=em.createNativeQuery("SELECT id FROM sales_orders WHERE id=:id"+state+" FOR UPDATE")
                 .setParameter("id",target.aggregateId()).getResultList();

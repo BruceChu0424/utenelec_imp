@@ -9,6 +9,7 @@ import '../../../shared/auth/permissions.dart';
 import 'sales_quote_template.dart';
 import 'sales_quote_template_learning.dart';
 import 'sales_quote_template_repository.dart';
+import 'sales_quote_template_scope.dart';
 
 /// The detail action group must know whether this widget occupies an action slot.
 /// Object/price scope is already represented by the authorized detail's mask;
@@ -30,11 +31,13 @@ class SalesQuoteTemplateDownloadButton extends ConsumerWidget {
     required this.quoteId,
     required this.billNo,
     required this.priceMasked,
+    required this.reviewRevision,
   });
 
   final String quoteId;
   final String billNo;
   final bool priceMasked;
+  final int reviewRevision;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -44,7 +47,7 @@ class SalesQuoteTemplateDownloadButton extends ConsumerWidget {
     }
     final l10n = AppLocalizations.of(context);
     return UtenExportButton(
-      key: const ValueKey('sales-quote-template-download'),
+      key: ValueKey('sales-quote-template-download:$quoteId:$reviewRevision'),
       endpoint: '/sales/quotes/$quoteId/templates/export',
       report: 'quote',
       tableKey: 'sales.quote.items',
@@ -55,32 +58,57 @@ class SalesQuoteTemplateDownloadButton extends ConsumerWidget {
       type: UtenButtonType.secondary,
       size: UtenButtonSize.large,
       prepareExport: () async {
+        final scope = SalesQuoteTemplateScope(ref);
+        bool current() {
+          if (!context.mounted) return false;
+          final live = context.widget;
+          return live is SalesQuoteTemplateDownloadButton &&
+              live.quoteId == quoteId &&
+              live.reviewRevision == reviewRevision &&
+              !live.priceMasked &&
+              scope.current(ref);
+        }
+
+        if (!context.mounted || !current()) return null;
         final templates = await ref
             .read(salesQuoteTemplateRepositoryProvider)
             .listForQuote(quoteId);
-        if (!context.mounted) return null;
-        final canUpload =
-            permissions.contains(Perm.salesQuoteCreate) ||
-            permissions.contains(Perm.salesQuoteEdit);
+        if (!context.mounted || !current()) return null;
+        final canUpload = scope.current(ref, learning: true);
         final selection = await showDialog<UtenExportSelection>(
           context: context,
-          builder: (_) => templates.isEmpty
-              ? SalesQuoteTemplateMissing(canUpload: canUpload)
-              : SalesQuoteTemplatePicker(
-                  templates: templates,
-                  canUpload: canUpload,
-                ),
+          builder: (_) => SalesQuoteTemplateScopeDialog(
+            stillCurrent: current,
+            child: templates.isEmpty
+                ? SalesQuoteTemplateMissing(canUpload: canUpload)
+                : SalesQuoteTemplatePicker(
+                    templates: templates,
+                    canUpload: canUpload,
+                  ),
+          ),
         );
-        if (selection == null || !context.mounted) return null;
-        if (selection.bodyParams['_uploadTemplate'] != true) return selection;
-        final learned = await learnSalesQuoteTemplate(context, ref, quoteId);
-        return learned == null
-            ? null
-            : UtenExportSelection(
-                bodyParams: {
-                  'templateIds': [learned.id],
-                },
-              );
+        if (selection == null || !context.mounted || !current()) return null;
+        final Map<String, dynamic> body;
+        if (selection.bodyParams['_uploadTemplate'] == true) {
+          final learned = await learnSalesQuoteTemplate(
+            context,
+            ref,
+            quoteId,
+            stillCurrent: current,
+          );
+          if (learned == null || !context.mounted || !current()) return null;
+          body = {
+            'templateIds': [learned.id],
+            'templateVersions': {learned.id: learned.version},
+          };
+        } else {
+          body = selection.bodyParams;
+        }
+        return UtenExportSelection(
+          bodyParams: {...body, 'expectedRevision': reviewRevision},
+          extension: selection.extension,
+          stillCurrent: current,
+        );
       },
     );
   }
@@ -114,7 +142,13 @@ class _SalesQuoteTemplatePickerState extends State<SalesQuoteTemplatePicker> {
               .toList(growable: false);
     Navigator.of(context).pop(
       UtenExportSelection(
-        bodyParams: {'templateIds': ids},
+        bodyParams: {
+          'templateIds': ids,
+          'templateVersions': {
+            for (final template in widget.templates)
+              if (ids.contains(template.id)) template.id: template.version,
+          },
+        },
         extension: ids.length > 1 ? 'zip' : 'xlsx',
       ),
     );

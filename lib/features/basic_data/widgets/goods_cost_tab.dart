@@ -103,13 +103,14 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   bool _busy = false, _loading = true, _calculating = false, _dirty = false;
   bool _replacingFees = false;
   bool _showSettings = false,
-      _showCustomer = false,
+      _showAdvancedSettings = false,
       _settingsLoaded = false,
       _settingsLoading = false,
       _onlyPending = false;
   Future<void>? _previewInFlight;
   int? _previewRevision;
   int _tab = 0, _bodyTab = 0, _inputRevision = 0, _previewRequest = 0;
+  int _templateRequest = 0;
   int? _calculatedRevision;
   Timer? _debounce;
   String _saveKey = const Uuid().v4();
@@ -304,16 +305,21 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
 
   Future<void> _loadSettings() async {
     if (_settingsLoaded || _settingsLoading) return;
+    final clientId = costText(_input['clientId']);
+    final templateRequest = ++_templateRequest;
     setState(() => _settingsLoading = true);
     try {
       final result = await Future.wait<Object>([
         ref.read(currencyRepositoryProvider).dict(),
-        _repository.templates(widget.detail.id, costText(_input['clientId'])),
+        _repository.templates(widget.detail.id, clientId),
       ]);
       if (!mounted) return;
       setState(() {
         _currencies = result[0] as List<CurrencyListItem>;
-        _templates = result[1] as List<Map<String, dynamic>>;
+        if (templateRequest == _templateRequest &&
+            clientId == costText(_input['clientId'])) {
+          _templates = result[1] as List<Map<String, dynamic>>;
+        }
         _settingsLoaded = true;
       });
     } catch (e) {
@@ -963,19 +969,6 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       },
       child: Text(_l.costCalculationSettings),
     ),
-    if (_editable)
-      UtenButton(
-        key: const Key('cost-customer-toggle'),
-        height: UtenTableToolbar.controlHeight,
-        onPressed: () async {
-          await _leaveMaterialFullscreen();
-          if (mounted) {
-            setState(() => _showCustomer = !_showCustomer);
-            _revealCostHeader();
-          }
-        },
-        child: Text(_clientName ?? _l.costOptionalCustomer),
-      ),
     if (_canDownload)
       UtenExportButton(
         key: const Key('cost-download'),

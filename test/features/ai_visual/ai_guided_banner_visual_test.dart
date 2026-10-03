@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/features/expense/widgets/expense_guided_invoice_preview.dart';
 import 'package:uten_imp/shared/ai/guided/ai_guided_file_banner.dart';
 import 'package:uten_imp/shared/ai/guided/ai_guided_file_plan.dart';
@@ -83,7 +84,14 @@ void main() {
         find.byKey(const ValueKey('ai-guided-file-progress')),
         findsOneWidget,
       );
-      expect(find.text('等待你手动保存'), findsOneWidget);
+      expect(
+        find.text(AppLocalizationsZh().aiChatDocumentManualSave),
+        findsOneWidget,
+      );
+      expect(
+        find.text(AppLocalizationsZh().aiChatGuidedNoMasterWrites),
+        findsNothing,
+      );
       await capture(tester, 'guided-source-${width.toInt()}');
     }, skip: !kCaptureUi);
   }

@@ -8051,8 +8051,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatBoundary => '현재 계정 권한에 따라 답변하며, 조회와 작업마다 접근 권한을 확인합니다.';
 
   @override
-  String get aiChatUnavailable =>
-      '지원되는 업무 조회를 위한 기본 도우미 모드입니다. 전체 대화 기능을 사용하려면 AI 서비스를 설정하세요.';
+  String get aiChatUnavailable => '지금은 지원되는 업무 질문에만 답할 수 있습니다.';
 
   @override
   String get aiChatLoadFailed => '도우미에 연결할 수 없습니다. 다시 시도하세요.';
@@ -8083,7 +8082,7 @@ class AppLocalizationsKo extends AppLocalizations {
       'Excel, CSV/TXT, PDF, 이미지 및 DOCX를 최대 15MB까지 지원합니다. 용도를 확인한 후 입력을 지원합니다.';
 
   @override
-  String get aiChatFileFailed => '파일을 읽을 수 없습니다. Excel 또는 CSV 파일을 다시 선택하세요.';
+  String get aiChatFileFailed => '파일을 읽을 수 없습니다. 다시 선택해 주세요.';
 
   @override
   String get aiChatFileLarge => '파일은 15MB 이하여야 합니다.';
@@ -8120,7 +8119,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatOpenDraft => '검토 후 주문서 만들기';
 
   @override
-  String get aiChatDraftHint => '주문 편집기에서 고객, 품목, 수량, 가격을 검토한 후 저장하세요.';
+  String get aiChatDraftHint => '고객, 품목, 수량과 가격을 확인한 후 저장하세요.';
 
   @override
   String get aiChatUnsupported => '이 작업은 해당 업무 페이지에서 처리하세요.';
@@ -8259,8 +8258,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatDocumentOpenFailed => '양식을 열지 못했습니다. 다시 시도해 주세요.';
 
   @override
-  String get aiChatDocumentManualSave =>
-      '입력 내용을 확인해 주세요. 저장, 제출 및 승인은 직접 진행합니다.';
+  String get aiChatDocumentManualSave => '아직 저장되지 않았습니다. 내용을 확인한 후 저장하세요.';
 
   @override
   String get aiChatDocumentPlanSteps => '처리 단계';
@@ -8270,14 +8268,13 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 용도는 아직 입력 지원이 연결되지 않았습니다. 안내에 따라 해당 페이지에서 처리해 주세요.';
 
   @override
-  String get aiChatDocumentOpened =>
-      '해당 양식을 열었습니다. 양식 또는 작업 센터로 돌아가 계속 진행해 주세요.';
+  String get aiChatDocumentOpened => '양식을 열었습니다. 양식이나 작업 센터에서 계속하세요.';
 
   @override
   String get aiChatGuidedParsing => '파일 식별';
 
   @override
-  String get aiChatGuidedValidating => '권한과 원본 파일을 확인하는 중';
+  String get aiChatGuidedValidating => '파일 확인 중';
 
   @override
   String get aiChatGuidedRecognizing => '고객과 항목을 인식하는 중';
@@ -8298,10 +8295,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatGuidedRows => '상세 항목 입력';
 
   @override
-  String get aiChatGuidedFilled => '입력 완료, 확인 대기';
+  String get aiChatGuidedFilled => '입력 완료';
 
   @override
-  String get aiChatGuidedManualSave => '직접 저장 대기';
+  String get aiChatGuidedManualSave => '확인 후 저장';
 
   @override
   String get aiChatGuidedWaiting => '확인을 위해 일시 중지됨';
@@ -8327,7 +8324,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '로컬 임시 저장에 실패했습니다. 원본 파일은 현재 페이지에 남아 있습니다. 페이지를 닫지 말고 다시 시도해 주세요.';
 
   @override
-  String get aiChatGuidedExpenseSaved => '경비 청구서를 저장했습니다. 이제 증빙을 등록할 수 있습니다.';
+  String get aiChatGuidedExpenseSaved => '경비 청구서 저장 완료';
 
   @override
   String get aiChatGuidedInvoiceRegister => '원본 업로드 및 증빙 등록';
@@ -8340,11 +8337,10 @@ class AppLocalizationsKo extends AppLocalizations {
       '원본 업로드 결과가 확인되지 않아 다시 업로드하지 않았습니다. 저장된 청구서의 원본을 먼저 확인해 주세요.';
 
   @override
-  String get aiChatGuidedInvoiceFields => '원본 증빙 정보 (확인 필요)';
+  String get aiChatGuidedInvoiceFields => '증빙 정보';
 
   @override
-  String get aiChatGuidedInvoiceReview =>
-      '위 내용은 인식한 제안입니다. 원본과 비교해 주세요. 증빙 등록에는 직접 확인이 필요합니다.';
+  String get aiChatGuidedInvoiceReview => '원본 증빙과 비교해 주세요.';
 
   @override
   String get aiChatInvoiceInvoiceType => '증빙 유형';
@@ -8399,4 +8395,22 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiChatInvoiceTypeOther => '기타 증빙';
+
+  @override
+  String get aiChatGuidedQuoteRequest => '이 파일로 검토할 판매 견적서를 새로 작성해 주세요.';
+
+  @override
+  String get aiChatGuidedOrderRequest =>
+      '이 파일로 현재 판매 주문서를 작성하여 검토할 수 있게 해 주세요.';
+
+  @override
+  String get aiChatDocumentLongRequest =>
+      '파일 처리 요청이 길어 전체 요구를 분석하지 못했습니다. 계속할 업무를 직접 선택해 주세요.';
+
+  @override
+  String get quoteTemplateMappingRequired => '수량과 모델 또는 품명 필드를 유지하세요';
+
+  @override
+  String get quoteTemplateMappingDuplicate =>
+      '각 필드는 하나의 열에만 연결할 수 있습니다. 중복 매핑을 수정하세요';
 }

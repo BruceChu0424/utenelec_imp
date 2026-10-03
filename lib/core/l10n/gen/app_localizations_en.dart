@@ -8345,7 +8345,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatUnavailable =>
-      'Basic assistant mode is active for supported business queries. Configure an AI service for full conversation support.';
+      'Only supported business questions are available right now.';
 
   @override
   String get aiChatLoadFailed =>
@@ -8378,7 +8378,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatFileFailed =>
-      'Could not read the file. Choose an Excel or CSV file again.';
+      'Could not read the file. Please select it again.';
 
   @override
   String get aiChatFileLarge => 'The file must be 15 MB or smaller.';
@@ -8418,7 +8418,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatDraftHint =>
-      'Review the customer, items, quantities and prices in the order editor, then save.';
+      'Check the customer, items, quantities and prices before saving.';
 
   @override
   String get aiChatUnsupported =>
@@ -8571,7 +8571,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatDocumentManualSave =>
-      'Review the filled values. You control saving, submitting and approving.';
+      'Not saved yet. Check the details, then save.';
 
   @override
   String get aiChatDocumentPlanSteps => 'Processing steps';
@@ -8582,13 +8582,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatDocumentOpened =>
-      'The form has been opened. Return to it or the task center to continue.';
+      'The form is open. Continue there or in the task center.';
 
   @override
   String get aiChatGuidedParsing => 'Identify the file';
 
   @override
-  String get aiChatGuidedValidating => 'Checking access and the original file';
+  String get aiChatGuidedValidating => 'Checking the file';
 
   @override
   String get aiChatGuidedRecognizing => 'Recognizing the customer and items';
@@ -8609,10 +8609,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatGuidedRows => 'Fill line items';
 
   @override
-  String get aiChatGuidedFilled => 'Filled and ready for your review';
+  String get aiChatGuidedFilled => 'Filled in';
 
   @override
-  String get aiChatGuidedManualSave => 'Waiting for you to save';
+  String get aiChatGuidedManualSave => 'Check and save';
 
   @override
   String get aiChatGuidedWaiting => 'Paused for your review';
@@ -8633,15 +8633,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatGuidedClient => 'Customer';
 
   @override
-  String get aiChatGuidedFilledFields => 'Filled values';
+  String get aiChatGuidedFilledFields => 'Filled details';
 
   @override
   String get aiChatGuidedLocalSaveFailed =>
       'Local recovery could not be saved. The original file is still on this page. Keep the page open and try again.';
 
   @override
-  String get aiChatGuidedExpenseSaved =>
-      'You saved the expense claim. You can now register the invoice.';
+  String get aiChatGuidedExpenseSaved => 'Expense claim saved';
 
   @override
   String get aiChatGuidedInvoiceRegister =>
@@ -8655,12 +8654,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'The original upload outcome is unconfirmed, so it was not uploaded again. Check the original in the saved claim first.';
 
   @override
-  String get aiChatGuidedInvoiceFields =>
-      'Original invoice details — review required';
+  String get aiChatGuidedInvoiceFields => 'Invoice details';
 
   @override
   String get aiChatGuidedInvoiceReview =>
-      'These are extracted suggestions. Compare them with the original; invoice registration still requires your confirmation.';
+      'Please check against the original invoice.';
 
   @override
   String get aiChatInvoiceInvoiceType => 'Invoice type';
@@ -8715,4 +8713,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatInvoiceTypeOther => 'Other receipt';
+
+  @override
+  String get aiChatGuidedQuoteRequest =>
+      'Create a sales quotation from this file for my review.';
+
+  @override
+  String get aiChatGuidedOrderRequest =>
+      'Fill the current sales order from this file for my review.';
+
+  @override
+  String get aiChatDocumentLongRequest =>
+      'The file instructions are too long to analyze completely. Please choose the workflow to continue.';
+
+  @override
+  String get quoteTemplateMappingRequired =>
+      'Keep quantity and either model or description';
+
+  @override
+  String get quoteTemplateMappingDuplicate =>
+      'Each field can map to only one column. Adjust duplicate mappings.';
 }

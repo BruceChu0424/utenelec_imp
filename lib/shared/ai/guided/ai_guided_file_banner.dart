@@ -32,6 +32,14 @@ class AiGuidedFileBanner extends ConsumerWidget {
     final current = ref.watch(aiGuidedFileIdentityProvider);
     if (current != plan.identity) return const SizedBox.shrink();
     final colors = Theme.of(context).colorScheme;
+    final progressStages = busy
+        ? {...completedStages, ?activeStage}.where((key) => key != status)
+        : const <String>[];
+    final nextStep = !busy && activeStage != null && activeStage != status
+        ? activeStage == 'guidedManualSave'
+              ? 'documentManualSave'
+              : activeStage
+        : null;
     return Container(
       key: const ValueKey('ai-guided-file-progress'),
       margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
@@ -62,20 +70,20 @@ class AiGuidedFileBanner extends ConsumerWidget {
               Expanded(
                 child: Text(
                   aiChatText(context, status),
-                  style: Theme.of(context).textTheme.titleSmall,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
             ],
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(plan.file.name),
-          if (completedStages.isNotEmpty || activeStage != null) ...[
+          if (progressStages.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s8),
             Wrap(
               spacing: UtenSpacing.s12,
               runSpacing: UtenSpacing.s8,
               children: [
-                for (final key in {...completedStages, ?activeStage})
+                for (final key in progressStages)
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -87,9 +95,11 @@ class AiGuidedFileBanner extends ConsumerWidget {
                         color: colors.primary,
                       ),
                       const SizedBox(width: UtenSpacing.s4),
-                      Text(
-                        aiChatText(context, key),
-                        style: Theme.of(context).textTheme.bodySmall,
+                      Flexible(
+                        child: Text(
+                          aiChatText(context, key),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
                       ),
                     ],
                   ),
@@ -108,11 +118,10 @@ class AiGuidedFileBanner extends ConsumerWidget {
             const SizedBox(height: UtenSpacing.s8),
             Text(detail!),
           ],
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            aiChatText(context, 'documentManualSave'),
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          if (nextStep != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(aiChatText(context, nextStep)),
+          ],
           if (onRetry != null)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),

@@ -139,7 +139,7 @@ public class AiJobService {
         UUID jobId = writeTx.execute(status -> {
             repository.lockSubmitter(user.getId());
             if (reuseContent) {
-                var reusable = repository.findReusable(user.getId(), kind, paramsJson, input.sha256(),
+                var reusable = repository.findReusable(user.getId(), kind, paramsJson, input.sha256(), input.fileName(),
                         properties.getIdempotencyWindowMinutes());
                 if (reusable.isPresent()) {
                     boolean stillReadable;

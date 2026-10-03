@@ -97,7 +97,8 @@ class SalesQuoteFinanceFlowPostgresTest {
     private static final List<String> SALES_PERMS = List.of(
             "sales_quote:view", "sales_quote:create", "sales_quote:edit", "sales_quote:delete",
             "sales_quote:convert", "sales_quote:reverse",
-            "sales_order:view", "sales_order:create", "sales_order:edit", "sales_order:delete", "sales_order:approve", "notice:read");
+            "sales_order:view", "sales_order:create", "sales_order:edit", "sales_order:delete", "sales_order:approve",
+            "sales_order:cancel", "sales_order:stop", "sales_order:reverse", "notice:read");
 
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PermissionResolver permissionResolver;
@@ -1237,6 +1238,249 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(jdbc.queryForObject("SELECT source_quote_id FROM sales_orders WHERE id=?", UUID.class, order.getId())).isEqualTo(draft.getId());
     }
 
+    @Test
+    void quotedOrderCannotReuseAcceptedPricesForAnotherCustomer() {
+        Fixture f = fixture("quote-client-fence");
+        UUID goods = goods("客户绑定报价货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        UUID another = client("OTHER-" + UUID.randomUUID(), employeeOf(f.sales()));
+        OrderSaveRequest edit = orderRequest(order);
+        edit.setClientId(another);
+        assertConflict(() -> orders.update(order.getId(), edit));
+        assertThat(orders.detail(order.getId()).getClientId()).isEqualTo(f.client());
+    }
+
+    @Test
+    void quotedOrderCannotReinterpretAcceptedBasePricesInAnotherCurrency() {
+        Fixture f = fixture("quote-currency-fence");
+        UUID goods = goods("币种绑定报价货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        ensureUsd("7");
+        UUID foreign = jdbc.queryForObject("""
+                SELECT id FROM currencies WHERE NOT is_deleted AND NOT is_base_currency AND status='使用'
+                  AND name IN ('美元','美金') ORDER BY code LIMIT 1
+                """, UUID.class);
+        OrderSaveRequest edit = orderRequest(order);
+        edit.setCurrencyId(foreign);
+        assertConflict(() -> orders.update(order.getId(), edit));
+        assertThat(orders.detail(order.getId()).getCurrencyId()).isEqualTo(order.getCurrencyId());
+    }
+
+    @Test
+    void legacyNullQuoteCurrencyAndOmittedOrderCurrencyKeepTheSameBaseIdentity() {
+        Fixture f = fixture("quote-null-currency");
+        UUID goods = goods("空币种报价货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        assertThat(quotes.detail(order.getSourceQuoteId()).getCurrencyId()).isNull();
+        OrderSaveRequest edit = orderRequest(order);
+        edit.setCurrencyId(null);
+        edit.getItems().getFirst().setQty(new BigDecimal("3"));
+        OrderDetail saved = orders.update(order.getId(), edit);
+        assertThat(saved.getCurrencyId()).isEqualTo(baseCurrency());
+        assertThat(saved.getItems().getFirst().getPrice()).isEqualByComparingTo("12");
+        assertThat(saved.getItems().getFirst().getAmountOriginal()).isEqualByComparingTo("28.8");
+    }
+
+    @Test
+    void legacyCustomerOrCurrencyMismatchIsNeverReportedAsQuoteAgreement() {
+        Fixture f = fixture("quote-legacy-identity");
+        UUID goods = goods("历史身份错配货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        orders.update(order.getId(), orderRequest(order));
+        orders.approve(order.getId());
+        UUID another = client("LEGACY-OTHER-" + UUID.randomUUID(), employeeOf(f.sales()));
+        jdbc.update("UPDATE sales_orders SET client_id=? WHERE id=?", another, order.getId());
+        loginAs(f.finance());
+        assertThat(orderFinance.review(order.getId()).matchesQuote()).isFalse();
+        assertThat(orderFinance.pending(1, 20, null, null, null, null, null, order.getBillNo()).getItems())
+                .singleElement().satisfies(row -> assertThat(row.matchesQuote()).isFalse());
+        ensureUsd("7");
+        UUID foreign = jdbc.queryForObject("SELECT id FROM currencies WHERE name='美元' AND NOT is_deleted ORDER BY code LIMIT 1", UUID.class);
+        jdbc.update("UPDATE sales_orders SET client_id=?,currency_id=? WHERE id=?", f.client(), foreign, order.getId());
+        assertThat(orderFinance.review(order.getId()).matchesQuote()).isFalse();
+    }
+
+    @Test
+    void canceledRejectedOrderCanRequoteAndNeverRevivesAfterReplacementCancellationOrDeletion() {
+        Fixture f = fixture("quote-rejection-requote");
+        UUID goods = goods("驳回重议价货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        orders.update(order.getId(), orderRequest(order));
+        orders.approve(order.getId());
+        loginAs(f.finance());
+        var claim = claims.claim("SALES_ORDER_FINANCE_CONFIRM", order.getId().toString());
+        orderFinance.reject(order.getId(), new SalesOrderFinanceConfirmService.FinanceRejectRequest(
+                "条款需重新议价", 0L, claim.claimId()));
+        long before = orderFinance.pendingCount().get("count");
+        loginAs(f.sales());
+        orders.cancel(order.getId());
+        QuoteDetail source = quotes.detail(order.getSourceQuoteId());
+        QuoteDetail replacement = quotes.requote(source.getId(), new QuoteActionRequest(source.getReviewRevision(), "客户继续谈价"));
+        assertThat(quotes.requote(source.getId(), new QuoteActionRequest(source.getReviewRevision())).getId()).isEqualTo(replacement.getId());
+        OrderDetail retired = orders.detail(order.getId());
+        assertThat(retired.getRequotedToId()).isEqualTo(replacement.getId());
+        assertThat(retired.isWritable()).isFalse();
+        assertThat(retired.isHistoryReadOnly()).isTrue();
+        assertThat(retired.getReadOnlyReason()).contains("永久");
+        quotes.cancel(replacement.getId(), new QuoteActionRequest(replacement.getReviewRevision(), "本轮未谈成"));
+        assertThatThrownBy(() -> orders.toggleStopped(order.getId(), false)).hasMessageContaining("永久");
+        assertThatThrownBy(() -> orders.update(order.getId(), orderRequest(retired))).hasMessageContaining("永久");
+        assertThatThrownBy(() -> orders.approve(order.getId())).hasMessageContaining("永久");
+        QuoteDetail next = quotes.requote(source.getId(), new QuoteActionRequest(source.getReviewRevision()));
+        assertThat(next.getId()).isNotEqualTo(replacement.getId());
+        quotes.delete(next.getId(), next.getReviewRevision());
+        assertThatThrownBy(() -> orders.toggleStopped(order.getId(), false)).hasMessageContaining("永久");
+        assertThat(orders.detail(order.getId()).getRequotedToId()).as("首次替代事实不能跟着后续草稿覆盖").isEqualTo(replacement.getId());
+        loginAs(f.finance());
+        assertConflict(() -> claims.claim("SALES_ORDER_FINANCE_CONFIRM", order.getId().toString()));
+        assertThatThrownBy(() -> orderFinance.confirm(order.getId(), new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, 0L)))
+                .hasMessageContaining("永久");
+        assertThatThrownBy(() -> orderFinance.reject(order.getId(), new SalesOrderFinanceConfirmService.FinanceRejectRequest("再次拒绝", 0L)))
+                .hasMessageContaining("永久");
+        assertThatThrownBy(() -> orderFinance.confirmBatch(new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(List.of(order.getId()), null)))
+                .hasMessageContaining("永久");
+        assertThat(orderFinance.pending(1, 20, null, null, null, null, null, order.getBillNo()).getItems()).isEmpty();
+        assertThat(orderFinance.pendingCount().get("count")).isEqualTo(before);
+        assertThat(orderFinance.review(order.getId()).readOnlyReason()).contains("永久");
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM notices WHERE aggregate_id=? AND source_event='SALES_ORDER_PENDING_FINANCE_CONFIRM'
+                  AND resolved_at IS NULL
+                """, Long.class, order.getId())).isZero();
+    }
+
+    @Test
+    void requoteNormalizesOnlyCopiedRowsAndNeverTouchesOldAcceptedItems() {
+        Fixture f = fixture("quote-copy-only");
+        UUID goods = goods("历史单位报价货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        orders.delete(order.getId());
+        jdbc.update("UPDATE sales_quote_items SET unit_rate=NULL WHERE quote_id=?", order.getSourceQuoteId());
+        QuoteDetail source = quotes.detail(order.getSourceQuoteId());
+        QuoteDetail replacement = quotes.requote(source.getId(), new QuoteActionRequest(source.getReviewRevision()));
+        assertThat(replacement.getItems().getFirst().getUnitRate()).isEqualByComparingTo("1");
+        assertThat(jdbc.queryForObject("SELECT unit_rate FROM sales_quote_items WHERE quote_id=?", BigDecimal.class, source.getId())).isNull();
+    }
+
+    @Test
+    void mixedDeletedAndRequotedOrderPageKeepsThePermanentReadOnlyCapability() {
+        Fixture f = fixture("quote-read-only-page");
+        UUID goods = goods("历史混合页货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        orders.update(order.getId(), orderRequest(order));
+        orders.approve(order.getId());
+        orders.cancel(order.getId());
+        QuoteDetail original = quotes.detail(order.getSourceQuoteId());
+        quotes.requote(original.getId(), new QuoteActionRequest(original.getReviewRevision()));
+        OrderDetail disposable = orders.create(orderRequest(order));
+        orders.delete(disposable.getId());
+        var filter = new com.uten.imp.features.sales.order.dto.OrderQueryFilter(null, f.client(), null, null,
+                null, null, null, null).withHistory(true, false);
+        var page = orders.list(filter, 1, 50, null, null);
+        assertThat(page.getItems()).anyMatch(row -> row.isDeleted());
+        assertThat(page.getItems().stream().filter(row -> row.getId().equals(order.getId())).toList())
+                .singleElement().satisfies(row -> {
+                    assertThat(row.isDeleted()).isFalse();
+                    assertThat(row.isHistoryReadOnly()).isTrue();
+                    assertThat(row.isWritable()).isFalse();
+                    assertThat(row.getReadOnlyReason()).contains("永久");
+                });
+    }
+
+    @Test
+    void concurrentConversionCreatesOneOrderAndOneConversionEvidence() throws Exception {
+        Fixture f = fixture("quote-convert-race");
+        UUID goods = goods("并发转单货品", BigDecimal.TEN);
+        loginAs(f.sales());
+        QuoteDetail source = quotes.create(quoteRequest(f.client(), line(goods, "2", "12", "0.8", null)));
+        quotes.submit(source.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, source.getId().toString());
+        finance.confirm(source.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        loginAs(f.sales());
+        QuoteDetail accepted = quotes.customerConfirm(source.getId(), new QuoteActionRequest(2));
+        var results = race(f, () -> { quotes.convertToOrder(source.getId(), new QuoteActionRequest(accepted.getReviewRevision())); return "ORDER"; },
+                () -> { quotes.convertToOrder(source.getId(), new QuoteActionRequest(accepted.getReviewRevision())); return "ORDER"; });
+        assertThat(results).containsExactlyInAnyOrder("ORDER", "CONFLICT");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_orders WHERE source_quote_id=?", Long.class, source.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM sales_quote_revision_logs WHERE quote_id=? AND action='CONVERT'", Long.class, source.getId())).isEqualTo(1);
+    }
+
+    @Test
+    void resumeAndRequoteRaceCannotLeaveBothOldOrderAndReplacementActive() throws Exception {
+        Fixture f = fixture("quote-resume-race");
+        UUID goods = goods("恢复重报价竞争货品", BigDecimal.TEN);
+        OrderDetail order = quotedOrder(f, goods);
+        orders.update(order.getId(), orderRequest(order));
+        orders.approve(order.getId());
+        orders.cancel(order.getId());
+        QuoteDetail source = quotes.detail(order.getSourceQuoteId());
+        var results = race(f, () -> { quotes.requote(source.getId(), new QuoteActionRequest(source.getReviewRevision())); return "QUOTE"; },
+                () -> { orders.toggleStopped(order.getId(), false); return "RESUMED"; });
+        assertThat(results).contains("CONFLICT");
+        assertThat(results.stream().filter(result -> !result.equals("CONFLICT"))).hasSize(1);
+        long replacements = jdbc.queryForObject("SELECT COUNT(*) FROM sales_quotes WHERE origin_quote_id=?", Long.class, source.getId());
+        var state = jdbc.queryForMap("SELECT is_stopped,requoted_to_id FROM sales_orders WHERE id=?", order.getId());
+        if (results.contains("QUOTE")) {
+            assertThat(replacements).isEqualTo(1);
+            assertThat(state.get("is_stopped")).isEqualTo(true);
+            assertThat(state.get("requoted_to_id")).isNotNull();
+        } else {
+            assertThat(replacements).isZero();
+            assertThat(state.get("is_stopped")).isEqualTo(false);
+            assertThat(state.get("requoted_to_id")).isNull();
+        }
+    }
+
+    private List<String> race(Fixture f, java.util.concurrent.Callable<String> first,
+                              java.util.concurrent.Callable<String> second) throws Exception {
+        var ready = new java.util.concurrent.CountDownLatch(2);
+        var start = new java.util.concurrent.CountDownLatch(1);
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var tasks = List.of(first, second).stream().map(action -> pool.submit(() -> {
+                loginAs(f.sales());
+                ready.countDown();
+                if (!start.await(30, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("race start timeout");
+                try { return action.call(); }
+                catch (ApiException conflict) {
+                    if (conflict.getCode() != ErrorCode.CONFLICT) throw conflict;
+                    return "CONFLICT";
+                } finally { SecurityContextHolder.clearContext(); }
+            })).toList();
+            assertThat(ready.await(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<String> results = new ArrayList<>();
+            for (var task : tasks) results.add(task.get(90, java.util.concurrent.TimeUnit.SECONDS));
+            return results;
+        }
+    }
+
+    @Test
+    void financeDealPriceCannotBypassTheSamePrecisionBoundaryAsDirectPrice() {
+        Fixture f = fixture("quote-deal-precision");
+        UUID goods = goods("成交价精度货品", BigDecimal.TEN);
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", null, null, null)));
+        quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, draft.getId().toString());
+        assertCode(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(draft.getItems().getFirst().getId(), null,
+                        new BigDecimal("12.12345678901"), null, null)))), ErrorCode.VALIDATION_FAILED);
+        assertThat(finance.review(draft.getId()).reviewRevision()).isEqualTo(1);
+        assertThat(finance.review(draft.getId()).lines().getFirst().listPrice()).isEqualByComparingTo("10");
+    }
+
+    private OrderDetail quotedOrder(Fixture f, UUID goods) {
+        loginAs(f.sales());
+        QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", "12", "0.8", null)));
+        quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        loginAs(f.finance());
+        var claim = claims.claim(CLAIM, draft.getId().toString());
+        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        loginAs(f.sales());
+        return acceptAndConvert(draft.getId());
+    }
+
     private record Fixture(UUID sales, UUID masked, UUID finance, UUID outsider,
                            UUID client, UUID maskedClient) {
     }
@@ -1255,7 +1499,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         UUID masked = user("qm-" + suffix, salesDept, SALES_PERMS);
         UUID financeUser = user("qf-" + suffix, financeDept, List.of(
                 "sales_quote_finance:view", "sales_quote_finance:confirm", "sales_quote:view",
-                "sales_order_finance:view", "sales_order:view", "notice:read"));
+                "sales_order_finance:view", "sales_order_finance:confirm", "sales_order:view", "notice:read"));
         UUID outsider = user("qx-" + suffix, outsiderDept, List.of("notice:read"));
         return new Fixture(sales, masked, financeUser, outsider,
                 client("QC-" + suffix, employeeOf(sales)), client("QM-" + suffix, employeeOf(masked)));

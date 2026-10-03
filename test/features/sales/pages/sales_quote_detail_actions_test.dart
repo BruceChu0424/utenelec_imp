@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -16,6 +18,7 @@ import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
@@ -66,6 +69,8 @@ class _QuoteApi extends ApiClient {
   _QuoteApi(this.detail) : super(Dio());
 
   Map<String, dynamic> detail;
+  final List<String> getPaths = [];
+  Map<String, dynamic>? historyDetail;
   final List<String> postPaths = [];
   final Map<String, Object?> postBodies = {};
   final List<String> deleted = [];
@@ -75,7 +80,14 @@ class _QuoteApi extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => detail;
+  }) async {
+    getPaths.add(path);
+    if (path.endsWith('/history')) return historyDetail ?? detail;
+    if (path == '/sales/quotes/quote-1' && detail['deleted'] == true) {
+      throw ApiException('NOT_FOUND', '销售报价单不存在');
+    }
+    return detail;
+  }
 
   @override
   Future<Map<String, dynamic>> post(
@@ -108,12 +120,16 @@ Future<_QuoteApi> _pump(
   WidgetTester tester,
   Map<String, dynamic> detail, {
   Set<String> permissions = const {Perm.salesQuoteView},
+  SalesDocType docType = SalesDocType.quote,
+  bool historyRead = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1500, 1100));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   final api = _QuoteApi(detail);
   final router = GoRouter(
-    initialLocation: '/sales/quotes/quote-1',
+    initialLocation: '/sales/quotes/quote-1${historyRead ? '?history=1' : ''}',
     routes: [
       GoRoute(
         path: '/sales/quotes',
@@ -122,8 +138,9 @@ Future<_QuoteApi> _pump(
       GoRoute(
         path: '/sales/quotes/:id',
         builder: (_, state) => SalesDocDetailPage(
-          docType: SalesDocType.quote,
+          docType: docType,
           id: state.pathParameters['id']!,
+          historyRead: state.uri.queryParameters['history'] == '1',
         ),
       ),
       GoRoute(
@@ -146,6 +163,7 @@ Future<_QuoteApi> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_TestSession.new),
         authenticatedScopeProvider.overrideWithValue(
@@ -202,6 +220,154 @@ class _TestSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  testWidgets(
+    'deleted first requotation opens through history endpoint and rejects every write capability',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _quote(
+          status: 0,
+          actions: const [
+            'edit',
+            'delete',
+            'submit',
+            'withdraw',
+            'reopen',
+            'convert',
+            'customerConfirm',
+            'cancel',
+            'requote',
+            'financeReview',
+          ],
+          extra: const {
+            'deleted': true,
+            'historyReadOnly': false,
+            'writable': true,
+          },
+        ),
+        historyRead: true,
+        permissions: const {
+          Perm.salesQuoteView,
+          Perm.salesQuoteEdit,
+          Perm.salesQuoteDelete,
+          Perm.salesOrderCreate,
+          Perm.salesQuoteConvert,
+          Perm.salesQuoteFinanceView,
+        },
+      );
+      expect(api.getPaths, contains('/sales/quotes/quote-1/history'));
+      expect(api.getPaths, isNot(contains('/sales/quotes/quote-1')));
+      expect(find.text('销售报价单历史（只读）'), findsOneWidget);
+      expect(find.text('历史记录（只读）'), findsOneWidget);
+      for (final key in [
+        'sales-doc-edit',
+        'sales-quote-delete',
+        'sales-quote-submit',
+        'sales-quote-withdraw',
+        'sales-quote-reopen',
+        'sales-quote-convert',
+        'sales-quote-customer-confirm',
+        'sales-quote-cancel',
+        'sales-quote-requote',
+        'sales-quote-finance-review',
+        'sales-quote-template-download',
+        'sales-learning-status',
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
+      }
+      expect(api.postPaths, isEmpty);
+      expect(find.byKey(const ValueKey('sales-quote-back')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'finance-only permission cannot fetch a sales quotation history',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _quote(status: 0, actions: const ['edit']),
+        historyRead: true,
+        permissions: const {Perm.salesQuoteFinanceView},
+      );
+      expect(
+        api.getPaths.where((p) => p.startsWith('/sales/quotes/')),
+        isEmpty,
+      );
+      expect(find.text('没有销售报价查看权限，不能查看报价历史'), findsOneWidget);
+      expect(find.byKey(const ValueKey('sales-doc-edit')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'changing the same route from live to history reloads and fences live actions',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _quote(status: 0, actions: const ['edit', 'submit']),
+      );
+      expect(find.byKey(const ValueKey('sales-doc-edit')), findsOneWidget);
+      api.historyDetail = _quote(
+        status: 0,
+        actions: const ['edit', 'submit'],
+        extra: const {'billNo': 'XB-HISTORY'},
+      );
+      final context = tester.element(find.byType(SalesDocDetailPage));
+      GoRouter.of(context).go('/sales/quotes/quote-1?history=1');
+      await tester.pumpAndSettle();
+      expect(api.getPaths, contains('/sales/quotes/quote-1/history'));
+      expect(find.text('XB-HISTORY'), findsWidgets);
+      expect(find.byKey(const ValueKey('sales-doc-edit')), findsNothing);
+      expect(api.postPaths, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'requote-sealed order remains read-only even if a stale writable flag is true',
+    (tester) async {
+      await _pump(
+        tester,
+        _quote(
+          status: 1,
+          extra: const {
+            'stopped': true,
+            'requotedToId': 'q-new',
+            'readOnlyReason': '原订单重新报价后永久只读',
+          },
+        ),
+        docType: SalesDocType.order,
+        permissions: const {
+          Perm.salesOrderView,
+          Perm.salesOrderEdit,
+          Perm.salesOrderStop,
+          Perm.salesQuoteView,
+        },
+      );
+      expect(find.text('原订单重新报价后永久只读'), findsOneWidget);
+      expect(find.byKey(const ValueKey('sales-doc-edit')), findsNothing);
+      expect(find.text('恢复订单'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('sales-order-view-requote')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('requote requires clear acceptance of permanent order sealing', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      _quote(status: 1, actions: const ['requote']),
+    );
+    await tester.tap(find.byKey(const ValueKey('sales-quote-requote')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('永久只读'), findsOneWidget);
+    expect(api.postPaths, isEmpty);
+    await tester.tap(find.text('返回').last);
+    await tester.pumpAndSettle();
+    expect(api.postPaths, isEmpty);
+  });
+
   testWidgets(
     'customer acceptance records the displayed revision before conversion',
     (tester) async {

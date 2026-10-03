@@ -56,12 +56,15 @@ class ProductionAiChatToolTest {
     @Test void blankQueryListsOnlyCurrentWorkshopFactsAndNeverCapsRealOutput() {
         results(List.of(row("个","IN_PROGRESS")),1,false);
         var result=tool.execute(Map.of());
-        assertThat(result.get("reply").toString()).contains("2026-10-03 18:00:00","当前账号所属","共 1 张", "已报工 105", "待检 5", "检验合格 90", "已入库 80", "不同单位不合计");
+        assertThat(result.get("reply").toString()).contains("共 1 张工单", "装配车间", "已报工 105 / 计划 100 个")
+                .doesNotContain("权限", "范围", "来源", "IN_PROGRESS", "待检");
+        assertThat(result.get("detailReply").toString()).contains("2026-10-03 18:00:00", "待检 5", "合格 90", "已入库 80")
+                .doesNotContain("权限", "来源", "投影");
         verify(workbench).inProgressTasks(null,false,20);
     }
     @Test void overviewPermissionUsesOwnerScopedOverviewNotWorkshopMembership() {
         login("production_execution:overview"); results(List.of(),0,true);
-        assertThat(tool.execute(Map.of("keyword"," P001 ")).get("reply").toString()).contains("当前账号可查看的生产总览","不代表全公司");
+        assertThat(tool.execute(Map.of("keyword"," P001 ")).get("reply")).isEqualTo("没找到正在生产的工单。");
         verify(workbench).inProgressTasks("P001",true,20);
     }
     @Test void waitReadyDispatchedAndCompletedCanNeverBeReportedAsProducing() {
@@ -96,8 +99,8 @@ class ProductionAiChatToolTest {
     @Test void mixedUnitsRemainSeparateAndTotalIsWorkOrdersNotProductCount() {
         results(List.of(row("个","IN_PROGRESS"),row("公斤","IN_PROGRESS")),31,false);
         String text=tool.execute(Map.of()).get("reply").toString();
-        assertThat(text).contains("共 31 张匹配工单","显示前 2 张","同一产品").doesNotContain("合计 210");
-        assertThat(text).contains("数量单位均为 个","数量单位均为 公斤");
+        assertThat(text).contains("共 31 张工单","另有 29 张","生产任务页").doesNotContain("合计 210");
+        assertThat(text).contains("计划 100 个","计划 100 公斤");
     }
     @Test void twentyLongMasterLabelsStayWithinTheChatAnswerBoundWithoutRoundingQuantities() {
         var rows=java.util.stream.IntStream.range(0,20).mapToObj(index -> {
@@ -109,9 +112,14 @@ class ProductionAiChatToolTest {
             return row;
         }).toList();
         results(rows,20,false);
-        String text=tool.execute(Map.of()).get("reply").toString();
-        assertThat(text.length()).isLessThanOrEqualTo(16000);
-        assertThat(text).contains("999999999999.999999","…").doesNotContain("名称".repeat(100));
+        var result=tool.execute(Map.of());
+        for(String field:List.of("reply","detailReply")) {
+            String text=result.get(field).toString();
+            assertThat(text.length()).isLessThanOrEqualTo(16000);
+            assertThat(text).contains("999999999999.999999","…").doesNotContain("名称".repeat(100));
+        }
+        assertThat(result.get("reply").toString().lines().filter(line->line.startsWith("• ")).count()).isEqualTo(5);
+        assertThat(result.get("detailReply").toString().lines().filter(line->line.startsWith("• ")).count()).isEqualTo(20);
     }
     @Test @SuppressWarnings("unchecked") void historyRechecksExactScopeAndFactsIncludingIdentityAndQuantity() {
         var row=row("个","IN_PROGRESS"); results(List.of(row),1,false);

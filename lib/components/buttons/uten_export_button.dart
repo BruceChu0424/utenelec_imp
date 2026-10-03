@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:collection/collection.dart';
 
 import '../../core/io/file_saver.dart';
 import '../../core/l10n/gen/app_localizations.dart';
@@ -12,6 +13,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/ui/app_notification.dart';
 import '../../shared/auth/permissions.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
+import '../../shared/providers/export_context_epoch_provider.dart';
 import 'uten_button.dart';
 
 /// A business export may select a template or a group of files before the
@@ -21,11 +23,15 @@ class UtenExportSelection {
     this.bodyParams = const {},
     this.filename,
     this.extension = 'xlsx',
+    this.stillCurrent,
   });
 
   final Map<String, dynamic> bodyParams;
   final String? filename;
   final String extension;
+
+  /// Optional business context fence across preparation, password entry and file delivery.
+  final bool Function()? stillCurrent;
 }
 
 /// 统一 Excel 导出入口，可选择普通下载或密码加密下载。
@@ -89,91 +95,129 @@ class UtenExportButton extends ConsumerStatefulWidget {
 }
 
 class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
+  int _operation = 0;
   bool _loading = false;
   bool _preparing = false;
   bool get _authorized =>
       widget.requiredPermission == null ||
       ref.read(currentPermissionsProvider).contains(widget.requiredPermission);
 
-  Future<void> _onTap() async {
-    if (!widget.enabled || !_authorized || _loading || _preparing) return;
-    setState(() => _preparing = true);
-    try {
-      final selection = widget.prepareExport == null
-          ? const UtenExportSelection()
-          : await widget.prepareExport!();
-      if (selection == null || !mounted || !_authorized) return;
-      final pwd = await showDialog<String>(
-        context: context,
-        builder: (_) => const _ExportPasswordDialog(),
-      );
-      if (pwd == null || !mounted || !_authorized) return;
-      await _doExport(pwd, selection);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError(AppLocalizations.of(context).exportFailed);
-    } finally {
-      if (mounted) setState(() => _preparing = false);
+  void _invalidate() {
+    if (!mounted) return;
+    setState(() {
+      _operation++;
+      _loading = false;
+      _preparing = false;
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant UtenExportButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    const equality = DeepCollectionEquality();
+    if (oldWidget.endpoint != widget.endpoint ||
+        oldWidget.report != widget.report ||
+        oldWidget.filename != widget.filename ||
+        oldWidget.tableKey != widget.tableKey ||
+        !equality.equals(oldWidget.queryParams, widget.queryParams) ||
+        !equality.equals(oldWidget.bodyParams, widget.bodyParams)) {
+      _invalidate();
     }
   }
 
-  Future<void> _doExport(String password, UtenExportSelection selection) async {
-    if (!widget.enabled || !_authorized) return;
-    setState(() => _loading = true);
+  Future<void> _onTap() async {
+    if (!widget.enabled || !_authorized || _loading || _preparing) return;
+    final operation = ++_operation;
+    final epoch = ref.read(exportContextEpochProvider);
+    UtenExportSelection? selection;
+    bool current() =>
+        mounted &&
+        operation == _operation &&
+        epoch == ref.read(exportContextEpochProvider) &&
+        _authorized &&
+        (selection?.stillCurrent?.call() ?? true);
+    setState(() => _preparing = true);
     try {
-      final projection = TableColumnProjectionScope.resolve(
-        context,
-        widget.tableKey,
+      selection = widget.prepareExport == null
+          ? const UtenExportSelection()
+          : await widget.prepareExport!();
+      if (selection == null || !mounted || !current()) return;
+      final password = await showDialog<String>(
+        context: context,
+        builder: (_) => const _ExportPasswordDialog(),
       );
-      final host = TableColumnProjectionScope.read(context);
-      if (host != null &&
-          projection == null &&
-          (widget.tableKey != null ||
-              TableColumnProjectionScope.hasCurrentTables(context))) {
-        context.appError('无法确定要导出的表头，请返回对应表格后重试');
-        return;
-      }
-      final Uint8List bytes = await ref
-          .read(apiClientProvider)
-          .downloadBytes(
-            widget.endpoint,
-            body: {
-              ...widget.bodyParams,
-              ...selection.bodyParams,
-              if (projection != null) 'columnProjection': projection.toJson(),
-              'password': password,
-            },
-            query: {'report': widget.report, ...widget.queryParams},
-          );
-      final extension = switch (selection.extension) {
-        'zip' => 'zip',
-        'pdf' => 'pdf',
-        _ => 'xlsx',
-      };
-      final name =
-          '${selection.filename ?? widget.filename ?? 'export_${widget.report}'}.$extension';
-      final saved = await saveBytes(bytes, name);
-      if (!mounted) return;
-      final l10n = AppLocalizations.of(context);
-      context.appSuccess(
-        kIsWeb
-            ? l10n.exportDownloadStarted(name)
-            : l10n.exportDownloadSaved(saved),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appError(e.message);
+      if (password == null || !mounted || !current()) return;
+      await _doExport(password, selection, current);
+    } on ApiException catch (error) {
+      if (mounted && current()) context.appError(error.message);
     } catch (_) {
-      if (!mounted) return;
-      context.appError(AppLocalizations.of(context).exportFailed);
+      if (mounted && current()) {
+        context.appError(AppLocalizations.of(context).exportFailed);
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && operation == _operation) {
+        setState(() {
+          _preparing = false;
+          _loading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _doExport(
+    String password,
+    UtenExportSelection selection,
+    bool Function() current,
+  ) async {
+    if (!mounted || !widget.enabled || !current()) return;
+    setState(() => _loading = true);
+    final projection = TableColumnProjectionScope.resolve(
+      context,
+      widget.tableKey,
+    );
+    final host = TableColumnProjectionScope.read(context);
+    if (host != null &&
+        projection == null &&
+        (widget.tableKey != null ||
+            TableColumnProjectionScope.hasCurrentTables(context))) {
+      context.appError('无法确定要导出的表头，请返回对应表格后重试');
+      return;
+    }
+    final Uint8List bytes = await ref
+        .read(apiClientProvider)
+        .downloadBytes(
+          widget.endpoint,
+          body: {
+            ...widget.bodyParams,
+            ...selection.bodyParams,
+            if (projection != null) 'columnProjection': projection.toJson(),
+            'password': password,
+          },
+          query: {'report': widget.report, ...widget.queryParams},
+        );
+    if (!mounted || !current()) return;
+    final extension = switch (selection.extension) {
+      'zip' => 'zip',
+      'pdf' => 'pdf',
+      _ => 'xlsx',
+    };
+    final name =
+        '${selection.filename ?? widget.filename ?? 'export_${widget.report}'}.$extension';
+    final saved = await saveBytes(bytes, name, stillCurrent: current);
+    if (!mounted || !current()) return;
+    final l10n = AppLocalizations.of(context);
+    context.appSuccess(
+      kIsWeb
+          ? l10n.exportDownloadStarted(name)
+          : l10n.exportDownloadSaved(saved),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(exportContextEpochProvider, (previous, next) {
+      if (previous != next) _invalidate();
+    });
     final requiredPermission = widget.requiredPermission;
     if (requiredPermission != null &&
         !ref.watch(currentPermissionsProvider).contains(requiredPermission)) {

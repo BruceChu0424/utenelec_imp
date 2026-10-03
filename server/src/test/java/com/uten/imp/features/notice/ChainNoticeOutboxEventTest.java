@@ -748,6 +748,8 @@ class ChainNoticeOutboxEventTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
+        when(jdbc.queryForList(contains("AND finance_confirmed = ? AND NOT finance_rejected"),
+                eq(orderId), eq(true))).thenReturn(List.of(Map.of("id", orderId)));
         when(jdbc.queryForList(
                 contains("SELECT bill_no, owner_employee_id, seller_id"),
                 eq(orderId))).thenReturn(List.of(Map.of("bill_no", "SO-001")));

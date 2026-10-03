@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,7 +38,8 @@ public class HrTasksAiChatTool implements AiChatToolPort {
     @Override public String name() { return "hr_tasks"; }
     @Override public String title() { return "查询人事提醒任务"; }
     @Override public String domain() { return "HR"; }
-    @Override public String description() { return "查询当前获授权HR任务中心中的转正、新入职、入职周年提醒；生日仅在单独隐私查看授权下可查。可用category选择类别、keyword按员工姓名或工号筛选，最多展示20条。不查工资、证件、银行信息，不认领、不修改员工、不发送祝福。"; }
+    @Override public boolean rememberQueryArguments() { return true; }
+    @Override public String description() { return "查询当前获授权HR任务中心的固定时间窗口：转正为今日、逾期及未来30日；新入职为近30日；入职周年仅今日；生日为今日和未来30日，且须单独隐私查看授权。可用category选择类别、keyword按员工姓名或工号筛选，最多展示20条。没有任意日期或历史月份参数，不能用近30日回答上月入职名单。不查工资、证件、银行信息，不认领、不修改员工、不发送祝福。"; }
     @Override public Map<String,Object> parameters() {
         List<String> categories=CATEGORIES.stream().filter(value->!"BIRTHDAY".equals(value)||canPii()).sorted().toList();
         return Map.of("type","object","additionalProperties",false,"properties",Map.of(
@@ -51,20 +53,30 @@ public class HrTasksAiChatTool implements AiChatToolPort {
     @Override @Transactional(readOnly=true,propagation=Propagation.REQUIRES_NEW,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> execute(Map<String,Object> arguments) {
         Request request=parse(arguments); Snapshot facts=read(request);
-        StringBuilder reply=new StringBuilder("人事任务计算基准日：").append(facts.day()).append("。范围：当前获授权的人事任务中心。\n");
-        facts.counts().forEach((kind,count)->reply.append("\n• ").append(kind).append("：").append(count).append(" 项"));
-        if(facts.rows().isEmpty()) reply.append("\n当前范围未找到符合筛选条件的提醒；这不代表所有员工事项均已处理。");
-        else {
-            reply.append("\n\n以下显示前 ").append(Math.min(20,facts.rows().size())).append(" 条：");
-            for(Row row:facts.rows().stream().limit(20).toList()) {
-                reply.append("\n• ").append(row.kind()).append(" · ").append(row.code()).append(" · ").append(row.name())
-                        .append(" · ").append(row.department()).append(" · 相关日期 ").append(row.date()).append(" · ").append(row.claim());
-            }
-            if(facts.rows().size()>20) reply.append("\n还有其他匹配提醒，请指定类别或员工工号缩小范围。");
+        return Map.of("reply",render(facts,false),"detailReply",render(facts,true),"actions",List.of(),
+                "_toolEvidence",Map.of("category",request.category(),"keyword",request.keyword(),"snapshot",signature(facts)));
+    }
+
+    private static String render(Snapshot facts,boolean detailed) {
+        StringBuilder reply=new StringBuilder(facts.rows().isEmpty()?"暂时没有匹配的人事提醒。":"人事提醒（"+facts.day()+"）：");
+        if(detailed) facts.counts().forEach((kind,count)->{if(count>0) reply.append("\n").append(kind).append("：").append(count).append(" 项");});
+        int shown=Math.min(detailed?20:5,facts.rows().size());
+        for(Row row:facts.rows().subList(0,shown)) {
+            reply.append("\n• ").append(row.name());
+            if(detailed||facts.rows().stream().filter(other->other.name().equals(row.name())).count()>1)
+                reply.append("（").append(row.code()).append("）");
+            reply.append("：").append(row.kind()).append("，").append(row.date());
+            if(detailed) reply.append(" · ").append(row.department()).append(" · ").append(row.claim());
+            reply.append("。");
         }
-        if(facts.legacy()!=null) reply.append("\n另有人事中心标记的历史转正日期待补录 ").append(facts.legacy()).append(" 项，请在原页面核对。");
-        reply.append("\n\n来源：HR任务中心的动态提醒与有效认领状态。提醒不等于已审批或已办理；后续操作由你在原页面手动处理。未提供薪资、证件号码、银行账户或年龄。");
-        return Map.of("reply",reply.toString(),"actions",List.of(),"_toolEvidence",Map.of("category",request.category(),"keyword",request.keyword(),"snapshot",signature(facts)));
+        if(facts.rows().size()>shown) {
+            reply.append("\n另有 ").append(facts.rows().size()-shown).append(" 条，");
+            if(!detailed) reply.append(facts.rows().size()>20?"回复“展开”可再看 15 条；其余请到人事任务页查看":"回复“展开”可看更多");
+            else reply.append("请到人事任务页查看");
+            reply.append("。");
+        }
+        if(facts.legacy()!=null&&facts.legacy()>0) reply.append("\n另有 ").append(facts.legacy()).append(" 人的转正日期待补录。");
+        return reply.toString();
     }
     @Override @Transactional(readOnly=true,propagation=Propagation.REQUIRES_NEW,isolation=Isolation.REPEATABLE_READ)
     public void authorizeResultRead(Map<String,Object> evidence) {
@@ -97,7 +109,13 @@ public class HrTasksAiChatTool implements AiChatToolPort {
     private static void add(List<Row> target,Map<String,Long> counts,List<HrTaskSummary.Item> source,String kind,String keyword) {
         String query=keyword.toLowerCase(Locale.ROOT);
         List<HrTaskSummary.Item> selected=source.stream().filter(item->query.isEmpty()
-                || safe(item.code()).toLowerCase(Locale.ROOT).contains(query)||safe(item.name()).toLowerCase(Locale.ROOT).contains(query)).toList();
+                || safe(item.code()).toLowerCase(Locale.ROOT).contains(query)||safe(item.name()).toLowerCase(Locale.ROOT).contains(query))
+                // The source does not order every category (and date ties have no stable order).
+                // Only visible date/code and identity determine presentation and history evidence;
+                // never order by the source's hidden age/position fields.
+                .sorted(Comparator.comparing(HrTaskSummary.Item::date,Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(item->safe(item.code())).thenComparing(item->String.valueOf(item.employeeId())))
+                .toList();
         counts.put(kind,(long)selected.size());
         for(var item:selected) {
             if(item.employeeId()==null) throw changed();

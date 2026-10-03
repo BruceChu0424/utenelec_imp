@@ -44,9 +44,11 @@ public class ProductionAiChatTool implements AiChatToolPort {
     @Override public String name() { return "production_in_progress"; }
     @Override public String title() { return "查询正在生产的产品"; }
     @Override public String domain() { return "PRODUCTION"; }
+    @Override public boolean rememberQueryArguments() { return true; }
     @Override public String description() {
         return "查询当前已实际开工(IN_PROGRESS)的产品和工单，可不填keyword列出在产，也可按货品名称或编码查询。"
-                + "范围取当前账号的生产总览权限或本人车间任务权限；不含待料、待开工。返回最多20张工单及总数、单位、车间、报工/质检/入库数量和查询时间。";
+                + "范围取当前账号的生产总览权限或本人车间任务权限；不含待料、待开工。返回最多20张工单及总数、单位、车间、报工/质检/入库数量和查询时间。"
+                + "仅当前工单快照，无历史日期参数；不能用当前结果回答昨天或上月的生产情况。";
     }
     @Override public Map<String,Object> parameters() {
         return Map.of("type", "object", "additionalProperties", false, "properties",
@@ -66,29 +68,37 @@ public class ProductionAiChatTool implements AiChatToolPort {
                 || actor.getPermissions().contains("production_execution:overview")).isPresent() ? OVERVIEW : WORKSHOP;
         Snapshot snapshot = snapshot(keyword, scope);
         String time = TIME.format(clock.instant());
-        StringBuilder answer = new StringBuilder("查询时间：").append(time).append("（北京时间）。范围：")
-                .append(OVERVIEW.equals(scope) ? "当前账号可查看的生产总览" : "当前账号所属的车间任务")
-                .append("。只统计已实际开工的 IN_PROGRESS 工单，待料、待开工及已完成不计入。\n");
-        if (snapshot.rows().isEmpty()) {
-            answer.append("当前范围内没有匹配的在产工单。这不代表全公司没有生产任务。");
-        } else {
-            answer.append("共 ").append(snapshot.total()).append(" 张匹配工单，显示前 ").append(snapshot.rows().size())
-                    .append(" 张；同一产品可能在多张工单生产，以下按工单分别列出：\n");
-            for (Map<String,String> row : snapshot.rows()) {
-                answer.append("\n• ").append(row.get("productCode")).append(" · ").append(row.get("productName"))
-                        .append("（").append(row.get("color")).append("）\n  工单 ").append(row.get("segmentCode"))
-                        .append("；计划 ").append(row.get("planNo")).append("；车间 ").append(row.get("workshop"))
-                        .append("\n  计划 ").append(row.get("planned")).append("；已报工 ").append(row.get("reported"))
-                        .append("；待检 ").append(row.get("fqcPending")).append("；检验合格 ").append(row.get("fqcPassed"))
-                        .append("；检验不合格 ").append(row.get("fqcFailed"))
-                        .append("；待入库 ").append(row.get("inboundPending")).append("；已入库 ").append(row.get("inbound"))
-                        .append("；数量单位均为 ").append(row.get("unit")).append("。\n");
-            }
-        }
-        answer.append("\n来源：生产执行工作台的工单投影。不同单位不合计；已报工、质检合格和已入库是不同事实，不能直接作为可用库存。"
-                + "完整列表请打开生产调度与进度或我的车间任务。");
-        return Map.of("reply", answer.toString(), "actions", List.of(), "_toolEvidence",
+        return Map.of("reply", render(snapshot, time, false), "detailReply", render(snapshot, time, true),
+                "actions", List.of(), "_toolEvidence",
                 Map.of("scope", scope, "keyword", keyword, "snapshot", digest(snapshot)));
+    }
+
+    private static String render(Snapshot snapshot, String time, boolean detailed) {
+        if (snapshot.rows().isEmpty()) return "没找到正在生产的工单。";
+        StringBuilder answer = new StringBuilder("正在生产：共 ").append(snapshot.total()).append(" 张工单。");
+        if (detailed) answer.append("\n截至 ").append(time).append("。");
+        int shown = Math.min(detailed ? LIMIT : 5, snapshot.rows().size());
+        for (Map<String,String> row : snapshot.rows().subList(0, shown)) {
+            answer.append("\n• ").append(row.get("productName")).append("（").append(row.get("productCode"))
+                    .append("） · ").append(row.get("workshop"));
+            if (detailed) answer.append(" · ").append(row.get("color")).append("\n  工单 ").append(row.get("segmentCode"))
+                    .append("；计划单 ").append(row.get("planNo"));
+            answer.append("：已报工 ").append(row.get("reported")).append(" / 计划 ").append(row.get("planned"))
+                    .append(" ").append(row.get("unit"));
+            if (detailed) answer.append("\n  待检 ").append(row.get("fqcPending")).append("；合格 ").append(row.get("fqcPassed"))
+                    .append("；不合格 ").append(row.get("fqcFailed")).append("；待入库 ").append(row.get("inboundPending"))
+                    .append("；已入库 ").append(row.get("inbound")).append(" ").append(row.get("unit"));
+            answer.append("。");
+        }
+        if (snapshot.total() > shown) {
+            answer.append("\n另有 ").append(snapshot.total() - shown).append(" 张，");
+            int expandable = snapshot.rows().size() - shown;
+            if (!detailed && expandable > 0) {
+                answer.append("回复“展开”可").append(snapshot.total() > snapshot.rows().size() ? "再看 " + expandable + " 张；其余请到生产任务页查看" : "看更多");
+            } else answer.append("请到生产任务页查看");
+            answer.append("。");
+        }
+        return answer.toString();
     }
 
     @Override @Transactional(readOnly = true)

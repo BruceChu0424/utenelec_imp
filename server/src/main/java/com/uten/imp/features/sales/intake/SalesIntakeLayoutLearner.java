@@ -76,8 +76,18 @@ class SalesIntakeLayoutLearner {
         Runnable learn = () -> {
             try {
                 LayoutFacts facts = readTransaction.execute(status -> capture(event));
-                if (facts != null) store.learnLayoutOnce(event, facts.fingerprint(), facts.headerTexts(), facts.columnRoles(),
-                        facts.headerRowOffset(), facts.learned());
+                if (facts != null) {
+                    Map<String,String> roles=facts.columnRoles();
+                    if(adopted.columnRoles()!=null) {
+                        roles=new LinkedHashMap<>();
+                        for(var column:adopted.columnRoles().entrySet()) {
+                            ColumnRole role=ColumnRole.parse(column.getValue());
+                            if(role!=null && role!=ColumnRole.IGNORED) roles.put(column.getKey(),role.name());
+                        }
+                    }
+                    store.learnLayoutOnce(event, facts.fingerprint(), facts.headerTexts(), roles,
+                            facts.headerRowOffset(), adopted.columnRoles()==null && facts.learned());
+                }
             } catch (RuntimeException failure) {
                 log.warn("quote template column learning failed job={} reason={}", event.jobId(), failure.getClass().getSimpleName());
             }

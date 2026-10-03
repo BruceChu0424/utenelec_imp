@@ -40,6 +40,7 @@ public class AiGoodsCostTool implements AiChatToolPort {
     @Override public String title() { return "查询货品成本"; }
     @Override public String description() { return "财务按货品名称或编码查询最新可见确认成本单与期间实际成本依据。basis可选ESTIMATE/ACTUAL/BOTH，默认BOTH；实际期间默认最近90天，日期成对且最多366天。实际仅库存生产成本口径，未覆盖人工和制造费用时不会称为完整成本；歧义需准确货品编码。"; }
     @Override public String domain() { return "FINANCE"; }
+    @Override public boolean rememberQueryArguments() { return true; }
     @Override public Map<String, Object> parameters() {
         return Map.of("type", "object", "additionalProperties", false,
                 "properties", Map.of("goodsKeyword", Map.of("type", "string", "minLength", 1, "maxLength", 100),
@@ -74,22 +75,28 @@ public class AiGoodsCostTool implements AiChatToolPort {
         List<GoodsListItem> candidates = page.getItems();
         List<GoodsListItem> exact = candidates.stream().filter(item -> query.equalsIgnoreCase(item.getCode())).toList();
         if (!exact.isEmpty()) candidates = exact;
-        if (candidates.isEmpty()) return reply("在你可见的货品范围内没有找到匹配记录，请核对物料编码。", List.of(), List.of());
+        if (candidates.isEmpty()) return reply("没找到这件货品，请核对名称或编码。", List.of(), List.of());
         if (candidates.size() != 1 || (exact.isEmpty() && page.getTotal() > 1)) {
-            return reply("匹配到多件货品，请提供准确编码后再查询：\n" + candidates.stream().limit(10)
+            String detail = "有多个结果，请提供准确编码：\n" + candidates.stream().limit(10)
                     .map(item -> item.getCode() + " · " + item.getName()
                             + (item.getSpec() == null ? "" : " · " + item.getSpec()))
-                    .collect(Collectors.joining("\n")), candidates.stream().limit(10).map(GoodsListItem::getId).toList(), List.of());
+                    .collect(Collectors.joining("\n"));
+            String brief = "有多个结果，请提供准确编码：\n" + candidates.stream().limit(5)
+                    .map(item -> item.getCode() + " · " + item.getName()).collect(Collectors.joining("\n"));
+            var response = new java.util.LinkedHashMap<>(reply(brief, candidates.stream().limit(10).map(GoodsListItem::getId).toList(), List.of()));
+            response.put("detailReply", detail);
+            return Map.copyOf(response);
         }
         var selected = candidates.getFirst();
         // Cost service additionally checks all component goods and client scopes.
         var sheets = "ACTUAL".equals(options.basis()) ? List.<GoodsCostContracts.SheetSummary>of() : costs.list(selected.getId());
-        String heading = selected.getCode() + " · " + selected.getName();
-        StringBuilder reply = new StringBuilder(heading);
+        String heading = selected.getName() + " (" + selected.getCode() + ")";
+        StringBuilder reply = new StringBuilder(heading), detail = new StringBuilder(heading);
         List<Map<String, Object>> sheetEvidence = new ArrayList<>();
-        if (!"ACTUAL".equals(options.basis())) reply.append(sheets.isEmpty()
-                ? "\n当前可见范围内没有成本单。未登记成本不能按 0 元回答。"
-                : "\n成本单测算: 优先列最新可见确认版本，再列近期测算；须核对各单适用批量与客户条件。");
+        if (!"ACTUAL".equals(options.basis()) && sheets.isEmpty()) {
+            reply.append("\n还没有成本记录，暂时无法估算。");
+            detail.append("\n还没有成本记录，暂时无法估算。");
+        }
         List<GoodsCostContracts.SheetSummary> chosen = new ArrayList<>();
         sheets.stream().filter(sheet -> "CONFIRMED".equals(sheet.status())).findFirst().ifPresent(chosen::add);
         for (var sheet : sheets) if (chosen.size() < 3 && chosen.stream().noneMatch(item -> item.id().equals(sheet.id()))) chosen.add(sheet);
@@ -98,39 +105,43 @@ public class AiGoodsCostTool implements AiChatToolPort {
             sheetEvidence.add(Map.of("id", sheet.id().toString(), "version", sheet.version()));
             var calculation = sheet.calculation();
             var totals = calculation.totals();
-            reply.append("\n• ").append(sheet.sheetNo()).append(" · ").append(sheet.input().name())
-                    .append(" · ").append("CONFIRMED".equals(sheet.status()) ? "已确认" : "未确认测算")
-                    .append(" · 版本 ").append(sheet.version())
-                    .append("\n  单位成本：").append(value(totals.unitCost())).append(" ")
-                    .append(value(calculation.currencyName())).append(" / ").append(value(calculation.unitName()))
-                    .append("；测算批量：").append(value(calculation.batchQty()))
-                    .append("；已知总成本：").append(value(totals.knownTotal()))
-                    .append("；成本状态：").append("COMPLETE".equals(totals.valueState()) ? "资料完整" : "待核，不能视为完整实际成本")
-                    .append("；缺价项：").append(totals.missingPriceCount())
-                    .append("\n  测算时间：").append(calculation.calculatedAt());
+            String state = "CONFIRMED".equals(sheet.status()) ? "已确认" : "未确认";
+            String measured = (sheet.input().clientId() == null ? "测算成本：" : "客户专项测算成本：")
+                    + value(totals.unitCost()) + " " + value(calculation.currencyName())
+                    + "/" + value(calculation.unitName()) + " (" + date(calculation.calculatedAt()) + "，" + state
+                    + "；每批 " + value(calculation.batchQty()) + " " + value(calculation.unitName()) + ")。";
+            if (!"COMPLETE".equals(totals.valueState())) measured += " 尚未核齐。"
+                    + (totals.missingPriceCount() > 0 ? "缺价 " + totals.missingPriceCount() + " 项。" : "");
+            if (sheetEvidence.size() == 1) reply.append("\n").append(measured);
+            detail.append("\n• ").append(sheet.sheetNo()).append(" · ").append(sheet.input().name())
+                    .append("\n").append(measured).append("\n已知总成本：").append(value(totals.knownTotal()))
+                    .append(" ").append(value(calculation.currencyName())).append("。");
         }
-        if (sheets.size() > chosen.size()) reply.append("\n本次列出 ").append(chosen.size()).append(" 张可见成本单；其余记录请进入成本工作台核对。");
+        if (sheets.size() > chosen.size()) detail.append("\n先列最近 ").append(chosen.size()).append(" 张成本单。");
         Map<String, Object> actualEvidence = null;
         if (!"ESTIMATE".equals(options.basis())) {
             var queryFilter = new GoodsActualCostQueryPort.Query(selected.getId(), null, options.from(), options.to(), null);
             var result = actual.read(queryFilter);
             var snapshot = result.snapshot();
             var summary = snapshot.summary();
-            reply.append("\n\n期间实际成本依据: ").append(options.from()).append(" 至 ").append(options.to())
-                    .append("，按产出业务日期选取，投入保留完整原成本范围。")
-                    .append("\n实际产出基本数量: ").append(decimal(summary.outputQtyBase())).append(" ").append(value(selected.getUnitName()))
-                    .append("；已知已分摊产出成本: ").append(decimal(summary.allocatedOutputCostLocal())).append(" 本币")
-                    .append("\n").append(summary.pending() ? "实际成本仍待核，当前不能给出可靠单位实际成本。"
-                            : "单位库存生产成本: " + decimal(summary.actualUnitCostLocal()) + " 本币 / " + value(selected.getUnitName()))
-                    .append("\n").append(summary.fullCostComplete() ? "该实际成本来源已标记完整。"
-                            : "这不是完整产品实际成本：当前实际来源未覆盖全部人工与制造费用，不能当作完整成本报价。")
-                    .append("\n待核来源数: ").append(summary.pendingSourceCount()).append("；采集时间: ").append(snapshot.capturedAt());
-            if (snapshot.costObjects().isEmpty()) reply.append("\n所选期间没有可验证的生产估值依据；缺失不能按零成本处理。");
+            String period = options.from() + " 至 " + options.to();
+            String actualLine = snapshot.costObjects().isEmpty() ? "这段时间没有实际成本记录，暂时无法估算。"
+                    : summary.pending() ? "实际成本尚未核齐，暂时无法给出每件成本。"
+                    : "实际库存成本：" + decimal(summary.actualUnitCostLocal()) + " 本币/" + value(selected.getUnitName()) + "。";
+            reply.append("\n").append(actualLine).append(" (").append(period).append(")");
+            detail.append("\n").append(actualLine).append(" (").append(period).append(")")
+                    .append("\n产出 ").append(decimal(summary.outputQtyBase())).append(" ").append(value(selected.getUnitName()))
+                    .append("；已分摊成本 ").append(decimal(summary.allocatedOutputCostLocal())).append(" 本币。")
+                    .append("\n待核 ").append(summary.pendingSourceCount()).append(" 项；更新日期 ").append(date(snapshot.capturedAt())).append("。");
+            if (!summary.fullCostComplete()) {
+                reply.append("\n尚未包括全部人工和制造费用。");
+                detail.append("\n尚未包括全部人工和制造费用。");
+            }
             actualEvidence = Map.of("goodsId", selected.getId().toString(), "from", options.from().toString(),
                     "to", options.to().toString(), "digest", result.digest());
         }
-        reply.append("\n来源: 货品成本工作台 / 成本单及只读实际成本来源。金额未发送给对话模型。");
         Map<String, Object> response = new java.util.LinkedHashMap<>(reply(reply.toString(), List.of(selected.getId()), sheetEvidence));
+        response.put("detailReply", detail.toString());
         if (actualEvidence != null) {
             @SuppressWarnings("unchecked") var evidence = new java.util.LinkedHashMap<>((Map<String, Object>) response.get("_toolEvidence"));
             evidence.put("actual", actualEvidence); response.put("_toolEvidence", evidence);
@@ -181,13 +192,14 @@ public class AiGoodsCostTool implements AiChatToolPort {
         return new ApiException(ErrorCode.VALIDATION_FAILED, "实际成本日期须成对填写、不能晚于今天且最多366天；测算模式不使用期间筛选");
     }
     private static String decimal(BigDecimal value) { return value == null ? "未确认" : value.stripTrailingZeros().toPlainString(); }
+    private static String date(java.time.OffsetDateTime value) { return value == null ? "日期未登记" : value.atZoneSameInstant(BusinessTime.ZONE).toLocalDate().toString(); }
 
     private static UUID uuid(Object value) {
         try { return UUID.fromString((String) value); }
         catch (RuntimeException malformed) { throw changed(); }
     }
     private static ApiException changed() {
-        return new ApiException(ErrorCode.FORBIDDEN, "成本记录或数据范围已变化，请重新查询");
+        return new ApiException(ErrorCode.FORBIDDEN, "成本资料有变化，请重新查询");
     }
     private static String value(String value) { return value == null || value.isBlank() ? "未登记" : value; }
     private static Map<String, Object> reply(String value, List<UUID> goods, List<Map<String, Object>> sheets) {

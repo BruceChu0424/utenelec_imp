@@ -1487,6 +1487,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => SalesDocDetailPage(
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id']!,
+              historyRead:
+                  s.pathParameters['seg'] == 'quotes' &&
+                  s.uri.queryParameters['history'] == '1',
             ),
           ),
           DraftAwareGoRoute(

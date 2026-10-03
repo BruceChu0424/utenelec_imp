@@ -15,10 +15,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
 
   Future<void> _loadClientContext() async {
     final id = costText(_input['clientId']);
-    if (id == null) {
-      if (mounted) setState(() => _clientName = null);
-      return;
-    }
+    final request = ++_templateRequest;
     final frozenName = costText(
       costMap(_input['extraFields'])['serverClientName'],
     );
@@ -27,16 +24,21 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       if (_sheet?.status != 'DRAFT' || _historical != null) return;
     }
     try {
-      final client = await ref.read(clientRepositoryProvider).detail(id);
+      final client = id == null
+          ? null
+          : await ref.read(clientRepositoryProvider).detail(id);
       final templates = await _repository.templates(widget.detail.id, id);
-      if (mounted && _input['clientId'] == id) {
+      if (mounted &&
+          _capability.canRead &&
+          request == _templateRequest &&
+          _input['clientId'] == id) {
         setState(() {
-          _clientName = frozenName ?? client.name;
+          _clientName = frozenName ?? client?.name;
           _templates = templates;
         });
       }
     } catch (e) {
-      if (mounted && _input['clientId'] == id) {
+      if (mounted && request == _templateRequest && _input['clientId'] == id) {
         setState(() => _error = _message(e));
       }
     }
@@ -528,6 +530,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       initialId: costText(_input['clientId']),
       initialName: _clientName,
       onChanged: (id) {
+        if (!_editable) return;
         _change(() {
           _input = _currentInput();
           _input['clientId'] = id;
@@ -535,6 +538,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             ..remove('serverClientName');
           _input['extraFields'] = extras;
           _input['templateId'] = null;
+          _templates = [];
+          if (id == null) _clientName = null;
           _input['fees'] = costMaps(_input['fees'])
               .where(
                 (f) => costText(f['source'])?.startsWith('TEMPLATE:') != true,
@@ -545,10 +550,10 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         unawaited(_loadClientContext());
       },
       onPick: () async {
+        final revision = _inputRevision;
         final client = await showUtenClientPicker(context, ref);
-        if (client != null && mounted) {
-          _clientName = client.name;
-        }
+        if (!mounted || !_editable || revision != _inputRevision) return null;
+        if (client != null) _clientName = client.name;
         return client;
       },
     ),
@@ -580,6 +585,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
               ),
               if (_sheet != null)
                 _oneLine('${_sheet!.number} · ${_status(_sheet!.status)}'),
+              if ((_clientName ?? '').isNotEmpty)
+                Tooltip(message: _l.costCustomer, child: _oneLine(_clientName)),
               if (_historical != null) _oneLine(_l.costSnapshotReadOnly),
               if (_historical == null &&
                   (_sheet == null || _sheet!.status == 'DRAFT'))
@@ -612,146 +619,172 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             ],
           ),
         ),
-        if (_showCustomer)
-          SizedBox(
-            width: box.maxWidth < 500 ? box.maxWidth : 245,
-            child: _customerField(),
-          ),
         if (_showSettings) ...[
           if (_settingsLoading) const LinearProgressIndicator(),
-          _advancedHeader(),
+          _calculationSettings(),
         ],
       ],
     ),
   );
-  Widget _advancedHeader() => UtenCard(
+  Widget _calculationSettings() => UtenCard(
     child: LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth < 480 ? box.maxWidth : 245.0;
-        Widget field(Widget child) => SizedBox(width: width, child: child);
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            field(_headerText('batchQty', _l.costBatch, numeric: true)),
-            field(_headerText('name', _l.costName)),
-            field(
-              UtenDropdownField(
-                key: const Key('cost-currency-selector'),
-                label: _l.costCurrency,
-                value: costText(_input['currencyId']),
-                enabled: _editable,
-                allowClear: false,
-                items: [
-                  for (final c in _currencies)
-                    UtenDropdownItem(
-                      value: c.id,
-                      label: c.name ?? c.code ?? '—',
-                    ),
-                ],
-                onChanged: (value) => _convertCostCurrency(value),
-              ),
-            ),
-            field(
-              TextFormField(
-                key: const Key('cost-header-exchangeRateToLocal'),
-                controller: _controller(
-                  'header:exchangeRateToLocal',
-                  costText(_input['exchangeRateToLocal']),
+            Wrap(
+              spacing: UtenSpacing.s12,
+              runSpacing: UtenSpacing.s12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: width,
+                  child: _headerText('batchQty', _l.costBatch, numeric: true),
                 ),
-                readOnly: true,
-                onTap: _editable
-                    ? () => _convertCostCurrency(
-                        costText(_input['currencyId']),
-                        editRate: true,
-                      )
-                    : null,
-                errorBuilder: utenTextFieldErrorBuilder,
-                decoration: UtenInputDecoration(
-                  InputDecoration(labelText: _l.costExchangeRate),
-                  info: _l.costCurrencyConversionHint,
-                ),
-              ),
-            ),
-            field(
-              UtenDateField(
-                label: _l.costEffectiveDate,
-                value: DateTime.tryParse(
-                  costText(_input['effectiveDate']) ?? '',
-                ),
-                enabled: _editable,
-                onChanged: (d) => _change(
-                  () => _input['effectiveDate'] = d
-                      .toIso8601String()
-                      .split('T')
-                      .first,
-                ),
-              ),
-            ),
-            field(
-              UtenDropdownField(
-                label: _l.costUsageStrategy,
-                value: costText(_input['usageStrategy']),
-                enabled: _editable,
-                allowClear: false,
-                items: [
-                  UtenDropdownItem(
-                    value: 'ACTUAL_FIRST',
-                    label: _l.costActualFirst,
+                SizedBox(width: width, child: _customerField()),
+                UtenButton(
+                  key: const Key('cost-advanced-settings'),
+                  type: UtenButtonType.tonal,
+                  icon: _showAdvancedSettings
+                      ? Icons.expand_less
+                      : Icons.expand_more,
+                  onPressed: () => setState(
+                    () => _showAdvancedSettings = !_showAdvancedSettings,
                   ),
-                  UtenDropdownItem(value: 'DESIGN', label: _l.costDesignOnly),
-                ],
-                onChanged: (v) => _change(() => _input['usageStrategy'] = v),
-              ),
-            ),
-            field(
-              UtenDropdownField(
-                label: _l.costPriceStrategy,
-                value: costText(_input['priceStrategy']),
-                enabled: _editable,
-                allowClear: false,
-                items: [
-                  UtenDropdownItem(value: 'AUTO', label: _l.costAutoPrice),
-                  UtenDropdownItem(
-                    value: 'APPROVED_PURCHASE',
-                    label: _l.costApprovedPrice,
-                  ),
-                  UtenDropdownItem(value: 'MANUAL', label: _l.costManualPrice),
-                ],
-                onChanged: (v) => _change(() => _input['priceStrategy'] = v),
-              ),
-            ),
-            field(
-              UtenDropdownField(
-                label: _l.costTemplate,
-                value: costText(_input['templateId']),
-                enabled: _editable,
-                hintText: _l.costNoTemplate,
-                items: [
-                  for (final t in _templates)
-                    UtenDropdownItem(
-                      value: costText(t['id']),
-                      label: costText(costMap(t['input'])['name']) ?? '—',
-                    ),
-                ],
-                onChanged: (id) => _change(() {
-                  _input['templateId'] = id;
-                  // The template owns a frozen currency. Its values must be
-                  // resolved/converted by the server, never copied verbatim.
-                }),
-              ),
-            ),
-            field(_headerText('notes', _l.costNotes)),
-            if (_sheet != null)
-              field(
-                _oneLine(
-                  '${_sheet!.number} · ${_status(_sheet!.status)} · ${_l.costVersion} ${_sheet!.version}',
+                  child: Text(_l.costAdvancedOptions),
                 ),
-              ),
+              ],
+            ),
+            if (_showAdvancedSettings) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              _advancedHeader(),
+            ],
           ],
         );
       },
     ),
+  );
+  Widget _advancedHeader() => LayoutBuilder(
+    builder: (context, box) {
+      final width = box.maxWidth < 480 ? box.maxWidth : 245.0;
+      Widget field(Widget child) => SizedBox(width: width, child: child);
+      return Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          field(_headerText('name', _l.costName)),
+          field(
+            UtenDropdownField(
+              key: const Key('cost-currency-selector'),
+              label: _l.costCurrency,
+              value: costText(_input['currencyId']),
+              enabled: _editable,
+              allowClear: false,
+              items: [
+                for (final c in _currencies)
+                  UtenDropdownItem(value: c.id, label: c.name ?? c.code ?? '—'),
+              ],
+              onChanged: (value) => _convertCostCurrency(value),
+            ),
+          ),
+          field(
+            TextFormField(
+              key: const Key('cost-header-exchangeRateToLocal'),
+              controller: _controller(
+                'header:exchangeRateToLocal',
+                costText(_input['exchangeRateToLocal']),
+              ),
+              readOnly: true,
+              onTap: _editable
+                  ? () => _convertCostCurrency(
+                      costText(_input['currencyId']),
+                      editRate: true,
+                    )
+                  : null,
+              errorBuilder: utenTextFieldErrorBuilder,
+              decoration: UtenInputDecoration(
+                InputDecoration(labelText: _l.costExchangeRate),
+                info: _l.costCurrencyConversionHint,
+              ),
+            ),
+          ),
+          field(
+            UtenDateField(
+              label: _l.costEffectiveDate,
+              value: DateTime.tryParse(costText(_input['effectiveDate']) ?? ''),
+              enabled: _editable,
+              onChanged: (d) => _change(
+                () => _input['effectiveDate'] = d
+                    .toIso8601String()
+                    .split('T')
+                    .first,
+              ),
+            ),
+          ),
+          field(
+            UtenDropdownField(
+              label: _l.costUsageStrategy,
+              value: costText(_input['usageStrategy']),
+              enabled: _editable,
+              allowClear: false,
+              items: [
+                UtenDropdownItem(
+                  value: 'ACTUAL_FIRST',
+                  label: _l.costActualFirst,
+                ),
+                UtenDropdownItem(value: 'DESIGN', label: _l.costDesignOnly),
+              ],
+              onChanged: (v) => _change(() => _input['usageStrategy'] = v),
+            ),
+          ),
+          field(
+            UtenDropdownField(
+              label: _l.costPriceStrategy,
+              value: costText(_input['priceStrategy']),
+              enabled: _editable,
+              allowClear: false,
+              items: [
+                UtenDropdownItem(value: 'AUTO', label: _l.costAutoPrice),
+                UtenDropdownItem(
+                  value: 'APPROVED_PURCHASE',
+                  label: _l.costApprovedPrice,
+                ),
+                UtenDropdownItem(value: 'MANUAL', label: _l.costManualPrice),
+              ],
+              onChanged: (v) => _change(() => _input['priceStrategy'] = v),
+            ),
+          ),
+          field(
+            UtenDropdownField(
+              label: _l.costTemplate,
+              value: costText(_input['templateId']),
+              enabled: _editable,
+              hintText: _l.costNoTemplate,
+              items: [
+                for (final t in _templates)
+                  UtenDropdownItem(
+                    value: costText(t['id']),
+                    label: costText(costMap(t['input'])['name']) ?? '—',
+                  ),
+              ],
+              onChanged: (id) => _change(() {
+                _input['templateId'] = id;
+                // The template owns a frozen currency. Its values must be
+                // resolved/converted by the server, never copied verbatim.
+              }),
+            ),
+          ),
+          field(_headerText('notes', _l.costNotes)),
+          if (_sheet != null)
+            field(
+              _oneLine(
+                '${_sheet!.number} · ${_status(_sheet!.status)} · ${_l.costVersion} ${_sheet!.version}',
+              ),
+            ),
+        ],
+      );
+    },
   );
   Widget _headerText(String key, String label, {bool numeric = false}) =>
       TextFormField(

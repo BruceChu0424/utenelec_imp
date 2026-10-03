@@ -63,6 +63,50 @@ void main() {
   );
 
   testWidgets(
+    'unknown create outcome cannot create again after retry or restart',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      final repo = _Expenses()
+        ..createFailure = NetworkException('create receipt missing');
+      final first = await _pump(
+        tester,
+        plan: _plan(),
+        repo: repo,
+        storage: storage,
+      );
+      await _save(tester);
+      expect(repo.creates, hasLength(1));
+      final checkpoint = first.container.read(formDraftsProvider).single;
+      expect(checkpoint.hasUnknownSubmission, isTrue);
+      final save = find.widgetWithText(UtenButton, '保存并补充凭证');
+      if (save.evaluate().isNotEmpty) {
+        await tester.tap(save, warnIfMissed: false);
+        await tester.pumpAndSettle();
+      }
+      expect(repo.creates, hasLength(1));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      final restored = await _pump(
+        tester,
+        repo: repo,
+        storage: storage,
+        draftId: checkpoint.id,
+      );
+      expect(
+        restored.container.read(formDraftsProvider).single.hasUnknownSubmission,
+        isTrue,
+      );
+      final restoredSave = find.widgetWithText(UtenButton, '保存并补充凭证');
+      if (restoredSave.evaluate().isNotEmpty) {
+        await tester.tap(restoredSave, warnIfMissed: false);
+        await tester.pumpAndSettle();
+      }
+      expect(repo.creates, hasLength(1));
+      expect(restored.attachments.uploads, isEmpty);
+    },
+  );
+
+  testWidgets(
     'manual save checkpoints created id and exact original without automatic upload',
     (tester) async {
       final harness = await _pump(tester, plan: _plan());
@@ -440,9 +484,11 @@ class _Expenses extends Fake implements ExpenseRepository {
   final reads = <String>[];
   final invoices = <ExpenseClaimInvoiceInput>[];
   ExpenseClaim? detail;
+  Object? createFailure;
   @override
   Future<ExpenseClaim> create(ExpenseClaimCreateInput input) async {
     creates.add(input);
+    if (createFailure case final error?) throw error;
     return detail = ExpenseClaim(
       id: 'created-claim-1',
       claimNo: 'BX-TEST-1',

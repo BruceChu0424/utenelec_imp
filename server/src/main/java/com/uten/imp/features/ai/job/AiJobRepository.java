@@ -112,10 +112,10 @@ class AiJobRepository {
     }
 
     /** 可复用的任务: 已请求取消的(马上会以「已取消」结束)不复用。 */
-    Optional<UUID> findReusable(UUID userId, String kind, String paramsJson, String sha256, int windowMinutes) {
+    Optional<UUID> findReusable(UUID userId, String kind, String paramsJson, String sha256, String inputName, int windowMinutes) {
         List<UUID> ids = jdbc.queryForList("""
                 SELECT id FROM ai_jobs
-                WHERE submitted_by_user = :user AND kind = :kind AND input_sha256 = :sha
+                WHERE submitted_by_user = :user AND kind = :kind AND input_sha256 = :sha AND input_name = :name
                   AND params = CAST(:params AS jsonb)
                   AND status IN ('PENDING', 'RUNNING', 'SUCCEEDED') AND NOT cancel_requested
                   AND used_at IS NULL AND result_purged_at IS NULL
@@ -126,6 +126,7 @@ class AiJobRepository {
                 .addValue("user", userId)
                 .addValue("kind", kind)
                 .addValue("sha", sha256)
+                .addValue("name", inputName)
                 .addValue("params", paramsJson)
                 .addValue("window", windowMinutes), UUID.class);
         return ids.stream().findFirst();

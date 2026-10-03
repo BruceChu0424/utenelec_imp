@@ -154,6 +154,11 @@ class SalesRepository {
     return SalesDocDetail.fromJson(json);
   }
 
+  Future<SalesDocDetail> detailHistory(String id) async {
+    final json = await api.get('${_doc(id)}/history');
+    return SalesDocDetail.fromJson(json);
+  }
+
   /// 客户 → 主档默认销售条款 (新建单预填：选客户后带出客户资料里的默认
   /// 结账方式/发运策略/币种，每次保存订单由服务端写回客户资料；端点挂在 orders 下，
   /// 5 类单据通用，路径 /last-terms 是历史遗留)。

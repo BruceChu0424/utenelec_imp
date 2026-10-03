@@ -35,7 +35,7 @@ class WorkbenchAiChatToolTest {
     @Test void staleEntryNeverBecomesAZeroCount() {
         when(badges.summary(anySet())).thenReturn(summary(Map.of("productionWorkshop",new WorkbenchBadgeSummary.Counts(0,0)),"productionWorkshop"));
         String reply=tool.execute(Map.of()).get("reply").toString();
-        assertThat(reply).contains("暂未算出，不能按 0 项处理").doesNotContain("待办 0 项");
+        assertThat(reply).contains("暂时查不到数量").doesNotContain("待办 0 项");
     }
     @Test void foreignModuleAndOwnerOverridesNeverReachBadgeSources() {
         assertThatThrownBy(()->tool.execute(Map.of("module","FINANCE"))).isInstanceOf(ApiException.class);
@@ -55,5 +55,26 @@ class WorkbenchAiChatToolTest {
     @Test void unexpectedCrossModuleSourceOutputIsRejectedInsteadOfDisplayed() {
         when(badges.summary(anySet())).thenReturn(summary(Map.of("financeDrafts",new WorkbenchBadgeSummary.Counts(91,2))));
         assertThatThrownBy(()->tool.execute(Map.of())).isInstanceOf(ApiException.class);
+    }
+    @Test @SuppressWarnings("unchecked") void conciseReplyPrioritizesActionableEntriesWithoutWeakeningHiddenCountEvidence() {
+        var rows=new java.util.LinkedHashMap<String,WorkbenchBadgeSummary.Counts>();
+        rows.put("productionSchedule",new WorkbenchBadgeSummary.Counts(1,0));
+        rows.put("productionRateApprovals",new WorkbenchBadgeSummary.Counts(6,0));
+        rows.put("productionMaterialIncrementApprovals",new WorkbenchBadgeSummary.Counts(5,0));
+        rows.put("productionPlanningUrges",new WorkbenchBadgeSummary.Counts(4,0));
+        rows.put("productionWorkshop",new WorkbenchBadgeSummary.Counts(3,2));
+        rows.put("productionBatches",new WorkbenchBadgeSummary.Counts(0,7));
+        rows.put("productionDrafts",new WorkbenchBadgeSummary.Counts(0,0));
+        when(badges.summary(anySet())).thenReturn(summary(rows));
+        var result=tool.execute(Map.of());
+        String reply=result.get("reply").toString(),detail=result.get("detailReply").toString();
+        assertThat(reply.lines().filter(line->line.startsWith("• ")).count()).isEqualTo(5);
+        assertThat(reply).contains("另有 1 项").doesNotContain("生产批次","生产单据草稿","待办 0 项","来源","权限","规则");
+        assertThat(detail).contains("生产批次：进行中 7 项").doesNotContain("生产单据草稿","来源","权限");
+        var evidence=(Map<String,Object>)result.get("_toolEvidence");
+        tool.authorizeResultRead(evidence);
+        rows.put("productionDrafts",new WorkbenchBadgeSummary.Counts(1,0));
+        when(badges.summary(anySet())).thenReturn(summary(rows));
+        assertThatThrownBy(()->tool.authorizeResultRead(evidence)).isInstanceOf(ApiException.class);
     }
 }

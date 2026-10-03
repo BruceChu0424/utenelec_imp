@@ -45,13 +45,13 @@ public final class CsvGridReader {
             if (inQuotes && !atEnd) {
                 if (c == '"') {
                     if (i + 1 < n && text.charAt(i + 1) == '"') {
-                        appendBounded(field, '"');
+                        truncated |= !appendBounded(field, '"');
                         i += 2;
                         continue;
                     }
                     inQuotes = false;
                 } else {
-                    appendBounded(field, c);
+                    truncated |= !appendBounded(field, c);
                 }
                 i++;
                 continue;
@@ -63,7 +63,8 @@ public final class CsvGridReader {
                 continue;
             }
             if (c == delimiter && !atEnd) {
-                fields.add(field.toString());
+                if (fields.size() <= SpreadsheetGridReader.MAX_COLUMN_INDEX) fields.add(field.toString());
+                else truncated = true;
                 field.setLength(0);
                 fieldWasQuoted = false;
                 i++;
@@ -74,7 +75,8 @@ public final class CsvGridReader {
                 continue;
             }
             if (c == '\n') {
-                fields.add(field.toString());
+                if (fields.size() <= SpreadsheetGridReader.MAX_COLUMN_INDEX) fields.add(field.toString());
+                else truncated = true;
                 field.setLength(0);
                 fieldWasQuoted = false;
                 boolean lastEmptyLine = atEnd && fields.size() == 1 && fields.getFirst().isEmpty();
@@ -97,17 +99,19 @@ public final class CsvGridReader {
                 i++;
                 continue;
             }
-            appendBounded(field, c);
+            truncated |= !appendBounded(field, c);
             i++;
         }
         Sheet sheet = new Sheet("CSV", 0, rows, List.of(), 0, maxColumn, truncated);
         return new DocumentGrid(List.of(sheet));
     }
 
-    private static void appendBounded(StringBuilder field, char c) {
+    private static boolean appendBounded(StringBuilder field, char c) {
         if (field.length() < SpreadsheetGridReader.MAX_CELL_CHARS) {
             field.append(c);
+            return true;
         }
+        return false;
     }
 
     private static Row toRow(int rowIndex, List<String> fields) {

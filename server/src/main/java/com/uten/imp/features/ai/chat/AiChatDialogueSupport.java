@@ -26,8 +26,9 @@ final class AiChatDialogueSupport {
             "下一步", "然后呢", "接下来呢", "怎么操作", "具体步骤", "操作步骤", "分步说明", "按步骤说",
             "一步一步说", "接下来怎么做", "下一步怎么做", "steps", "stepbystep", "nextstep", "whatnext", "다음단계");
     private static final Set<String> SUMMARIES = Set.of(
-            "简单点", "再简单点", "简短点", "说简单点", "简单说", "简要说明", "总结一下", "概括一下",
-            "换个说法", "summary", "summarize", "simpler", "keepitsimple", "간단히설명해주세요");
+            "简单点", "简单一点", "简洁点", "简洁一点", "再简单点", "简短点", "说简单点", "简单说", "简要说明", "总结一下", "概括一下",
+            "换个说法", "说重点", "直接说重点", "一句话", "summary", "summarize", "simpler", "keepitsimple", "간단히설명해주세요");
+    private static final Set<String> DETAILS = Set.of("展开", "展开看看", "详细", "详细点", "详细说说", "查看详情", "全部列出来", "更多", "details", "showdetails", "expand");
 
     private AiChatDialogueSupport() {}
 
@@ -35,18 +36,19 @@ final class AiChatDialogueSupport {
     static Optional<String> socialReply(String message, Set<String> domains, Set<String> toolNames) {
         String question = normalized(message);
         if (THANKS.contains(question)) {
-            return Optional.of("不客气。哪一点还不清楚，可以继续问，也可以让我按步骤说明或举例。");
+            return Optional.of("不客气，有问题再问我。");
         }
         boolean greeting = GREETINGS.contains(question);
         if (!greeting && !CAPABILITIES.contains(question)) return Optional.empty();
+        if (greeting) return Optional.of("你好，需要我帮你做什么？");
         Set<String> scope = domains == null ? Set.of() : domains;
         Set<String> tools = toolNames == null ? Set.of() : toolNames;
         List<String> examples = new ArrayList<>();
         if (scope.contains("SELF") && tools.contains("my_workbench")) examples.add("我的工作台有哪些待办？");
-        if (scope.contains("SELF") && tools.contains("workbench_tasks")) examples.add("分别列出我各项业务的待办和进行中任务。");
+        if (scope.contains("SELF") && tools.contains("workbench_tasks") && !tools.contains("my_workbench")) examples.add("我有哪些待办？");
         if (scope.contains("PRODUCTION") && tools.contains("production_in_progress")) examples.add("有什么正在生产的产品？");
-        if (scope.contains("WAREHOUSE") && tools.contains("inventory_lookup")) examples.add("帮我查物料编码 A001 的现存、预留和可用数量。");
-        if (scope.contains("SALES") && tools.contains("query_client_credit")) examples.add("客户的应收和逾期情况如何？请说明有哪些数据依据。");
+        if (scope.contains("WAREHOUSE") && tools.contains("inventory_lookup")) examples.add("A001 还有多少库存？");
+        if (scope.contains("SALES") && tools.contains("query_client_credit")) examples.add("客户有没有逾期欠款？");
         if (scope.contains("HR") && tools.contains("hr_tasks")) examples.add("有哪些待转正和近期入职的人事任务？");
         if (scope.contains("PRODUCTION")) examples.add("生产日报的本次数量怎么填写？请举例。");
         if (scope.contains("SALES")) examples.add("报价核价、客户同意和订货之间是什么顺序？");
@@ -59,17 +61,24 @@ final class AiChatDialogueSupport {
         }
         if (scope.contains("QUALITY")) examples.add("有部分数量待复检时，该怎么理解检验结果？");
         if (scope.contains("SUBCONTRACT")) examples.add("委外分批回厂时，怎么保留订单和数量来源？");
-        if (scope.contains("HR")) examples.add("处理员工资料时，需要注意哪些权限边界？");
+        if (scope.contains("HR")) examples.add("员工资料怎么填写？");
         if (scope.contains("ADMIN") && tools.contains("prepare_permission_grant")) {
-            examples.add("给某位员工增加一项具体查看权限，先给我授权确认预览。");
+            examples.add("给员工开通一项查看权限。");
         }
-        String opening = greeting ? "你好，我在。你可以直接说遇到的问题，也可以让我按步骤说明或举例。"
-                : "你可以让我解释当前可用范围内的业务流程，也可以继续追问例子、步骤或简要说明。";
         if (examples.isEmpty()) {
-            return Optional.of(opening + "\n\n可以先打开需要帮助的业务页面，再告诉我具体页面或字段。实际可用内容以当前账号范围为准。");
+            return Optional.of("告诉我遇到的问题，或打开页面问我怎么填。");
         }
-        return Optional.of(opening + "\n\n按你当前可用的范围，可以这样问：\n"
-                + String.join("\n", examples.stream().map(value -> "- " + value).toList()));
+        return Optional.of("可以这样问我：\n" + String.join("\n", examples.stream().limit(3).map(value -> "• " + value).toList()));
+    }
+
+    static boolean wantsDetails(String message) {
+        String value = normalized(message);
+        if (SUMMARIES.contains(value) || value.matches(".*(?:简短|简洁|简单(?:说|点|一点|一些|些)|简要|精简|说重点|一句话|(?:不要|不用|不需要|无需|不必|别).{0,8}(?:展开|详细|明细)).*")) return false;
+        return DETAILS.contains(value) || value.matches(".*(?:详细|展开|全部|所有|明细|每一条|showall|details).*" );
+    }
+    static boolean isQueryPresentationFollowUp(String message) {
+        String value=normalized(message);
+        return DETAILS.contains(value) || SUMMARIES.contains(value);
     }
 
     /** Returns a presentation intent, never a new business topic, permission or action. */
@@ -77,6 +86,7 @@ final class AiChatDialogueSupport {
         String question = normalized(message);
         if (EXAMPLES.contains(question)) return "EXAMPLE";
         if (STEPS.contains(question)) return "STEPS";
+        if (DETAILS.contains(question)) return "STEPS";
         if (SUMMARIES.contains(question)) return "SUMMARY";
         return null;
     }
@@ -92,22 +102,22 @@ final class AiChatDialogueSupport {
         String body = switch (selected) {
             case "OVERVIEW" -> text;
             case "SUMMARY" -> explanation;
-            case "EXAMPLE" -> example.isEmpty() ? "这项说明暂未登记可验证的示例。"
-                    : EXAMPLE_MARKER + " " + example;
+            case "EXAMPLE" -> example.isEmpty() ? "暂时没有合适的例子。"
+                    : "举例（假设）：" + example;
             case "STEPS" -> steps(explanation, example);
             default -> throw new IllegalArgumentException("Unsupported dialogue presentation mode");
         };
-        return entry.title() + "\n\n" + body + "\n\n来源: 平台业务说明 / " + entry.title() + "。";
+        return body.replace(EXAMPLE_MARKER, "举例（假设）：");
     }
 
     private static String steps(String explanation, String example) {
         // Keep source wording and all guards. Numbered presentation does not invent new workflow steps.
         List<String> sentences = List.of(explanation.split("(?<=[。；！？])\\s*|\\R+"))
                 .stream().map(String::strip).filter(value -> !value.isEmpty()).toList();
-        StringBuilder result = new StringBuilder("可以按下面几点理解：");
+        StringBuilder result = new StringBuilder();
         for (int i = 0; i < sentences.size(); i++) result.append("\n").append(i + 1).append(". ").append(sentences.get(i));
         if (!example.isEmpty()) result.append("\n\n").append(EXAMPLE_MARKER).append(" ").append(example);
-        return result.toString();
+        return result.toString().strip();
     }
 
     private static String normalized(String value) {

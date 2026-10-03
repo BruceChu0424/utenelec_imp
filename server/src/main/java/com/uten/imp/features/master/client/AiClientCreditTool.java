@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,8 +35,9 @@ public class AiClientCreditTool implements AiChatToolPort {
 
     @Override public String name() { return "query_client_credit"; }
     @Override public String title() { return "查询客户信用依据"; }
-    @Override public String description() { return "按客户名称或编号查询当前客户范围内的信用依据。无信用汇总权限只说明可见基本条款和资料不足；有权限才读取正式应收、逾期与收款事实。客户重名需明确编号，不凭印象给好坏评级。"; }
+    @Override public String description() { return "按客户名称或编号查询当前客户范围内、截至今日的信用依据。无信用汇总权限只说明可见基本条款和资料不足；有权限才读取正式应收、逾期与收款汇总事实。客户重名需明确编号，不凭印象给好坏评级。没有历史日期参数，也不列逐笔发票或回款明细；不能用当前汇总代替某个过去日期的数据。"; }
     @Override public String domain() { return "SALES"; }
+    @Override public boolean rememberQueryArguments() { return true; }
     @Override public Map<String, Object> parameters() {
         return Map.of("type", "object", "additionalProperties", false,
                 "properties", Map.of("clientKeyword", Map.of("type", "string", "minLength", 1, "maxLength", 100)),
@@ -51,7 +51,7 @@ public class AiClientCreditTool implements AiChatToolPort {
     private void require() {
         access.requireDomain(domain());
         CurrentAuthorityGuard.requireAll("client:view");
-        if (!available()) throw new ApiException(ErrorCode.FORBIDDEN, "没有查询客户信用依据的权限");
+        if (!available()) throw new ApiException(ErrorCode.FORBIDDEN, "这项暂时不能查看");
     }
 
     @Override
@@ -69,27 +69,58 @@ public class AiClientCreditTool implements AiChatToolPort {
         List<ClientListItem> candidates = page.getItems();
         List<ClientListItem> exact = candidates.stream().filter(item -> keyword.equalsIgnoreCase(item.getCode())).toList();
         if (!exact.isEmpty()) candidates = exact;
-        if (candidates.isEmpty()) return response("在你当前可见客户中没有找到匹配记录，请核对客户编号。", List.of(), null);
+        if (candidates.isEmpty()) return response("没找到这位客户，请核对名称或编号。", List.of(), null);
         if (candidates.size() != 1 || (exact.isEmpty() && page.getTotal() > 1)) {
-            return response("找到多位客户，请明确客户编号后再查询：\n" + candidates.stream().limit(10)
-                    .map(item -> item.getCode() + " · " + item.getName()).collect(Collectors.joining("\n")),
-                    candidates.stream().limit(10).map(item -> proof(clients.detail(item.getId()))).toList(), null);
+            String brief = "找到多位客户，请明确客户编号：\n" + candidates.stream().limit(5)
+                    .map(item -> item.getCode() + " · " + item.getName()).collect(Collectors.joining("\n"));
+            String detail = "找到多位客户，请明确客户编号：\n" + candidates.stream().limit(10)
+                    .map(item -> item.getCode() + " · " + item.getName()).collect(Collectors.joining("\n"));
+            return withDetail(response(brief, candidates.stream().limit(10).map(item -> proof(clients.detail(item.getId()))).toList(), null), detail);
         }
         ClientDetail client = clients.detail(candidates.getFirst().getId());
-        StringBuilder reply = new StringBuilder(client.getCode()).append(" · ").append(client.getName())
-                .append("\n查询时间: ").append(OffsetDateTime.now())
-                .append("\n客户主档状态: ").append(value(client.getStatus()))
-                .append("；结算天数: ").append(client.getTday() == null ? "未登记" : client.getTday() + " 天")
-                .append("；默认结账方式: ").append(value(client.getDefaultSettlementMethodName()));
-        if (client.getLegacyId() != null) reply.append("\n旧信用字段只是历史参考，不能当作当前已核准信用额度。");
         if (!current.get().filter(ClientCreditReadAccess::canRead).isPresent()) {
-            reply.append("\n当前账号没有读取客户信用汇总的权限，未查询应收、逾期和收款金额。这些基本条款不足以判断客户信用好坏。")
-                    .append("\n来源: 当前可见客户主档；未给出信用评级。");
-            return response(reply.toString(), List.of(proof(client)), null);
+            return response(client.getName() + " (" + client.getCode() + ")\n这项暂时不能查看。", List.of(proof(client)), null);
         }
-        String financial = financialText(client, facts.read(client.getId()));
-        reply.append("\n").append(financial).append("\n来源: 当前可见客户主档、正式应收台账与往来余额；金额不发送给对话模型。");
-        return response(reply.toString(), List.of(proof(client)), HashUtil.sha256(financial));
+        var snapshot = facts.read(client.getId());
+        String financial = financialText(client, snapshot);
+        var text = display(client, snapshot);
+        return withDetail(response(text.brief(), List.of(proof(client)), HashUtil.sha256(financial)), text.detail());
+    }
+
+    /** Display wording is independent from the evidence digest below. */
+    private record Display(String brief, String detail) {}
+    private static Display display(ClientDetail client, ClientCreditFactsPort.Snapshot snapshot) {
+        BigDecimal limit = client.getLegacyId() == null && client.getCredit() != null && client.getCredit().signum() > 0 ? client.getCredit() : null;
+        var balance = snapshot.balances().forDocument(client.getId(), client.getDefaultCurrencyId(), limit);
+        String currency = value(balance.baseCurrencyName());
+        StringBuilder brief = new StringBuilder(client.getName()).append(" (").append(client.getCode()).append(")，截至 ").append(snapshot.asOf())
+                .append("\n欠款 ").append(amount(balance.openBookLocal())).append(" ").append(currency)
+                .append("；逾期 ").append(amount(snapshot.overdueLocal())).append(" ").append(currency)
+                .append(" (").append(snapshot.overdueRows()).append(" 笔)。")
+                .append("\n信用额度：").append(limit == null ? "尚未核实。" : amount(limit) + " " + currency + (balance.overCredit() ? "，已超额。" : "。"));
+        if (balance.currencyId() != null) brief.append("\n预收 ").append(amount(balance.creditOriginal())).append(" ")
+                .append(value(balance.currencyName())).append("，未扣入欠款。")
+                .append(balance.otherCurrencies().isEmpty() ? "" : " 另有其他币种。");
+        else brief.append("\n欠款未扣预收。");
+        boolean incomplete = limit == null || snapshot.formalRows() == 0 || snapshot.missingDueDateRows() > 0 || balance.unverifiedCount() > 0;
+        brief.append("\n").append(incomplete ? "资料不全，暂时不能判断。"
+                : snapshot.overdueRows() > 0 || balance.overCredit() ? "有逾期或超额，请先核对回款安排。"
+                : "目前未见逾期或超额，还不能据此判断信用好坏。");
+        StringBuilder detail = new StringBuilder(brief)
+                .append("\n结算天数：").append(client.getTday() == null ? "未登记" : client.getTday() + " 天")
+                .append("；结账方式：").append(value(client.getDefaultSettlementMethodName())).append("。")
+                .append("\n累计收款：").append(amount(snapshot.receivedLocal())).append(" ").append(currency)
+                .append("；最近结清：").append(snapshot.latestSettledDate() == null ? "未登记" : snapshot.latestSettledDate()).append("。")
+                .append("\n未登记到期日：").append(snapshot.missingDueDateRows()).append(" 笔。")
+                .append("\n待核历史余额：").append(amount(balance.unverifiedLocal())).append(" ").append(currency)
+                .append(" (").append(balance.unverifiedCount()).append(" 笔)。")
+                .append("\n铺底额：").append(amount(client.getCreditFloor())).append(" ").append(currency).append("。");
+        if (client.getLegacyId() != null) detail.append("\n旧信用数字仅供参考，额度尚未核实。");
+        if (balance.currencyId() != null) detail.append("\n").append(value(balance.currencyName())).append("欠款：").append(amount(balance.openOriginal())).append("。");
+        for (var other : balance.otherCurrencies().stream().limit(10).toList()) detail.append("\n").append(value(other.currencyName()))
+                .append("欠款：").append(amount(other.openOriginal())).append("；预收：").append(amount(other.creditOriginal())).append("。");
+        detail.append("\n累计收款和结清日期不能说明每次都按时付款。");
+        return new Display(brief.toString(), detail.toString());
     }
 
     private static String financialText(ClientDetail client, ClientCreditFactsPort.Snapshot snapshot) {
@@ -151,7 +182,10 @@ public class AiClientCreditTool implements AiChatToolPort {
         if (financialDigest != null) evidence.put("financialDigest", financialDigest);
         return Map.of("reply", text, "_toolEvidence", evidence);
     }
+    private static Map<String, Object> withDetail(Map<String, Object> response, String detail) {
+        var result = new java.util.LinkedHashMap<>(response); result.put("detailReply", detail); return Map.copyOf(result);
+    }
     private static String value(String value) { return value == null || value.isBlank() ? "未登记" : value; }
     private static String amount(BigDecimal value) { return value == null ? "未登记" : value.stripTrailingZeros().toPlainString(); }
-    private static ApiException changed() { return new ApiException(ErrorCode.FORBIDDEN, "客户资料、信用依据或可见范围已变化，请重新查询"); }
+    private static ApiException changed() { return new ApiException(ErrorCode.FORBIDDEN, "客户资料有变化，请重新查询"); }
 }

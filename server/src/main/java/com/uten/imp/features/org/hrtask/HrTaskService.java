@@ -58,7 +58,7 @@ public class HrTaskService {
      * 本年已发布庆典祝福的生日/周年仍保留在列表（标记 blessed）但不计徽标。
      */
     public HrTaskSummary summary() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = com.uten.imp.common.time.BusinessTime.today();
         List<Row> rows = jdbc.query(SELECT, (rs, i) -> new Row(
                 rs.getObject("id", UUID.class),
                 rs.getString("code"),

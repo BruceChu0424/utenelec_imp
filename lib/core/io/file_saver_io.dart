@@ -4,7 +4,16 @@ import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 
-Future<String> saveBytes(Uint8List bytes, String filename) async {
+Future<String> saveBytes(
+  Uint8List bytes,
+  String filename, {
+  bool Function()? stillCurrent,
+}) async {
+  void check() {
+    if (!(stillCurrent?.call() ?? true)) throw StateError('导出身份或服务器已变化，已取消保存');
+  }
+
+  check();
   final Directory dir;
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     // 桌面优先下载目录（用户最易找）；取不到回落文档目录。
@@ -14,7 +23,9 @@ Future<String> saveBytes(Uint8List bytes, String filename) async {
   } else {
     dir = await getApplicationDocumentsDirectory();
   }
+  check();
   final file = await _availableFile(dir, filename);
+  check();
   await file.writeAsBytes(bytes);
   return file.path;
 }

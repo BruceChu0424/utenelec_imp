@@ -6,6 +6,9 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 
 /** Small fail-closed validator for the bounded JSON-Schema subset supported by chat tools. */
 final class AiChatArguments {
@@ -13,6 +16,24 @@ final class AiChatArguments {
     static void validate(JsonNode value, Map<String, Object> schema, ObjectMapper json) {
         if (schema == null || value == null) throw invalid();
         validate(value, json.valueToTree(schema), 0);
+    }
+    /** Ask for missing required values, while still rejecting forged keys or malformed supplied values. */
+    static List<String> missingRequired(JsonNode value, Map<String, Object> schema, ObjectMapper json) {
+        if (value == null || !value.isObject() || schema == null || !(schema.get("required") instanceof List<?> required)) throw invalid();
+        var missing = new ArrayList<String>();
+        var supplied = value.deepCopy();
+        for (Object raw : required) {
+            if (!(raw instanceof String name)) throw invalid();
+            JsonNode field = value.get(name);
+            if (field == null || (field.isTextual() && field.asText().isBlank())) {
+                missing.add(name);
+                ((com.fasterxml.jackson.databind.node.ObjectNode) supplied).remove(name);
+            }
+        }
+        var partial = new LinkedHashMap<>(schema);
+        partial.put("required", required.stream().filter(name -> !missing.contains(name)).toList());
+        validate(supplied, partial, json);
+        return List.copyOf(missing);
     }
     private static void validate(JsonNode value, JsonNode schema, int depth) {
         if (depth > 4 || !schema.isObject() || !schema.path("type").isTextual()) throw invalid();
@@ -56,6 +77,6 @@ final class AiChatArguments {
         }
     }
     private static ApiException invalid() {
-        return new ApiException(ErrorCode.VALIDATION_FAILED, "这次对话的操作参数不完整或不符合允许的格式，请重新说明");
+        return new ApiException(ErrorCode.VALIDATION_FAILED, "请补充要查询的内容，或换个说法再试。");
     }
 }

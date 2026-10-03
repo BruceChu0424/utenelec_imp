@@ -12,6 +12,7 @@ import java.util.UUID;
  * 实现是 {@link SalesIntakeStore}(每个方法一个短事务); 单元测试用内存假实现。
  */
 interface IntakeReferenceData {
+    default Map<String,String> templateColumnRoles(UUID clientId,String fingerprint) { return Map.of(); }
 
     /** Optional reusable workbook staging. Test/in-memory stores need not persist files. */
     default void stageTemplate(UUID jobId, UUID actor, String name,

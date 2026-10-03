@@ -10,6 +10,8 @@ class _Api extends ApiClient {
   _Api() : super(Dio());
   int revision = 4;
   bool canDelete = true;
+  Map<String, dynamic> extra = {};
+  int deletes = 0;
   Map<String, dynamic>? deletedQuery;
   @override
   Future<Map<String, dynamic>> get(
@@ -22,14 +24,38 @@ class _Api extends ApiClient {
     'reviewRevision': revision,
     'allowedActions': [if (canDelete) 'delete'],
     'items': <Object>[],
+    ...extra,
   };
   @override
   Future<void> delete(String path, {Map<String, dynamic>? query}) async {
+    deletes++;
     deletedQuery = query;
   }
 }
 
 void main() {
+  test(
+    'sealed or historical orders never enter draft deletion even with stale writable=true',
+    () async {
+      for (final fields in [
+        <String, dynamic>{'historyReadOnly': true},
+        <String, dynamic>{'requotedToId': 'new-quote'},
+      ]) {
+        final api = _Api()..extra = fields;
+        final row = SalesDocListItem.fromJson(await api.get('/sales/orders/q'));
+        expect(isDeletableSalesDraftRow(row, SalesDocType.order), isFalse);
+        await expectLater(
+          deleteSalesDraft(
+            SalesRepository(api, SalesDocType.order),
+            SalesDocType.order,
+            'q',
+          ),
+          throwsA(isA<ApiException>()),
+        );
+        expect(api.deletes, 0);
+      }
+    },
+  );
   test('delete retains the version selected by the user', () async {
     final api = _Api();
     await deleteSalesDraft(

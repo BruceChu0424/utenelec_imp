@@ -29,6 +29,7 @@ import com.uten.imp.features.sales.order.dto.OrderListItem;
 import com.uten.imp.features.sales.order.dto.OrderQueryFilter;
 import com.uten.imp.features.sales.order.dto.OrderSaveRequest;
 import com.uten.imp.features.sales.quote.SalesQuoteItem;
+import com.uten.imp.features.sales.quote.SalesQuote;
 import com.uten.imp.features.production.plan.PlanOrderItemLink;
 import com.uten.imp.features.production.plan.PlanOrderItemLinkRepository;
 import com.uten.imp.features.stock.InventoryKey;
@@ -83,6 +84,7 @@ public class SalesOrderService {
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
+    public static final String REQUOTED_READ_ONLY_REASON = "原订单已转入重新报价，永久保留为只读历史，不能恢复或再次办理";
     /** 并发认领目标类型（与 TaskClaimPolicy 登记的 SALES_ORDER_APPROVE 对齐）。 */
     private static final String TASK_TYPE_APPROVE = "SALES_ORDER_APPROVE";
 
@@ -1065,8 +1067,11 @@ public class SalesOrderService {
             req.setCurrencyId(resolveQuoteConversionCurrencyId());
         }
         var sourceQuote = resolveSourceQuote(sourceQuoteId, expectedQuoteOwner);
-        if (sourceQuote != null && !java.util.Objects.equals(sourceQuote.getClientId(), req.getClientId())) {
-            throw new ApiException(ErrorCode.CONFLICT, "订货客户必须与客户已确认的报价一致");
+        if (sourceQuote != null) {
+            requireQuotedHeaderIdentity(sourceQuote, req, null);
+            if (!req.getCurrencyId().equals(resolveQuoteConversionCurrencyId())) {
+                throw new ApiException(ErrorCode.CONFLICT, "来源报价须按本位币计价，请重新报价");
+            }
         }
         SalesOrder o = new SalesOrder();
         applyHeader(req, o);
@@ -1208,6 +1213,11 @@ public class SalesOrderService {
         boolean approvedRevision = o.getStatus() == STATUS_APPROVED;
         if (o.getStatus() != STATUS_DRAFT && !approvedRevision) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿或有效已审核订单可编辑");
+        }
+        if (o.getSourceQuoteId() != null) {
+            SalesQuote source = quoteRepo.findById(o.getSourceQuoteId())
+                    .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "来源报价不存在，不能沿用报价价款"));
+            requireQuotedHeaderIdentity(source, req, o);
         }
         // 历史单只读保留 CUSTOMER_CONFIRM：不允许把其它策略的订单改回该历史值。
         if (req.getShipmentPolicy() != null
@@ -3018,11 +3028,14 @@ public class SalesOrderService {
                 && !o.isClosed() && !o.isStopped()
                 && !o.getDeliverDate().isAfter(BusinessTime.today().plusDays(3));
         boolean mask = !priceMasker.canView(); // 价格脱敏（SOP §三8）：无权限置 null + priceMasked 标记
-        return new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getClientId(),
+        OrderListItem result = new OrderListItem(o.getId(), o.getBillNo(), o.getBillDate(), o.getClientId(),
                 o.getCurrencyId(), mask ? null : o.getTotalOriginal(),
                 null, o.getStatus(), o.isClosed(), o.isStopped(),
                 o.getLegacyId(), o.getDeliverDate(), delayWarning, mask, writable, sellerName, o.getSellerId(),
-                o.isFinanceConfirmed(), o.isFinanceRejected());
+                o.isFinanceConfirmed(), o.isFinanceRejected(), o.getRequotedToId(), o.getRequotedAt(),
+                o.getRequotedToId() == null ? null : REQUOTED_READ_ONLY_REASON);
+        if (o.getRequotedToId() != null) result.setHistoryReadOnly(true);
+        return result;
     }
 
     private OrderItemDto toItemDto(SalesOrderItem it) {
@@ -3055,7 +3068,7 @@ public class SalesOrderService {
         if (mask) {
             items.forEach(this::maskItemPrices);
         }
-        return new OrderDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
+        OrderDetail result = new OrderDetail(o.getId(), o.getLegacyId(), o.getBillNo(), o.getBillDate(),
                 o.getClientId(), o.getCurrencyId(), null, o.getTaxRate(), o.getPaymentStyleId(),
                 o.getSettlementMethodId(),
                 o.getSellerId(), o.getMakerId(), o.getApproverId(), o.getDeliverDate(), o.getContractNo(),
@@ -3074,7 +3087,10 @@ public class SalesOrderService {
                 o.getFinanceConfirmRemark(),
                 o.isFinanceRejected(), o.getFinanceRejectedReason(), o.getFinanceRejectedAt(),
                 o.getFinanceRejectedBy() == null ? null : nameResolver.nameOf(o.getFinanceRejectedBy()),
-                o.getClientFileCurrency(), null);
+                o.getClientFileCurrency(), null, o.getRequotedToId(), o.getRequotedAt(),
+                o.getRequotedToId() == null ? null : REQUOTED_READ_ONLY_REASON);
+        if (o.getRequotedToId() != null) result.setHistoryReadOnly(true);
+        return result;
     }
 
     /** 该订单全部出货单聚合（含物流单号与仓库作业状态；SOP §三.7 多单全展示）。 */
@@ -3215,8 +3231,91 @@ public class SalesOrderService {
                 locked.getOwnerEmployeeId(),
                 "只能操作本人负责的销售订货单",
                 operationAuthorities);
+        requireNotRequoted(locked);
         taskClaim.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM", id.toString());
         return locked;
+    }
+
+    /** Quote prices have both a customer and a currency identity, not just a goods identity. */
+    private void requireQuotedHeaderIdentity(SalesQuote source, OrderSaveRequest req, SalesOrder stored) {
+        UUID quotedCurrency = source.getCurrencyId() == null ? resolveQuoteConversionCurrencyId() : source.getCurrencyId();
+        if (!java.util.Objects.equals(source.getClientId(), req.getClientId())
+                || stored != null && !java.util.Objects.equals(source.getClientId(), stored.getClientId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "报价转入订单不能更换客户，请终止原订单后重新报价");
+        }
+        if (req.getCurrencyId() == null) req.setCurrencyId(quotedCurrency);
+        if (!quotedCurrency.equals(req.getCurrencyId())
+                || stored != null && !quotedCurrency.equals(stored.getCurrencyId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "报价转入订单不能更换报价币种，请终止原订单后重新报价");
+        }
+    }
+
+    static void requireNotRequoted(SalesOrder order) {
+        if (order.getRequotedToId() != null) throw new ApiException(ErrorCode.CONFLICT, REQUOTED_READ_ONLY_REASON);
+    }
+
+    /** Acquire the existing commercial-source/inventory lock order before copying any quote goods. */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:create') and hasAuthority('sales_quote:edit')")
+    public List<SalesOrder> lockRequotableOrders(UUID quoteId) {
+        @SuppressWarnings("unchecked")
+        List<UUID> ids = em.createNativeQuery("SELECT id FROM sales_orders WHERE source_quote_id=:id ORDER BY id")
+                .setParameter("id", quoteId).getResultList();
+        if (ids.isEmpty()) throw new ApiException(ErrorCode.CONFLICT, "报价尚未生成订货单，请使用重新修改");
+        mutationFootprint.lockOrders(ids);
+        List<SalesOrder> locked = new ArrayList<>();
+        for (UUID id : ids) {
+            SalesOrder order = em.find(SalesOrder.class, id, LockModeType.PESSIMISTIC_WRITE);
+            em.refresh(order, LockModeType.PESSIMISTIC_WRITE);
+            accessPolicy.requireWritable(order.getOwnerEmployeeId(), "只能为本人负责的订货单重新报价");
+            if (!order.isDeleted() && (order.getStatus() == null || order.getStatus() != STATUS_REVERSED)
+                    && !(order.getStatus() != null && order.getStatus() == STATUS_APPROVED && order.isStopped())) {
+                throw new ApiException(ErrorCode.CONFLICT, "请先按原订单流程取消、红冲或删除订货单，再重新报价");
+            }
+            taskClaim.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM", id.toString());
+            List<SalesOrderItem> items = lockOrderItems(id);
+            Map<UUID, List<PlanOrderItemLink>> links = lockActivePlanLinks(items);
+            for (SalesOrderItem item : items) {
+                if (hasRejectedRevisionBlockingLineFacts(item) || nz(item.getReservedQty()).signum() != 0
+                        || !links.getOrDefault(item.getId(), List.of()).isEmpty()) {
+                    throw new ApiException(ErrorCode.CONFLICT, "原订单仍有履约或库存占用事实，请先完成受控终止");
+                }
+            }
+            assertNoActiveShipmentWork(items.stream().map(SalesOrderItem::getId).toList(), "重新报价");
+            Number activeReservations = (Number) em.createNativeQuery("""
+                    SELECT COUNT(*) FROM stock_reservations reservation
+                    JOIN sales_order_items item ON item.id=reservation.order_item_id
+                    WHERE item.order_id=:id AND NOT reservation.is_deleted AND reservation.status=0
+                      AND reservation.qty-reservation.consumed_qty-reservation.released_qty>0
+                    """).setParameter("id", id).getSingleResult();
+            if (activeReservations.longValue() > 0) {
+                throw new ApiException(ErrorCode.CONFLICT, "原订单仍占用库存，请先解除预留再重新报价");
+            }
+            assertNoApprovedCustomerPrepayment(id);
+            locked.add(order);
+        }
+        return locked;
+    }
+
+    /** Recheck scope and linkage even for internal callers; the first replacement fact is permanent. */
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote:create') and hasAuthority('sales_quote:edit')")
+    public void recordRequotation(UUID sourceQuoteId, UUID replacementQuoteId) {
+        SalesQuote replacement = quoteRepo.findById(replacementQuoteId)
+                .filter(quote -> !quote.isDeleted() && quote.getStatus() != null && quote.getStatus() != -1
+                        && java.util.Objects.equals(quote.getOriginQuoteId(), sourceQuoteId))
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "重新报价与原始报价不一致"));
+        accessPolicy.requireWritable(replacement.getMakerId(), "无权生成这次重新报价");
+        List<SalesOrder> orders = lockRequotableOrders(sourceQuoteId);
+        for (SalesOrder order : orders) {
+            chainNotice.resolveReviewNotices("SALES_ORDER", order.getId(), "REQUOTED");
+            if (order.getRequotedToId() != null) continue; // The first fact survives later cancelled negotiations.
+            order.setRequotedToId(replacementQuoteId);
+            order.setRequotedAt(OffsetDateTime.now());
+            order.setRequotedBy(currentUser.requireEmployeeId());
+            orderRepo.save(order);
+        }
+        orderRepo.flush();
     }
 
     /**

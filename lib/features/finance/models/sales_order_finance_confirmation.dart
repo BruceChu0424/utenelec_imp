@@ -229,6 +229,9 @@ class SalesOrderFinanceReview {
     this.commercialChanges = const [],
     this.revisionDiff,
     this.financeReviewRevision = 0,
+    this.requotedToId,
+    this.requotedAt,
+    this.readOnlyReason,
     this.sourceQuote,
     this.clientFileCurrency,
     this.matchesQuote,
@@ -291,6 +294,9 @@ class SalesOrderFinanceReview {
   final List<SalesOrderCommercialChange> commercialChanges;
   final SalesOrderRevisionDiff? revisionDiff;
   final int financeReviewRevision;
+  final String? requotedToId;
+  final String? requotedAt;
+  final String? readOnlyReason;
 
   /// 来源报价(ADR-134，含「全部行与报价一致」标记)；客户文件币种(文件单价列标题用)。
   final SalesOrderSourceQuote? sourceQuote;
@@ -303,6 +309,9 @@ class SalesOrderFinanceReview {
     final rawItems = json['items'];
     final rawChanges = json['qtyChanges'];
     return SalesOrderFinanceReview(
+      requotedToId: _string(json['requotedToId']),
+      requotedAt: _string(json['requotedAt']),
+      readOnlyReason: _string(json['readOnlyReason']),
       orderId: _string(json['orderId']) ?? '',
       billNo: _string(json['billNo']) ?? '未生成单号',
       billDate: _string(json['billDate']),

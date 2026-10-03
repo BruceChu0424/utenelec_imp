@@ -138,6 +138,92 @@ class SalesQuoteTemplateStorePostgresTest {
         assertThat(store.list(client)).hasSize(1);
         assertThat(store.list(client).getFirst().useCount()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_evidence WHERE job_id=?", Integer.class, job)).isEqualTo(1);
+        assertThat(store.adoptedView(quote,client,job).version()).isEqualTo(1);
+    }
+
+    @Test void retryAndDownloadRemainBoundToOriginallyAdoptedVersionAfterAnotherUpload() throws Exception {
+        UUID quote=UUID.randomUUID(), firstJob=job();
+        var first=QuoteTemplateWorkbook.defaultTemplate(); stage(firstJob,first); succeed(firstJob);
+        String params=new ObjectMapper().writeValueAsString(Map.of("docType","quote","templateOnly","true","docId",quote.toString(),"clientId",client.toString()));
+        jdbc.update("UPDATE ai_jobs SET params=CAST(? AS jsonb) WHERE id=?",params,firstJob);
+        UUID id=tx.execute(s -> store.adoptUploaded(quote,client,firstJob));
+        UUID secondJob=job();
+        var second=new QuoteTemplateWorkbook.Candidate(QuoteTemplateWorkbook.defaultTemplate().xlsx(),"b".repeat(64),first.mapping(),first.features());
+        stage(secondJob,second); succeed(secondJob);
+        tx.executeWithoutResult(s -> store.adopt(event(secondJob,client)));
+        assertThat(store.list(client).getFirst().version()).isEqualTo(2);
+        UUID repeated=tx.execute(s -> store.adoptUploaded(quote,client,firstJob));
+        assertThat(repeated).isEqualTo(id);
+        assertThat(store.adoptedView(quote,client,firstJob).version()).isEqualTo(1);
+        assertThat(store.load(client,id,1).bytes()).isEqualTo(first.xlsx());
+        assertThatThrownBy(() -> store.load(otherClient,id,1)).hasMessageContaining("不属于此客户");
+        assertThatThrownBy(() -> store.load(client,id,999)).hasMessageContaining("不存在");
+        assertThatThrownBy(() -> jdbc.update("UPDATE sales_quote_template_evidence SET template_version=2 WHERE job_id=?",firstJob))
+                .hasMessageContaining("不可改写");
+        UUID legacyJob=UUID.randomUUID();
+        jdbc.update("INSERT INTO sales_quote_template_evidence(job_id,template_id,client_id,doc_type,doc_id) VALUES(?,?,?,'quote',?)",legacyJob,id,client,quote);
+        assertThatThrownBy(() -> store.adoptedView(quote,client,legacyJob)).hasMessageContaining("无法确认原版本");
+    }
+
+    @Test void expiredUnadoptedJobCannotBeRevivedThroughTheExplicitAdoptionEndpoint() throws Exception {
+        UUID quote=UUID.randomUUID(), job=job(); stage(job,QuoteTemplateWorkbook.defaultTemplate()); succeed(job);
+        String params=new ObjectMapper().writeValueAsString(Map.of("docType","quote","templateOnly","true","docId",quote.toString(),"clientId",client.toString()));
+        jdbc.update("UPDATE ai_jobs SET params=CAST(? AS jsonb) WHERE id=?",params,job);
+        jdbc.update("UPDATE sales_quote_template_candidates SET expires_at=now()-interval '1 second' WHERE job_id=?",job);
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote,client,job))).hasMessageContaining("已失效");
+        assertThat(store.list(client)).isEmpty();
+    }
+
+    @Test void versionMigrationBackfillsOnlyUniquelyAttributableSourceJobs() throws Exception {
+        String schema="template_version_"+UUID.randomUUID().toString().replace("-","");
+        try (var connection=java.sql.DriverManager.getConnection(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword());
+             var statement=connection.createStatement()) {
+            statement.execute("CREATE SCHEMA "+schema); connection.setSchema(schema);
+            statement.execute("CREATE TABLE sales_quote_template_versions(template_id uuid, version int, source_job_id uuid, PRIMARY KEY(template_id,version))");
+            statement.execute("CREATE TABLE sales_quote_template_evidence(job_id uuid PRIMARY KEY, template_id uuid)");
+            UUID template=UUID.randomUUID(), first=UUID.randomUUID(), reused=UUID.randomUUID(), ambiguous=UUID.randomUUID();
+            try (var insert=connection.prepareStatement("INSERT INTO sales_quote_template_versions VALUES(?,?,?)")) {
+                for (int version=1;version<=3;version++) {
+                    insert.setObject(1,template); insert.setInt(2,version); insert.setObject(3,version==1?first:ambiguous); insert.executeUpdate();
+                }
+            }
+            try (var insert=connection.prepareStatement("INSERT INTO sales_quote_template_evidence VALUES(?,?)")) {
+                for (UUID job:List.of(first,reused,ambiguous)) { insert.setObject(1,job); insert.setObject(2,template); insert.executeUpdate(); }
+            }
+            try (var resource=getClass().getResourceAsStream("/db/migration/V791__sales_quote_template_evidence_version.sql")) {
+                statement.execute(new String(Objects.requireNonNull(resource).readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
+            }
+            try (var rows=statement.executeQuery("SELECT job_id,template_version FROM sales_quote_template_evidence")) {
+                while(rows.next()) assertThat(rows.getObject(2,Integer.class)).isEqualTo(first.equals(rows.getObject(1,UUID.class))?1:null);
+            }
+            connection.setSchema("public"); statement.execute("DROP SCHEMA "+schema+" CASCADE");
+        }
+    }
+
+    @Test void confirmedMappingsAreCustomerScopedReusableAndCannotBeChangedByRetry() throws Exception {
+        UUID quote=UUID.randomUUID(), job=job();var base=QuoteTemplateWorkbook.defaultTemplate();
+        Map<String,Object> mapping=new LinkedHashMap<>(base.mapping());mapping.put("intakeFingerprint","a".repeat(64));
+        var candidate=new QuoteTemplateWorkbook.Candidate(base.xlsx(),base.fingerprint(),mapping,base.features());
+        stage(job,candidate);succeed(job);
+        jdbc.update("UPDATE ai_jobs SET params=CAST(? AS jsonb),result='{\"originalEvidence\":true}'::jsonb WHERE id=?",
+                new ObjectMapper().writeValueAsString(Map.of("docType","quote","templateOnly","true","docId",quote.toString(),"clientId",client.toString())),job);
+        Map<String,String> choices=new LinkedHashMap<>(QuoteTemplateWorkbook.columnChoices(mapping));
+        choices.put("G","AMOUNT");choices.put("I","UNIT_PRICE");
+        UUID id=tx.execute(s -> store.adoptUploaded(quote,client,job,choices));
+        assertThat(store.load(client,id,1).mapping().get("roles")).isInstanceOf(Map.class);
+        assertThat(((Map<?,?>)store.load(client,id,1).mapping().get("roles")).get("G")).isEqualTo("AMOUNT");
+        assertThat(store.latestConfirmedRoles(client,"a".repeat(64))).isEqualTo(choices);
+        assertThat(store.latestConfirmedRoles(otherClient,"a".repeat(64))).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT result->>'originalEvidence' FROM ai_jobs WHERE id=?",String.class,job)).isEqualTo("true");
+        assertThat(jdbc.queryForObject("SELECT mapping->'roles'->>'G' FROM sales_quote_template_candidates WHERE job_id=?",String.class,job)).isEqualTo("UNIT_PRICE");
+        tx.executeWithoutResult(s -> store.adoptUploaded(quote,client,job,choices));
+        Map<String,String> different=new LinkedHashMap<>(choices);different.put("J","IGNORED");
+        assertThatThrownBy(() -> tx.execute(s -> store.adoptUploaded(quote,client,job,different))).hasMessageContaining("不能覆盖首次采用");
+        assertThat(store.list(client).getFirst().useCount()).isEqualTo(1);
+        UUID automatic=job();stage(automatic,candidate);succeed(automatic);
+        tx.executeWithoutResult(s -> store.adopt(event(automatic,client)));
+        assertThat(jdbc.queryForObject("SELECT confirmed_column_roles IS NULL FROM sales_quote_template_evidence WHERE job_id=?",Boolean.class,automatic)).isTrue();
+        assertThat(store.latestConfirmedRoles(client,"a".repeat(64))).isEqualTo(choices);
     }
 
     @Test void expiryQueuesExactObjectButAdoptionKeepsReferencedObjectAndDoesNotCapTwentyTemplates() {

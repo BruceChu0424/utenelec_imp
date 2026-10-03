@@ -599,14 +599,15 @@ public class SalesQuoteService {
         em.refresh(original, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireNotDeleted(original);
         requireRevision(original, req == null ? null : req.expectedRevision());
-        if (!canRequote(id)) {
-            throw new ApiException(ErrorCode.CONFLICT, "请先按订货流程红冲原订货单；原订单和报价将完整保留");
-        }
+        salesOrderService.lockRequotableOrders(id);
         @SuppressWarnings("unchecked")
         List<UUID> previous = em.createNativeQuery("""
                 SELECT id FROM sales_quotes WHERE origin_quote_id = :id AND NOT is_deleted AND status <> -1
                 """).setParameter("id", id).getResultList();
-        if (!previous.isEmpty()) return readDetail(previous.getFirst(), false);
+        if (!previous.isEmpty()) {
+            salesOrderService.recordRequotation(id, previous.getFirst());
+            return readDetail(previous.getFirst(), false);
+        }
         SalesQuote q = new SalesQuote();
         q.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SALES_QUOTE));
         q.setBillDate(BusinessTime.today());
@@ -623,7 +624,6 @@ public class SalesQuoteService {
                 + (req.reason() == null || req.reason().isBlank() ? "" : "；" + req.reason().strip()));
         quoteRepo.saveAndFlush(q);
         List<SalesQuoteItem> originalItems = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
-        referenceValidator.validateStoredQuote(q.getClientId(), originalItems);
         List<SalesQuoteItem> items = new ArrayList<>();
         for (SalesQuoteItem source : originalItems) {
             SalesQuoteItem item = new SalesQuoteItem();
@@ -650,16 +650,19 @@ public class SalesQuoteService {
             item.setAmountLocal(source.getAmountLocal());
             items.add(item);
         }
+        // Normalization belongs to the new negotiation; the old confirmed rows remain immutable.
+        referenceValidator.validateStoredQuote(q.getClientId(), items);
         captureGoodsSnapshots(items, SalesGoodsSnapshot.MASTER_AT_SAVE, null);
         itemRepo.saveAllAndFlush(items);
         applyTotals(q, items);
         revisionLog.append(q, items, SalesQuoteRevisionLog.SALES_EDIT, currentUser.requireEmployeeId(), "从 " + original.getBillNo() + " 重新议价");
+        salesOrderService.recordRequotation(id, q.getId());
         return toDetail(q, items, true);
     }
 
     private boolean canRequote(UUID quoteId) {
         Object[] counts = (Object[]) em.createNativeQuery("""
-                SELECT COUNT(*), COUNT(*) FILTER (WHERE NOT is_deleted AND status <> -1)
+                SELECT COUNT(*), COUNT(*) FILTER (WHERE NOT is_deleted AND status <> -1 AND NOT (status = 1 AND is_stopped))
                 FROM sales_orders WHERE source_quote_id = :id
                 """).setParameter("id", quoteId).getSingleResult();
         return ((Number) counts[0]).longValue() > 0 && ((Number) counts[1]).longValue() == 0;

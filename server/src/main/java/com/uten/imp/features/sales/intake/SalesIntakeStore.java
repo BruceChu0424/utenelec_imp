@@ -52,6 +52,11 @@ class SalesIntakeStore implements IntakeReferenceData {
     }
 
     @Override
+    public Map<String,String> templateColumnRoles(UUID clientId,String fingerprint) {
+        return templateStore==null ? Map.of() : templateStore.latestConfirmedRoles(clientId,fingerprint);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<CurrencyRow> currencies() {
         return jdbc.query("""

@@ -18,7 +18,7 @@ class ExpenseGuidedInvoicePreview extends StatelessWidget {
         children: [
           Text(
             aiChatText(context, 'guidedInvoiceFields'),
-            style: Theme.of(context).textTheme.titleSmall,
+            style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(plan.file.name),
@@ -46,7 +46,7 @@ class ExpenseGuidedInvoicePreview extends StatelessWidget {
                           children: [
                             Text(
                               aiChatText(context, 'invoice_${entry.key}'),
-                              style: Theme.of(context).textTheme.labelSmall,
+                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
                             SelectableText(
                               entry.key == 'invoiceType'
@@ -66,7 +66,7 @@ class ExpenseGuidedInvoicePreview extends StatelessWidget {
           const SizedBox(height: UtenSpacing.s12),
           Text(
             aiChatText(context, 'guidedInvoiceReview'),
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
       ),

@@ -46,8 +46,9 @@ class AiChatPageGuideCatalogTest {
         var page = guides.resolve("/sales/orders/new", "quantity").orElseThrow();
         String answer = guides.answer(page, "quantity");
         assertTrue(answer.contains("120"));
-        assertTrue(answer.contains("假设数据"));
-        assertTrue(answer.contains("订货单公共表头规范"));
+        assertTrue(answer.contains("假设"));
+        assertFalse(answer.contains("订货单公共表头规范"));
+        assertTrue(page.source().contains("订货单公共表头规范"));
         assertFalse(answer.contains("价格和折扣"));
         assertThrows(ApiException.class, () -> guides.answer(page, "private_salary"));
     }
@@ -56,13 +57,13 @@ class AiChatPageGuideCatalogTest {
         var page = guides.resolve("/sales/quotes", "workflow").orElseThrow();
         String answer = guides.answer(page, "workflow");
         assertTrue(answer.contains("客户对当前版本的同意"));
-        assertTrue(answer.contains("旧客户确认失效"));
+        assertTrue(answer.contains("重新确认"));
     }
     @Test void costsRequireFinanceDepartmentAndFieldPermissionEvenWithGoodsView() {
         actor("goods:view", "goods:cost:view");
         assertThrows(ApiException.class, () -> guides.resolve("/basicinfo/goods", "cost"));
         when(access.hasDomain("FINANCE")).thenReturn(true);
         var page = guides.resolve("/basicinfo/goods", "cost").orElseThrow();
-        assertTrue(guides.answer(page, "cost").contains("不能按 0 元解释"));
+        assertTrue(guides.answer(page, "cost").contains("不能当成 0 元"));
     }
 }

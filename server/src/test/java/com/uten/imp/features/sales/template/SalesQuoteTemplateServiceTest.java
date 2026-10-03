@@ -59,7 +59,7 @@ class SalesQuoteTemplateServiceTest {
     }
 
     @Test void defaultExportUsesSavedNamesAmountsAndAdditionalFees() throws Exception {
-        var download = service.export(quoteId, null);
+        var download = export( null);
         assertThat(download.fileName()).isEqualTo("BJ_2026.xlsx");
         try (var wb = WorkbookFactory.create(new ByteArrayInputStream(download.bytes()))) {
             var sheet = wb.getSheetAt(0); var row = sheet.getRow(5);
@@ -80,7 +80,7 @@ class SalesQuoteTemplateServiceTest {
         var second = new ExtraColumnSnapshot(UUID.randomUUID(), "Insurance", "AMOUNT", "SUBTRACT", ".75");
         var nativeName = new ExtraColumnSnapshot(UUID.randomUUID(), "金额", "AMOUNT", "ADD", "3");
         quote.getItems().getFirst().setExtraColumns(List.of(first, second, nativeName));
-        var download = service.export(quoteId, null);
+        var download = export( null);
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(download.bytes()))) {
             var sheet = workbook.getSheetAt(0); var row = sheet.getRow(5);
             assertThat(sheet.getRow(4).getLastCellNum()).isEqualTo((short) 13);
@@ -99,7 +99,7 @@ class SalesQuoteTemplateServiceTest {
                 Map.of("key", "extra:" + second.columnId(), "label", "减免"),
                 Map.of("key", "amount", "label", "金额"),
                 Map.of("key", "extra:" + first.columnId(), "label", "附加"))));
-        var download = service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(), false, null, requested));
+        var download = export( new SalesQuoteTemplateService.ExportRequest(List.of(), false, null, requested));
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(download.bytes()))) {
             var row = workbook.getSheetAt(0).getRow(5);
             assertThat(row.getLastCellNum()).isEqualTo((short) 3);
@@ -112,9 +112,9 @@ class SalesQuoteTemplateServiceTest {
     @Test void allTemplatesProduceIndividuallyEncryptedFilesInsideZip() throws Exception {
         var candidate = QuoteTemplateWorkbook.defaultTemplate(); UUID first = UUID.randomUUID(), second = UUID.randomUUID();
         when(templates.list(clientId)).thenReturn(List.of(view(first), view(second)));
-        when(templates.load(eq(clientId), any())).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(), candidate.mapping(),
+        when(templates.load(eq(clientId), any(), anyInt())).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(), candidate.mapping(),
                 candidate.features(), candidate.fingerprint(), "source.xlsx"));
-        var download = service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(), true, "pass"));
+        var download = export( new SalesQuoteTemplateService.ExportRequest(List.of(), true, "pass"));
         assertThat(download.templateCount()).isEqualTo(2); assertThat(download.contentType()).isEqualTo("application/zip");
         int count = 0;
         try (var zip = new ZipInputStream(new ByteArrayInputStream(download.bytes()))) {
@@ -131,30 +131,30 @@ class SalesQuoteTemplateServiceTest {
 
     @Test void requiresBothExportAndPricePermissionAndCustomerScope() {
         allow(Set.of("sales_quote:view", "sales_quote:export"));
-        assertThatThrownBy(() -> service.export(quoteId, null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> export( null)).isInstanceOf(ApiException.class);
         verifyNoInteractions(quotes);
         allow(Set.of("sales_quote:view", "sales_quote:export", "sales_order:price:view"));
         when(master.clientProfile(clientId)).thenReturn(null);
-        assertThatThrownBy(() -> service.export(quoteId, null)).hasMessageContaining("客户不在");
+        assertThatThrownBy(() -> export( null)).hasMessageContaining("客户不在");
         verifyNoInteractions(templates);
     }
 
     @Test void anotherCustomerTemplateCannotBeSelectedById() {
         UUID stolen = UUID.randomUUID();
-        when(templates.load(clientId, stolen)).thenThrow(new ApiException(ErrorCode.NOT_FOUND, "报价模板不存在或不属于此客户"));
-        assertThatThrownBy(() -> service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(stolen), false, null)))
+        when(templates.load(clientId, stolen, 1)).thenThrow(new ApiException(ErrorCode.NOT_FOUND, "报价模板不存在或不属于此客户"));
+        assertThatThrownBy(() -> export( new SalesQuoteTemplateService.ExportRequest(List.of(stolen), false, null)))
                 .hasMessageContaining("不属于此客户");
-        verify(templates).load(clientId, stolen);
+        verify(templates).load(clientId, stolen, 1);
         verifyNoInteractions(audit);
     }
 
     @Test void customerTemplateRetainsItsColumnsEvenWhenTheCurrentScreenHasAProjection() throws Exception {
         var candidate = QuoteTemplateWorkbook.defaultTemplate(); UUID template = UUID.randomUUID();
         when(templates.list(clientId)).thenReturn(List.of(view(template)));
-        when(templates.load(clientId, template)).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(), candidate.mapping(),
+        when(templates.load(clientId, template, 1)).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(), candidate.mapping(),
                 candidate.features(), candidate.fingerprint(), "customer.xlsx"));
         var requested = projection(Map.of("scope", "sales_quote", "columns", List.of(Map.of("key", "qty", "label", "ONLY QTY"))));
-        var result = service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(template), false, null, requested));
+        var result = export( new SalesQuoteTemplateService.ExportRequest(List.of(template), false, null, requested));
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.bytes()))) {
             var row = workbook.getSheetAt(0).getRow(5);
             assertThat(row.getCell(0).getStringCellValue()).isEqualTo("历史货品");
@@ -162,6 +162,51 @@ class SalesQuoteTemplateServiceTest {
             assertThat(row.getCell(8).getNumericCellValue()).isEqualTo(19.25);
             assertThat(row.getLastCellNum()).isGreaterThan((short) 1);
         }
+    }
+
+    @Test void explicitTemplateVersionDoesNotSilentlyFollowALaterCustomerLayout() throws Exception {
+        UUID id=UUID.randomUUID(); var candidate=QuoteTemplateWorkbook.defaultTemplate();
+        when(templates.list(clientId)).thenReturn(List.of(new SalesQuoteTemplateStore.TemplateView(id,"Customer",2,"new.xlsx",OffsetDateTime.now(),2,"xlsx")));
+        when(templates.load(clientId,id,1)).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(),candidate.mapping(),candidate.features(),candidate.fingerprint(),"old.xlsx"));
+        export(new SalesQuoteTemplateService.ExportRequest(List.of(id),false,null,null,quote.getReviewRevision(),Map.of(id,1)));
+        verify(templates).load(clientId,id,1);
+        verify(templates,never()).load(clientId,id);
+    }
+
+    @Test void changedQuoteRevisionAndUnselectedVersionCannotProduceAnExport() {
+        quote.setReviewRevision(8);
+        assertThatThrownBy(() -> export(new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,null,7,Map.of())))
+                .hasMessageContaining("报价已被修改");
+        verifyNoInteractions(templates,audit);
+        assertThatThrownBy(() -> export(new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,null,8,Map.of(UUID.randomUUID(),1))))
+                .hasMessageContaining("版本选择无效");
+        verifyNoInteractions(audit);
+    }
+
+    @Test void omittedQuoteOrTemplateVersionCannotBypassTheSelectionFence() {
+        assertThatThrownBy(() -> service.export(quoteId,null)).hasMessageContaining("缺少报价版本");
+        assertThatThrownBy(() -> service.export(quoteId,new SalesQuoteTemplateService.ExportRequest(List.of(),false,null)))
+                .hasMessageContaining("缺少报价版本");
+        UUID id=UUID.randomUUID(); when(templates.list(clientId)).thenReturn(List.of(view(id)));
+        assertThatThrownBy(() -> service.export(quoteId,new SalesQuoteTemplateService.ExportRequest(List.of(id),false,null,null,0,null)))
+                .hasMessageContaining("版本选择无效");
+        verify(templates,never()).load(any(),any(),anyInt());
+        verifyNoInteractions(audit);
+    }
+
+    @Test void anUnsafeStoredTemplateReportsTheColumnAndHowToRepairItWithoutAnInternalStack() throws Exception {
+        UUID id=UUID.randomUUID();var candidate=QuoteTemplateWorkbook.defaultTemplate();byte[] bytes;
+        try(var workbook=WorkbookFactory.create(new ByteArrayInputStream(candidate.xlsx()));var out=new java.io.ByteArrayOutputStream()) {
+            workbook.getSheetAt(0).setColumnHidden(4,true);workbook.write(out);bytes=out.toByteArray();
+        }
+        when(templates.list(clientId)).thenReturn(List.of(view(id)));
+        when(templates.load(clientId,id,1)).thenReturn(new SalesQuoteTemplateStore.Stored(bytes,candidate.mapping(),candidate.features(),candidate.fingerprint(),"customer.xlsx"));
+        assertThatThrownBy(() -> export(new SalesQuoteTemplateService.ExportRequest(List.of(id),false,null)))
+                .isInstanceOfSatisfying(ApiException.class,failure -> {
+                    assertThat(failure.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+                    assertThat(failure.getMessage()).contains("映射列已隐藏：E","重新上传学习模板").doesNotContain("Exception","java.");
+                });
+        verifyNoInteractions(audit);
     }
 
     @Test void learningRequiresWriteScopeAndExportPermissionsBeforeAccessingCandidate() {
@@ -181,9 +226,9 @@ class SalesQuoteTemplateServiceTest {
         List<SalesQuoteTemplateStore.TemplateView> all = new ArrayList<>();
         for (int i = 0; i < 21; i++) all.add(view(UUID.randomUUID()));
         when(templates.list(clientId)).thenReturn(all);
-        when(templates.load(eq(clientId), any())).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(), candidate.mapping(),
+        when(templates.load(eq(clientId), any(), anyInt())).thenReturn(new SalesQuoteTemplateStore.Stored(candidate.xlsx(), candidate.mapping(),
                 candidate.features(), candidate.fingerprint(), "source.xlsx"));
-        var result = service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(), true, null));
+        var result = export( new SalesQuoteTemplateService.ExportRequest(List.of(), true, null));
         int files = 0;
         try (var zip = new ZipInputStream(new ByteArrayInputStream(result.bytes()))) {
             while (zip.getNextEntry() != null) { zip.readAllBytes(); files++; }
@@ -197,7 +242,7 @@ class SalesQuoteTemplateServiceTest {
                 Map.of("key", "qty", "label", "当前数量", "width", 80),
                 Map.of("key", "extra:" + extra.columnId(), "label", "保险费", "width", 160, "definition", Map.of("value", "999")),
                 Map.of("key", "goods", "label", "货品", "width", 240)));
-        var result = service.export(quoteId, new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(projection)));
+        var result = export( new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(projection)));
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(result.bytes()))) {
             var sheet = workbook.getSheetAt(0);
             assertThat(java.util.stream.StreamSupport.stream(sheet.getRow(4).spliterator(), false).map(org.apache.poi.ss.usermodel.Cell::getStringCellValue).toList())
@@ -219,7 +264,7 @@ class SalesQuoteTemplateServiceTest {
         when(platform.evaluateDisplayRows(eq("view_sales"),eq(List.of(computed)),any())).thenReturn(List.of(Map.of(computed,"27")));
         Map<String,Object> projection = Map.of("scope", "view_sales", "columns", List.of(
                 Map.of("key", "platform:" + computed, "label", "计算", "width", 120, "definition", Map.of("formula", "malicious"))));
-        var result = service.export(quoteId,new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(projection)));
+        var result = export(new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(projection)));
         verify(platform).evaluateDisplayRows("view_sales",List.of(computed),List.of(Map.of("qty",new BigDecimal("2"),"amount",new BigDecimal("19.25"))));
         try (var workbook=WorkbookFactory.create(new ByteArrayInputStream(result.bytes()))) {
             assertThat(workbook.getSheetAt(0).getRow(5).getCell(0).getStringCellValue()).isEqualTo("27");
@@ -228,10 +273,23 @@ class SalesQuoteTemplateServiceTest {
 
     @Test void projectionCannotInventHiddenResourceFieldsOrChangeItsBusinessScope() {
         var columns=List.of(Map.of("key","bankAccountNo","label","银行账户","width",120));
-        assertThatThrownBy(()->service.export(quoteId,new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(Map.of("columns",columns)))))
+        assertThatThrownBy(()->export(new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(Map.of("columns",columns)))))
                 .hasMessageContaining("没有可导出的字段");
-        assertThatThrownBy(()->service.export(quoteId,new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(Map.of("scope","master_client","columns",columns)))))
+        assertThatThrownBy(()->export(new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,projection(Map.of("scope","master_client","columns",columns)))))
                 .hasMessageContaining("不属于销售报价");
+    }
+
+    private SalesQuoteTemplateService.Download export(SalesQuoteTemplateService.ExportRequest input) {
+        var request=input==null ? new SalesQuoteTemplateService.ExportRequest(List.of(),false,null) : input;
+        Map<UUID,Integer> versions=request.templateVersions();
+        if (versions==null) {
+            versions=new HashMap<>();
+            List<UUID> ids=request.all() ? templates.list(clientId).stream().map(SalesQuoteTemplateStore.TemplateView::id).toList()
+                    : request.templateIds()==null ? List.of() : request.templateIds();
+            for (UUID id:ids) if (id!=null) versions.put(id,1);
+        }
+        return service.export(quoteId,new SalesQuoteTemplateService.ExportRequest(request.templateIds(),request.all(),request.password(),request.columnProjection(),
+                request.expectedRevision()==null ? quote.getReviewRevision() : request.expectedRevision(),versions));
     }
 
     private static com.uten.imp.common.export.TableColumnProjection projection(Map<String,Object> value) {

@@ -198,6 +198,105 @@ Map<String, dynamic> _draftSnapshot(WidgetTester tester) =>
         .captureFormDraft();
 
 void main() {
+  for (final fromQuote in [false, true]) {
+    testWidgets(
+      'order header locks customer and currency only when derived from accepted quote: $fromQuote',
+      (tester) async {
+        final detail = {
+          ..._orderDetail(
+            items: [
+              {
+                'id': 'it-1',
+                'goodsId': 'goods-1',
+                'unitId': 'unit-pcs',
+                'unitRate': 1,
+                'qty': 10,
+                'price': 100,
+                'discount': 1,
+              },
+            ],
+          ),
+          if (fromQuote) 'sourceQuoteId': 'quote-1',
+        };
+        await _pump(
+          tester,
+          docType: SalesDocType.order,
+          id: 'order-1',
+          detail: detail,
+          permissions: _orderPerms,
+        );
+        expect(
+          find.byKey(const ValueKey('quote-source-locked-客户')),
+          fromQuote ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('quote-source-locked-币种')),
+          fromQuote ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byType(ClientPickerField),
+          fromQuote ? findsNothing : findsOneWidget,
+        );
+        expect(
+          find.byWidgetPredicate(
+            (w) => w is UtenDropdownField && w.label == '币种',
+          ),
+          fromQuote ? findsNothing : findsOneWidget,
+        );
+      },
+    );
+  }
+
+  testWidgets(
+    'quote edit response cannot reopen or navigate old data after identity changed',
+    (tester) async {
+      final detail = {
+        ..._orderDetail(
+          items: [
+            {
+              'id': 'it-1',
+              'goodsId': 'goods-1',
+              'unitId': 'unit-pcs',
+              'unitRate': 1,
+              'qty': 10,
+              'price': 100,
+              'discount': 1,
+            },
+          ],
+        ),
+        'id': 'quote-1',
+        'validUntil': '2026-12-31',
+        'reviewRevision': 17,
+      };
+      final env = await _pump(
+        tester,
+        docType: SalesDocType.quote,
+        id: 'quote-1',
+        detail: detail,
+      );
+      final pending = Completer<void>();
+      env.api.pendingPut = pending;
+      await tester.tap(find.text('保存'));
+      await tester.pump();
+      expect(env.api.lastPutBody, isNotNull);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+        listen: false,
+      );
+      (container.read(sessionProvider.notifier) as _TestSessionNotifier)
+          .changeIdentity();
+      await tester.pump();
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('sales-doc-edit-load-error')),
+        findsOneWidget,
+      );
+      expect(find.text('返回报价列表'), findsOneWidget);
+      expect(find.byType(UtenEditableGrid<SalesGridRow>), findsNothing);
+    },
+  );
+
   for (final masked in [false, true]) {
     testWidgets(
       'quote edit sends displayed revision and ${masked ? 'omits hidden prices' : 'keeps negotiated price and discount'}',
@@ -1310,6 +1409,8 @@ void main() {
 }
 
 class _TestSessionNotifier extends SessionNotifier {
+  void changeIdentity() =>
+      state = const SessionState(impersonationReadOnly: true);
   @override
   SessionState build() => const SessionState();
 }
@@ -1324,6 +1425,7 @@ class _IntakeApi extends ApiClient {
   Future<Map<String, dynamic>> Function(String client)? termsLoader;
   final termsRequests = <String>[];
   Map<String, dynamic>? lastPutBody;
+  Completer<void>? pendingPut;
   Map<String, dynamic>? lastPostBody;
   String? lastPostPath;
   bool failBusinessColumns = false;
@@ -1390,6 +1492,7 @@ class _IntakeApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     lastPutBody = Map<String, dynamic>.from(body! as Map);
+    if (pendingPut case final pending?) await pending.future;
     return detail!;
   }
 }

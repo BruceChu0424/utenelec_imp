@@ -15,6 +15,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +36,8 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
     @Override public String name() { return "workbench_tasks"; }
     @Override public String title() { return "查询各业务待办和在办"; }
     @Override public String domain() { return "SELF"; }
-    @Override public String description() { return "读取本人当前部门和功能权限允许的工作台任务计数，覆盖销售、采购、委外、生产、品质、仓库、财务、人事、研发。module不填查所有当前允许模块；仅返回各入口待办/进行中数量，不查工资、报销、通知正文，不认领或处理任务。"; }
+    @Override public boolean rememberQueryArguments() { return true; }
+    @Override public String description() { return "读取本人当前部门和功能权限允许的工作台任务计数，覆盖销售、采购、委外、生产、品质、仓库、财务、人事、研发。module不填查所有当前允许模块；仅返回当前各入口待办/进行中数量，不能列出具体任务或单号、供应商、货品、数量等单据明细，也没有历史日期筛选。不查工资、报销、通知正文，不认领或处理任务。"; }
     @Override public Map<String,Object> parameters() {
         Set<String> domains;
         try { domains=access.domains(); } catch(ApiException denied) { domains=Set.of(); }
@@ -46,15 +48,31 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
     @Override public boolean available() { try { access.requireChat(); return true; } catch(ApiException denied) { return false; } }
     @Override public Map<String,Object> execute(Map<String,Object> arguments) {
         access.requireChat(); String module=module(arguments); var snapshot=read(module);
-        StringBuilder text=new StringBuilder("工作台查询时间：").append(TIME.format(snapshot.generatedAt())).append("（北京时间）。仅包含当前部门、功能权限和业务范围允许的入口。\n");
-        if(snapshot.rows().isEmpty()) text.append("当前范围没有可展示的任务入口，不能据此判断全公司没有待办。");
-        for(Row row:snapshot.rows()) {
+        return Map.of("reply",render(snapshot,false),"detailReply",render(snapshot,true),"actions",List.of(),
+                "_toolEvidence",Map.of("module",module,"snapshot",signature(snapshot.rows())));
+    }
+    private static String render(Snapshot snapshot,boolean detailed) {
+        if(snapshot.rows().isEmpty()) return "暂时没有可显示的待办。";
+        List<Row> active=snapshot.rows().stream().filter(row->row.stale()||row.todo()>0||row.inProgress()>0)
+                .sorted(Comparator.comparingInt((Row row)->row.todo()>0?0:row.inProgress()>0?1:2)
+                        .thenComparing(Comparator.comparingLong(Row::todo).reversed())
+                        .thenComparing(Comparator.comparingLong(Row::inProgress).reversed()).thenComparing(Row::entry)).toList();
+        if(active.isEmpty()) return "目前没有待办或进行中的任务。";
+        StringBuilder text=new StringBuilder("目前需要关注：");
+        int shown=detailed?active.size():Math.min(5,active.size());
+        for(Row row:active.subList(0,shown)) {
             text.append("\n• ").append(label(row.entry())).append("：");
-            if(row.stale()) text.append("本次数据暂未算出，不能按 0 项处理");
-            else text.append("待办 ").append(row.todo()).append(" 项，进行中 ").append(row.inProgress()).append(" 项");
+            if(row.stale()) text.append("暂时查不到数量");
+            else {
+                if(row.todo()>0) text.append("待办 ").append(row.todo()).append(" 项");
+                if(row.todo()>0&&row.inProgress()>0) text.append("，");
+                if(row.inProgress()>0) text.append("进行中 ").append(row.inProgress()).append(" 项");
+            }
+            text.append("。");
         }
-        text.append("\n\n来源：工作台徽章唯一目录与各业务原始计数接口。不同入口可能描述同一业务链，不跨入口重复相加；任务处理请进入对应业务页面。");
-        return Map.of("reply",text.toString(),"actions",List.of(),"_toolEvidence",Map.of("module",module,"snapshot",signature(snapshot.rows())));
+        if(active.size()>shown) text.append("\n另有 ").append(active.size()-shown).append(" 项，回复“展开”可看更多。");
+        if(detailed) text.append("\n更新于 ").append(TIME.format(snapshot.generatedAt())).append("。");
+        return text.toString();
     }
     @Override public void authorizeResultRead(Map<String,Object> evidence) {
         access.requireChat();

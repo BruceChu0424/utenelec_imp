@@ -80,6 +80,9 @@ public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMeta
     @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     @lombok.Setter
     private SourceQuote sourceQuote;
+    private UUID requotedToId;
+    private java.time.OffsetDateTime requotedAt;
+    private String readOnlyReason;
 
     /** 来源报价: 单号 + 财务核价人与时间(订单明细里「报价核定」的依据)。 */
     public record SourceQuote(UUID id, String billNo, String financeConfirmedByName,
@@ -95,5 +98,10 @@ public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMeta
 
     @Override public void disableHistoryActions() {
         writable = false;
+    }
+
+    @Override public void copyHistoryFrom(com.uten.imp.common.history.DocumentHistoryMetadata source) {
+        super.copyHistoryFrom(source);
+        if (requotedToId != null) setHistoryReadOnly(true);
     }
 }

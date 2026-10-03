@@ -37,7 +37,7 @@ public class AiChatAccessPolicy {
     }
 
     public void requireDomain(String domain) {
-        if (!hasDomain(domain)) throw new ApiException(ErrorCode.FORBIDDEN, "这项信息不在你当前的部门与权限范围内");
+        if (!hasDomain(domain)) throw new ApiException(ErrorCode.FORBIDDEN, "这项暂时不能查看，请联系管理员。");
     }
 
     public Set<String> domains() {

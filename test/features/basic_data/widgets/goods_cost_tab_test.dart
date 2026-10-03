@@ -29,10 +29,13 @@ import '../../../shared/drafts/memory_form_draft_storage.dart';
 import 'package:uten_imp/features/basic_data/models/currency_node.dart';
 import 'package:uten_imp/features/basic_data/models/goods_cost_sheet.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/models/client_node.dart';
+import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/currency_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_cost_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_cost_tab.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -911,6 +914,33 @@ class _Currencies extends Fake implements CurrencyRepository {
   ];
 }
 
+class _CostClients extends Fake implements ClientRepository {
+  @override
+  Future<ClientDetail> detail(String id) async =>
+      ClientDetail(id: id, name: id);
+}
+
+class _CustomerTemplateCosts extends _Costs {
+  bool deferGeneral = false;
+  final general = Completer<List<Map<String, dynamic>>>();
+
+  @override
+  Future<List<Map<String, dynamic>>> templates(
+    String goodsId,
+    String? clientId,
+  ) async {
+    if (clientId == null && deferGeneral) return general.future;
+    return templateRows(clientId);
+  }
+
+  List<Map<String, dynamic>> templateRows(String? clientId) => [
+    {
+      'id': clientId ?? 'general',
+      'input': {'name': clientId ?? '通用费用模板'},
+    },
+  ];
+}
+
 Future<void> _pump(
   WidgetTester tester,
   _Costs repo, {
@@ -937,6 +967,7 @@ Future<void> _pump(
         currencyRepositoryProvider.overrideWithValue(
           currencies ?? _Currencies(),
         ),
+        clientRepositoryProvider.overrideWithValue(_CostClients()),
         sharedPreferencesProvider.overrideWithValue(prefs),
         if (livePermissions != null)
           currentPermissionsProvider.overrideWith(
@@ -990,6 +1021,8 @@ Future<void> _pump(
 Future<void> _settings(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('cost-settings-toggle')));
   await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('cost-advanced-settings')));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _quantity(WidgetTester tester) async {
@@ -1024,6 +1057,115 @@ void main() {
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await icons.load();
   });
+  testWidgets(
+    'ordinary settings keep the material table visible and defer advanced fields',
+    (tester) async {
+      final repo = _Costs();
+      await _pump(tester, repo, size: const Size(1460, 760));
+      expect(find.byKey(const Key('cost-customer-toggle')), findsNothing);
+      await _quantity(tester);
+      expect(find.byType(ClientPickerField), findsOneWidget);
+      expect(find.byKey(const Key('cost-currency-selector')), findsNothing);
+      expect(find.byKey(const ValueKey('cost-header-name')), findsNothing);
+      expect(find.text('货品名称').hitTestable(), findsOneWidget);
+      expect(find.byKey(const Key('cost-save')).hitTestable(), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('cost-unitPrice-edge-a')).hitTestable(),
+        findsOneWidget,
+      );
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const Key('cost-render')),
+      );
+      await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          'build/cost-simple-settings-preview.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-header-batchQty')),
+        '101',
+      );
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved?['batchQty'], '101');
+      expect(repo.saved?['currencyId'], 'cny');
+      expect(repo.saved?['usageStrategy'], 'ACTUAL_FIRST');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'clearing a cost customer restores general templates and clears the selected template',
+    (tester) async {
+      final repo = _CustomerTemplateCosts();
+      await _pump(tester, repo);
+      await _settings(tester);
+      tester
+          .widget<ClientPickerField>(find.byType(ClientPickerField))
+          .onChanged('customer-a');
+      await tester.pumpAndSettle();
+      UtenDropdownField template() => tester.widget<UtenDropdownField>(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenDropdownField && widget.label == '成本模板',
+        ),
+      );
+      expect(template().items.single.value, 'customer-a');
+      template().onChanged('customer-a');
+      await tester.pumpAndSettle();
+      tester
+          .widget<ClientPickerField>(find.byType(ClientPickerField))
+          .onChanged(null);
+      await tester.pumpAndSettle();
+      expect(template().items.single.value, 'general');
+      expect(template().value, isNull);
+      expect(
+        tester
+            .widget<ClientPickerField>(find.byType(ClientPickerField))
+            .initialName,
+        isNull,
+      );
+      await tester.tap(find.byKey(const Key('cost-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved?['clientId'], isNull);
+      expect(repo.saved?['templateId'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'late settings templates cannot replace the newly selected customer context',
+    (tester) async {
+      final repo = _CustomerTemplateCosts()..deferGeneral = true;
+      await _pump(tester, repo);
+      await tester.tap(find.byKey(const Key('cost-settings-toggle')));
+      await tester.pump();
+      tester
+          .widget<ClientPickerField>(find.byType(ClientPickerField))
+          .onChanged('customer-b');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 650));
+      repo.general.complete(repo.templateRows(null));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('cost-advanced-settings')));
+      await tester.pumpAndSettle();
+      final template = tester.widget<UtenDropdownField>(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenDropdownField && widget.label == '成本模板',
+        ),
+      );
+      expect(template.items.single.value, 'customer-b');
+      expect(
+        tester
+            .widget<ClientPickerField>(find.byType(ClientPickerField))
+            .initialId,
+        'customer-b',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'revoking edit while automatic preview is pending prevents save',
     (tester) async {

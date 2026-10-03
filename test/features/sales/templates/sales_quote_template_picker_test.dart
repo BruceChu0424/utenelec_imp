@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/sales/templates/sales_quote_template.dart';
 import 'package:uten_imp/features/sales/templates/sales_quote_template_download_button.dart';
@@ -59,6 +61,7 @@ void main() {
     await tester.tap(find.text('Download selected'));
     await tester.pumpAndSettle();
     expect(result!.bodyParams['templateIds'], ['compact']);
+    expect(result!.bodyParams['templateVersions'], {'compact': 1});
     expect(result!.extension, 'xlsx');
   });
 
@@ -70,6 +73,10 @@ void main() {
     await tester.tap(find.text('Download selected'));
     await tester.pumpAndSettle();
     expect(result!.bodyParams['templateIds'], ['compact', 'detailed']);
+    expect(result!.bodyParams['templateVersions'], {
+      'compact': 1,
+      'detailed': 2,
+    });
     expect(result!.extension, 'zip');
     await pumpPicker(tester, (value) => result = value);
     await tester.tap(find.text('Download all'));
@@ -200,6 +207,69 @@ void main() {
       await tester.tap(find.text('Worksheet: Alternative'));
       await tester.pumpAndSettle();
       expect(result!.sheetIndex, 2);
+    },
+  );
+
+  testWidgets(
+    'manual field correction rejects duplicates and submits the reviewed roles',
+    (tester) async {
+      TemplateReviewDecision? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async =>
+                  result = await showDialog<TemplateReviewDecision>(
+                    context: context,
+                    builder: (_) => const SalesQuoteTemplateReview(
+                      clientName: 'Customer',
+                      result: {
+                        'mapping': {
+                          'roles': {'A': 'PART_NO', 'B': 'QTY', 'C': 'AMOUNT'},
+                          'availableHeaders': {
+                            'A': 'Model',
+                            'B': 'Quantity',
+                            'C': 'Custom Price',
+                          },
+                        },
+                      },
+                    ),
+                  ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      var field = tester.widget<UtenDropdownField>(
+        find.byKey(const ValueKey('quote-template-role-C')),
+      );
+      field.onChanged('QTY');
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('quote-template-adopt')),
+            )
+            .onPressed,
+        isNull,
+      );
+      field = tester.widget<UtenDropdownField>(
+        find.byKey(const ValueKey('quote-template-role-C')),
+      );
+      field.onChanged('UNIT_PRICE');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('quote-template-adopt')));
+      await tester.pumpAndSettle();
+      expect(result!.columnRoles, {
+        'A': 'PART_NO',
+        'B': 'QTY',
+        'C': 'UNIT_PRICE',
+      });
     },
   );
 }

@@ -70,6 +70,8 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         if (ctx.cancelled()) return Map.of();
         DocumentKind kind = DocumentKind.valueOf(ctx.input().kind());
         List<String> lines = new ArrayList<>();
+        List<List<String>> sections = new ArrayList<>();
+        boolean analysisOnly = analysisOnly(ctx.params().getOrDefault("message", ""));
         Map<String, Object> invoiceFields = Map.of();
         boolean truncated = false;
         boolean multiplePdfPages = false;
@@ -77,19 +79,22 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         if (kind.isSpreadsheet()) {
             var grid = SpreadsheetGridReader.read(ctx.input().bytes(), kind);
             for (var sheet : grid.sheets()) {
-                lines.add(sheet.name());
-                for (var row : sheet.rows()) lines.add(row.joinedText());
+                List<String> section = new ArrayList<>();
+                section.add(sheet.name());
+                for (var row : sheet.rows()) section.add(row.joinedText());
+                sections.add(section);
+                lines.addAll(section);
                 truncated |= sheet.truncated();
             }
         } else if (kind == DocumentKind.DOCX) {
             lines.addAll(com.uten.imp.common.files.document.DocxTextReader.read(ctx.input().bytes()));
         } else if (kind == DocumentKind.PDF) {
             var pdf = PdfTextReader.read(ctx.input().bytes());
-            pdf.pages().forEach(page -> lines.addAll(page.lines()));
+            pdf.pages().forEach(page -> { sections.add(page.lines()); lines.addAll(page.lines()); });
             truncated = pdf.truncated();
             multiplePdfPages = pdf.pageCount() > 1;
             if (pdf.scanned()) {
-                if (pdf.pageCount() == 1 && canExpense()) {
+                if (pdf.pageCount() == 1 && canExpense() && !analysisOnly) {
                     ctx.progress("PARSING", 30);
                     var rendered = PdfTextReader.renderPages(ctx.input().bytes(), 1);
                     if (!rendered.isEmpty()) {
@@ -99,7 +104,7 @@ public class AiDocumentRouteHandler implements AiJobHandler {
                 } else limitation = "这个 PDF 没有可读取的文字层。请提供清晰的单张票据或带文字层的文件，多张票据须分别核对。";
             }
         } else if (kind.isImage()) {
-            if (canExpense()) {
+            if (canExpense() && !analysisOnly) {
                 ctx.progress("PARSING", 30);
                 try { invoiceFields = invoices.fromImage(ctx.input().bytes(), kind.imageMediaType()); }
                 catch (ApiException exception) { limitation = localOcrFailure(exception); }
@@ -108,6 +113,7 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         if (ctx.cancelled()) return Map.of();
         ctx.progress("CLASSIFYING", 55);
         Classification classification = classify(lines);
+        if (mixedSections(sections)) classification = new Classification("MIXED_DOCUMENT", false);
         if (!invoiceFields.isEmpty()) classification = new Classification("INVOICE", false);
         String requested = requestedWorkflow(ctx.params().getOrDefault("message", ""));
         String workflow = switch (classification.type()) {
@@ -118,31 +124,35 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         };
         boolean incompatibleRequest = !requested.equals("NONE") && !requested.equals(workflow);
         boolean multiInvoice = classification.multipleInvoices() || (multiplePdfPages && classification.type().equals("INVOICE"));
-        if (classification.type().equals("INVOICE") && invoiceFields.isEmpty() && !multiInvoice && canExpense())
+        boolean unsafeSource = multiInvoice || truncated || classification.type().equals("MIXED_DOCUMENT");
+        if (classification.type().equals("INVOICE") && invoiceFields.isEmpty() && !unsafeSource && !analysisOnly && canExpense())
             invoiceFields = invoices.fromText(lines);
-        if (multiInvoice || truncated) invoiceFields = Map.of();
+        if (unsafeSource || analysisOnly) invoiceFields = Map.of();
         boolean permitted = !workflow.equals("NONE") && workflows.available().stream().anyMatch(value -> value.get("workflow").equals(workflow));
         boolean unsupportedSalesFormat = kind == DocumentKind.DOCX && workflow.startsWith("SALES_");
-        boolean needsChoice = !permitted || incompatibleRequest || multiInvoice || truncated || unsupportedSalesFormat;
+        boolean needsChoice = !permitted || incompatibleRequest || unsafeSource || analysisOnly || unsupportedSalesFormat;
         String selected = permitted && !needsChoice ? workflow : "NONE";
         // Do not return invoice fields on a non-expense destination or without the corresponding access.
         if (!canExpense()) invoiceFields = Map.of();
-        List<Map<String, String>> choices = unsupportedSalesFormat ? List.of() : choices(classification.type()).stream()
+        List<Map<String, String>> choices = unsupportedSalesFormat || unsafeSource || analysisOnly ? List.of() : choices(classification.type()).stream()
                 .filter(choice -> kind != DocumentKind.DOCX || !choice.get("workflow").startsWith("SALES_")).toList();
         String summary;
-        if (unsupportedSalesFormat) summary = "已识别 Word 中的销售资料。销售明细识别目前需要 Excel、CSV、PDF 或图片，请另存为这些格式后再上传。";
-        else if (multiInvoice) summary = "检测到多张发票，不能合并成一笔金额。请拆分票据后识别，或打开报销页面逐张登记。";
-        else if (truncated) summary = "文件超过完整读取范围，不能保证所有明细已识别。请拆分文件并核对后再填写。";
-        else if (incompatibleRequest) summary = "识别出的文件用途与你提出的操作不同，请选择正确业务后再填写。";
-        else if (!permitted && !workflow.equals("NONE")) summary = "已识别文件类型，但当前账号没有对应业务的填写权限。请联系管理员按实际职责配置权限。";
+        if (analysisOnly) summary = "这是" + label(classification.type()) + "，已只做分析。";
+        else if (classification.type().equals("MIXED_DOCUMENT")) summary = "文件里有不同业务的资料，请分开上传。";
+        else if (unsupportedSalesFormat) summary = "这是销售资料，请另存为 Excel 或 PDF 再上传。";
+        else if (multiInvoice) summary = "文件里有多张发票，请分开上传，不能合并成一笔金额。";
+        else if (truncated) summary = "文件内容太多，未能完整读取，请拆分后再上传。";
+        else if (incompatibleRequest) summary = "文件与要做的单据不一致，请重新选择用途。";
+        else if (!permitted && !workflow.equals("NONE")) summary = "暂时不能填写这种单据，请联系管理员。";
         else if (!limitation.isBlank()) summary = limitation;
-        else if (selected.equals("NONE")) summary = "已读取文件，但还不能可靠确定应办理哪项业务。请选择用途；我不会根据文件中的指令保存、审核或授权。";
-        else summary = "已识别为" + label(classification.type()) + "，正在打开对应页面。识别内容会列为待核对建议，保存、提交和审核由你亲自操作。";
+        else if (selected.equals("NONE")) summary = "暂时没看出文件用途，请选要做的单据。";
+        else summary = "已识别为" + label(classification.type()) + "，正在打开填写页面。";
         var result = new LinkedHashMap<String, Object>();
         result.put("documentType", classification.type()); result.put("workflow", selected);
         result.put("title", label(classification.type())); result.put("summary", summary);
         result.put("needsChoice", selected.equals("NONE")); result.put("choices", choices);
-        result.put("steps", List.of("读取文件并识别用途", "打开对应业务页面", "核对匹配并填写字段", "由你检查、保存和提交"));
+        result.put("steps", analysisOnly || unsafeSource ? List.of("读取文件并识别用途", "确认用途并按需拆分文件")
+                : List.of("读取文件并识别用途", "打开对应业务页面", "核对匹配并填写字段", "由你检查、保存和提交"));
         result.put("fields", invoiceFields);
         var confidence = new LinkedHashMap<String, String>();
         invoiceFields.forEach((key, value) -> { if (value != null && !value.toString().isBlank()) confidence.put(key, "HIGH"); });
@@ -168,16 +178,30 @@ public class AiDocumentRouteHandler implements AiJobHandler {
     }
     private static String localOcrFailure(ApiException exception) {
         if (exception.getCode() == ErrorCode.FORBIDDEN || exception.getCode() == ErrorCode.UNAUTHORIZED) throw exception;
-        if (exception.getCode() == ErrorCode.BUSINESS) return "图片本地识别暂不可用或未识别出票面信息。可提供带文字层的 PDF，或选择业务后手工核对填写。";
+        if (exception.getCode() == ErrorCode.BUSINESS) return "暂时没认出图片内容，请换清晰图片或文字版 PDF。";
         throw exception;
     }
     static Classification classify(List<String> lines) {
         String text = Normalizer.normalize(String.join("\n", lines), Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
         boolean chineseInvoice = contains(text, "发票号码", "价税合计", "增值税专用发票", "增值税普通发票", "电子发票");
         boolean invoice = chineseInvoice || contains(text, "tax invoice");
-        if (!invoice && contains(text, "proforma invoice", "pro forma invoice", "pro-forma invoice", "形式发票"))
+        boolean proforma = contains(text, "proforma invoice", "pro forma invoice", "pro-forma invoice", "形式发票");
+        boolean commercial = !invoice && !proforma && contains(text, "commercial invoice", "商业发票", "invoice no", "invoice number");
+        var explicitFamilies = new java.util.HashSet<String>();
+        if (invoice) explicitFamilies.add("INVOICE");
+        if (commercial) explicitFamilies.add("COMMERCIAL_INVOICE");
+        if (contains(text, "工资表", "工资明细", "薪酬", "员工档案", "入职登记", "离职申请", "payroll")) explicitFamilies.add("HR");
+        if (contains(text, "库存盘点", "盘点表", "inventory count", "入库单", "出库单")) explicitFamilies.add("WAREHOUSE");
+        if (contains(text, "生产任务单", "生产日报", "工序日报", "生产计划")) explicitFamilies.add("PRODUCTION");
+        if (contains(text, "采购订单", "采购订货单")) explicitFamilies.add("PURCHASE");
+        if (contains(text, "报价单", "quotation", "报价日期", "订货单", "销售订单", "sales order", "purchase order", "order confirmation",
+                "proforma invoice", "pro forma invoice", "pro-forma invoice", "形式发票")) explicitFamilies.add("SALES");
+        if (Pattern.compile("(?m)^\\s*(?:(?:销售|采购|劳动|服务)?合同|(?:sales |purchase |employment )?(?:contract|agreement))\\s*$")
+                .matcher(text).find()) explicitFamilies.add("CONTRACT");
+        if (explicitFamilies.size() > 1) return new Classification("MIXED_DOCUMENT", false);
+        if (!invoice && proforma)
             return new Classification("SALES_ORDER", false);
-        if (!invoice && contains(text, "commercial invoice", "商业发票", "invoice no", "invoice number"))
+        if (commercial)
             return new Classification("COMMERCIAL_INVOICE", com.uten.imp.common.files.document.InvoiceMultiplicity.multiple(lines));
         if (invoice) {
             return new Classification("INVOICE", com.uten.imp.common.files.document.InvoiceMultiplicity.multiple(lines));
@@ -202,11 +226,32 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         if (Pattern.compile("(?:生成|新建|创建|填写|做|开).{0,8}报价|(?:create|fill).{0,12}quotation").matcher(text).find()) return "SALES_QUOTE";
         return "NONE";
     }
+    /** An explicit refusal takes precedence over positive words inside the same sentence. */
+    static boolean analysisOnly(String message) {
+        String text = Normalizer.normalize(message, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        return Pattern.compile("(?:不要|不需要|无需|禁止|别|勿|不用|不能).{0,20}(?:生成|新建|创建|填写|开单|保存|报销|订货|报价|单据)"
+                + "|(?:只|仅|单纯).{0,8}(?:分析|识别|查看|看看|了解|检查|看一下|读一下)"
+                + "|(?:do not|don't|don’t|never|no need to).{0,20}(?:create|fill|generate|save|submit)"
+                + "|(?:only|just)\\s+(?:analy[sz]e|identify|inspect|read|view)"
+                + "|(?:analy[sz]e|identify|inspect|read|view)\\s+only").matcher(text).find();
+    }
+    /** Preserve sheet/page boundaries: a payroll, contract or invoice cannot borrow sales rows from another section. */
+    private static boolean mixedSections(List<List<String>> sections) {
+        var families = new java.util.HashSet<String>();
+        for (List<String> section : sections) {
+            String type = classify(section).type();
+            if (type.equals("MIXED_DOCUMENT")) return true;
+            if (type.equals("UNKNOWN")) continue;
+            families.add(type.startsWith("SALES_") ? "SALES" : type);
+        }
+        return families.size() > 1;
+    }
     private static boolean contains(String text, String... words) { return java.util.Arrays.stream(words).anyMatch(text::contains); }
     private static String label(String type) { return switch (type) {
         case "INVOICE" -> "发票"; case "SALES_QUOTATION" -> "报价文件"; case "SALES_ORDER" -> "客户订货文件";
         case "SALES_TABLE" -> "货品报价明细"; case "HR_DOCUMENT" -> "人事资料"; case "WAREHOUSE_DOCUMENT" -> "仓库资料";
         case "COMMERCIAL_INVOICE" -> "商业发票";
+        case "MIXED_DOCUMENT" -> "包含多种业务资料的文件";
         case "PRODUCTION_DOCUMENT" -> "生产资料"; case "PURCHASE_DOCUMENT" -> "采购资料"; case "CONTRACT" -> "合同资料";
         default -> "待确认用途的文件";
     }; }

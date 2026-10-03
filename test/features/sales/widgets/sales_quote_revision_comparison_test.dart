@@ -8,6 +8,7 @@ import 'package:uten_imp/components/data_display/uten_cell_revision_table.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/widgets/sales_quote_revision_comparison.dart';
+import 'package:uten_imp/features/sales/models/sales_quote_workflow.dart';
 
 void main() {
   setUpAll(() async {
@@ -20,6 +21,78 @@ void main() {
       await loader.load();
     }
   });
+  testWidgets('latest header-only revision is selected on a narrow screen', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    Map<String, dynamic> snapshot(String price, String payment) => {
+      'settlementMethodName': payment,
+      'lines': [
+        {'id': 'a', 'goodsName': '开关', 'price': price},
+      ],
+    };
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: const ValueKey('quote-revision-narrow-capture'),
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(fontFamily: 'QuoteVisualTest'),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: SalesQuoteRevisionComparison(
+                revisions: [
+                  SalesQuoteRevision(
+                    action: 'SUBMIT',
+                    revision: 1,
+                    snapshot: snapshot('10', '现金'),
+                  ),
+                  SalesQuoteRevision(
+                    action: 'FINANCE_EDIT',
+                    revision: 2,
+                    snapshot: snapshot('12', '现金'),
+                  ),
+                  SalesQuoteRevision(
+                    action: 'FINANCE_EDIT',
+                    revision: 3,
+                    actorName: '姓名很长的报价财务审核人员',
+                    snapshot: snapshot('12', '月结30天'),
+                  ),
+                  SalesQuoteRevision(
+                    action: 'CONFIRM',
+                    revision: 4,
+                    snapshot: snapshot('12', '月结30天'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<DropdownButton<int>>(find.byType(DropdownButton<int>))
+          .value,
+      2,
+    );
+    expect(find.text('现金'), findsOneWidget);
+    expect(find.text('月结30天'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey('quote-revision-narrow-capture')),
+    );
+    await tester.runAsync(() async {
+      final pixels = await boundary.toImage();
+      final bytes = await pixels.toByteData(format: ui.ImageByteFormat.png);
+      final destination = File('build/quote-revision-narrow.png');
+      await destination.parent.create(recursive: true);
+      await destination.writeAsBytes(bytes!.buffer.asUint8List());
+      pixels.dispose();
+    });
+  });
+
   test(
     'same goods on multiple lines matches line id; unchanged decimal scale is not a change',
     () {

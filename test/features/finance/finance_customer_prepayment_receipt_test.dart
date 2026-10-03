@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
@@ -53,6 +55,9 @@ void main() {
           }),
         ],
         child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: FinanceDocEditPage(
             docType: FinanceDocType.receipt,
             id: 'receipt-1',
@@ -70,7 +75,7 @@ void main() {
     expect((orderField.decoration as UtenInputDecoration).info, contains('预收'));
     expect(find.text('XD-001'), findsWidgets);
     expect(find.textContaining('客户：甲客户'), findsOneWidget);
-    expect(find.text('美元'), findsWidgets);
+    expect(find.textContaining('币种：美元'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('finance-receipt-exchange-rate')),
       findsOneWidget,
@@ -80,10 +85,45 @@ void main() {
       findsOneWidget,
     );
     expect(find.byType(UtenEditableGrid<FinanceGridRow>), findsNothing);
-    expect(_textField('银行手续费(人民币)'), findsOneWidget);
-    expect(_textField('其它费用(人民币)'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('finance-receipt-bank-reference')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('finance-receipt-bank-reference')),
+      findsOneWidget,
+    );
     expect(find.text('本批预收 美元 88.1234 · 汇率 7.123456'), findsOneWidget);
     expect(find.text('真实账户实际入账 人民币 624.7432'), findsOneWidget);
+    await _openArrivalDetails(tester);
+    final arrivalField = find.byKey(
+      const ValueKey('finance-receipt-account-amount'),
+    );
+    expect(
+      find.ancestor(
+        of: arrivalField,
+        matching: find.byType(UtenCollapsibleSection),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.widget<TextField>(arrivalField).controller!.text, '624.7432');
+    expect(
+      find.ancestor(
+        of: find.byKey(const ValueKey('finance-receipt-bank-reference')),
+        matching: find.byType(UtenCollapsibleSection),
+      ),
+      findsNothing,
+    );
+    await tester.scrollUntilVisible(
+      _textField('银行手续费(人民币)'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    expect(_textField('银行手续费(人民币)'), findsOneWidget);
+    expect(_textField('其它费用(人民币)'), findsOneWidget);
     expect(find.text('保存').hitTestable(), findsOneWidget);
 
     await tester.tap(find.text('保存'));
@@ -128,6 +168,9 @@ void main() {
           }),
         ],
         child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: FinanceDocEditPage(
             docType: FinanceDocType.receipt,
             id: 'receipt-1',
@@ -136,6 +179,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _openArrivalDetails(tester);
     expect(
       find.byKey(const ValueKey('finance-receipt-bank-fee-account-amount')),
       findsNothing,
@@ -195,6 +239,24 @@ void main() {
     expect(api.lastPutBody?['amountOriginal'], '88.1234');
     expect(api.lastPutBody?['accountAmount'], '627.7432');
   });
+}
+
+Future<void> _openArrivalDetails(WidgetTester tester) async {
+  final sectionFinder = find.byKey(
+    const ValueKey('finance-receipt-settlement-fees'),
+  );
+  await tester.scrollUntilVisible(
+    sectionFinder,
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  final section = tester.widget<UtenCollapsibleSection>(sectionFinder);
+  if (!(section.expanded ?? section.initiallyExpanded)) {
+    await tester.tap(
+      find.descendant(of: sectionFinder, matching: find.text(section.title)),
+    );
+    await tester.pumpAndSettle();
+  }
 }
 
 Finder _textField(String label) => find.byWidgetPredicate(

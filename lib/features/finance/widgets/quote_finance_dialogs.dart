@@ -19,10 +19,14 @@ Future<String?> showQuoteFinanceReturnDialog(
   BuildContext context, {
   required String billNo,
   required TaskClaimSession claim,
+  Widget Function(BuildContext, Widget)? decorate,
 }) {
   return showDialog<String>(
     context: context,
-    builder: (_) => _QuoteFinanceReturnDialog(billNo: billNo, claim: claim),
+    builder: (context) {
+      final dialog = _QuoteFinanceReturnDialog(billNo: billNo, claim: claim);
+      return decorate?.call(context, dialog) ?? dialog;
+    },
   );
 }
 
@@ -156,10 +160,14 @@ class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
 Future<String?> showQuoteFinanceBatchDiscountDialog(
   BuildContext context, {
   required int count,
+  Widget Function(BuildContext, Widget)? decorate,
 }) {
   return showDialog<String>(
     context: context,
-    builder: (_) => _QuoteFinanceBatchDiscountDialog(count: count),
+    builder: (context) {
+      final dialog = _QuoteFinanceBatchDiscountDialog(count: count);
+      return decorate?.call(context, dialog) ?? dialog;
+    },
   );
 }
 

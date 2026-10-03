@@ -42,6 +42,43 @@ SalesQuoteFinanceLine _line({
 
 void main() {
   test(
+    'an invalid deal price is never clean merely because the base price matches its original value',
+    () {
+      final draft = QuoteFinanceLineDraft(_line());
+      addTearDown(draft.dispose);
+      draft.price.text = '100';
+      draft.onPriceChanged('100');
+      draft.deal.text = '';
+      draft.onDealChanged('');
+      expect(draft.dirty, isTrue);
+      expect(draft.valid, isFalse);
+      expect(draft.toEdit(), isNull);
+    },
+  );
+
+  test(
+    'editing deal price keeps the newly negotiated base price and quantity',
+    () {
+      final draft = QuoteFinanceLineDraft(_line());
+      addTearDown(draft.dispose);
+      draft.price.text = '80';
+      draft.onPriceChanged('80');
+      draft.qty.text = '7';
+      draft.deal.text = '72';
+      draft.onDealChanged('72');
+      expect(draft.price.text, '80');
+      expect(draft.discount.text, '0.9');
+      expect(draft.amountPreview, '504');
+      expect(draft.toEdit()!.toJson(), {
+        'itemId': 'line-1',
+        'price': '80',
+        'discount': '0.9000',
+        'qty': '7',
+      });
+    },
+  );
+
+  test(
     'finance can change base price, quantity and discount without mutating master reference',
     () {
       final draft = QuoteFinanceLineDraft(

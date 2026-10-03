@@ -243,6 +243,10 @@ final class SalesIntakePipeline {
 
     private void readSpreadsheet(Run run, AiJobInput input, DocumentKind kind) {
         DocumentGrid grid = SpreadsheetGridReader.read(input.bytes(), kind);
+        if (grid.sheets().stream().anyMatch(Sheet::truncated)) {
+            throw fail("这个表格超出完整读取上限（行数、列数或单元格内容），本次未导入任何明细。请拆分文件或缩短超长内容后重新识别。",
+                    "PARTIAL_SOURCE");
+        }
         if (grid.sheets().isEmpty()) {
             throw fail(IntakeTexts.FAIL_NO_TABLE, "NO_TABLE");
         }
@@ -251,6 +255,7 @@ final class SalesIntakePipeline {
         UUID preselected = run.params.clientId();
         Map<String, List<LearnedLayout>> learned = learnedLayouts(grid, preselected);
         for (Sheet sheet : grid.sheets()) {
+            if (run.params.templateOnly() && run.params.sheetIndex()!=null && sheet.index()!=run.params.sheetIndex()) continue;
             SheetChoice choice = null;
             IntakeLayout layout = learnedLayout(sheet, learned, preselected);
             if (layout != null) {
@@ -300,6 +305,14 @@ final class SalesIntakePipeline {
                 others.add(o);
             }
         }
+        if (run.params.templateOnly()) {
+            others.clear();
+            for (Sheet sheet : grid.sheets()) if (sheet.index()!=chosen.sheet().index()) {
+                int count=choices.stream().filter(c -> c.sheet().index()==sheet.index())
+                        .mapToInt(c -> c.extraction().lines().size()).findFirst().orElse(0);
+                others.add(Map.of("name",sheet.name(),"index",sheet.index(),"lineCount",count));
+            }
+        }
         run.otherSheets = others;
         run.sheetName = chosen.sheet().name();
         run.layout = chosen.layout();
@@ -319,7 +332,22 @@ final class SalesIntakePipeline {
                     chosen.sheet().index(), chosen.layout().headerRow0(), chosen.layout().headerRowSpan(),
                     chosen.layout().columnRolesByLetter(), extraHeaders,
                     chosen.extraction().lines().stream().map(line -> line.sourceRow() - 1).toList()); }
-            catch (RuntimeException ignored) { run.notices.add("此文件不能复用原表格样式，仍可识别和学习基础资料"); }
+            catch (RuntimeException failure) {
+                if (run.params.templateOnly()) throw fail("无法复用模板，请检查明细列是否被合并或隐藏，以及表格行列上限", "INVALID_TEMPLATE");
+                run.notices.add("此文件不能复用原表格样式，仍可识别和学习基础资料");
+            }
+        }
+        if(run.template!=null) {
+            Map<String,Object> mapping=new LinkedHashMap<>(run.template.mapping());
+            mapping.put("intakeFingerprint",chosen.layout().fingerprint());
+            run.template=new com.uten.imp.features.sales.template.QuoteTemplateWorkbook.Candidate(run.template.xlsx(),run.template.fingerprint(),mapping,run.template.features());
+            if(run.params.templateOnly()) {
+                Map<String,String> confirmed=data.templateColumnRoles(run.params.clientId(),chosen.layout().fingerprint());
+                if(confirmed!=null && !confirmed.isEmpty()) {
+                    try { run.template=com.uten.imp.features.sales.template.QuoteTemplateWorkbook.remap(run.template,confirmed); }
+                    catch(IllegalArgumentException changedLayout) { run.notices.add("之前的模板映射与本文件不同，请重新核对字段"); }
+                }
+            }
         }
         if (run.params.templateOnly()) return;
         run.fileCurrency = chosen.layout().fileCurrency() != null ? chosen.layout().fileCurrency()

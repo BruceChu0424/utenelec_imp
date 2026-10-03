@@ -99,6 +99,26 @@ class PdfTextReaderTest {
         assertThat(text.truncated()).isTrue();
         assertThat(text.pages()).hasSize(PdfTextReader.MAX_PAGES);
     }
+    @Test
+    void discardedLongLineMarksTheDocumentIncomplete() throws IOException {
+        byte[] bytes;
+        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDPage page = new PDPage(new PDRectangle(10000, 100));
+            doc.addPage(page);
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.beginText();
+                cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 1);
+                cs.newLineAtOffset(1, 50);
+                cs.showText("x".repeat(8193) + " Invoice No: second-invoice");
+                cs.endText();
+            }
+            doc.save(out);
+            bytes = out.toByteArray();
+        }
+        var result = PdfTextReader.read(bytes);
+        assertThat(result.truncated()).isTrue();
+        assertThat(result.pages().getFirst().lines().getFirst()).hasSize(8192);
+    }
 
     /** 只有页面框、没有内容的 PDF(几百字节), 页面尺寸自定。 */
     static byte[] blankPage(PDRectangle box, float userUnit) throws IOException {

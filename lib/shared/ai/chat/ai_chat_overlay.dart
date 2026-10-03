@@ -496,8 +496,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         message: _t('documentSourceMismatch'),
       );
     }
+    final partialRequest = aiGuidedRequestIsTruncated(attempt.text);
     final response = _ChatMessage(
-      text: result.summary.isEmpty ? result.title : result.summary,
+      text:
+          '${result.summary.isEmpty ? result.title : result.summary}${partialRequest ? '\n\n${_t('documentLongRequest')}' : ''}',
       documentResult: result,
       documentJobId: snapshot.id,
       sourceFile: file,
@@ -507,7 +509,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       _sourceFiles[snapshot.id] = file;
       _messages.insert(_messages.indexOf(outgoing) + 1, response);
     });
-    if (!result.needsChoice && result.workflow != AiGuidedWorkflow.none) {
+    if (!partialRequest &&
+        !result.needsChoice &&
+        result.workflow != AiGuidedWorkflow.none) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_current && _messages.contains(response)) {
           _openGuided(response, result.workflow);
@@ -1274,7 +1278,6 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   }
 
   Widget _welcome() {
-    final colors = Theme.of(context).colorScheme;
     final suggestions = <String, bool>{
       if (_pageAware) _t('pageQuestion'): true,
     };
@@ -1285,19 +1288,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(_t('welcome'), style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: UtenSpacing.s12),
-        Text(
-          _capabilities?.scopeSummary.isNotEmpty == true
-              ? _capabilities!.scopeSummary
-              : _t('boundary'),
-          style: TextStyle(color: colors.onSurfaceVariant, height: 1.5),
-        ),
         if (_capabilities?.available == false) ...[
           const SizedBox(height: UtenSpacing.s12),
-          Text(_t('unavailable'), style: Theme.of(context).textTheme.bodySmall),
+          Text(_t('unavailable')),
         ],
-        const SizedBox(height: UtenSpacing.s20),
-        for (final suggestion in suggestions.entries)
+        const SizedBox(height: UtenSpacing.s16),
+        for (final suggestion in suggestions.entries.take(2))
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: UtenButton(
@@ -1443,24 +1439,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           const SizedBox(height: UtenSpacing.s8),
           Text(
             message.sourceFile!.name,
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
-          if (result.steps.isNotEmpty) ...[
+          if (opened) ...[
             const SizedBox(height: UtenSpacing.s8),
-            Text(_t('documentPlanSteps')),
-            for (final step in result.steps) Text('• $step'),
+            Text(_t('documentOpened')),
           ],
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            _t(
-              opened
-                  ? 'documentOpened'
-                  : choices.isEmpty
-                  ? 'documentUnsupported'
-                  : 'documentManualSave',
-            ),
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
           if (!opened)
             for (final entry in choices.entries)
               Padding(

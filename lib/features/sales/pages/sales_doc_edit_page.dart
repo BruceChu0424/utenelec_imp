@@ -63,6 +63,8 @@ import '../../../shared/platform_tables/platform_table_row.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -84,12 +86,15 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../intake/sales_intake_apply.dart';
 import '../intake/sales_intake_attachment.dart';
 import '../intake/sales_intake_l10n.dart';
 import '../intake/sales_intake_launcher.dart';
 import '../intake/sales_intake_models.dart';
+import '../intake/sales_guided_routing.dart';
 import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 import '../../../shared/ai/guided/ai_guided_file_banner.dart';
 import '../../../shared/ai/chat/ai_chat_l10n.dart';
@@ -159,6 +164,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   String? _guidedDetail;
   final Set<String> _guidedCompletedStages = {'guidedParsing'};
   final List<String> _guidedFilledFields = [];
+  bool _guidedMatchesPage(AiGuidedFilePlan plan) =>
+      plan.matches(ref) &&
+      plan.workflow ==
+          switch (widget.docType) {
+            SalesDocType.order => AiGuidedWorkflow.salesOrder,
+            SalesDocType.quote => AiGuidedWorkflow.salesQuote,
+            _ => AiGuidedWorkflow.none,
+          };
   SalesDocConfig get _cfg => _isCustomerShipment
       ? SalesDocConfig.customerShipment
       : SalesDocConfig.by(widget.docType);
@@ -396,6 +409,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   @override
   bool get formDraftBusy => _saving || _uncertainShipmentBody != null;
 
+  bool get _quoteOrderLocked =>
+      widget.docType == SalesDocType.order &&
+      _attachmentDocument?.sourceQuoteId != null;
+
   bool get _hasCreatedDocuments =>
       _createdDocId != null || _createdShipments.isNotEmpty;
 
@@ -574,10 +591,68 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _clientPrefillGeneration++;
   }
 
+  Object _quoteSessionKey(SessionState state) => (
+    state.status,
+    state.user?.id,
+    state.actor?.id,
+    state.impersonationReadOnly,
+  );
+  int _quoteAccessEpoch = 0;
+  bool _quoteContextInvalidated = false;
+  bool Function() _captureQuoteContext() {
+    if (widget.docType != SalesDocType.quote) return () => mounted;
+    final epoch = _quoteAccessEpoch;
+    final identity = _quoteSessionKey(ref.read(sessionProvider));
+    final loginEpoch = ref.read(sessionEpochProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    return () =>
+        mounted &&
+        epoch == _quoteAccessEpoch &&
+        identity == _quoteSessionKey(ref.read(sessionProvider)) &&
+        loginEpoch == ref.read(sessionEpochProvider) &&
+        server == ref.read(apiBaseUrlProvider);
+  }
+
+  void _invalidateQuoteContext() {
+    if (widget.docType != SalesDocType.quote || !mounted) return;
+    ++_quoteAccessEpoch;
+    _quoteContextInvalidated = true;
+    ++_clientPrefillGeneration;
+    setState(() {
+      _loading = false;
+      _saving = false;
+      _initializationError = '登录身份、服务器或权限已变化，请重新打开报价后继续';
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _guidedPlan = widget.initialGuidedPlan;
+    ref.listenManual(sessionProvider, (before, after) {
+      if (before == null ||
+          _quoteSessionKey(before) != _quoteSessionKey(after)) {
+        _invalidateQuoteContext();
+      }
+    });
+    ref.listenManual(sessionEpochProvider, (before, after) {
+      if (before != after) _invalidateQuoteContext();
+    });
+    ref.listenManual(apiBaseUrlProvider, (before, after) {
+      if (before != after) _invalidateQuoteContext();
+    });
+    ref.listenManual(currentPermissionsProvider, (before, after) {
+      if (!setEquals(before, after)) _invalidateQuoteContext();
+    });
+    ref.listenManual(sessionSnapshotProvider, (before, after) {
+      final oldGeneration = before == null
+          ? null
+          : confirmedSessionSnapshot(before)?.generation;
+      if (oldGeneration != null &&
+          oldGeneration != confirmedSessionSnapshot(after)?.generation) {
+        _invalidateQuoteContext();
+      }
+    });
     // 明细行增删 → 重新挂载数量监听并刷新按单位分组的数量。
     _grid.addListener(_onGridRowsChanged);
     // 预填黄标联动：收货地址/联系电话被改到与带入值不同 → 视为已核对，移除黄框。
@@ -624,13 +699,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   Future<void> _init() async {
     if (!mounted) return;
+    final isCurrent = _captureQuoteContext();
     setState(() {
       _loading = true;
       _initializationError = null;
     });
     try {
       await ref.read(salesMasterNameServiceProvider).ensureLoaded();
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       if (widget.id == null) _prefillQuoteCurrency();
       // 新建报价预填默认有效期(30 天)：必填但常用默认，黄框提醒核对、可改；
       // 草稿恢复/编辑既有单随后会覆盖为用户当时的值。
@@ -669,7 +745,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         final d = await ref
             .read(salesRepositoryProvider(widget.docType))
             .detail(widget.id!);
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         if (!d.writable) {
           context.appInfo('该单据不在你的可写数据范围内，已切换为只读详情');
           context.replace(
@@ -686,7 +762,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             .read(salesMasterNameServiceProvider)
             .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees([d.sellerId, d.senderId]);
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         _billNo.text = d.billNo ?? '';
         _remark.text = d.remark ?? '';
         if (d.billDate != null) {
@@ -872,8 +948,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           widget.initialOrderId != null) {
         await _prefillSelectedOrder();
       }
-      if (mounted && widget.id == null) await initializeFormDraft();
-      if (mounted &&
+      if (isCurrent() && widget.id == null) await initializeFormDraft();
+      if (isCurrent() &&
           widget.id == null &&
           _guidedPlan != null &&
           !_guidedStarted) {
@@ -881,9 +957,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         WidgetsBinding.instance.addPostFrameCallback((_) => _runGuidedPlan());
       }
       final aiJobId = widget.initialAiJobId;
-      if (mounted &&
+      if (isCurrent() &&
           widget.id == null &&
           aiJobId != null &&
+          _guidedPlan == null &&
           aiJobId.isNotEmpty &&
           _aiIntake == null &&
           _canUseAiIntakeNow) {
@@ -894,13 +971,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         );
       }
     } on ApiException catch (e) {
+      if (!mounted || !isCurrent()) return;
       _initializationError = e.message;
     } on FormatException catch (e) {
+      if (!mounted || !isCurrent()) return;
       _initializationError = e.message;
     } catch (_) {
+      if (!mounted || !isCurrent()) return;
       _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (isCurrent()) setState(() => _loading = false);
     }
   }
 
@@ -1687,7 +1767,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   Future<void> _save() async {
-    if (_saving || _guidedBusy) return;
+    if (_saving || _guidedBusy || _initializationError != null) return;
+    final isCurrent = _captureQuoteContext();
     if (_guidedPlan != null) {
       if (!_guidedValidated) return;
       final before = jsonEncode(captureFormDraft());
@@ -1705,7 +1786,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         }
         setState(() => _guidedValidated = true);
       } catch (error) {
-        if (mounted) {
+        if (isCurrent()) {
           setState(() {
             _guidedStatus = 'guidedWaiting';
             _guidedDetail = error is ApiException
@@ -1715,9 +1796,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         }
         return;
       } finally {
-        if (mounted) setState(() => _guidedBusy = false);
+        if (isCurrent()) setState(() => _guidedBusy = false);
       }
     }
+    if (!mounted || !isCurrent()) return;
     if (_createdShipments.isNotEmpty) {
       await _finishCreatedShipments();
       return;
@@ -1740,7 +1822,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     // 汇总/去重/标红返回；出货/退货等带上游行引用的单据不查（合并会断链）。
     if (widget.docType == SalesDocType.order) {
       if (!await _reviewDuplicateGoods()) return;
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
     }
     final rows = _grid.rows;
     final parcelText = _parcelCount.text.trim();
@@ -1909,11 +1991,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     setState(() => _saving = true);
     try {
       if (widget.id == null) await saveFormDraftNow();
+      if (!mounted || !isCurrent()) return;
       final repo = ref.read(salesRepositoryProvider(widget.docType));
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
           : await repo.update(widget.id!, body);
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       if (widget.id == null) {
         setState(() {
           _createdDocId = d.id;
@@ -1921,7 +2004,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         });
         await checkpointFormDraftAfterCreation();
       }
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       context.appSuccess(
         _financeRejected
             ? '已转草稿，请重新审核提交财务'
@@ -1938,7 +2021,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         return;
       }
       await completeFormDraft();
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       // 编辑既有单：仅同单详情在紧邻栈下时 pop 并刷新；草稿列表直接编辑或深链
       // 进入时 replace 到本单详情继续审核。新建单同样落新详情。
       if (widget.id != null) {
@@ -1950,11 +2033,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         context.replace(SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
       }
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && isCurrent()) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+      if (mounted && isCurrent()) context.appError('保存失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (isCurrent()) setState(() => _saving = false);
     }
   }
 
@@ -2273,7 +2356,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 明细已有内容时先统一问一次「替换(第一份)/之后追加」；某份取消或失败即停，
   /// 已完成的保留、剩余的仍可再识别。
   Future<void> _confirmBatchIntake(List<PendingAttachment> queue) async {
-    if (!mounted || queue.isEmpty || _aiIntakeRunning || _saving) return;
+    if (!mounted || queue.isEmpty || _aiIntakeRunning || _saving || _guidedBusy) {
+      return;
+    }
     bool? replacePref;
     if (_grid.rows.any(_rowHasContent)) {
       final choice = await _askReplaceOrAppend();
@@ -2309,11 +2394,99 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   /// 单张暂存卡片识别(与批量共用一条执行链)。[replacePref] 为 null 时按原有口径：
   /// 明细已有内容先问「替换/追加」；批量识别先统一问一次再逐份传入。
+  Future<
+    ({
+      SalesIntakeLaunchResult result,
+      AiGuidedFilePlan? plan,
+      String? snapshot,
+    })?
+  >
+  _recognizeSalesFile(PlatformFile file) async {
+    final original = _guidedPlan;
+    final before = original == null ? null : jsonEncode(captureFormDraft());
+    AiGuidedFilePlan? prepared;
+    if (original != null) {
+      setState(() {
+        _guidedBusy = true;
+        _guidedValidated = false;
+        _guidedStatus = 'guidedValidating';
+      });
+      await _validateGuidedState();
+      if (!mounted || !original.matches(ref)) return null;
+      prepared = await prepareGuidedSalesRoute(
+        context,
+        ref,
+        original: original,
+        file: file,
+        workflow: widget.docType == SalesDocType.quote
+            ? AiGuidedWorkflow.salesQuote
+            : AiGuidedWorkflow.salesOrder,
+      );
+      if (!mounted || prepared == null || !prepared.matches(ref)) return null;
+      if (before != jsonEncode(captureFormDraft())) {
+        setState(() {
+          _guidedValidated = true;
+          _guidedStatus = 'guidedExisting';
+        });
+        return null;
+      }
+      setState(() => _guidedValidated = true);
+    }
+    if (!mounted) return null;
+    final result = await launchSalesIntakeWithFile(
+      context,
+      ref,
+      file: file,
+      docType: widget.docType,
+      clientId: _clientId,
+      clientName: _resolveIntakeClientName(),
+      docId: widget.id,
+      canHandoffToQuote: _canHandoffIntakeToQuote(),
+      guided: prepared != null,
+      guidedPlan: prepared,
+      stillCurrent: prepared == null
+          ? null
+          : () => mounted && prepared!.matches(ref),
+      onGuidedStage: prepared == null
+          ? null
+          : (stage) {
+              if (mounted && prepared!.matches(ref)) {
+                setState(() => _guidedStatus = stage);
+              }
+            },
+    );
+    if (!mounted ||
+        result == null ||
+        (prepared != null && !prepared.matches(ref))) {
+      return null;
+    }
+    return (result: result, plan: prepared, snapshot: before);
+  }
+
+  void _reportGuidedIntakeError(Object error) {
+    if (_guidedPlan == null) {
+      context.appApiError(error);
+      return;
+    }
+    setState(() {
+      _guidedStatus = 'guidedWaiting';
+      _guidedDetail = error is ApiException
+          ? error.message
+          : aiChatText(context, 'failed');
+      if (error is ApiException &&
+          (error.code == 'FORBIDDEN' ||
+              error.httpStatus == 401 ||
+              error.httpStatus == 403)) {
+        _guidedValidated = false;
+      }
+    });
+  }
+
   Future<bool> _runIntakeForItem(
     PendingAttachment item, {
     required bool? replacePref,
   }) async {
-    if (!mounted || _aiIntakeRunning || _saving) return false;
+    if (!mounted || _aiIntakeRunning || _saving || _guidedBusy) return false;
     if (!_pendingFiles.items.contains(item)) return false;
     final reRecognize = _intakeDoneFiles.contains(item);
     setState(() {
@@ -2321,24 +2494,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       _intakeBusyFiles.add(item);
     });
     try {
-      final result = await launchSalesIntakeWithFile(
-        context,
-        ref,
-        file: PlatformFile(
-          name: item.name,
-          size: item.sizeBytes,
-          bytes: item.bytes,
-        ),
-        docType: widget.docType,
-        clientId: _clientId,
-        clientName: _resolveIntakeClientName(),
-        docId: widget.id,
-        canHandoffToQuote: _canHandoffIntakeToQuote(),
+      final launched = await _recognizeSalesFile(
+        PlatformFile(name: item.name, size: item.sizeBytes, bytes: item.bytes),
       );
-      if (!mounted || result == null) return false;
+      if (!mounted || launched == null) return false;
       // 文件已在暂存列表里，不再走「把原文件存进附件」(避免依赖同名去重)。
       final applied = await _handleIntakeResult(
-        result,
+        launched.result,
+        sourcePlan: launched.plan,
+        expectedFormSnapshot: launched.snapshot,
         attachOriginal: false,
         replacePref: replacePref,
         reRecognizeFile: reRecognize ? item.name : null,
@@ -2358,9 +2522,17 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         setState(() {});
       }
       return applied;
+    } catch (error) {
+      if (mounted) _reportGuidedIntakeError(error);
+      return false;
     } finally {
       _intakeBusyFiles.remove(item);
-      if (mounted) setState(() => _aiIntakeRunning = false);
+      if (mounted) {
+        setState(() {
+          _aiIntakeRunning = false;
+          _guidedBusy = false;
+        });
+      }
     }
   }
 
@@ -2383,7 +2555,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   Future<void> _recognizeSavedAttachment(Attachment attachment) async {
-    if (!mounted || _aiIntakeRunning || _saving) return;
+    if (!mounted || _aiIntakeRunning || _saving || _guidedBusy) return;
     setState(() {
       _aiIntakeRunning = true;
       _intakeBusyAttachmentId = attachment.id;
@@ -2401,28 +2573,33 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         return;
       }
       if (!mounted) return;
-      final result = await launchSalesIntakeWithFile(
-        context,
-        ref,
-        file: PlatformFile(
+      final launched = await _recognizeSalesFile(
+        PlatformFile(
           name: attachment.originalName,
           size: attachment.sizeBytes,
           bytes: bytes,
         ),
-        docType: widget.docType,
-        clientId: _clientId,
-        clientName: _resolveIntakeClientName(),
-        docId: widget.id,
-        canHandoffToQuote: _canHandoffIntakeToQuote(),
       );
-      if (!mounted || result == null) return;
-      final applied = await _handleIntakeResult(result, attachOriginal: false);
+      if (!mounted || launched == null) return;
+      final applied = await _handleIntakeResult(
+        launched.result,
+        attachOriginal: false,
+        sourcePlan: launched.plan,
+        expectedFormSnapshot: launched.snapshot,
+      );
       if (mounted && applied) {
         setState(() => _intakeDoneAttachmentIds.add(attachment.id));
       }
+    } catch (error) {
+      if (mounted) _reportGuidedIntakeError(error);
     } finally {
       _intakeBusyAttachmentId = null;
-      if (mounted) setState(() => _aiIntakeRunning = false);
+      if (mounted) {
+        setState(() {
+          _aiIntakeRunning = false;
+          _guidedBusy = false;
+        });
+      }
     }
   }
 
@@ -2436,10 +2613,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   bool _canHandoffIntakeToQuote() {
     final permissions = ref.read(currentPermissionsProvider);
     return widget.docType == SalesDocType.order &&
-        permissions.contains(SalesDocConfig.quote.createPerm);
+        permissions.containsAll({Perm.salesQuoteView, Perm.salesQuoteCreate});
   }
 
   Future<void> _resumeAiIntake(String jobId) async {
+    if (_guidedPlan != null) {
+      await _runGuidedPlan();
+      return;
+    }
     if (!mounted || _aiIntakeRunning) return;
     setState(() => _aiIntakeRunning = true);
     try {
@@ -2476,7 +2657,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         plan == null ||
         _guidedBusy ||
         (_guidedApplied && _guidedValidated) ||
-        !plan.matches(ref)) {
+        !_guidedMatchesPage(plan)) {
       return;
     }
     setState(() {
@@ -2527,6 +2708,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         docType: widget.docType,
         guided: true,
         guidedPlan: plan,
+        canHandoffToQuote: _canHandoffIntakeToQuote(),
         clientId: _clientId,
         clientName: _resolveIntakeClientName(),
         stillCurrent: () => mounted && plan.matches(ref),
@@ -2550,33 +2732,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         setState(() => _guidedStatus = 'guidedExisting');
         return;
       }
-      await validateAiGuidedFilePlan(ref, plan);
-      if (!mounted || !plan.matches(ref)) return;
-      if (result.patch case final patch?) {
-        final freshIntake = await ref
-            .read(aiJobRepositoryProvider)
-            .get(patch.jobId);
-        if (!mounted || !plan.matches(ref)) return;
-        if (freshIntake.id != patch.jobId ||
-            freshIntake.kind != kSalesIntakeJobKind ||
-            freshIntake.status != AiJobStatus.succeeded ||
-            freshIntake.result == null) {
-          throw ApiException(
-            'DOCUMENT_ROUTE_INVALID',
-            aiChatText(context, 'documentSourceMismatch'),
-          );
-        }
-      }
-      if (jsonEncode(captureFormDraft()) != formBeforeRecognition) {
-        setState(() => _guidedStatus = 'guidedExisting');
-        return;
-      }
-      final applied = await _handleIntakeResult(result, attachOriginal: false);
+      final applied = await _handleIntakeResult(
+        result,
+        attachOriginal: false,
+        expectedFormSnapshot: formBeforeRecognition,
+      );
       if (!mounted || !plan.matches(ref)) return;
       setState(() {
         _guidedApplied = applied;
         _guidedStatus = applied ? 'guidedFilled' : 'guidedWaiting';
-        _guidedDetail = aiChatText(context, 'guidedNoMasterWrites');
+        _guidedDetail = null;
         if (applied) {
           _guidedCompletedStages.addAll({'guidedHeader', 'guidedRows'});
           _guidedFilledFields
@@ -2591,12 +2756,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       });
     } catch (error) {
       if (mounted && plan.matches(ref)) {
-        setState(() {
-          _guidedStatus = 'guidedWaiting';
-          _guidedDetail = error is ApiException
-              ? error.message
-              : aiChatText(context, 'failed');
-        });
+        _reportGuidedIntakeError(error);
       }
     } finally {
       if (mounted) setState(() => _guidedBusy = false);
@@ -2640,9 +2800,58 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     bool attachOriginal = true,
     bool? replacePref,
     String? reRecognizeFile,
+    AiGuidedFilePlan? sourcePlan,
+    String? expectedFormSnapshot,
   }) async {
+    final guided = sourcePlan ?? _guidedPlan;
+    AiGuidedFilePlan? verified;
+    if (guided != null) {
+      final before = expectedFormSnapshot ?? jsonEncode(captureFormDraft());
+      verified = await validateAiGuidedFilePlan(ref, guided);
+      if (!mounted || !_guidedMatchesPage(verified)) return false;
+      final intakeId = result.handoffJobId ?? result.patch?.jobId;
+      if (intakeId != null) {
+        final fresh = await ref.read(aiJobRepositoryProvider).get(intakeId);
+        if (!mounted || !verified.matches(ref)) return false;
+        if (fresh.id != intakeId ||
+            fresh.kind != kSalesIntakeJobKind ||
+            fresh.status != AiJobStatus.succeeded ||
+            fresh.result == null) {
+          throw ApiException(
+            'DOCUMENT_ROUTE_INVALID',
+            aiChatText(context, 'documentSourceMismatch'),
+          );
+        }
+      }
+      if (before != jsonEncode(captureFormDraft())) {
+        setState(() => _guidedStatus = 'guidedExisting');
+        return false;
+      }
+    }
     final handoff = result.handoffJobId;
     if (handoff != null) {
+      if (verified != null) {
+        final before = jsonEncode(captureFormDraft());
+        final quote = await prepareGuidedSalesRoute(
+          context,
+          ref,
+          original: verified,
+          file: result.file ?? verified.file,
+          workflow: AiGuidedWorkflow.salesQuote,
+        );
+        if (!mounted || quote == null || !quote.matches(ref)) return false;
+        if (before != jsonEncode(captureFormDraft())) {
+          setState(() => _guidedStatus = 'guidedExisting');
+          return false;
+        }
+        // New quotation -> fresh scoped intake; never a bare file or a second
+        // competing startup path carrying the order's old intake job.
+        context.push(
+          SalesRoutePath.docNew(SalesDocType.quote.pathSegment),
+          extra: quote,
+        );
+        return false;
+      }
       // 弹窗刚关，等一帧再跳页(跑批遮罩/弹窗退场不压住新页面)。
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return false;
@@ -2658,12 +2867,35 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
     final patch = result.patch;
     if (patch != null) {
-      return _applyIntakePatch(
+      if (verified != null) setState(() => _guidedPlan = verified);
+      final applied = await _applyIntakePatch(
         patch,
         file: attachOriginal ? result.file : null,
         replacePref: replacePref,
         reRecognizeFile: reRecognizeFile,
       );
+      if (mounted && applied && verified != null && verified.matches(ref)) {
+        setState(() {
+          _guidedApplied = true;
+          _guidedStatus = 'guidedFilled';
+          _guidedDetail = null;
+          _guidedCompletedStages.addAll({
+            'guidedMatching',
+            'guidedHeader',
+            'guidedRows',
+          });
+          _guidedFilledFields
+            ..clear()
+            ..add('${aiChatText(context, 'guidedRows')}: ${patch.rows.length}');
+          if (_clientId != null) {
+            _guidedFilledFields.insert(
+              0,
+              '${aiChatText(context, 'guidedClient')}: ${_clientDisplayName(ref.read(salesMasterNameServiceProvider))}',
+            );
+          }
+        });
+      }
+      return applied;
     }
     return false;
   }
@@ -2723,8 +2955,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     bool? replacePref,
     String? reRecognizeFile,
   }) async {
-    bool current() => mounted && (_guidedPlan?.matches(ref) ?? true);
+    final ownsQuote = _captureQuoteContext();
+    bool current() =>
+        mounted && ownsQuote() && (_guidedPlan?.matches(ref) ?? true);
     if (!current()) return false;
+    if (_quoteOrderLocked &&
+        patch.clientId != null &&
+        patch.clientId != _clientId) {
+      context.appError('该订单客户已由来源报价确认，不能用其他客户文件替换；请重新报价。');
+      return false;
+    }
     final l10n = salesIntakeL10n(context);
     var replace = true;
     if (replacePref != null) {
@@ -2832,6 +3072,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       // 单据币种 = 本位币(标价所用币种)，晚于客户条款预填，避免被客户默认外币覆盖。
       final currencyId = patch.currencyId;
       if (_cfg.hasCurrency &&
+          !_quoteOrderLocked &&
           currencyId != null &&
           names.currencyEntries.containsKey(currencyId) &&
           (_guidedPlan == null ||
@@ -3007,7 +3248,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     final plan = _guidedPlan;
     if (plan != null &&
         (ref.watch(aiGuidedFileIdentityProvider) != plan.identity ||
-            !plan.matches(ref))) {
+            !_guidedMatchesPage(plan))) {
       return Scaffold(
         body: Center(child: Text(aiChatText(context, 'permissionChanged'))),
       );
@@ -3077,8 +3318,15 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                         message: '${_cfg.label}加载失败',
                         description:
                             '${_initializationError!}\n当前未加载任何可编辑数据。请重试，或使用左上角返回按钮退出编辑。',
-                        actionLabel: '重试',
-                        onAction: _init,
+                        actionLabel: _quoteContextInvalidated ? '返回报价列表' : '重试',
+                        onAction: _quoteContextInvalidated
+                            ? () => backTo(
+                                context,
+                                defaultPath: SalesRoutePath.list(
+                                  _cfg.type.pathSegment,
+                                ),
+                              )
+                            : _init,
                       )
                     : UtenGridPageScrollbar(
                         pinned: _gridPinned,
@@ -3308,25 +3556,31 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                               onChanged: (d) =>
                                                   setState(() => _billDate = d),
                                             ),
-                                            ClientPickerField(
-                                              initialId: _clientId,
-                                              initialName: _clientDisplayName(
-                                                names,
+                                            if (_quoteOrderLocked)
+                                              _quoteSourceField(
+                                                '客户',
+                                                _clientDisplayName(names),
+                                              )
+                                            else
+                                              ClientPickerField(
+                                                initialId: _clientId,
+                                                initialName: _clientDisplayName(
+                                                  names,
+                                                ),
+                                                required: _cfg.clientRequired,
+                                                errorMessage:
+                                                    _errors.contains('client')
+                                                    ? '请选择客户'
+                                                    : null,
+                                                // 选客户后联动带出主档收货地址/联系电话。
+                                                onChanged: (v) =>
+                                                    _onClientChanged(v),
+                                                onPick: () =>
+                                                    showUtenClientPicker(
+                                                      context,
+                                                      ref,
+                                                    ),
                                               ),
-                                              required: _cfg.clientRequired,
-                                              errorMessage:
-                                                  _errors.contains('client')
-                                                  ? '请选择客户'
-                                                  : null,
-                                              // 选客户后联动带出主档收货地址/联系电话。
-                                              onChanged: (v) =>
-                                                  _onClientChanged(v),
-                                              onPick: () =>
-                                                  showUtenClientPicker(
-                                                    context,
-                                                    ref,
-                                                  ),
-                                            ),
                                             if (_isCustomerShipment) ...[
                                               UtenDropdownField(
                                                 key: const ValueKey(
@@ -3451,50 +3705,64 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                               ),
                                             if (_cfg.hasCurrency &&
                                                 !_freeCustomerShipment) ...[
-                                              _dropdown(
-                                                '币种',
-                                                _currencyId,
-                                                _currencyChoices(names),
-                                                (v) {
-                                                  setState(
-                                                    () => _currencyId = v,
-                                                  );
-                                                  _clearError('currency');
-                                                  _markConfirmed('currency');
-                                                },
-                                                required: _cfg.currencyRequired,
-                                                autofilled: _autofilled
-                                                    .contains('currency'),
-                                                errorMessage:
-                                                    _errors.contains('currency')
-                                                    ? '请选择币种'
-                                                    : null,
-                                                // 列表没有的币种可内联新增（currency:edit），
-                                                // 新建后字典重载并自动选中新值。
-                                                addNewLabel: '添加币种',
-                                                onAddNew:
-                                                    _canAddCurrency &&
-                                                        widget.docType !=
-                                                            SalesDocType.quote
-                                                    ? () async {
-                                                        final id =
-                                                            await showCurrencyAddSheet(
-                                                              context,
-                                                              ref,
-                                                              names,
-                                                            );
-                                                        if (id == null ||
-                                                            !mounted) {
-                                                          return;
+                                              if (_quoteOrderLocked)
+                                                _quoteSourceField(
+                                                  '币种',
+                                                  names.currency(
+                                                    _currencyId ??
+                                                        names.baseCurrencyId,
+                                                  ),
+                                                )
+                                              else
+                                                _dropdown(
+                                                  '币种',
+                                                  _currencyId,
+                                                  _currencyChoices(names),
+                                                  (v) {
+                                                    setState(
+                                                      () => _currencyId = v,
+                                                    );
+                                                    _clearError('currency');
+                                                    _markConfirmed('currency');
+                                                  },
+                                                  required:
+                                                      _cfg.currencyRequired,
+                                                  autofilled: _autofilled
+                                                      .contains('currency'),
+                                                  errorMessage:
+                                                      _errors.contains(
+                                                        'currency',
+                                                      )
+                                                      ? '请选择币种'
+                                                      : null,
+                                                  // 列表没有的币种可内联新增（currency:edit），
+                                                  // 新建后字典重载并自动选中新值。
+                                                  addNewLabel: '添加币种',
+                                                  onAddNew:
+                                                      _canAddCurrency &&
+                                                          widget.docType !=
+                                                              SalesDocType.quote
+                                                      ? () async {
+                                                          final id =
+                                                              await showCurrencyAddSheet(
+                                                                context,
+                                                                ref,
+                                                                names,
+                                                              );
+                                                          if (id == null ||
+                                                              !mounted) {
+                                                            return;
+                                                          }
+                                                          setState(
+                                                            () => _currencyId =
+                                                                id,
+                                                          );
+                                                          _clearError(
+                                                            'currency',
+                                                          );
                                                         }
-                                                        setState(
-                                                          () =>
-                                                              _currencyId = id,
-                                                        );
-                                                        _clearError('currency');
-                                                      }
-                                                    : null,
-                                              ),
+                                                      : null,
+                                                ),
                                               if (_cfg.hasExchangeRate)
                                                 TextField(
                                                   controller: _rate,
@@ -4201,6 +4469,18 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   bool get _canAddSettlement => ref
       .watch(currentPermissionsProvider)
       .contains(Perm.settlementMethodCreate);
+
+  Widget _quoteSourceField(String label, String value) => Tooltip(
+    message: '客户和币种沿用双方已同意的报价；如需变更，请取消原订单后重新报价。',
+    child: InputDecorator(
+      key: ValueKey('quote-source-locked-$label'),
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: const Icon(Icons.lock_outline, size: 18),
+      ),
+      child: Text(value),
+    ),
+  );
 
   Widget _dropdown(
     String label,

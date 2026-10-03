@@ -69,6 +69,10 @@ public class SalesQuoteTemplateStore {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void adopt(SalesIntakeUsedEvent event) {
+        adopt(event,null);
+    }
+
+    private void adopt(SalesIntakeUsedEvent event, Map<String,String> confirmedRoles) {
         if (event == null || event.jobId() == null || event.userId() == null || event.docId() == null
                 || event.clientId() == null || !("quote".equals(event.docType()) || "order".equals(event.docType()))
                 || currentUser.id().filter(event.userId()::equals).isEmpty()
@@ -81,7 +85,12 @@ public class SalesQuoteTemplateStore {
         p.put("type", event.docType()); p.put("doc", event.docId());
         lockJob(p);
         jdbc.query("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:client AS text),745))", p, rs -> null);
-        if (jdbc.queryForObject("SELECT count(*) FROM sales_quote_template_evidence WHERE job_id=:job", p, Integer.class) != 0) return;
+        List<String> prior=jdbc.query("SELECT confirmed_column_roles::text FROM sales_quote_template_evidence WHERE job_id=:job",p,(rs,row) -> rs.getString(1));
+        if (!prior.isEmpty()) {
+            if(confirmedRoles!=null && (prior.getFirst()==null || !parseMap(prior.getFirst()).equals(confirmedRoles)))
+                throw new ApiException(ErrorCode.CONFLICT,"此任务已经采用其他字段映射，请重新上传核对，不能覆盖首次采用结果");
+            return;
+        }
         List<Payload> candidates = jdbc.query("""
                 SELECT c.workbook_bytes,c.mapping::text,c.features::text,c.fingerprint,c.source_name,
                     c.storage_provider,c.storage_key,c.storage_version,c.storage_size,c.storage_sha256
@@ -97,13 +106,22 @@ public class SalesQuoteTemplateStore {
                 """, p, (rs, i) -> payload(rs));
         if (candidates.isEmpty()) return;
         Payload candidate = candidates.getFirst();
+        if(confirmedRoles!=null) {
+            try {
+                byte[] bytes=candidate.object()==null ? candidate.legacyBytes() : storage.read(candidate.object());
+                var mapped=QuoteTemplateWorkbook.remap(new QuoteTemplateWorkbook.Candidate(bytes,candidate.fingerprint(),candidate.mapping(),candidate.features()),confirmedRoles);
+                candidate=new Payload(candidate.legacyBytes(),mapped.mapping(),mapped.features(),mapped.fingerprint(),candidate.sourceName(),candidate.object());
+            } catch(IllegalArgumentException invalid) { throw new ApiException(ErrorCode.VALIDATION_FAILED,invalid.getMessage()
+                    +(invalid instanceof QuoteTemplateWorkbook.LayoutException ? "，请调整源文件后重新上传学习模板" : "")); }
+        }
+        final Payload selectedCandidate=candidate;
         List<TemplateMatch> existing = jdbc.query("""
                 SELECT id,current_version,features::text,fingerprint FROM sales_quote_customer_templates WHERE client_id=:client
                 ORDER BY last_used_at DESC,id FOR UPDATE
                 """, p, (rs, i) -> new TemplateMatch(rs.getObject(1, UUID.class), rs.getInt(2), parseFeatures(rs.getString(3)), rs.getString(4)));
-        TemplateMatch match = existing.stream().filter(t -> compatible(t.features(), candidate.features()))
-                .max(Comparator.comparingDouble(t -> t.fingerprint().equals(candidate.fingerprint()) ? 2
-                        : QuoteTemplateWorkbook.similarity(t.features(), candidate.features()))).orElse(null);
+        TemplateMatch match = existing.stream().filter(t -> compatible(t.features(), selectedCandidate.features()))
+                .max(Comparator.comparingDouble(t -> t.fingerprint().equals(selectedCandidate.fingerprint()) ? 2
+                        : QuoteTemplateWorkbook.similarity(t.features(), selectedCandidate.features()))).orElse(null);
         UUID id = match == null ? UUID.randomUUID() : match.id();
         int version = match == null ? 1 : match.version();
         // Repeated uploads with the same layout have different ZIP timestamps/row counts but are not new versions.
@@ -114,6 +132,8 @@ public class SalesQuoteTemplateStore {
         p.put("bytes", candidate.legacyBytes()); p.put("mapping", encode(candidate.mapping())); p.put("version", version);
         bindObject(p, candidate.object());
         p.put("payloadSha", candidate.object() == null ? SalesQuoteTemplateStorage.digest(candidate.legacyBytes()) : candidate.object().sha256());
+        // Ordinary document adoption is not an explicit field-mapping decision and must not supersede one.
+        p.put("confirmedRoles",confirmedRoles==null ? null : encode(confirmedRoles));
         if (match == null) {
             jdbc.update("""
                     INSERT INTO sales_quote_customer_templates(id,client_id,name,fingerprint,features)
@@ -133,8 +153,8 @@ public class SalesQuoteTemplateStore {
                     :provider,:key,:objectVersion,:size,:sha)
                 """, p);
         jdbc.update("""
-                INSERT INTO sales_quote_template_evidence(job_id,template_id,client_id,doc_type,doc_id)
-                VALUES(:job,:id,:client,:type,:doc)
+                INSERT INTO sales_quote_template_evidence(job_id,template_id,client_id,doc_type,doc_id,template_version,confirmed_column_roles)
+                VALUES(:job,:id,:client,:type,:doc,:version,CAST(:confirmedRoles AS jsonb))
                 """, p);
         // V747's cleanup trigger only releases objects not referenced by an immutable template version.
         jdbc.update("UPDATE sales_quote_template_candidates SET archived_at=COALESCE(archived_at,now()),archived_by=COALESCE(archived_by,CAST(:actor AS text)),archive_reason=COALESCE(archive_reason,'ADOPTED') WHERE job_id=:job",p);
@@ -152,6 +172,11 @@ public class SalesQuoteTemplateStore {
     /** Explicit adoption from a saved quotation's download flow; no document/master values are imported. */
     @Transactional
     public UUID adoptUploaded(UUID quoteId, UUID clientId, UUID jobId) {
+        return adoptUploaded(quoteId,clientId,jobId,null);
+    }
+
+    @Transactional
+    public UUID adoptUploaded(UUID quoteId, UUID clientId, UUID jobId, Map<String,String> confirmedRoles) {
         UUID actor = currentUser.id().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         Map<String, Object> p = Map.of("job", jobId, "actor", actor, "doc", quoteId, "client", clientId);
         lockJob(p);
@@ -163,7 +188,7 @@ public class SalesQuoteTemplateStore {
                 """, p, Boolean.class));
         if (!owned) throw new ApiException(ErrorCode.CONFLICT, "模板识别任务不属于当前报价或客户，请重新上传");
         if (!lookup.canLearnClientDocument(clientId)) throw new ApiException(ErrorCode.FORBIDDEN, "你没有此客户的模板学习权限");
-        adopt(new SalesIntakeUsedEvent(jobId, actor, "quote", quoteId, clientId));
+        adopt(new SalesIntakeUsedEvent(jobId, actor, "quote", quoteId, clientId),confirmedRoles);
         return jdbc.query("""
                 SELECT template_id FROM sales_quote_template_evidence
                 WHERE job_id=:job AND client_id=:client AND doc_type='quote' AND doc_id=:doc
@@ -178,9 +203,37 @@ public class SalesQuoteTemplateStore {
     public record TemplateView(UUID id, String name, int version, String sourceName, OffsetDateTime lastUsedAt,
                                int useCount, String fileExtension) { }
     public record Stored(byte[] bytes, Map<String, Object> mapping, Set<String> features, String fingerprint, String sourceName) { }
+
+    @Transactional(readOnly=true)
+    public Map<String,String> latestConfirmedRoles(UUID clientId,String headerFingerprint) {
+        if(clientId==null || headerFingerprint==null || !lookup.canLearnClientDocument(clientId)) return Map.of();
+        List<String> rows=jdbc.query("""
+                SELECT e.confirmed_column_roles::text FROM sales_quote_template_evidence e
+                JOIN sales_quote_template_versions v ON v.template_id=e.template_id AND v.version=e.template_version
+                WHERE e.client_id=:client AND v.mapping->>'intakeFingerprint'=:fingerprint AND e.confirmed_column_roles IS NOT NULL
+                  AND jsonb_exists(v.mapping,'confirmedColumnRoles')
+                ORDER BY e.created_at DESC,e.job_id DESC LIMIT 1
+                """,Map.of("client",clientId,"fingerprint",headerFingerprint),(rs,row) -> rs.getString(1));
+        if(rows.isEmpty()) return Map.of();
+        Map<String,String> roles=new LinkedHashMap<>();parseMap(rows.getFirst()).forEach((key,value) -> roles.put(key,String.valueOf(value)));
+        return roles;
+    }
     private record TemplateMatch(UUID id, int version, Set<String> features, String fingerprint) { }
     private record Payload(byte[] legacyBytes, Map<String, Object> mapping, Set<String> features,
                            String fingerprint, String sourceName, SalesQuoteTemplateStorage.ObjectRef object) { }
+
+    @Transactional(readOnly=true)
+    public TemplateView adoptedView(UUID quoteId, UUID clientId, UUID jobId) {
+        return jdbc.query("""
+                SELECT t.id,t.name,e.template_version,v.source_name,t.last_used_at,t.use_count
+                FROM sales_quote_template_evidence e JOIN sales_quote_customer_templates t ON t.id=e.template_id
+                JOIN sales_quote_template_versions v ON v.template_id=e.template_id AND v.version=e.template_version
+                WHERE e.job_id=:job AND e.client_id=:client AND t.client_id=:client AND e.doc_type='quote' AND e.doc_id=:doc
+                """, Map.of("job",jobId,"client",clientId,"doc",quoteId), (rs, row) -> new TemplateView(
+                rs.getObject(1,UUID.class),rs.getString(2),rs.getInt(3),rs.getString(4),
+                rs.getObject(5,OffsetDateTime.class),rs.getInt(6),"xlsx")).stream().findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT,"旧模板采用记录无法确认原版本，请重新上传并核对"));
+    }
 
     @Transactional(readOnly = true)
     public List<TemplateView> list(UUID client) {
@@ -196,14 +249,22 @@ public class SalesQuoteTemplateStore {
 
     @Transactional(readOnly = true)
     public Stored load(UUID client, UUID id) {
+        return load(client, id, null);
+    }
+
+    @Transactional(readOnly = true)
+    public Stored load(UUID client, UUID id, Integer version) {
         if (client == null || id == null) throw new ApiException(ErrorCode.NOT_FOUND, "报价模板不存在或不属于此客户");
+        if (version != null && version < 1) throw new ApiException(ErrorCode.VALIDATION_FAILED,"报价模板版本无效");
+        Map<String,Object> parameters = new HashMap<>();
+        parameters.put("client",client); parameters.put("id",id); parameters.put("version",version);
         Payload payload = jdbc.query("""
                 SELECT v.workbook_bytes,v.mapping::text,t.features::text,t.fingerprint,v.source_name,
                     v.storage_provider,v.storage_key,v.storage_version,v.storage_size,v.storage_sha256
                 FROM sales_quote_customer_templates t JOIN sales_quote_template_versions v
-                  ON v.template_id=t.id AND v.version=t.current_version
+                  ON v.template_id=t.id AND v.version=COALESCE(CAST(:version AS integer),t.current_version)
                 WHERE t.id=:id AND t.client_id=:client
-                """, Map.of("client",client,"id",id), (rs,i) -> payload(rs)).stream().findFirst()
+                """, parameters, (rs,i) -> payload(rs)).stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND,"报价模板不存在或不属于此客户"));
         return new Stored(payload.object() == null ? payload.legacyBytes() : storage.read(payload.object()),
                 payload.mapping(), payload.features(), payload.fingerprint(), payload.sourceName());

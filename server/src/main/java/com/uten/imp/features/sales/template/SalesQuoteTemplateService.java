@@ -45,12 +45,18 @@ public class SalesQuoteTemplateService {
         this.quotes=quotes; this.templates=templates; this.master=master; this.jdbc=jdbc;
         this.currentUser=currentUser; this.download=download; this.audit=audit;
     }
-    public record ExportRequest(List<UUID> templateIds, boolean all, String password, com.uten.imp.common.export.TableColumnProjection columnProjection) {
-        public ExportRequest(List<UUID> templateIds, boolean all, String password) { this(templateIds, all, password, null); }
+    public record ExportRequest(List<UUID> templateIds, boolean all, String password, com.uten.imp.common.export.TableColumnProjection columnProjection,
+                                Integer expectedRevision, Map<UUID,Integer> templateVersions) {
+        public ExportRequest(List<UUID> templateIds, boolean all, String password) { this(templateIds, all, password, null, null, null); }
+        public ExportRequest(List<UUID> templateIds, boolean all, String password, com.uten.imp.common.export.TableColumnProjection projection) {
+            this(templateIds,all,password,projection,null,null);
+        }
     }
     public record Download(byte[] bytes, String fileName, String contentType, int templateCount, int rowCount) { }
     public record LearningContext(UUID clientId, String clientName) { }
-    public record AdoptRequest(UUID jobId) { }
+    public record AdoptRequest(UUID jobId, Map<String,String> columnRoles) {
+        public AdoptRequest(UUID jobId) { this(jobId,null); }
+    }
 
     @Transactional(readOnly=true)
     public LearningContext learningContext(UUID quoteId) {
@@ -69,11 +75,10 @@ public class SalesQuoteTemplateService {
         // Hold the document identity stable through client/owner authorization and candidate adoption.
         jdbc.query("SELECT id FROM sales_quotes WHERE id=:id AND NOT is_deleted FOR UPDATE", Map.of("id", quoteId), rs -> null);
         LearningContext context = learningContext(quoteId);
-        UUID id = templates.adoptUploaded(quoteId, context.clientId(), request.jobId());
+        templates.adoptUploaded(quoteId, context.clientId(), request.jobId(), request.columnRoles());
         if (events != null) events.publishEvent(new SalesQuoteTemplateAdoptedEvent(request.jobId(),
-                currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getId(), quoteId, context.clientId()));
-        return templates.list(context.clientId()).stream().filter(template -> template.id().equals(id)).findFirst()
-                .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "模板保存后未找到，请重试"));
+                currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getId(), quoteId, context.clientId(), request.columnRoles()));
+        return templates.adoptedView(quoteId, context.clientId(), request.jobId());
     }
 
     private void requireLearningPermission() {
@@ -90,20 +95,30 @@ public class SalesQuoteTemplateService {
         QuoteDetail quote=readable(quoteId);
         return templates.list(quote.getClientId());
     }
-    @Transactional(readOnly=true, isolation=Isolation.REPEATABLE_READ)
+    @Transactional(isolation=Isolation.REPEATABLE_READ)
     public Download export(UUID quoteId, ExportRequest request) {
         AuthUser actor=currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         if (actor.isVisitor() || actor.getPermissions()==null || !actor.getPermissions().containsAll(
                 Set.of("sales_quote:view","sales_quote:export","sales_order:price:view"))) throw new ApiException(ErrorCode.FORBIDDEN);
+        jdbc.query("SELECT id FROM sales_quotes WHERE id=:id AND NOT is_deleted FOR SHARE", Map.of("id",quoteId), rs -> null);
         QuoteDetail quote=readable(quoteId);
         if (quote.isPriceMasked()) throw new ApiException(ErrorCode.FORBIDDEN,"你没有报价价格查看权限");
         if (quote.getItems()==null || quote.getItems().size()>500) throw new ApiException(ErrorCode.VALIDATION_FAILED,"报价最多导出 500 行");
-        ExportRequest req=request==null ? new ExportRequest(List.of(),false,null) : request;
+        if (request==null || request.expectedRevision()==null)
+            throw new ApiException(ErrorCode.CONFLICT,"缺少报价版本，请刷新报价后重新选择模板下载");
+        ExportRequest req=request;
+        // REPEATABLE_READ above keeps this revision check, all row values and the template selection in one snapshot.
+        if (req.expectedRevision()!=quote.getReviewRevision())
+            throw new ApiException(ErrorCode.CONFLICT,"报价已被修改，请刷新后重新核对并下载");
         if (req.password()!=null && req.password().length()>128) throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出密码最多 128 位");
         List<SalesQuoteTemplateStore.TemplateView> available=templates.list(quote.getClientId());
         List<UUID> ids=req.all() ? available.stream().map(SalesQuoteTemplateStore.TemplateView::id).toList()
                 : req.templateIds()==null ? List.of() : req.templateIds().stream().filter(Objects::nonNull).distinct().toList();
         if (ids.size()>MAX_TEMPLATES_PER_EXPORT) throw new ApiException(ErrorCode.VALIDATION_FAILED,"一次最多导出 100 个模板，请分批选择");
+        Map<UUID,Integer> versions=req.templateVersions()==null ? Map.of() : req.templateVersions();
+        if (versions.size()>MAX_TEMPLATES_PER_EXPORT || !new HashSet<>(ids).equals(versions.keySet())
+                || versions.values().stream().anyMatch(version -> version==null || version<1))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"报价模板版本选择无效");
         ClientProfile client=quote.getClientId()==null ? null : master.clientProfile(quote.getClientId());
         Map<String,String> header=new HashMap<>();
         if (client!=null) {
@@ -128,18 +143,14 @@ public class SalesQuoteTemplateService {
         if (ids.isEmpty()) {
             QuoteTemplateWorkbook.Candidate base=QuoteTemplateWorkbook.defaultTemplate();
             if (projection != null) base = QuoteTemplateWorkbook.project(base.xlsx(), base.mapping(), projection);
-            addFile(files, bill+".xlsx", download.protect(QuoteTemplateWorkbook.render(base.xlsx(),base.mapping(),lines,header,quote.getTotalOriginalExact()),req.password()));
+            addFile(files, bill+".xlsx", download.protect(renderWorkbook(base.xlsx(),base.mapping(),lines,header,quote.getTotalOriginalExact()),req.password()));
         } else for (UUID id : ids) {
             if (quote.getClientId()==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请先选择客户");
-            SalesQuoteTemplateStore.Stored template=templates.load(quote.getClientId(),id);
-            if (projection != null) {
-                var projected = QuoteTemplateWorkbook.project(template.bytes(), template.mapping(), projection);
-                template = new SalesQuoteTemplateStore.Stored(projected.xlsx(), projected.mapping(), template.features(), template.fingerprint(), template.sourceName());
-            }
+            SalesQuoteTemplateStore.Stored template=templates.load(quote.getClientId(),id,versions.get(id));
             String name=available.stream().filter(t -> t.id().equals(id)).map(SalesQuoteTemplateStore.TemplateView::name)
                     .findFirst().orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND));
             addFile(files, bill+"_"+name.replaceAll("[\\\\/\\p{Cntrl}:*?\"<>|]","_")+"_"+id.toString().substring(0,8)+".xlsx",
-                    download.protect(QuoteTemplateWorkbook.render(template.bytes(),template.mapping(),lines,header,quote.getTotalOriginalExact()),req.password()));
+                    download.protect(renderWorkbook(template.bytes(),template.mapping(),lines,header,quote.getTotalOriginalExact()),req.password()));
         }
         byte[] bytes; String name; String contentType;
         if (files.size()==1) {
@@ -164,6 +175,13 @@ public class SalesQuoteTemplateService {
         if (total > MAX_EXPORT_BYTES) throw new ApiException(ErrorCode.VALIDATION_FAILED,
                 "报价文件合计超过 100 MiB，请分批选择模板");
         files.put(name, bytes);
+    }
+    private static byte[] renderWorkbook(byte[] bytes,Map<String,Object> mapping,List<QuoteTemplateWorkbook.ExportLine> lines,
+                                         Map<String,String> header,String total) {
+        try { return QuoteTemplateWorkbook.render(bytes,mapping,lines,header,total); }
+        catch(QuoteTemplateWorkbook.LayoutException invalid) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"客户模板的"+invalid.getMessage()+"，请调整源文件后重新上传学习模板");
+        }
     }
     private QuoteDetail readable(UUID id) {
         QuoteDetail quote=quotes.detail(id); // Authoritative quote permission, masking and owner scope.

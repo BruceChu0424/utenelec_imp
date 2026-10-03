@@ -82,10 +82,11 @@ class _FinanceSalesOrderReviewPageState
   int _loadGeneration = 0;
 
   bool get _canConfirm =>
-      ref.read(isSuperAdminProvider) ||
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.salesOrderFinanceConfirm);
+      _review?.requotedToId == null &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.salesOrderFinanceConfirm));
 
   @override
   void initState() {
@@ -151,7 +152,9 @@ class _FinanceSalesOrderReviewPageState
         _review = review;
         _loading = false;
       });
-      if (review.financeConfirmed || review.financeRejected) {
+      if (review.financeConfirmed ||
+          review.financeRejected ||
+          review.requotedToId != null) {
         await _reviewClaim?.releaseAll();
       }
     } on ApiException catch (e) {
@@ -601,6 +604,22 @@ class _FinanceSalesOrderReviewPageState
     if (!canDecide) {
       return UtenFloatingActionGroup(
         children: [
+          if (_review!.requotedToId != null &&
+              ref
+                  .watch(currentPermissionsProvider)
+                  .contains(Perm.salesQuoteView))
+            UtenButton(
+              key: const Key('finance-review-requote'),
+              type: UtenButtonType.secondary,
+              size: UtenButtonSize.large,
+              icon: Icons.open_in_new_rounded,
+              onPressed: () => context.push(
+                '/sales/quotes/${_review!.requotedToId}?history=1',
+              ),
+              child: const Text('查看首次重新报价'),
+            )
+          else if (_review!.requotedToId != null)
+            const Text('首次重新报价历史已保留；需销售报价查看权限'),
           UtenButton(
             key: const Key('finance-review-back'),
             type: UtenButtonType.secondary,
@@ -655,14 +674,16 @@ class _FinanceSalesOrderReviewPageState
         : rejected
         ? Icons.undo_rounded
         : Icons.pending_actions_rounded;
-    final statusText = confirmed
-        ? '已财务确认 · ${r.financeConfirmedByName ?? '当前审核员'}'
-              '${r.financeConfirmedAt == null ? '' : ' · ${utenFmtIsoTime(r.financeConfirmedAt)}'}'
-        : rejected
-        ? '已驳回 · 待销售修改'
-        : r.revisionDiff != null
-        ? '修改后待复审'
-        : '待财务确认';
+    final statusText =
+        r.readOnlyReason ??
+        (confirmed
+            ? '已财务确认 · ${r.financeConfirmedByName ?? '当前审核员'}'
+                  '${r.financeConfirmedAt == null ? '' : ' · ${utenFmtIsoTime(r.financeConfirmedAt)}'}'
+            : rejected
+            ? '已驳回 · 待销售修改'
+            : r.revisionDiff != null
+            ? '修改后待复审'
+            : '待财务确认');
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(

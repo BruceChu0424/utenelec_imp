@@ -43,6 +43,102 @@ import '../../ai_visual/ai_visual_support.dart';
 void main() {
   tearDown(() => FilePicker.platform = _Picker(const []));
 
+  testWidgets('guided re-recognition quote handoff retains verified guided mode', (
+    tester,
+  ) async {
+    final plan = _guidedPlan(quoteAccess: true);
+    final result = _highResult();
+    final line = (result['lines'] as List).first as Map<String, dynamic>;
+    final selected = (line['candidates'] as List).first as Map<String, dynamic>;
+    selected['listPrice'] = 0;
+    selected['pricingFlag'] = 'NO_LIST_PRICE';
+    result['extraColumns'] = [
+      {'key': 'note', 'label': 'Source note', 'dataType': 'TEXT'},
+    ];
+    Object? handed;
+    final jobs = _GuidedJobs(plan);
+    final runner = _HandoffRunner(jobs, result);
+    final files = _Files();
+    final api = await _pumpEditor(
+      tester,
+      files,
+      type: SalesDocType.order,
+      guidedPlan: plan,
+      permissions: plan.identity.permissions.split('\n').toSet(),
+      guidedJobs: jobs,
+      guidedRunner: runner,
+      onQuoteOpened: (state) => handed = state.extra,
+      renderQuoteHandoff: true,
+    );
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    final section = tester.widget<BusinessAttachmentSection>(
+      find.byKey(const ValueKey('sales-order-draft-attachments')),
+    );
+    final item = section.draftController!.items.single;
+    section.draftActionFor!(item)!.onTap!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('sales-intake-handoff-quote')));
+    await tester.pumpAndSettle();
+    expect(
+      handed,
+      isA<AiGuidedFilePlan>(),
+      reason:
+          'A raw PlatformFile loses no-write and source-validation restrictions',
+    );
+    expect((handed as AiGuidedFilePlan).workflow, AiGuidedWorkflow.salesQuote);
+    expect(
+      runner.requests
+          .where((request) => request.kind == aiGuidedRouteKind)
+          .single
+          .params,
+      {'message': 'Create sales quotation'},
+    );
+    expect(
+      runner.requests.where(
+        (request) =>
+            request.kind == 'SALES_DOCUMENT_INTAKE' &&
+            request.params['docType'] == 'quote',
+      ),
+      hasLength(1),
+    );
+    await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
+    await tester.pumpAndSettle();
+    final quotePage = find.byWidgetPredicate(
+      (widget) =>
+          widget is SalesDocEditPage && widget.docType == SalesDocType.quote,
+    );
+    expect(quotePage, findsOneWidget);
+    expect(
+      api.writes,
+      isEmpty,
+      reason:
+          'Workflow changes must not create columns or save a business document',
+    );
+    expect(files.uploads, isEmpty);
+  });
+
+  testWidgets('guided plan cannot be applied to a different document type', (
+    tester,
+  ) async {
+    final plan = _guidedPlan(quoteAccess: true);
+    final jobs = _GuidedJobs(plan);
+    final runner = FakeAiJobRunner(result: _highResult());
+    final api = await _pumpEditor(
+      tester,
+      _Files(),
+      type: SalesDocType.quote,
+      guidedPlan: plan,
+      guidedJobs: jobs,
+      guidedRunner: runner,
+      permissions: plan.identity.permissions.split('\n').toSet(),
+    );
+    expect(find.byType(UtenEditableGrid<SalesGridRow>), findsNothing);
+    expect(runner.requests, isEmpty);
+    expect(jobs.reads, isEmpty);
+    expect(api.writes, isEmpty);
+  });
+
   testWidgets(
     'guided sale validates first, fills real grid and keeps all writes manual',
     (tester) async {
@@ -96,7 +192,7 @@ void main() {
   );
 
   testWidgets(
-    'guided sale actual narrow page shows completed stages without overflow',
+    'guided sale actual narrow page shows filled values and next step without rules',
     (tester) async {
       final plan = _guidedPlan();
       await _pumpEditor(
@@ -113,6 +209,11 @@ void main() {
         find.byKey(const ValueKey('ai-guided-file-progress')),
         findsOneWidget,
       );
+      final l10n = AppLocalizations.of(
+        tester.element(find.byKey(const ValueKey('ai-guided-file-progress'))),
+      );
+      expect(find.text(l10n.aiChatDocumentManualSave), findsOneWidget);
+      expect(find.text(l10n.aiChatGuidedNoMasterWrites), findsNothing);
       expect(tester.takeException(), isNull);
       if (kCaptureUi) {
         await tester.pump(const Duration(seconds: 6));
@@ -180,10 +281,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('sales-intake-import-all')));
       await tester.pumpAndSettle();
-      final grid = tester.widget<UtenEditableGrid<SalesGridRow>>(
-        find.byType(UtenEditableGrid<SalesGridRow>),
-      );
-      expect(grid.controller.rows.every((row) => row.goods == null), isTrue);
+      expect(find.byType(UtenEditableGrid<SalesGridRow>), findsNothing);
       expect(find.textContaining('Candidate access revoked'), findsOneWidget);
       expect(api.writes, isEmpty);
       expect(files.uploads, isEmpty);
@@ -421,6 +519,8 @@ Future<_EditorApi> _pumpEditor(
   FakeAiJobRunner? guidedRunner,
   MemoryFormDraftStorage? storage,
   String? resumeId,
+  void Function(GoRouterState)? onQuoteOpened,
+  bool renderQuoteHandoff = false,
   double width = 1600,
   double height = 1400,
   Set<String> permissions = const {
@@ -495,6 +595,25 @@ Future<_EditorApi> _pumpEditor(
                 ),
               ),
               GoRoute(
+                path: '/sales/quotes/new',
+                builder: (_, state) {
+                  onQuoteOpened?.call(state);
+                  if (renderQuoteHandoff) {
+                    return SalesDocEditPage(
+                      docType: SalesDocType.quote,
+                      initialGuidedPlan: state.extra is AiGuidedFilePlan
+                          ? state.extra as AiGuidedFilePlan
+                          : null,
+                      initialAiJobId: state.uri.queryParameters['aiJobId'],
+                      initialAiFile: state.extra is PlatformFile
+                          ? state.extra as PlatformFile
+                          : null,
+                    );
+                  }
+                  return const Scaffold(body: Text('Quote handoff'));
+                },
+              ),
+              GoRoute(
                 path: '/:rest(.*)',
                 builder: (_, _) => const SizedBox.shrink(),
               ),
@@ -546,7 +665,7 @@ class _GuidedSession extends SessionNotifier {
   );
 }
 
-AiGuidedFilePlan _guidedPlan() {
+AiGuidedFilePlan _guidedPlan({bool quoteAccess = false}) {
   final file = fakeFile('guided-order.xlsx');
   final permissions = {
     Perm.attachmentView,
@@ -556,6 +675,7 @@ AiGuidedFilePlan _guidedPlan() {
     Perm.salesOrderEdit,
     Perm.salesOrderView,
     Perm.salesOrderPriceView,
+    if (quoteAccess) ...[Perm.salesQuoteView, Perm.salesQuoteCreate],
   }.toList()..sort();
   return AiGuidedFilePlan(
     jobId: 'route-source',
@@ -595,6 +715,7 @@ class _GuidedJobs implements AiJobRepository {
   _GuidedJobs(this.plan);
   final AiGuidedFilePlan plan;
   final reads = <String>[];
+  final routed = <String, AiJobSnapshot>{};
   Object? failure;
   String? deniedJobId;
   @override
@@ -603,6 +724,7 @@ class _GuidedJobs implements AiJobRepository {
     if (failure != null && (deniedJobId == null || deniedJobId == jobId)) {
       throw failure!;
     }
+    if (routed[jobId] case final snapshot?) return snapshot;
     return AiJobSnapshot(
       id: jobId,
       kind: jobId == plan.jobId ? aiGuidedRouteKind : 'SALES_DOCUMENT_INTAKE',
@@ -616,6 +738,35 @@ class _GuidedJobs implements AiJobRepository {
   @override
   Future<AiJobSnapshot> submit(AiJobRequest request) async =>
       throw StateError('No automatic business submission');
+}
+
+class _HandoffRunner extends FakeAiJobRunner {
+  _HandoffRunner(this.jobs, Map<String, dynamic> result)
+    : super(result: result);
+  final _GuidedJobs jobs;
+  @override
+  Future<AiJobSnapshot> run(
+    AiJobRequest request, {
+    AiJobProgressCallback? onProgress,
+    AiJobCancelToken? cancelToken,
+  }) async {
+    if (request.kind != aiGuidedRouteKind) {
+      return super.run(
+        request,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
+    }
+    requests.add(request);
+    final snapshot = AiJobSnapshot(
+      id: 'route-quote',
+      kind: aiGuidedRouteKind,
+      status: AiJobStatus.succeeded,
+      result: {...jobs.plan.result.toJson(), 'workflow': 'SALES_QUOTE'},
+    );
+    jobs.routed[snapshot.id] = snapshot;
+    return snapshot;
+  }
 }
 
 class _EditorApi extends ApiClient {

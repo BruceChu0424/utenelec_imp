@@ -25,6 +25,7 @@ import com.uten.imp.common.time.BusinessTime;
 import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -68,7 +69,8 @@ class AiGoodsCostToolTest {
         when(goods.list(any(), eq(1), eq(11), eq("code"), eq("asc")))
                 .thenReturn(new PageResponse<>(List.of(first), 1, 11, 1, 1));
         when(costs.list(first.getId())).thenReturn(List.of());
-        assertThat(tool.execute(Map.of("goodsKeyword", "A1", "basis", "ESTIMATE")).get("reply").toString()).contains("未登记成本不能按 0");
+        assertThat(tool.execute(Map.of("goodsKeyword", "A1", "basis", "ESTIMATE")).get("reply").toString())
+                .contains("暂时无法估算").doesNotContain("0 元", "可见范围", "来源:");
     }
     @Test void oldCandidateReplyRechecksObjectScopeEvenWhenPermissionsAreUnchanged() {
         financePrincipal(Set.of("goods:view", "goods:cost:view"));
@@ -95,8 +97,12 @@ class AiGoodsCostToolTest {
         financePrincipal(Set.of("goods:view", "goods:cost:view"));
         UUID id = candidate();
         var result = actualResult(false, "digest-1"); when(actual.read(any())).thenReturn(result);
-        String reply = tool.execute(Map.of("goodsKeyword", "A1", "basis", "ACTUAL")).get("reply").toString();
-        assertThat(reply).contains("单位库存生产成本: 2", "不是完整产品实际成本", "人工与制造费用", "按产出业务日期");
+        var response = tool.execute(Map.of("goodsKeyword", "A1", "basis", "ACTUAL"));
+        String reply = response.get("reply").toString();
+        assertThat(reply).contains("实际库存成本：2 本币/个", "尚未包括全部人工和制造费用", BusinessTime.today().toString());
+        assertThat(reply.lines().count()).isLessThanOrEqualTo(5);
+        assertThat(reply + response.get("detailReply")).doesNotContain("可见范围", "来源:", "对话模型", "原成本范围");
+        assertThat(response.get("detailReply").toString()).contains("产出 100 个", "已分摊成本 200 本币");
         verify(costs, never()).list(any());
         var query = ArgumentCaptor.forClass(GoodsActualCostQueryPort.Query.class); verify(actual).read(query.capture());
         assertThat(query.getValue().goodsId()).isEqualTo(id);
@@ -107,7 +113,41 @@ class AiGoodsCostToolTest {
         financePrincipal(Set.of("goods:view", "goods:cost:view")); candidate();
         var result = actualResult(true, "digest-1"); when(actual.read(any())).thenReturn(result);
         String reply = tool.execute(Map.of("goodsKeyword", "A1", "basis", "ACTUAL")).get("reply").toString();
-        assertThat(reply).contains("当前不能给出可靠单位实际成本").doesNotContain("单位库存生产成本: 2");
+        assertThat(reply).contains("尚未核齐", "暂时无法给出每件成本").doesNotContain("实际库存成本：2");
+    }
+    @Test void briefKeepsOnlyPrimaryEstimateWhileDetailRetainsOtherSheetsAndAllEvidence() {
+        financePrincipal(Set.of("goods:view", "goods:cost:view")); UUID id = candidate();
+        var confirmed = mock(GoodsCostContracts.SheetSummary.class); var draft = mock(GoodsCostContracts.SheetSummary.class);
+        UUID confirmedId = UUID.randomUUID(), draftId = UUID.randomUUID();
+        when(confirmed.id()).thenReturn(confirmedId); when(confirmed.status()).thenReturn("CONFIRMED");
+        when(draft.id()).thenReturn(draftId); when(draft.status()).thenReturn("DRAFT");
+        when(costs.list(id)).thenReturn(List.of(draft, confirmed));
+        var confirmedSheet = sheet(confirmedId, "CONFIRMED", "2", "COMPLETE", 0);
+        var draftSheet = sheet(draftId, "DRAFT", "3", "PARTIAL", 2);
+        when(costs.get(confirmedId)).thenReturn(confirmedSheet);
+        when(costs.get(draftId)).thenReturn(draftSheet);
+        var response = tool.execute(Map.of("goodsKeyword", "A1", "basis", "ESTIMATE"));
+        String reply = response.get("reply").toString(), detail = response.get("detailReply").toString();
+        assertThat(reply).contains("2 人民币/个", "已确认", "2026-10-04", "每批 100 个", "客户专项")
+                .doesNotContain("3 人民币/个", "版本", "来源");
+        assertThat(reply.lines().count()).isLessThanOrEqualTo(5);
+        assertThat(detail).contains("2 人民币/个", "3 人民币/个", "尚未核齐", "缺价 2 项");
+        @SuppressWarnings("unchecked") var evidence = (Map<String,Object>) response.get("_toolEvidence");
+        assertThat((List<?>) evidence.get("sheets")).hasSize(2);
+        assertThatCode(() -> tool.authorizeResultRead(evidence)).doesNotThrowAnyException();
+    }
+    private GoodsCostContracts.Sheet sheet(UUID id, String status, String unitCost, String state, int missing) {
+        var sheet = mock(GoodsCostContracts.Sheet.class); var input = mock(GoodsCostContracts.DraftInput.class);
+        var calculation = mock(GoodsCostContracts.Calculation.class); var totals = mock(GoodsCostContracts.Totals.class);
+        when(sheet.id()).thenReturn(id); when(sheet.sheetNo()).thenReturn("COST-" + status); when(sheet.status()).thenReturn(status);
+        when(sheet.version()).thenReturn(7L); when(sheet.input()).thenReturn(input); when(input.name()).thenReturn("标准成本");
+        when(input.clientId()).thenReturn(UUID.randomUUID());
+        when(sheet.calculation()).thenReturn(calculation); when(calculation.totals()).thenReturn(totals);
+        when(calculation.currencyName()).thenReturn("人民币"); when(calculation.unitName()).thenReturn("个");
+        when(calculation.batchQty()).thenReturn("100"); when(calculation.calculatedAt()).thenReturn(OffsetDateTime.parse("2026-10-03T22:00:00Z"));
+        when(totals.unitCost()).thenReturn(unitCost); when(totals.knownTotal()).thenReturn("200");
+        when(totals.valueState()).thenReturn(state); when(totals.missingPriceCount()).thenReturn(missing);
+        return sheet;
     }
     @Test void periodMustBeCompleteAndBoundedAndQuantityCannotInventATotal() {
         financePrincipal(Set.of("goods:view", "goods:cost:view"));

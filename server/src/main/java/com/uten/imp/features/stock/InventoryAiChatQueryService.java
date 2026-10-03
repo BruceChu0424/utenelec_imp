@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -28,7 +29,9 @@ public class InventoryAiChatQueryService {
     static final int MAX_WAREHOUSES = 12;
     static final int MAX_GOODS_COLORS = 5;
 
-    public record Request(String keyword, UUID warehouseId) {}
+    public record Request(String keyword, UUID warehouseId, String warehouseKeyword) {
+        public Request(String keyword, UUID warehouseId) { this(keyword, warehouseId, null); }
+    }
     public record Row(UUID goodsId, UUID colorId, UUID owningWarehouseId, UUID warehouseId,
                       String code, String name, String color, String unit, String warehouseName,
                       BigDecimal qty, BigDecimal reserved, BigDecimal movable,
@@ -78,8 +81,28 @@ public class InventoryAiChatQueryService {
         }
         if (authorized.isEmpty()) return new Facts(List.of(), List.of(),
                 "当前账号尚未分配可查询的负责仓库，请先由管理员维护仓库负责人；这不表示库存为零。");
-        if (request.warehouseId() != null) {
-            authorized.retainAll(subtree(all, Set.of(request.warehouseId())));
+        UUID requestedWarehouse = request.warehouseId();
+        if (request.warehouseKeyword() != null) {
+            if (requestedWarehouse != null) throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "仓库名称或业务编码与内部仓库编号不能同时填写");
+            String keyword = request.warehouseKeyword().strip().toLowerCase(Locale.ROOT);
+            List<WarehouseReference> visible = all.stream().filter(w -> authorized.contains(w.id()))
+                    .sorted(Comparator.comparing(w -> w.id().toString())).toList();
+            List<WarehouseReference> exact = visible.stream().filter(w -> normalized(w.code()).equals(keyword)
+                    || normalized(w.name()).equals(keyword)).toList();
+            List<WarehouseReference> matches = exact.isEmpty() ? visible.stream()
+                    .filter(w -> normalized(w.code()).contains(keyword) || normalized(w.name()).contains(keyword)).toList() : exact;
+            if (matches.isEmpty()) return new Facts(visible, List.of(),
+                    "在当前负责仓库范围内未找到这个仓库名称或编码，请核对后再查询；本次未改查其他仓库，也不表示库存为零。");
+            if (matches.size() > 1) return new Facts(matches, List.of(),
+                    "匹配到多个当前有权查询的仓库，请明确仓库业务编码后再查：\n"
+                            + matches.stream().limit(10).map(w -> "• " + warehouseLabel(w.code()) + " · " + warehouseLabel(w.name()))
+                                .collect(Collectors.joining("\n"))
+                            + (matches.size() > 10 ? "\n仅显示前 10 个匹配仓库，请提供更完整的名称或编码。" : ""));
+            requestedWarehouse = matches.getFirst().id();
+        }
+        if (requestedWarehouse != null) {
+            authorized.retainAll(subtree(all, Set.of(requestedWarehouse)));
             if (authorized.isEmpty()) throw new ApiException(ErrorCode.FORBIDDEN,
                     "所选仓库不在你当前可查询的负责仓库范围内");
         }
@@ -147,6 +170,12 @@ public class InventoryAiChatQueryService {
     private static BigDecimal quantity(BigDecimal value) {
         if (value == null) throw changed();
         return value.stripTrailingZeros();
+    }
+
+    private static String normalized(String value) { return value == null ? "" : value.strip().toLowerCase(Locale.ROOT); }
+    private static String warehouseLabel(String value) {
+        String text = value == null || value.isBlank() ? "未登记" : value.replaceAll("[\\p{Cntrl}]", " ").strip();
+        return text.substring(0, Math.min(text.length(), 120));
     }
 
     private static ApiException changed() {

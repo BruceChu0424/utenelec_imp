@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,7 @@ import java.util.Map;
 /** Uses the same department, row-scope and badge facts as the caller's workbench. */
 @Component
 public class DashboardAiChatTool implements AiChatToolPort {
+    @Override public boolean rememberQueryArguments() { return true; }
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
             .withZone(ZoneId.of("Asia/Shanghai"));
     private final DashboardOverviewService overview;
@@ -33,7 +35,7 @@ public class DashboardAiChatTool implements AiChatToolPort {
     @Override public String title() { return "我的部门待办"; }
     @Override public String description() {
         return "Read current user's own department workbench counts and tasks. No other person or department, "
-                + "no arbitrary document details. Result states its scope and time. Takes no arguments.";
+                + "no arbitrary document details. Returns short operational counts with optional detail. Takes no arguments.";
     }
     @Override public String domain() { return "SELF"; }
     @Override public Map<String, Object> parameters() {
@@ -51,14 +53,39 @@ public class DashboardAiChatTool implements AiChatToolPort {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "部门待办只查询你当前的工作台范围");
         }
         DashboardOverviewDto facts = overview.overview();
-        StringBuilder reply = new StringBuilder("以下是你当前工作台可见的部门信息，查询时间 ")
-                .append(TIME.format(facts.generatedAt())).append(" (北京时间)。");
         List<String> lines = countLines(facts);
-        lines.forEach(line -> reply.append("\n").append(line));
-        if (lines.isEmpty()) reply.append("\n当前没有可展示的业务计数；这不代表全公司没有任务。");
-        reply.append("\n来源: 我的工作台 / 今日概览。仅包含当前部门、权限和数据范围允许查看的内容。");
-        return Map.of("reply", reply.toString(), "actions", List.of(), "source", "dashboard/overview",
+        return Map.of("reply", render(facts, false), "detailReply", render(facts, true),
+                "actions", List.of(), "source", "dashboard/overview",
                 "generatedAt", facts.generatedAt().toString(), "_toolEvidence", Map.of("counts", signature(lines)));
+    }
+
+    private record DisplayLine(String text, int priority, long count) {}
+
+    private static String render(DashboardOverviewDto facts, boolean detailed) {
+        List<DisplayLine> visible = new ArrayList<>();
+        for (DashboardOverviewDto.MetricCard metric : facts.metrics()) {
+            if (!List.of("production-pending", "sales-active").contains(metric.id()) || metric.sensitive()) continue;
+            long count;
+            try { count = Long.parseLong(metric.value()); }
+            catch (NumberFormatException malformed) { count = -1; }
+            if (count == 0) continue;
+            visible.add(new DisplayLine(metric.title() + "：" + (count < 0 ? "暂时查不到数量" : metric.value()),
+                    count < 0 ? 2 : "production-pending".equals(metric.id()) ? 0 : 1, count));
+        }
+        for (DashboardOverviewDto.TodoCard todo : facts.todos()) {
+            if (todo.id() == null || todo.id().startsWith("notice-") || todo.id().startsWith("expense-")
+                    || "production-pending".equals(todo.id()) || todo.count() == 0) continue;
+            visible.add(new DisplayLine(todo.title() + "：待办 " + todo.count() + " 项", 0, todo.count()));
+        }
+        if (visible.isEmpty()) return countLines(facts).isEmpty() ? "暂时没有可显示的待办。" : "目前没有待办或进行中的任务。";
+        visible.sort(Comparator.comparingInt(DisplayLine::priority)
+                .thenComparing(Comparator.comparingLong(DisplayLine::count).reversed()).thenComparing(DisplayLine::text));
+        int shown = detailed ? visible.size() : Math.min(5, visible.size());
+        StringBuilder reply = new StringBuilder("目前需要关注：");
+        for (DisplayLine line : visible.subList(0, shown)) reply.append("\n• ").append(line.text()).append("。");
+        if (visible.size() > shown) reply.append("\n另有 ").append(visible.size() - shown).append(" 项，回复“展开”可看更多。");
+        if (detailed) reply.append("\n更新于 ").append(TIME.format(facts.generatedAt())).append("。");
+        return reply.toString();
     }
 
     @Override public void authorizeResultRead(Map<String, Object> evidence) {

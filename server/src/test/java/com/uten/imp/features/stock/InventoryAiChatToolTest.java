@@ -50,17 +50,49 @@ class InventoryAiChatToolTest {
     }
 
     @Test void returnsRealWarehouseQuantitiesWithoutCostOrProductionFacts() {
-        String reply = tool.execute(Map.of("keyword", "MAT-01")).get("reply").toString();
-        assertTrue(reply.contains("仓库：原料仓"));
-        assertTrue(reply.contains("账面库存 10，有效预留占用 12，出库可动量 0，待检 3，待入库 4"));
-        assertTrue(reply.contains("单位：件"));
-        assertTrue(reply.contains("查询时间"));
-        assertTrue(reply.contains("不能相加"));
-        assertFalse(reply.contains("SECRET"));
-        assertFalse(reply.contains("98765"));
+        var result = tool.execute(Map.of("keyword", "MAT-01"));
+        String reply = result.get("reply").toString();
+        String detail = result.get("detailReply").toString();
+        assertTrue(reply.contains("原料仓：现有 10 件，可用 0 件"));
+        assertTrue(detail.contains("预留 12 件，待检 3 件，待入库 4 件"));
+        assertTrue(detail.contains("还不能领用"));
+        for (String text : List.of(reply, detail)) {
+            assertFalse(text.contains("SECRET"));
+            assertFalse(text.contains("98765"));
+            assertFalse(text.contains("来源"));
+            assertFalse(text.contains("权限"));
+            assertFalse(text.contains("出库闸门"));
+        }
+        assertFalse(reply.contains("待检"));
+        assertFalse(reply.contains("查询时间"));
         verify(reservations).warehouseEffectiveReservedBase(OWN, GOODS, null);
         verify(balances).warehouseAvailableBase(OWN, GOODS, null);
         verify(stock, times(2)).instantInventoryRowsInWarehouseScope(any(), eq(Set.of(OWN)), anyInt(), anyInt(), eq("name"), eq("asc"));
+    }
+
+    @Test void twentyLongLabelsRemainWithinChatBoundWithoutRoundingRealQuantities() {
+        var bounded = mock(InventoryAiChatQueryService.class);
+        when(bounded.available()).thenReturn(true);
+        var rows = new java.util.ArrayList<InventoryAiChatQueryService.Row>();
+        BigDecimal exact = new BigDecimal("99999999999999.1234");
+        for (int goods = 0; goods < 5; goods++) {
+            UUID id = UUID.randomUUID();
+            for (int warehouse = 0; warehouse < 4; warehouse++) {
+                rows.add(new InventoryAiChatQueryService.Row(id, null, OWN, UUID.randomUUID(),
+                        "C".repeat(120), "货".repeat(120), "色".repeat(120), "单".repeat(120), "仓".repeat(120),
+                        exact, exact, exact, exact, exact));
+            }
+        }
+        when(bounded.read(any())).thenReturn(new InventoryAiChatQueryService.Facts(List.of(), rows, ""));
+        var result = new InventoryAiChatTool(bounded, new ObjectMapper()).execute(Map.of("keyword", "MAT"));
+        for (String field : List.of("reply", "detailReply")) {
+            String text = result.get(field).toString();
+            assertTrue(text.length() <= 16000, "A permitted bounded query must not fail the chat reply length contract");
+            assertTrue(text.contains(exact.toPlainString()));
+            assertTrue(text.contains("…"));
+        }
+        assertEquals(5, result.get("reply").toString().split("现有 ", -1).length - 1);
+        assertEquals(20, result.get("detailReply").toString().split("现有 ", -1).length - 1);
     }
 
     @Test void functionalPermissionCannotBypassDepartmentMembership() {
@@ -80,8 +112,8 @@ class InventoryAiChatToolTest {
         when(references.assignedWarehouseRoots()).thenReturn(Set.of());
         when(scopes.resolve("MINE", null)).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
         String reply = tool.execute(Map.of("keyword", "MAT")).get("reply").toString();
-        assertTrue(reply.contains("尚未分配"));
-        assertTrue(reply.contains("不表示库存为零"));
+        assertTrue(reply.contains("还没设置你的负责仓库"));
+        assertFalse(reply.contains("现有 0"));
         verifyNoInteractions(stock, balances, reservations);
     }
 
@@ -118,23 +150,81 @@ class InventoryAiChatToolTest {
         verifyNoInteractions(stock, balances, reservations);
     }
 
+    @Test void naturalWarehouseNameOrBusinessCodeNarrowsWithoutInventingInternalUuid() {
+        tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", "原料仓"));
+        tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", " w1 "));
+        tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", "原料"));
+        verify(stock, times(6)).instantInventoryRowsInWarehouseScope(any(), eq(Set.of(OWN)), anyInt(), anyInt(), any(), any());
+        verify(balances, never()).warehouseAvailableBase(eq(OTHER), any(), any());
+    }
+
+    @Test void missingOrUnauthorizedWarehouseNameNeverFallsBackToAllAssignedWarehouses() {
+        for (String name : List.of("其他仓", "不存在的仓库")) {
+            String reply = tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", name)).get("reply").toString();
+            assertTrue(reply.contains("没找到这个仓库"));
+            assertFalse(reply.contains("现有 "));
+        }
+        verifyNoInteractions(stock, balances, reservations);
+    }
+
+    @Test void ambiguousAuthorizedWarehouseNamesRequireReadableCodeAndNeverReadQuantities() {
+        when(references.assignedWarehouseRoots()).thenReturn(Set.of(PARENT));
+        when(scopes.resolve("MINE", null)).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+        when(references.warehouses()).thenReturn(List.of(
+                new WarehouseReference(PARENT, "P", "主仓", null, false, false),
+                new WarehouseReference(OWN, "W1", "原料仓", PARENT, true, false),
+                new WarehouseReference(OTHER, "W2", "原料仓", PARENT, true, false)));
+        String reply = tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", "原料仓")).get("reply").toString();
+        assertTrue(reply.contains("同名仓库"));
+        assertTrue(reply.contains("W1 · 原料仓"));
+        assertTrue(reply.contains("W2 · 原料仓"));
+        verifyNoInteractions(stock, balances, reservations);
+        tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", "W1"));
+        verify(stock, times(2)).instantInventoryRowsInWarehouseScope(any(), eq(Set.of(OWN)), anyInt(), anyInt(), any(), any());
+    }
+
+    @Test void warehouseSelectorsAreMutuallyExclusiveAndNameIsBoundedPlainText() {
+        for (Map<String, Object> arguments : List.of(
+                Map.<String, Object>of("keyword", "MAT", "warehouseId", OWN.toString(), "warehouseKeyword", "W1"),
+                Map.<String, Object>of("keyword", "MAT", "warehouseKeyword", " "),
+                Map.<String, Object>of("keyword", "MAT", "warehouseKeyword", "a".repeat(81)),
+                Map.<String, Object>of("keyword", "MAT", "warehouseKeyword", "a\nb"))) {
+            assertThrows(ApiException.class, () -> tool.execute(arguments));
+        }
+        verifyNoInteractions(stock, balances, reservations, references);
+    }
+
+    @Test @SuppressWarnings("unchecked") void namedWarehouseHistoryRechecksTheOriginalSelectionAndItsScope() {
+        var response = tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", "原料仓"));
+        var evidence = (Map<String, Object>) response.get("_toolEvidence");
+        assertDoesNotThrow(() -> tool.authorizeResultRead(evidence));
+        when(references.warehouses()).thenReturn(List.of(
+                new WarehouseReference(OWN, "W1", "已改名", PARENT, true, false),
+                new WarehouseReference(OTHER, "W2", "原料仓", PARENT, true, false)));
+        assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
+        clearInvocations(stock, balances, reservations);
+        when(references.assignedWarehouseRoots()).thenReturn(Set.of());
+        assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
+        verifyNoInteractions(stock, balances, reservations);
+    }
+
     @Test void negativePhysicalBalancesRemainNegative() {
         when(stock.instantInventoryRowsInWarehouseScope(any(), anySet(), anyInt(), anyInt(), any(), any()))
                 .thenReturn(page(row(GOODS, "-3", OTHER)));
-        assertTrue(tool.execute(Map.of("keyword", "MAT")).get("reply").toString().contains("账面库存 -3"));
+        assertTrue(tool.execute(Map.of("keyword", "MAT")).get("reply").toString().contains("现有 -3"));
     }
 
     @Test void ambiguousGoodsAskForNarrowingWithoutCallingQuantityGate() {
         when(stock.instantInventoryRowsInWarehouseScope(any(), anySet(), anyInt(), anyInt(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(row(GOODS, "10", OTHER)), 1, 6, 30, 5));
-        assertTrue(tool.execute(Map.of("keyword", "螺丝")).get("reply").toString().contains("超过 5 种"));
+        assertTrue(tool.execute(Map.of("keyword", "螺丝")).get("reply").toString().contains("匹配的货品较多"));
         verifyNoInteractions(balances, reservations);
     }
 
     @Test void missingGoodsAreNotReportedAsZero() {
         when(stock.instantInventoryRowsInWarehouseScope(any(), anySet(), anyInt(), anyInt(), any(), any()))
                 .thenReturn(new PageResponse<>(List.of(), 1, 6, 0, 0));
-        assertTrue(tool.execute(Map.of("keyword", "不存在")).get("reply").toString().contains("未找到不等于库存为零"));
+        assertTrue(tool.execute(Map.of("keyword", "不存在")).get("reply").toString().contains("没找到不代表库存为 0"));
         verifyNoInteractions(balances, reservations);
     }
 
@@ -183,6 +273,15 @@ class InventoryAiChatToolTest {
         var evidence = new java.util.HashMap<>(evidence());
         evidence.put("source", "finance/cost");
         assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
+    }
+
+    @Test void missingWarehouseNameNeverExposesAnInternalIdentifier() {
+        when(references.warehouses()).thenReturn(List.of(new WarehouseReference(OWN, "W1", null, null, true, false)));
+        var result = tool.execute(Map.of("keyword", "MAT"));
+        for (String field : List.of("reply", "detailReply")) {
+            assertTrue(result.get(field).toString().contains("未命名仓库"));
+            assertFalse(result.get(field).toString().contains(OWN.toString()));
+        }
     }
 
     @SuppressWarnings("unchecked") private Map<String, Object> evidence() {

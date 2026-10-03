@@ -1,35 +1,51 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/ai/ai_job_models.dart';
 import '../../../shared/ai/ai_job_runner.dart';
 import '../../../shared/ai/ai_progress_dialog.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../intake/sales_intake_launcher.dart';
 import 'sales_quote_template.dart';
 import 'sales_quote_template_repository.dart';
+import 'sales_quote_template_scope.dart';
 
 /// Reuses the public AI runner. The dedicated mode never applies source rows to a quotation.
 Future<SalesQuoteTemplate?> learnSalesQuoteTemplate(
   BuildContext context,
   WidgetRef ref,
-  String quoteId,
-) async {
+  String quoteId, {
+  bool Function()? stillCurrent,
+}) async {
+  final scope = SalesQuoteTemplateScope(ref);
+  bool current() =>
+      context.mounted &&
+      scope.current(ref, learning: true) &&
+      (stillCurrent?.call() ?? true);
+  if (!context.mounted || !current()) return null;
   final l10n = AppLocalizations.of(context);
   final repository = ref.read(salesQuoteTemplateRepositoryProvider);
   final target = await repository.learningContext(quoteId);
-  if (!context.mounted) return null;
+  if (!context.mounted || !current()) return null;
   final picked = await FilePicker.platform.pickFiles(
     type: FileType.custom,
     allowedExtensions: const ['xlsx', 'xls'],
     withData: true,
     allowCompression: false,
   );
-  if (!context.mounted || picked == null || picked.files.isEmpty) return null;
+  if (!context.mounted ||
+      !current() ||
+      picked == null ||
+      picked.files.isEmpty) {
+    return null;
+  }
   final file = picked.files.single;
   final extension = file.name.split('.').last.toLowerCase();
   final bytes = file.bytes;
@@ -41,7 +57,8 @@ Future<SalesQuoteTemplate?> learnSalesQuoteTemplate(
     return null;
   }
   int? sheet;
-  while (context.mounted) {
+  final attemptId = const Uuid().v4();
+  while (context.mounted && current()) {
     final request = AiJobRequest(
       kind: 'SALES_DOCUMENT_INTAKE',
       params: {
@@ -49,6 +66,7 @@ Future<SalesQuoteTemplate?> learnSalesQuoteTemplate(
         'docId': quoteId,
         'clientId': target['clientId'].toString(),
         'templateOnly': 'true',
+        'templateAttemptId': attemptId,
         if (sheet != null) 'sheet': '$sheet',
       },
       bytes: bytes,
@@ -74,14 +92,30 @@ Future<SalesQuoteTemplate?> learnSalesQuoteTemplate(
             serverStages: const ['EXTRACTING'],
           ),
         ],
-        task: (progress, cancel) =>
-            runner.run(request, onProgress: progress, cancelToken: cancel),
+        task: (progress, cancel) async {
+          if (!current()) cancel.cancel();
+          final identityWatch = ref.listenManual(exportContextEpochProvider, (
+            _,
+            _,
+          ) {
+            if (!current()) cancel.cancel();
+          });
+          try {
+            return await runner.run(
+              request,
+              onProgress: progress,
+              cancelToken: cancel,
+            );
+          } finally {
+            identityWatch.close();
+          }
+        },
       );
     } on AiJobFailure catch (failure) {
-      if (context.mounted) context.appError(failure.message);
+      if (context.mounted && current()) context.appError(failure.message);
       return null;
     }
-    if (!context.mounted || snapshot == null) return null;
+    if (!context.mounted || !current() || snapshot == null) return null;
     if (snapshot.status != AiJobStatus.succeeded ||
         snapshot.result?['templateOnly'] != true ||
         snapshot.result?['mapping'] is! Map) {
@@ -91,18 +125,25 @@ Future<SalesQuoteTemplate?> learnSalesQuoteTemplate(
     final result = snapshot.result!;
     final review = await showDialog<TemplateReviewDecision>(
       context: context,
-      builder: (_) => SalesQuoteTemplateReview(
-        result: result,
-        clientName: target['clientName']?.toString() ?? '',
+      builder: (_) => SalesQuoteTemplateScopeDialog(
+        stillCurrent: current,
+        child: SalesQuoteTemplateReview(
+          result: result,
+          clientName: target['clientName']?.toString() ?? '',
+        ),
       ),
     );
-    if (review == null || !context.mounted) return null;
+    if (review == null || !context.mounted || !current()) return null;
     if (review.sheetIndex != null) {
       sheet = review.sheetIndex;
       continue;
     }
-    final saved = await repository.adopt(quoteId, snapshot.id);
-    if (!context.mounted) return null;
+    final saved = await repository.adopt(
+      quoteId,
+      snapshot.id,
+      columnRoles: review.columnRoles,
+    );
+    if (!context.mounted || !current()) return null;
     context.appSuccess(l10n.quoteTemplateSaved);
     return saved;
   }
@@ -110,12 +151,13 @@ Future<SalesQuoteTemplate?> learnSalesQuoteTemplate(
 }
 
 class TemplateReviewDecision {
-  const TemplateReviewDecision({this.sheetIndex});
+  const TemplateReviewDecision({this.sheetIndex, this.columnRoles});
   final int? sheetIndex;
+  final Map<String, String>? columnRoles;
 }
 
 /// Displays only the server's sanitized field mapping, never untrusted file content as UI instructions.
-class SalesQuoteTemplateReview extends StatelessWidget {
+class SalesQuoteTemplateReview extends StatefulWidget {
   const SalesQuoteTemplateReview({
     super.key,
     required this.result,
@@ -125,16 +167,55 @@ class SalesQuoteTemplateReview extends StatelessWidget {
   final String clientName;
 
   @override
+  State<SalesQuoteTemplateReview> createState() =>
+      _SalesQuoteTemplateReviewState();
+}
+
+class _SalesQuoteTemplateReviewState extends State<SalesQuoteTemplateReview> {
+  late final Map<String, dynamic> mapping = Map<String, dynamic>.from(
+    widget.result['mapping'] as Map,
+  );
+  late final Map<String, dynamic> headers = {
+    ...Map<String, dynamic>.from(mapping['roleHeaders'] as Map? ?? {}),
+    ...Map<String, dynamic>.from(mapping['extraHeaders'] as Map? ?? {}),
+    ...Map<String, dynamic>.from(mapping['availableHeaders'] as Map? ?? {}),
+  };
+  late final Map<String, String> roles = {
+    for (final key in headers.keys)
+      key:
+          (mapping['confirmedColumnRoles'] as Map?)?[key]?.toString() ??
+          ((mapping['extraHeaders'] as Map?)?.containsKey(key) == true
+              ? 'REFERENCE'
+              : ((mapping['roles'] as Map?)?[key]?.toString() ?? 'REFERENCE')),
+  };
+  static const selectable = {
+    'PART_NO',
+    'DESCRIPTION',
+    'DESCRIPTION_ALT',
+    'COLOR',
+    'QTY',
+    'UNIT',
+    'UNIT_PRICE',
+    'DISCOUNT',
+    'AMOUNT',
+    'REMARK',
+    'LINE_NO',
+    'SERIES',
+    'REFERENCE',
+    'IGNORED',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    roles.updateAll(
+      (key, value) => selectable.contains(value) ? value : 'REFERENCE',
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final mapping = Map<String, dynamic>.from(result['mapping'] as Map);
-    final roles = Map<String, dynamic>.from(mapping['roles'] as Map? ?? {});
-    final headers = Map<String, dynamic>.from(
-      mapping['roleHeaders'] as Map? ?? {},
-    );
-    final extras = Map<String, dynamic>.from(
-      mapping['extraHeaders'] as Map? ?? {},
-    );
     final labels = {
       'PART_NO': l10n.quoteFinanceColFileModel,
       'DESCRIPTION': l10n.quoteFinanceColFileName,
@@ -151,8 +232,25 @@ class SalesQuoteTemplateReview extends StatelessWidget {
       'DISCOUNT': l10n.quoteFinanceColDiscount,
       'AMOUNT': l10n.quoteFinanceColLineAmount,
       'REMARK': l10n.quoteFinanceColRemark,
+      'LINE_NO': l10n.warehouseOutboundLineNo,
+      'SERIES': l10n.warehouseStockOutboundSeries,
+      'REFERENCE': l10n.quoteTemplateReference,
+      'IGNORED': l10n.costImportSkip,
     };
-    final otherSheets = (result['otherSheets'] as List? ?? [])
+    final assigned = roles.values
+        .where((value) => value != 'REFERENCE' && value != 'IGNORED')
+        .toList();
+    final error =
+        !roles.containsValue('QTY') ||
+            !roles.values.any(
+              (value) =>
+                  {'PART_NO', 'DESCRIPTION', 'DESCRIPTION_ALT'}.contains(value),
+            )
+        ? l10n.quoteTemplateMappingRequired
+        : assigned.toSet().length != assigned.length
+        ? l10n.quoteTemplateMappingDuplicate
+        : null;
+    final otherSheets = (widget.result['otherSheets'] as List? ?? [])
         .whereType<Map<dynamic, dynamic>>();
     return AlertDialog(
       title: Text(l10n.quoteTemplateReviewTitle),
@@ -167,36 +265,45 @@ class SalesQuoteTemplateReview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('${l10n.quoteFinanceFieldClient}: $clientName'),
+                Text('${l10n.quoteFinanceFieldClient}: ${widget.clientName}'),
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
-                  '${l10n.quoteTemplateSheet}: ${result['sheetName'] ?? ''}',
+                  '${l10n.quoteTemplateSheet}: ${widget.result['sheetName'] ?? ''}',
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 Text(l10n.quoteTemplateReviewHint),
-                for (final notice in (result['notices'] as List? ?? []))
+                for (final notice in (widget.result['notices'] as List? ?? []))
                   Padding(
                     padding: const EdgeInsets.only(top: UtenSpacing.s8),
                     child: Text(notice.toString()),
                   ),
                 const SizedBox(height: UtenSpacing.s12),
                 for (final entry in roles.entries)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      '${entry.key} · ${headers[entry.key] ?? entry.key}',
-                    ),
-                    subtitle: Text(
-                      labels[entry.value] ?? l10n.quoteTemplateReference,
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                    child: UtenDropdownField(
+                      key: ValueKey('quote-template-role-${entry.key}'),
+                      label:
+                          '${entry.key} · ${headers[entry.key] ?? entry.key}',
+                      value: entry.value,
+                      allowClear: false,
+                      items: [
+                        for (final role in selectable)
+                          UtenDropdownItem(value: role, label: labels[role]!),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => roles[entry.key] = value);
+                        }
+                      },
                     ),
                   ),
-                for (final entry in extras.entries)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('${entry.key} · ${entry.value}'),
-                    subtitle: Text(l10n.quoteTemplateReference),
+                if (error != null)
+                  Text(
+                    error,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
                   ),
                 for (final sheet in otherSheets)
                   UtenButton(
@@ -227,9 +334,11 @@ class SalesQuoteTemplateReview extends StatelessWidget {
         ),
         UtenButton(
           key: const ValueKey('quote-template-adopt'),
-          onPressed: roles.isEmpty
+          onPressed: error != null
               ? null
-              : () => Navigator.of(context).pop(const TemplateReviewDecision()),
+              : () => Navigator.of(
+                  context,
+                ).pop(TemplateReviewDecision(columnRoles: Map.of(roles))),
           child: Flexible(child: Text(l10n.quoteTemplateSaveDownload)),
         ),
       ],

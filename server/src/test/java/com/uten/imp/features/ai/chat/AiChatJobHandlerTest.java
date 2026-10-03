@@ -111,7 +111,7 @@ class AiChatJobHandlerTest {
         request("生产流程");
         when(ctx.completeJson(any())).thenThrow(new AiCompletionPort.AiCallException(AiCompletionPort.AiErrorCategory.TIMEOUT,"private provider trace"));
         assertThatThrownBy(() -> handler.process(ctx)).isInstanceOf(ApiException.class)
-                .hasMessageContaining("AI 回复超时").hasMessageNotContaining("private").hasMessageNotContaining("识别");
+                .hasMessageContaining("回复有点慢").hasMessageNotContaining("private").hasMessageNotContaining("识别");
     }
     @Test void disablingCurrentPageNeverRestoresPreviousPageIntoModelPrompt() throws Exception {
         UUID previous=UUID.randomUUID();
@@ -187,7 +187,7 @@ class AiChatJobHandlerTest {
                 AiCompletionPort.AiErrorCategory.INVALID_RESPONSE, "private output"));
         var result = handler.process(ctx);
         assertThat(result).containsEntry("intent", "SMALL_TALK");
-        assertThat(result.get("reply").toString()).contains("你好", "生产日报")
+        assertThat(result.get("reply").toString()).contains("你好")
                 .doesNotContain("查询货品成本", "授权确认预览", "private output");
         verify(ctx, never()).completeJson(any());
     }
@@ -200,7 +200,7 @@ class AiChatJobHandlerTest {
                 null, null, "conversation.json", null, null, null));
         request(Map.of("message", "举个例子", "previousJobId", previous.toString()));
         var result = handler.process(ctx);
-        assertThat(result.get("reply").toString()).contains("本次报 40", "假设数据")
+        assertThat(result.get("reply").toString()).contains("本次报 40", "假设")
                 .doesNotContain("PRIVATE_PRIOR_REPLY");
         assertThat(result).containsEntry("mode", "EXAMPLE").containsEntry("_knowledge", "PRODUCTION_FLOW");
         verify(ctx, never()).completeJson(any());

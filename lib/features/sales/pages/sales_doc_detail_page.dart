@@ -86,9 +86,11 @@ class SalesDocDetailPage extends ConsumerStatefulWidget {
     super.key,
     required this.docType,
     required this.id,
+    this.historyRead = false,
   });
   final SalesDocType docType;
   final String id;
+  final bool historyRead;
 
   @override
   ConsumerState<SalesDocDetailPage> createState() => _SalesDocDetailPageState();
@@ -119,6 +121,38 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  int _viewEpoch = 0;
+  String get _readKey =>
+      '${widget.docType.name}/${widget.id}/${widget.historyRead ? 'history' : 'current'}';
+
+  @override
+  bool get nativeReadCanWrite =>
+      !widget.historyRead && super.nativeReadCanWrite;
+
+  @override
+  bool Function() captureNativeOwnership() {
+    final currentOwner = super.captureNativeOwnership();
+    final epoch = _viewEpoch;
+    return () => currentOwner() && epoch == _viewEpoch;
+  }
+
+  @override
+  void didUpdateWidget(covariant SalesDocDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id == widget.id &&
+        oldWidget.docType == widget.docType &&
+        oldWidget.historyRead == widget.historyRead) {
+      return;
+    }
+    ++_viewEpoch;
+    _detail = null;
+    _myLocation = null;
+    _busy = false;
+    _approveClaim?.releaseAll().ignore();
+    _approveClaim = null;
+    _load();
+  }
+
   @override
   void dispose() {
     _shipmentActions.dispose();
@@ -128,7 +162,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
 
   /// 服务端已合并功能权限与负责人范围；不能仅凭前端权限常量开放对象写操作。
   bool get _objectWritable =>
-      nativeReadCanWrite && (_detail?.writable ?? false);
+      nativeReadCanWrite &&
+      (_detail?.writable ?? false) &&
+      _detail?.requotedToId == null &&
+      _detail?.historyReadOnly != true;
 
   bool _hasPermission(String? code) =>
       code != null &&
@@ -304,6 +341,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     if (!nativeReadCanWrite || !_quoteAllows(SalesQuoteAction.convert)) return;
     final ownsNative = captureNativeOwnership();
     if (_busy) return;
+    final revision = _detail!.quoteWorkflow.reviewRevision;
     final l10n = AppLocalizations.of(context);
     final ok = await UtenDialog.show(
       context,
@@ -318,6 +356,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       cancelLabel: l10n.salesQuoteStatusCancel,
     );
     if (ok != true ||
+        _busy ||
         !mounted ||
         !ownsNative() ||
         !nativeReadCanWrite ||
@@ -328,10 +367,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     try {
       final order = await ref
           .read(salesRepositoryProvider(SalesDocType.quote))
-          .convertToOrder(
-            widget.id,
-            expectedRevision: _detail!.quoteWorkflow.reviewRevision,
-          );
+          .convertToOrder(widget.id, expectedRevision: revision);
       if (!mounted || !ownsNative()) return;
       context.appSuccess(l10n.salesQuoteStatusConvertDone(order.billNo ?? ''));
       // 跨单据类型：转单生成的是订货草稿，bump 订货列表 key（非本报价 key），
@@ -386,6 +422,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       danger: danger,
     );
     if (ok != true ||
+        _busy ||
         !mounted ||
         !ownsNative() ||
         !nativeReadCanWrite ||
@@ -470,6 +507,28 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     }
     final ownsNative = captureNativeOwnership();
     final revision = _detail!.quoteWorkflow.reviewRevision;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '重新报价',
+      content: Builder(
+        builder: (context) => trackNativeReadDialog(
+          context,
+          const Text(
+            '重新报价后，原订货单将永久只读，不能恢复、修改或再次审核，原订单与报价历史继续保留。系统将另建报价草稿，新报价仍需财务核价和客户同意后才能生成新订货单。',
+          ),
+        ),
+      ),
+      confirmLabel: '确认重新报价',
+      cancelLabel: '返回',
+    );
+    if (confirmed != true ||
+        !mounted ||
+        !ownsNative() ||
+        _busy ||
+        !nativeReadCanWrite ||
+        !_quoteAllows(SalesQuoteAction.requote)) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       final quote = await ref
@@ -514,6 +573,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       return;
     }
     final ownsNative = captureNativeOwnership();
+    final revision = _detail!.quoteWorkflow.reviewRevision;
     final l10n = AppLocalizations.of(context);
     var reason = '';
     var attempted = false;
@@ -567,13 +627,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       ),
     );
     if (result == null ||
+        _busy ||
         !mounted ||
         !ownsNative() ||
         !nativeReadCanWrite ||
         !_quoteAllows(SalesQuoteAction.cancel)) {
       return;
     }
-    final revision = _detail!.quoteWorkflow.reviewRevision;
     setState(() => _busy = true);
     try {
       await ref
@@ -639,11 +699,20 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   Future<void> nativeReadReload() => _load();
 
   Future<void> _load() async {
-    final acceptsRead = captureNativeRead(
-      '${widget.docType.name}/${widget.id}',
-      () => '${widget.docType.name}/${widget.id}',
-    );
+    final acceptsRead = captureNativeRead(_readKey, () => _readKey);
     if (!acceptsRead()) return;
+    if (widget.historyRead &&
+        (widget.docType != SalesDocType.quote ||
+            !ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.salesQuoteView))) {
+      setState(() {
+        _detail = null;
+        _loading = false;
+        _error = '没有销售报价查看权限，不能查看报价历史';
+      });
+      return;
+    }
     if (widget.docType == SalesDocType.quote ||
         widget.docType == SalesDocType.order) {
       ref.invalidate(
@@ -656,14 +725,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     setState(() {
       _loading = true;
       _error = null;
+      _detail = null;
     });
     final names = ref.read(salesMasterNameServiceProvider);
     // 字典与详情并行，首屏只等详情(ADR-108)；名称在首屏之后补齐再重绘一次。
     final dictionaries = names.ensureLoaded();
     try {
-      final d = await ref
-          .read(salesRepositoryProvider(widget.docType))
-          .detail(widget.id);
+      final repository = ref.read(salesRepositoryProvider(widget.docType));
+      final d = widget.historyRead
+          ? await repository.detailHistory(widget.id)
+          : await repository.detail(widget.id);
       if (!acceptsRead()) return;
       acceptNativeRead();
       setState(() {
@@ -674,7 +745,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       // 销售订单（草稿可审核）认领 SALES_ORDER_APPROVE：他人审核中则禁用审核按钮。
       // 仅 UX/防碰撞层；后端 SalesOrderService.approve 守卫是正确性底线。认领失败 fail-open。
       // 返回即刷新会重走本方法：旧认领先释放再重申，不留悬挂会话。
-      if (_cfg.type == SalesDocType.order &&
+      if (!widget.historyRead &&
+          _cfg.type == SalesDocType.order &&
           d.status == kSalesStatusDraft &&
           !d.rejected) {
         await _approveClaim?.releaseAll();
@@ -1232,7 +1304,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
         permissions.contains(Perm.customerPrepaymentView);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '${_cfg.label}详情',
+        title: '${_cfg.label}${widget.historyRead ? '历史（只读）' : '详情'}',
         leading: UtenBackButton(
           onPressed: () =>
               popOrBackTo(context, defaultPath: SalesRoutePath.hub),
@@ -1301,8 +1373,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                               _quoteStatusStrip(theme),
                               const SizedBox(height: UtenSpacing.s12),
                             ],
-                            if (_isQuote ||
-                                widget.docType == SalesDocType.order)
+                            if (!widget.historyRead &&
+                                (_isQuote ||
+                                    widget.docType == SalesDocType.order))
                               SalesLearningStatusPanel(
                                 kind: widget.docType.pathSegment,
                                 documentId: widget.id,
@@ -1562,7 +1635,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           const SizedBox(width: UtenSpacing.s12),
           Expanded(
             child: Text(
-              text,
+              widget.historyRead ? '历史报价只读；原内容和取消、删除记录继续保留。' : text,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: color,
                 fontWeight: FontWeight.w700,
@@ -1591,6 +1664,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     final resolvedCurrency = names.currency(d.currencyId);
     final orderCurrency = resolvedCurrency == '—' ? '订单币种' : resolvedCurrency;
     final rows = <_KV>[
+      if (d.readOnlyReason != null)
+        _KV('只读原因', d.readOnlyReason, highlight: true),
+      if (widget.historyRead) const _KV('查看方式', '历史记录（只读）'),
+      if (d.requotedToId != null && !_hasPermission(Perm.salesQuoteView))
+        const _KV('首次重新报价', '历史已保留；需销售报价查看权限'),
       _KV('单据号', d.billNo),
       _KV('日期', d.billDate),
       _KV('制单员', d.makerName),
@@ -2301,12 +2379,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     final l10n = AppLocalizations.of(context);
     final wf = _detail!.quoteWorkflow;
     final children = <Widget>[
-      if (canDownloadSalesQuoteTemplate(
-        ref.watch(currentPermissionsProvider),
-        priceMasked: _detail!.priceMasked,
-      ))
+      if (!widget.historyRead &&
+          canDownloadSalesQuoteTemplate(
+            ref.watch(currentPermissionsProvider),
+            priceMasked: _detail!.priceMasked,
+          ))
         SalesQuoteTemplateDownloadButton(
           quoteId: widget.id,
+          reviewRevision: _detail!.quoteWorkflow.reviewRevision,
           billNo: _detail!.billNo ?? '',
           priceMasked: _detail!.priceMasked,
         ),
@@ -2447,6 +2527,26 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     final rejected = _detail!.rejected;
     final children = <Widget>[];
 
+    if (_detail!.requotedToId != null && _hasPermission(Perm.salesQuoteView)) {
+      children.add(
+        UtenButton(
+          key: const ValueKey('sales-order-view-requote'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.open_in_new_rounded,
+          child: const Text('查看首次重新报价'),
+          onPressed: () => context.push(
+            Uri(
+              path: SalesRoutePath.docDetail(
+                SalesDocType.quote.pathSegment,
+                _detail!.requotedToId!,
+              ),
+              queryParameters: const {'history': '1'},
+            ).toString(),
+          ),
+        ),
+      );
+    }
     void add(Widget child) => children.add(child);
     if (s == kSalesStatusDraft && !rejected) {
       if (_detail!.shipmentWorkflow.canConfirmSales &&

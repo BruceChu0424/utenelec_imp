@@ -42,8 +42,16 @@ public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMe
     private boolean financeConfirmed;
     /** 财务驳回（V300）：已审未确认且被财务驳回，待销售修正；前端列表显示驳回徽章。 */
     private boolean financeRejected;
+    private UUID requotedToId;
+    private java.time.OffsetDateTime requotedAt;
+    private String readOnlyReason;
 
     @Override public void disableHistoryActions() {
         writable = false;
+    }
+
+    @Override public void copyHistoryFrom(com.uten.imp.common.history.DocumentHistoryMetadata source) {
+        super.copyHistoryFrom(source);
+        if (requotedToId != null) setHistoryReadOnly(true);
     }
 }

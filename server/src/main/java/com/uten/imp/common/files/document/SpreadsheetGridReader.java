@@ -8,6 +8,7 @@ import com.uten.imp.common.files.document.DocumentGrid.Sheet;
 import com.uten.imp.common.files.document.DocumentParseGate.Deadline;
 import com.uten.imp.common.web.ApiException;
 import org.apache.poi.EncryptedDocumentException;
+import org.apache.poi.hssf.record.BOFRecord;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.poi.openxml4j.opc.OPCPackage;
 import org.apache.poi.openxml4j.util.ZipSecureFile;
@@ -51,7 +52,7 @@ public final class SpreadsheetGridReader {
     public static final int MAX_SHEETS = 8;
     public static final int MAX_ROWS_PER_SHEET = 5000;
     public static final int MAX_CELL_CHARS = 8192;
-    /** 最多读到第几列(0 起, 含): 超出的列忽略(客户表格的内容不会在这么远)。 */
+    /** 最多读到第几列(0 起, 含): 超出的内容必须标记不完整。 */
     public static final int MAX_COLUMN_INDEX = 1023;
     private static final int MAX_CELLS_PER_SHEET = 200_000;
     private static final int MAX_MERGES_PER_SHEET = 10_000;
@@ -85,15 +86,13 @@ public final class SpreadsheetGridReader {
         try (OPCPackage pkg = OPCPackage.open(new ByteArrayInputStream(bytes))) {
             XSSFReader reader = new XSSFReader(pkg);
             WorkbookInfo info = parseWorkbook(reader);
+            if (info.sheets().stream().filter(SheetRef::visible).count() > MAX_SHEETS) throw tooManySheets();
             StylesTable styles = reader.getStylesTable();
             ReadOnlySharedStringsTable strings = new ReadOnlySharedStringsTable(pkg, false);
             List<Sheet> sheets = new ArrayList<>();
             for (SheetRef ref : info.sheets()) {
                 if (!ref.visible()) {
                     continue;
-                }
-                if (sheets.size() >= MAX_SHEETS) {
-                    break;
                 }
                 deadline.check();
                 try (InputStream in = reader.getSheet(ref.relId())) {
@@ -123,6 +122,9 @@ public final class SpreadsheetGridReader {
 
     private static ApiException unreadable() {
         return ZipSafety.rejected("这个 Excel 文件打不开或已损坏, 请另存为普通的 .xlsx 后再试");
+    }
+    private static ApiException tooManySheets() {
+        return ZipSafety.rejected("这个 Excel 超过 " + MAX_SHEETS + " 个可见工作表, 请按业务用途拆分后再识别");
     }
 
     private record SheetRef(String name, int index, String relId, boolean visible) {
@@ -253,7 +255,7 @@ public final class SpreadsheetGridReader {
                         if (m != null) {
                             merges.add(m);
                         }
-                    }
+                    } else truncated = true;
                 }
                 default -> {
                     // 公式 <f>、批注引用、格式等一律不读。
@@ -283,21 +285,23 @@ public final class SpreadsheetGridReader {
         @Override
         public void characters(char[] ch, int start, int length) {
             if (inValue) {
-                if (value.length() < MAX_CELL_CHARS * 2) {
-                    value.append(ch, start, length);
-                }
+                appendBounded(value, ch, start, length);
             } else if (inInlineText) {
-                if (inline.length() < MAX_CELL_CHARS * 2) {
-                    inline.append(ch, start, length);
-                }
+                appendBounded(inline, ch, start, length);
             }
+        }
+        private void appendBounded(StringBuilder target, char[] chars, int start, int length) {
+            int retained = Math.min(length, MAX_CELL_CHARS * 2 - target.length());
+            target.append(chars, start, retained);
+            if (retained < length && !rowHidden && !isHiddenColumn(cellCol)) truncated = true;
         }
 
         private void finishCell() {
-            if (currentCells == null || rowHidden || cellCol < 0 || cellCol > MAX_COLUMN_INDEX || isHiddenColumn(cellCol)) {
+            if (currentCells == null || rowHidden || cellCol < 0 || isHiddenColumn(cellCol)) {
                 return;
             }
-            if (cellCount >= MAX_CELLS_PER_SHEET) {
+            if (cellCol > MAX_COLUMN_INDEX || cellCount >= MAX_CELLS_PER_SHEET) {
+                if (!value.isEmpty() || !inline.isEmpty()) truncated = true;
                 return;
             }
             Cell cell = buildCell();
@@ -372,6 +376,7 @@ public final class SpreadsheetGridReader {
         }
 
         private Cell textCell(String text) {
+            if (text != null && text.length() > MAX_CELL_CHARS) truncated = true;
             String cleaned = cleanText(text);
             return cleaned.isEmpty() ? null : Cell.text(cellCol, cleaned);
         }
@@ -421,8 +426,18 @@ public final class SpreadsheetGridReader {
                 throw ZipSafety.rejected("这个 Excel 带有宏, 为了安全不能识别, 请另存为普通的 .xlsx 后再试");
             }
             try (HSSFWorkbook wb = new HSSFWorkbook(root, false)) {
+                for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+                    boolean macro = wb.getSheetAt(i).getSheet().getRecords().stream()
+                            .filter(BOFRecord.class::isInstance).map(BOFRecord.class::cast)
+                            .anyMatch(record -> record.getType() == BOFRecord.TYPE_EXCEL_4_MACRO
+                                    || record.getType() == BOFRecord.TYPE_VB_MODULE);
+                    if (macro) throw ZipSafety.rejected("这个 Excel 带有宏, 为了安全不能识别, 请另存为普通的 .xlsx 后再试");
+                }
+                long visible = java.util.stream.IntStream.range(0, wb.getNumberOfSheets())
+                        .filter(i -> !wb.isSheetHidden(i) && !wb.isSheetVeryHidden(i)).count();
+                if (visible > MAX_SHEETS) throw tooManySheets();
                 List<Sheet> sheets = new ArrayList<>();
-                for (int i = 0; i < wb.getNumberOfSheets() && sheets.size() < MAX_SHEETS; i++) {
+                for (int i = 0; i < wb.getNumberOfSheets(); i++) {
                     if (wb.isSheetHidden(i) || wb.isSheetVeryHidden(i)) {
                         continue;
                     }
@@ -462,9 +477,15 @@ public final class SpreadsheetGridReader {
             List<Cell> cells = new ArrayList<>();
             for (org.apache.poi.ss.usermodel.Cell cell : row) {
                 int col = cell.getColumnIndex();
-                if (col > MAX_COLUMN_INDEX || sheet.isColumnHidden(col) || cellCount >= MAX_CELLS_PER_SHEET) {
+                if (sheet.isColumnHidden(col)) {
                     continue;
                 }
+                if (col > MAX_COLUMN_INDEX || cellCount >= MAX_CELLS_PER_SHEET) {
+                    if (cell.getCellType() != CellType.BLANK) truncated = true;
+                    continue;
+                }
+                CellType effectiveType = cell.getCellType() == CellType.FORMULA ? cell.getCachedFormulaResultType() : cell.getCellType();
+                if (effectiveType == CellType.STRING && cell.getRichStringCellValue().length() > MAX_CELL_CHARS) truncated = true;
                 Cell converted = convertHssfCell(cell, col);
                 if (converted != null) {
                     cells.add(converted);
@@ -480,6 +501,7 @@ public final class SpreadsheetGridReader {
         List<MergedRange> merges = new ArrayList<>();
         for (CellRangeAddress range : sheet.getMergedRegions()) {
             if (merges.size() >= MAX_MERGES_PER_SHEET) {
+                truncated = true;
                 break;
             }
             merges.add(new MergedRange(range.getFirstRow(), range.getLastRow(), range.getFirstColumn(),

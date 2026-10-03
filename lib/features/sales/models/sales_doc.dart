@@ -646,6 +646,10 @@ class SalesDocListItem {
     this.rejected = false,
     this.priceMasked = false,
     this.writable = false,
+    this.requotedToId,
+    this.requotedAt,
+    this.readOnlyReason,
+    this.historyReadOnly = false,
     this.canReject = false,
     this.shipmentPolicy,
     this.partialShipmentConfirmedAt,
@@ -689,7 +693,11 @@ class SalesDocListItem {
   final bool delayWarning; // 延期预警：已审未结案且距交货 ≤3 天（后端派生）
   final bool rejected; // 仓库驳回（出货单）：备货异常，草稿终态
   final bool priceMasked; // 价格脱敏（SOP §三8）：无 sales_order:price:view 时合计渲染 ***
-  final bool writable; // 服务端权威：功能权限 + 负责人范围均允许普通写操作
+  final bool writable;
+  final String? requotedToId;
+  final String? requotedAt;
+  final String? readOnlyReason;
+  final bool historyReadOnly;
   final bool canReject; // 服务端权威：仅出货草稿且具备特殊驳回权限
   final String? shipmentPolicy;
   final String? partialShipmentConfirmedAt;
@@ -743,6 +751,10 @@ class SalesDocListItem {
     rejected: (json['rejected'] as bool?) ?? false,
     priceMasked: (json['priceMasked'] as bool?) ?? false,
     writable: (json['writable'] as bool?) ?? false,
+    requotedToId: json['requotedToId'] as String?,
+    requotedAt: json['requotedAt'] as String?,
+    readOnlyReason: json['readOnlyReason'] as String?,
+    historyReadOnly: json['historyReadOnly'] == true,
     canReject: (json['canReject'] as bool?) ?? false,
     shipmentPolicy: json['shipmentPolicy'] as String?,
     partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,
@@ -1109,6 +1121,10 @@ class SalesDocDetail {
     this.financeAuditedAt,
     this.priceMasked = false,
     this.writable = false,
+    this.requotedToId,
+    this.requotedAt,
+    this.readOnlyReason,
+    this.historyReadOnly = false,
     this.canReject = false,
     this.shipmentPolicy,
     this.partialShipmentConfirmedAt,
@@ -1211,6 +1227,10 @@ class SalesDocDetail {
 
   /// 服务端能力字段；前端权限常量只能控制入口，不能替代对象负责人范围。
   final bool writable;
+  final String? requotedToId;
+  final String? requotedAt;
+  final String? readOnlyReason;
+  final bool historyReadOnly;
   final bool canReject;
   final String? shipmentPolicy;
   final String? partialShipmentConfirmedAt;
@@ -1304,6 +1324,10 @@ class SalesDocDetail {
     financeAuditedAt: json['financeAuditedAt'] as String?,
     priceMasked: (json['priceMasked'] as bool?) ?? false,
     writable: (json['writable'] as bool?) ?? false,
+    requotedToId: json['requotedToId'] as String?,
+    requotedAt: json['requotedAt'] as String?,
+    readOnlyReason: json['readOnlyReason'] as String?,
+    historyReadOnly: json['historyReadOnly'] == true,
     canReject: (json['canReject'] as bool?) ?? false,
     shipmentPolicy: json['shipmentPolicy'] as String?,
     partialShipmentConfirmedAt: json['partialShipmentConfirmedAt'] as String?,

@@ -146,7 +146,7 @@ class AiJobServiceTest {
                 false);
         when(restorer.currentStamps(user.getId()))
                 .thenReturn(Optional.of(new SubmitterPrincipalRestorer.AuthorizationStamps(5, 2)));
-        when(repository.findReusable(any(), anyString(), anyString(), anyString(), anyInt()))
+        when(repository.findReusable(any(), anyString(), anyString(), anyString(), anyString(), anyInt()))
                 .thenReturn(Optional.empty());
         when(repository.findOwned(any(), eq(user.getId()))).thenAnswer(invocation -> Optional.of(row(
                 invocation.getArgument(0), "PENDING", false)));
@@ -253,7 +253,7 @@ class AiJobServiceTest {
     void sameFileSameParametersWithinTheWindowReusesTheExistingJob() throws Exception {
         UUID existing = UUID.randomUUID();
         when(repository.findReusable(eq(user.getId()), eq("TEST_KIND"), eq("{\"clientId\":\"c1\"}"),
-                eq(AiJobService.sha256(CSV)), eq(10))).thenReturn(Optional.of(existing));
+                eq(AiJobService.sha256(CSV)), eq("list.csv"), eq(10))).thenReturn(Optional.of(existing));
 
         AiJobView view = submit(Map.of("clientId", "c1"), new ByteArrayInputStream(CSV));
 
@@ -269,13 +269,13 @@ class AiJobServiceTest {
         AiJobView first = service.submitStructured("TEST_KIND", Map.of(), question, user);
         AiJobView second = service.submitStructured("TEST_KIND", Map.of(), question, user);
         assertThat(second.id()).isNotEqualTo(first.id());
-        verify(repository, never()).findReusable(any(), anyString(), anyString(), anyString(), anyInt());
+        verify(repository, never()).findReusable(any(), anyString(), anyString(), anyString(), anyString(), anyInt());
     }
 
     @Test
     void sameFileCanBeRecognizedAgainWhenStoredCandidateScopeWasRevoked() throws Exception {
         UUID stale = UUID.randomUUID();
-        when(repository.findReusable(any(), anyString(), anyString(), anyString(), anyInt())).thenReturn(Optional.of(stale));
+        when(repository.findReusable(any(), anyString(), anyString(), anyString(), anyString(), anyInt())).thenReturn(Optional.of(stale));
         when(repository.findOwned(stale, user.getId())).thenReturn(Optional.of(row(stale, "SUCCEEDED", true)));
         when(repository.resultJson(stale)).thenReturn(Optional.of("{\"client\":{\"name\":\"old\"}}"));
         handler.denyResult = true;

@@ -4,7 +4,12 @@ import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 
-Future<String> saveBytes(Uint8List bytes, String filename) async {
+Future<String> saveBytes(
+  Uint8List bytes,
+  String filename, {
+  bool Function()? stillCurrent,
+}) async {
+  if (!(stillCurrent?.call() ?? true)) throw StateError('导出身份或服务器已变化，已取消下载');
   final blob = web.Blob(<JSAny>[bytes.toJS].toJS);
   final url = web.URL.createObjectURL(blob);
   final anchor = web.HTMLAnchorElement()

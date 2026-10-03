@@ -255,4 +255,52 @@ class SpreadsheetGridReaderTest {
         assertThat(DocumentGrid.columnIndex("1A")).isEqualTo(-1);
         assertThat(SpreadsheetGridReader.parseRange("Q8:S8")).isEqualTo(new DocumentGrid.MergedRange(7, 7, 16, 18));
     }
+    @Test
+    void ninthVisibleSheetCannotBeSilentlyDropped() throws IOException {
+        for (Workbook workbook : java.util.List.of(new XSSFWorkbook(), new HSSFWorkbook())) {
+            DocumentKind kind = workbook instanceof XSSFWorkbook ? DocumentKind.XLSX : DocumentKind.XLS;
+            for (int i = 0; i <= SpreadsheetGridReader.MAX_SHEETS; i++) {
+                workbook.createSheet("S" + i).createRow(0).createCell(0).setCellValue(i == 8 ? "payroll" : "quotation");
+            }
+            byte[] bytes = write(workbook);
+            assertThatThrownBy(() -> SpreadsheetGridReader.read(bytes, kind)).isInstanceOf(ApiException.class)
+                    .hasMessageContaining("工作表");
+        }
+    }
+    @Test
+    void discardedCellTextAndColumnsAreExplicitlyIncomplete() throws IOException {
+        for (Workbook workbook : java.util.List.of(new XSSFWorkbook(), new HSSFWorkbook())) {
+            DocumentKind kind = workbook instanceof XSSFWorkbook ? DocumentKind.XLSX : DocumentKind.XLS;
+            workbook.createSheet("S").createRow(0).createCell(0).setCellValue("x".repeat(8193));
+            Sheet sheet = SpreadsheetGridReader.read(write(workbook), kind).sheets().getFirst();
+            assertThat(sheet.truncated()).as(kind.toString()).isTrue();
+            assertThat(sheet.text(0, 0)).hasSize(8192);
+        }
+        byte[] distant = xlsx(wb -> wb.createSheet("S").createRow(0).createCell(1024).setCellValue("second invoice"));
+        assertThat(SpreadsheetGridReader.read(distant, DocumentKind.XLSX).sheets().getFirst().truncated()).isTrue();
+        for (String content : java.util.List.of("x".repeat(8193), "x,".repeat(1024) + "second invoice")) {
+            assertThat(SpreadsheetGridReader.read(content.getBytes(StandardCharsets.UTF_8), DocumentKind.CSV)
+                    .sheets().getFirst().truncated()).isTrue();
+        }
+    }
+    @Test
+    void excelFourMacroAndDialogSheetsAreRejectedEvenWithXlsxName() throws IOException {
+        byte[] plain = xlsx(wb -> wb.createSheet("S").createRow(0).createCell(0).setCellValue("quotation"));
+        for (String part : java.util.List.of("xl/macrosheets/sheet1.xml", "xl/dialogsheets/sheet1.xml")) {
+            byte[] active = DocumentReaderTestSupport.withEntry(plain, part, "<x/>".getBytes(StandardCharsets.UTF_8));
+            assertThatThrownBy(() -> SpreadsheetGridReader.read(active, DocumentKind.XLSX))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("宏");
+        }
+    }
+    @Test
+    void legacyExcelFourMacroSheetWithoutAVbaProjectIsRejected() throws IOException {
+        HSSFWorkbook workbook = new HSSFWorkbook();
+        var sheet = workbook.createSheet("Macro");
+        sheet.createRow(0).createCell(0).setCellValue("quotation");
+        sheet.getSheet().getRecords().stream().filter(org.apache.poi.hssf.record.BOFRecord.class::isInstance)
+                .map(org.apache.poi.hssf.record.BOFRecord.class::cast)
+                .forEach(record -> record.setType(org.apache.poi.hssf.record.BOFRecord.TYPE_EXCEL_4_MACRO));
+        byte[] bytes = write(workbook);
+        assertThatThrownBy(() -> SpreadsheetGridReader.read(bytes, DocumentKind.XLS)).isInstanceOf(ApiException.class);
+    }
 }

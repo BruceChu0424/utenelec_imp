@@ -181,11 +181,11 @@ class QuoteFinanceLineDraft {
   /// 本行有要处理的内容: 填错了(不能悄悄丢掉)、选了刷新标价、或值与服务端不同。
   bool get dirty {
     if (removed || !sameDecimal(qty.text, line.qty)) return true;
+    if (error != null) return true;
     if (directPricing) {
       return !sameDecimal(price.text, line.storedPrice) ||
           !sameDecimal(discount.text, _initialDiscount);
     }
-    if (error != null) return true;
     if (refreshing) return true;
     if (source != _initialSource) return true;
     if (isMaster) {
@@ -216,8 +216,25 @@ class QuoteFinanceLineDraft {
   /// 用户改了成交单价：按标价自动决定打折还是财务定价。
   void onDealChanged(String text) {
     if (!priceEditable) return;
-    directPricing = false;
     final trimmed = text.trim();
+    // While an independent base price is being edited, changing the deal price
+    // must derive against that visible price, not silently restore the old one.
+    if (directPricing) {
+      final result = quoteDiscountFromDealPrice(trimmed, price.text);
+      if (isZeroDecimal(trimmed) ||
+          result.flag == QuoteDiscountFlag.aboveList) {
+        price.text = trimmed;
+        discount.text = '1';
+        error = null;
+      } else if (result.hasDiscount) {
+        discount.text = financeTrim(result.discount);
+        error = null;
+      } else {
+        error = QuoteFinanceLineError.dealPrice;
+      }
+      return;
+    }
+    directPricing = false;
     // 本来就没有单价的行又清空了：回到原样(不算填错，也不挡保存别的行)。
     if (trimmed.isEmpty && _initialDeal.isEmpty) {
       restore();

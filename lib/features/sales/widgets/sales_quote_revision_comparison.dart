@@ -22,6 +22,18 @@ const _fields = <String, String>{
   'clientGoodsName': '文件品名',
   'remark': '备注',
 };
+const _headerLabels = {
+  'clientName': '客户',
+  'billDate': '日期',
+  'sellerName': '业务员',
+  'validUntil': '有效期',
+  'deliverDate': '交货日期',
+  'settlementMethodName': '结账方式',
+  'contractNo': '合同号',
+  'remark': '备注',
+  'financeRemark': '财务备注',
+};
+
 const _numbers = {'qty', 'price', 'discount', 'amount', 'unitRate'};
 
 List<Map<String, dynamic>> _lines(Map<String, dynamic> snapshot) =>
@@ -105,9 +117,17 @@ class _SalesQuoteRevisionComparisonState
         snapshots[i - 1].snapshot!,
         snapshots[i].snapshot!,
       );
-      if (differences.any(
-        (r) => r.added || r.removed || r.changedKeys.isNotEmpty,
-      )) {
+      final beforeHeader =
+          snapshots[i - 1].snapshot!['header'] as Map? ??
+          snapshots[i - 1].snapshot!;
+      final afterHeader =
+          snapshots[i].snapshot!['header'] as Map? ?? snapshots[i].snapshot!;
+      if (_headerLabels.keys.any(
+            (key) => beforeHeader[key] != afterHeader[key],
+          ) ||
+          differences.any(
+            (r) => r.added || r.removed || r.changedKeys.isNotEmpty,
+          )) {
         latestChange = i;
         break;
       }
@@ -127,17 +147,6 @@ class _SalesQuoteRevisionComparisonState
     final oldHeader =
         previous.snapshot!['header'] as Map? ?? previous.snapshot!;
     final newHeader = current.snapshot!['header'] as Map? ?? current.snapshot!;
-    const headerLabels = {
-      'clientName': '客户',
-      'billDate': '日期',
-      'sellerName': '业务员',
-      'validUntil': '有效期',
-      'deliverDate': '交货日期',
-      'settlementMethodName': '结账方式',
-      'contractNo': '合同号',
-      'remark': '备注',
-      'financeRemark': '财务备注',
-    };
     final red = utenRevisionForeground(context, UtenRevisionKind.removed)!;
     return ExpansionTile(
       key: const ValueKey('sales-quote-revision-comparison'),
@@ -154,6 +163,8 @@ class _SalesQuoteRevisionComparisonState
                 value: i,
                 child: Text(
                   '第 ${snapshots[i].revision ?? i} 版 · ${snapshots[i].actorName ?? '—'} · ${snapshots[i].actionLabel ?? snapshots[i].action}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
           ],
@@ -161,13 +172,13 @@ class _SalesQuoteRevisionComparisonState
             () => _selectedSnapshot = _snapshotKey(snapshots[value!]),
           ),
         ),
-        for (final key in headerLabels.keys)
+        for (final key in _headerLabels.keys)
           if (oldHeader[key] != newHeader[key])
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Text('${headerLabels[key]}：'),
+                  Text('${_headerLabels[key]}：'),
                   Flexible(
                     child: Text(
                       '${oldHeader[key] ?? '未填写'}',

@@ -374,6 +374,9 @@ public class SalesQuoteFinanceService {
             if (edit.price() != null) {
                 SalesPriceAuthority.requireClientPrice(edit.price(), "核价单价");
             }
+            if (edit.dealPrice() != null) {
+                SalesPriceAuthority.requireClientPrice(edit.dealPrice(), "核价成交单价");
+            }
             if (edit.dealPrice() != null || Boolean.TRUE.equals(edit.useMasterPrice())
                     || item.getPrice() == null) {
                 needMaster.add(item.getGoodsId());

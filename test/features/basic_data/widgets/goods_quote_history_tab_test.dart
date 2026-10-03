@@ -6,19 +6,42 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_quote_history_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_quote_history_tab.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _Session extends SessionNotifier {
+  _Session({this.readOnly = false});
+  final bool readOnly;
   @override
-  SessionState build() => const SessionState();
+  SessionState build() => SessionState(
+    status: AuthStatus.authenticated,
+    user: const AppUser(id: 'reader', code: 'reader', name: '历史读者'),
+    impersonationReadOnly: readOnly,
+  );
   void replaceIdentity() =>
       state = const SessionState(status: AuthStatus.mustChangePassword);
+}
+
+final _permissions = StateProvider<Set<String>>((_) => {});
+final _server = StateProvider<String>((_) => 'https://a.invalid/api');
+
+class _Snapshots extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async {
+    ref.watch(_server);
+    return ref.watch(authenticatedScopeProvider) == null
+        ? null
+        : SessionSnapshot();
+  }
 }
 
 class _History implements GoodsQuoteHistoryRepository {
@@ -71,8 +94,9 @@ void main() {
     WidgetTester tester,
     _History history,
     GoRouter router,
-    Set<String> permissions,
-  ) async {
+    Set<String> permissions, {
+    bool readOnly = false,
+  }) async {
     tester.view.physicalSize = const Size(1800, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -81,8 +105,13 @@ void main() {
       ProviderScope(
         overrides: [
           goodsQuoteHistoryRepositoryProvider.overrideWithValue(history),
-          sessionProvider.overrideWith(_Session.new),
-          currentPermissionsProvider.overrideWithValue(permissions),
+          sessionProvider.overrideWith(() => _Session(readOnly: readOnly)),
+          _permissions.overrideWith((ref) => permissions),
+          currentPermissionsProvider.overrideWith(
+            (ref) => ref.watch(_permissions),
+          ),
+          apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
+          sessionSnapshotProvider.overrideWith(_Snapshots.new),
           isSuperAdminProvider.overrideWithValue(false),
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
@@ -94,6 +123,7 @@ void main() {
         ),
       ),
     );
+    await tester.pump();
     await tester.pump();
   }
 
@@ -212,6 +242,15 @@ void main() {
       table.onRowTap!(table.items.single);
       await tester.pumpAndSettle();
       expect(find.text('订货财务详情'), findsOneWidget);
+      history.pending['a'] = Completer<PagedResult<GoodsQuoteHistoryRow>>();
+      router.pop();
+      await tester.pump();
+      await tester.pump();
+      expect(history.requests, hasLength(2));
+      history.pending['a']!.complete(_page('返回后重新核对的报价'));
+      await tester.pumpAndSettle();
+      expect(find.text('返回后重新核对的报价'), findsWidgets);
+      expect(find.text('财务可见客户'), findsNothing);
     },
   );
 
@@ -252,7 +291,103 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.text('当前身份或权限已变化'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+    },
+  );
+
+  testWidgets('read-only finance sessions can inspect historical snapshots', (
+    tester,
+  ) async {
+    final history = _History();
+    final router = routes();
+    addTearDown(router.dispose);
+    await pump(tester, history, router, {
+      Perm.goodsView,
+      Perm.salesQuoteFinanceView,
+    }, readOnly: true);
+    history.pending['a']!.complete(_page('只读客户'));
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<GoodsQuoteHistoryRow>>(
+      find.byType(MasterDataTableView<GoodsQuoteHistoryRow>),
+    );
+    table.onRowTap!(table.items.single);
+    await tester.pumpAndSettle();
+    expect(find.text('本次报价历史快照'), findsOneWidget);
+    expect(find.text('操作权限已更新'), findsNothing);
+  });
+
+  testWidgets(
+    'permission loss and regrant never revives the old popup or cached rows',
+    (tester) async {
+      final history = _History();
+      final router = routes();
+      addTearDown(router.dispose);
+      const granted = {Perm.goodsView, Perm.salesQuoteFinanceView};
+      await pump(tester, history, router, granted);
+      history.pending['a']!.complete(_page('旧权限报价'));
+      await tester.pumpAndSettle();
+      final tableFinder = find.byType(
+        MasterDataTableView<GoodsQuoteHistoryRow>,
+      );
+      final container = ProviderScope.containerOf(tester.element(tableFinder));
+      final table = tester.widget<MasterDataTableView<GoodsQuoteHistoryRow>>(
+        tableFinder,
+      );
+      table.onRowTap!(table.items.single);
+      await tester.pumpAndSettle();
+      container.read(_permissions.notifier).state = {Perm.goodsView};
+      await tester.pumpAndSettle();
+      expect(find.text('旧权限报价'), findsNothing);
+      history.pending['a'] = Completer<PagedResult<GoodsQuoteHistoryRow>>();
+      container.read(_permissions.notifier).state = granted;
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('旧权限报价'), findsNothing);
+      history.pending['a']!.complete(_page('重新核对报价'));
+      await tester.pumpAndSettle();
+      expect(find.text('旧权限报价'), findsNothing);
+      expect(find.text('操作权限已更新'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('关闭'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('重新核对报价'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'server A-B-A changes discard the old request even when the URL returns',
+    (tester) async {
+      final history = _History();
+      final router = routes();
+      addTearDown(router.dispose);
+      await pump(tester, history, router, {
+        Perm.goodsView,
+        Perm.salesQuoteFinanceView,
+      });
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GoodsQuoteHistoryTab)),
+      );
+      final old = history.pending['a']!;
+      history.pending['a'] = Completer<PagedResult<GoodsQuoteHistoryRow>>();
+      container.read(_server.notifier).state = 'https://b.invalid/api';
+      await tester.pump();
+      await tester.pump();
+      container.read(_server.notifier).state = 'https://a.invalid/api';
+      await tester.pump();
+      await tester.pump();
+      old.complete(_page('旧服务器响应'));
+      await tester.pump();
+      expect(find.text('旧服务器响应'), findsNothing);
+      history.pending['a']!.complete(_page('当前服务器响应'));
+      await tester.pumpAndSettle();
+      expect(find.text('当前服务器响应'), findsWidgets);
+      expect(find.text('旧服务器响应'), findsNothing);
     },
   );
 }

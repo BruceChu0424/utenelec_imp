@@ -37,9 +37,11 @@ class HrTasksAiChatToolTest {
     }
     @Test void authorizedHrGetsRealTaskIdentityAndDateWithoutSensitiveOrUnneededFields() {
         when(tasks.summary()).thenReturn(summary(List.of(item("测试员工",LocalDate.of(2026,10,3))),List.of(item("PRIVATE_BIRTHDAY",LocalDate.of(2026,10,3)))));
-        String reply=tool.execute(Map.of()).get("reply").toString();
-        assertThat(reply).contains("2026-10-03","今日预计转正：1 项","E001","测试员工","生产部","其他同事已认领")
-                .doesNotContain("PRIVATE_","48岁");
+        var result=tool.execute(Map.of());
+        assertThat(result.get("reply").toString()).contains("2026-10-03","测试员工：今日预计转正")
+                .doesNotContain("PRIVATE_","48岁","E001","权限","来源","薪资","银行");
+        assertThat(result.get("detailReply").toString()).contains("今日预计转正：1 项","E001","生产部","其他同事已认领")
+                .doesNotContain("PRIVATE_","48岁","权限","来源","薪资","银行");
         assertThat(tool.parameters().toString()).doesNotContain("BIRTHDAY");
     }
     @Test void birthdayNeedsSeparatePermissionBeforeTheTaskServiceIsRead() {
@@ -69,7 +71,7 @@ class HrTasksAiChatToolTest {
     @Test void keywordFiltersExistingAuthorizedTasksWithoutPretendingLegacyAggregateBelongsToOnePerson() {
         when(tasks.summary()).thenReturn(summary(List.of(item("Alpha",LocalDate.of(2026,10,3)),item("Beta",LocalDate.of(2026,10,3))),List.of()));
         String reply=tool.execute(Map.of("category","CONFIRM","keyword","Alpha")).get("reply").toString();
-        assertThat(reply).contains("Alpha","今日预计转正：1 项").doesNotContain("Beta","历史转正日期待补录");
+        assertThat(reply).contains("Alpha：今日预计转正").doesNotContain("Beta","日期待补录");
     }
     @Test @SuppressWarnings("unchecked") void historyRejectsEmployeeChangesAndBirthdayPermissionRevocation() {
         actor=actor("employee:view","employee:pii:view");
@@ -87,5 +89,37 @@ class HrTasksAiChatToolTest {
         Map<String,Object> broken=new java.util.HashMap<>(); broken.put("category",null); broken.put("keyword",""); broken.put("snapshot","x");
         assertThatThrownBy(()->tool.authorizeResultRead(broken)).isInstanceOf(ApiException.class);
         verifyNoInteractions(tasks);
+    }
+    @Test void defaultShowsFivePeopleAndDetailsKeepTheRemainingReminderDates() {
+        var rows=java.util.stream.IntStream.range(0,7).mapToObj(index->item("员工"+index,LocalDate.of(2026,10,3))).toList();
+        when(tasks.summary()).thenReturn(summary(rows,List.of()));
+        var result=tool.execute(Map.of("category","CONFIRM"));
+        String reply=result.get("reply").toString(),detail=result.get("detailReply").toString();
+        assertThat(reply.lines().filter(line->line.startsWith("• ")).count()).isEqualTo(5);
+        assertThat(reply).contains("另有 2 条").doesNotContain("来源","权限","规则");
+        assertThat(detail.lines().filter(line->line.startsWith("• ")).count()).isEqualTo(7);
+        assertThat(detail).contains("员工6","2026-10-03").doesNotContain("PRIVATE_");
+    }
+    @Test @SuppressWarnings("unchecked") void unchangedReminderFactsRemainReadableWhenDatabaseOrderChanges() {
+        var first=item("Alpha",LocalDate.of(2026,10,3));
+        var second=item("Beta",LocalDate.of(2026,10,3));
+        when(tasks.summary()).thenReturn(summary(List.of(first,second),List.of()));
+        var original=tool.execute(Map.of("category","CONFIRM"));
+        var evidence=(Map<String,Object>)original.get("_toolEvidence");
+        when(tasks.summary()).thenReturn(summary(List.of(second,first),List.of()));
+        assertThatCode(()->tool.authorizeResultRead(evidence)).doesNotThrowAnyException();
+        assertThat(tool.execute(Map.of("category","CONFIRM")).get("reply")).isEqualTo(original.get("reply"));
+    }
+    @Test @SuppressWarnings("unchecked") void stableOrderingStillRejectsChangedDepartmentAndClaimFacts() {
+        var original=item("Alpha",LocalDate.of(2026,10,3));
+        when(tasks.summary()).thenReturn(summary(List.of(original),List.of()));
+        var evidence=(Map<String,Object>)tool.execute(Map.of("category","CONFIRM")).get("_toolEvidence");
+        var moved=new HrTaskSummary.Item(original.employeeId(),original.code(),original.name(),"新部门",
+                original.positionName(),original.date(),original.days(),original.note(),original.claimedByName(),
+                original.claimedByMe(),original.claimLeaseUntil(),original.blessed());
+        when(tasks.summary()).thenReturn(summary(List.of(moved),List.of()));
+        assertThatThrownBy(()->tool.authorizeResultRead(evidence)).isInstanceOf(ApiException.class);
+        when(tasks.summary()).thenReturn(summary(List.of(original.withClaim("本人",true,null)),List.of()));
+        assertThatThrownBy(()->tool.authorizeResultRead(evidence)).isInstanceOf(ApiException.class);
     }
 }

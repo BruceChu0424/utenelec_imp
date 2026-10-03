@@ -78,6 +78,36 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         }
         assertThat(FAKE.requests()).isEmpty();
     }
+    @Test void renamedOriginalGetsItsOwnSourceNameWhileIdenticalNamedUploadCanReuse() throws Exception {
+        byte[] input = csv("报价单", "品名,数量,单价", "产品A,10,20");
+        String first = upload(admin, AiDocumentRouteHandler.KIND, "original.csv", input, Map.of());
+        JsonNode firstResult = succeeded(admin, first);
+        String renamed = upload(admin, AiDocumentRouteHandler.KIND, "renamed.csv", input, Map.of());
+        JsonNode renamedResult = succeeded(admin, renamed);
+        assertThat(renamed).isNotEqualTo(first);
+        assertThat(firstResult.path("source").path("fileName").asText()).isEqualTo("original.csv");
+        assertThat(renamedResult.path("source").path("fileName").asText()).isEqualTo("renamed.csv");
+        assertThat(renamedResult.path("source").path("sha256").asText())
+                .isEqualTo(firstResult.path("source").path("sha256").asText());
+        assertThat(upload(admin, AiDocumentRouteHandler.KIND, "renamed.csv", input, Map.of())).isEqualTo(renamed);
+        assertThat(FAKE.requests()).isEmpty();
+    }
+    @Test void analysisOnlyAndMixedSourcesNeverProduceAnActionOrExpenseFields() throws Exception {
+        long orders = count("sales_orders"), claims = count("expense_claims");
+        JsonNode readOnly = succeeded(admin, upload(admin, AiDocumentRouteHandler.KIND, "read-only.csv",
+                csv("报价单", "品名,数量,单价"), Map.of("message", "不要生成订货单，只想看看内容")));
+        JsonNode mixed = succeeded(admin, upload(admin, AiDocumentRouteHandler.KIND, "mixed.csv",
+                csv("电子发票", "发票号码:12345678", "价税合计:100.00", "工资表"), Map.of()));
+        assertThat(mixed.path("documentType").asText()).isEqualTo("MIXED_DOCUMENT");
+        for (JsonNode result : List.of(readOnly, mixed)) {
+            assertThat(result.path("workflow").asText()).isEqualTo("NONE");
+            assertThat(result.path("choices").size()).isZero();
+            assertThat(result.path("fields").size()).isZero();
+        }
+        assertThat(count("sales_orders")).isEqualTo(orders);
+        assertThat(count("expense_claims")).isEqualTo(claims);
+        assertThat(FAKE.requests()).isEmpty();
+    }
 
     @Test void impossibleDateRemainsMissingInsteadOfBeingNormalizedToAnotherDate() throws Exception {
         var result = succeeded(admin, upload(admin, AiDocumentRouteHandler.KIND, "date.csv",
@@ -111,7 +141,7 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         JsonNode result = succeeded(token, upload(token, AiDocumentRouteHandler.KIND, "quote.csv", input, Map.of()));
         assertThat(result.path("workflow").asText()).isEqualTo("NONE");
         assertThat(result.path("choices").size()).isZero(); assertThat(result.path("fields").size()).isZero();
-        assertThat(result.path("summary").asText()).contains("没有对应业务");
+        assertThat(result.path("summary").asText()).contains("暂时不能填写");
         MvcResult forged = request(token, AiDocumentRouteHandler.KIND, "quote.csv", input, Map.of("actor", "superadmin"));
         assertEquals(422, forged.getResponse().getStatus(), body(forged));
         assertThat(count("sales_orders")).isEqualTo(orders); assertThat(FAKE.requests()).isEmpty();

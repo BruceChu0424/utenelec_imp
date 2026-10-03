@@ -15,7 +15,7 @@ record IntakeParams(String docType, UUID clientId, UUID docId, Integer sheetInde
 
     static final String QUOTE = "quote";
     static final String ORDER = "order";
-    private static final Set<String> KNOWN = Set.of("docType", "clientId", "docId", "sheet", "templateOnly");
+    private static final Set<String> KNOWN = Set.of("docType", "clientId", "docId", "sheet", "templateOnly", "templateAttemptId");
 
     static IntakeParams parse(Map<String, String> params) {
         Map<String, String> p = params == null ? Map.of() : params;
@@ -45,6 +45,8 @@ record IntakeParams(String docType, UUID clientId, UUID docId, Integer sheetInde
         String template = p.get("templateOnly");
         if (template != null && !Set.of("true", "false").contains(template)) throw bad("模板学习参数不正确");
         boolean templateOnly = "true".equals(template);
+        if(p.containsKey("templateAttemptId") && (!templateOnly || uuid(p.get("templateAttemptId"))==null))
+            throw bad("模板学习批次无效");
         if (templateOnly && (!QUOTE.equals(docType) || clientId == null || docId == null))
             throw bad("学习客户报价模板需要已保存的报价单和客户");
         return new IntakeParams(docType, clientId, docId, sheet, templateOnly);

@@ -24,6 +24,66 @@ public final class QuoteTemplateWorkbook {
 
     public record Candidate(byte[] xlsx, String fingerprint, Map<String, Object> mapping,
                             Set<String> features) { }
+    public static final class LayoutException extends IllegalArgumentException {
+        private LayoutException(String message) { super(message); }
+    }
+    public static final Set<String> EDITABLE_ROLES=Set.of("PART_NO","DESCRIPTION","DESCRIPTION_ALT","COLOR","QTY","UNIT",
+            "UNIT_PRICE","DISCOUNT","AMOUNT","REMARK","LINE_NO","SERIES","REFERENCE","IGNORED");
+
+    @SuppressWarnings("unchecked")
+    public static Map<String,String> columnChoices(Map<String,Object> mapping) {
+        Map<String,String> headers=(Map<String,String>)mapping.getOrDefault("availableHeaders",Map.of());
+        if (headers.isEmpty()) {
+            headers=new LinkedHashMap<>((Map<String,String>)mapping.getOrDefault("roleHeaders",Map.of()));
+            headers.putAll((Map<String,String>)mapping.getOrDefault("extraHeaders",Map.of()));
+        }
+        Map<String,String> saved=(Map<String,String>)mapping.get("confirmedColumnRoles");
+        if (saved!=null) return Map.copyOf(saved);
+        Map<String,String> roles=(Map<String,String>)mapping.getOrDefault("roles",Map.of());
+        Map<String,String> extras=(Map<String,String>)mapping.getOrDefault("extraHeaders",Map.of());
+        Map<String,String> choices=new LinkedHashMap<>();
+        for(String column:headers.keySet()) {
+            String role=roles.get(column);
+            choices.put(column,!extras.containsKey(column) && role!=null && EDITABLE_ROLES.contains(role) ? role : "REFERENCE");
+        }
+        return choices;
+    }
+
+    /** Only semantic assignments change; original sanitized bytes and the AI result remain immutable evidence. */
+    @SuppressWarnings("unchecked")
+    public static Candidate remap(Candidate candidate, Map<String,String> requested) {
+        Map<String,Object> mapping=new LinkedHashMap<>(candidate.mapping());
+        Map<String,String> headers=(Map<String,String>)mapping.getOrDefault("availableHeaders",Map.of());
+        if(headers.isEmpty()) {
+            headers=new LinkedHashMap<>((Map<String,String>)mapping.getOrDefault("roleHeaders",Map.of()));
+            headers.putAll((Map<String,String>)mapping.getOrDefault("extraHeaders",Map.of()));
+        }
+        if(requested==null || !requested.keySet().equals(headers.keySet()) || requested.size()>MAX_COLUMNS)
+            throw new IllegalArgumentException("请为模板全部可见表头核对字段，不可添加隐藏列");
+        Map<String,String> roles=new LinkedHashMap<>(),extras=new LinkedHashMap<>(),roleHeaders=new LinkedHashMap<>();
+        Set<String> used=new HashSet<>();
+        for(var entry:requested.entrySet()) {
+            String role=entry.getValue();
+            if(role==null || !EDITABLE_ROLES.contains(role)) throw new IllegalArgumentException("模板字段类型无效");
+            if("REFERENCE".equals(role)) { extras.put(entry.getKey(),headers.get(entry.getKey())); continue; }
+            if("IGNORED".equals(role)) continue;
+            if(!used.add(role)) throw new IllegalArgumentException("同一模板字段不能重复对应多列");
+            roles.put(entry.getKey(),role);roleHeaders.put(entry.getKey(),headers.get(entry.getKey()));
+        }
+        if(!used.contains("QTY") || Collections.disjoint(used,Set.of("PART_NO","DESCRIPTION","DESCRIPTION_ALT")))
+            throw new IllegalArgumentException("模板至少需要数量，以及型号或品名字段");
+        try(var workbook=new XSSFWorkbook(new ByteArrayInputStream(candidate.xlsx()))) {
+            validateDataPositions(workbook.getSheetAt(0),((Number)mapping.get("dataRow")).intValue(),roles,extras);
+        } catch(java.io.IOException invalid) { throw new IllegalArgumentException("模板文件无法读取",invalid); }
+        mapping.put("roles",roles);mapping.put("extraHeaders",extras);mapping.put("roleHeaders",roleHeaders);
+        mapping.put("availableHeaders",headers);mapping.put("confirmedColumnRoles",new LinkedHashMap<>(requested));
+        Set<String> features=new TreeSet<>(candidate.features());
+        features.removeIf(feature -> feature.startsWith("role:") || feature.startsWith("extra:"));
+        roles.forEach((letter,role) -> features.add("role:"+letter+":"+role));
+        extras.forEach((letter,label) -> features.add("extra:"+letter+":"+normalize(label)));
+        try { return new Candidate(candidate.xlsx(),hash(String.join("\n",features)),mapping,features); }
+        catch(Exception impossible) { throw new IllegalStateException("模板映射摘要生成失败",impossible); }
+    }
     public record ExportLine(Map<String, String> values, List<ExtraColumnSnapshot> extraColumns) {
         public ExportLine {
             extraColumns = extraColumns == null ? List.of() : List.copyOf(extraColumns);
@@ -162,6 +222,7 @@ public final class QuoteTemplateWorkbook {
                     }
                 }
             }
+            validateDataPositions(src, dataStart, roles, extraHeaders);
             Sheet out = clean.createSheet("报价单");
             Map<Integer, CellStyle> styles = new HashMap<>();
             Map<Integer, Font> fonts = new HashMap<>();
@@ -255,6 +316,17 @@ public final class QuoteTemplateWorkbook {
                 if (!label.isBlank()) roleHeaders.put(column, label);
             }
             mapping.put("roleHeaders", roleHeaders);
+            Map<String,String> availableHeaders=new LinkedHashMap<>();
+            for(int column=0;column<maxColumn;column++) {
+                if(src.isColumnHidden(column)) continue;
+                List<String> labels=new ArrayList<>();
+                for(int row=headerRow;row<headerRow+headerSpan;row++) {
+                    Cell cell=getCell(out,row,column);
+                    if(cell.getCellType()==CellType.STRING && !cell.getStringCellValue().isBlank()) labels.add(cell.getStringCellValue());
+                }
+                if(!labels.isEmpty()) availableHeaders.put(DocumentGrid.columnLetter(column),String.join(" / ",labels));
+            }
+            mapping.put("availableHeaders",availableHeaders);
             mapping.put("extraHeaders", extraHeaders);
             mapping.put("maxColumn", maxColumn);
             // Recognize labels before the table; keep only their field identity, never original values.
@@ -327,6 +399,19 @@ public final class QuoteTemplateWorkbook {
             if (col < 0 || col >= MAX_COLUMNS || entry.getValue() == null) throw new IllegalArgumentException("Invalid column");
         }
     }
+
+    private static void validateDataPositions(Sheet sheet, int row, Map<String,String> roles, Map<String,String> extras) {
+        validateColumns(roles); validateColumns(extras);
+        Set<String> columns=new LinkedHashSet<>(roles.keySet()); columns.addAll(extras.keySet());
+        for (String letter : columns) {
+            int column=DocumentGrid.columnIndex(letter);
+            if ("IGNORED".equals(roles.get(letter)) && !extras.containsKey(letter)) continue;
+            if (sheet.isColumnHidden(column)) throw new LayoutException("映射列已隐藏："+DocumentGrid.columnLetter(column));
+            CellRangeAddress merged=mergeAt(sheet,row,column);
+            if (merged!=null && (merged.getFirstRow()!=row || merged.getFirstColumn()!=column))
+                throw new LayoutException("映射列被合并单元格覆盖："+DocumentGrid.columnLetter(column));
+        }
+    }
     private static int detailBlockRows(Sheet sheet, int first, List<Integer> rows) {
         int size = 1;
         for (CellRangeAddress merge : sheet.getMergedRegions())
@@ -356,6 +441,8 @@ public final class QuoteTemplateWorkbook {
     }
     private static String safeNumberFormat(String format) {
         if (format == null) return "General";
+        // Excel also renders backslash-escaped letters as literal cell text, outside quoted runs.
+        if (java.util.regex.Pattern.compile("\\\\[\\p{L}\\p{N}]").matcher(format).find()) return "General";
         // Quoted custom-format text can contain a previous customer's name or identifier.
         // Built-in display symbols are safe; unknown literal text is not part of a reusable style.
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(format);
@@ -427,6 +514,7 @@ public final class QuoteTemplateWorkbook {
             extras.entrySet().removeIf(entry -> !isExtraTemplatePosition(roles.get(entry.getKey()), lines));
             Map<String, String> roleHeaders = (Map<String, String>) mapping.getOrDefault("roleHeaders", Map.of());
             Map<String, String> fields = (Map<String, String>) mapping.getOrDefault("headerCells", Map.of());
+            validateDataPositions(sheet, start, roles, extras);
             int columns = ((Number) mapping.getOrDefault("maxColumn", 20)).intValue();
             Set<String> included = new HashSet<>();
             for (String label : extras.values()) included.add(normalize(label));
@@ -565,9 +653,11 @@ public final class QuoteTemplateWorkbook {
             List<String> projectedMoney = (List<String>) mapping.getOrDefault("moneyRoles", List.of());
             for (var entry : roles.entrySet()) if (projectedMoney.contains(entry.getValue())) monetaryRoles.put(entry.getKey(), "AMOUNT");
             applyCurrentCurrency(workbook, sheet, monetaryRoles, headerRow, headerSpan, header.get("currencyCode"));
+            applyExactQuantityAndDiscountFormats(workbook,sheet,roles,start,newFooter);
             workbook.setPrintArea(0, 0, Math.max(0, columns - 1), 0, Math.max(totalAt, sheet.getLastRowNum()));
             return bytes(workbook);
-        } catch (Exception e) { throw new IllegalArgumentException("报价模板生成失败", e); }
+        } catch (LayoutException invalid) { throw invalid; }
+        catch (Exception e) { throw new IllegalArgumentException("报价模板生成失败", e); }
     }
 
     private static boolean isExtraTemplatePosition(String role, List<ExportLine> lines) {
@@ -611,6 +701,27 @@ public final class QuoteTemplateWorkbook {
                     style.setDataFormat(workbook.createDataFormat().getFormat("#,##0.###############")); return style;
                 });
                 cell.setCellStyle(clean);
+            }
+        }
+    }
+
+    private static void applyExactQuantityAndDiscountFormats(XSSFWorkbook workbook,Sheet sheet,Map<String,String> roles,int start,int end) {
+        Map<String,CellStyle> styles=new HashMap<>();
+        for(var entry:roles.entrySet()) {
+            if(!Set.of("QTY","DISCOUNT").contains(entry.getValue())) continue;
+            int column=DocumentGrid.columnIndex(entry.getKey());
+            for(int row=start;row<end;row++) {
+                Row target=sheet.getRow(row);Cell cell=target==null?null:target.getCell(column);
+                if(cell==null || cell.getCellType()!=CellType.NUMERIC) continue;
+                String format=cell.getCellStyle().getDataFormatString().replaceAll("\"[^\"]*\"","").replace("\\%","");
+                boolean percentage="DISCOUNT".equals(entry.getValue()) && format.contains("%");
+                String key=cell.getCellStyle().getIndex()+":"+percentage;
+                CellStyle style=styles.computeIfAbsent(key,ignored -> {
+                    CellStyle precise=workbook.createCellStyle();precise.cloneStyleFrom(cell.getCellStyle());
+                    precise.setDataFormat(workbook.createDataFormat().getFormat(percentage?"0.###############%":"#,##0.###############"));
+                    return precise;
+                });
+                cell.setCellStyle(style);
             }
         }
     }

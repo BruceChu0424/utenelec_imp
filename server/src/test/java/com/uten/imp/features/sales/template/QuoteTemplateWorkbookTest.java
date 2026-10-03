@@ -16,6 +16,76 @@ import static org.assertj.core.api.Assertions.*;
 class QuoteTemplateWorkbookTest {
     private static final Map<String, String> ROLES = Map.of("A", "PART_NO", "B", "DESCRIPTION", "D", "QTY", "E", "UNIT_PRICE", "F", "AMOUNT");
 
+    @Test void mergedOrHiddenDetailFieldsAreRejectedBeforeTheyCanSilentlyDisappear() throws Exception {
+        byte[] unsafe;
+        try (var workbook=new XSSFWorkbook(); var out=new ByteArrayOutputStream()) {
+            var sheet=workbook.createSheet("Quote");
+            var header=sheet.createRow(0); header.createCell(0).setCellValue("Model"); header.createCell(1).setCellValue("Qty");
+            sheet.createRow(1); sheet.addMergedRegion(new CellRangeAddress(1,1,0,1));
+            workbook.write(out); unsafe=out.toByteArray();
+        }
+        assertThatThrownBy(() -> QuoteTemplateWorkbook.capture(unsafe,0,0,1,Map.of("A","PART_NO","B","QTY"),Map.of()))
+                .hasRootCauseMessage("映射列被合并单元格覆盖：B");
+        var candidate=QuoteTemplateWorkbook.defaultTemplate();
+        byte[] hidden;
+        try (var workbook=open(candidate.xlsx()); var out=new ByteArrayOutputStream()) {
+            workbook.getSheetAt(0).setColumnHidden(4,true); workbook.write(out); hidden=out.toByteArray();
+        }
+        assertThatThrownBy(() -> QuoteTemplateWorkbook.render(hidden,candidate.mapping(),List.of(line("A","2","8")),Map.of(),"8"))
+                .hasMessage("映射列已隐藏：E");
+    }
+
+    @Test void escapedCustomerTextInNumberFormatsDoesNotSurviveTemplateLearning() throws Exception {
+        byte[] bytes;
+        try (var workbook=new XSSFWorkbook(); var out=new ByteArrayOutputStream()) {
+            var sheet=workbook.createSheet("Quote");
+            var header=sheet.createRow(0); header.createCell(0).setCellValue("Model"); header.createCell(1).setCellValue("Qty");
+            var style=workbook.createCellStyle(); style.setDataFormat(workbook.createDataFormat().getFormat("0\\S\\E\\C\\R\\E\\T"));
+            sheet.createRow(1).createCell(1).setCellStyle(style); workbook.write(out); bytes=out.toByteArray();
+        }
+        var captured=QuoteTemplateWorkbook.capture(bytes,0,0,1,Map.of("A","PART_NO","B","QTY"),Map.of());
+        try (var workbook=open(captured.xlsx())) {
+            assertThat(workbook.getSheetAt(0).getRow(1).getCell(1).getCellStyle().getDataFormatString()).isEqualTo("General");
+        }
+    }
+
+    @Test void manualMappingOnlyChangesSafeRolesAndExportsAuthoritativeNumbersInCorrectedCells() throws Exception {
+        var original=QuoteTemplateWorkbook.defaultTemplate();
+        Map<String,String> choices=new LinkedHashMap<>(QuoteTemplateWorkbook.columnChoices(original.mapping()));
+        choices.put("G","AMOUNT");choices.put("I","UNIT_PRICE");
+        var corrected=QuoteTemplateWorkbook.remap(original,choices);
+        assertThat(corrected.xlsx()).isEqualTo(original.xlsx());
+        assertThat(corrected.fingerprint()).isNotEqualTo(original.fingerprint());
+        var line=new QuoteTemplateWorkbook.ExportLine(Map.of("PART_NO","ITEM","QTY","2","UNIT_PRICE","10.25","DISCOUNT","0.8","AMOUNT","16.4"));
+        try(var workbook=open(QuoteTemplateWorkbook.render(corrected.xlsx(),corrected.mapping(),List.of(line),Map.of("currencyCode","CNY"),"16.4"))) {
+            assertThat(workbook.getSheetAt(0).getRow(5).getCell(6).getNumericCellValue()).isEqualTo(16.4);
+            assertThat(workbook.getSheetAt(0).getRow(5).getCell(8).getNumericCellValue()).isEqualTo(10.25);
+        }
+        Map<String,String> invalid=new LinkedHashMap<>(choices);invalid.put("ZZ","QTY");
+        assertThatThrownBy(() -> QuoteTemplateWorkbook.remap(original,invalid)).hasMessageContaining("可见表头");
+        invalid.remove("ZZ");invalid.put("I","=SUM(A1:A2)");
+        assertThatThrownBy(() -> QuoteTemplateWorkbook.remap(original,invalid)).hasMessageContaining("字段类型无效");
+        invalid.put("I","QTY");
+        assertThatThrownBy(() -> QuoteTemplateWorkbook.remap(original,invalid)).hasMessageContaining("不能重复");
+        invalid.put("I","UNIT_PRICE");invalid.put("E","IGNORED");
+        assertThatThrownBy(() -> QuoteTemplateWorkbook.remap(original,invalid)).hasMessageContaining("至少需要数量");
+    }
+
+    @Test void integerTemplateStylesCannotRoundTheDisplayedQuantityOrDiscount() throws Exception {
+        var base=QuoteTemplateWorkbook.defaultTemplate();byte[] bytes;
+        try(var workbook=open(base.xlsx());var out=new ByteArrayOutputStream()) {
+            var style=workbook.createCellStyle();style.setDataFormat(workbook.createDataFormat().getFormat("0"));
+            workbook.getSheetAt(0).createRow(5).createCell(4).setCellStyle(style);
+            workbook.getSheetAt(0).getRow(5).createCell(7).setCellStyle(style);workbook.write(out);bytes=out.toByteArray();
+        }
+        var line=new QuoteTemplateWorkbook.ExportLine(Map.of("QTY","1.25","UNIT_PRICE","10","DISCOUNT","0.825","AMOUNT","10.3125"));
+        var formatter=new DataFormatter(Locale.ROOT);
+        try(var workbook=open(QuoteTemplateWorkbook.render(bytes,base.mapping(),List.of(line),Map.of(),"10.3125"))) {
+            assertThat(formatter.formatCellValue(workbook.getSheetAt(0).getRow(5).getCell(4))).isEqualTo("1.25");
+            assertThat(formatter.formatCellValue(workbook.getSheetAt(0).getRow(5).getCell(7))).isEqualTo("0.825");
+        }
+    }
+
     @Test
     void keepsChosenSheetPresentationButNoHistoricalOrExecutableData() throws Exception {
         var candidate = capture(sample("OLD CUSTOMER", 2));

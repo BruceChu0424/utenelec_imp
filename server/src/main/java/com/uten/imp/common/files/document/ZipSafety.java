@@ -125,6 +125,7 @@ public final class ZipSafety {
         String lower = name.toLowerCase(Locale.ROOT);
         String file = lower.substring(lower.lastIndexOf('/') + 1);
         if (file.startsWith("vbaproject") || file.startsWith("vbadata")
+                || lower.startsWith("xl/macrosheets/") || lower.startsWith("xl/dialogsheets/")
                 || (!evidenceOnly && lower.startsWith("xl/externallinks/"))
                 || lower.startsWith("xl/activex/")
                 || lower.startsWith("xl/embeddings/")

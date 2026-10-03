@@ -103,8 +103,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('ai-chat-launcher')));
       await tester.pumpAndSettle();
-      if (variant == 'desktop') {
-        await capture(tester, 'chat-desktop-welcome');
+      if (variant == 'desktop' || variant == 'mobile') {
+        await capture(tester, 'chat-$variant-welcome');
       }
       await tester.enterText(
         find.byKey(const ValueKey('ai-chat-input')),
@@ -168,7 +168,7 @@ class _VisualChatRepository implements AiChatRepository {
     result: {
       'reply': grant
           ? '已准备授权建议，请核对后确认。'
-          : '在当前订货单中，「交货日期」填写你与客户约定的交付日期。\n\n示例：如果双方约定 10 月 20 日交付，可以选择 2026-10-20。这里的日期仅为示例，请以实际约定为准。\n\n我只根据页面说明提供帮助，没有读取你表单中已填写的内容。',
+          : '「交货日期」填写与客户约定的交付日期。\n\n例如约定 10 月 20 日交货，就填 2026-10-20。',
       'actions': <Map<String, dynamic>>[
         if (grant)
           {

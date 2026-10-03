@@ -52,14 +52,14 @@ public class AiPermissionGrantService {
         var grants = new LinkedHashSet<>(before.grants());
         var revokes = new LinkedHashSet<>(before.revokes());
         if (grants.contains(proposal.permissionCode()) && !revokes.contains(proposal.permissionCode())) {
-            return Map.of("status", "ALREADY_GRANTED", "reply", "该员工已获得这项个人权限，无需重复授权。");
+            return Map.of("status", "ALREADY_GRANTED", "reply", "该员工已经可以使用这项功能，无需重复开通。");
         }
         if (target.account().getAuthVersion() != proposal.targetAuthVersion()) throw conflict();
         grants.add(proposal.permissionCode());
         revokes.remove(proposal.permissionCode());
         overrides.setPermissionOverrides(proposal.targetId(), grants.stream().toList(), revokes.stream().toList());
         return Map.of("status", "GRANTED", "reply", "已为 " + target.employee().getFullName() + "("
-                + target.employee().getCode() + ")授予 " + permission.getName() + "。本次授权已记录审计。");
+                + target.employee().getCode() + ")开通 " + permission.getName() + "。");
     }
 
     private static ApiException conflict() {

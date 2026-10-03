@@ -128,6 +128,11 @@ public class SalesOrder extends SoftDeletableEntity {
     @Column(name = "source_quote_id")
     private UUID sourceQuoteId;
 
+    /** First renegotiation permanently closes the old order to further business mutations. */
+    private UUID requotedToId;
+    private java.time.OffsetDateTime requotedAt;
+    private UUID requotedBy;
+
     /** 发运策略：新单默认空（销售自选 ALLOW_PARTIAL/REQUIRE_COMPLETE）；CUSTOMER_CONFIRM/LEGACY 仅供历史单只读保留。 */
     @Column(name = "shipment_policy")
     private String shipmentPolicy;

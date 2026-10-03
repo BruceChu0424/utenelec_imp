@@ -63,5 +63,5 @@ public class AiChatEvidence {
                 """, Boolean.class, id, actor.getId(), actor.getId());
         if (!Boolean.TRUE.equals(valid)) throw changed();
     }
-    private static ApiException changed() { return new ApiException(ErrorCode.FORBIDDEN, "账号权限或部门已变化，请开始新对话并重新选择文件"); }
+    private static ApiException changed() { return new ApiException(ErrorCode.FORBIDDEN, "信息已更新，请重新提问或上传文件。"); }
 }

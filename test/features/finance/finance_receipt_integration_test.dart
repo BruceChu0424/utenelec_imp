@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:uten_imp/shared/models/user.dart';
 import '../../support/native_detail_reader_overrides.dart';
 import 'package:dio/dio.dart';
@@ -5,8 +7,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
@@ -14,12 +21,103 @@ import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
+import 'package:uten_imp/features/finance/widgets/finance_receipt_totals.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
+import '../../support/audit_screenshot_support.dart';
 
 void main() {
+  for (final width in [375.0, 760.0, 1440.0]) {
+    testWidgets('receipt $width keeps rate, bank column and red table total', (
+      tester,
+    ) async {
+      final detail = _receiptDetail()
+        ..['settlementChannel'] = 'DIRECT_ACCOUNT'
+        ..['feeSettlementMode'] = 'NONE'
+        ..['bankFeeAccountAmount'] = '0'
+        ..['otherFeeAccountAmount'] = '0'
+        ..['remark'] = ''
+        ..['invoiceNo'] = '';
+      final capture =
+          Platform.environment['UTEN_CAPTURE_FINANCE_ENTRY'] == 'true'
+          ? GlobalKey()
+          : null;
+      if (capture != null) await loadAuditScreenshotFonts(tester);
+      final api = await _pumpEditor(
+        tester,
+        detail: detail,
+        size: Size(width, 1000),
+        captureKey: capture,
+        dark: width == 760,
+      );
+      if (capture != null) {
+        await saveAuditScreenshot(tester, capture, 'finance-entry-$width');
+      }
+      final basics = find.byKey(const ValueKey('finance-entry-basics'));
+      expect(
+        find.descendant(
+          of: basics,
+          matching: find.byKey(const ValueKey('finance-receipt-exchange-rate')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: basics, matching: find.text('业务依据')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: basics, matching: _textFieldWithLabel('备注(选填)')),
+        findsNothing,
+      );
+      final grid = find.byWidgetPredicate(
+        (w) => w is UtenEditableGrid<FinanceGridRow>,
+      );
+      await tester.scrollUntilVisible(
+        grid,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      _expectReceiptTotal(tester, '360.00');
+      expect(
+        find.descendant(
+          of: grid,
+          matching: find.byKey(
+            const ValueKey('finance-receipt-account-amount'),
+          ),
+        ),
+        findsNothing,
+      );
+      final bankReference = find.byKey(
+        const ValueKey('finance-receipt-bank-reference'),
+      );
+      expect(
+        find.descendant(of: grid, matching: bankReference),
+        findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        bankReference,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(bankReference.hitTestable(), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: bankReference,
+          matching: find.byType(UtenCollapsibleSection),
+        ),
+        findsNothing,
+      );
+      expect(find.text('保存').hitTestable(), findsOneWidget);
+      expect(api.lastPutBody, isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   test('receipt v1 model preserves exact authority snapshots', () {
     final detail = FinanceDocDetail.fromJson(_receiptDetail());
 
@@ -34,6 +132,93 @@ void main() {
     expect(detail.bankFeeAccountAmountText, '20');
     expect(detail.feeBearer, 'COMPANY');
     expect(detail.items.single.writeOffAmountText, '0');
+  });
+
+  testWidgets(
+    'bank reference column shares one value across rows and replacement',
+    (tester) async {
+      final detail = _receiptDetail();
+      final first = Map<String, dynamic>.from(
+        (detail['items'] as List).single as Map,
+      );
+      detail['items'] = [
+        first,
+        {
+          ...first,
+          'id': 'line-2',
+          'appliedLedgerId': 'ledger-2',
+          'appliedBillNo': 'AR-002',
+        },
+      ];
+      final api = await _pumpEditor(tester, detail: detail);
+      final table = find.byWidgetPredicate(
+        (w) => w is UtenEditableGrid<FinanceGridRow>,
+      );
+      final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(table);
+      final reference = find.byKey(
+        const ValueKey('finance-receipt-bank-reference'),
+      );
+      expect(find.descendant(of: table, matching: reference), findsNWidgets(2));
+      expect(grid.forceVisibleColumnKeys, contains('amountLocal'));
+      expect(grid.forceVisibleColumnKeys, contains('bankReference'));
+      final rate = tester.widget<TextField>(
+        find.byKey(const ValueKey('finance-receipt-exchange-rate')),
+      );
+      final bank = tester.widget<TextField>(
+        find.byKey(const ValueKey('finance-receipt-account-amount')),
+      );
+      final actualBefore = bank.controller!.text;
+      rate.controller!.text = '7.000001';
+      grid.controller.rows.first.amount.text = '0.000000000000000000000001';
+      await tester.pump();
+      expect(
+        grid.controller.rows.first.localAmountExactNotifier.value,
+        '0.000000000000000000000007000001',
+      );
+      expect(grid.controller.rows.last.exchangeRate.text, '7.000001');
+      expect(bank.controller!.text, actualBefore);
+      final shared = tester.widget<TextField>(reference.last).controller!;
+      shared.text = 'BANK-SHARED';
+      expect(
+        tester.widget<TextField>(reference.first).controller,
+        same(shared),
+      );
+      grid.controller.clear();
+      await tester.pumpAndSettle();
+      expect(reference, findsNothing);
+      grid.controller.addRow(FinanceGridRow(mode: ItemMode.settle));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: table, matching: reference), findsOneWidget);
+      expect(
+        tester.widget<TextField>(reference).controller!.text,
+        'BANK-SHARED',
+      );
+      expect(api.lastPutBody, isNull);
+    },
+  );
+
+  testWidgets('restored receipt rows use the single header rate', (
+    tester,
+  ) async {
+    await _pumpEditor(tester, detail: _receiptDetail());
+    final state =
+        tester.state(find.byType(FinanceDocEditPage))
+            as FormDraftMixin<FinanceDocEditPage>;
+    final draft = Map<String, dynamic>.from(state.captureFormDraft());
+    draft['rate'] = '7.123456';
+    for (final row in draft['rows'] as List) {
+      (row as Map)['exchangeRate'] = '9';
+    }
+    await state.restoreFormDraft(draft);
+    await tester.pumpAndSettle();
+    final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
+      find.byWidgetPredicate((w) => w is UtenEditableGrid<FinanceGridRow>),
+    );
+    expect(grid.controller.rows.single.exchangeRate.text, '7.123456');
+    expect(
+      grid.controller.rows.single.localAmountExactNotifier.value,
+      '356.172800',
+    );
   });
 
   test('each receipt batch uses its own positive arrival rate', () {
@@ -77,10 +262,12 @@ void main() {
       expect(grid.controller.rows.single.remark.text, '行备注');
       expect(grid.columns.map((column) => column.key), [
         'appliedBillNo',
+        'currency',
         'balanceOriginal',
         'amount',
-        'currency',
+        'amountLocal',
         'balanceAfter',
+        'bankReference',
         'remark',
       ]);
       final originalController = grid.controller;
@@ -111,6 +298,11 @@ void main() {
       // 契约不变：已选账户按「编号 · 名称 · 币种」回显，面板里只列「使用中」
       // 的账户——这里全量字典只有一个合规账户，所以恰好一条。
       expect(find.text('ZH000001 · 人民币账户 · 人民币'), findsOneWidget);
+      await Scrollable.ensureVisible(
+        tester.element(find.text('ZH000001 · 人民币账户 · 人民币')),
+        alignment: 0.3,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('ZH000001 · 人民币账户 · 人民币'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(ListTile, 'ZH000001 · 人民币账户'), findsOneWidget);
@@ -136,7 +328,7 @@ void main() {
           '累计已收',
           '累计冲销',
           '预收已抵',
-          '本次可收',
+          '本次可收(原币)',
         ]),
       );
       final currencyCell = currencyColumn.cellBuilder(
@@ -146,9 +338,9 @@ void main() {
       expect(currencyCell, isA<Text>());
       expect((currencyCell as Text).data, '美元');
 
-      expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
-      expect(find.text('费用 人民币 36.00'), findsOneWidget);
-      expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);
+      _expectReceiptTotal(tester, '360.00');
+      expect(find.text('费用 人民币 36.00'), findsNothing);
+      expect(find.text('真实账户实际入账 人民币 324.00'), findsNothing);
 
       await tester.tap(reconciliationToggle);
       await tester.pumpAndSettle();
@@ -160,7 +352,8 @@ void main() {
       );
       accountAmount.controller!.text = '324.8885';
       await tester.pump();
-      expect(find.text('本批客户已付(人民币) ¥360.8885'), findsOneWidget);
+      _expectReceiptTotal(tester, '360.88848');
+      expect(accountAmount.controller!.text, '324.8885');
 
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
@@ -344,7 +537,7 @@ void main() {
         detail: detail,
         accountBaseCurrency: false,
       );
-      expect(find.text('本批客户已付折合(人民币) ¥$local'), findsOneWidget);
+      _expectReceiptTotal(tester, local);
       final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
         find.byWidgetPredicate(
           (widget) => widget is UtenEditableGrid<FinanceGridRow>,
@@ -391,7 +584,7 @@ void main() {
       detail: detail,
       includeFeeAccount: true,
     );
-    expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
+    _expectReceiptTotal(tester, '360.00');
 
     await tester.tap(find.text('保存'));
     await tester.pumpAndSettle();
@@ -498,6 +691,65 @@ void main() {
     },
   );
 
+  for (final actual in [null, 'invalid']) {
+    testWidgets('missing or invalid bank fact $actual opens its input', (
+      tester,
+    ) async {
+      final detail = _receiptDetail()
+        ..['settlementChannel'] = 'DIRECT_ACCOUNT'
+        ..['feeSettlementMode'] = 'NONE'
+        ..['bankFeeAccountAmount'] = 0
+        ..['otherFeeAccountAmount'] = 0
+        ..['otherFeeStyleId'] = null
+        ..['accountAmount'] = null
+        ..['accountAmountExact'] = actual;
+      final api = await _pumpEditor(tester, detail: detail);
+      final sectionFinder = find.byKey(
+        const ValueKey('finance-receipt-settlement-fees'),
+      );
+      await tester.scrollUntilVisible(
+        sectionFinder,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final section = tester.widget<UtenCollapsibleSection>(sectionFinder);
+      if (section.expanded ?? section.initiallyExpanded) {
+        await tester.tap(
+          find.descendant(
+            of: sectionFinder,
+            matching: find.text(section.title),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+      _expectReceiptTotal(tester, '360.00');
+      expect(
+        tester.widget<UtenCollapsibleSection>(sectionFinder).expanded,
+        isFalse,
+      );
+      await tester.tap(find.text('保存').hitTestable());
+      await tester.pumpAndSettle();
+      expect(api.lastPutBody, isNull);
+      expect(
+        tester.widget<UtenCollapsibleSection>(sectionFinder).expanded,
+        isTrue,
+      );
+      final amount = find.byKey(
+        const ValueKey('finance-receipt-account-amount'),
+      );
+      expect(amount.hitTestable(), findsOneWidget);
+      expect(tester.widget<TextField>(amount).controller!.text, actual ?? '');
+      expect(
+        find.descendant(
+          of: find.byType(FinanceReceiptTotals),
+          matching: amount,
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('compact receipt keeps primary actions and summaries reachable', (
     tester,
   ) async {
@@ -525,8 +777,8 @@ void main() {
     expect(find.byTooltip('资金引用'), findsNothing);
     expect(find.byTooltip('查看历史'), findsNothing);
     expect(find.text('保存').hitTestable(), findsOneWidget);
-    expect(find.text('本批客户已付(人民币) ¥360.00'), findsOneWidget);
-    expect(find.text('真实账户实际入账 人民币 324.00'), findsOneWidget);
+    _expectReceiptTotal(tester, '360.00');
+    expect(find.text('真实账户实际入账 人民币 324.00'), findsNothing);
     expect(find.text('引用应收'), findsOneWidget);
     // 没有预收权限：应用预收入口不出现。
     expect(
@@ -550,7 +802,7 @@ void main() {
         },
       );
 
-      // 同上：入口已从菜单迁到表格上方，两个按钮直接可见。
+      // 引用应收位于表格工具栏，预收抵扣保持在上方业务区。
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('receipt-import-ar')),
         240,
@@ -561,6 +813,12 @@ void main() {
         find.byKey(const ValueKey('receipt-import-ar')).hitTestable(),
         findsOneWidget,
       );
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('receipt-apply-prepayment')),
+        -160,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('receipt-apply-prepayment')),
         findsOneWidget,
@@ -660,6 +918,26 @@ Finder _dropdownWithLabel(String label) => find.byWidgetPredicate(
   (widget) => widget is UtenDropdownField && widget.label == label,
 );
 
+void _expectReceiptTotal(
+  WidgetTester tester,
+  String value, {
+  int rowCount = 1,
+}) {
+  final footer = find.byType(FinanceReceiptTotals);
+  expect(footer, findsOneWidget);
+  expect(
+    find.descendant(of: footer, matching: find.byType(TextField)),
+    findsNothing,
+  );
+  final summary = tester.widget<UtenTotalsSummaryBar>(
+    find.descendant(of: footer, matching: find.byType(UtenTotalsSummaryBar)),
+  );
+  expect(summary.rowCount, rowCount);
+  expect(summary.entries, hasLength(1));
+  expect(summary.entries.single.value, value);
+  expect(summary.entries.single.danger, isTrue);
+}
+
 Finder _textFieldWithLabel(String label) => find.byWidgetPredicate(
   (widget) => widget is TextField && widget.decoration?.labelText == label,
 );
@@ -675,6 +953,8 @@ Future<_ReceiptApi> _pumpEditor(
   String? accountCurrencyName,
   bool includeFeeAccount = false,
   bool failAccounts = false,
+  GlobalKey? captureKey,
+  bool dark = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -700,9 +980,18 @@ Future<_ReceiptApi> _pumpEditor(
         currentPermissionsProvider.overrideWithValue(permissions),
       ],
       child: MaterialApp(
-        home: FinanceDocEditPage(
-          docType: FinanceDocType.receipt,
-          id: detail['id'] as String,
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: captureKey == null
+            ? null
+            : auditScreenshotTheme(dark ? buildDarkTheme() : buildLightTheme()),
+        home: RepaintBoundary(
+          key: captureKey,
+          child: FinanceDocEditPage(
+            docType: FinanceDocType.receipt,
+            id: detail['id'] as String,
+          ),
         ),
       ),
     ),

@@ -71,7 +71,7 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         String id = submit(token, Map.of("message", "我这张报价承诺给客户的期限该怎么确认才合适？", "pageContext", QUOTE_PAGE));
         JsonNode result = awaitSucceeded(token, id);
         assertThat(result.path("intent").asText()).isEqualTo("PAGE_HELP");
-        assertThat(result.path("reply").asText()).contains("销售报价单", "有效期", "举例", "2026-11-30");
+        assertThat(result.path("reply").asText()).contains("有效期", "举例", "11 月 30 日");
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
         JsonNode request = objectMapper.readTree(FAKE.lastChatRequest().body());
         assertThat(request.path("response_format").path("type").asText()).isEqualTo("json_schema");
@@ -107,7 +107,7 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         JsonNode failed = awaitTerminal(token, id);
         assertThat(failed.path("status").asText()).isEqualTo("FAILED");
         assertThat(failed.path("errorCode").asText()).isEqualTo("AI_INVALID_RESPONSE");
-        assertThat(failed.path("errorMessage").asText()).contains("格式异常", "页面").doesNotContain(rawMarker);
+        assertThat(failed.path("errorMessage").asText()).isEqualTo("这次没能回复，请再试一次。").doesNotContain(rawMarker);
         assertThat(failed.path("result").isNull() || failed.path("result").isMissingNode()).isTrue();
         assertThat(FAKE.chatRequestCount()).isEqualTo(2);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_permission_overrides", Long.class)).isEqualTo(overrides);
@@ -123,14 +123,14 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         String local = submit(token, Map.of("message", QUESTION, "previousJobId", first));
         JsonNode localResult = awaitSucceeded(token, local);
         assertThat(localResult.path("intent").asText()).isEqualTo("UNSUPPORTED");
-        assertThat(localResult.path("reply").asText()).contains("开启当前页面说明").doesNotContain("销售报价单");
+        assertThat(localResult.path("reply").asText()).contains("请先打开要填写的页面").doesNotContain("销售报价单");
         assertThat(FAKE.chatRequestCount()).isZero();
         // A provider may ignore its schema. Missing current context must still be handled safely.
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent(PAGE_HELP));
         String free = submit(token, Map.of("message", "我想知道刚才讨论的那个项目要如何决定？", "previousJobId", first));
         JsonNode freeResult = awaitSucceeded(token, free);
         assertThat(freeResult.path("intent").asText()).isEqualTo("UNSUPPORTED");
-        assertThat(freeResult.path("reply").asText()).contains("开启当前页面说明").doesNotContain("销售报价单", "2026-11-30");
+        assertThat(freeResult.path("reply").asText()).contains("请先打开要填写的页面").doesNotContain("销售报价单", "2026-11-30");
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
         JsonNode request = objectMapper.readTree(FAKE.lastChatRequest().body());
         JsonNode schema = request.path("response_format").path("json_schema").path("schema");
@@ -145,7 +145,7 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent(""));
         JsonNode result = awaitSucceeded(staffToken, submit(staffToken, Map.of("message", "hello")));
         assertThat(result.path("intent").asText()).isEqualTo("SMALL_TALK");
-        assertThat(result.path("reply").asText()).contains("你好", "生产日报")
+        assertThat(result.path("reply").asText()).isEqualTo("你好，需要我帮你做什么？")
                 .doesNotContain("成本", "授权", "报价", "工资");
         assertThat(result.path("actions").size()).isZero();
         assertThat(FAKE.chatRequestCount()).isZero();
@@ -163,7 +163,7 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(first.path("intent").asText()).isEqualTo("KNOWLEDGE");
         assertThat(first.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
         assertThat(first.path("mode").asText()).isEqualTo("STEPS");
-        assertThat(first.path("reply").asText()).contains("1. ", "日报保存不等于已入库", "来源:");
+        assertThat(first.path("reply").asText()).contains("1. ", "报工后还要质检和入库").doesNotContain("来源:");
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent(""));
 
@@ -171,7 +171,7 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         JsonNode example = awaitSucceeded(staffToken, exampleId);
         assertThat(example.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
         assertThat(example.path("mode").asText()).isEqualTo("EXAMPLE");
-        assertThat(example.path("reply").asText()).contains("假设数据，不是系统当前事实", "昨天已报 60 个", "本次报 40 个")
+        assertThat(example.path("reply").asText()).contains("假设", "昨天报 60 个", "本次报 40 个")
                 .doesNotContain("成本", "工资", "已授权");
 
         String thanksId = submit(staffToken, Map.of("message", "谢谢", "previousJobId", exampleId));
@@ -183,7 +183,7 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         JsonNode next = awaitSucceeded(staffToken, submit(staffToken, Map.of("message", "下一步", "previousJobId", thanksId)));
         assertThat(next.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
         assertThat(next.path("mode").asText()).isEqualTo("STEPS");
-        assertThat(next.path("reply").asText()).contains("生产执行与日报", "1. ", "日报保存不等于已入库");
+        assertThat(next.path("reply").asText()).contains("1. ", "报工后还要质检和入库");
         assertThat(FAKE.chatRequestCount()).as("only the first free-form question uses the gateway").isEqualTo(1);
         assertThat(next.has("_knowledge")).isFalse();
         assertThat(next.has("_access")).isFalse();
@@ -203,7 +203,7 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
                 Map.of("message", "我想听听日产量记录时本次和累计怎么区分")));
         assertThat(result.path("intent").asText()).isEqualTo("KNOWLEDGE");
         assertThat(result.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
-        assertThat(result.path("reply").asText()).contains("生产执行与日报", "本次报 40 个", "来源:")
+        assertThat(result.path("reply").asText()).contains("本次报 40 个", "假设")
                 .doesNotContain("FORBIDDEN_MODEL_PROSE", "765432", "工资", "超级管理员", "已授权");
         assertThat(result.path("actions").size()).isZero();
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
@@ -234,7 +234,8 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
 
     private void assertQuoteExplanation(JsonNode result) {
         assertThat(result.path("intent").asText()).isEqualTo("PAGE_HELP");
-        assertThat(result.path("reply").asText()).contains("销售报价单", "有效期", "举例", "示例");
+        assertThat(result.path("reply").asText()).contains("客户", "数量", "举例", "假设")
+                .doesNotContain("来源:", "权限范围");
         assertThat(result.path("actions").isArray()).isTrue();
         assertThat(result.path("actions").size()).isZero();
     }

@@ -58,6 +58,7 @@ public final class PdfTextReader {
             stripper.setLineSeparator("\n");
             List<DocumentText.Page> pages = new ArrayList<>(limit);
             int visibleChars = 0;
+            boolean truncated = pageCount > limit;
             for (int p = 1; p <= limit; p++) {
                 deadline.check();
                 stripper.setStartPage(p);
@@ -71,13 +72,14 @@ public final class PdfTextReader {
                     }
                     if (line.length() > SpreadsheetGridReader.MAX_CELL_CHARS) {
                         line = line.substring(0, SpreadsheetGridReader.MAX_CELL_CHARS);
+                        truncated = true;
                     }
                     lines.add(line);
                     visibleChars += line.replaceAll("\\s+", "").length();
                 }
                 pages.add(new DocumentText.Page(p, lines));
             }
-            return new DocumentText(pages, visibleChars < SCANNED_THRESHOLD_CHARS, pageCount > limit, pageCount);
+            return new DocumentText(pages, visibleChars < SCANNED_THRESHOLD_CHARS, truncated, pageCount);
         } catch (ApiException e) {
             throw e;
         } catch (InvalidPasswordException e) {
@@ -150,7 +152,7 @@ public final class PdfTextReader {
      *
      * @param pages      已读的页(最多 30 页)
      * @param scanned    几乎没有文字(扫描件/图片型 PDF)
-     * @param truncated  页数超过上限, 后面的页没有读
+     * @param truncated  页数或文字行超过上限, 部分内容未完整读取
      * @param pageCount  PDF 总页数
      */
     public record DocumentText(List<Page> pages, boolean scanned, boolean truncated, int pageCount) {

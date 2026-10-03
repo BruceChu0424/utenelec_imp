@@ -163,7 +163,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
+                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
                   AND o.finance_confirmed = FALSE
                 """ + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
         if (!normalizedKeyword.isEmpty()) {
@@ -214,7 +214,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN employees e ON e.id = o.seller_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
+                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
                   AND o.finance_confirmed = FALSE
                 """ + String.join("\n", rejectedFilter, changesFilter,
                         keywordFilter, billNoFilter, pendingOrderBy(sort, order),
@@ -321,7 +321,7 @@ public class SalesOrderFinanceConfirmService {
                         LEFT JOIN clients c ON c.id = o.client_id
                         LEFT JOIN employees e ON e.id = o.seller_id
                         WHERE o.status = 1 AND o.is_deleted = FALSE
-                          AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
+                          AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
                           AND o.finance_confirmed = FALSE
                         """ + rejectedFilter + changesFilter + keywordFilter
                         + " GROUP BY 1 ORDER BY 1")
@@ -347,7 +347,7 @@ public class SalesOrderFinanceConfirmService {
         Number n = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM sales_orders o
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE
+                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
                   AND o.finance_confirmed = FALSE AND o.finance_rejected = FALSE
                 """ + changesFilter).getSingleResult();
         return Map.of("count", n.longValue());
@@ -508,7 +508,9 @@ public class SalesOrderFinanceConfirmService {
                         quoteTrace.quoteId(), quoteTrace.billNo(), quoteTrace.confirmedByName(),
                         quoteTrace.confirmedAt(), quoteTrace.match().allLinesMatch()),
                 order.getClientFileCurrency(),
-                quoteTrace == null ? null : quoteTrace.match().allLinesMatch());
+                quoteTrace == null ? null : quoteTrace.match().allLinesMatch(),
+                order.getRequotedToId(), order.getRequotedAt(),
+                order.getRequotedToId() == null ? null : SalesOrderService.REQUOTED_READ_ONLY_REASON);
     }
 
     /**
@@ -520,7 +522,9 @@ public class SalesOrderFinanceConfirmService {
         if (order.getSourceQuoteId() == null) return null;
         @SuppressWarnings("unchecked")
         List<Object[]> header = em.createNativeQuery("""
-                        SELECT q.bill_no, COALESCE(e.full_name, ''), q.finance_confirmed_at
+                        SELECT q.bill_no, COALESCE(e.full_name, ''), q.finance_confirmed_at,
+                               q.client_id, COALESCE(q.currency_id,
+                                   (SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted AND status='使用'))
                         FROM sales_quotes q
                         LEFT JOIN employees e ON e.id = q.finance_confirmed_by
                         WHERE q.id = :id AND q.is_deleted = FALSE AND q.finance_confirmed_at IS NOT NULL
@@ -541,10 +545,13 @@ public class SalesOrderFinanceConfirmService {
         List<com.uten.imp.features.sales.quote.SalesQuoteItem> quoteItems =
                 quoteItemsByQuote(List.of(order.getSourceQuoteId()))
                         .getOrDefault(order.getSourceQuoteId(), List.of());
+        QuoteMatch match = matchQuote(quoteItems, (String) h[0], lines);
+        boolean headerMatches = java.util.Objects.equals(order.getClientId(), h[3])
+                && java.util.Objects.equals(order.getCurrencyId(), h[4]);
         return new QuoteTrace(order.getSourceQuoteId(), (String) h[0],
                 ((String) h[1]).isBlank() ? null : (String) h[1],
                 com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(h[2]),
-                matchQuote(quoteItems, (String) h[0], lines));
+                new QuoteMatch(match.terms(), match.matches(), headerMatches && match.allLinesMatch()));
     }
 
     /**
@@ -556,15 +563,22 @@ public class SalesOrderFinanceConfirmService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT i.order_id, i.line_no, i.goods_id, i.color_id, i.unit_id, i.unit_rate,
-                               i.price, i.discount, CAST(i.extra_columns AS text), i.qty
+                               i.price, i.discount, CAST(i.extra_columns AS text), i.qty,
+                               source.client_id = owner.client_id
+                                 AND COALESCE(source.currency_id, base.id) = owner.currency_id
                         FROM sales_order_items i
+                        JOIN sales_orders owner ON owner.id=i.order_id
+                        LEFT JOIN sales_quotes source ON source.id=owner.source_quote_id
+                        LEFT JOIN currencies base ON base.is_base_currency AND NOT base.is_deleted AND base.status='使用'
                         WHERE i.order_id IN (:ids) AND i.is_deleted = FALSE
                         ORDER BY i.order_id, i.line_no NULLS LAST, i.id
                         """)
                 .setParameter("ids", List.copyOf(quoteByOrder.keySet()))
                 .getResultList();
         Map<UUID, List<QuoteMatchLine>> linesByOrder = new HashMap<>();
+        Map<UUID, Boolean> headerMatches = new HashMap<>();
         for (Object[] r : rows) {
+            headerMatches.put((UUID) r[0], Boolean.TRUE.equals(r[10]));
             linesByOrder.computeIfAbsent((UUID) r[0], ignored -> new ArrayList<>()).add(new QuoteMatchLine(
                     r[1] == null ? null : ((Number) r[1]).intValue(),
                     (UUID) r[2], (UUID) r[3], (UUID) r[4],
@@ -574,7 +588,7 @@ public class SalesOrderFinanceConfirmService {
         Map<UUID, List<com.uten.imp.features.sales.quote.SalesQuoteItem>> quoteItems =
                 quoteItemsByQuote(quoteByOrder.values());
         Map<UUID, Boolean> result = new HashMap<>();
-        quoteByOrder.forEach((orderId, quoteId) -> result.put(orderId, matchQuote(
+        quoteByOrder.forEach((orderId, quoteId) -> result.put(orderId, Boolean.TRUE.equals(headerMatches.get(orderId)) && matchQuote(
                 quoteItems.getOrDefault(quoteId, List.of()), null,
                 linesByOrder.getOrDefault(orderId, List.of())).allLinesMatch()));
         return result;
@@ -793,6 +807,7 @@ public class SalesOrderFinanceConfirmService {
         SalesOrder order = orderRepo.findActiveByIdForUpdate(orderId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND, "销售订货单不存在"));
+        SalesOrderService.requireNotRequoted(order);
         return order;
     }
 

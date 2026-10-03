@@ -79,10 +79,46 @@ class SalesQuoteTemplateIntakeTest {
         verifyNoInteractions(lookup);
     }
 
+    @Test void anUnrecognizedVisibleSheetCanBeSelectedEvenWhenAnotherSheetWasRecognized() throws Exception {
+        var original=context(false,true);
+        byte[] bytes;
+        try (var workbook=new XSSFWorkbook(new ByteArrayInputStream(original.input.bytes())); var out=new ByteArrayOutputStream()) {
+            var sheet=workbook.createSheet("Packing");
+            var header=sheet.createRow(0);
+            header.createCell(0).setCellValue("Model"); header.createCell(1).setCellValue("Qty"); header.createCell(2).setCellValue("Unit Price");
+            sheet.createRow(1); workbook.write(out); bytes=out.toByteArray();
+        }
+        var first=FakeJobContext.of("multi.xlsx","XLSX",bytes,"quote"); first.params.putAll(original.params);
+        var preview=pipeline.run(first);
+        assertThat(preview.get("sheetName")).isEqualTo("Packing");
+        assertThat(preview.get("otherSheets").toString()).contains("Customer format");
+        var second=FakeJobContext.of("multi.xlsx","XLSX",bytes,"quote"); second.params.putAll(original.params);
+        second.params.put("sheet","0"); second.aiAllowed=true;
+        second.ai=request -> """
+                {"headerRow":3,"columns":[{"column":"A","role":"PART_NO"},
+                {"column":"B","role":"DESCRIPTION"},{"column":"C","role":"QTY"},{"column":"D","role":"UNIT_PRICE"}]}
+                """;
+        var selected=pipeline.run(second);
+        assertThat(selected).containsEntry("sheetName","Customer format").containsEntry("layoutSource","AI");
+        assertThat(second.aiRequests).hasSize(1);
+    }
+
+    @Test void templateOnlyReusesHumanConfirmedDiscountSemanticsWithoutAddingIntakePricingRoles() throws Exception {
+        var ctx=context(false,false);
+        Map<String,String> confirmed=Map.of("A","PART_NO","B","DISCOUNT","C","QTY","D","UNIT_PRICE");
+        when(data.templateColumnRoles(any(),any())).thenReturn(confirmed);
+        var result=pipeline.run(ctx);
+        assertThat(((Map<?,?>)((Map<?,?>)result.get("mapping")).get("roles")).get("B")).isEqualTo("DISCOUNT");
+        assertThat(((Map<?,?>)((Map<?,?>)result.get("extraction")).get("columnRoles")).get("B")).isEqualTo("DESCRIPTION");
+        assertThat(result).doesNotContainKeys("lines","currency");
+        verifyNoInteractions(lookup);
+    }
+
     @Test void templateModeCannotBeUsedForAnOrderOrWithoutDocumentAndClient() {
         assertThatThrownBy(() -> IntakeParams.parse(Map.of("docType", "quote", "templateOnly", "true"))).hasMessageContaining("已保存");
         assertThatThrownBy(() -> IntakeParams.parse(Map.of("docType", "order", "templateOnly", "true", "docId", UUID.randomUUID().toString(), "clientId", UUID.randomUUID().toString()))).hasMessageContaining("已保存");
         assertThatThrownBy(() -> IntakeParams.parse(Map.of("docType", "quote", "templateOnly", "TRUE"))).hasMessageContaining("参数");
+        assertThatThrownBy(() -> IntakeParams.parse(Map.of("docType","quote","templateAttemptId",UUID.randomUUID().toString()))).hasMessageContaining("批次无效");
     }
 
     private FakeJobContext context(boolean populated, boolean odd) throws Exception {

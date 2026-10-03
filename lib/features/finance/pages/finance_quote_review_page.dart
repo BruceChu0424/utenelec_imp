@@ -20,6 +20,8 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../../../core/network/server_config.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -54,6 +56,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -92,6 +95,7 @@ class _FinanceQuoteReviewPageState
 
   TaskClaimSession? _claim;
   int _loadGeneration = 0;
+  final Set<ModalRoute<dynamic>> _privateDialogs = {};
 
   final Map<String, QuoteFinanceLineDraft> _drafts = {};
   final Set<String> _selected = <String>{};
@@ -104,6 +108,24 @@ class _FinanceQuoteReviewPageState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(sessionProvider, (before, after) {
+      if (!identical(before, after)) _invalidateAccess();
+    });
+    ref.listenManual(apiBaseUrlProvider, (before, after) {
+      if (before != after) _invalidateAccess();
+    });
+    ref.listenManual(sessionSnapshotProvider, (before, after) {
+      final oldGeneration = before == null
+          ? null
+          : confirmedSessionSnapshot(before)?.generation;
+      if (oldGeneration != null &&
+          oldGeneration != confirmedSessionSnapshot(after)?.generation) {
+        _invalidateAccess();
+      }
+    });
+    ref.listenManual(currentPermissionsProvider, (before, after) {
+      if (!setEquals(before, after)) _invalidateAccess();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -137,10 +159,61 @@ class _FinanceQuoteReviewPageState
   SalesQuoteFinanceReviewRepository get _repo =>
       ref.read(salesQuoteFinanceReviewRepositoryProvider);
 
+  bool Function() _captureContext() {
+    final generation = _loadGeneration;
+    final documentId = widget.id;
+    final identity = ref.read(sessionProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final permissions = Set<String>.of(ref.read(currentPermissionsProvider));
+    return () =>
+        mounted &&
+        generation == _loadGeneration &&
+        documentId == widget.id &&
+        identical(identity, ref.read(sessionProvider)) &&
+        server == ref.read(apiBaseUrlProvider) &&
+        setEquals(permissions, ref.read(currentPermissionsProvider));
+  }
+
+  Widget _trackDialog(BuildContext context, Widget child) {
+    _privateDialogs.removeWhere((route) => !route.isActive);
+    final route = ModalRoute.of(context);
+    if (route is PopupRoute<dynamic>) _privateDialogs.add(route);
+    return child;
+  }
+
+  void _invalidateAccess() {
+    ++_loadGeneration;
+    _claim?.removeListener(_claimChanged);
+    _claim?.releaseAll().ignore();
+    _claim = null;
+    for (final route in _privateDialogs.toList()) {
+      if (route.isActive) route.navigator?.removeRoute(route);
+    }
+    _privateDialogs.clear();
+    if (!mounted) return;
+    setState(() {
+      _review = null;
+      _disposeDrafts();
+      _selected.clear();
+      _financeRemark.clear();
+      _settlementItems = const [];
+      _loading = false;
+      _busy = false;
+      _error = '登录身份、服务器或权限已变化，原报价已隐藏，请重新加载';
+    });
+  }
+
   bool get _claimReady => _claim?.isReady == true;
 
   bool _allows(SalesQuoteFinanceAction action) =>
-      _review?.allows(action) ?? false;
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.salesQuoteFinanceConfirm) &&
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.salesQuoteFinanceView) &&
+      !ref.read(sessionProvider).impersonationReadOnly &&
+      (_review?.allows(action) ?? false);
 
   /// 能改价：服务端允许 + 本人认领有效。
   bool get _editable => _allows(SalesQuoteFinanceAction.edit) && _claimReady;
@@ -159,33 +232,45 @@ class _FinanceQuoteReviewPageState
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
+    final isCurrent = _captureContext();
     final container = ProviderScope.containerOf(context, listen: false);
     final identity = container.read(sessionProvider);
     setState(() {
       _loading = true;
       _error = null;
+      _review = null;
     });
+    if (!ref
+        .read(currentPermissionsProvider)
+        .contains(Perm.salesQuoteFinanceView)) {
+      setState(() {
+        _loading = false;
+        _error = '没有查看报价核价权限';
+      });
+      return;
+    }
     try {
-      _claim?.removeListener(_claimChanged);
-      await _claim?.releaseAll();
+      final previousClaim = _claim;
       _claim = null;
-      if (!mounted || generation != _loadGeneration) return;
+      previousClaim?.removeListener(_claimChanged);
+      await previousClaim?.releaseAll();
+      if (!mounted || !isCurrent()) return;
       var review = await _repo.review(widget.id);
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !isCurrent()) return;
       // 只有能改价/退回/确认时才占用；撤销确认、已办结或无权的都不占认领
       // (已核价的报价服务端拒绝认领，撤销确认本身也不要求认领)。
       if (review.needsClaim) {
         final claim = financeReviewClaim(container)..addListener(_claimChanged);
         _claim = claim;
         await claim.claimAll(kSalesQuoteFinanceClaimType, [widget.id]);
-        if (!mounted || generation != _loadGeneration || !claim.isCurrent) {
+        if (!isCurrent() || !claim.isCurrent) {
           await claim.releaseAll();
           return;
         }
         if (claim.isReady) {
           // 占用之后重读：页面展示的是占用生效后的内容，之后别人改不动它。
           review = await _repo.review(widget.id);
-          if (!mounted || generation != _loadGeneration) return;
+          if (!mounted || !isCurrent()) return;
         }
       }
       if (!identical(container.read(sessionProvider), identity)) return;
@@ -193,13 +278,13 @@ class _FinanceQuoteReviewPageState
       setState(() => _loading = false);
       unawaited(_loadSettlementMethods(generation));
     } on ApiException catch (e) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !isCurrent()) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted || !isCurrent()) return;
       setState(() {
         _error = AppLocalizations.of(context).quoteFinanceLoadDetailFailed;
         _loading = false;
@@ -227,14 +312,14 @@ class _FinanceQuoteReviewPageState
   /// 从货品资料页回来后重读(标价可能刚维护过)：没改的行按最新内容重建，
   /// 改过的行与表头保留页面上的修改，不悄悄丢掉；版本变了(别人动过)才整页重建。
   Future<void> _reloadKeepingEdits() async {
-    final generation = _loadGeneration;
+    final isCurrent = _captureContext();
     final SalesQuoteFinanceReview latest;
     try {
       latest = await _repo.review(widget.id);
     } catch (_) {
       return; // 重读失败保持原样，页面仍可保存/确认(服务端再按最新状态核对)。
     }
-    if (!mounted || generation != _loadGeneration) return;
+    if (!mounted || !isCurrent()) return;
     final current = _review;
     setState(() {
       if (current == null || current.reviewRevision != latest.reviewRevision) {
@@ -288,6 +373,7 @@ class _FinanceQuoteReviewPageState
   // ------------------------------------------------------------- actions
 
   Future<bool> _ensureClaim(AppLocalizations l10n) async {
+    final isCurrent = _captureContext();
     final claim = _claim;
     if (claim == null || !claim.isReady) {
       context.appWarning(
@@ -296,12 +382,12 @@ class _FinanceQuoteReviewPageState
       return false;
     }
     final ok = await claim.validateForDecision();
-    if (!ok && mounted) {
+    if (!ok && mounted && isCurrent()) {
       context.appWarning(
         claim.failureMessage ?? l10n.quoteFinanceClaimNotReady,
       );
     }
-    return ok && mounted;
+    return ok && mounted && isCurrent();
   }
 
   String? _claimId() =>
@@ -318,7 +404,9 @@ class _FinanceQuoteReviewPageState
   Future<void> _save() async {
     final l10n = AppLocalizations.of(context);
     final review = _review;
-    if (review == null || _busy) return;
+    if (review == null || _busy || !_editable) return;
+    final isCurrent = _captureContext();
+    final repository = _repo;
     if (_drafts.values.isNotEmpty &&
         _drafts.values.every((line) => line.removed)) {
       context.appWarning('报价至少保留一条明细；无法成交请退回销售取消报价');
@@ -335,10 +423,10 @@ class _FinanceQuoteReviewPageState
       context.appInfo(l10n.quoteFinanceNothingToSave);
       return;
     }
-    if (!await _ensureClaim(l10n)) return;
     _setBusy(true, l10n.quoteFinanceSaving);
     try {
-      final updated = await _repo.saveEdits(
+      if (!await _ensureClaim(l10n) || !isCurrent() || !_editable) return;
+      final updated = await repository.saveEdits(
         widget.id,
         expectedRevision: review.reviewRevision,
         expectedClaimId: _claimId()!,
@@ -350,22 +438,27 @@ class _FinanceQuoteReviewPageState
         ),
         lines: lines,
       );
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       setState(() => _applyReview(updated));
       context.appSuccess(l10n.quoteFinanceSaved);
     } on ApiException catch (e) {
-      if (mounted) context.appApiError(e);
+      if (mounted && isCurrent()) context.appApiError(e);
     } catch (_) {
-      if (mounted) context.appError(l10n.quoteFinanceActionFailed);
+      if (mounted && isCurrent()) {
+        context.appError(l10n.quoteFinanceActionFailed);
+      }
     } finally {
-      _setBusy(false);
+      if (isCurrent()) _setBusy(false);
     }
   }
 
   Future<void> _confirm() async {
     final l10n = AppLocalizations.of(context);
     final review = _review;
-    if (review == null || _busy) return;
+    if (review == null || _busy || !_allows(SalesQuoteFinanceAction.confirm)) {
+      return;
+    }
+    final isCurrent = _captureContext();
     if (_dirty) {
       context.appWarning(l10n.quoteFinanceSaveFirst);
       return;
@@ -382,51 +475,59 @@ class _FinanceQuoteReviewPageState
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.quoteFinanceConfirmTitle(review.billNo)),
-        content: SizedBox(
-          width: 460,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              UtenReviewerResponsibilityNotice(
-                actionLabel: l10n.quoteFinanceConfirmResponsibility,
-                description: l10n.quoteFinanceConfirmResponsibilityDesc,
-                compact: true,
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(l10n.quoteFinanceConfirmBody),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                l10n.quoteFinanceConfirmTotal(_money(review.totalOriginal)),
-                key: const Key('quote-finance-confirm-total'),
-                style: Theme.of(dialogContext).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(dialogContext).colorScheme.error,
+      builder: (dialogContext) => _trackDialog(
+        dialogContext,
+        AlertDialog(
+          title: Text(l10n.quoteFinanceConfirmTitle(review.billNo)),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                UtenReviewerResponsibilityNotice(
+                  actionLabel: l10n.quoteFinanceConfirmResponsibility,
+                  description: l10n.quoteFinanceConfirmResponsibilityDesc,
+                  compact: true,
                 ),
-              ),
-            ],
+                const SizedBox(height: UtenSpacing.s12),
+                Text(l10n.quoteFinanceConfirmBody),
+                const SizedBox(height: UtenSpacing.s12),
+                Text(
+                  l10n.quoteFinanceConfirmTotal(_money(review.totalOriginal)),
+                  key: const Key('quote-finance-confirm-total'),
+                  style: Theme.of(dialogContext).textTheme.titleMedium
+                      ?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                ),
+              ],
+            ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(l10n.quoteFinanceCancel),
+            ),
+            FinanceReviewClaimButton(
+              key: const Key('quote-finance-confirm-submit'),
+              claim: claim,
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(l10n.quoteFinanceActionConfirm),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l10n.quoteFinanceCancel),
-          ),
-          FinanceReviewClaimButton(
-            key: const Key('quote-finance-confirm-submit'),
-            claim: claim,
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l10n.quoteFinanceActionConfirm),
-          ),
-        ],
       ),
     );
-    if (ok != true || !mounted) return;
+    if (ok != true ||
+        !isCurrent() ||
+        !_allows(SalesQuoteFinanceAction.confirm)) {
+      return;
+    }
     await _decide(
       l10n,
       success: l10n.quoteFinanceConfirmedDone,
@@ -442,17 +543,31 @@ class _FinanceQuoteReviewPageState
     final l10n = AppLocalizations.of(context);
     final review = _review;
     final claim = _claim;
-    if (review == null || _busy) return;
+    if (review == null ||
+        _busy ||
+        !_allows(SalesQuoteFinanceAction.returnToSales)) {
+      return;
+    }
+    final isCurrent = _captureContext();
     if (claim == null || !claim.isReady) {
       context.appWarning(l10n.quoteFinanceClaimNotReady);
+      return;
+    }
+    if (_dirty) {
+      context.appWarning(l10n.quoteFinanceSaveFirst);
       return;
     }
     final reason = await showQuoteFinanceReturnDialog(
       context,
       billNo: review.billNo,
       claim: claim,
+      decorate: _trackDialog,
     );
-    if (reason == null || !mounted) return;
+    if (reason == null ||
+        !isCurrent() ||
+        !_allows(SalesQuoteFinanceAction.returnToSales)) {
+      return;
+    }
     await _decide(
       l10n,
       success: l10n.quoteFinanceReturnedDone,
@@ -471,25 +586,29 @@ class _FinanceQuoteReviewPageState
     required String success,
     required Future<void> Function(String claimId) call,
   }) async {
-    if (!await _ensureClaim(l10n)) return;
+    if (_busy) return;
+    final isCurrent = _captureContext();
     _setBusy(true, l10n.quoteFinanceBusy);
     try {
+      if (!await _ensureClaim(l10n) || !isCurrent()) return;
       await call(_claimId()!);
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       context.appSuccess(success);
       refreshBadges(ref);
       bumpListRefresh(ref, kQuoteFinanceListRefreshKey);
       await _claim?.releaseAll();
-      _setBusy(false);
+      if (isCurrent()) _setBusy(false);
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       _close(true);
     } on ApiException catch (e) {
-      if (mounted) context.appApiError(e);
+      if (mounted && isCurrent()) context.appApiError(e);
     } catch (_) {
-      if (mounted) context.appError(l10n.quoteFinanceActionFailed);
+      if (mounted && isCurrent()) {
+        context.appError(l10n.quoteFinanceActionFailed);
+      }
     } finally {
-      _setBusy(false);
+      if (isCurrent()) _setBusy(false);
     }
   }
 
@@ -498,32 +617,44 @@ class _FinanceQuoteReviewPageState
   Future<void> _reopen() async {
     final l10n = AppLocalizations.of(context);
     final review = _review;
-    if (review == null || _busy) return;
+    if (review == null || _busy || !_allows(SalesQuoteFinanceAction.reopen)) {
+      return;
+    }
+    final isCurrent = _captureContext();
     final ok = await UtenDialog.show(
       context,
       title: l10n.quoteFinanceReopenTitle,
-      content: Text(l10n.quoteFinanceReopenBody),
+      content: Builder(
+        builder: (context) =>
+            _trackDialog(context, Text(l10n.quoteFinanceReopenBody)),
+      ),
       confirmLabel: l10n.quoteFinanceActionReopen,
       cancelLabel: l10n.quoteFinanceCancel,
     );
-    if (ok != true || !mounted) return;
+    if (ok != true ||
+        !isCurrent() ||
+        !_allows(SalesQuoteFinanceAction.reopen)) {
+      return;
+    }
     _setBusy(true, l10n.quoteFinanceBusy);
     var reopened = false;
     try {
       await _repo.reopen(widget.id, expectedRevision: review.reviewRevision);
       reopened = true;
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       refreshBadges(ref);
       bumpListRefresh(ref, kQuoteFinanceListRefreshKey);
       context.appSuccess(l10n.quoteFinanceReopenedDone);
     } on ApiException catch (e) {
-      if (mounted) context.appApiError(e);
+      if (mounted && isCurrent()) context.appApiError(e);
     } catch (_) {
-      if (mounted) context.appError(l10n.quoteFinanceActionFailed);
+      if (mounted && isCurrent()) {
+        context.appError(l10n.quoteFinanceActionFailed);
+      }
     } finally {
-      _setBusy(false);
+      if (isCurrent()) _setBusy(false);
     }
-    if (reopened && mounted) await _load();
+    if (reopened && isCurrent()) await _load();
   }
 
   Future<void> _leave() async {
@@ -579,6 +710,8 @@ class _FinanceQuoteReviewPageState
   }
 
   Future<void> _batchDiscount() async {
+    if (!_editable || _busy) return;
+    final isCurrent = _captureContext();
     final l10n = AppLocalizations.of(context);
     if (_selected.isEmpty) {
       context.appWarning(l10n.quoteFinanceBatchNeedSelection);
@@ -587,8 +720,9 @@ class _FinanceQuoteReviewPageState
     final discount = await showQuoteFinanceBatchDiscountDialog(
       context,
       count: _selected.length,
+      decorate: _trackDialog,
     );
-    if (discount == null || !mounted) return;
+    if (discount == null || !mounted || !isCurrent() || !_editable) return;
     var applied = 0;
     var skipped = 0;
     setState(() {
@@ -609,8 +743,9 @@ class _FinanceQuoteReviewPageState
 
   /// 去货品资料维护标价；回来后重读，最新标价才能在行菜单「按最新标价刷新」里用上。
   Future<void> _openGoods(String goodsId) async {
+    final isCurrent = _captureContext();
     await context.push(RoutePath.basicinfoGoodsDetail(goodsId));
-    if (!mounted) return;
+    if (!mounted || !isCurrent()) return;
     await _reloadKeepingEdits();
   }
 
@@ -619,20 +754,6 @@ class _FinanceQuoteReviewPageState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    ref.listen(sessionProvider, (previous, next) {
-      if (identical(previous, next)) return;
-      ++_loadGeneration;
-      _claim?.removeListener(_claimChanged);
-      _claim?.releaseAll().ignore();
-      _claim = null;
-      if (mounted) {
-        setState(() {
-          _review = null;
-          _loading = false;
-          _error = l10n.quoteFinanceSessionChanged;
-        });
-      }
-    });
     final review = _review;
     return PopScope(
       canPop: !_dirty && !_busy,

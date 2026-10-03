@@ -21,6 +21,7 @@ import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
+import 'finance_entry_l10n.dart';
 import '../../department/widgets/uten_department_picker.dart';
 
 /// 钱流明细行（3 模式超集）。控制器/通知器在行内持有，跨重建存活。
@@ -210,6 +211,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
   required FinanceDocType type,
   bool? accountBaseCurrency,
   bool showReceiptReconciliation = true,
+  TextEditingController? bankReferenceController,
 }) {
   switch (mode) {
     case ItemMode.settle:
@@ -219,6 +221,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
               names,
               accountBaseCurrency: accountBaseCurrency,
               showReconciliation: showReceiptReconciliation,
+              bankReferenceController: bankReferenceController,
             )
           : _settleColumns();
     case ItemMode.allocate:
@@ -234,8 +237,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
   FinanceNameService names, {
   bool? accountBaseCurrency,
   required bool showReconciliation,
+  TextEditingController? bankReferenceController,
 }) {
-  const localAmountLabel = '按报价折算参考(人民币)';
   final columns = [
     EditableGridColumn<FinanceGridRow>(
       key: 'appliedBillNo',
@@ -312,43 +315,9 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           Text(row.prepaymentAppliedOriginal ?? '0.00'),
     ),
     EditableGridColumn<FinanceGridRow>(
-      key: 'balanceOriginal',
-      label: '本次可收',
-      width: 110,
-      numeric: true,
-      cellBuilder: (context, row) => Text(
-        _moneyExact(row.balanceOriginalText, row.balanceOriginal),
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-    ),
-    EditableGridColumn<FinanceGridRow>(
-      key: 'amount',
-      label: '本次分配收款(原币)',
-      width: 180,
-      numeric: true,
-      required: true,
-      // 列说明挂表头 ⓘ（2026-09-09 口径）：不再逐格渲染重复 ⓘ。
-      headerInfo: workflowFieldText(context).workflowReceiptAllocationHint,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.amount,
-        isEmpty: () {
-          final units = financeAmountUnits(row.amount.text.trim());
-          return units == null || units <= BigInt.zero;
-        },
-        child: TextField(
-          controller: row.amount,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
-          ),
-        ),
-      ),
-    ),
-    EditableGridColumn<FinanceGridRow>(
       key: 'currency',
       label: '应收币种',
-      width: 150,
+      width: 110,
       required: true,
       // 销售收款只能按被引用应收的原币核销。币别由 AR 带入并保持只读，
       // 财务只填写到账汇率，避免选择其它币别后必然被服务端拒绝。
@@ -382,10 +351,48 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       ),
     ),
     EditableGridColumn<FinanceGridRow>(
+      key: 'balanceOriginal',
+      label: financeEntryText(context, 'availableOriginalColumn'),
+      width: 110,
+      numeric: true,
+      cellBuilder: (context, row) => Text(
+        _moneyExact(row.balanceOriginalText, row.balanceOriginal),
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+    ),
+    EditableGridColumn<FinanceGridRow>(
+      key: 'amount',
+      label: '本次分配收款(原币)',
+      width: 180,
+      numeric: true,
+      required: true,
+      // 列说明挂表头 ⓘ（2026-09-09 口径）：不再逐格渲染重复 ⓘ。
+      headerInfo: workflowFieldText(context).workflowReceiptAllocationHint,
+      cellBuilder: (context, row) => RequiredCellFrame(
+        listenable: row.amount,
+        isEmpty: () {
+          final units = financeAmountUnits(row.amount.text.trim());
+          return units == null || units <= BigInt.zero;
+        },
+        child: TextField(
+          controller: row.amount,
+          textAlign: TextAlign.right,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0'),
+          ),
+        ),
+      ),
+    ),
+    EditableGridColumn<FinanceGridRow>(
       key: 'amountLocal',
-      label: localAmountLabel,
+      label: financeEntryText(context, 'convertedCnyColumn'),
       width: 170,
       numeric: true,
+      headerInfo: financeEntryText(context, 'convertedCnyHint'),
+      textOf: (row) =>
+          financeExactMoneyDisplay(row.localAmountExactNotifier.value),
+      listenableOf: (row) => row.localAmountExactNotifier,
       cellBuilder: (context, row) => ValueListenableBuilder<String?>(
         valueListenable: row.localAmountExactNotifier,
         builder: (_, value, _) => Text(financeExactMoneyDisplay(value)),
@@ -393,7 +400,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'balanceAfter',
-      label: '收款后未收',
+      label: financeEntryText(context, 'remainingOriginalColumn'),
       width: 120,
       numeric: true,
       cellBuilder: (context, row) => ValueListenableBuilder<String?>(
@@ -412,6 +419,23 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
         },
       ),
     ),
+    if (bankReferenceController != null)
+      EditableGridColumn<FinanceGridRow>(
+        key: 'bankReference',
+        label: financeEntryText(context, 'bankReferenceColumn'),
+        width: 220,
+        required: true,
+        headerInfo: financeEntryText(context, 'batchBankReferenceHint'),
+        // The document owns this controller. Each row edits the same bank
+        // transaction reference; removing a row must not dispose it.
+        textOf: (_) => bankReferenceController.text,
+        listenableOf: (_) => bankReferenceController,
+        cellBuilder: (context, _) => TextField(
+          key: const ValueKey('finance-receipt-bank-reference'),
+          controller: bankReferenceController,
+          decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
+        ),
+      ),
     EditableGridColumn<FinanceGridRow>(
       key: 'remark',
       label: '备注',
@@ -429,10 +453,12 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
   // snapshots and rate listeners, and save still validates every authority.
   const entryKeys = {
     'appliedBillNo',
+    'currency',
     'balanceOriginal',
     'amount',
-    'currency',
+    'amountLocal',
     'balanceAfter',
+    'bankReference',
     'remark',
   };
   return columns.where((column) => entryKeys.contains(column.key)).toList();

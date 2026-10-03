@@ -39,6 +39,18 @@ public class SalesMutationFootprintService {
         lock(Document.ORDER, id, lines, List.of());
     }
 
+    /** A historical quote may reference several terminated orders; acquire all S locks before any I lock. */
+    public void lockOrders(Collection<UUID> orderIds) {
+        List<UUID> ids = sorted(new LinkedHashSet<>(orderIds));
+        var sources = ids.stream().map(id -> new CommercialSource(CommercialType.SALES_ORDER, id)).toList();
+        locks.acquire(FulfillmentMutationLockPlan.declared(sources, Set.of(), Set.of()), () -> {
+            List<FulfillmentMutationLockPlan> parts = ids.stream()
+                    .map(id -> discover(Document.ORDER, id, List.of(), List.of())).toList();
+            return FulfillmentMutationLockPlan.merge(
+                    CanonicalFingerprint.sha256(parts.stream().map(FulfillmentMutationLockPlan::fingerprint).toList()), parts);
+        }).verifyUnchanged();
+    }
+
     public UUID lockOrderItem(UUID itemId) {
         List<?> rows = em.createNativeQuery("SELECT order_id FROM sales_order_items WHERE id=:id")
                 .setParameter("id", itemId).getResultList();

@@ -54,7 +54,7 @@ class AiChatPostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(capabilities.path("canManagePermissions").asBoolean()).isFalse();
         String id=submit(ownerToken,Map.of("message","生产日报怎么填写"));
         JsonNode result=awaitResult(ownerToken,id);
-        assertThat(result.path("reply").asText()).contains("日报");
+        assertThat(result.path("reply").asText()).contains("本次实际产量");
         assertThat(result.has("_access")).isFalse();
         assertThat(jdbc.queryForObject("SELECT input_bytes IS NULL FROM ai_jobs WHERE id=?::uuid",Boolean.class,id)).isTrue();
         MvcResult foreign=mvc.perform(authed(get("/api/ai/jobs/"+id),strangerToken)).andReturn();

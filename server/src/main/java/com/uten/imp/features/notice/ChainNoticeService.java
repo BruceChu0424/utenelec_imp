@@ -4316,10 +4316,20 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     /** ⑦ 取消确认：订单整单取消后，确认销售 + 通知调度不用排。 */
     public void notifyOrderCanceled(UUID orderId) {
         if (!isOutboxDelivery()) {
+            // Closing an actionable card is part of the cancellation transaction;
+            // the confirmation message remains a durable outbox delivery.
+            resolveReviewNotices("SALES_ORDER", orderId, "CANCELLED");
             outbox.publish(EVENT_ORDER_CANCELED, "SALES_ORDER", orderId, Map.of());
             return;
         }
         deliverAtomically(() -> {
+            // A delayed cancellation event must not close the new pending task of a resumed order.
+            if (jdbc.queryForList("""
+                    SELECT id FROM sales_orders
+                    WHERE id = ? AND (is_deleted OR status = -1 OR is_stopped OR requoted_to_id IS NOT NULL)
+                    FOR UPDATE
+                    """, orderId).isEmpty()) return;
+            resolveReviewNotices("SALES_ORDER", orderId, "CANCELLED");
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             notifyUser(o.ownerUserId(), TYPE_WORKFLOW,
@@ -4341,6 +4351,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         deliverAtomically(() -> {
+            if (!lockActiveOrderForNotice(orderId, true)) return;
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             Map<String, Object> agg = one("""
@@ -4401,12 +4412,20 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         deliverAtomically(() -> {
+            // Serialize with cancellation/requotation and other deliveries: an old
+            // outbox row must never recreate an actionable card for a completed order.
+            if (!lockActiveOrderForNotice(orderId, false)) return;
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             // V459 审核待办弹卡：直达单据级财务审核页；aggregate 绑定订单，
             // 办结（确认/驳回）时按 (SALES_ORDER, orderId) 批量撤回全部接收人的弹卡。
             List<UUID> confirmers = salesOrderFinanceConfirmers.eligibleUserIds();
             for (UUID userId : confirmers) {
+                if (Boolean.TRUE.equals(jdbc.queryForObject("""
+                        SELECT EXISTS(SELECT 1 FROM notices
+                        WHERE aggregate_kind = 'SALES_ORDER' AND aggregate_id = ?
+                          AND source_event = ? AND audience_user_id = ? AND resolved_at IS NULL)
+                        """, Boolean.class, orderId, EVENT_ORDER_PENDING_FINANCE, userId))) continue;
                 sendToUser(userId, TYPE_APPROVAL,
                         (afterModification ? "改量后待财务确认：" : "待财务确认：")
                                 + o.billNo(),
@@ -5399,6 +5418,17 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         UUID userId = userIdOfEmployee((UUID) r.get("owner_employee_id"));
         if (userId == null) userId = userIdOfEmployee((UUID) r.get("seller_id"));
         return new OrderRef(orderId, str(r.get("bill_no")), userId);
+    }
+
+    /** Both finance and planning cards must still refer to the current active stage. */
+    private boolean lockActiveOrderForNotice(UUID orderId, boolean financeConfirmed) {
+        return !jdbc.queryForList("""
+                SELECT id FROM sales_orders
+                WHERE id = ? AND NOT is_deleted AND status = 1 AND NOT is_closed
+                  AND NOT is_stopped AND requoted_to_id IS NULL
+                  AND finance_confirmed = ? AND NOT finance_rejected
+                FOR UPDATE
+                """, orderId, financeConfirmed).isEmpty();
     }
 
     private record OrderRef(UUID orderId, String billNo, UUID ownerUserId) {

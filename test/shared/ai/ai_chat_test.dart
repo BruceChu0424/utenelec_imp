@@ -81,6 +81,31 @@ void main() {
     },
   );
 
+  testWidgets('welcome has two examples without policy paragraphs', (
+    tester,
+  ) async {
+    final l10n = AppLocalizationsEn();
+    final repository = _FakeChatRepository()
+      ..suggestions = [
+        l10n.aiChatPageQuestion,
+        l10n.aiChatAttachmentQuestion,
+        l10n.aiChatGuidedQuoteRequest,
+      ];
+    await _pump(tester, repository: repository);
+    await _open(tester);
+    expect(find.text(l10n.aiChatWelcome), findsOneWidget);
+    expect(find.text(l10n.aiChatPageQuestion), findsOneWidget);
+    expect(find.text(l10n.aiChatAttachmentQuestion), findsOneWidget);
+    expect(find.text(l10n.aiChatGuidedQuoteRequest), findsNothing);
+    expect(find.text('Only data permitted for this account.'), findsNothing);
+    expect(find.text(l10n.aiChatBoundary), findsNothing);
+    expect(find.text(l10n.aiChatPrivacyNotice), findsNothing);
+    await _send(tester, 'hello');
+    expect(find.text('Scoped answer 1'), findsOneWidget);
+    expect(find.text(l10n.aiChatBoundary), findsNothing);
+    expect(find.text('Only data permitted for this account.'), findsNothing);
+  });
+
   testWidgets(
     'privacy information is available from the header without a permanent composer footer',
     (tester) async {
@@ -149,6 +174,39 @@ void main() {
       expect(harness.repository.messages, isEmpty);
       expect(harness.repository.confirmations, isEmpty);
       expect(jobs.reads, ['file-job-1']);
+    },
+  );
+
+  testWidgets(
+    'long file instructions cannot auto-open when intent after 512 characters is unseen',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'quote.csv',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository();
+      var opens = 0;
+      await _pump(tester, jobs: jobs, onDraftOpened: (_, _) => opens++);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(
+        tester,
+        '${List.filled(550, 'x').join()} Analyze only. Do not create anything.',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        jobs.requests.single.params['message']!.length,
+        lessThanOrEqualTo(512),
+      );
+      expect(
+        opens,
+        0,
+        reason: 'The server did not receive the final no-create instruction',
+      );
     },
   );
 
@@ -680,6 +738,8 @@ void main() {
       expect(repository.confirmations, isEmpty);
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(find.textContaining('Warehouse employee'), findsWidgets);
+      expect(find.textContaining('View inventory'), findsWidgets);
+      expect(find.textContaining('Existing warehouse scope'), findsWidgets);
       await tester.tap(find.text('Cancel').last);
       await tester.pumpAndSettle();
       expect(repository.confirmations, isEmpty);

@@ -3,6 +3,7 @@
 // 填错的行挡保存/确认、退回原因(服务端字段 text)、确认前的未定价拦截、去货品资料回来后重读。
 // 夹具 JSON 与服务端 QuoteFinanceReviewDto / QuoteFinanceEditRequest 等 record 字段逐字一致；
 // 假仓库记录的是真实请求体(quoteFinanceEditBody / quoteFinanceDecisionBody)。
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +11,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/finance/models/quote_finance_pricing.dart';
@@ -29,10 +33,19 @@ import '../../helpers/badge_summary_fixture.dart';
 import '../../helpers/finance_claim_fixture.dart';
 
 class _Session extends SessionNotifier {
+  void switchUser() => state = const SessionState(
+    user: AppUser(id: 'other', code: 'OTHER', name: '其他人员'),
+  );
   @override
   SessionState build() => const SessionState(
     user: AppUser(id: 'finance-user', code: 'FIN001', name: '财务审核员'),
   );
+}
+
+class _Snapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot();
+  void changeScope() => state = AsyncData(SessionSnapshot());
 }
 
 class _DictApi extends ApiClient {
@@ -154,6 +167,7 @@ class _FakeRepo implements SalesQuoteFinanceReviewRepository {
   Map<String, dynamic> reviewJson;
   Map<String, dynamic>? afterSave;
   int reviewCalls = 0;
+  Completer<void>? pendingSave;
   final List<Map<String, dynamic>> saves = [];
   final List<Map<String, dynamic>> returns = [];
   final List<Map<String, dynamic>> confirms = [];
@@ -192,6 +206,7 @@ class _FakeRepo implements SalesQuoteFinanceReviewRepository {
         lines: lines,
       ),
     );
+    if (pendingSave case final pending?) await pending.future;
     if (afterSave != null) reviewJson = afterSave!;
     return SalesQuoteFinanceReview.fromJson(reviewJson);
   }
@@ -255,6 +270,19 @@ class _StatusGatedClaims extends FinanceClaimFixture {
   }
 }
 
+class _DelayedClaims extends FinanceClaimFixture {
+  Completer<void>? decisionDelay;
+  @override
+  Future<TaskClaimView?> heartbeatRequired(
+    String type,
+    String key, {
+    required String expectedClaimId,
+  }) async {
+    if (decisionDelay case final delay?) await delay.future;
+    return super.heartbeatRequired(type, key, expectedClaimId: expectedClaimId);
+  }
+}
+
 Future<(_FakeRepo, FinanceClaimFixture)> _pump(
   WidgetTester tester,
   Map<String, dynamic> review, {
@@ -275,6 +303,8 @@ Future<(_FakeRepo, FinanceClaimFixture)> _pump(
           Perm.salesQuoteFinanceConfirm,
         }),
         sessionProvider.overrideWith(_Session.new),
+        apiBaseUrlProvider.overrideWithValue('http://quote-test/api'),
+        sessionSnapshotProvider.overrideWith(_Snapshot.new),
         fixedBadgeSummaryOverride(),
         salesQuoteFinanceReviewRepositoryProvider.overrideWithValue(repo),
         taskClaimRepositoryProvider.overrideWithValue(fixture),
@@ -346,6 +376,98 @@ Future<void> _save(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'scope refresh closes the old confirmation dialog even when permissions are unchanged',
+    (tester) async {
+      final (repo, _) = await _pump(tester, _review());
+      await tester.tap(find.byKey(const Key('quote-finance-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+        listen: false,
+      );
+      (container.read(sessionSnapshotProvider.notifier) as _Snapshot)
+          .changeScope();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('XB-001'), findsNothing);
+      expect(repo.confirms, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'return to sales cannot discard unsaved quantity or deletion edits',
+    (tester) async {
+      final (repo, _) = await _pump(tester, _review());
+      await tester.enterText(
+        find.byKey(const ValueKey('quote-finance-qty-a')),
+        '8',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('quote-finance-return')));
+      await tester.pumpAndSettle();
+      expect(repo.returns, isEmpty);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(_notices(tester).any((text) => text.contains('保存')), isTrue);
+      expect(
+        _text(tester, find.byKey(const ValueKey('quote-finance-qty-a'))),
+        '8',
+      );
+    },
+  );
+
+  testWidgets(
+    'a late save response cannot restore the previous reader quotation',
+    (tester) async {
+      final (repo, _) = await _pump(tester, _review());
+      final pending = Completer<void>();
+      repo.pendingSave = pending;
+      await tester.enterText(_discount('a'), '0.9');
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('quote-finance-save')));
+      await tester.pump();
+      expect(repo.saves, hasLength(1));
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+        listen: false,
+      );
+      (container.read(sessionProvider.notifier) as _Session).switchUser();
+      await tester.pump();
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('XB-001'), findsNothing);
+      expect(find.byKey(const Key('quote-finance-save')), findsNothing);
+      expect(find.textContaining('原报价已隐藏'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'save is locked before awaiting claim renewal, preventing double submission',
+    (tester) async {
+      final (repo, fixture) = await _pump(
+        tester,
+        _review(),
+        claims: (_) => _DelayedClaims(),
+      );
+      final claims = fixture as _DelayedClaims;
+      final pending = Completer<void>();
+      claims.decisionDelay = pending;
+      await tester.enterText(_discount('a'), '0.9');
+      await tester.pump();
+      final button = tester.widget<UtenButton>(
+        find.byKey(const Key('quote-finance-save')),
+      );
+      button.onPressed!();
+      button.onPressed!();
+      await tester.pump();
+      expect(repo.saves, isEmpty);
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(repo.saves, hasLength(1));
+    },
+  );
+
   testWidgets(
     'finance edits independent base price, discount and quantity with the claimed revision',
     (tester) async {

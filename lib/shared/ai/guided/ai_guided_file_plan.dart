@@ -63,13 +63,16 @@ const aiGuidedContentTypes = <String, String>{
 const aiGuidedRouteKind = 'ERP_DOCUMENT_ROUTE';
 
 String aiGuidedRequestMessage(String message) {
-  final value = message
-      .replaceAll(RegExp(r'[\x00-\x20\x7f-\x9f]+'), ' ')
-      .trim();
+  final value = _normalizedGuidedMessage(message);
   if (value.length <= 512) return value;
   final last = value.codeUnitAt(511);
   return value.substring(0, last >= 0xd800 && last <= 0xdbff ? 511 : 512);
 }
+
+bool aiGuidedRequestIsTruncated(String message) =>
+    _normalizedGuidedMessage(message).length > 512;
+String _normalizedGuidedMessage(String message) =>
+    message.replaceAll(RegExp(r'[\x00-\x20\x7f-\x9f]+'), ' ').trim();
 
 class AiGuidedChoice {
   const AiGuidedChoice(this.workflow, this.title);

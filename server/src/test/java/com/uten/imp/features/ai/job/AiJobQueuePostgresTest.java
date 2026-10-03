@@ -258,9 +258,9 @@ class AiJobQueuePostgresTest extends AiPlatformPostgresTestSupport {
         String params = "{\"mode\": \"echo\"}";
         String sha = "d".repeat(64);
 
-        assertThat(tx.<Optional<UUID>>execute(status -> repository.findReusable(userId, KIND, params, sha, 10))).contains(running);
+        assertThat(tx.<Optional<UUID>>execute(status -> repository.findReusable(userId, KIND, params, sha, "r.csv", 10))).contains(running);
         jdbc.update("UPDATE ai_jobs SET cancel_requested = TRUE WHERE id = ?", running);
-        assertThat(tx.<Optional<UUID>>execute(status -> repository.findReusable(userId, KIND, params, sha, 10))).isEmpty();
+        assertThat(tx.<Optional<UUID>>execute(status -> repository.findReusable(userId, KIND, params, sha, "r.csv", 10))).isEmpty();
         jdbc.update("UPDATE ai_jobs SET status = 'CANCELLED', input_bytes = NULL WHERE id = ?", running);
     }
 

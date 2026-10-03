@@ -17,7 +17,14 @@ public interface AiChatToolPort {
     /** JSON Schema for the bounded argument object, including additionalProperties=false. */
     Map<String, Object> parameters();
     boolean available();
-    /** Returns a server-authored reply and optional actions. Never sent back to the model. */
+    /** Opt-in for read-query parameters only. Never retain results, proposals or authorization actions. */
+    default boolean rememberQueryArguments() { return false; }
+    /**
+     * Returns a short, plain-language {@code reply} with business results (normally at most five
+     * rows), plus optional {@code detailReply} for an explicit request to expand. Keep units,
+     * periods and material uncertainty; do not append access-policy, source-system or audit prose.
+     * Authorization and evidence remain server-side. Neither reply is sent back to the model.
+     */
     Map<String, Object> execute(Map<String, Object> arguments);
     /**
      * Recheck server-owned object evidence before returning a stored answer. Implementations which

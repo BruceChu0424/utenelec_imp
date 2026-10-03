@@ -89,6 +89,7 @@ Future<void> _pump(
   WidgetTester tester,
   Map<String, dynamic> json, {
   bool localized = true,
+  bool canViewQuote = true,
 }) async {
   tester.view.physicalSize = const Size(2400, 1400);
   tester.view.devicePixelRatio = 1;
@@ -99,9 +100,10 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         isSuperAdminProvider.overrideWithValue(false),
-        currentPermissionsProvider.overrideWithValue(const {
+        currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
           Perm.salesOrderFinanceConfirm,
+          if (canViewQuote) Perm.salesQuoteView,
         }),
         sessionProvider.overrideWith(_Session.new),
         fixedBadgeSummaryOverride(),
@@ -161,6 +163,35 @@ List<String> _columnKeys(WidgetTester tester) => tester
     .toList();
 
 void main() {
+  testWidgets(
+    'finance-only readers see the retained first-quote explanation without a sales history link',
+    (tester) async {
+      await _pump(tester, {
+        ..._order(),
+        'requotedToId': 'first-quote',
+        'readOnlyReason': '原订单已重新报价',
+      }, canViewQuote: false);
+      expect(find.byKey(const Key('finance-review-requote')), findsNothing);
+      expect(find.text('首次重新报价历史已保留；需销售报价查看权限'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'requote-sealed order explains permanent read-only state and cannot be approved or rejected',
+    (tester) async {
+      await _pump(tester, {
+        ..._order(),
+        'requotedToId': 'new-quote',
+        'requotedAt': '2026-10-03T01:00:00Z',
+        'readOnlyReason': '原订单已重新报价，永久只读，不能恢复',
+      });
+      expect(find.text('原订单已重新报价，永久只读，不能恢复'), findsOneWidget);
+      expect(find.byKey(const Key('finance-review-confirm')), findsNothing);
+      expect(find.byKey(const Key('finance-review-reject')), findsNothing);
+      expect(find.byKey(const Key('finance-review-requote')), findsOneWidget);
+    },
+  );
+
   testWidgets('quote-derived order shows the priced-quote strip and columns', (
     tester,
   ) async {

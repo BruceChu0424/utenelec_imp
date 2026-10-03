@@ -6,6 +6,8 @@ import '../repositories/sales_repository.dart';
 bool isDeletableSalesDraftRow(SalesDocListItem row, SalesDocType type) =>
     type != SalesDocType.otherShipment &&
     row.writable &&
+    !row.historyReadOnly &&
+    row.requotedToId == null &&
     row.status == kSalesStatusDraft &&
     row.legacyId == null &&
     !row.closed &&
@@ -39,6 +41,8 @@ Future<void> deleteSalesDraft(
   }
   if (type == SalesDocType.otherShipment ||
       !detail.writable ||
+      detail.historyReadOnly ||
+      detail.requotedToId != null ||
       detail.status != kSalesStatusDraft ||
       detail.legacyId != null ||
       detail.closed ||

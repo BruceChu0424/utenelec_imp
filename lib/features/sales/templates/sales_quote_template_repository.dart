@@ -10,13 +10,16 @@ class SalesQuoteTemplateRepository {
   Future<Map<String, dynamic>> learningContext(String quoteId) =>
       api.get('/sales/quotes/$quoteId/templates/learning-context');
 
-  Future<SalesQuoteTemplate> adopt(String quoteId, String jobId) async =>
-      SalesQuoteTemplate.fromJson(
-        await api.post(
-          '/sales/quotes/$quoteId/templates/adopt',
-          body: {'jobId': jobId},
-        ),
-      );
+  Future<SalesQuoteTemplate> adopt(
+    String quoteId,
+    String jobId, {
+    Map<String, String>? columnRoles,
+  }) async => SalesQuoteTemplate.fromJson(
+    await api.post(
+      '/sales/quotes/$quoteId/templates/adopt',
+      body: {'jobId': jobId, 'columnRoles': ?columnRoles},
+    ),
+  );
 
   Future<List<SalesQuoteTemplate>> listForQuote(String quoteId) async {
     final rows = await api.getList('/sales/quotes/$quoteId/templates');

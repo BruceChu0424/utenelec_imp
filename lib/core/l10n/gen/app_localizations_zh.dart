@@ -7881,7 +7881,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatBoundary => '按当前账号权限回答；数据查询与操作由系统逐次校验。';
 
   @override
-  String get aiChatUnavailable => '当前使用基础助手，可查询已支持的业务信息。配置 AI 服务后可获得更完整的对话能力。';
+  String get aiChatUnavailable => '暂时只能回答部分业务问题。';
 
   @override
   String get aiChatLoadFailed => '暂时无法连接 AI 助手，请重试。';
@@ -7912,7 +7912,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '支持 Excel、CSV/TXT、PDF、图片和 DOCX，最大15MB；先识别用途，再辅助填写。';
 
   @override
-  String get aiChatFileFailed => '无法读取文件，请重新选择 Excel 或 CSV 文件。';
+  String get aiChatFileFailed => '无法读取文件，请重新选择。';
 
   @override
   String get aiChatFileLarge => '文件不能超过 15 MB。';
@@ -7948,7 +7948,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatOpenDraft => '核对并新建订货单';
 
   @override
-  String get aiChatDraftHint => '将进入订货单核对页，确认客户、货品、数量和价格后由你保存。';
+  String get aiChatDraftHint => '请核对客户、货品、数量和价格后保存。';
 
   @override
   String get aiChatUnsupported => '此操作暂不支持，请到对应业务页面处理。';
@@ -8083,7 +8083,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatDocumentOpenFailed => '页面未能打开，请重试。';
 
   @override
-  String get aiChatDocumentManualSave => '请核对填写结果；保存、提交和审核由你操作。';
+  String get aiChatDocumentManualSave => '尚未保存，请核对后保存。';
 
   @override
   String get aiChatDocumentPlanSteps => '处理步骤';
@@ -8092,13 +8092,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatDocumentUnsupported => '当前用途尚未接入辅助填写，请按识别说明到对应页面处理。';
 
   @override
-  String get aiChatDocumentOpened => '已打开对应表单；请回到该表单或任务中心继续处理。';
+  String get aiChatDocumentOpened => '表单已打开，请到表单或任务中心继续。';
 
   @override
   String get aiChatGuidedParsing => '识别文件';
 
   @override
-  String get aiChatGuidedValidating => '正在核对权限和原文件';
+  String get aiChatGuidedValidating => '正在检查文件';
 
   @override
   String get aiChatGuidedRecognizing => '正在识别客户与明细';
@@ -8119,10 +8119,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatGuidedRows => '填写明细';
 
   @override
-  String get aiChatGuidedFilled => '已填入，等待你核对';
+  String get aiChatGuidedFilled => '已填写';
 
   @override
-  String get aiChatGuidedManualSave => '等待你手动保存';
+  String get aiChatGuidedManualSave => '核对后保存';
 
   @override
   String get aiChatGuidedWaiting => '已暂停，请核对后继续';
@@ -8140,13 +8140,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatGuidedClient => '客户';
 
   @override
-  String get aiChatGuidedFilledFields => '已填入的内容';
+  String get aiChatGuidedFilledFields => '已填写内容';
 
   @override
   String get aiChatGuidedLocalSaveFailed => '本机草稿保存失败，原文件仍在当前页面。请保持页面并重试，勿关闭。';
 
   @override
-  String get aiChatGuidedExpenseSaved => '报销单已由你保存，可继续登记票据';
+  String get aiChatGuidedExpenseSaved => '报销单已保存';
 
   @override
   String get aiChatGuidedInvoiceRegister => '上传原件并登记发票';
@@ -8158,10 +8158,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatGuidedUploadUncertain => '原件上传结果未确认，未重复上传。请查看已保存报销中的原件后再核对。';
 
   @override
-  String get aiChatGuidedInvoiceFields => '原件票面信息（待核对）';
+  String get aiChatGuidedInvoiceFields => '发票信息';
 
   @override
-  String get aiChatGuidedInvoiceReview => '以上为识别建议，请与原票核对。登记发票仍需你确认。';
+  String get aiChatGuidedInvoiceReview => '请对照原发票核对。';
 
   @override
   String get aiChatInvoiceInvoiceType => '发票类型';
@@ -8216,4 +8216,19 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiChatInvoiceTypeOther => '其他票据';
+
+  @override
+  String get aiChatGuidedQuoteRequest => '请根据这份文件新建销售报价单，供我核对。';
+
+  @override
+  String get aiChatGuidedOrderRequest => '请根据这份文件填写当前销售订货单，供我核对。';
+
+  @override
+  String get aiChatDocumentLongRequest => '文件处理说明较长，尚未完整分析全部要求。请明确选择要继续的流程。';
+
+  @override
+  String get quoteTemplateMappingRequired => '请保留数量，以及型号或品名字段';
+
+  @override
+  String get quoteTemplateMappingDuplicate => '同一字段只能对应一列，请调整重复对应';
 }

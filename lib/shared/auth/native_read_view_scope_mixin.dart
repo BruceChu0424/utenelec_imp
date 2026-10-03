@@ -154,6 +154,16 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     _pendingRead = false;
   }
 
+  /// Hide accepted data and invalidate pending reads/dialogs immediately when a
+  /// caller's required permission disappears, even before the Me refresh finishes.
+  void invalidateNativeReadAccess() {
+    _accessEpoch++;
+    _readEpoch++;
+    _accepted = false;
+    _pendingRead = false;
+    _accessChanges.value++;
+  }
+
   Widget nativeReadAccessNotice() {
     if (ref.read(authenticatedScopeProvider) == null) {
       return const UtenEmpty(message: '当前登录身份无效，原页面信息已隐藏');
@@ -167,7 +177,11 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     );
   }
 
-  Widget trackNativeReadDialog(BuildContext context, Widget child) {
+  Widget trackNativeReadDialog(
+    BuildContext context,
+    Widget child, {
+    bool readOnly = false,
+  }) {
     _privateRoutes.removeWhere((route) => !route.isActive);
     _dialogAccess.removeWhere((route, _) => !route.isActive);
     final route = ModalRoute.of(context);
@@ -177,7 +191,10 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     return ValueListenableBuilder<int>(
       valueListenable: _accessChanges,
       builder: (context, _, _) {
-        final current = mounted && access == _accessEpoch && nativeReadCanWrite;
+        final current =
+            mounted &&
+            access == _accessEpoch &&
+            (readOnly ? nativeReadAccessConfirmed : nativeReadCanWrite);
         return Stack(
           children: [
             Offstage(offstage: !current, child: child),

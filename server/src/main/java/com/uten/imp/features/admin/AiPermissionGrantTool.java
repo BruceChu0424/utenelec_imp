@@ -56,7 +56,7 @@ public class AiPermissionGrantTool implements AiChatToolPort {
     public Map<String, Object> execute(Map<String, Object> arguments) {
         access.requireDomain(domain());
         AuthUser actor = current.get().filter(AiPermissionGrantTool::allowed)
-                .orElseThrow(() -> new ApiException(ErrorCode.FORBIDDEN, "仅超级管理员可通过对话准备授权"));
+                .orElseThrow(() -> new ApiException(ErrorCode.FORBIDDEN, "暂时不能办理这项授权"));
         if (arguments == null || !arguments.keySet().equals(Set.of("employeeKeyword", "permissionKeyword"))) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "授权请求只能包含员工和一项具体权限");
         }
@@ -77,17 +77,17 @@ public class AiPermissionGrantTool implements AiChatToolPort {
                 actor.getId(), pattern(employee), pattern(employee), employee);
         List<Candidate> exact = candidates.stream().filter(c -> c.code().equalsIgnoreCase(employee)).toList();
         if (!exact.isEmpty()) candidates = exact;
-        if (candidates.isEmpty()) return reply("没有找到可授权的在职员工账号。请提供准确工号；不能修改本人或超级管理员的授权。");
-        if (candidates.size() != 1) return reply("找到多位员工，请明确工号后再发起：\n" + candidates.stream().limit(10)
-                .map(c -> c.code() + " · " + c.name() + " · " + c.department()).collect(Collectors.joining("\n")));
+        if (candidates.isEmpty()) return reply("没找到可授权的员工，请核对工号。");
+        if (candidates.size() != 1) return choices("找到多位员工，请明确工号：", candidates.stream().limit(10)
+                .map(c -> c.code() + " · " + c.name() + " · " + c.department()).toList());
         List<Permission> matches = permissions.findByCode(permission).map(List::of).orElseGet(() ->
                 permissions.findAll().stream().filter(p -> p.getName().contains(permission) || p.getCode().contains(permission)).limit(11).toList());
-        if (matches.isEmpty()) return reply("权限目录中没有找到这项权限，请提供具体页面及动作，例如查看、编辑、审批。");
-        if (matches.size() != 1) return reply("匹配到多项权限，请明确一项权限码后再发起：\n" + matches.stream().limit(10)
-                .map(p -> p.getName() + "(" + p.getCode() + ")").collect(Collectors.joining("\n")));
+        if (matches.isEmpty()) return reply("没找到这项授权，请说清页面和操作，例如“查看销售订单”。");
+        if (matches.size() != 1) return choices("找到多项操作，请选一项：", matches.stream().limit(10)
+                .map(p -> p.getName() + (p.getCategory() == null ? "" : " · " + p.getCategory())).toList());
         Permission selected = matches.getFirst();
         if (!GrantPolicy.individuallyGrantable(selected.grantPolicies())) {
-            return reply("这项权限只随超级管理员身份生效，不能单独授予。");
+            return reply("这项不能单独授权。");
         }
         Candidate target = candidates.getFirst();
         Instant now = Instant.now();
@@ -95,9 +95,9 @@ public class AiPermissionGrantTool implements AiChatToolPort {
                 actorState.getAuthorizationEpoch(), target.id(), target.authVersion(), selected.getId(), selected.getCode(),
                 now.getEpochSecond(), now.plusSeconds(600).getEpochSecond()));
         String targetLabel = target.name() + "(" + target.code() + "，" + target.department() + ")";
-        String scope = "仅增加这一项个人权限；其他个人授权和数据范围保持不变。"
+        String scope = "只增加这一项授权。"
                 + (selected.getDescription() == null || selected.getDescription().isBlank() ? "" : "\n" + selected.getDescription());
-        return Map.of("reply", "已准备授权确认，请核对员工和具体权限。确认并重新认证后才会生效。",
+        return Map.of("reply", "请核对员工和授权项。点确认并验证身份后生效。",
                 "actions", List.of(Map.of("type", "CONFIRM_PERMISSION_GRANT", "proposalId", token,
                         "title", "确认授予权限", "summary", "为 " + targetLabel + " 授予 " + selected.getName(),
                         "targetName", targetLabel, "permissionCode", selected.getCode(), "permissionName", selected.getName(),
@@ -105,6 +105,10 @@ public class AiPermissionGrantTool implements AiChatToolPort {
     }
 
     private record Candidate(UUID id, long authVersion, String code, String name, String department) {}
+    private static Map<String, Object> choices(String heading, List<String> values) {
+        return Map.of("reply", heading + "\n" + values.stream().limit(5).collect(Collectors.joining("\n")),
+                "detailReply", heading + "\n" + String.join("\n", values));
+    }
     private static Map<String, Object> reply(String value) { return Map.of("reply", value); }
     private static String keyword(Map<String, Object> args, String key) {
         Object raw = args == null ? null : args.get(key);
@@ -114,5 +118,5 @@ public class AiPermissionGrantTool implements AiChatToolPort {
         return value.strip();
     }
     private static String pattern(String value) { return "%" + value.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"; }
-    private static ApiException changed() { return new ApiException(ErrorCode.FORBIDDEN, "账号授权状态已变化，请重新登录"); }
+    private static ApiException changed() { return new ApiException(ErrorCode.FORBIDDEN, "账号状态有变化，请重新登录"); }
 }

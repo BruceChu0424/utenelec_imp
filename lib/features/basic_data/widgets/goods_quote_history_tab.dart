@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/network/server_config.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/providers/session_provider.dart';
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../repositories/goods_quote_history_repository.dart';
@@ -23,12 +23,12 @@ class GoodsQuoteHistoryTab extends ConsumerStatefulWidget {
       _GoodsQuoteHistoryTabState();
 }
 
-class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab> {
+class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
+    with NativeReadViewScopeMixin<GoodsQuoteHistoryTab> {
   PagedResult<GoodsQuoteHistoryRow>? _result;
   GoodsQuoteHistoryRow? _selected;
   String? _error;
   bool _loading = false;
-  int _generation = 0;
 
   bool get _canRead =>
       ref.read(isSuperAdminProvider) ||
@@ -40,6 +40,7 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab> {
   @override
   void initState() {
     super.initState();
+    initializeNativeReadScope();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
@@ -53,10 +54,29 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab> {
     }
   }
 
+  @override
+  void nativeReadOwnerChanged() => _clearHistory();
+
+  @override
+  void nativeReadPermissionChanged() => _clearHistory();
+
+  @override
+  Future<void> nativeReadReload() => _load(1);
+
+  void _clearHistory() {
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _selected = null;
+      _error = null;
+      _loading = false;
+    });
+  }
+
   Future<void> _load(int page) async {
     if (!mounted || !_canRead) return;
-    final generation = ++_generation;
-    final identity = ref.read(sessionProvider);
+    final acceptsRead = captureNativeRead(widget.goodsId, () => widget.goodsId);
+    if (!acceptsRead()) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -66,30 +86,27 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab> {
       final result = await ref
           .read(goodsQuoteHistoryRepositoryProvider)
           .list(widget.goodsId, page: page);
-      if (!mounted ||
-          generation != _generation ||
-          !identical(identity, ref.read(sessionProvider)) ||
-          !_canRead) {
-        return;
-      }
+      if (!acceptsRead() || !_canRead) return;
+      acceptNativeRead();
       setState(() {
         _result = result;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted ||
-          generation != _generation ||
-          !identical(identity, ref.read(sessionProvider))) {
-        return;
-      }
+      if (!acceptsRead() || !_canRead) return;
       setState(() {
+        _result = null;
         _error = error is ApiException ? error.message : '加载报价记录失败，请重试';
         _loading = false;
       });
     }
   }
 
-  void _open(GoodsQuoteHistoryRow row) {
+  Future<void> _open(GoodsQuoteHistoryRow row) async {
+    if (!nativeReadAccessConfirmed) return;
+    final ownsRead = captureNativeOwnership();
+    final goodsId = widget.goodsId;
+    final page = _result?.page ?? 1;
     final permissions = ref.read(currentPermissionsProvider);
     final admin = ref.read(isSuperAdminProvider);
     if (!_canRead) return;
@@ -97,97 +114,77 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab> {
     if (row.orderId.isNotEmpty &&
         !row.orderDeleted &&
         (admin || permissions.contains(Perm.salesOrderFinanceView))) {
-      context.push(
+      await context.push(
         '/finance/sales-order-confirmations/${Uri.encodeComponent(row.orderId)}',
       );
     } else if (row.orderId.isNotEmpty &&
         !row.orderDeleted &&
         permissions.contains(Perm.salesOrderView)) {
-      context.push('/sales/orders/${Uri.encodeComponent(row.orderId)}');
+      await context.push('/sales/orders/${Uri.encodeComponent(row.orderId)}');
     } else {
       _showSnapshot(row);
+      return;
     }
+    if (ownsRead() && goodsId == widget.goodsId && _canRead) await _load(page);
   }
 
   void _showSnapshot(GoodsQuoteHistoryRow row) {
-    final identity = ref.read(sessionProvider);
-    final server = ref.read(apiBaseUrlProvider);
     showDialog<void>(
       context: context,
-      builder: (context) => Consumer(
-        builder: (context, ref, _) {
-          final permissions = ref.watch(currentPermissionsProvider);
-          final authorized =
-              ref.watch(isSuperAdminProvider) ||
-              (permissions.contains(Perm.goodsView) &&
-                  permissions.contains(Perm.salesQuoteFinanceView));
-          final sameOwner =
-              identical(identity, ref.watch(sessionProvider)) &&
-              server == ref.watch(apiBaseUrlProvider);
-          if (!authorized || !sameOwner) {
-            return AlertDialog(
-              title: const Text('当前身份或权限已变化'),
-              content: const Text('请关闭后重新打开报价记录。'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('关闭'),
-                ),
-              ],
-            );
-          }
-          return AlertDialog(
-            title: Text('${row.text('billNo')} · 第 ${row.text('revision')} 版'),
-            content: SizedBox(
-              width: 440,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text('本次报价历史快照'),
-                    const SizedBox(height: UtenSpacing.s12),
-                    for (final field in const [
-                      ('clientName', '客户'),
-                      ('sellerName', '销售人员'),
-                      ('qty', '数量'),
-                      ('price', '单价（本位币）'),
-                      ('discount', '折扣'),
-                      ('amount', '金额（本位币）'),
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: UtenSpacing.s4,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(width: 120, child: Text(field.$2)),
-                            Expanded(
-                              child: Text(
-                                row.text(field.$1).isEmpty
-                                    ? '—'
-                                    : row.text(field.$1),
-                              ),
-                            ),
-                          ],
-                        ),
+      builder: (context) => trackNativeReadDialog(
+        context,
+        AlertDialog(
+          title: Text('${row.text('billNo')} · 第 ${row.text('revision')} 版'),
+          content: SizedBox(
+            width: 440,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('本次报价历史快照'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  for (final field in const [
+                    ('clientName', '客户'),
+                    ('sellerName', '销售人员'),
+                    ('qty', '数量'),
+                    ('price', '单价（本位币）'),
+                    ('discount', '折扣'),
+                    ('amount', '金额（本位币）'),
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: UtenSpacing.s4,
                       ),
-                    Text('记录时间：${utenFmtIsoTime(row.text('occurredAt'))}'),
-                    const SizedBox(height: UtenSpacing.s12),
-                    const Text('此处保留当时记录，不受当前报价草稿或货品资料修改影响。'),
-                  ],
-                ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(width: 120, child: Text(field.$2)),
+                          Expanded(
+                            child: Text(
+                              row.text(field.$1).isEmpty
+                                  ? '—'
+                                  : row.text(field.$1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Text('记录时间：${utenFmtIsoTime(row.text('occurredAt'))}'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  const Text('此处保留当时记录，不受当前报价草稿或货品资料修改影响。'),
+                ],
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
-            ],
-          );
-        },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+        readOnly: true,
       ),
     );
   }
@@ -196,29 +193,25 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab> {
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
     ref.watch(isSuperAdminProvider);
-    ref.listen(apiBaseUrlProvider, (previous, next) {
+    ref.listen(currentPermissionsProvider, (previous, next) {
       if (previous == next) return;
-      ++_generation;
-      setState(() {
-        _result = null;
-        _selected = null;
-        _loading = false;
-        _error = null;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
-    });
-    ref.listen(sessionProvider, (previous, next) {
-      if (identical(previous, next)) return;
-      ++_generation;
-      setState(() {
-        _result = null;
-        _selected = null;
-        _loading = false;
-        _error = null;
-      });
+      invalidateNativeReadAccess();
+      _clearHistory();
       WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
     });
     if (!_canRead) return const Center(child: Text('需要货品查看与报价财务核价查看权限'));
+    if (!nativeReadAccessConfirmed) {
+      if (_error != null) {
+        return UtenEmpty(
+          isError: true,
+          message: _error!,
+          actionLabel: '重试',
+          onAction: () => _load(1),
+        );
+      }
+      if (_loading) return const Center(child: CircularProgressIndicator());
+      return nativeReadAccessNotice();
+    }
     final result = _result;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s16),

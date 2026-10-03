@@ -2356,7 +2356,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 明细已有内容时先统一问一次「替换(第一份)/之后追加」；某份取消或失败即停，
   /// 已完成的保留、剩余的仍可再识别。
   Future<void> _confirmBatchIntake(List<PendingAttachment> queue) async {
-    if (!mounted || queue.isEmpty || _aiIntakeRunning || _saving || _guidedBusy) {
+    if (!mounted ||
+        queue.isEmpty ||
+        _aiIntakeRunning ||
+        _saving ||
+        _guidedBusy) {
       return;
     }
     bool? replacePref;

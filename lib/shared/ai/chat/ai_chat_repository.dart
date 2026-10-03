@@ -11,6 +11,7 @@ abstract interface class AiChatRepository {
     String? previousJobId,
     String? attachmentJobId,
     String? currentRoute,
+    String? intentHint,
   });
   Future<String> confirmPermissionGrant(String proposalId);
 }
@@ -45,11 +46,18 @@ class DioAiChatRepository implements AiChatRepository {
     String? previousJobId,
     String? attachmentJobId,
     String? currentRoute,
+    String? intentHint,
   }) async {
     for (final id in [previousJobId, attachmentJobId]) {
       if (id != null && checkedAiChatId(id) == null) {
         throw const FormatException('Invalid AI chat job ID');
       }
+    }
+    final route = safeAiChatRoute(currentRoute);
+    if (intentHint != null && (intentHint != 'PAGE_HELP' || route == null)) {
+      throw const FormatException(
+        'Invalid AI chat intent hint or page context',
+      );
     }
     final snapshot = AiJobSnapshot.fromJson(
       await api.post(
@@ -58,8 +66,8 @@ class DioAiChatRepository implements AiChatRepository {
           'message': message,
           'previousJobId': ?previousJobId,
           'attachmentJobId': ?attachmentJobId,
-          if (safeAiChatRoute(currentRoute) case final route?)
-            'pageContext': {'route': route},
+          'intentHint': ?intentHint,
+          if (route != null) 'pageContext': {'route': route},
         },
       ),
     );

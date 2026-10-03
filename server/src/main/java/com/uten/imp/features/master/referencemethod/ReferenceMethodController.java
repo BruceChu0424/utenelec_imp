@@ -44,7 +44,7 @@ public class ReferenceMethodController {
     private final ExportLimitPort exportLimits;
 
     @GetMapping("/settlement")
-    @PreAuthorize("hasAuthority('payment_style:view')")
+    @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.SETTLEMENT_OPTIONS)
     public List<ReferenceMethodOption> settlement() {
         return service.settlementOptions();
     }

@@ -8,6 +8,8 @@
 //  - 导入后换了表头客户: 文件里的客户信息不补给别的客户; 追加时旧行不再回传识别行键;
 //  - 同一份文件「替换」重新导入, 备注不重复; 明细里给识别行换货品按文件单价重算折扣;
 //  - 重新打开的外币订单换货品: 不知道参考汇率, 折扣留空请销售核对。
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,7 +19,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_form_grid.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
@@ -782,7 +786,8 @@ void main() {
     final currency = tester.widget<UtenDropdownField>(
       find.byWidgetPredicate((w) => w is UtenDropdownField && w.label == '币种'),
     );
-    expect(currency.value, isNull, reason: '报价不带客户上次订货的外币');
+    expect(currency.value, 'cny', reason: '报价自动带本位币，不带客户默认的外币');
+    expect(currency.autofilled, isTrue);
     expect(
       currency.items.where((i) => i.value != null).map((i) => i.value),
       ['cny'],
@@ -812,6 +817,149 @@ void main() {
       currency.items.where((i) => i.value != null).map((i) => i.value),
       containsAll(['cny', 'usd']),
     );
+  });
+
+  for (final type in [SalesDocType.quote, SalesDocType.order]) {
+    testWidgets('${type.name}选择客户带入同一默认结账方式并提示核对', (tester) async {
+      final env = await _pump(
+        tester,
+        docType: type,
+        permissions: type == SalesDocType.quote ? _quotePerms : _orderPerms,
+        lastTerms: {
+          'settlementMethodId': 'settlement-net30',
+          'currencyId': 'usd',
+          'shipmentPolicy': 'ALLOW_PARTIAL',
+        },
+      );
+      tester
+          .widget<ClientPickerField>(find.byType(ClientPickerField))
+          .onChanged('client-a');
+      await tester.pumpAndSettle();
+      final payment = tester.widget<UtenDropdownField>(
+        find.byWidgetPredicate(
+          (w) => w is UtenDropdownField && w.label == '结账方式',
+        ),
+      );
+      expect(payment.value, 'settlement-net30');
+      expect(payment.autofilled, isTrue);
+      expect(env.api.termsRequests, ['client-a']);
+      final snapshot = _draftSnapshot(tester);
+      expect(snapshot['settlementMethodId'], 'settlement-net30');
+      expect(
+        snapshot['currencyId'],
+        type == SalesDocType.quote ? 'cny' : 'usd',
+      );
+      expect(
+        snapshot['shipmentPolicy'],
+        type == SalesDocType.quote ? isNull : 'ALLOW_PARTIAL',
+      );
+    });
+  }
+
+  testWidgets('报价未核对默认值随客户切换，空默认清除旧支付方式但保留本位币', (tester) async {
+    final env = await _pump(tester, docType: SalesDocType.quote);
+    env.api.termsLoader = (client) async => switch (client) {
+      'client-a' => {'settlementMethodId': 'settlement-net30'},
+      'client-b' => {'settlementMethodId': 'settlement-cash'},
+      _ => {},
+    };
+    for (final pair in [
+      ('client-a', 'settlement-net30'),
+      ('client-b', 'settlement-cash'),
+      ('client-c', null),
+    ]) {
+      tester
+          .widget<ClientPickerField>(find.byType(ClientPickerField))
+          .onChanged(pair.$1);
+      await tester.pumpAndSettle();
+      expect(_draftSnapshot(tester)['settlementMethodId'], pair.$2);
+      expect(_draftSnapshot(tester)['currencyId'], 'cny');
+    }
+  });
+
+  testWidgets('报价人工选择支付方式不被客户默认值覆盖，停用默认不带入', (tester) async {
+    final env = await _pump(
+      tester,
+      docType: SalesDocType.quote,
+      lastTerms: {'settlementMethodId': 'disabled-method'},
+    );
+    tester
+        .widget<ClientPickerField>(find.byType(ClientPickerField))
+        .onChanged('client-a');
+    await tester.pumpAndSettle();
+    expect(_draftSnapshot(tester)['settlementMethodId'], isNull);
+    final payment = tester.widget<UtenDropdownField>(
+      find.byWidgetPredicate(
+        (w) => w is UtenDropdownField && w.label == '结账方式',
+      ),
+    );
+    payment.onChanged('settlement-cash');
+    await tester.pumpAndSettle();
+    env.api.termsLoader = (_) async => {
+      'settlementMethodId': 'settlement-net30',
+    };
+    tester
+        .widget<ClientPickerField>(find.byType(ClientPickerField))
+        .onChanged('client-b');
+    await tester.pumpAndSettle();
+    expect(_draftSnapshot(tester)['settlementMethodId'], 'settlement-cash');
+    expect(
+      tester
+          .widget<UtenDropdownField>(
+            find.byWidgetPredicate(
+              (w) => w is UtenDropdownField && w.label == '结账方式',
+            ),
+          )
+          .autofilled,
+      isFalse,
+    );
+  });
+
+  testWidgets('客户条款旧响应不能覆盖新客户的支付方式', (tester) async {
+    final env = await _pump(tester, docType: SalesDocType.quote);
+    final old = Completer<Map<String, dynamic>>();
+    env.api.termsLoader = (client) => client == 'client-a'
+        ? old.future
+        : Future.value({'settlementMethodId': 'settlement-cash'});
+    tester
+        .widget<ClientPickerField>(find.byType(ClientPickerField))
+        .onChanged('client-a');
+    await tester.pump();
+    tester
+        .widget<ClientPickerField>(find.byType(ClientPickerField))
+        .onChanged('client-b');
+    await tester.pumpAndSettle();
+    old.complete({'settlementMethodId': 'settlement-net30'});
+    await tester.pumpAndSettle();
+    expect(_draftSnapshot(tester)['clientId'], 'client-b');
+    expect(_draftSnapshot(tester)['settlementMethodId'], 'settlement-cash');
+  });
+
+  testWidgets('报价共同表头顺序对齐订货，有效期在共同字段后', (tester) async {
+    await _pump(tester, docType: SalesDocType.quote);
+    final fields = tester
+        .widget<UtenFormGrid>(find.byType(UtenFormGrid))
+        .children;
+    final labels = [
+      for (final field in fields)
+        if (field is ClientPickerField)
+          '客户'
+        else if (field is UtenDateField)
+          field.label
+        else if (field is UtenDropdownField)
+          field.label
+        else if (field is TextField)
+          field.decoration?.labelText,
+    ];
+    expect(
+      labels.whereType<String>(),
+      containsAllInOrder(['单据日期', '客户', '币种', '结账方式', '交货日期', '合同号', '有效期']),
+    );
+    final validity = fields.whereType<UtenDateField>().singleWhere(
+      (f) => f.label == '有效期',
+    );
+    expect(validity.value, isNotNull);
+    expect(validity.required, isTrue);
   });
 
   testWidgets('导入后换了表头客户: 保存不把文件里的客户信息补给新客户', (tester) async {
@@ -1171,8 +1319,10 @@ class _IntakeApi extends ApiClient {
 
   final Map<String, dynamic>? detail;
 
-  /// 客户上次订货条款(`/sales/orders/last-terms`); 为空时按空分页返回。
+  /// 客户主档默认条款；独立于报价/订货访问权限的共享预填接口。
   final Map<String, dynamic>? lastTerms;
+  Future<Map<String, dynamic>> Function(String client)? termsLoader;
+  final termsRequests = <String>[];
   Map<String, dynamic>? lastPutBody;
   Map<String, dynamic>? lastPostBody;
   String? lastPostPath;
@@ -1185,8 +1335,11 @@ class _IntakeApi extends ApiClient {
   }) async {
     final d = detail;
     if (d != null && path.endsWith('/${d['id']}')) return d;
-    final terms = lastTerms;
-    if (terms != null && path.endsWith('/last-terms')) return terms;
+    if (path.endsWith('/last-terms')) {
+      final client = query!['clientId'] as String;
+      termsRequests.add(client);
+      return termsLoader?.call(client) ?? lastTerms ?? <String, dynamic>{};
+    }
     return const {
       'items': <Map<String, dynamic>>[],
       'page': 1,
@@ -1201,6 +1354,12 @@ class _IntakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/reference-methods/settlement') {
+      return [
+        {'id': 'settlement-net30', 'code': 'NET30', 'name': '月结30天'},
+        {'id': 'settlement-cash', 'code': 'CASH', 'name': '现金'},
+      ];
+    }
     if (path.contains('currencies')) {
       return [
         {'id': 'cny', 'name': '人民币', 'baseCurrency': true},

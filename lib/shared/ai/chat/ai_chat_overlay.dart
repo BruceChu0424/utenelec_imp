@@ -231,7 +231,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
   }
 
-  Future<void> _send([String? suggestion]) async {
+  Future<void> _send({String? suggestion, String? intentHint}) async {
     if (!_current || _busy || _picking || _capabilities?.usable != true) return;
     final typed = (suggestion ?? _input.text).trim();
     final file = _attachment;
@@ -286,6 +286,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         previousJobId: _previousJobId,
         attachmentJobId: attachmentJobId,
         currentRoute: currentRoute,
+        intentHint: currentRoute == null ? null : intentHint,
       );
       if (!_active(generation) || cancel.isCancelled) {
         if (_current && cancel.isCancelled) {
@@ -908,6 +909,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
 
   Widget _welcome() {
     final colors = Theme.of(context).colorScheme;
+    final suggestions = <String, bool>{
+      if (_pageAware) _t('pageQuestion'): true,
+    };
+    for (final text in _capabilities?.suggestions ?? const <String>[]) {
+      suggestions.putIfAbsent(text, () => false);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -924,18 +931,20 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           Text(_t('unavailable'), style: Theme.of(context).textTheme.bodySmall),
         ],
         const SizedBox(height: UtenSpacing.s20),
-        for (final suggestion in <String>{
-          if (_pageAware) _t('pageQuestion'),
-          ...?_capabilities?.suggestions,
-        })
+        for (final suggestion in suggestions.entries)
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: UtenButton(
               type: UtenButtonType.secondary,
               onPressed: _capabilities?.usable == true
-                  ? () => _send(suggestion)
+                  ? () => _send(
+                      suggestion: suggestion.key,
+                      intentHint: suggestion.value && _pageAware
+                          ? 'PAGE_HELP'
+                          : null,
+                    )
                   : null,
-              child: Flexible(child: Text(suggestion)),
+              child: Flexible(child: Text(suggestion.key)),
             ),
           ),
       ],

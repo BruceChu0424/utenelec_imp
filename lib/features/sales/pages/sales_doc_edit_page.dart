@@ -567,6 +567,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     });
     try {
       await ref.read(salesMasterNameServiceProvider).ensureLoaded();
+      if (!mounted) return;
+      if (widget.id == null) _prefillQuoteCurrency();
       // 新建报价预填默认有效期(30 天)：必填但常用默认，黄框提醒核对、可改；
       // 草稿恢复/编辑既有单随后会覆盖为用户当时的值。
       if (widget.id == null && _cfg.validUntilRequired && _validUntil == null) {
@@ -1097,7 +1099,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     }
   }
 
-  /// 表头客户变更（手动选择或上游引入回填）：按客户「学习预填」上次订货条款（新建态，
+  /// 表头客户变更（手动选择或上游引入回填）：按客户主档默认条款预填（新建态，
   /// 只填空/未核对字段并黄标提醒）；出货类单据再按收货地址簿（V300 学习能力，最近使用
   /// 优先）带出收货地址/联系电话；地址簿为空再回退客户主档；都没有则留空不加载。
   /// 订货单不采集地址两字段（出货环节承载），仅做条款预填。
@@ -1121,6 +1123,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _autofillValues.remove('shipPhone');
       }
       _clientId = id;
+      if (widget.id == null) _prefillQuoteCurrency();
     });
     _clearError('client');
     if (id == null || id.isEmpty) return;
@@ -1175,6 +1178,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       });
     } catch (_) {
       // 查询失败静默：不阻塞开单，地址/电话可手填。
+    }
+  }
+
+  /// 报价使用本位币；自动显示实际计价币种，不带入客户的外币订货默认值。
+  /// 与客户条款一样只填空值或未人工核对的预填值，编辑历史单据不调用。
+  void _prefillQuoteCurrency() {
+    if (widget.docType != SalesDocType.quote ||
+        (_currencyId != null && !_autofilled.contains('currency'))) {
+      return;
+    }
+    final base = ref.read(salesMasterNameServiceProvider).baseCurrencyId;
+    if (base != null) {
+      _currencyId = base;
+      _autofilled.add('currency');
     }
   }
 
@@ -2970,32 +2987,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                     ref,
                                                   ),
                                             ),
-                                            // 报价专属：有效期紧跟客户置顶且必填——
-                                            // 报价页顶部由此与订货页(币种/结账方式/交货
-                                            // 日期一串必填)明显区分开(2026-09-29)。
-                                            // 新建时预填 30 天(黄框可改)。
-                                            if (_cfg.hasValidUntil)
-                                              UtenDateField(
-                                                label: '有效期',
-                                                required:
-                                                    _cfg.validUntilRequired,
-                                                value: _validUntil,
-                                                autofilled: _autofilled
-                                                    .contains('validUntil'),
-                                                errorMessage:
-                                                    _errors.contains(
-                                                      'validUntil',
-                                                    )
-                                                    ? '请选择有效期'
-                                                    : null,
-                                                onChanged: (d) {
-                                                  setState(
-                                                    () => _validUntil = d,
-                                                  );
-                                                  _clearError('validUntil');
-                                                  _markConfirmed('validUntil');
-                                                },
-                                              ),
                                             if (_isCustomerShipment) ...[
                                               UtenDropdownField(
                                                 key: const ValueKey(
@@ -3299,6 +3290,29 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   autofilled: _autofilled
                                                       .contains('contractNo'),
                                                 ),
+                                              ),
+                                            // 与订货共用字段顺序；报价有效期追加在共同信息之后。
+                                            if (_cfg.hasValidUntil)
+                                              UtenDateField(
+                                                label: '有效期',
+                                                required:
+                                                    _cfg.validUntilRequired,
+                                                value: _validUntil,
+                                                autofilled: _autofilled
+                                                    .contains('validUntil'),
+                                                errorMessage:
+                                                    _errors.contains(
+                                                      'validUntil',
+                                                    )
+                                                    ? '请选择有效期'
+                                                    : null,
+                                                onChanged: (d) {
+                                                  setState(
+                                                    () => _validUntil = d,
+                                                  );
+                                                  _clearError('validUntil');
+                                                  _markConfirmed('validUntil');
+                                                },
                                               ),
                                             if (_cfg.hasContractInfo) ...[
                                               TextField(

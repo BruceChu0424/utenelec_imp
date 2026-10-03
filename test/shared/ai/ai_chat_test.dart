@@ -9,6 +9,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations_en.dart';
+import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
 import 'package:uten_imp/shared/ai/ai_job_models.dart';
 import 'package:uten_imp/shared/ai/ai_job_repository.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
@@ -82,6 +86,107 @@ void main() {
     expect(find.byKey(const ValueKey('ai-chat-launcher')), findsNothing);
     expect(harness.repository.capabilityCalls, 0);
   });
+
+  test(
+    'page-help hint requires an allowlisted value and a safe current path',
+    () async {
+      final api = _RecordingApi();
+      final repository = DioAiChatRepository(api);
+      await repository.send(
+        message: 'Page help',
+        currentRoute: '/sales/quotes/new?private=value',
+        intentHint: 'PAGE_HELP',
+      );
+      expect(api.body, {
+        'message': 'Page help',
+        'intentHint': 'PAGE_HELP',
+        'pageContext': {'route': '/sales/quotes/new'},
+      });
+      for (final hint in ['TOOL', 'GRANT', 'PAGE_HELP;override']) {
+        await expectLater(
+          repository.send(
+            message: 'Question',
+            currentRoute: '/sales/quotes/new',
+            intentHint: hint,
+          ),
+          throwsFormatException,
+        );
+      }
+      await expectLater(
+        repository.send(message: 'Question', intentHint: 'PAGE_HELP'),
+        throwsFormatException,
+      );
+      await expectLater(
+        repository.send(
+          message: 'Question',
+          currentRoute: 'https://untrusted.example/admin',
+          intentHint: 'PAGE_HELP',
+        ),
+        throwsFormatException,
+      );
+    },
+  );
+
+  testWidgets(
+    'real MainShell push and pop send the active page, and only the local shortcut hints page help',
+    (tester) async {
+      final repository = _FakeChatRepository();
+      final router = await _pumpRealShell(tester, repository);
+      router.push('/sales/quotes/new?private=value');
+      await tester.pumpAndSettle();
+      // Characterize the go_router 14 shell behavior that caused this defect.
+      expect(
+        GoRouterState.of(
+          tester.element(find.byType(MainShellPage)),
+        ).matchedLocation,
+        '/sales/quotes',
+      );
+      expect(
+        tester.widget<AiChatOverlay>(find.byType(AiChatOverlay)).currentRoute,
+        '/sales/quotes/new',
+      );
+      await _open(tester);
+      await tester.tap(find.text(AppLocalizationsEn().aiChatPageQuestion));
+      await tester.pumpAndSettle();
+      expect(repository.messages.single['currentRoute'], '/sales/quotes/new');
+      expect(repository.messages.single['intentHint'], 'PAGE_HELP');
+      router.push('/sales/orders/new?private=other');
+      await tester.pumpAndSettle();
+      await _send(tester, 'Next page');
+      expect(repository.messages.last['currentRoute'], '/sales/orders/new');
+      expect(repository.messages.last['intentHint'], isNull);
+      router.pop();
+      await tester.pumpAndSettle();
+      await _send(tester, 'Back to quote');
+      expect(repository.messages.last['currentRoute'], '/sales/quotes/new');
+      router.pop();
+      await tester.pumpAndSettle();
+      await _send(tester, 'Back to list');
+      expect(repository.messages.last['currentRoute'], '/sales/quotes');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'typed text and suggestions with page awareness disabled do not send an intent hint',
+    (tester) async {
+      final question = AppLocalizationsEn().aiChatPageQuestion;
+      final repository = _FakeChatRepository()..suggestions = [question];
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(question));
+      await tester.pumpAndSettle();
+      expect(repository.messages.single['currentRoute'], isNull);
+      expect(repository.messages.single['intentHint'], isNull);
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      await _send(tester, question);
+      expect(repository.messages.last['currentRoute'], '/sales/orders/new');
+      expect(repository.messages.last['intentHint'], isNull);
+    },
+  );
 
   testWidgets(
     'launcher moves vertically and chat fits a narrow keyboard viewport',
@@ -476,6 +581,66 @@ Future<_Harness> _pump(
   return _Harness(container, identity, route, repo);
 }
 
+Future<GoRouter> _pumpRealShell(
+  WidgetTester tester,
+  _FakeChatRepository repository,
+) async {
+  tester.view.physicalSize = const Size(1200, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  final router = GoRouter(
+    initialLocation: '/sales/quotes',
+    routes: [
+      ShellRoute(
+        builder: (_, _, child) => MainShellPage(child: child),
+        routes: [
+          GoRoute(
+            path: '/sales/quotes',
+            builder: (_, _) => const Scaffold(body: Text('Quotes list')),
+          ),
+          GoRoute(
+            path: '/sales/:seg/new',
+            builder: (_, state) =>
+                Scaffold(body: Text('Editor ${state.pathParameters['seg']}')),
+          ),
+        ],
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        aiChatIdentityProvider.overrideWithValue(_identity()),
+        aiChatRepositoryProvider.overrideWithValue(repository),
+        aiJobRunnerProvider.overrideWithValue(
+          AiJobRunner(_FakeJobRepository()),
+        ),
+        badgeTotalTodoProvider.overrideWithValue(0),
+        unreadNoticeCountProvider.overrideWithValue(0),
+        publicSettingsRepositoryProvider.overrideWithValue(
+          const _ChatPublicSettings(),
+        ),
+      ],
+      child: MaterialApp.router(
+        routerConfig: router,
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return router;
+}
+
+class _ChatPublicSettings implements PublicSettingsRepository {
+  const _ChatPublicSettings();
+  @override
+  Future<PublicSettings> fetch() async => const PublicSettings();
+}
+
 class _Harness {
   const _Harness(this.container, this.identity, this.route, this.repository);
   final ProviderContainer container;
@@ -490,16 +655,18 @@ class _FakeChatRepository implements AiChatRepository {
   List<Map<String, dynamic>> actions = [];
   Completer<AiJobSnapshot>? pending;
   int capabilityCalls = 0;
+  List<String> suggestions = const [];
 
   @override
   Future<AiChatCapabilities> capabilities() async {
     capabilityCalls++;
-    return const AiChatCapabilities(
+    return AiChatCapabilities(
       canChat: true,
       available: true,
       canUploadSalesOrder: true,
       canManagePermissions: true,
       scopeSummary: 'Only data permitted for this account.',
+      suggestions: suggestions,
     );
   }
 
@@ -509,12 +676,14 @@ class _FakeChatRepository implements AiChatRepository {
     String? previousJobId,
     String? attachmentJobId,
     String? currentRoute,
+    String? intentHint,
   }) async {
     messages.add({
       'message': message,
       'previousJobId': previousJobId,
       'attachmentJobId': attachmentJobId,
       'currentRoute': currentRoute,
+      'intentHint': intentHint,
     });
     return pending?.future ??
         Future.value(

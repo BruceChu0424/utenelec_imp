@@ -211,7 +211,12 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
     return IdleTimeoutGuard(
-      child: AiChatOverlay(currentRoute: location, child: shell),
+      // ShellRoute matchedLocation can remain at the previous route after a
+      // push. Its URI follows the active leaf route; chat needs that page.
+      child: AiChatOverlay(
+        currentRoute: GoRouterState.of(context).uri.path,
+        child: shell,
+      ),
     );
   }
 

@@ -127,6 +127,7 @@ class _VisualChatRepository implements AiChatRepository {
     String? previousJobId,
     String? attachmentJobId,
     String? currentRoute,
+    String? intentHint,
   }) async => AiJobSnapshot(
     id: 'visual-chat-1',
     kind: 'ERP_CHAT',

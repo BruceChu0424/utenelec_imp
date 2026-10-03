@@ -465,14 +465,17 @@ public class SalesOrderService {
      * <p>V592 起客户表三列 (default_settlement_method_id / default_shipment_policy /
      * default_currency_id) 是唯一来源: 基础资料可维护, 每次保存订货单自动写回。
      * 「按最近一张订单推导」的回退路径 (SalesOrderRepository.findLastTermsByClientId)
-     * 已于 2026-09-16 退役: 客户不存在或三项全空返回 null, 不再实时扫订单表。
-     * 前端只回填空字段并黄标提醒核对。授权在 Controller (sales_order:view)。
+     * 已于 2026-09-16 退役: 三项全空返回 null, 不再实时扫订单表。
+     * 报价及其他销售表单共用功能权限，读取前须通过客户可读范围与启用状态校验。
+     * 前端只回填空字段并黄标提醒核对；报价仍保留本位币与报价有效期约定。
      */
     @Transactional(readOnly = true)
+    @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.READ)
     public MasterDefaultTermsForClient masterDefaultTermsForClient(UUID clientId) {
         if (clientId == null) {
             return null;
         }
+        referenceValidator.validateClientForNewBusiness(clientId);
         var client = em.find(com.uten.imp.features.master.client.Client.class, clientId);
         if (client == null || client.isDeleted()
                 || (client.getDefaultSettlementMethodId() == null

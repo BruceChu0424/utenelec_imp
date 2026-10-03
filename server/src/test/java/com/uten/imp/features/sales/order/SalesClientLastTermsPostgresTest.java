@@ -1,6 +1,8 @@
 package com.uten.imp.features.sales.order;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,8 +15,16 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.Set;
+
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.security.AuthUser;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Real PostgreSQL proof for the client master default sales terms
@@ -59,6 +69,17 @@ class SalesClientLastTermsPostgresTest {
 
     @Autowired
     private SalesOrderService service;
+
+    @Autowired private SalesOrderController controller;
+    @Autowired private com.uten.imp.features.master.currency.CurrencyController currencies;
+    @Autowired private com.uten.imp.features.master.referencemethod.ReferenceMethodController referenceMethods;
+
+    @BeforeEach void authenticateForExistingMasterTests() {
+        UUID employee = jdbc.queryForObject("SELECT employee_id FROM users WHERE login_account='client-terms-bootstrap-admin-test'", UUID.class);
+        login(employee, Set.of("sales_order:view", "client:view:all"));
+    }
+
+    @AfterEach void clearAuthentication() { SecurityContextHolder.clearContext(); }
 
     @Autowired
     private com.uten.imp.features.master.client.ClientDefaultTermsSyncService termsSync;
@@ -116,8 +137,8 @@ class SalesClientLastTermsPostgresTest {
 
         // ① 客户行三项全空: 不预填 (不再实时扫订单表)。
         assertThat(service.masterDefaultTermsForClient(clientA)).isNull();
-        // ② 客户不存在: 同样是 null, 不抛。
-        assertThat(service.masterDefaultTermsForClient(UUID.randomUUID())).isNull();
+        // ② 不存在或不可见客户使用同一 404，不通过已知 UUID 读取条款。
+        assertCode(() -> service.masterDefaultTermsForClient(UUID.randomUUID()), ErrorCode.NOT_FOUND);
 
         // ③ 保存订单写回之后才有预填, 而且只写本客户那一行。
         sync(clientA, settlementNew, "REQUIRE_COMPLETE", currencyNew);
@@ -198,6 +219,87 @@ class SalesClientLastTermsPostgresTest {
         return jdbc.queryForObject(
                 "SELECT default_settlement_method_id FROM clients WHERE id = ?",
                 UUID.class, clientId);
+    }
+
+    @Test
+    void quoteOnlySalespersonCanReadOwnedDefaultsButCannotProbeOtherInactiveOrDeletedCustomers() {
+        UUID owner = employee();
+        UUID other = employee();
+        UUID owned = client("QUOTE-OWNED");
+        UUID foreign = client("QUOTE-FOREIGN");
+        UUID unassigned = client("QUOTE-UNASSIGNED");
+        jdbc.update("UPDATE clients SET owner_employee_id=? WHERE id=?", owner, owned);
+        jdbc.update("UPDATE clients SET owner_employee_id=? WHERE id=?", other, foreign);
+        UUID settlement = settlement("QUOTE");
+        UUID currency = currency("QUOTE");
+        sync(owned, settlement, "ALLOW_PARTIAL", currency);
+        sync(foreign, settlement, "REQUIRE_COMPLETE", currency);
+
+        login(owner, Set.of("sales_quote:create"));
+        var terms = controller.masterDefaultTerms(owned);
+        assertThat(terms.settlementMethodId()).isEqualTo(settlement);
+        assertThat(terms.currencyId()).isEqualTo(currency);
+        assertThat(terms.shipmentPolicy()).isEqualTo("ALLOW_PARTIAL");
+        assertThat(currencies.dict()).extracting(com.uten.imp.features.master.currency.dto.CurrencyListItem::getId)
+                .contains(currency);
+        assertThat(referenceMethods.settlement())
+                .extracting(com.uten.imp.features.master.referencemethod.ReferenceMethodOption::id).contains(settlement);
+        assertCode(() -> controller.masterDefaultTerms(foreign), ErrorCode.NOT_FOUND);
+        assertCode(() -> controller.masterDefaultTerms(unassigned), ErrorCode.NOT_FOUND);
+        assertCode(() -> controller.masterDefaultTerms(UUID.randomUUID()), ErrorCode.NOT_FOUND);
+
+        jdbc.update("UPDATE clients SET status='禁用' WHERE id=?", owned);
+        assertCode(() -> controller.masterDefaultTerms(owned), ErrorCode.CONFLICT);
+        jdbc.update("UPDATE clients SET status='使用', is_deleted=true, deleted_at=now() WHERE id=?", owned);
+        assertCode(() -> controller.masterDefaultTerms(owned), ErrorCode.CONFLICT);
+    }
+
+    @Test
+    void explicitReadOnlyCustomerShareAllowsPrefillAndRevocationTakesEffectImmediately() {
+        UUID reader = employee();
+        UUID owner = employee();
+        UUID shared = client("QUOTE-SHARED");
+        jdbc.update("UPDATE clients SET owner_employee_id=? WHERE id=?", owner, shared);
+        UUID settlement = settlement("QUOTE-SHARED");
+        sync(shared, settlement, null, null);
+        UUID grantor = jdbc.queryForObject("SELECT id FROM users WHERE login_account='client-terms-bootstrap-admin-test'", UUID.class);
+        jdbc.update("""
+                INSERT INTO client_visibility_grants(client_id,grantee_employee_id,granted_by_user_id)
+                VALUES (?,?,?)
+                """, shared, reader, grantor);
+        login(reader, Set.of("sales_quote:edit"));
+        assertThat(controller.masterDefaultTerms(shared).settlementMethodId()).isEqualTo(settlement);
+        jdbc.update("""
+                UPDATE client_visibility_grants SET active=false, revoked_at=now(), revoked_by_user_id=?
+                WHERE client_id=? AND grantee_employee_id=?
+                """, grantor, shared, reader);
+        assertCode(() -> controller.masterDefaultTerms(shared), ErrorCode.NOT_FOUND);
+    }
+
+    private static void assertCode(Runnable action, ErrorCode code) {
+        assertThatThrownBy(action::run).isInstanceOf(ApiException.class)
+                .extracting(error -> ((ApiException) error).getCode()).isEqualTo(code);
+    }
+
+    private void login(UUID employee, Set<String> permissions) {
+        UUID account = jdbc.queryForObject("SELECT id FROM users WHERE employee_id=? AND status='active' LIMIT 1", UUID.class, employee);
+        AuthUser user = new AuthUser(account, employee, "terms-reader", permissions, false, true, false);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
+    }
+
+    private UUID employee() {
+        UUID employee = UUID.randomUUID();
+        UUID department = jdbc.queryForObject("SELECT id FROM departments WHERE NOT is_deleted ORDER BY code LIMIT 1", UUID.class);
+        jdbc.update("""
+                INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                VALUES (?,?,'客户条款权限测试员工','其他',?,CURRENT_DATE,'active','regular')
+                """, employee, "TERM-" + employee, department);
+        jdbc.update("""
+                INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password,is_super_admin)
+                VALUES (?, ?, ?, 'test-only', 'active', false, false)
+                """, UUID.randomUUID(), employee, "terms-" + employee);
+        return employee;
     }
 
     private Integer shadowPriceStyle(UUID clientId) {

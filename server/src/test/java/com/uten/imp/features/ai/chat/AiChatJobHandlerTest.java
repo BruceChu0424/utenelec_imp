@@ -5,6 +5,7 @@ import com.uten.imp.application.port.AiChatToolPort;
 import com.uten.imp.application.port.AiCompletionPort;
 import com.uten.imp.application.port.AiJobHandler;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.ai.job.AiJobView;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
@@ -133,5 +134,50 @@ class AiChatJobHandlerTest {
         Map<String,Object> result=handler.process(ctx);
         assertThat(result).containsEntry("intent","SALES_DRAFT");
         verify(evidence).requireOrderAttachment(file);
+    }
+
+    @Test void enabledBrokenProviderCannotBlockExplicitOrTypedPageExamples() throws Exception {
+        var guide = new AiChatPageGuideCatalog.PageGuide("sales_quote", "销售报价单", "SALES", "ADR-139",
+                List.of(new AiChatPageGuideCatalog.FieldGuide("validUntil", "有效期", "核对日期", "例如双方约定日期")));
+        when(pages.resolve("/sales/quotes/new", null)).thenReturn(Optional.of(guide));
+        when(pages.answer(guide, null)).thenReturn("销售报价单：填写有效期。举例：核对双方约定日期。");
+        when(ctx.completeJson(any())).thenThrow(new AiCompletionPort.AiCallException(
+                AiCompletionPort.AiErrorCategory.INVALID_RESPONSE, "private provider output"));
+        for (boolean explicit : List.of(false, true)) {
+            var body = new java.util.LinkedHashMap<String,Object>();
+            body.put("message", "这个页面怎么填写？请举个例子。");
+            body.put("pageContext", Map.of("route", "/sales/quotes/new"));
+            if (explicit) body.put("intentHint", "PAGE_HELP");
+            request(body);
+            assertThat(handler.process(ctx)).containsEntry("intent", "PAGE_HELP")
+                    .containsEntry("reply", "销售报价单：填写有效期。举例：核对双方约定日期。");
+        }
+        verify(ctx, never()).completeJson(any());
+        verify(tools, never()).available();
+        verify(pages, atLeast(4)).resolve("/sales/quotes/new", null);
+    }
+
+    @Test void explicitPageHintStillFailsBeforeReadingInaccessiblePage() throws Exception {
+        request(Map.of("message", "help", "intentHint", "PAGE_HELP", "pageContext", Map.of("route", "/sales/quotes/new")));
+        when(pages.resolve("/sales/quotes/new", null)).thenThrow(new ApiException(ErrorCode.FORBIDDEN));
+        assertThatThrownBy(() -> handler.process(ctx)).isInstanceOf(ApiException.class);
+        verify(ctx, never()).completeJson(any());
+        verify(pages, never()).answer(any(), any());
+    }
+
+    @Test void missingPageForModelSelectedPageHelpNeverCausesNullPointer() throws Exception {
+        request("能不能介绍这里的填写要求");
+        model("{\"intent\":\"PAGE_HELP\",\"fieldKey\":\"validUntil\"}");
+        assertThat(handler.process(ctx)).containsEntry("intent", "UNSUPPORTED");
+        verify(pages, never()).resolve(any(), any());
+    }
+
+    @Test void explicitHintCannotReadAFieldTheCurrentGuideDoesNotExpose() throws Exception {
+        request(Map.of("message", "help", "intentHint", "PAGE_HELP",
+                "pageContext", Map.of("route", "/sales/quotes/new", "fieldKey", "privateCost")));
+        when(pages.resolve("/sales/quotes/new", "privateCost")).thenThrow(new ApiException(ErrorCode.FORBIDDEN));
+        assertThatThrownBy(() -> handler.process(ctx)).isInstanceOf(ApiException.class);
+        verify(ctx, never()).completeJson(any());
+        verify(pages, never()).answer(any(), any());
     }
 }

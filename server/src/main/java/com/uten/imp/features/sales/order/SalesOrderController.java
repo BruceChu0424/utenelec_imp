@@ -134,7 +134,7 @@ public class SalesOrderController {
      * 一张订单推导; 与采购/委外 /last-terms 同一模式、按客户维度。主档三项全空返回空 body。
      */
     @GetMapping("/last-terms")
-    @PreAuthorize("hasAuthority('sales_order:view')")
+    @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.READ)
     public SalesOrderService.MasterDefaultTermsForClient masterDefaultTerms(
             @RequestParam UUID clientId) {
         return service.masterDefaultTermsForClient(clientId);

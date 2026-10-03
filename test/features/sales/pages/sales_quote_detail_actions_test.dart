@@ -10,7 +10,6 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../../shared/drafts/memory_form_draft_storage.dart';
-import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
@@ -22,9 +21,6 @@ import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_detail_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
-import 'package:uten_imp/shared/providers/session_provider.dart';
-import 'package:uten_imp/shared/models/user.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 

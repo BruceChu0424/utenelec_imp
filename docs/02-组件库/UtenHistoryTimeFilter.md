@@ -12,9 +12,9 @@
 - **两个胶囊**：「时间段」（点开系统日期范围选择器，选中后显示起止日期，
   可反复点按调整范围）与「全部」（不限时间全量加载）；样式与
   UtenFilterToolbar 的分段胶囊同构（StadiumBorder、选中 secondaryContainer）；
-- **默认不选**（`value = none`）：内容区应同时显示 `UtenHistoryTimePlaceholder`
-  引导占位，且**页面不得发起数据请求**——历史数据量大，只有用户显式选择了
-  时间段或「全部」后才加载；
+- **默认「全部」**（2026-10-04 用户口径，原为默认不选）：历史段被选中后内容区
+  直接按全量加载，用户不再多点一步；`UtenHistoryTimePlaceholder` 与
+  「none 不发请求」护栏保留为值形态（`isNone`），但不再是任何页面的默认；
 - **单选互斥**：选「时间段」即取消「全部」，选「全部」即清空时间段；
 - 值对象 `UtenHistoryTimeValue`（none / all / range(DateTimeRange)），不可回退到
   none——避免误触把已加载的历史列表清回占位态；
@@ -24,7 +24,7 @@
 ## 二、用法
 
 ```dart
-// 页面状态：UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+// 页面状态：UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 UtenHistoryTimeFilter(
   value: _historyTime,
   onChanged: (value) {

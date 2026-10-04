@@ -133,7 +133,13 @@ void main() {
     tester,
   ) async {
     final api = await pump(tester);
-    expect(api.listQueries, isEmpty, reason: 'no segment selected yet');
+    // 2026-10-04 起进页面自动选中第一条红徽章段（待客户同意，红6）：
+    // bucket 查询随挂载即发，不再停在「未选段」占位。
+    expect(
+      api.listQueries.last?['bucket'],
+      SalesQuoteStage.awaitingCustomer,
+      reason: 'first red bucket auto-selected',
+    );
     expect(seg(tester, '草稿').count, 3);
     expect(seg(tester, '草稿').countForm, UtenSegmentCountForm.actionable);
     expect(seg(tester, '财务退回').count, 1);
@@ -156,7 +162,13 @@ void main() {
     tester,
   ) async {
     final api = await pump(tester);
-    await tester.tap(find.text('财务退回'));
+    // 自动选中已渲染待客户同意表格，行内状态文字与分段同名——tap 圈定到
+    // 分段行（分桶行是私有泛型，按 segmentsKey 定位）。
+    Finder segmentText(String label) => find.descendant(
+      of: find.byKey(const Key('sales-doc-status-quotes')),
+      matching: find.text(label),
+    );
+    await tester.tap(segmentText('财务退回'));
     await tester.pumpAndSettle();
     expect(api.listQueries.last?['bucket'], SalesQuoteStage.financeRejected);
     expect(api.listQueries.last?.containsKey('stage'), isFalse);
@@ -165,7 +177,7 @@ void main() {
     expect(find.text('财务退回'), findsWidgets);
     expect(find.text('已转订货单 · 只读'), findsWidgets);
 
-    await tester.tap(find.text('待财务核价'));
+    await tester.tap(segmentText('待财务核价'));
     await tester.pumpAndSettle();
     expect(api.listQueries.last?['bucket'], SalesQuoteStage.pendingFinance);
   });

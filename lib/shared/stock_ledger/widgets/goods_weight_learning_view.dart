@@ -8,6 +8,7 @@
 // - 学到的单重只在仓库口径使用, 从不回写货品资料的「单重」。
 // - 按重量计的货品 (基本单位就是重量单位) 不需要学习, 只显示说明。
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -1161,7 +1162,7 @@ class _SettingsFormState extends ConsumerState<_SettingsForm> {
             const SizedBox(height: UtenSpacing.s8),
             Text('批次切换', style: theme.textTheme.labelLarge),
             const SizedBox(height: UtenSpacing.s4),
-            SegmentedButton<String>(
+            UtenSegmentRow<String>(
               key: const ValueKey('weight-settings-regime'),
               segments: const [
                 ButtonSegment(value: 'AUTO', label: Text('自动')),

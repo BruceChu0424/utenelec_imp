@@ -348,15 +348,14 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('未完成草稿'), findsNothing);
-        expect(find.text('未提交草稿'), findsNothing);
+        // 2026-10-04 起红数「草稿」段进页面自动选中：草稿分类内容随挂载即渲染
+        // （原「未提交草稿」分类在未选段时不可见的断言随口径退役）。
         final badge = tester.widget<UtenSegmentBadgeLabel>(
           find.byWidgetPredicate(
             (widget) => widget is UtenSegmentBadgeLabel && widget.label == '草稿',
           ),
         );
         expect(badge.count, 3);
-        await tester.tap(find.text('草稿'));
-        await tester.pumpAndSettle();
         final table = tester
             .widget<MasterDataTableView<FormDraftCategoryRow<Object>>>(
               find.byWidgetPredicate(

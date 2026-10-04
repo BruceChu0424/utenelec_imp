@@ -93,7 +93,7 @@ class _SubcontractShortDeliveryPageState
   /// 任务型页面默认落在「待判定」段（通知点进来就是要办这件事）；历史段仍时间门控。
   SubcontractShortDeliverySegment _seg =
       SubcontractShortDeliverySegment.pending;
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 表头排序 + 订货单号列值筛选 + facets 桶 + 防串台代数
   /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
@@ -223,7 +223,7 @@ class _SubcontractShortDeliveryPageState
       _seg = seg;
       _page = 1;
       if (seg != SubcontractShortDeliverySegment.history) {
-        _historyTime = const UtenHistoryTimeValue.none();
+        _historyTime = const UtenHistoryTimeValue.all();
       }
     });
     _load(page: 1);

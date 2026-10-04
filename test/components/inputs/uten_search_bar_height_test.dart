@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
@@ -48,7 +49,7 @@ void main() {
 
       await pumpToolbar(null);
       final baselineSegmentHeight = tester
-          .getSize(find.byType(SegmentedButton<String>))
+          .getSize(find.byType(UtenSegmentRow<String>))
           .height;
       final baselineSearchHeight = tester
           .getSize(find.byType(InputDecorator))
@@ -75,7 +76,7 @@ void main() {
               );
         await pumpToolbar(action);
 
-        final segments = tester.getRect(find.byType(SegmentedButton<String>));
+        final segments = tester.getRect(find.byType(UtenSegmentRow<String>));
         final search = tester.getRect(find.byType(InputDecorator));
         final actions = tester.getRect(
           find.byKey(const Key('toolbar-actions')),
@@ -124,7 +125,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final segmentHeight = tester
-          .getSize(find.byType(SegmentedButton<String>))
+          .getSize(find.byType(UtenSegmentRow<String>))
           .height;
       final searchHeight = tester.getSize(find.byType(TextField)).height;
       expect(

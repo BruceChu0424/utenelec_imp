@@ -4,11 +4,17 @@
 // 一律用本组件呈现，不再手写各种筛选按钮、Chip 行或自成一套的分段样式——
 //
 // - 分段导航：胶囊 StadiumBorder、与搜索框结构化同高（IntrinsicHeight+stretch）、
-//   选中只变背景色不出 ✓ 图标；
+//   选中只变背景色不出 ✓ 图标；2026-10-04 起分段行用 UtenSegmentRow 渲染
+//   （每格宽度跟随自身内容，字少的格不再被撑到最宽格的宽度）；
 // - 层级规则：大类分类（来源/方向/单据类型）在上、小类分类（状态）在下；
 //   小类行默认 [enabled]=false 置灰，选中大类后才由页面解锁；
-// - 默认不选：进页面 [selected] 传空集（不预选「全部」段），数据等价于不过滤；
-//   「全部」段保留为显式选项——SegmentedButton 点击已选段不会回调，选中后
+// - 进页面默认选中（2026-10-04 用户口径，[autoSelectBadge]）：
+//   计数到位后若有「红色待办徽章 > 0」的分类段就直接选中它（第一条红段）；
+//   没有红再看「黄色在办徽章 > 0」的段（红的计数还有 null 未到齐时先等，
+//   不提前跳黄）；红黄都没有才保持默认不选。用户一旦选中过任何分段（手动
+//   或自动），本条不再自动改选。小类行同样适用：大类解锁 + 计数到位后
+//   自动选中带红徽章的小类；
+// - 「全部」段保留为显式选项——单选点击已选段不会回调，选中后
 //   只能靠「全部」段回到全量视图；
 // - 视图切换例外：切换内容区的工具条（如应付工作区/报表变体）必须始终有
 //   选中项，不适用「默认不选」；
@@ -43,6 +49,7 @@ import '../feedback/uten_in_progress_badge.dart';
 import '../feedback/uten_notification_badge.dart';
 import '../feedback/uten_segment_badge_label.dart';
 import '../inputs/uten_search_bar.dart';
+import 'uten_segment_row.dart';
 
 /// 一个分类分段：值 + 文字 + 可选计数（中性括号数字 / 红色待办徽章）。
 class UtenFilterSegment<T> {
@@ -71,13 +78,14 @@ class UtenFilterSegment<T> {
   final UtenSegmentCountForm countForm;
 }
 
-class UtenFilterToolbar<T> extends StatelessWidget {
+class UtenFilterToolbar<T> extends StatefulWidget {
   const UtenFilterToolbar({
     super.key,
     this.segments = const [],
     this.selected = const {},
     this.onSelectionChanged,
     this.enabled = true,
+    this.autoSelectBadge = true,
     this.segmentsKey,
     this.searchKey,
     this.searchHint,
@@ -91,21 +99,28 @@ class UtenFilterToolbar<T> extends StatelessWidget {
     this.searchWidth = 360,
   });
 
-  /// 分类分段（进页面默认不选；「全部」段是显式选项）。**传空列表 = 纯「搜索 +
-  /// 行尾」工具条**（筛选已下沉到列头/下拉的页面，如即时库存分类下拉化后），
-  /// 此时不渲染分段条，也无需传 [selected]/[onSelectionChanged]。
+  /// 分类分段（进页面默认不选；带红/黄徽章的段由 [autoSelectBadge] 自动选）。
+  /// **传空列表 = 纯「搜索 + 行尾」工具条**（筛选已下沉到列头/下拉的页面，
+  /// 如即时库存分类下拉化后），此时不渲染分段条，也无需传
+  /// [selected]/[onSelectionChanged]。
   final List<UtenFilterSegment<T>> segments;
 
-  /// 当前选中分段集合（单选）。空集 = 进页面未选任何分段（数据不过滤）；
+  /// 当前选中分段集合（单选）。空集 = 尚未选中任何分段（数据不过滤）；
   /// 「全部」类分段只是显式选项，不再是默认选中态。
   final Set<T> selected;
 
-  /// 点击某个分段时回调其值。SegmentedButton 单选点击已选段不会触发回调，
+  /// 点击某个分段时回调其值。分段行单选点击已选段不会触发回调，
   /// 因此不会出现空集回调。[segments] 非空时必须提供。
   final ValueChanged<T>? onSelectionChanged;
 
   /// false = 整条置灰不可点（小类行在大类未选时的锁定态）。
   final bool enabled;
+
+  /// 进页面默认选中（2026-10-04 用户口径）：计数到位后有红徽章(>0)的分类段
+  /// 直接自动选中；没有红再看黄徽章(>0)；红黄都没有保持不选。选中一旦发生
+  /// （自动或手动）永不再次自动改选。视图切换类工具条恒有选中项，本开关自然
+  /// 空转；个别不想要默认选中的页面显式传 false 关闭。
+  final bool autoSelectBadge;
 
   /// 分段按钮 key（页面既有测试/语义锚点透传，如 iqc-type-segments）。
   final Key? segmentsKey;
@@ -138,22 +153,97 @@ class UtenFilterToolbar<T> extends StatelessWidget {
   final double searchWidth;
 
   @override
+  State<UtenFilterToolbar<T>> createState() => _UtenFilterToolbarState<T>();
+}
+
+class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
+  /// 选中一旦发生（自动或手动）置位，之后不再自动改选。
+  bool _everSelected = false;
+  bool _autoSelectScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleAutoSelect();
+  }
+
+  @override
+  void didUpdateWidget(UtenFilterToolbar<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 计数异步到位/小类行解锁都会走这里，每帧重建后重估一次。
+    _scheduleAutoSelect();
+  }
+
+  void _scheduleAutoSelect() {
+    if (!widget.autoSelectBadge || _everSelected || _autoSelectScheduled) {
+      return;
+    }
+    _autoSelectScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _autoSelectScheduled = false;
+      _tryAutoSelect();
+    });
+  }
+
+  void _tryAutoSelect() {
+    if (!widget.autoSelectBadge || _everSelected) return;
+    if (!widget.enabled || widget.segments.isEmpty) return;
+    final onChanged = widget.onSelectionChanged;
+    if (onChanged == null) return;
+    if (widget.selected.isNotEmpty) {
+      _everSelected = true;
+      return;
+    }
+    final best = _bestBadgeSegment(widget.segments);
+    if (best == null) return;
+    _everSelected = true;
+    onChanged(best.value);
+  }
+
+  /// 红 → 黄 的默认选中判序（2026-10-04 用户口径）：
+  /// ① 第一条红徽章(待办)计数 > 0 的段；
+  /// ② 第一条黄徽章(在办)计数 > 0 的段（含大类段挂的第二枚黄数）；
+  /// ③ 都没有 → null（保持默认不选）。
+  /// 计数 null = 加载中/服务端未回（GROUP BY 不产零键）→ 按 0 对待；计数
+  /// 通常随同一次数据到位批量出现，快照内直接判序即可。
+  UtenFilterSegment<T>? _bestBadgeSegment(List<UtenFilterSegment<T>> segments) {
+    for (final segment in segments) {
+      if (segment.countForm == UtenSegmentCountForm.actionable &&
+          (segment.count ?? 0) > 0) {
+        return segment;
+      }
+    }
+    for (final segment in segments) {
+      final yellow = segment.countForm == UtenSegmentCountForm.inProgress
+          ? (segment.count ?? 0)
+          : 0;
+      if (yellow > 0 || (segment.inProgressCount ?? 0) > 0) {
+        return segment;
+      }
+    }
+    return null;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final enabled = widget.enabled;
+    final selected = widget.selected;
     // segments 为空 = 纯「搜索 + 行尾」工具条（筛选已下沉到列头/下拉的页面，
     // 如即时库存分类下拉化后）——不渲染空分段条。
-    final button = segments.isEmpty
+    final button = widget.segments.isEmpty
         ? null
-        : SegmentedButton<T>(
-            key: segmentsKey,
+        : UtenSegmentRow<T>(
+            key: widget.segmentsKey,
             // 统一范式：选中只变背景色，不出现 ✓ 图标。高度不在此设置——
             // 分段与搜索框的「严格同高」由下方 IntrinsicHeight+stretch 结构保证
-            //（visualDensity 对两侧的折减不一致，minimumSize 各自算高度算不平，
-            //  且本 SDK 版本的分段样式会丢弃 minimumSize）。
+            //（visualDensity 对两侧的折减不一致，minimumSize 各自算高度算不平）。
             showSelectedIcon: false,
-            // 进页面不预选（selected 空集）是官方支持形态，放开空选中断言。
+            // 进页面不预选（selected 空集）是支持形态，自动选中走
+            // _tryAutoSelect 的 post-frame 回调。
             emptySelectionAllowed: true,
             segments: [
-              for (final segment in segments)
+              for (final segment in widget.segments)
                 ButtonSegment(
                   value: segment.value,
                   enabled: enabled,
@@ -167,28 +257,29 @@ class UtenFilterToolbar<T> extends StatelessWidget {
             ],
             selected: selected,
             onSelectionChanged: (selection) {
-              // 单选：SegmentedButton 点击已选段不会回调，这里恒非空。
+              // 单选：点击已选段不会回调，这里恒非空。
               // 整条置灰时各分段 disabled，不会进入此回调。
               if (selection.isNotEmpty) {
-                onSelectionChanged?.call(selection.first);
+                widget.onSelectionChanged?.call(selection.first);
               }
             },
           );
-    final showSearch = searchHint != null || searchController != null;
+    final showSearch =
+        widget.searchHint != null || widget.searchController != null;
     final search = showSearch
         ? UtenSearchBar(
-            key: searchKey,
-            hint: searchHint ?? '搜索',
-            initialValue: initialSearchValue,
-            controller: searchController,
-            onInputChanged: onSearchInputChanged,
-            onChanged: onSearchChanged,
-            onSubmitted: onSearchSubmitted,
+            key: widget.searchKey,
+            hint: widget.searchHint ?? '搜索',
+            initialValue: widget.initialSearchValue,
+            controller: widget.searchController,
+            onInputChanged: widget.onSearchInputChanged,
+            onChanged: widget.onSearchChanged,
+            onSubmitted: widget.onSearchSubmitted,
           )
         : null;
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < compactBreakpoint) {
+        if (constraints.maxWidth < widget.compactBreakpoint) {
           // 2026-09-14 小屏口径：分段条放不下时不再左右拖动（小屏拖分类太
           // 不合适），收成一颗「分类」下拉按钮——带待办红徽章总量，点开下拉
           // 选分类；放得下仍显示分段（小屏两三段的页面不受影响）。
@@ -199,10 +290,10 @@ class UtenFilterToolbar<T> extends StatelessWidget {
             children: [
               if (collapse)
                 _CompactCategoryField<T>(
-                  segments: segments,
+                  segments: widget.segments,
                   selected: selected,
                   enabled: enabled,
-                  onSelected: onSelectionChanged,
+                  onSelected: widget.onSelectionChanged,
                 ),
               if (!collapse && button != null)
                 _SegmentsScrollArea(child: button),
@@ -210,9 +301,9 @@ class UtenFilterToolbar<T> extends StatelessWidget {
                 if (button != null) const SizedBox(height: UtenSpacing.s8),
                 search,
               ],
-              if (trailing != null) ...[
+              if (widget.trailing != null) ...[
                 const SizedBox(height: UtenSpacing.s8),
-                trailing!,
+                widget.trailing!,
               ],
             ],
           );
@@ -223,9 +314,9 @@ class UtenFilterToolbar<T> extends StatelessWidget {
         // 宽度仍沿用原 Row 的分配：先扣搜索与间距，剩余宽度在分类/行尾等分；
         // 没有分类时行尾独占剩余宽度，保留 Wrap 的有界换行与横向滚动行为。
         final fixedWidth =
-            (search != null ? searchWidth : 0.0) +
+            (search != null ? widget.searchWidth : 0.0) +
             (button != null && search != null ? UtenSpacing.s12 : 0.0);
-        final trailingWidth = trailing == null
+        final trailingWidth = widget.trailing == null
             ? 0.0
             : ((constraints.maxWidth - fixedWidth) / (button == null ? 1 : 2))
                   .clamp(0.0, constraints.maxWidth);
@@ -246,19 +337,19 @@ class UtenFilterToolbar<T> extends StatelessWidget {
                       if (search != null) ...[
                         if (button != null)
                           const SizedBox(width: UtenSpacing.s12),
-                        SizedBox(width: searchWidth, child: search),
+                        SizedBox(width: widget.searchWidth, child: search),
                       ],
                     ],
                   ),
                 ),
               ),
-            if (trailing != null)
+            if (widget.trailing != null)
               SizedBox(
                 width: trailingWidth,
                 child: Align(
                   alignment: AlignmentDirectional.centerEnd,
                   heightFactor: 1,
-                  child: trailing,
+                  child: widget.trailing,
                 ),
               ),
           ],
@@ -276,13 +367,13 @@ class UtenFilterToolbar<T> extends StatelessWidget {
     final style = theme.textTheme.titleSmall ?? const TextStyle();
     final scaler = MediaQuery.textScalerOf(context);
     var total = 12.0; // 容器 padding 4×2 + 分段间隔线 + 余量
-    for (final segment in segments) {
+    for (final segment in widget.segments) {
       final label = TextPainter(
         text: TextSpan(text: segment.label, style: style),
         textScaler: scaler,
         textDirection: TextDirection.ltr,
       )..layout();
-      var width = label.width + 36; // 未选 14×2 / 选中 20×2，取偏高
+      var width = label.width + 36; // 内边距 16×2 + 分隔线，取偏高
       final count = segment.count;
       if (count != null) {
         if (segment.countForm == UtenSegmentCountForm.browsing) {

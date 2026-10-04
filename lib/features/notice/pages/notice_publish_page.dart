@@ -9,6 +9,7 @@
 // UtenDateField（与其它编辑页 outlined 日期同款）。
 // 文档：docs/03-页面/通知发布页.md
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -507,7 +508,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SegmentedButton<NoticeKind>(
+              UtenSegmentRow<NoticeKind>(
                 segments: const [
                   ButtonSegment(
                     value: NoticeKind.normal,
@@ -755,7 +756,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SegmentedButton<NoticeAudienceScope>(
+              UtenSegmentRow<NoticeAudienceScope>(
                 segments: [
                   ButtonSegment(
                     value: NoticeAudienceScope.all,

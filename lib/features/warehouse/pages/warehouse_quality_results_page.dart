@@ -102,7 +102,7 @@ class _WarehouseQualityResultsPageState
   _QStatusSeg? _statusSeg;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
   String _keyword = '';
 
   /// 状态分段计数（后端全量口径）；null = 尚未返回，分段显示 '—'。
@@ -212,7 +212,7 @@ class _WarehouseQualityResultsPageState
     if (seg == _statusSeg) return;
     setState(() {
       _statusSeg = seg;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
   }
@@ -222,7 +222,7 @@ class _WarehouseQualityResultsPageState
     setState(() {
       _receiptType = type;
       _statusSeg = null;
-      _historyTime = const UtenHistoryTimeValue.none();
+      _historyTime = const UtenHistoryTimeValue.all();
       // 切换来源后旧计数口径失效，清空待新值（避免显示上一来源的数字）。
       _statusCounts = null;
     });

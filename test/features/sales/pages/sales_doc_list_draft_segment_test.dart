@@ -69,11 +69,8 @@ void main() {
   testWidgets('草稿段只按 status=0 查，不叠加任何链路过滤', (tester) async {
     final api = await _pumpOrderList(tester);
 
-    api.listQueries.clear();
-    await tester.tap(find.text('草稿'));
-    await tester.pumpAndSettle();
-
-    expect(api.listQueries, isNotEmpty, reason: '选中草稿段应立即发请求');
+    // 2026-10-04 起红数「草稿」段进页面自动选中：status=0 查询随挂载即发。
+    expect(api.listQueries, isNotEmpty, reason: '草稿段自动选中应立即发请求');
     final query = api.listQueries.last;
     expect(query['status'], 0);
     // 草稿 chain_status 恒为 0；再叠链路过滤就一张也查不出来。
@@ -146,15 +143,13 @@ void main() {
     expect(find.textContaining('选择分类'), findsNothing);
   });
 
-  testWidgets('无 ?status 时仍是引导占位，不误发请求', (tester) async {
+  testWidgets('无 ?status 时红数「草稿」段自动选中并直接加载', (tester) async {
     final api = await _pumpOrderList(tester);
 
-    expect(
-      api.listQueries.where((q) => q.containsKey('status')),
-      isEmpty,
-      reason: '大类未选时不应发列表请求',
-    );
-    expect(find.textContaining('选择分类'), findsOneWidget);
+    // 2026-10-04 起进页面自动选中第一条红徽章大类（草稿，红2）：
+    // 直接按 status=0 加载列表，不再停在「选择分类」引导占位。
+    expect(api.listQueries.last['status'], 0);
+    expect(find.textContaining('选择分类'), findsNothing);
   });
 }
 

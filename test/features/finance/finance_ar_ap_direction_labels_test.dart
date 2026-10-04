@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -23,11 +24,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // 统一筛选工具条：方向分段（SegmentedButton<String?>）里的「应付」；
+    // 统一筛选工具条：方向分段（UtenSegmentRow<String?>）里的「应付」；
     // 表格「方向」列也渲染「应付」，须限定在分段按钮内查找。
     await tester.tap(
       find.descendant(
-        of: find.byType(SegmentedButton<String?>),
+        of: find.byType(UtenSegmentRow<String?>),
         matching: find.text('应付'),
       ),
     );

@@ -319,7 +319,7 @@ class _SubcontractBusinessListPageState
   _BizSeg? _seg;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染）。
   int? _actionableCount;
@@ -561,7 +561,7 @@ class _SubcontractBusinessListPageState
     clearDraftSelection();
     setState(() {
       _seg = seg;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _reload(1);
   }

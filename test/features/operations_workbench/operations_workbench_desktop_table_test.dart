@@ -53,8 +53,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('待填写物料'));
-      await tester.pumpAndSettle();
+      // 2026-10-04 起红1的「待填写物料」阶段自动选中（原手动 tap 因表格行
+      // 状态列同名文本产生二义查找，且已是选中态无需再点）。
       final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
         find.descendant(
           of: find.byKey(const Key('operations-workbench-desktop-table')),
@@ -125,9 +125,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 新范式：默认不选阶段，内容区只有引导占位不发列表请求；
-    // 点「申请待分解」段后表格才加载。
-    expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
+    // 2026-10-04 起进页面自动选中红2的「申请待分解」段：表格直接加载，不再有
+    // 引导占位；再点已选段不重复发请求。
+    expect(find.text('在上方选择阶段后开始办理'), findsNothing);
     await tester.tap(find.text('申请待分解'));
     await tester.pumpAndSettle();
 

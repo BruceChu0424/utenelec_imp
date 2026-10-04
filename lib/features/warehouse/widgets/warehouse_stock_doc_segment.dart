@@ -149,7 +149,7 @@ class _WarehouseStockDocSegmentState
   int? _issueStatus;
 
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
   /// MasterServerColumnFilters）。
@@ -192,7 +192,7 @@ class _WarehouseStockDocSegmentState
         _list.page = null;
         _seg = null;
         _issueStatus = null;
-        _historyTime = const UtenHistoryTimeValue.none();
+        _historyTime = const UtenHistoryTimeValue.all();
         // 2026-09-25 单号列统一：换单据类型时单号筛选/桶随旧命名空间一并重置。
         _columnFilters.reset();
       }
@@ -372,7 +372,7 @@ class _WarehouseStockDocSegmentState
     setState(() {
       _seg = seg;
       _issueStatus = null;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _reload(1);
   }

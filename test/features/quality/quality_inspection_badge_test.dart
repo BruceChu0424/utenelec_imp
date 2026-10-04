@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -270,7 +271,7 @@ void main() {
 
     // 分段文本与表头筛选桶同名（如「委外回厂」），点击须限定在分段导航内。
     Finder segmentText(String text) => find.descendant(
-      of: find.byType(SegmentedButton<String>),
+      of: find.byType(UtenSegmentRow<String>),
       matching: find.text(text),
     );
 
@@ -678,6 +679,16 @@ Future<void> _pumpTaskCenter(
     ),
   );
   await tester.pumpAndSettle();
+  // 2026-10-04 起工具条进页面自动选中第一个红徽章段（采购收货）；本组测试
+  // 默认断言混合队列，统一切回「全部待检单」段。
+  final allSegment = find.descendant(
+    of: find.byType(UtenSegmentRow<String>),
+    matching: find.text('全部待检单'),
+  );
+  if (tester.any(allSegment)) {
+    await tester.tap(allSegment);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> _pumpInspectionDetailPage(

@@ -64,7 +64,7 @@ class _ProcurementReturnTasksPageState
   _ReturnSeg? _seg;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 页级搜索关键字（分段行搜索框，300ms 防抖后进请求）。
   String _keyword = '';
@@ -387,7 +387,7 @@ class _ProcurementReturnTasksPageState
                   _seg = value;
                   _selected.clear();
                   if (value != _ReturnSeg.history) {
-                    _historyTime = const UtenHistoryTimeValue.none();
+                    _historyTime = const UtenHistoryTimeValue.all();
                   }
                 });
                 if (value != _ReturnSeg.history || !_historyTime.isNone) {

@@ -85,10 +85,19 @@ void main() {
       expect(find.text('已结案'), findsOneWidget);
       expect(find.text('红冲'), findsOneWidget);
       expect(find.text('执行中'), findsNothing);
-      expect(api.queries, isEmpty);
+      // 2026-10-04 起历史门默认「全部」：选中历史记录即发一次全量查询（无状态）。
+      expect(api.queries, [
+        {'page': 1, 'size': 20},
+      ]);
 
       await _tap(tester, '已结案');
-      expect(api.queries, isEmpty);
+      // 2026-10-04 起历史段默认「全部时间段」：进入即全量加载（不带日期）。
+      expect(api.lastQuery, {
+        'page': 1,
+        'size': 20,
+        'status': 1,
+        'closed': true,
+      });
       final range = DateTimeRange(
         start: DateTime.utc(2026, 8),
         end: DateTime.utc(2026, 8, 31),
@@ -156,12 +165,14 @@ void main() {
 
         await _tap(tester, '草稿');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 0});
-        final beforeHistory = api.queries.length;
         await _tap(tester, '历史记录');
         expect(find.text('已审'), findsOneWidget);
         expect(find.text('红冲'), findsOneWidget);
+        // 2026-10-04 起历史门默认「全部」：选中历史记录即全量加载（不带状态）。
+        expect(api.lastQuery, {'page': 1, 'size': 20});
         await _tap(tester, '已审');
-        expect(api.queries.length, beforeHistory);
+        expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
+        // 时间胶囊「全部」默认已选中：再点不重复发请求。
         await _tap(tester, '全部');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
         await _tap(tester, '红冲');

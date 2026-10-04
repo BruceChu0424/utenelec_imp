@@ -9,6 +9,7 @@
 // - 已盘点: 可"更正盘点" (出新版本, 写原因); 盘点中可"撤回盘点"。
 // 按钮只看服务端下发的 allowedActions。
 import 'package:flutter/material.dart';
+import '../../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -877,7 +878,7 @@ class _WorkshopMaterialCountPageState
             const SizedBox(height: UtenSpacing.s8),
             Text('选择截止日，开始后录入容器和袋料余量。', style: theme.textTheme.bodyMedium),
             const SizedBox(height: UtenSpacing.s12),
-            SegmentedButton<bool>(
+            UtenSegmentRow<bool>(
               key: const Key('wm-count-cutoff'),
               showSelectedIcon: false,
               segments: [

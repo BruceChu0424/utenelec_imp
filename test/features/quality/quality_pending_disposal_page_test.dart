@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -81,6 +82,13 @@ Future<void> _pumpPage(
     ),
   );
   await tester.pumpAndSettle();
+  // 2026-10-04 起工具条进页面自动选中第一个红徽章段（采购收货）；本组测试
+  // 默认断言混合队列，统一切回「全部待检单」段。
+  final allSegment = _segmentText('全部待检单');
+  if (tester.any(allSegment)) {
+    await tester.tap(allSegment);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> _doubleTapRow(WidgetTester tester, String text) async {
@@ -98,7 +106,7 @@ Set<String> get _bothViewPerms => {
 };
 
 Finder _segmentText(String text) => find.descendant(
-  of: find.byType(SegmentedButton<String>),
+  of: find.byType(UtenSegmentRow<String>),
   matching: find.text(text),
 );
 
@@ -339,7 +347,7 @@ void main() {
 
       // 分类框高度对齐搜索框（同一工具条并排视觉一致）。
       final segmentHeight = tester
-          .getSize(find.byType(SegmentedButton<String>))
+          .getSize(find.byType(UtenSegmentRow<String>))
           .height;
       final searchHeight = tester.getSize(find.byType(TextField)).height;
       expect(segmentHeight, closeTo(searchHeight, 0.5));
@@ -349,7 +357,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.descendant(
-          of: find.byType(SegmentedButton<String>),
+          of: find.byType(UtenSegmentRow<String>),
           matching: find.byIcon(Icons.check),
         ),
         findsNothing,

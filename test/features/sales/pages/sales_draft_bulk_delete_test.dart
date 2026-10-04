@@ -214,7 +214,14 @@ void main() {
       Perm.salesOrderView,
       Perm.salesOrderDelete,
     });
-    await tester.tap(find.text('草稿'));
+    // 2026-10-04 起红数「草稿」阶段自动选中（草稿表随挂载即渲染）；再点
+    // 已选段不重复发请求，tap 圈定到阶段行避免与草稿表内容二义。
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('sales-order-progress-stages')),
+        matching: find.text('草稿'),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox).first);
     await tester.pumpAndSettle();

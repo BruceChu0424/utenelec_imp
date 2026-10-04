@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -695,10 +696,9 @@ class _AccountBalanceReconciliationDialogState
       runSpacing: UtenSpacing.s8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        SegmentedButton<AccountBalanceAdjustmentScope>(
-          style: ButtonStyle(
-            minimumSize: WidgetStateProperty.all(const Size(132, 48)),
-          ),
+        UtenSegmentRow<AccountBalanceAdjustmentScope>(
+          minCellWidth: 132,
+          minCellHeight: 48,
           segments: const [
             ButtonSegment(
               value: AccountBalanceAdjustmentScope.full,

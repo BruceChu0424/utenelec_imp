@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -404,7 +405,7 @@ class _FinanceAssetPostingPanelState
             ),
           ),
           const SizedBox(height: UtenSpacing.s16),
-          SegmentedButton<AssetPostingRunType>(
+          UtenSegmentRow<AssetPostingRunType>(
             segments: const [
               ButtonSegment(
                 value: AssetPostingRunType.depreciation,

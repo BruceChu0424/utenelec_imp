@@ -11,6 +11,7 @@
 // 遮罩只包住提交这一段网络调用 (UtenBusyOverlay 由本弹窗持有)，失败或成功都先撤
 // 遮罩再给提示；预览读取用弹窗内的小进度条，不挡操作。
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -286,7 +287,7 @@ class _GoodsIssueMethodDialogState
                     children: [
                       _label(theme, l10n?.wmIssueMethod ?? '发料方式'),
                       const SizedBox(height: UtenSpacing.s4),
-                      SegmentedButton<String>(
+                      UtenSegmentRow<String>(
                         key: const Key('goods-issue-method-segments'),
                         showSelectedIcon: false,
                         segments: [
@@ -328,7 +329,7 @@ class _GoodsIssueMethodDialogState
                         const SizedBox(height: UtenSpacing.s16),
                         _label(theme, l10n?.wmCostBasis ?? '分摊方式'),
                         const SizedBox(height: UtenSpacing.s4),
-                        SegmentedButton<String>(
+                        UtenSegmentRow<String>(
                           key: const Key('goods-cost-basis-segments'),
                           showSelectedIcon: false,
                           segments: [

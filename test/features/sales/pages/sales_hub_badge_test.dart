@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,7 @@ import 'package:uten_imp/components/cards/uten_hub_card.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/pages/sales_hub_page.dart';
 import 'package:uten_imp/features/sales/pages/sales_task_center_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -41,6 +43,10 @@ void main() {
         // This suite checks the server summary only. Local-draft merging has
         // its own authenticated tests; do not construct a real session/probe.
         authenticatedScopeProvider.overrideWithValue(null),
+        // 2026-10-04 起任务中心红数大类自动选中会挂载嵌入页并发起真实 API
+        // 链路——真 ApiClient 会启动本地服务器可达性 60s 周期探针（周期
+        // 定时器在测试里永远排不干，!timersPending 必炸）。桩掉 API 断根。
+        apiClientProvider.overrideWithValue(_StubBadgeApi()),
       ],
     );
     addTearDown(container.dispose);
@@ -212,4 +218,22 @@ void main() {
       findsNothing,
     );
   });
+}
+
+/// 空载荷桩 API：本套件只断言徽章渲染，嵌入页(2026-10-04 起自动选中挂载)
+/// 的取数走这里，避免真 ApiClient 启动本地可达性 60s 周期探针。
+class _StubBadgeApi extends ApiClient {
+  _StubBadgeApi() : super(Dio());
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const <String, dynamic>{
+    'items': <Map<String, dynamic>>[],
+    'page': 1,
+    'size': 20,
+    'total': 0,
+    'totalPages': 1,
+  };
 }

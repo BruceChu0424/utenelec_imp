@@ -2,6 +2,7 @@
 // 21 台机卡片渲染、满/半/空每台 2 下; "本机停机、全空"; "其余记 0";
 // 逐行保存 409 回显最新值; 窄屏 (375) 与大字体无截断。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
@@ -65,7 +66,7 @@ FakeWorkshopMaterialRepository _repo({int machines = 21}) {
 }
 
 Set<String>? _selected(WidgetTester tester, String containerId) => tester
-    .widget<SegmentedButton<String>>(find.byKey(Key('wm-fill-$containerId')))
+    .widget<UtenSegmentRow<String>>(find.byKey(Key('wm-fill-$containerId')))
     .selected;
 
 void main() {

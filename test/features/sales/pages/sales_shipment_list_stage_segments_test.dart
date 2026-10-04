@@ -67,6 +67,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // 2026-10-04 起红数「草稿」段(红4)进页面自动选中：表格随挂载即渲染，
+    // 行内状态文字与分段同名——断言/tap 圈定到分段行（按 segmentsKey 定位）。
+    Finder segmentText(String label) => find.descendant(
+      of: find.byKey(const Key('sales-doc-status-shipments')),
+      matching: find.text(label),
+    );
     for (final label in const [
       '草稿',
       '等待财务审核',
@@ -76,18 +82,19 @@ void main() {
       '红冲',
       '历史记录',
     ]) {
-      expect(find.text(label), findsOneWidget, reason: '分段「$label」');
+      expect(segmentText(label), findsOneWidget, reason: '分段「$label」');
     }
-    // 默认不选不发请求。
-    expect(api.listQueries, isEmpty);
+    // 自动选中已发 stage=DRAFT 查询。
+    expect(api.listQueries.last['stage'], 'DRAFT');
     // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要有数——分段计数一次取自
     // /documents/status-counts?kind=salesShipment。三形态(ADR-100):
     //   · 草稿 4 / 财务已退回 2 = 红徽章(销售自己要提交、要改单重报);
     //   · 等待财务审核 3 / 已审 1 = 黄色进行中徽章(球在财务、仓库手上, 单子还在跑;
     //     「已审」在状态列的全称就是「已审 · 待出库」, 不是终态);
     //   · 已出库 9 / 红冲 0 = 中性括号(已经结束; 0 也显示保持队形), 历史记录不挂数。
-    expect(api.statusCountQueries.single['kind'], 'salesShipment');
-    expect(api.statusCountQueries.single.containsKey('shipmentKind'), isFalse);
+    // 自动选中会多触发一次重载（计数重取）：取第一次的 kind 断言即可。
+    expect(api.statusCountQueries.first['kind'], 'salesShipment');
+    expect(api.statusCountQueries.first.containsKey('shipmentKind'), isFalse);
     expect(find.byType(UtenNotificationBadge), findsNWidgets(2));
     expect(find.text('4'), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
@@ -97,7 +104,7 @@ void main() {
     expect(find.text('(9)'), findsOneWidget);
     expect(find.text('(0)'), findsOneWidget);
 
-    await tester.tap(find.text('等待财务审核'));
+    await tester.tap(segmentText('等待财务审核'));
     await tester.pumpAndSettle();
     expect(api.listQueries.last['stage'], 'PENDING_FINANCE');
     expect(api.listQueries.last.containsKey('status'), isFalse);
@@ -106,11 +113,11 @@ void main() {
     expect(find.text('已审 · 待出库'), findsOneWidget);
     expect(find.text('草稿'), findsOneWidget);
 
-    await tester.tap(find.text('已审'));
+    await tester.tap(segmentText('已审'));
     await tester.pumpAndSettle();
     expect(api.listQueries.last['stage'], 'FINANCE_APPROVED');
 
-    await tester.tap(find.text('已出库'));
+    await tester.tap(segmentText('已出库'));
     await tester.pumpAndSettle();
     expect(api.listQueries.last['stage'], 'SHIPPED');
     expect(tester.takeException(), isNull);

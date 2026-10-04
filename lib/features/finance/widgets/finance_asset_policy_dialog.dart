@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
@@ -554,7 +555,7 @@ class _FinanceAssetPolicySurfaceState
                 const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: SegmentedButton<FinanceAssetLedger>(
+                  child: UtenSegmentRow<FinanceAssetLedger>(
                     segments: const [
                       ButtonSegment(
                         value: FinanceAssetLedger.fixedAsset,

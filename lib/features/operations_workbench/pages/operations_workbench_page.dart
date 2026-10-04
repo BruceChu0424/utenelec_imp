@@ -101,7 +101,7 @@ class _OperationsWorkbenchPageState
   String? _exception;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 表头列筛选（服务端 facet key → 值）；repository 以 `f.{key}` 前缀回传。
   final Map<String, String?> _columnFilters = {};
@@ -253,7 +253,7 @@ class _OperationsWorkbenchPageState
       _seg = seg;
       _exception = null;
       _page = 1;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       // 各阶段的 facet 集合不同（与委外任务中心同口径）：切段时清表头筛选。
       // 排序键同理——「状态」列只在进行中段有意义，换段后按服务端默认序重来。

@@ -100,7 +100,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   String _keyword = '';
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   @override
   void initState() {
@@ -207,7 +207,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                       onSelectionChanged: (value) => setState(() {
                         _segment = value;
                         if (value != 'history') {
-                          _historyTime = const UtenHistoryTimeValue.none();
+                          _historyTime = const UtenHistoryTimeValue.all();
                         }
                       }),
                       searchHint: '搜索订单号 / 计划单号 / 客户 / 货品',

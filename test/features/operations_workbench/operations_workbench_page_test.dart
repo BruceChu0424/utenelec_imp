@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -455,22 +456,29 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // 默认不选阶段：initState 只发一次概览请求，不带异常筛选。
-      expect(gateway.exceptions, [null]);
+      // 概览计数里红/黄段（申请待分解/进行中）的计数都是 null——按 0 对待，
+      // 没有红黄徽章就不自动选（2026-10-04 口径），进页面仍只有一次概览请求。
+      expect(gateway.statuses, [null]);
 
-      // 先选「申请待分解」阶段段，任务列表才加载。
+      // 点「申请待分解」阶段段：任务列表加载；异常小类行解锁后红1的
+      // 「逾期缺料」被自动选中（默认选中口径），异常参数随阶段组合直接生效。
       await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
       expect(gateway.statuses.last, 'WAITING_ORDER');
-      expect(gateway.exceptions.last, isNull);
+      expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
 
-      // 阶段内点异常小类「逾期缺料」：带异常参数重新加载，阶段筛选保留；
-      // 「全部逾期」（OVERDUE_ANY 聚合段）2026-09-03 起不再显示。
+      // 点已选中的异常段不重复发请求（单选点已选段不回调）。
+      final exceptionsBeforeRetap = gateway.exceptions.length;
       await _selectSegment(tester, '逾期缺料');
       await tester.pumpAndSettle();
+      expect(gateway.exceptions.length, exceptionsBeforeRetap);
 
-      expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
-      expect(gateway.statuses.last, 'WAITING_ORDER');
+      // 切到「进行中」阶段段：阶段单选切换，异常小类按页面口径重置为不带
+      // 异常参数重新加载；「全部逾期」（OVERDUE_ANY 聚合段）不显示。
+      await _selectSegment(tester, '进行中');
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'IN_PROGRESS');
+      expect(gateway.exceptions.last, isNull);
       expect(
         gateway.data.exceptionOptions.map((option) => option.value),
         contains('OVERDUE_SHORTAGE'),
@@ -585,14 +593,15 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 默认未选阶段：仓库仍走表格布局（useTaskTable），但内容区是引导占位，
-      // 不发列表请求——点「待备料 / 待领取」段后表格才加载。
-      expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
+      // 2026-10-04 起进页面默认选中红1的「待备料 / 待领取」段：表格直接加载，
+      // 不再有引导占位；紧凑宽度仍走表格布局而非移动卡片列表。
+      expect(find.text('在上方选择阶段后开始办理'), findsNothing);
       expect(
         find.byKey(const Key('operations-workbench-mobile-list')),
         findsNothing,
       );
 
+      // 再点已选中的段不重复发请求（单选点已选段不回调）。
       await _selectSegment(tester, '待备料 / 待领取');
       await tester.pumpAndSettle();
 
@@ -689,7 +698,7 @@ void main() {
         );
         if (tester.any(stageRow)) {
           expect(
-            tester.widget<SegmentedButton<dynamic>>(stageRow).selected.length,
+            tester.widget<UtenSegmentRow<dynamic>>(stageRow).selected.length,
             1,
           );
         } else {
@@ -734,7 +743,7 @@ void main() {
     expect(gateway.statuses.last, 'WAITING_ORDER');
     expect(tester.takeException(), isNull);
     // 零计数异常段仍保持选中（分段单选不因计数为 0/无徽章失效）。
-    final exceptionRow = tester.widget<SegmentedButton<dynamic>>(
+    final exceptionRow = tester.widget<UtenSegmentRow<dynamic>>(
       find.byKey(const Key('operations-workbench-exceptions-purchase')),
     );
     expect(exceptionRow.selected.length, 1);
@@ -764,19 +773,21 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // 默认不选阶段：只有一次概览请求，异常小类行不出现，内容区为引导占位。
+    // 默认不选阶段（红/黄计数按 0 对待、无徽章不自动选）：只有一次概览
+    // 请求，异常小类行不出现，内容区为引导占位。
     expect(gateway.statuses, [null]);
     expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
     expect(find.text('逾期缺料'), findsNothing);
 
-    // 点「申请待分解」阶段段：单选生效，异常小类行解锁出现。
+    // 点「申请待分解」阶段段：单选生效，异常小类行解锁出现；红1的
+    // 「逾期缺料」小类随解锁被自动选中（2026-10-04 默认选中口径）。
     await _selectSegment(tester, '申请待分解');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'WAITING_ORDER');
-    expect(gateway.exceptions.last, isNull);
+    expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
     expect(find.text('逾期缺料'), findsOneWidget);
 
-    // 阶段内点异常段「逾期缺料」：异常与阶段组合（状态筛选保留）。
+    // 再点已选中的「逾期缺料」不重复发请求（单选点已选段不回调）。
     await _selectSegment(tester, '逾期缺料');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'WAITING_ORDER');
@@ -789,7 +800,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'IN_PROGRESS');
     expect(gateway.exceptions.last, isNull);
-    final exceptionRow = tester.widget<SegmentedButton<dynamic>>(
+    final exceptionRow = tester.widget<UtenSegmentRow<dynamic>>(
       find.byKey(const Key('operations-workbench-exceptions-purchase')),
     );
     expect(exceptionRow.selected, isEmpty);
@@ -834,7 +845,7 @@ void main() {
       // 刷新后阶段选择保持：仍以选中阶段发起请求，分段仍是单选选中态。
       expect(gateway.statuses, [null, 'WAITING_ORDER', 'WAITING_ORDER']);
       expect(tester.takeException(), isNull);
-      final stageRow = tester.widget<SegmentedButton<dynamic>>(
+      final stageRow = tester.widget<UtenSegmentRow<dynamic>>(
         find.byKey(const Key('operations-workbench-stages-purchase')),
       );
       expect(stageRow.selected.length, 1);

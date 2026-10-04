@@ -111,19 +111,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 2026-09-04 修复回归锁：子类徽章与列表加载解耦——进页面（未选任何
-      // 分类、不发列表请求）即拉一次全来源状态计数；否则徽章要等点中某个
-      // 状态段才随列表加载出现。
-      expect(gateway.statusCountsCalls, 1);
-
-      // 2026-09-03 分类范式：来源/状态两行默认不选（不发请求），
-      // 先选来源「采购收货」解锁状态行，再选「全部合格」才加载列表。
-      await tester.tap(find.text('采购收货'));
-      await tester.pumpAndSettle();
-      // 切换来源即按新口径重拉子类计数。
-      expect(gateway.statusCountsCalls, 2);
-      await tester.tap(find.text('全部合格'));
-      await tester.pumpAndSettle();
+      // 2026-09-04 修复回归锁：子类徽章与列表加载解耦——计数不依赖选中。
+      // 2026-10-04 起红数来源「采购收货」与状态「全部合格」随自动选中级联：
+      // 全来源计数 1 次 + 每级选中后按口径重拉各 1 次，列表随挂载即加载。
+      expect(gateway.statusCountsCalls, 3);
 
       final table = tester
           .widget<MasterDataTableView<WarehouseQualityResultTask>>(
@@ -173,8 +164,6 @@ void main() {
       await tester.pumpWidget(
         _app(const WarehouseQualityResultsPage(), gateway, preferences),
       );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('采购收货'));
       await tester.pumpAndSettle();
 
       Finder segment(String label) => find.byWidgetPredicate(
@@ -263,8 +252,7 @@ void main() {
         _app(const WarehouseQualityResultsPage(), gateway, preferences),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('委外进仓'));
-      await tester.pumpAndSettle();
+      // 2026-10-04 起红数「委外进仓」来源自动选中（采购两枚皆 0）。
 
       Finder segment(String label) => find.byWidgetPredicate(
         (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
@@ -363,10 +351,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 分类范式：先选来源再选状态，列表才加载（默认不选、不发请求）。
-    await tester.tap(find.text('采购收货'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('全部合格'));
+    // 2026-10-04 起红数来源「采购收货」与状态「全部合格」随自动选中级联
+    // 选中，列表已加载（默认不选的空态只留给无红黄的权限组合）。
     await tester.pumpAndSettle();
 
     // 表头三态全选：两行一起勾上。
@@ -452,9 +438,7 @@ void main() {
       _app(null, gateway, preferences, router: _routerWithBatchPage()),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('采购收货'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('全部合格'));
+    // 2026-10-04 起来源「采购收货」与状态「全部合格」已随红数自动选中。
     await tester.pumpAndSettle();
     await tester.tap(
       find
@@ -532,9 +516,7 @@ void main() {
     await tester.pumpWidget(_app(null, gateway, preferences, router: router));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('采购收货'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('全部合格'));
+    // 2026-10-04 起来源「采购收货」与状态「全部合格」已随红数自动选中。
     await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox).last);
     await tester.pumpAndSettle();

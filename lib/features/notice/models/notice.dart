@@ -32,7 +32,7 @@ enum NoticeType {
   /// 流程节点完成 / 上游完成（工作类）
   workflow('流程', 0xFF10B981, Icons.account_tree_rounded),
 
-  /// 生日祝福（庆典类，可由系统按 birth_date 自动发布）
+  /// 生日祝福(庆典类，可由系统按 birth_month_day 自动发布)
   birthday('生日', 0xFFF43F5E, Icons.cake_rounded),
 
   /// 入职周年（庆典类，可由系统按 hire_date 自动发布）
@@ -437,7 +437,7 @@ class NoticeCelebrationSettings {
 }
 
 /// 当前用户「今日庆典」条目（登录弹窗 / 今日概览庆典卡片）。
-/// 生日/周年由服务端按 birth_date / hire_date 月日判定；新婚/新生儿由今日发布的庆典通知判定。
+/// 生日/周年由服务端按 birth_month_day / hire_date 月日判定；新婚/新生儿由今日发布的庆典通知判定。
 /// noticeId 可空（尚未发布对应通知时），用于跳转祝福墙。无任何日期原值（PII 安全）。
 class MyCelebrationToday {
   const MyCelebrationToday({

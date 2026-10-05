@@ -3,6 +3,7 @@ package com.uten.imp.features.notice;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.validation.RequestLimits;
+import com.uten.imp.common.time.BirthMonthDay;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -775,11 +776,11 @@ public class NoticeService {
     /**
      * 当前登录员工「今日庆典」（登录弹窗 / 今日概览庆典卡片，notice:read）。
      *
-     * <p>生日 / 周年由服务端按 birth_date / hire_date 月日判定（满 1 年才记周年）；
+     * <p>生日按 birth_month_day(MM-DD，非闰年 2/28 含 2/29 生日)、周年按 hire_date 月日判定(满 1 年才记周年)；
      * 新婚 / 新生儿由「今日发布且本人为祝福对象」的庆典通知判定。noticeId 用于跳转祝福墙，
      * 可能为 null（调度器关闭且 HR 未手动发）。
      *
-     * <p><b>PII</b>：birth_date / hire_date 仅服务端读取，绝不外泄日期原值。
+     * <p><b>PII</b>：birth_month_day / hire_date 仅服务端读取，绝不外泄日期原值。
      */
     @Transactional(readOnly = true)
     public List<MyCelebrationTodayDto> myCelebrationToday() {
@@ -797,10 +798,9 @@ public class NoticeService {
         Instant yearStart = LocalDate.of(year, 1, 1).atStartOfDay(SHANGHAI).toInstant();
         List<MyCelebrationTodayDto> out = new ArrayList<>();
 
-        // 生日祝福：birth_date 已加密，改用低敏个人属性 birth_month_day（MM-DD）匹配今日。
-        // V454：跳转目标按主角表口径（聚合卡/单人卡统一）。
-        String todayMonthDay = String.format("%02d-%02d", today.getMonthValue(), today.getDayOfMonth());
-        if (todayMonthDay.equals(me.getBirthMonthDay())) {
+        // 生日祝福：birth_date 已加密，改用低敏个人属性 birth_month_day(MM-DD)匹配今日
+        // (与 HR 任务中心 / 自动庆典同一口径 BirthMonthDay)。V454：跳转目标按主角表口径(聚合卡/单人卡统一)。
+        if (BirthMonthDay.isBirthdayOn(me.getBirthMonthDay(), today)) {
             out.add(new MyCelebrationTodayDto(
                     "birthday", me.getFullName(), "生日快乐",
                     firstNoticeId(subjectRepo.findCelebrationNoticeIds(empId, "birthday", yearStart))));

@@ -1,5 +1,7 @@
 package com.uten.imp.features.notice;
 
+import com.uten.imp.common.time.BirthMonthDay;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.notice.NoticeService.CelebrationSubject;
@@ -11,7 +13,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,6 +69,11 @@ public class CelebrationScheduler {
 
     @Scheduled(cron = "7 0 8 * * *", zone = "Asia/Shanghai")
     public void scan() {
+        scan(BusinessTime.today());
+    }
+
+    /** 按指定业务日扫描(定时任务传今天；测试用固定日期覆盖 2/29 等边界)。 */
+    void scan(LocalDate today) {
         try {
             // 默认关（V600）：不开自动发送时调度器空转返回，祝福由人事手动发布。
             boolean autoEnabled = settings.readBool(SystemSettingKey.CELEBRATION_AUTO_ENABLED);
@@ -77,14 +86,13 @@ public class CelebrationScheduler {
                 return;
             }
             String publisherName = settings.readString(SystemSettingKey.CELEBRATION_PUBLISHER_NAME);
-            LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
             int month = today.getMonthValue();
             int day = today.getDayOfMonth();
             int year = today.getYear();
 
             int published = 0;
             if (autoTypes.contains("birthday")) {
-                published += scanBirthday(month, day, year, publisherName);
+                published += scanBirthday(today, publisherName);
             }
             if (autoTypes.contains("anniversary")) {
                 published += scanAnniversary(month, day, year, publisherName);
@@ -97,16 +105,23 @@ public class CelebrationScheduler {
         }
     }
 
-    /** 生日扫描：birth_month_day（MM-DD，低敏个人属性）== 今天；为空跳过。一张聚合卡。 */
-    private int scanBirthday(int month, int day, int year, String publisherName) {
-        String todayMonthDay = String.format("%02d-%02d", month, day);
+    /**
+     * 生日扫描：birth_month_day(MM-DD，低敏个人属性)落在今天(非闰年 2/28 含 02-29，
+     * 口径见 {@link BirthMonthDay#celebratedOn})；为空跳过。一张聚合卡。
+     */
+    private int scanBirthday(LocalDate today, String publisherName) {
+        List<String> monthDays = BirthMonthDay.celebratedOn(today);
+        List<Object> args = new ArrayList<>(monthDays);
+        args.add("birthday");
+        args.add(today.getYear());
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT e.id, e.full_name FROM employees e
                 WHERE
                 """ + ACTIVE_EMPLOYEE_PREDICATE + """
-                  AND e.birth_month_day = ?
-                """ + ALREADY_CELEBRATED,
-                todayMonthDay, "birthday", year);
+                  AND e.birth_month_day IN (%s)
+                """.formatted(String.join(",", Collections.nCopies(monthDays.size(), "?")))
+                + ALREADY_CELEBRATED,
+                args.toArray());
         if (rows.isEmpty()) {
             return 0;
         }

@@ -1,7 +1,7 @@
 // HR 任务中心 API 模型（对应后端 HrTaskSummary / HrTaskSummary.Item）。
 // 全部字段为服务端按「今天」动态计算结果，前端不重算。
 
-/// 单条提醒。days 语义随区块：剩余天数 / 逾期天数 / 周岁 / 满年数 / 已入职天数。
+/// 单条提醒。days 语义随区块：剩余天数(今日生日 = 0)/ 逾期天数 / 满年数 / 已入职天数。
 /// 软认领（ADR-021）：任务不隐藏，claimedByName 非空显示「XXX 处理中」。
 class HrTaskItem {
   const HrTaskItem({

@@ -1,11 +1,13 @@
 package com.uten.imp.features.org.hrtask;
 
+import com.uten.imp.common.time.BirthMonthDay;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.sql.Date;
 import java.time.LocalDate;
+import java.time.MonthDay;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,7 +27,8 @@ import java.util.UUID;
  *   已登记 confirmed_at 的员工不再出现在转正提醒里；
  * - 逾期转正只跟踪近 {@link #CONFIRM_TRACK_MONTHS} 个月入职的员工；更早入职且未登记转正
  *   日期的老员工聚合为 unconfirmedLegacyCount（数据补录提示），避免刷出上百条噪音；
- * - 2 月 29 日生日在非闰年按 2 月 28 日庆祝（{@link #nextOccurrence}）；
+ * - 生日按 employees.birth_month_day('MM-DD')匹配：V282 起出生日期只存密文、明文 birth_date
+ *   恒为 NULL，故不再派生周岁；2 月 29 日生日在非闰年按 2 月 28 日庆祝({@link BirthMonthDay})；
  * - 员工规模（数百人级）一次查询内存计算即可，无需分页/物化视图。
  */
 @Service
@@ -40,7 +43,7 @@ public class HrTaskService {
     private static final String SELECT = """
             SELECT e.id, e.code, e.full_name,
                    d.name AS dept_name, p.name AS position_name,
-                   e.hire_date, e.confirmed_at, e.birth_date
+                   e.hire_date, e.confirmed_at, e.birth_month_day
             FROM employees e
             JOIN departments d ON d.id = e.department_id
             LEFT JOIN positions p ON p.id = e.position_id
@@ -54,11 +57,18 @@ public class HrTaskService {
 
     /**
      * 按「今天」内存重算人事提醒（转正/生日/周年/新入职），无任务表、不落库。
-     * 仅需 employee:view 即可调用，但生日派生信息属 PII：无 employee:pii:view 时生日列表清空且不计入徽标；
+     * 仅需 employee:view 即可调用，但生日派生信息属 PII：无 employee:pii:view 时不计算生日列表、不计入徽标；
      * 本年已发布庆典祝福的生日/周年仍保留在列表（标记 blessed）但不计徽标。
      */
     public HrTaskSummary summary() {
         LocalDate today = com.uten.imp.common.time.BusinessTime.today();
+        // PII 边界：生日派生信息(姓名 + 出生月日)属 PII，仅 employee:pii:view 可见(与
+        // EmployeeQueryService.detail 无该权限清空 birthDate 的边界一致)。本接口仅需 employee:view，
+        // 故对无 PII 权限者不出生日列表且不计入徽标，避免仅 employee:view 即批量暴露生日。
+        boolean canSeePii = currentUser.get()
+                .map(u -> u.isSuperAdmin()
+                        || u.getPermissions().contains(com.uten.imp.security.DataAccessPolicy.PII_VIEW))
+                .orElse(false);
         List<Row> rows = jdbc.query(SELECT, (rs, i) -> new Row(
                 rs.getObject("id", UUID.class),
                 rs.getString("code"),
@@ -67,7 +77,7 @@ public class HrTaskService {
                 rs.getString("position_name"),
                 toLocalDate(rs.getDate("hire_date")),
                 toLocalDate(rs.getDate("confirmed_at")),
-                toLocalDate(rs.getDate("birth_date"))));
+                BirthMonthDay.parse(rs.getString("birth_month_day")).orElse(null)));
 
         List<HrTaskSummary.Item> confirmToday = new ArrayList<>();
         List<HrTaskSummary.Item> confirmUpcoming = new ArrayList<>();
@@ -95,21 +105,20 @@ public class HrTaskService {
                 }
             }
 
-            // ---- 生日（2/29 非闰年按 2/28） ----
-            if (r.birthDate() != null) {
-                LocalDate next = nextOccurrence(r.birthDate(), today);
+            // ---- 生日(2/29 非闰年按 2/28；今日行 days = 0，与 30 天内的「剩余天数」同口径) ----
+            if (canSeePii && r.birthday() != null) {
+                LocalDate next = BirthMonthDay.nextOccurrence(r.birthday(), today);
                 long daysLeft = ChronoUnit.DAYS.between(today, next);
                 if (daysLeft == 0) {
-                    birthdayToday.add(r.item(next, today.getYear() - r.birthDate().getYear(), "今日生日"));
+                    birthdayToday.add(r.item(next, 0, "今日生日"));
                 } else if (daysLeft <= UPCOMING_DAYS) {
                     birthdayUpcoming.add(r.item(next, (int) daysLeft, null));
                 }
             }
 
-            // ---- 入职周年 ----
+            // ---- 入职周年(2/29 入职在非闰年按 2/28) ----
             if (r.hireDate() != null && r.hireDate().getYear() < today.getYear()) {
-                LocalDate anniv = nextOccurrence(r.hireDate(), today);
-                if (anniv.equals(today)) {
+                if (MonthDay.from(r.hireDate()).atYear(today.getYear()).equals(today)) {
                     int years = today.getYear() - r.hireDate().getYear();
                     anniversaryToday.add(r.item(r.hireDate(), years, "入职满 " + years + " 年"));
                 }
@@ -122,18 +131,6 @@ public class HrTaskService {
                     newHires.add(r.item(r.hireDate(), (int) since, since == 0 ? "今日入职" : null));
                 }
             }
-        }
-
-        // PII 边界：生日派生信息（姓名 + 出生月日 + 年龄）属 PII，仅 employee:pii:view 可见（与
-        // EmployeeQueryService.detail 无该权限清空 birthDate 的边界一致）。本接口仅需 employee:view，
-        // 故对无 PII 权限者清空生日列表且不计入徽标，避免仅 employee:view 即批量暴露生日。
-        boolean canSeePii = currentUser.get()
-                .map(u -> u.isSuperAdmin()
-                        || u.getPermissions().contains(com.uten.imp.security.DataAccessPolicy.PII_VIEW))
-                .orElse(false);
-        if (!canSeePii) {
-            birthdayToday = new ArrayList<>();
-            birthdayUpcoming = new ArrayList<>();
         }
 
         // 本类型本年已出现在任何庆典卡（聚合或单人）的员工（V454 起按主角表口径，
@@ -220,29 +217,12 @@ public class HrTaskService {
         }).toList();
     }
 
-    /** 月-日在目标年的落点；2/29 在非闰年落到 2/28；今年已过则取明年。 */
-    private static LocalDate nextOccurrence(LocalDate source, LocalDate today) {
-        LocalDate thisYear = safeDate(today.getYear(), source.getMonthValue(), source.getDayOfMonth());
-        return thisYear.isBefore(today)
-                ? safeDate(today.getYear() + 1, source.getMonthValue(), source.getDayOfMonth())
-                : thisYear;
-    }
-
-    private static LocalDate safeDate(int year, int month, int day) {
-        try {
-            return LocalDate.of(year, month, day);
-        } catch (Exception e) {
-            // 2/29 → 非闰年 2/28
-            return LocalDate.of(year, month, day - 1);
-        }
-    }
-
     private static LocalDate toLocalDate(Date date) {
         return date == null ? null : date.toLocalDate();
     }
 
     private record Row(UUID id, String code, String name, String deptName, String positionName,
-                       LocalDate hireDate, LocalDate confirmedAt, LocalDate birthDate) {
+                       LocalDate hireDate, LocalDate confirmedAt, MonthDay birthday) {
         HrTaskSummary.Item item(LocalDate date, int days, String note) {
             return new HrTaskSummary.Item(id, code, name, deptName, positionName, date, days, note,
                     null, false, null, false);

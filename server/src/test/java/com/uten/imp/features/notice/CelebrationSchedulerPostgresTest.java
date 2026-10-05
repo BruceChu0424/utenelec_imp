@@ -59,6 +59,7 @@ class CelebrationSchedulerPostgresTest {
     private static JdbcTemplate jdbc;
 
     private NoticeService noticeService;
+    private SystemSettingsService settings;
     private CelebrationScheduler scheduler;
 
     @BeforeAll
@@ -93,7 +94,7 @@ class CelebrationSchedulerPostgresTest {
                 safeNonTodayDate());
 
         noticeService = mock(NoticeService.class);
-        SystemSettingsService settings = mock(SystemSettingsService.class);
+        settings = mock(SystemSettingsService.class);
         when(settings.readBool(SystemSettingKey.CELEBRATION_AUTO_ENABLED)).thenReturn(true);
         when(settings.readString(SystemSettingKey.CELEBRATION_AUTO_TYPES))
                 .thenReturn("birthday,anniversary");
@@ -171,7 +172,39 @@ class CelebrationSchedulerPostgresTest {
         assertTrue(subjects.stream().noneMatch(s -> s.employeeId().equals(duplicated)));
     }
 
+    @Test
+    void leapDayBirthdaysAreCelebratedOnFeb28InCommonYearsOnly() {
+        when(settings.readString(SystemSettingKey.CELEBRATION_AUTO_TYPES)).thenReturn("birthday");
+        UUID leap = insertEmployee("leap-day", "active", false, "02-29", safeNonTodayDate());
+        UUID feb28 = insertEmployee("feb-28", "active", false, "02-28", safeNonTodayDate());
+        insertEmployee("mar-01", "active", false, "03-01", safeNonTodayDate());
+
+        // 非闰年 2/28：2/29 生日并入当天聚合卡(与 HR 任务中心 BirthMonthDay 同口径)
+        scheduler.scan(LocalDate.of(2027, 2, 28));
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("birthday"), captureSubjects(), eq("公司"));
+        assertEquals(java.util.Set.of(leap, feb28), subjectIds(capturedSubjects()));
+
+        // 闰年 2/28 只有 2/28 本人；2/29 当天才轮到 2/29 生日
+        org.mockito.Mockito.clearInvocations(noticeService);
+        scheduler.scan(LocalDate.of(2028, 2, 28));
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("birthday"), captureSubjects(), eq("公司"));
+        assertEquals(java.util.Set.of(feb28), subjectIds(capturedSubjects()));
+
+        org.mockito.Mockito.clearInvocations(noticeService);
+        scheduler.scan(LocalDate.of(2028, 2, 29));
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("birthday"), captureSubjects(), eq("公司"));
+        assertEquals(java.util.Set.of(leap), subjectIds(capturedSubjects()));
+    }
+
     // ------------------------------------------------------------------
+
+    private static java.util.Set<UUID> subjectIds(List<CelebrationSubject> subjects) {
+        return subjects.stream().map(CelebrationSubject::employeeId)
+                .collect(java.util.stream.Collectors.toSet());
+    }
 
     @SuppressWarnings("unchecked")
     private final ArgumentCaptor<List<CelebrationSubject>> subjectCaptor =

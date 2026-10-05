@@ -83,7 +83,7 @@ v2 解决 v1「四块平铺一页、内容太多、没有快捷操作、多人�
 |---|---|
 | 转正提醒 | 预计转正日 = `hire_date` + 3 个月。已登记 `confirmed_at` 不再提醒；逾期只跟踪近 12 个月入职者，更早聚合为补录提示 |
 | 生日提醒 | 今日生日 + 30 天内。按 `employees.birth_month_day`('MM-DD'，不含年份)匹配，2/29 非闰年按 2/28(`common.time.BirthMonthDay`，与庆典自动发布、本人今日庆典同口径)；不显示周岁(见下方 2026-10-05 说明)。**PII**：无 `employee:pii:view`(非超管)时不出生日列表、不计入徽标 |
-| 入职周年 | 今日入职满 N 年 |
+| 入职周年 | 今日入职满 N 年(满 1 年起)。2/29 入职在非闰年按 2/28 过周年、当天即记满 N 年(`common.time.WorkAnniversary`，与庆典自动发布、本人今日庆典、一键/单人祝福的「入职N周年」同口径；见下方 2026-10-05 周年说明) |
 | 新近入职 | 近 30 天入职（7 天内高亮） |
 
 徽标数 = 今日转正 + 逾期转正 + 今日生日 + 今日周年。接口：
@@ -99,6 +99,18 @@ v2 解决 v1「四块平铺一页、内容太多、没有快捷操作、多人�
 > `HrTaskServicePostgresTest`(今日生日进 `birthdayToday` 并计徽标 / 已祝福不计徽标 / 无 PII 权限为空)；
 > 2/29 口径同时修正了 `CelebrationScheduler` 与 `NoticeService.myCelebrationToday`(此前按当天
 > 'MM-DD' 精确相等，2/29 生日在非闰年整年不触发)，见 `CelebrationSchedulerPostgresTest`。
+
+> 2026-10-05 修复(2/29 入职周年三处不一致)：HR 任务中心早已把 2/29 入职在非闰年按 2/28 列入「今日周年」，
+> 但 `CelebrationScheduler` 用 `EXTRACT(MONTH/DAY FROM hire_date)` 精确相等、`NoticeService.myCelebrationToday`
+> 比对月日，2/29 入职在非闰年既不自动发卡也不弹本人庆典。现三处统一走 `common.time.WorkAnniversary`：
+> 第 N 个周年日 = `hire_date` 加 N 年(2/29 在非闰年落 2/28)，满 1 年起；调度器 SQL 按
+> `to_char(hire_date,'MM-DD') IN (...)`(非闰年 2/28 另含 '02-29'，与生日共用闰日规则)+ 入职年份早于当年匹配。
+> **年数口径**：`Period.between` 与 PostgreSQL `age()` 对 2/29 入职在非闰年 2/28 只算 N-1 年(差 1 天满月)，
+> 会出现「今天过周年，卡上写 入职2周年」；现统一按 `WorkAnniversary.completedYears`(最大 N 使入职日加 N 年不晚于当天)，
+> 2024-02-29 入职者 2027-02-28 标签为「入职3周年」、HR 列表「满 3 年」，2028-02-29 为「入职4周年」。
+> 一键/单人祝福与发布预览派生的年数同步改用此口径；调度器年数改在服务端按扫描业务日算，不再依赖数据库当前日期。
+> 证据：`WorkAnniversaryTest`(SQL 匹配集与内存规则逐日对齐、与 `Period.between` 只在该边界差 1 年)、
+> `CelebrationSchedulerPostgresTest`(真实 PostgreSQL 固定日期扫描)、`NoticeServiceTest`、`HrTaskServiceBusinessDateTest`。
 
 > 2026-08-17 补充：从子页点「送祝福」跳通知发布页发布祝福后，任务列表若仍保活在栈下，「未祝福」标记不会自己更新——现发布页在祝福类发布成功后同步 `hrTaskSummaryProvider.reloadSilently()`，返回子页即见「已祝福」，角标同步减。
 
@@ -151,6 +163,6 @@ v2 解决 v1「四块平铺一页、内容太多、没有快捷操作、多人�
 > 待办（文档化约束）：后端需重启生效（`/api/org/hr-tasks/claims*` 与 V210/V211 为新端点/新迁移）；
 > 前端文案如有多语言诉求再补 arb。
 
-**最后更新**：2026-10-05(生日提醒改按 `birth_month_day`，修复恒空；2/29 口径三处统一)· 2026-09-10(子页改统一表格 + 表头筛选 + 批量登记转正/批量送祝福)· 2026-09-01 · **状态**：工作台/子页/软认领/快捷转正已接入源码并通过后端编译；
+**最后更新**：2026-10-05(生日提醒改按 `birth_month_day`，修复恒空；2/29 生日与 2/29 入职周年口径三处统一)· 2026-09-10(子页改统一表格 + 表头筛选 + 批量登记转正/批量送祝福)· 2026-09-01 · **状态**：工作台/子页/软认领/快捷转正已接入源码并通过后端编译；
 目标库 V210/V211、运行实例重启与多账号协同 E2E 待验收。V454 聚合祝福卡：空库迁移链
 （V1→V454）、调度器/批量祝福 PostgreSQL 测试、重置脚本契约已绿；目标库迁移与真机 UAT 待验收。

@@ -79,6 +79,31 @@ class HrTaskServiceBusinessDateTest {
         }
     }
 
+    /** 入职周年与庆典自动发布 / 本人今日庆典同口径(WorkAnniversary)：2/29 入职非闰年 2/28 过，当天即满 N 年。 */
+    @ParameterizedTest
+    @CsvSource({
+            "2024-02-29,2027-02-28,3",
+            "2024-02-29,2027-03-01,-1",
+            "2024-02-29,2028-02-28,-1",
+            "2024-02-29,2028-02-29,4",
+            "2020-02-28,2027-02-28,7",
+            "2027-02-28,2027-02-28,-1"
+    })
+    void anniversariesOfLeapDayHiresFallOnFeb28InCommonYears(
+            String hireDate, String today, int years) throws Exception {
+        HrTaskService service = service(PII, hireDate, null);
+        HrTaskSummary result = summaryAt(service, shanghaiNoon(today), "UTC");
+
+        if (years < 0) {
+            assertTrue(result.anniversaryToday().isEmpty());
+        } else {
+            assertEquals(1, result.anniversaryToday().size());
+            HrTaskSummary.Item item = result.anniversaryToday().getFirst();
+            assertEquals(years, item.days());
+            assertEquals("入职满 " + years + " 年", item.note());
+        }
+    }
+
     @Test
     void callersWithoutPiiViewGetNoBirthdaysAndNoBirthdayBadge() throws Exception {
         HrTaskService service = service(Set.of("employee:view"), "2000-06-15", "10-03");

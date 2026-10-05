@@ -127,8 +127,10 @@ class CelebrationSchedulerPostgresTest {
 
     @Test
     void publishesOneAggregatedAnniversaryCardWithPerPersonLabels() {
-        UUID veteran = insertEmployee("anniv-veteran", "active", false, null, hiredYearsAgoToday(5));
-        UUID veteran2 = insertEmployee("anniv-veteran2", "active", false, null, hiredYearsAgoToday(10));
+        LocalDate veteranHire = hiredYearsAgoToday(5);
+        LocalDate veteran2Hire = hiredYearsAgoToday(10);
+        UUID veteran = insertEmployee("anniv-veteran", "active", false, null, veteranHire);
+        UUID veteran2 = insertEmployee("anniv-veteran2", "active", false, null, veteran2Hire);
         insertEmployee("anniv-fresh", "active", false, null, LocalDate.now(SHANGHAI));
 
         scheduler.scan();
@@ -136,16 +138,13 @@ class CelebrationSchedulerPostgresTest {
         verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
                 eq("anniversary"), captureSubjects(), eq("公司"));
         List<CelebrationSubject> subjects = capturedSubjects();
-        // 未满 1 年不进卡；满年的逐人带自己的年数标签。
-        // 注：容器 DB 会话时区可能与上海日期差一天（跨日窗口），年数允许 ±1，
-        // 只断言「各自年数」且工龄更长者年数严格更大（10 年 > 5 年）。
+        // 未满 1 年不进卡；满年的逐人带自己的年数标签。年数按扫描业务日在服务端算
+        // (不再用 DB 的 age()，容器会话时区不影响)，故断言精确年数。
+        int year = LocalDate.now(SHANGHAI).getYear();
         assertEquals(2, subjects.size(), () -> "subjects=" + subjects);
-        String veteranLabel = labelOf(subjects, veteran);
-        String veteran2Label = labelOf(subjects, veteran2);
-        assertTrue(veteranLabel.matches("入职[45]周年"), () -> "veteran label=" + veteranLabel);
-        assertTrue(veteran2Label.matches("入职(9|10)周年"),
-                () -> "veteran2 label=" + veteran2Label);
-        assertTrue(yearsOf(veteran2Label) > yearsOf(veteranLabel),
+        assertEquals("入职" + (year - veteranHire.getYear()) + "周年", labelOf(subjects, veteran));
+        assertEquals("入职" + (year - veteran2Hire.getYear()) + "周年", labelOf(subjects, veteran2));
+        assertTrue(yearsOf(labelOf(subjects, veteran2)) > yearsOf(labelOf(subjects, veteran)),
                 "工龄 10 年者的周年数必须大于工龄 5 年者");
     }
 
@@ -199,7 +198,49 @@ class CelebrationSchedulerPostgresTest {
         assertEquals(java.util.Set.of(leap), subjectIds(capturedSubjects()));
     }
 
+    @Test
+    void leapDayHiresGetTheirAnniversaryOnFeb28InCommonYearsWithFullYearCount() {
+        when(settings.readString(SystemSettingKey.CELEBRATION_AUTO_TYPES)).thenReturn("anniversary");
+        // 固定业务日扫描：先把种子行与其他用例的入职日挪到不会命中的 6/15，免受真实运行日期影响
+        jdbc.update("UPDATE employees SET hire_date = DATE '2000-06-15'");
+        UUID leap = insertEmployee("hire-leap-day", "active", false, null, LocalDate.of(2024, 2, 29));
+        UUID feb28 = insertEmployee("hire-feb-28", "active", false, null, LocalDate.of(2020, 2, 28));
+        UUID mar01 = insertEmployee("hire-mar-01", "active", false, null, LocalDate.of(2021, 3, 1));
+        insertEmployee("hire-leap-same-day", "active", false, null, LocalDate.of(2028, 2, 29));
+
+        // 非闰年 2/28：2/29 入职并入当天聚合卡，记满 3 年(PostgreSQL age() / Period.between 此日只算 2 年)
+        scheduler.scan(LocalDate.of(2027, 2, 28));
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("anniversary"), captureSubjects(), eq("公司"));
+        assertEquals(java.util.Map.of(leap, "入职3周年", feb28, "入职7周年"), labels(capturedSubjects()));
+
+        // 非闰年 3/1 不再补发 2/29 入职
+        org.mockito.Mockito.clearInvocations(noticeService);
+        scheduler.scan(LocalDate.of(2027, 3, 1));
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("anniversary"), captureSubjects(), eq("公司"));
+        assertEquals(java.util.Map.of(mar01, "入职6周年"), labels(capturedSubjects()));
+
+        // 闰年 2/28 只有 2/28 入职；2/29 当天才轮到 2/29 入职(当天新入职的未满 1 年不进卡)
+        org.mockito.Mockito.clearInvocations(noticeService);
+        scheduler.scan(LocalDate.of(2028, 2, 28));
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("anniversary"), captureSubjects(), eq("公司"));
+        assertEquals(java.util.Map.of(feb28, "入职8周年"), labels(capturedSubjects()));
+
+        org.mockito.Mockito.clearInvocations(noticeService);
+        scheduler.scan(LocalDate.of(2028, 2, 29));
+        verify(noticeService, times(1)).publishCelebrationGroupBroadcast(
+                eq("anniversary"), captureSubjects(), eq("公司"));
+        assertEquals(java.util.Map.of(leap, "入职4周年"), labels(capturedSubjects()));
+    }
+
     // ------------------------------------------------------------------
+
+    private static java.util.Map<UUID, String> labels(List<CelebrationSubject> subjects) {
+        return subjects.stream().collect(java.util.stream.Collectors.toMap(
+                CelebrationSubject::employeeId, CelebrationSubject::eventLabel));
+    }
 
     private static java.util.Set<UUID> subjectIds(List<CelebrationSubject> subjects) {
         return subjects.stream().map(CelebrationSubject::employeeId)
@@ -243,11 +284,14 @@ class CelebrationSchedulerPostgresTest {
         return LocalDate.now(SHANGHAI).minusDays(1).withYear(2000);
     }
 
-    /** Hire date exactly {@code years} before today; on Feb 29 uses the previous leap year. */
+    /**
+     * Hire date exactly {@code years} before today; on Feb 29 rounds down to a leap year
+     * (multiple of 4 years back, at least 4) so longer tenures still get more years.
+     */
     private static LocalDate hiredYearsAgoToday(int years) {
         LocalDate today = LocalDate.now(SHANGHAI);
         if (today.getMonthValue() == 2 && today.getDayOfMonth() == 29) {
-            return LocalDate.of(today.getYear() - 4, 2, 29);
+            return LocalDate.of(today.getYear() - 4 * Math.max(1, years / 4), 2, 29);
         }
         return LocalDate.of(today.getYear() - years, today.getMonthValue(), today.getDayOfMonth());
     }

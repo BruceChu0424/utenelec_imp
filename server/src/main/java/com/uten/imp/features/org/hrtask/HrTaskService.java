@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.hrtask;
 
 import com.uten.imp.common.time.BirthMonthDay;
+import com.uten.imp.common.time.WorkAnniversary;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ import java.util.UUID;
  *   日期的老员工聚合为 unconfirmedLegacyCount（数据补录提示），避免刷出上百条噪音；
  * - 生日按 employees.birth_month_day('MM-DD')匹配：V282 起出生日期只存密文、明文 birth_date
  *   恒为 NULL，故不再派生周岁；2 月 29 日生日在非闰年按 2 月 28 日庆祝({@link BirthMonthDay})；
+ * - 入职周年满 1 年起，2 月 29 日入职在非闰年按 2 月 28 日过周年、当天即记满 N 年({@link WorkAnniversary})；
  * - 员工规模（数百人级）一次查询内存计算即可，无需分页/物化视图。
  */
 @Service
@@ -116,12 +118,10 @@ public class HrTaskService {
                 }
             }
 
-            // ---- 入职周年(2/29 入职在非闰年按 2/28) ----
-            if (r.hireDate() != null && r.hireDate().getYear() < today.getYear()) {
-                if (MonthDay.from(r.hireDate()).atYear(today.getYear()).equals(today)) {
-                    int years = today.getYear() - r.hireDate().getYear();
-                    anniversaryToday.add(r.item(r.hireDate(), years, "入职满 " + years + " 年"));
-                }
+            // ---- 入职周年(满 1 年起；2/29 入职在非闰年按 2/28，与庆典自动发布 / 本人今日庆典同口径) ----
+            if (WorkAnniversary.isAnniversaryOn(r.hireDate(), today)) {
+                int years = WorkAnniversary.completedYears(r.hireDate(), today);
+                anniversaryToday.add(r.item(r.hireDate(), years, "入职满 " + years + " 年"));
             }
 
             // ---- 新入职（近 30 天） ----

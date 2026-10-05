@@ -2,6 +2,7 @@ package com.uten.imp.features.notice;
 
 import com.uten.imp.common.time.BirthMonthDay;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.time.WorkAnniversary;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.notice.NoticeService.CelebrationSubject;
@@ -86,16 +87,13 @@ public class CelebrationScheduler {
                 return;
             }
             String publisherName = settings.readString(SystemSettingKey.CELEBRATION_PUBLISHER_NAME);
-            int month = today.getMonthValue();
-            int day = today.getDayOfMonth();
-            int year = today.getYear();
 
             int published = 0;
             if (autoTypes.contains("birthday")) {
                 published += scanBirthday(today, publisherName);
             }
             if (autoTypes.contains("anniversary")) {
-                published += scanAnniversary(month, day, year, publisherName);
+                published += scanAnniversary(today, publisherName);
             }
             if (published > 0) {
                 log.info("庆典扫描完成：今日聚合卡覆盖 {} 位主角(types={})", published, autoTypes);
@@ -134,32 +132,38 @@ public class CelebrationScheduler {
     }
 
     /**
-     * 入职纪念日扫描：hire_date 月日 == 今天 且已满至少 1 整年（未满 1 年不进卡）。
-     * 年数 = EXTRACT(YEAR FROM age(hire_date))，与服务端 {@code Period.between} 等价；
-     * 各人年数不同，逐人生成事件标签（张三 入职5周年、李四 入职10周年）。
+     * 入职纪念日扫描：今天是 hire_date 的入职周年且已满至少 1 整年(未满 1 年不进卡；2/29 入职
+     * 非闰年 2/28 过，口径见 {@link WorkAnniversary})。各人年数不同，逐人生成事件标签
+     * (张三 入职5周年、李四 入职10周年)。
+     *
+     * <p>年数按 {@link WorkAnniversary#completedYears} 以扫描业务日计算，不用 PostgreSQL {@code age()}：
+     * {@code age()} 以数据库当前日期为准(与指定的业务日可能差一天)，且 2/29 入职在非闰年 2/28 只算 N-1 年。
      */
-    private int scanAnniversary(int month, int day, int year, String publisherName) {
+    private int scanAnniversary(LocalDate today, String publisherName) {
+        List<String> monthDays = WorkAnniversary.celebratedOn(today);
+        List<Object> args = new ArrayList<>(monthDays);
+        args.add(today.getYear());
+        args.add("anniversary");
+        args.add(today.getYear());
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT e.id, e.full_name,
-                       EXTRACT(YEAR FROM age(e.hire_date))::int AS years
-                FROM employees e
+                SELECT e.id, e.full_name, e.hire_date FROM employees e
                 WHERE
                 """ + ACTIVE_EMPLOYEE_PREDICATE + """
                   AND e.hire_date IS NOT NULL
-                  AND EXTRACT(MONTH FROM e.hire_date) = ?
-                  AND EXTRACT(DAY FROM e.hire_date) = ?
-                  AND EXTRACT(YEAR FROM age(e.hire_date)) >= 1
-                """ + ALREADY_CELEBRATED,
-                month, day, "anniversary", year);
+                  AND to_char(e.hire_date, 'MM-DD') IN (%s)
+                  AND EXTRACT(YEAR FROM e.hire_date) < ?
+                """.formatted(String.join(",", Collections.nCopies(monthDays.size(), "?")))
+                + ALREADY_CELEBRATED,
+                args.toArray());
         if (rows.isEmpty()) {
             return 0;
         }
         List<CelebrationSubject> subjects = rows.stream()
                 .map(r -> {
-                    int years = ((Number) r.get("years")).intValue();
-                    String eventLabel = years >= 1 ? "入职" + years + "周年" : "入职快乐";
+                    LocalDate hireDate = ((java.sql.Date) r.get("hire_date")).toLocalDate();
+                    int years = WorkAnniversary.completedYears(hireDate, today);
                     return new CelebrationSubject(
-                            (UUID) r.get("id"), (String) r.get("full_name"), eventLabel);
+                            (UUID) r.get("id"), (String) r.get("full_name"), "入职" + years + "周年");
                 })
                 .toList();
         noticeService.publishCelebrationGroupBroadcast("anniversary", subjects, publisherName);

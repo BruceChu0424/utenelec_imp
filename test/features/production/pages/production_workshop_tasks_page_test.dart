@@ -883,14 +883,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.calls, isEmpty);
 
-    // ADR-066 §1.3：点历史任务只渲染时间门控 + 占位，不发请求。
+    // ADR-066 §1.3（2026-10-04 修订）：点历史任务默认「全部时间段」，直接
+    // 全量加载（不带日期）；时间胶囊仍可切具体时间段。
     await tester.tap(find.text('历史任务'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('workshop-history-time')), findsOneWidget);
-    expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsOneWidget);
-    expect(repository.calls, isEmpty);
+    expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsNothing);
+    expect(repository.calls, hasLength(1));
+    expect(repository.calls.single.status, 'COMPLETED');
+    expect(repository.calls.single.dateFrom, isNull);
+    expect(repository.calls.single.dateTo, isNull);
 
-    // 选「全部」→ 发一次 COMPLETED 请求，不带日期。
+    // 再点已选中的「全部」不重复发请求。
     await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();
     expect(repository.calls, hasLength(1));

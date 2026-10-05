@@ -348,21 +348,17 @@ void main() {
       }),
     );
     await tester.pump();
-    // 父分类「销售出库」红徽章 = 5(待出库张数).
-    expect(find.text('5'), findsOneWidget);
-
-    await tester.tap(find.text('销售出库'));
     await tester.pump();
-    await tester.pump();
-    // 2026-09-20 用户口径: 父分类有红徽章, 小类也要有数——待出库红徽章与父分类同源
-    // 同数(第二个「5」), 已出库中性括号数, 历史单据不挂(已出库本身就是历史).
+    // 2026-10-04 起红数大类「销售出库」自动选中：小类行随挂载出现并自动选中。
+    // 2026-09-20 用户口径: 父分类有红徽章, 小类也要有数——待出库红徽章与父分类
+    // 同源同数(第二个「5」), 已出库中性括号数, 历史单据不挂(已出库本身是历史).
     expect(find.text('待出库'), findsOneWidget);
     expect(find.text('5'), findsNWidgets(2));
     expect(find.text('(12)'), findsOneWidget);
     expect(find.text('历史单据'), findsOneWidget);
     expect(find.text('(0)'), findsNothing);
-    // 小类默认不选: 仍是引导占位, 不发列表请求.
-    expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
+    // 小类随红数自动选中并加载(不再有引导占位).
+    expect(find.text('在上方选择分类后开始办理'), findsNothing);
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
@@ -379,19 +375,14 @@ void main() {
       }),
     );
     await tester.pump();
+    await tester.pump();
+    // 2026-10-04 起红数大类「委外出库」自动选中：小类行随挂载出现。
     expect(find.text('委外出库'), findsOneWidget);
-    expect(find.byType(UtenNotificationBadge), findsOneWidget);
     expect(find.byType(UtenInProgressBadge), findsNothing);
-    expect(find.text('2'), findsOneWidget);
-
-    // 小类行「待发料」与父分类同源同数.
-    await tester.tap(find.text('委外出库'));
-    await tester.pump();
-    await tester.pump();
+    // 红数大类自动选中后, 小类行「待发料」随挂载出现, 与父分类同源同数(各一枚红).
     expect(find.text('待发料'), findsOneWidget);
     expect(find.text('待出仓任务'), findsNothing);
     expect(find.byType(UtenNotificationBadge), findsNWidgets(2));
-    expect(find.byType(UtenInProgressBadge), findsNothing);
     expect(find.text('2'), findsNWidgets(2));
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
@@ -485,8 +476,9 @@ void main() {
     expect(find.text('待领任务'), findsOneWidget);
     expect(find.text('领料单'), findsOneWidget);
     expect(find.text('生产退料'), findsOneWidget);
-    // 进页面不预选大类：内容区为引导空态。
-    expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
+    // 2026-10-04 起红数「待领任务」大类自动选中：直接渲染对应内容，不再有
+    // 引导空态（无红黄的权限组合才保持空态）。
+    expect(find.text('在上方选择分类后开始办理'), findsNothing);
 
     await tester.pumpWidget(
       app(const WarehouseDrawTaskCenterPage(), const <String>{}),

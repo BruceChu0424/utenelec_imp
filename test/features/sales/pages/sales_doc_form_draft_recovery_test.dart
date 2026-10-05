@@ -279,16 +279,12 @@ void main() {
           apiOverride: api,
         );
         expect(find.text('未完成草稿'), findsNothing);
-        expect(find.text('未提交草稿'), findsNothing);
-        await tester.tap(find.text('订货进度'));
-        await tester.pumpAndSettle();
+        // 2026-10-04 起进页面自动选中：红数第一大类「订货进度」+ 其红3的
+        // 「草稿」阶段段直接选中，草稿分类内容随挂载即渲染。
         final draftSegment = _orderDraftStageSegment();
         expect(draftSegment, findsOneWidget);
         final draftBadge = tester.widget<UtenSegmentBadgeLabel>(draftSegment);
         expect(draftBadge.count, 3);
-        expect(find.text('未提交草稿'), findsNothing);
-        await tester.tap(draftSegment);
-        await tester.pumpAndSettle();
         final table = tester
             .widget<
               MasterDataTableView<FormDraftCategoryRow<SalesOrderProgressRow>>

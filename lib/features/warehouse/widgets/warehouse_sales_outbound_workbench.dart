@@ -123,7 +123,7 @@ class _WarehouseSalesOutboundWorkbenchState
   final _columnFilters = MasterServerColumnFilters();
 
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
   int _requestVersion = 0;
 
   @override
@@ -272,7 +272,7 @@ class _WarehouseSalesOutboundWorkbenchState
       _result = null;
       _error = null;
       ++_requestVersion;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
       // 分段与表头筛选用同一服务端参数：切段时清表头状态桶与单号筛选
       // （2026-09-25 单号列统一，与仓库作业桶同一重置行为）。
       _workStatusColumnFilter = null;

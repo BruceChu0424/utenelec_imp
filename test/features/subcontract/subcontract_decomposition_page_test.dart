@@ -60,8 +60,11 @@ void main() {
       final resume = container.read(pageResumeProvider.notifier);
       bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
       await tester.pumpAndSettle();
-      expect(gateway.queries, hasLength(1));
+      // 2026-10-04 起红数「待处理」段进页面自动选中：概览 + WAITING_ORDER 两次；
+      // 「领料」分段的红数单独按 /draw-tasks/count 取一次。
+      expect(gateway.queries, hasLength(2));
       expect(draw.countCalls, 1);
+      // 再点已选中的「待处理」不重复发请求。
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
       expect(gateway.queries, hasLength(2));
@@ -171,8 +174,8 @@ void main() {
         selectStage(category);
         await tester.pumpAndSettle();
         if (category == '历史记录') {
-          expect(action, findsNothing);
-          expect(find.byType(UtenSelectionSummaryPill), findsNothing);
+          // 2026-10-04 起历史门默认「全部」：动作与选中胶囊随挂载即在，
+          // 不再有「未选时间」占位态；再点已选中的「全部」不重复发请求。
           await selectFilterSegment(tester, '全部');
           await tester.pumpAndSettle();
         }
@@ -207,6 +210,37 @@ void main() {
       await tester.tap(find.text('退出全屏'));
       await tester.pumpAndSettle();
       expect(action, findsOneWidget);
+      expect(find.text('已选 0 项'), findsOneWidget);
+      await tester.tap(find.text('FG-task-1'));
+      await tester.pumpAndSettle();
+      for (final width in [900.0, 375.0, 1400.0]) {
+        tester.view.physicalSize = Size(width, 1400);
+        await tester.pumpAndSettle();
+        expect(action, findsOneWidget, reason: 'width=$width');
+        expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
+        expect(find.text('已选 1 项'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+      tester.view.physicalSize = const Size(375, 1400);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenSelectionSummaryPill),
+          matching: find.byIcon(Icons.close_rounded),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已选 0 项'), findsOneWidget);
+      expect(tester.widget<UtenButton>(action).onPressed, isNull);
+      // 375px 下分类栏收成「分类」下拉（2026-09-14），统一走共用助手选段。
+      await selectFilterSegment(tester, '历史记录');
+      await tester.pumpAndSettle();
+      // 2026-10-04 起历史门默认「全部」：动作与选中胶囊随挂载即在；再点
+      // 已选中的「全部」不重复发请求。
+      await selectFilterSegment(tester, '全部');
+      await tester.pumpAndSettle();
+      expect(action, findsOneWidget);
+      expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -233,14 +267,29 @@ void main() {
         findsOneWidget,
       );
       // 进页面只拉一次 size=1 概览（阶段计数徽章），不带 status 过滤。
-      expect(gateway.statuses, [null]);
-      expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
+      // 2026-10-04 起红数「待处理」段进页面自动选中：概览 + 列表两次请求。
+      expect(gateway.statuses, [null, 'WAITING_ORDER']);
+      // 原「概览卡 + 阶段/异常下拉」已删除；占位态随自动选中消失。
+      expect(find.text('在上方选择阶段后开始办理'), findsNothing);
+      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      // 2026-09-06 委外不再有「分解」行为用语：首段改名「待处理」。
+      // 375px 分类栏放不下时收成「分类」下拉（2026-09-14）：段名在菜单里断言与点选；
+      // ADR-098 三段合并后窄屏也放得下，此时段名直接是芯片。两种形态都要能过。
+      final segmentMenu = find.byIcon(Icons.keyboard_arrow_down_rounded);
+      if (segmentMenu.evaluate().isNotEmpty) {
+        await tester.tap(segmentMenu);
+        await tester.pumpAndSettle();
+      }
+      // 2026-10-04 起自动选中渲染了任务卡，卡内状态文字可能与段名同名——
+      // 段存在即可，唯一定位交给下面的 .last tap。
+      expect(find.text('待处理'), findsAtLeastNWidgets(1));
       var button = tester.widget<UtenButton>(
         find.byKey(const Key('subcontract-decomposition-create-order')),
       );
       expect(button.onPressed, isNull);
 
-      await selectFilterSegment(tester, '待处理');
+      // 再点已选中的「待处理」段（2026-10-04 起进页面自动选中）不重复发请求。
+      await tester.tap(find.text('待处理').last);
       await tester.pumpAndSettle();
       expect(gateway.statuses, [null, 'WAITING_ORDER']);
       expect(find.text('计划申请已下达 / 待分解'), findsNWidgets(2));

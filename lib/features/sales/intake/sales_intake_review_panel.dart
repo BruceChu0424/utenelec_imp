@@ -10,6 +10,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 
@@ -1073,7 +1074,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
             ),
           ),
         ),
-        SegmentedButton<_LineFilter>(
+        UtenSegmentRow<_LineFilter>(
           key: const ValueKey('sales-intake-filter'),
           showSelectedIcon: false,
           segments: [

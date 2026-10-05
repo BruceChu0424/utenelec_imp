@@ -286,9 +286,11 @@ void main() {
           ),
         ],
       );
-      expect(find.byType(FormDraftCategoryList), findsNothing);
+      // 2026-10-04 起红数「草稿」段进页面自动选中：方向性草稿分类随挂载即渲染
+      // （选中后内容区还有第二条工具条，取顶部分类栏）。
+      expect(find.byType(FormDraftCategoryList), findsOneWidget);
       final toolbar = tester.widget<UtenFilterToolbar<String>>(
-        find.byType(UtenFilterToolbar<String>),
+        find.byType(UtenFilterToolbar<String>).first,
       );
       expect(
         toolbar.segments

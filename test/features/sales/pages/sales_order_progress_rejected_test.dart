@@ -56,19 +56,19 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 分类分段范式(ADR-066) + 两层分类(ADR-100)：大类行默认不选(内容区是引导
-      // 占位，不发 progress 请求)。先点大类「进行中」按组加载，再点小类「财务驳回」
-      // 收窄到 stage=REJECTED —— 小类行必须等大类选中后才出现。
+      // 分类分段范式(ADR-066) + 两层分类(ADR-100)：2026-10-04 起红数「草稿」段
+      // 进页面自动选中(stage=DRAFT)；点大类「进行中」按组加载，小类行随大类
+      // 解锁出现，红数的「财务驳回」再被自动选中(stage=REJECTED)。
       await tester.tap(find.text('进行中'));
       await tester.pumpAndSettle();
       expect(
-        api.progressQueries.single['stage'],
-        'IN_PROGRESS',
+        api.progressQueries.map((q) => q['stage']),
+        contains('IN_PROGRESS'),
         reason: '大类直接按组拉，不该退化成前端多拼几次单阶段请求',
       );
+      expect(api.progressQueries.last['stage'], 'REJECTED');
 
-      // 大类拉回来的行里已经有一张「财务驳回」状态药丸, 裸 find.text 会同时命中
-      // 分段标签和表格单元格 —— 按分段标签控件定位才唯一。
+      // 再点已选中的「财务驳回」不重复发请求（单选点已选段不回调）。
       await tester.tap(
         find.byWidgetPredicate(
           (w) => w is UtenSegmentBadgeLabel && w.label == '财务驳回',
@@ -260,19 +260,24 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 未选时间前不发请求（ADR-066 历史段时间门控）。
-      expect(api.progressQueries, isEmpty);
+      // 2026-10-04 起红数「草稿」阶段进页面自动选中（stage=DRAFT 直查）。
+      expect(api.progressQueries, [
+        {'page': 1, 'size': 50, 'stage': 'DRAFT'},
+      ]);
 
       await tester.tap(find.text('历史记录'));
       await tester.pumpAndSettle();
-      expect(api.progressQueries, isEmpty);
+      // 历史门默认「全部」（2026-10-04 口径）：历史记录被选中即全量加载，
+      // 不限时间（时间胶囊仍可切具体时间段）。
+      expect(api.progressQueries, hasLength(2));
+      // 历史记录不带 stage 参数（repo 空串省略）= 后端默认全部订单。
+      expect(api.progressQueries.last.containsKey('stage'), isFalse);
 
+      // 再点已选中的「全部」胶囊不重复发请求。
       await tester.tap(find.text('全部'));
       await tester.pumpAndSettle();
+      expect(api.progressQueries, hasLength(2));
 
-      expect(api.progressQueries, hasLength(1));
-      // 历史记录不带 stage 参数（repo 空串省略）= 后端默认全部订单。
-      expect(api.progressQueries.single.containsKey('stage'), isFalse);
       // 终态/被驳回订单都能出现在历史里；取消单（finance 未确认）显示「已中止」
       // 而非「等待财务审核」——终态优先于财务闸门。
       expect(find.text('SO-REJECTED'), findsOneWidget);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/feedback/uten_count_suffix.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
@@ -73,7 +74,7 @@ void main() {
     testWidgets('颜色跟随分段前景色：选中态与未选态不同且都不是写死的灰', (tester) async {
       await tester.pumpWidget(
         _wrap(
-          SegmentedButton<String>(
+          UtenSegmentRow<String>(
             showSelectedIcon: false,
             segments: const [
               ButtonSegment(
@@ -188,7 +189,7 @@ void main() {
         StatefulBuilder(
           builder: (context, setState) {
             var selected = 'all';
-            return SegmentedButton<String>(
+            return UtenSegmentRow<String>(
               showSelectedIcon: false,
               segments: const [
                 ButtonSegment(

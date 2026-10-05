@@ -323,7 +323,7 @@ class _ProductionWorkshopTasksPageState
   int _loadGeneration = 0;
 
   /// 历史任务段的时间门控值（ADR-066 §1.3）：未选不请求、显示引导占位。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 当前分类是否「历史任务」（终态段：已完工/已取消/已红冲）。
   bool get _isHistory => _status == 'COMPLETED';
@@ -2694,7 +2694,7 @@ class _ProductionWorkshopTasksPageState
                       _selected.clear();
                       // 离开历史段时清掉时间门控值，下次进入重新选择。
                       if (!_isHistory) {
-                        _historyTime = const UtenHistoryTimeValue.none();
+                        _historyTime = const UtenHistoryTimeValue.all();
                       }
                     });
                     _load();

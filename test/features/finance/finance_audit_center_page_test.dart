@@ -22,14 +22,14 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
 
-  testWidgets('segments follow permissions; nothing preselected', (
+  testWidgets('segments follow permissions; first red queue auto-selected', (
     tester,
   ) async {
     await tester.pumpWidget(
       _app(const FinanceAuditCenterPage(), const {
         Perm.salesOrderFinanceView,
         Perm.salesShipmentFinanceView,
-      }),
+      }, repository: _EmptyConfirmationRepository()),
     );
     await tester.pumpAndSettle();
 
@@ -40,8 +40,10 @@ void main() {
     expect(find.text('订货审批'), findsNothing);
     expect(find.text('超量到货审批'), findsNothing);
     expect(find.text('IQC 退回贷项'), findsNothing);
-    // 进页面不预选大类：内容区是引导空态。
-    expect(find.text('在上方选择分类后开始审核'), findsOneWidget);
+    // 2026-10-04 起进页面自动选中第一条红徽章队列（销售订单确认，红3）：
+    // 内容区不再是引导空态，直接渲染该队列（小类行可见）。
+    expect(find.text('在上方选择分类后开始审核'), findsNothing);
+    expect(find.text('待确认'), findsOneWidget);
     expect(find.text('业务审核中心'), findsOneWidget);
   });
 

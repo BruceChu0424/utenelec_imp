@@ -92,7 +92,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   int? _issueStatus;
 
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 表头列筛选：仓库（warehouses/dict 桶）+ 领料车间（departments/tree 展平桶，
   /// 仅 DRAW 有该列）+ 调入仓（warehouses/dict 桶，仅 TRANSFER 有该列）；
@@ -152,7 +152,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         ? const _StockDocSeg.stage(0)
         : null;
     _issueStatus = null;
-    _historyTime = const UtenHistoryTimeValue.none();
+    _historyTime = const UtenHistoryTimeValue.all();
     _warehouseIdFilter = null;
     _departmentIdFilter = null;
     _toWarehouseIdFilter = null;
@@ -268,7 +268,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     setState(() {
       _seg = seg;
       _issueStatus = null;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _reload(1);
   }

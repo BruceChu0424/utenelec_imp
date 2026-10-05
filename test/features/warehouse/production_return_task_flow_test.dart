@@ -183,11 +183,10 @@ void main() {
     (tester) async {
       final repository = _Repository();
       await _pump(tester, repository);
-      await tester.tap(find.text('生产退料'));
       await tester.pumpAndSettle();
-      expect(repository.filters, isEmpty);
-      await tester.tap(find.text('待仓库收料'));
-      await tester.pumpAndSettle();
+      // 2026-10-04 起红数「生产退料」大类与小类「待仓库收料」随自动选中级联，
+      // 列表进页面即按正式退料收料口径加载。
+      expect(repository.filters, isNotEmpty);
       expect(repository.filters.last.productionReturnRequests, isTrue);
       expect(repository.filters.last.status, 0);
       expect(repository.filters.last.issueStatus, isNull);

@@ -144,7 +144,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   _SalesDocSeg? _statusSeg;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   /// 可发货置顶（订货单工作台小项）：true 时后端按"有预留单排前 + 交货日升序"
   /// 排序，忽略列排序。
@@ -288,7 +288,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     _columnFilters.reset();
     _stage = null;
     _statusSeg = null;
-    _historyTime = const UtenHistoryTimeValue.none();
+    _historyTime = const UtenHistoryTimeValue.all();
     _clientIdFilter = null;
     _financeAuditFilter = null;
     _warehouseWorkStatusFilter = null;
@@ -604,7 +604,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     setState(() {
       _stage = stage;
       _statusSeg = null;
-      _historyTime = const UtenHistoryTimeValue.none();
+      _historyTime = const UtenHistoryTimeValue.all();
     });
     // 订货单大类选中即加载（小类默认不选=全部效果）。
     _reload(1);
@@ -615,7 +615,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     clearDraftSelection();
     setState(() {
       _statusSeg = seg;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _reload(1);
   }

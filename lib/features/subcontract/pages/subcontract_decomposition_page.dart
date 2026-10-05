@@ -136,7 +136,7 @@ class _SubcontractDecompositionPageState
   String? _exception;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
-  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.none();
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
 
   final Set<String> _selectedIds = <String>{};
 
@@ -463,7 +463,7 @@ class _SubcontractDecompositionPageState
       _seg = seg;
       _exception = null;
       _page = 1;
-      if (!seg.history) _historyTime = const UtenHistoryTimeValue.none();
+      if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       _columnFilters.clear();
       if (seg.code == _drawStage) {

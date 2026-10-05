@@ -4,6 +4,7 @@
 // 用量很小的料可以改"直接填公斤"; "本机停机、全空"一键。
 // 每点一下即落库 (由页面逐行保存), 卡片只负责显示与回调; 保存中 / 保存失败逐容器显示。
 import 'package:flutter/material.dart';
+import '../../../../components/layout/uten_segment_row.dart';
 
 import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
@@ -233,7 +234,7 @@ class _MachineCountCardState extends State<MachineCountCard> {
           runSpacing: UtenSpacing.s6,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            SegmentedButton<String>(
+            UtenSegmentRow<String>(
               key: Key('wm-fill-$id'),
               showSelectedIcon: false,
               emptySelectionAllowed: true,

@@ -1,4 +1,4 @@
--- V798 (ADR-150): AI 助手「提出动作 -> 本人确认 -> 执行」的一次性提案。
+-- V805 (ADR-150): AI 助手「提出动作 -> 本人确认 -> 执行」的一次性提案。
 -- 提案只记录服务端渲染的确认卡内容与参数摘要, 不是授权: 执行仍走页面原按钮或原业务端点,
 -- 权限、再认证、版本与状态校验照旧。一行只能从 PROPOSED 走一次到 CONFIRMED(数据库兜底一次性核销),
 -- 过期、取消、身份变化作废后不能再确认。确认后客户端回写执行回执(SUCCEEDED/FAILED)。
@@ -101,7 +101,7 @@ DECLARE definition TEXT; anchor TEXT := '(''stock_movements'', ''CLEAR'')';
 BEGIN
     SELECT pg_get_functiondef('business_data_reset()'::regprocedure) INTO definition;
     IF (length(definition) - length(replace(definition, anchor, ''))) / length(anchor) <> 1 THEN
-        RAISE EXCEPTION 'V798 cannot extend business-data reset policy safely';
+        RAISE EXCEPTION 'V805 cannot extend business-data reset policy safely';
     END IF;
     EXECUTE replace(definition, anchor, anchor || E',\n (''ai_chat_action_proposals'', ''CLEAR'')');
 END;

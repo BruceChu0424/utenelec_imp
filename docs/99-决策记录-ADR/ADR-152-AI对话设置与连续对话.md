@@ -1,7 +1,7 @@
 # ADR-152 AI 对话设置与连续对话
 
 - 日期: 2026-10-04。
-- 状态: 已实现(服务端 + 前端 + 迁移 + 测试), 在克隆库 uten_imp_wai + 后端 8086 + 真实智谱 GLM 上端到端验证。迁移在 AI 轨道临时编号 V799, 集成时由编排者改号。
+- 状态: 已实现(服务端 + 前端 + 迁移 + 测试), 在克隆库 uten_imp_wai + 后端 8086 + 真实智谱 GLM 上端到端验证。迁移在 AI 轨道临时编号 V806, 集成时由编排者改号。
 - 修订: [ADR-150](ADR-150-AI助手页面上下文有据作答与确认后执行.md) 中「回答长短只看用户原话(presentationMode)」与「多轮只带上一轮回答, 且只在同一页面」两条, 由本 ADR 的「设置默认 + 本句覆盖」与「对话(conversation)记忆」取代; ADR-150 的页面快照、有据作答、事实守卫、确认卡与执行边界全部继续有效。
 - 扩展: [ADR-133](ADR-133-公共AI平台与服务商可配置.md) 的服务商能力开关「关闭深度思考方式」扩展为「思考参数写法」, 公共平台请求增加与服务商无关的思考程度。
 - 依赖: ADR-017 跨 feature 只经 application.port、ADR-108 偏好随会话快照带回、ADR-110 身份戳。
@@ -65,7 +65,7 @@ ADR-150 之前的实现: 回答长短只由这一句话里的「简单点/举例
 ### 3. 公共 AI 平台: 与服务商无关的思考程度
 
 - `AiCompletionPort.AiCompletionRequest` 增加 `reasoningEffort`(`DEFAULT/OFF/LOW/MEDIUM/HIGH`), 旧构造器默认 `DEFAULT`; `AiAvailability` 增加 `supportsReasoningEffort`; 任务上下文转发请求时保留该字段(`withJobId`)。
-- `ai_providers.thinking_control` 从「关闭深度思考的写法」改为「思考参数写法」, 新增 `ZHIPU`、`ANTHROPIC_EFFORT`(V799 放宽 CHECK, 已有的智谱配置由 NONE 改为 ZHIPU)。预设默认: 智谱=ZHIPU, Claude=ANTHROPIC_EFFORT。
+- `ai_providers.thinking_control` 从「关闭深度思考的写法」改为「思考参数写法」, 新增 `ZHIPU`、`ANTHROPIC_EFFORT`(V806 放宽 CHECK, 已有的智谱配置由 NONE 改为 ZHIPU)。预设默认: 智谱=ZHIPU, Claude=ANTHROPIC_EFFORT。
 - 「能否调整」只有一个判定 `AiReasoningParams.supported(runtime)`: 写法 + 生效协议 + 模型三者都接受才算; 不能调整时一律按 DEFAULT 写请求体、不加额度、不改超时, 所以账号里存的任何档位(包括换服务商之前存的「快速」)都不会改变请求, 也不会让请求被拒。
 - 唯一映射表 `AiReasoningParams`(协议客户端写请求体、网关放宽/收紧上限与超时、调用日志都用它):
 

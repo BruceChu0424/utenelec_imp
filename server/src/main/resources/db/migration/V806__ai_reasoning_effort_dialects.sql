@@ -1,4 +1,4 @@
--- V799 (ADR-152, AI 轨道临时号, 集成时由编排者改号): AI 对话「思考程度」设置需要服务商能表达思考深度。
+-- V806 (ADR-152, AI 轨道临时号, 集成时由编排者改号): AI 对话「思考程度」设置需要服务商能表达思考深度。
 -- ai_providers.thinking_control 从「关闭深度思考的写法」扩展为「思考参数写法」:
 --   ZHIPU            智谱 GLM(OpenAI 兼容端点 thinking + reasoning_effort; Anthropic 兼容端点 output_config.effort)
 --   ANTHROPIC_EFFORT Anthropic Messages output_config.effort(Claude 4.6 及以上)

@@ -179,8 +179,8 @@ class BusinessDataResetSqlContractTest {
             Map.entry("stock_count_request_events", 766),
             Map.entry("workshop_material_count_adjustment_postings", 768),
             Map.entry("business_test_object_cleanup_intents", 782),
-            // V798 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。
-            Map.entry("ai_chat_action_proposals", 798));
+            // V805 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。
+            Map.entry("ai_chat_action_proposals", 805));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。

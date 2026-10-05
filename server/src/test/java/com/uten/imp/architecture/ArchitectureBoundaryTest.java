@@ -354,7 +354,7 @@ class ArchitectureBoundaryTest {
                 "features/admin/impersonation/ImpersonationController.java", List.of("\"/enter\""),
                 "features/admin/systemsetting/SystemSettingController.java", List.of("@PutMapping"),
                 "features/admin/systemtest/SystemTestController.java", List.of(
-                        "\"/business-data/reset\"", "\"/business-data/attachments/prepare\""),
+                        "\"/business-data/reset\""),
                 // ADR-133: AI 服务配置的写入与「用已保存密钥」的探测都必须再认证。
                 "features/ai/provider/AiProviderController.java", List.of(
                         "\"/providers\"", "\"/providers/{id}\"", "\"/providers/{id}/default\"",

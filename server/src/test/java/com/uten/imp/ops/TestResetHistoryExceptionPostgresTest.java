@@ -1,7 +1,7 @@
 package com.uten.imp.ops;
 
 import com.uten.imp.support.MigratedSchemaBaseline;
-import com.uten.imp.application.port.BusinessAttachmentResetPreparationPort;
+import com.uten.imp.application.port.BusinessTestResetFilesPort;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetService;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetFeatureGate;
@@ -122,7 +122,8 @@ class TestResetHistoryExceptionPostgresTest {
 
     @Test void archivedControlReceiptsRemainReadableForTheirOriginalActorAfterAnotherReset() {
         jdbc.queryForObject("SELECT fn_audit_ensure_partition('audit_log_archive',DATE '1998-01-01')",String.class);
-        UUID actor=UUID.randomUUID(),complete=UUID.randomUUID(),failed=UUID.randomUUID(),pending=UUID.randomUUID();
+        UUID actor=UUID.randomUUID(),complete=UUID.randomUUID(),failed=UUID.randomUUID(),pending=UUID.randomUUID(),
+                afterDeletion=UUID.randomUUID();
         String instance=org.springframework.test.util.ReflectionTestUtils.getField(BusinessDataResetService.class,"SERVER_INSTANCE_ID").toString();
         jdbc.update("""
                 INSERT INTO audit_log_archive(actor_id,actor_account,action,target_type,target_id,result,created_at,event_source,risk_level,event_category,device_capture_status)
@@ -130,12 +131,15 @@ class TestResetHistoryExceptionPostgresTest {
                       (?, 'old-test-admin','business_data_reset','system_test',?,'cleared_tables=3,cleared_rows=12,preserved_tables=5,epoch=7,deleted_attachment_files=2','1998-01-02 00:01:00+00','business','low','system','missing'),
                       (?, 'old-test-admin','business_data_reset_received','system_test',?,?,'1998-01-03 00:00:00+00','business','low','system','missing'),
                       (?, 'old-test-admin','business_data_reset_failed','system_test',?,'failed,code=CONFLICT,message=old exact refusal','1998-01-03 00:01:00+00','business','low','system','missing'),
-                      (?, 'old-test-admin','business_data_reset_received','system_test',?,?,'1998-01-04 00:00:00+00','business','low','system','missing')
+                      (?, 'old-test-admin','business_data_reset_received','system_test',?,?,'1998-01-04 00:00:00+00','business','low','system','missing'),
+                      (?, 'old-test-admin','business_data_reset_received','system_test',?,?,'1998-01-05 00:00:00+00','business','low','system','missing'),
+                      (?, 'old-test-admin','business_data_reset_failed','system_test',?,'failed,code=CONFLICT,deleted_attachment_files=4,reasons=DELETE_FAILED:1,message=失败原因：删除文件失败。本次已物理删除 4 个测试文件，数据没有清空。','1998-01-05 00:01:00+00','business','low','system','missing')
                 """,actor,complete.toString(),"received,server="+instance,actor,complete.toString(),
                      actor,failed.toString(),"received,server="+instance,actor,failed.toString(),
-                     actor,pending.toString(),"received,server="+instance);
+                     actor,pending.toString(),"received,server="+instance,
+                     actor,afterDeletion.toString(),"received,server="+instance,actor,afterDeletion.toString());
         var service=new BusinessDataResetService(source,new DataSourceTransactionManager(source),
-                new BusinessDataResetFeatureGate(true),new BusinessDataResetDrainGate(),mock(AuditService.class),mock(BusinessAttachmentResetPreparationPort.class));
+                new BusinessDataResetFeatureGate(true),new BusinessDataResetDrainGate(),mock(AuditService.class),mock(BusinessTestResetFilesPort.class));
         var done=service.lastResult(actor,complete);
         assertThat(done.available()).isTrue();assertThat(done.attemptReceived()).isTrue();
         assertThat(done.clearedRows()).isEqualTo(12);assertThat(done.authorizationEpochAfter()).isEqualTo(7);
@@ -143,6 +147,10 @@ class TestResetHistoryExceptionPostgresTest {
         var rejected=service.lastResult(actor,failed);
         assertThat(rejected.available()).isFalse();assertThat(rejected.attemptReceived()).isTrue();
         assertThat(rejected.attemptFailed()).isTrue();assertThat(rejected.attemptFailureMessage()).isEqualTo("old exact refusal");
+        assertThat(rejected.attemptDeletedAttachmentFiles()).isZero();
+        var partial=service.lastResult(actor,afterDeletion);
+        assertThat(partial.attemptFailed()).isTrue();assertThat(partial.attemptDeletedAttachmentFiles()).isEqualTo(4);
+        assertThat(partial.attemptFailureMessage()).isEqualTo("失败原因：删除文件失败。本次已物理删除 4 个测试文件，数据没有清空。");
         var waiting=service.lastResult(actor,pending);
         assertThat(waiting.attemptReceived()).isTrue();assertThat(waiting.attemptReceivedByCurrentServer()).isTrue();
         assertThat(waiting.available()).isFalse();assertThat(waiting.attemptFailed()).isFalse();
@@ -153,6 +161,7 @@ class TestResetHistoryExceptionPostgresTest {
         assertThat(after.available()).isTrue();assertThat(after.attemptReceived()).isTrue();
         assertThat(after.clearedRows()).isEqualTo(12);assertThat(after.authorizationEpochAfter()).isEqualTo(7);
         assertThat(service.lastResult(actor,failed).attemptFailureMessage()).isEqualTo("old exact refusal");
+        assertThat(service.lastResult(actor,afterDeletion).attemptDeletedAttachmentFiles()).isEqualTo(4);
         assertThat(service.lastResult(actor,pending).attemptReceived()).isTrue();
     }
 }

@@ -86,6 +86,18 @@ public interface StorageService {
     void deleteStaging(String storageKey, String versionId);
 
     /**
+     * Reads only the object header at one exact location; never reads the content.
+     * Absent (including a concurrent delete while inspecting) returns {@code exists=false};
+     * an unavailable storage root or partition throws {@link StorageResourceUnavailableException}
+     * (never "absent"); the local flat historical layout throws {@link StorageLegacyLayoutException};
+     * something at the location that is not a system object or cannot be read throws
+     * {@link StorageObjectProblem}.
+     */
+    default StoredObject inspectObject(ObjectLocation location, String storageKey) {
+        throw new UnsupportedOperationException("Exact object inspection is not enabled for this storage provider");
+    }
+
+    /**
      * Lists exact object identities for a controlled orphan-reconciliation job. Runtime
      * implementations fail closed unless their inventory grant is explicitly enabled.
      */

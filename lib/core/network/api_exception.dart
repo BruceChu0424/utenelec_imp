@@ -3,7 +3,13 @@
 import 'api_error.dart';
 
 class ApiException implements Exception {
-  ApiException(this.code, this.message, {this.fieldErrors, this.httpStatus});
+  ApiException(
+    this.code,
+    this.message, {
+    this.fieldErrors,
+    this.httpStatus,
+    this.hasResponseCode = false,
+  });
 
   /// 后端错误码（BAD_CREDENTIALS / ACCOUNT_LOCKED / ...）
   final String code;
@@ -15,12 +21,18 @@ class ApiException implements Exception {
   /// from a server response that explicitly rejected their transaction.
   final int? httpStatus;
 
+  /// 错误码是否来自响应体里的统一错误格式 {code, message}。为假表示错误码是本端按
+  /// 连接失败或 HTTP 状态兜底补的(例如网关 502/503/504 的错误页)：这类响应说明不了
+  /// 服务端对这次请求做了什么。
+  final bool hasResponseCode;
+
   factory ApiException.fromApiError(ApiError err, {int? httpStatus}) =>
       ApiException(
         err.code,
         err.message,
         fieldErrors: err.fieldErrors,
         httpStatus: httpStatus,
+        hasResponseCode: err.hasCode,
       );
 
   @override

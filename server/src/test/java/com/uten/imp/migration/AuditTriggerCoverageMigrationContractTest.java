@@ -281,7 +281,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("retained_private_evidence",
                     "永久原件、私有 before-image 和清理授权是独立证据，保留原载荷/关联并由授权原生入口读取；通用行审计不再次复制密钥、原上传、值单元或历史证据",
                     Set.of("ai_input_originals", "ai_provider_history", "business_record_history", "business_record_identities",
-                            "business_test_object_cleanup_intents", "notice_blessing_history",
+                            "notice_blessing_history",
                             "sales_quote_template_candidate_history", "platform_record_fields")),
             new NoneGroup("notice",
                     "通知投递与互动机制: 人工发布、确认、祝福已有显式业务事件",

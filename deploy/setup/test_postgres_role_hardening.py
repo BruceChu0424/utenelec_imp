@@ -267,6 +267,22 @@ SELECT has_function_privilege('uten','public.fn_require_runtime_maintenance(bool
 """)
         self.assertEqual(result, "f|t")
 
+    def test_reset_context_functions_stay_private_after_blanket_grants(self):
+        result = self.sql("""CREATE FUNCTION public.fn_business_test_reset_verify_purged() RETURNS void LANGUAGE sql AS 'SELECT';
+CREATE FUNCTION public.fn_clear_business_test_object_metadata() RETURNS void LANGUAGE sql AS 'SELECT';
+CREATE FUNCTION public.fn_business_test_reset_objects() RETURNS void LANGUAGE sql AS 'SELECT';
+ALTER FUNCTION public.fn_business_test_reset_verify_purged() OWNER TO uten_owner;
+ALTER FUNCTION public.fn_clear_business_test_object_metadata() OWNER TO uten_owner;
+ALTER FUNCTION public.fn_business_test_reset_objects() OWNER TO uten_owner;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO PUBLIC, uten;
+""" + shipped_block("restricted_import_acl") + """
+SELECT has_function_privilege('uten','public.fn_business_test_reset_verify_purged()','EXECUTE'),
+       has_function_privilege('uten','public.fn_clear_business_test_object_metadata()','EXECUTE'),
+       has_function_privilege('uten','public.fn_business_test_reset_objects()','EXECUTE'),
+       has_function_privilege('uten_owner','public.fn_business_test_reset_verify_purged()','EXECUTE');
+""")
+        self.assertEqual(result, "f|f|t|t")
+
     def test_runtime_verifier_queries_execute_for_an_older_reviewed_head(self):
         result = self.sql("CREATE TABLE flyway_schema_history(id int);\n" + "\n".join(runtime_postcondition_queries()))
         self.assertEqual(result.splitlines(), ["0:0:0:0", "0", "1"])

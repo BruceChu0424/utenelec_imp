@@ -18,7 +18,9 @@ class SubcontractMakeBeforeOrderMigrationContractTest {
     private static final Path MIGRATION = Path.of(
             "src/main/resources/db/migration/"
                     + "V458__subcontract_make_before_order.sql");
-    private static final Path RESET = Path.of("ops/reset_business_data.sql");
+    private static final Path V464 = Path.of(
+            "src/main/resources/db/migration/"
+                    + "V464__reset_twin_order_item_sources.sql");
     private static final Path V798 = Path.of(
             "src/main/resources/db/migration/V798__subcontract_step_draw.sql");
 
@@ -147,21 +149,28 @@ class SubcontractMakeBeforeOrderMigrationContractTest {
     }
 
     /**
-     * ADR-143 §五：V798 删除前置自制账本表; 重置策略随之不再登记它们(登记了不存在的表反而会被策略比对拒绝),
-     * 历史目录照旧接受 V458。
+     * ADR-143 §五：V798 删除前置自制账本表; 清空分类随之把它们登记为删除(REMOVED_RESET_TABLES),
+     * 不再出现在 CLEAR/PRESERVE 任何一侧(登记了不存在的表反而会被安装后函数的比对拒绝)。
+     * 冻结的 V464 基线里它们曾是 CLEAR, 评审神谕里没有了 = 只可能是显式删除登记的结果;
+     * 安装后的函数与神谕逐表相等由 BusinessDataResetCatalogPostgresTest 在真实库里核对。
      */
     @Test
-    void resetDropsTheLedgerTablesRemovedByV798AndCatalogStillAcceptsV458()
-            throws Exception {
-        String reset = compact(RESET);
+    void resetRetiresTheLedgerTablesDroppedByV798() throws Exception {
         String v798 = compact(V798);
-
         assertThat(v798)
                 .contains("drop table preplan_subcontract_make_task_batches;")
                 .contains("drop table preplan_subcontract_make_tasks;");
-        assertThat(reset)
-                .doesNotContain("'preplan_subcontract_make_task_batches'")
-                .doesNotContain("'preplan_subcontract_make_tasks'")
-                .contains("(458, 420)");
+
+        var baseline = com.uten.imp.ops.BusinessDataResetSqlContractTest.policy(
+                Files.readString(V464, StandardCharsets.UTF_8));
+        assertThat(baseline)
+                .as("V458 ledger tables were CLEAR in the frozen V464 reset baseline")
+                .containsEntry("preplan_subcontract_make_task_batches", "CLEAR")
+                .containsEntry("preplan_subcontract_make_tasks", "CLEAR");
+
+        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedCurrentPolicy())
+                .as("V798 retires both ledger tables from the reset policy")
+                .doesNotContainKey("preplan_subcontract_make_task_batches")
+                .doesNotContainKey("preplan_subcontract_make_tasks");
     }
 }

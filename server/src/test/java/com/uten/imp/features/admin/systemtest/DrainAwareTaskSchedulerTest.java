@@ -35,7 +35,7 @@ class DrainAwareTaskSchedulerTest {
 
     @Test
     void scheduledTaskSkipsWhileDrainGateIsEngagedAndResumesAfter() throws Exception {
-        assertTrue(gate.beginDrain(1_000), "无在途请求时排水应立即成功，闸进入 RESETTING");
+        assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED, gate.beginDrain(1_000), "无在途请求时排水应立即成功，闸进入 RESETTING");
 
         AtomicInteger runs = new AtomicInteger();
         scheduler.schedule(runs::incrementAndGet, Instant.now()).get(5,TimeUnit.SECONDS);
@@ -57,7 +57,7 @@ class DrainAwareTaskSchedulerTest {
             assertFalse(drained.isDone(),"正在执行的任务必须排完，不能立即开始清理");
             assertFalse(gate.tryEnter(),"排水期间不得接纳新请求或任务");
             release.countDown();task.get(5,TimeUnit.SECONDS);
-            assertTrue(drained.get(5,TimeUnit.SECONDS));
+            assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED, drained.get(5,TimeUnit.SECONDS));
         } finally {release.countDown();}
     }
 
@@ -75,7 +75,7 @@ class DrainAwareTaskSchedulerTest {
             assertTrue(first.lastStart() != null && first.lastEnd() != null);
             assertNull(first.lastErrorType());
 
-            assertTrue(gate.beginDrain(1_000));
+            assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED, gate.beginDrain(1_000));
             recording.schedule(healthy, Instant.now()).get(5, TimeUnit.SECONDS);
             assertEquals(1, run(registry, "OutboxScheduler.drain").runs(), "被排水闸跳过的一轮不算执行");
             gate.endReset();

@@ -293,7 +293,7 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 - **即时库存解耦**：`goods.c_total` 继续作为 BOM/标准成本预算，不再乘库存数量冒充库存价值。
   即时库存与导出从 V421 起显示 `SUM(stock_balances.amount_local)`，详见
   [32-即时库存](32-即时库存.md)。
-- **可丢弃测试库零基线**：`server/ops/reset_business_data.sql` 从 2026-08-29 起把 `goods.min_qty`
+- **可丢弃测试库零基线**(历史记录：停机脚本已于 2026-10-05 删除，清空只经工作台「清空业务数据」即 `business_data_reset()`，见 ADR-155；V784 起安全库存与成本/费率参数保留原值，只清期初数量/件数/重量，见 [V784 说明](V784-测试清空保留货品主档配置.md))：`server/ops/reset_business_data.sql` 从 2026-08-29 起把 `goods.min_qty`
   和上述 20 项成本金额/费率（含 NULL）与 legacy 期初库存同事务归为字面 `0`，同时保留货品 UUID/编号/名称、
   分类/单位关系、BOM、`max_qty` 与业务售价 `price/a_price/price2`；提交前有独立全零断言，UPDATE 共享
   审计 request ID，并仅对真实变化行推进 `version/updated_at`。2026-08-29 经业务方本轮明确授权，当前

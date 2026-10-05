@@ -13,14 +13,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BusinessDataResetDrainFilterTest {
-    @Test void onlyExactResetAndPreparationPathsAreExempt() throws Exception {
+    @Test void onlyTheExactResetPathIsExempt() throws Exception {
         var gate=new BusinessDataResetDrainGate();var filter=new BusinessDataResetDrainFilter(gate,new ObjectMapper());
-        assertTrue(gate.beginDrain(100));
-        for(String path:new String[]{BusinessDataResetDrainFilter.RESET_PATH,BusinessDataResetDrainFilter.ATTACHMENT_PREPARE_PATH}){
-            var request=new MockHttpServletRequest("POST","/erp"+path);request.setContextPath("/erp");
-            var called=new AtomicBoolean();filter.doFilter(request,new MockHttpServletResponse(),(a,b)->called.set(true));assertTrue(called.get());
-        }
-        for(String path:new String[]{"/api/sales/orders",BusinessDataResetDrainFilter.ATTACHMENT_PREPARE_PATH+"/extra","/api/system-test/business-data/attachments/preview"}){
+        assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED,gate.beginDrain(100));
+        var request=new MockHttpServletRequest("POST","/erp"+BusinessDataResetDrainFilter.RESET_PATH);request.setContextPath("/erp");
+        var called=new AtomicBoolean();filter.doFilter(request,new MockHttpServletResponse(),(a,b)->called.set(true));assertTrue(called.get());
+        for(String path:new String[]{"/api/sales/orders",BusinessDataResetDrainFilter.RESET_PATH+"/extra",
+                "/api/system-test/business-data/preview","/api/system-test/business-data/last-result"}){
             var response=new MockHttpServletResponse();filter.doFilter(new MockHttpServletRequest("GET",path),response,(a,b)->fail("Unexpected admitted request"));assertEquals(503,response.getStatus());
         }
         gate.endReset();
@@ -40,9 +39,9 @@ class BusinessDataResetDrainFilterTest {
             var drained=executor.submit(()->gate.beginDrain(5_000));
             org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(2)).until(gate::blockingNewRequests);
             assertFalse(drained.isDone());assertFalse(gate.tryEnter());
-            release.countDown();request.get(5,TimeUnit.SECONDS);assertTrue(drained.get(5,TimeUnit.SECONDS));
+            release.countDown();request.get(5,TimeUnit.SECONDS);assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED,drained.get(5,TimeUnit.SECONDS));
         } finally {release.countDown();gate.endReset();}
-        assertTrue(gate.tryEnter());gate.leave();assertTrue(gate.beginDrain(100));gate.endReset();
+        assertTrue(gate.tryEnter());gate.leave();assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED,gate.beginDrain(100));gate.endReset();
     }
 
     @Test
@@ -87,7 +86,7 @@ class BusinessDataResetDrainFilterTest {
             gate.leave();
             gate.endReset();
         }
-        assertTrue(gate.beginDrain(100), "A later reset must still be possible");
+        assertEquals(BusinessDataResetDrainGate.DrainOutcome.STARTED, gate.beginDrain(100), "A later reset must still be possible");
         gate.endReset();
     }
 }

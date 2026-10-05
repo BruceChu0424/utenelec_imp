@@ -12,8 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 
 /**
- * 业务数据清空期间的 API 排水过滤器：把 psql 停机版「零其它客户端连接」的
- * 静默前提搬进运行中的应用。
+ * 业务数据清空期间的 API 排水过滤器：把清空需要的「没有其它请求在写」这一前提
+ * 搬进运行中的应用。
  *
  * <p>清空事务要对 222 张业务表拿 ACCESS EXCLUSIVE 锁。排水期间（含清空执行中）
  * 除清空端点本身外的全部 /api 请求直接回 503，不进入控制器、不开事务，
@@ -29,7 +29,6 @@ public class BusinessDataResetDrainFilter extends OncePerRequestFilter {
 
     /** 清空端点路径（过滤器按去 contextPath 后的绝对路径精确匹配豁免）。 */
     static final String RESET_PATH = "/api/system-test/business-data/reset";
-    static final String ATTACHMENT_PREPARE_PATH = "/api/system-test/business-data/attachments/prepare";
 
     private final BusinessDataResetDrainGate gate;
     private final ObjectMapper objectMapper;
@@ -48,7 +47,7 @@ public class BusinessDataResetDrainFilter extends OncePerRequestFilter {
         if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
             path = path.substring(contextPath.length());
         }
-        if (RESET_PATH.equals(path) || ATTACHMENT_PREPARE_PATH.equals(path)) {
+        if (RESET_PATH.equals(path)) {
             // 清空端点自身：不计数、不拦截（排水等它之外的所有请求）。
             chain.doFilter(request, response);
             return;

@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin.systemtest;
 
+import com.uten.imp.application.port.BusinessTestResetFilesPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AuthUser;
@@ -27,7 +28,7 @@ import java.util.UUID;
  *       公司内网服务器 (prod profile) 按 2026-09-12 用户测试期决定也开启, 启动时告警提示;
  *       云端站点无论开关如何一律拒绝 (见 {@link BusinessDataResetFeatureGate})；</li>
  *   <li>数据库确认的超级管理员本人，且持目录码 {@code system:business_data_reset}
- *       (SUPERADMIN_ONLY，管理页可见、任何入口都授不出去；ADR-109)；</li>
+ *       (SUPERADMIN_ONLY，管理页可见、任何入口都授不出去；ADR-109)；模拟他人身份时不能清空，也不能预览；</li>
  *   <li>再认证: 本次重新输入登录密码换取一次性凭证 ({@link RequiresStepUp}, ADR-110)，
  *       空闲会话不能直接清库；输错计入再认证失败次数并审计，与改系统设置、改权限同一道门；</li>
  *   <li>请求体确认口令必须逐字等于「清空业务数据」，防误触；</li>
@@ -45,29 +46,15 @@ public class SystemTestController {
 
     private final BusinessDataResetService businessDataResetService;
     private final SecurityContextCurrentUser currentUser;
-    private final BusinessAttachmentResetPreparationService attachmentPreparation;
 
-    public record PrepareAttachmentsRequest(@NotBlank String confirm,
-            @NotBlank String database, @NotBlank String fingerprint) {}
-
-    @GetMapping("/business-data/attachments/preview")
-    public com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Preview previewAttachments() {
-        return attachmentPreparation.preview(currentUser.requireId());
-    }
-
-    /** 提前分批删除测试业务附件：与清空业务数据同一门槛(超管专属码 + 再认证)，物理删除不可恢复。 */
-    @PostMapping("/business-data/attachments/prepare")
-    @PreAuthorize("principal.superAdmin and hasAuthority('system:business_data_reset')")
-    @RequiresStepUp
-    public com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Preview prepareAttachments(
-            @Valid @RequestBody PrepareAttachmentsRequest request) {
-        if (!"清理测试业务附件".equals(request.confirm())) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请逐字输入「清理测试业务附件」");
-        }
-        AuthUser operator = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-        return attachmentPreparation.prepare(operator.getId(), operator.getLoginAccount(),
-                new com.uten.imp.application.port.BusinessAttachmentResetPreparationPort.Confirmation(
-                        request.database(), request.fingerprint()));
+    /**
+     * 清空弹窗预览：与清空排水前同一个检查(拒绝原因 + 测试文件实地核对)，不删除任何文件。
+     * 只读、不进排水豁免；门禁同上次结果端点(运行开关 + 超管)，另外拒绝模拟身份并由数据库确认超管本人。
+     */
+    @GetMapping("/business-data/preview")
+    public BusinessTestResetFilesPort.Check previewBusinessDataReset() {
+        AuthUser operator = requireOperator();
+        return businessDataResetService.preview(operator.getId(), operator.getLoginAccount());
     }
 
     /**
@@ -97,8 +84,17 @@ public class SystemTestController {
                     ErrorCode.VALIDATION_FAILED,
                     "确认口令不正确：请逐字输入「" + CONFIRM_PHRASE + "」");
         }
+        AuthUser operator = requireOperator();
+        return businessDataResetService.reset(operator.getId(), operator.getLoginAccount(), request.attemptId());
+    }
+
+    /** 当前登录的超管本人；模拟他人身份时一律拒绝(预览与清空都查)。 */
+    private AuthUser requireOperator() {
         AuthUser operator = currentUser.get().orElseThrow(
                 () -> new ApiException(ErrorCode.UNAUTHORIZED, "请先登录"));
-        return businessDataResetService.reset(operator.getId(), operator.getLoginAccount(), request.attemptId());
+        if (operator.getImpersonatedBy() != null) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "模拟他人身份时不能清空业务数据，请先退出模拟再操作。");
+        }
+        return operator;
     }
 }

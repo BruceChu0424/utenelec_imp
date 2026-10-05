@@ -13,7 +13,11 @@ class SubcontractTargetOutboundPreparationMigrationContractTest {
     private static final Path MIGRATION = Path.of(
             "src/main/resources/db/migration/"
                     + "V436__subcontract_target_outbound_preparation.sql");
-    private static final Path RESET = Path.of("ops/reset_business_data.sql");
+    private static final Path V464 = Path.of(
+            "src/main/resources/db/migration/"
+                    + "V464__reset_twin_order_item_sources.sql");
+    private static final Path V798 = Path.of(
+            "src/main/resources/db/migration/V798__subcontract_step_draw.sql");
 
     @Test
     void v436KeepsExistingV304RowsExecutableAsLegacy() throws Exception {
@@ -218,20 +222,27 @@ class SubcontractTargetOutboundPreparationMigrationContractTest {
 
     /**
      * 出仓预留分配表仍归业务重置清空; 准备命令表 subcontract_outbound_preparation_commands
-     * 已被 V798(ADR-143 §五)删除, 重置策略不再登记它。
+     * 已被 V798(ADR-143 §五)删除, 清空分类把它登记为删除(REMOVED_RESET_TABLES), 两侧都不再出现。
+     * 断言对象是评审神谕(冻结 V464 + 登记的变化); 安装后的函数与神谕逐表相等由
+     * BusinessDataResetCatalogPostgresTest 在真实库里核对。
      */
     @Test
     void businessResetOwnsTheSurvivingAppendOnlyTable() throws Exception {
-        String reset = Files.readString(RESET, StandardCharsets.UTF_8)
-                .replaceAll("--[^\\r\\n]*", " ")
-                .replaceAll("\\s+", " ")
-                .trim()
-                .toLowerCase();
+        var baseline = com.uten.imp.ops.BusinessDataResetSqlContractTest.policy(
+                Files.readString(V464, StandardCharsets.UTF_8));
+        assertThat(baseline)
+                .as("both V436 append-only tables were CLEAR in the frozen V464 reset baseline")
+                .containsEntry("subcontract_outbound_issue_reservation_allocations", "CLEAR")
+                .containsEntry("subcontract_outbound_preparation_commands", "CLEAR");
 
-        assertThat(reset)
-                .contains("('subcontract_outbound_issue_reservation_allocations', "
-                        + "'clear')")
-                .doesNotContain("'subcontract_outbound_preparation_commands'");
+        assertThat(Files.readString(V798, StandardCharsets.UTF_8))
+                .contains("DROP TABLE subcontract_outbound_preparation_commands;")
+                .doesNotContain("DROP TABLE subcontract_outbound_issue_reservation_allocations");
+
+        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedCurrentPolicy())
+                .containsEntry("subcontract_outbound_issue_reservation_allocations", "CLEAR")
+                .as("V798 retires the preparation command ledger from the reset policy")
+                .doesNotContainKey("subcontract_outbound_preparation_commands");
     }
 
     private static String compact() throws Exception {

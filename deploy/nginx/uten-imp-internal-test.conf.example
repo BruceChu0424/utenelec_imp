@@ -247,8 +247,9 @@ server {
         proxy_read_timeout 120s;
     }
 
-    # 清空业务数据（超管专属测试端点，ADR-067 §7）是同步长请求：排水 ≤45s + 附件自动清理
-    # ≤5min + 清库。精确匹配优先于下方 /api/ 前缀与正则 location，仅此路径放宽到 600s
+    # 清空业务数据(超管专属测试端点，ADR-067 §7)是同步长请求：受理后 5 分钟内完成文件阶段
+    # (检查 ≤60s + 排水 ≤45s + 加锁删除测试文件，共用一个截止点，ADR-155) + 清库(至少 5 分钟)。
+    # 精确匹配优先于下方 /api/ 前缀与正则 location，仅此路径放宽到 600s
     # （前端 ApiClient.postLongRunning 对该端点的接收超时为 10 分钟，与之对齐）。
     location = /api/system-test/business-data/reset {
         limit_req zone=uten_test_api_ip burst=500 nodelay;

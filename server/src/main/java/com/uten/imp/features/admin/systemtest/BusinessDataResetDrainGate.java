@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 业务数据清空期间的应用排水闸：把「psql 停写后执行」的静默前提搬进运行中的应用。
+ * 业务数据清空期间的应用排水闸：把清空需要的「没有其它请求在写」这一前提搬进运行中的应用。
  *
  * <p>清空事务要对 222 张业务表拿 ACCESS EXCLUSIVE 锁，任何并发业务写都会让
  * TRUNCATE 在 lock_timeout 上失败（或更糟：在清空提交后补写残留行）。因此清空开始前：</p>
@@ -48,14 +48,18 @@ public class BusinessDataResetDrainGate implements BusinessDataResetGatePort {
         return phase != Phase.IDLE;
     }
 
+    /** Result of {@link #beginDrain}: only {@code STARTED} hands {@link #endReset()} to the caller. */
+    public enum DrainOutcome { STARTED, ANOTHER_RESET, IN_FLIGHT_TIMEOUT }
+
     /**
      * 开始排水并等待在途请求清零。
      *
-     * @return true 表示排水完成，调用方可以执行清空；false 表示已有清空在进行中或等待超时
+     * @return STARTED 表示排水完成，调用方可以执行清空并负责 {@link #endReset()}；ANOTHER_RESET 表示已有清空在进行；
+     *         IN_FLIGHT_TIMEOUT 表示等待在途请求超时(已回到 IDLE)
      */
-    public synchronized boolean beginDrain(long timeoutMillis) throws InterruptedException {
+    public synchronized DrainOutcome beginDrain(long timeoutMillis) throws InterruptedException {
         if (phase != Phase.IDLE) {
-            return false;
+            return DrainOutcome.ANOTHER_RESET;
         }
         phase = Phase.DRAINING;
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
@@ -64,13 +68,13 @@ public class BusinessDataResetDrainGate implements BusinessDataResetGatePort {
             while (inFlight > 0) {
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) {
-                    return false;
+                    return DrainOutcome.IN_FLIGHT_TIMEOUT;
                 }
                 TimeUnit.NANOSECONDS.timedWait(this, remaining);
             }
             phase = Phase.RESETTING;
             resetStarted = true;
-            return true;
+            return DrainOutcome.STARTED;
         } finally {
             // The caller owns endReset only after a successful drain. In
             // particular, an interrupted wait must not leave all APIs blocked.

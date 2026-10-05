@@ -302,16 +302,12 @@ class BusinessDataResetSparsePostgresTest {
 
     @Test
     void operatorAndRuntimeUseTheSameSparseAlgorithm() throws Exception {
-        String ops = Files.readString(Path.of("ops", "reset_business_data.sql"));
         String migration = Files.readString(Path.of("src", "main", "resources", "db", "migration", "V558__business_reset_sparse_truncate.sql"));
         String forward = Files.readString(Path.of("src", "main", "resources", "db", "migration", "V758__business_reset_bounded_candidate_cleanup.sql")).replace("\r\n", "\n");
         String oldBlock = forward.substring(forward.indexOf("$old$") + 5, forward.indexOf("$old$;"));
         String newBlock = forward.substring(forward.indexOf("$new$") + 5, forward.indexOf("$new$;"));
         assertThat(fragment(migration)).containsOnlyOnce(oldBlock);
         String historicalExpected = fragment(migration).replace(oldBlock, newBlock);
-        // Current operator script delegates to the installed authoritative function, not a copied old algorithm.
-        assertThat(ops).contains("SELECT * FROM public.business_data_reset();")
-                .doesNotContain("    -- V558 sparse reset:");
         try (var statement = connection.createStatement(); var result = statement.executeQuery("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)")) {
             assertThat(result.next()).isTrue();
             assertThat(fragment(result.getString(1))).isEqualTo(historicalExpected);

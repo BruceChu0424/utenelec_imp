@@ -45,7 +45,7 @@ public final class AuditClassifier {
     private static final Set<String> SYSTEM_ACTIONS = Set.of(
             "update_system_setting", "audit_retention_completed", "audit_retention_failed",
             "business_data_reset", "business_data_reset_received", "business_data_reset_failed",
-            "business_attachment_reset_prepare", "legacy_migration_run",
+            "legacy_migration_run",
             "notice_celebration_auto_toggle");
     /** 不可逆或绕过常规流程的显式业务动作。 */
     private static final Set<String> HIGH_RISK_ACTIONS = Set.of(

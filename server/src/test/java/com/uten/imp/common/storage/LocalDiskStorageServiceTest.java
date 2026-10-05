@@ -75,6 +75,32 @@ class LocalDiskStorageServiceTest {
         }
     }
 
+    @Test
+    void inspectObjectClassifiesAbsentPresentDirectoryAndFlatLegacyLayout() throws Exception {
+        LocalDiskStorageService storage = storage();
+        byte[] bytes = "local original".getBytes(StandardCharsets.UTF_8);
+        storage.store("inspect.txt", new ByteArrayInputStream(bytes), bytes.length, "text/plain");
+        storage.promoteToFinal("inspect.txt", storage.describe("inspect.txt"));
+        assertTrue(storage.inspectObject(StorageService.ObjectLocation.STAGING, "inspect.txt").exists());
+        assertEquals(bytes.length, storage.inspectObject(StorageService.ObjectLocation.FINAL, "inspect.txt").size());
+        storage.delete("inspect.txt", null);
+        assertFalse(storage.inspectObject(StorageService.ObjectLocation.FINAL, "inspect.txt").exists());
+
+        Files.createDirectory(directory.resolve("final").resolve("folder.txt"));
+        StorageObjectProblem problem = assertThrows(StorageObjectProblem.class,
+                () -> storage.inspectObject(StorageService.ObjectLocation.FINAL, "folder.txt"));
+        assertEquals(StorageObjectProblem.Kind.NOT_REGULAR_FILE, problem.kind());
+
+        Files.write(directory.resolve("flat.txt"), bytes);
+        assertThrows(StorageLegacyLayoutException.class,
+                () -> storage.inspectObject(StorageService.ObjectLocation.FINAL, "flat.txt"));
+        assertFalse(storage.inspectPath(directory.resolve("final").resolve("gone.txt")).exists());
+
+        Files.move(directory.resolve("staging"), directory.resolve("staging-offline"));
+        assertThrows(StorageResourceUnavailableException.class,
+                () -> storage.inspectObject(StorageService.ObjectLocation.STAGING, "inspect.txt"));
+    }
+
     private LocalDiskStorageService storage() throws Exception {
         StorageProperties properties = new StorageProperties();
         properties.setLocalDir(directory.toString());

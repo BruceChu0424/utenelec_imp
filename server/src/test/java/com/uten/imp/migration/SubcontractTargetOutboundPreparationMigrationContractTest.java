@@ -13,7 +13,6 @@ class SubcontractTargetOutboundPreparationMigrationContractTest {
     private static final Path MIGRATION = Path.of(
             "src/main/resources/db/migration/"
                     + "V436__subcontract_target_outbound_preparation.sql");
-    private static final Path RESET = Path.of("ops/reset_business_data.sql");
 
     @Test
     void v436KeepsExistingV304RowsExecutableAsLegacy() throws Exception {
@@ -218,16 +217,11 @@ class SubcontractTargetOutboundPreparationMigrationContractTest {
 
     @Test
     void businessResetOwnsBothNewAppendOnlyTables() throws Exception {
-        String reset = Files.readString(RESET, StandardCharsets.UTF_8)
-                .replaceAll("--[^\\r\\n]*", " ")
-                .replaceAll("\\s+", " ")
-                .trim()
-                .toLowerCase();
-
-        assertThat(reset)
-                .contains("('subcontract_outbound_issue_reservation_allocations', "
-                        + "'clear')")
-                .contains("('subcontract_outbound_preparation_commands', 'clear')");
+        // The reviewed oracle (frozen V464 + registered changes); the installed function is
+        // compared with it by BusinessDataResetCatalogPostgresTest.
+        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedCurrentPolicy())
+                .containsEntry("subcontract_outbound_issue_reservation_allocations", "CLEAR")
+                .containsEntry("subcontract_outbound_preparation_commands", "CLEAR");
     }
 
     private static String compact() throws Exception {

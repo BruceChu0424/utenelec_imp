@@ -6,15 +6,16 @@ import com.uten.imp.audit.AuditLog;
 import com.uten.imp.audit.AuditLogRepository;
 import com.uten.imp.audit.AuditRequestContext;
 import com.uten.imp.audit.AuditService;
-import com.uten.imp.application.port.BusinessAttachmentResetPreparationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetFeatureGate;
 import com.uten.imp.features.admin.systemtest.BusinessDataResetService;
+import com.uten.imp.features.attachment.ResetEndToEndFixture;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.postgresql.Driver;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.data.jpa.repository.support.JpaRepositoryFactory;
@@ -48,19 +49,12 @@ import jakarta.persistence.EntityManagerFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
- * 工作台「清空业务数据」的真实库执行证明（V462 函数 + 服务编排全链路）：
+ * 工作台「清空业务数据」的真实库执行证明(清空函数 + 服务编排全链路，真实测试文件端口)：
  * 种子业务行被清空、主档金额归零且行数保留、identity 序列重启、
  * 全局 epoch 递增踢掉所有 staff token、refresh_tokens 被清空、
- * outbox 待处理事件按 UT900 拒绝为 409、可重复执行。
+ * 后台事件排队中按拒绝函数在排水前拒绝为 409、可重复执行。
  *
  * <p>写法约束（Mimosa 写入门）：每条 SQL 在各自方法内内联字面量，经独立
  * Statement/PreparedStatement 执行；不存在把 SQL 字符串当参数传递的帮手。</p>
@@ -76,6 +70,8 @@ class BusinessDataResetServicePostgresTest {
                     .withPassword("uten");
 
     private final List<EntityManagerFactory> entityManagerFactories = new ArrayList<>();
+
+    @TempDir java.nio.file.Path storageRoot;
 
     @AfterEach
     void releaseJpaAndRequestContext() {
@@ -93,18 +89,8 @@ class BusinessDataResetServicePostgresTest {
 
         SimpleDriverDataSource dataSource = new SimpleDriverDataSource(
                 new Driver(), POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+        // The installed function equals the reviewed oracle: BusinessDataResetCatalogPostgresTest.
         Map<String, String> expectedPolicy = BusinessDataResetSqlContractTest.expectedCurrentPolicy();
-
-        // Compare the actually migrated function with the operator's script, including loop-added rows.
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet rows = statement.executeQuery("SELECT pg_get_functiondef('business_data_reset()'::regprocedure)")) {
-            assertThat(rows.next()).isTrue();
-            String ops = java.nio.file.Files.readString(java.nio.file.Path.of("ops", "reset_business_data.sql"));
-            assertThat(BusinessDataResetSqlContractTest.policy(rows.getString(1)))
-                    .isEqualTo(expectedPolicy)
-                    .isEqualTo(BusinessDataResetSqlContractTest.policy(ops));
-        }
 
         insertSeedDepartment(dataSource);
         insertSeedEmployee(dataSource);
@@ -112,23 +98,23 @@ class BusinessDataResetServicePostgresTest {
         insertSeedRefreshToken(dataSource);
         long epochBefore = readEpoch(dataSource);
 
-        // 2026-09-09 起清空前置「业务附件彻底清理」：本测试没有业务附件，预览恒 0 阻塞
-        // → purge 直接返回；drainNextDeletion 不会被调用（mock 默认 false）。
-        BusinessAttachmentResetPreparationPort attachmentReset =
-                mock(BusinessAttachmentResetPreparationPort.class);
-        when(attachmentReset.previewTestReset(any())).thenReturn(
-                new BusinessAttachmentResetPreparationPort.Preview(
-                        "uten_imp", "fp-empty", 0L, List.of(), false));
+        // 本测试没有业务附件：测试文件清单为空，真实文件端口什么都不删。
         var drain = new BusinessDataResetDrainGate();
-        BusinessDataResetService service = newService(dataSource, attachmentReset, drain);
+        BusinessDataResetService service = newService(dataSource, drain);
+        String[] admin = superAdmin(dataSource);
+        UUID operator = UUID.fromString(admin[0]);
+        String account = admin[1];
 
-        // —— 阶段一：outbox 有待处理事件 → UT900 拒绝（409）——
+        // —— 阶段一：后台事件排队中 → 排水前由拒绝函数拒绝(409)——
         insertSeedBusinessOutboxRow(dataSource, (short) 0);
         ApiException refused = assertThrows(ApiException.class,
-                () -> service.reset(UUID.randomUUID(), "superadmin"));
+                () -> service.reset(operator, account));
         assertThat(refused.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(refused.getMessage()).contains("待处理或失败事件");
+        assertThat(refused.getMessage()).isEqualTo(
+                "后台还有 1 条事件正在排队处理(消息通知、单据联动等)，预计 1 分钟内处理完。现在清空会丢掉这些处理结果，请 1 分钟后点「重新检查」再清空；"
+                        + "如果多次重新检查仍在排队，请联系开发人员检查后台事件处理。");
         assertThat(countBusinessOutbox(dataSource)).isEqualTo(1);
+        assertThat(drain.blockingNewRequests()).isFalse();
 
         // —— 阶段二：事件已处理 → 种子齐备后执行清空 ——
         markSeedBusinessOutboxProcessed(dataSource);
@@ -139,7 +125,6 @@ class BusinessDataResetServicePostgresTest {
         long auditBefore = countAuditLog(dataSource);
         long usersBefore = countUsers(dataSource);
 
-        UUID operator = UUID.randomUUID();
         UUID attempt = UUID.randomUUID();
         UUID session = UUID.randomUUID();
         UUID operation = UUID.randomUUID();
@@ -162,8 +147,10 @@ class BusinessDataResetServicePostgresTest {
         long postingBefore = nextPostingSeqValue(dataSource);
         try {
             ApiException auditFailure = assertThrows(ApiException.class,
-                    () -> service.reset(operator, "superadmin", attempt));
-            assertThat(auditFailure.getCode()).isEqualTo(ErrorCode.INTERNAL);
+                    () -> service.reset(operator, account, attempt));
+            assertThat(auditFailure.getCode()).as("only this code means \"outcome uncertain\" to the client")
+                    .isEqualTo(ErrorCode.RESET_OUTCOME_UNCERTAIN);
+            assertThat(auditFailure.getCode().getHttpStatus()).isEqualTo(500);
             assertThat(auditFailure.getMessage()).contains("未确认完成", "重新登录核对本次结果")
                     .doesNotContain("已整体回滚");
             assertThat(auditFailure).hasStackTraceContaining("reset completion unavailable");
@@ -184,12 +171,11 @@ class BusinessDataResetServicePostgresTest {
             assertThat(drain.blockingNewRequests()).isFalse();
             assertThat(drain.tryEnter()).isTrue();
             drain.leave();
-            verify(attachmentReset, never()).cleanupAbandonedScratch();
         } finally {
             removeFailingReceiptTrigger(dataSource);
         }
 
-        var result = service.reset(operator, "superadmin", attempt);
+        var result = service.reset(operator, account, attempt);
         assertThat(drain.blockingNewRequests()).isFalse();
         var receipt = service.lastResult(operator, attempt);
         assertThat(receipt.available()).isTrue();
@@ -262,129 +248,12 @@ class BusinessDataResetServicePostgresTest {
 
         // —— 阶段三：清空后可再次执行（幂等可重复）——
         insertSeedBusinessOutboxRow(dataSource, (short) 1);
-        var second = service.reset(UUID.randomUUID(), "superadmin");
+        var second = service.reset(operator, account);
         assertThat(second.clearedRows()).isEqualTo(1);
         assertThat(second.authorizationEpochAfter()).isEqualTo(epochBefore + 2);
         assertThat(service.lastResult(operator, attempt).authorizationEpochAfter())
                 .isEqualTo(epochBefore + 1); // A later reset must not replace this exact receipt.
         RequestContextHolder.resetRequestAttributes();
-
-        // Exercise the operator's actual psql script against this disposable
-        // migrated database, with the required database and cluster identity.
-        String systemIdentifier;
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet rows = statement.executeQuery("SELECT system_identifier::text FROM pg_control_system()")) {
-            assertThat(rows.next()).isTrue();
-            systemIdentifier = rows.getString(1);
-        }
-        insertSeedBusinessOutboxRow(dataSource, (short) 1);
-        POSTGRES.copyFileToContainer(org.testcontainers.utility.MountableFile.forHostPath(
-                java.nio.file.Path.of("ops", "reset_business_data.sql")), "/tmp/reset-under-test.sql");
-        String[][] refusedIdentities = {
-                {"WRONG_CONFIRM", POSTGRES.getDatabaseName(), systemIdentifier, "confirm 必须等于"},
-                {"CLEAR_BUSINESS", "not_the_test_database", systemIdentifier, "目标数据库不匹配"},
-                {"CLEAR_BUSINESS", POSTGRES.getDatabaseName(), "not_the_test_cluster", "system_identifier 不匹配"}
-        };
-        for (String[] identity : refusedIdentities) {
-            var scriptRefused = POSTGRES.execInContainer("psql", "-X", "-U", POSTGRES.getUsername(),
-                    "-d", POSTGRES.getDatabaseName(), "-v", "ON_ERROR_STOP=1",
-                    "-v", "confirm=" + identity[0], "-v", "expected_database=" + identity[1],
-                    "-v", "expected_system_identifier=" + identity[2], "-f", "/tmp/reset-under-test.sql");
-            assertThat(scriptRefused.getExitCode()).isNotZero();
-            assertThat(scriptRefused.getStderr()).contains(identity[3]);
-            assertThat(countBusinessOutbox(dataSource)).isEqualTo(1);
-            assertThat(countUsers(dataSource)).isEqualTo(usersBefore);
-        }
-        try (Connection activeApplicationConnection = dataSource.getConnection()) {
-            assertThat(activeApplicationConnection.isValid(5)).isTrue();
-            var scriptRefused = POSTGRES.execInContainer("psql", "-X", "-U", POSTGRES.getUsername(),
-                    "-d", POSTGRES.getDatabaseName(), "-v", "ON_ERROR_STOP=1",
-                    "-v", "confirm=CLEAR_BUSINESS", "-v", "expected_database=" + POSTGRES.getDatabaseName(),
-                    "-v", "expected_system_identifier=" + systemIdentifier, "-f", "/tmp/reset-under-test.sql");
-            assertThat(scriptRefused.getExitCode()).isNotZero();
-            assertThat(scriptRefused.getStderr()).contains("请先停止应用和 worker");
-            assertThat(countBusinessOutbox(dataSource)).isEqualTo(1);
-            assertThat(countUsers(dataSource)).isEqualTo(usersBefore);
-        }
-        var scriptResult = POSTGRES.execInContainer("psql", "-X", "-U", POSTGRES.getUsername(),
-                "-d", POSTGRES.getDatabaseName(), "-v", "ON_ERROR_STOP=1",
-                "-v", "confirm=CLEAR_BUSINESS", "-v", "expected_database=" + POSTGRES.getDatabaseName(),
-                "-v", "expected_system_identifier=" + systemIdentifier, "-f", "/tmp/reset-under-test.sql");
-        assertThat(scriptResult.getExitCode()).withFailMessage(scriptResult.getStderr()).isZero();
-        assertThat(countBusinessOutbox(dataSource)).isZero();
-        assertThat(countUsers(dataSource)).isEqualTo(usersBefore);
-        assertThat(countAccounts(dataSource)).isEqualTo(1);
-    }
-
-    /**
-     * 2026-09-09 附件自动清理循环：预览阻塞 2→1→0 时 prepare 被调两次、排水删除队列后循环退出，
-     * 物理删除文件数 = 前后 SUCCEEDED 删除任务差值并回显在结果里；库本身照常清空。
-     */
-    @Test
-    void purgesBusinessAttachmentsUntilPreviewReportsNoBlockers() throws Exception {
-        SimpleDriverDataSource dataSource = migratedDataSource();
-        BusinessAttachmentResetPreparationPort attachmentReset =
-                mock(BusinessAttachmentResetPreparationPort.class);
-        when(attachmentReset.unpurgeableTestResetBlockers(any())).thenReturn(List.of());
-        when(attachmentReset.previewTestReset(any())).thenReturn(
-                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-2", 2L, List.of(), false),
-                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-1", 1L, List.of(), false),
-                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-0", 0L, List.of(), false));
-        when(attachmentReset.prepareTestReset(any(), anyString(), any(), any())).thenReturn(
-                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-after", 1L, List.of(), false));
-        // 第一轮排水 1 项后队列空；第二轮直接空（Mockito 连续桩最后一个值重复）。
-        when(attachmentReset.drainTestResetNext(any())).thenReturn(true, false);
-        when(attachmentReset.succeededTestDeletionCount(any())).thenReturn(10L, 13L);
-        BusinessDataResetService service = newService(dataSource, attachmentReset);
-
-        var result = service.reset(UUID.randomUUID(), "superadmin");
-
-        assertThat(result.deletedAttachmentFiles()).isEqualTo(3);
-        assertThat(result.clearedTableCount()).isPositive();
-        verify(attachmentReset, times(3)).previewTestReset(any());
-        verify(attachmentReset, times(2)).prepareTestReset(any(), anyString(), any(), any());
-        verify(attachmentReset, times(1)).cleanupAbandonedScratch();
-    }
-
-    /**
-     * 自动清理消化不了的阻塞（LEGACY_UNVERIFIED / oss / 凭证未到期 / 删除失败达阈值）
-     * 在排水之前直接 409：按原因分组计数 + 文件名 + 处置指引；不预览、不 prepare、不清库，
-     * 且排水闸保持 IDLE（随后正常清空仍可执行）。
-     */
-    @Test
-    void refusesBeforeDrainWhenAttachmentsCannotBePurgedAutomatically() throws Exception {
-        SimpleDriverDataSource dataSource = migratedDataSource();
-        BusinessAttachmentResetPreparationPort attachmentReset =
-                mock(BusinessAttachmentResetPreparationPort.class);
-        when(attachmentReset.unpurgeableTestResetBlockers(any())).thenReturn(List.of(
-                new BusinessAttachmentResetPreparationPort.UnpurgeableGroup(
-                        "原件状态为 LEGACY_UNVERIFIED，需先附件对账", 2L, List.of("合同A.pdf", "合同B.pdf")),
-                new BusinessAttachmentResetPreparationPort.UnpurgeableGroup(
-                        "上传凭证仍有效，需等待到期后重试", 1L, List.of("图纸.dwg"))));
-        BusinessDataResetService service = newService(dataSource, attachmentReset);
-        long epochBefore = readEpoch(dataSource);
-
-        ApiException refused = assertThrows(ApiException.class,
-                () -> service.reset(UUID.randomUUID(), "superadmin"));
-
-        assertThat(refused.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(refused.getMessage())
-                .contains("3 项无法自动清理")
-                .contains("原件状态为 LEGACY_UNVERIFIED，需先附件对账 ×2")
-                .contains("合同A.pdf")
-                .contains("上传凭证仍有效，需等待到期后重试 ×1")
-                .contains("处置指引");
-        verify(attachmentReset, never()).previewTestReset(any());
-        verify(attachmentReset, never()).prepareTestReset(any(), anyString(), any(), any());
-        assertThat(readEpoch(dataSource)).isEqualTo(epochBefore);
-
-        // 排水闸未被占用：阻塞处置后同一服务可正常清空。
-        when(attachmentReset.unpurgeableTestResetBlockers(any())).thenReturn(List.of());
-        when(attachmentReset.previewTestReset(any())).thenReturn(
-                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-empty", 0L, List.of(), false));
-        assertThat(service.reset(UUID.randomUUID(), "superadmin").authorizationEpochAfter())
-                .isEqualTo(epochBefore + 1);
     }
 
     /**
@@ -395,15 +264,15 @@ class BusinessDataResetServicePostgresTest {
     @Test
     void attemptReceiptsDistinguishNeverReceivedRefusedAndCompletedRequests() throws Exception {
         SimpleDriverDataSource dataSource = migratedDataSource();
-        BusinessAttachmentResetPreparationPort attachmentReset =
-                mock(BusinessAttachmentResetPreparationPort.class);
-        when(attachmentReset.unpurgeableTestResetBlockers(any())).thenReturn(List.of(
-                new BusinessAttachmentResetPreparationPort.UnpurgeableGroup(
-                        "原件状态为 LEGACY_UNVERIFIED，需先附件对账", 1L, List.of("合同A.pdf"))));
-        BusinessDataResetService service = newService(dataSource, attachmentReset);
+        BusinessDataResetService service = newService(dataSource, new BusinessDataResetDrainGate());
         var request = new MockHttpServletRequest("POST", "/api/system-test/business-data/reset");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        UUID operator = UUID.randomUUID();
+        String[] admin = superAdmin(dataSource);
+        UUID operator = UUID.fromString(admin[0]);
+        String account = admin[1];
+        // A queued background event makes the check before draining refuse.
+        markSeedBusinessOutboxProcessed(dataSource);
+        insertSeedBusinessOutboxRow(dataSource, (short) 0);
         UUID neverSent = UUID.randomUUID();
         UUID refusedAttempt = UUID.randomUUID();
         UUID completedAttempt = UUID.randomUUID();
@@ -415,7 +284,7 @@ class BusinessDataResetServicePostgresTest {
         assertThat(unknown.attemptFailed()).isFalse();
 
         ApiException refused = assertThrows(ApiException.class,
-                () -> service.reset(operator, "superadmin", refusedAttempt));
+                () -> service.reset(operator, account, refusedAttempt));
         assertThat(refused.getCode()).isEqualTo(ErrorCode.CONFLICT);
         var refusedReceipt = service.lastResult(operator, refusedAttempt);
         assertThat(refusedReceipt.available()).isFalse();
@@ -423,15 +292,15 @@ class BusinessDataResetServicePostgresTest {
         assertThat(refusedReceipt.attemptReceivedAt()).isNotNull();
         assertThat(refusedReceipt.attemptReceivedByCurrentServer()).isTrue();
         assertThat(refusedReceipt.attemptFailed()).isTrue();
-        assertThat(refusedReceipt.attemptFailureMessage()).contains("无法自动清理").contains("合同A.pdf");
+        assertThat(refusedReceipt.attemptFailureMessage()).isEqualTo(
+                "失败原因：后台事件排队中 1 条。没有删除文件，也没有清空数据。完整原因(含文件名)请在清空弹窗点「重新检查」查看。");
+        assertThat(refusedReceipt.attemptDeletedAttachmentFiles()).isZero();
         assertThat(countAuditLog(dataSource)).isEqualTo(auditBefore + 2);
         // 别的操作者查同一 attemptId：既无完成回执也无受理回执。
         assertThat(service.lastResult(UUID.randomUUID(), refusedAttempt).attemptReceived()).isFalse();
 
-        when(attachmentReset.unpurgeableTestResetBlockers(any())).thenReturn(List.of());
-        when(attachmentReset.previewTestReset(any())).thenReturn(
-                new BusinessAttachmentResetPreparationPort.Preview("uten_imp", "fp-empty", 0L, List.of(), false));
-        var result = service.reset(operator, "superadmin", completedAttempt);
+        markSeedBusinessOutboxProcessed(dataSource);
+        var result = service.reset(operator, account, completedAttempt);
         var completed = service.lastResult(operator, completedAttempt);
         assertThat(completed.available()).isTrue();
         assertThat(completed.attemptId()).isEqualTo(completedAttempt);
@@ -469,13 +338,7 @@ class BusinessDataResetServicePostgresTest {
     }
 
     private BusinessDataResetService newService(
-            SimpleDriverDataSource dataSource, BusinessAttachmentResetPreparationPort attachmentReset) {
-        return newService(dataSource, attachmentReset, new BusinessDataResetDrainGate());
-    }
-
-    private BusinessDataResetService newService(
-            SimpleDriverDataSource dataSource, BusinessAttachmentResetPreparationPort attachmentReset,
-            BusinessDataResetDrainGate drain) {
+            SimpleDriverDataSource dataSource, BusinessDataResetDrainGate drain) throws Exception {
         var factory = new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(dataSource);
         factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
@@ -500,7 +363,23 @@ class BusinessDataResetServicePostgresTest {
                 new BusinessDataResetFeatureGate(true),
                 drain,
                 (AuditService) auditProxy.getProxy(),
-                attachmentReset);
+                ResetEndToEndFixture.files(dataSource, transactions, storageRoot.resolve("internal")));
+    }
+
+    /** {id, login account} of an active super-admin confirmed by the database (created when missing). */
+    private String[] superAdmin(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            try (ResultSet rows = statement.executeQuery(
+                    "SELECT id::text, login_account FROM users WHERE is_super_admin AND status='active' AND NOT is_deleted ORDER BY login_account LIMIT 1")) {
+                if (rows.next()) return new String[]{rows.getString(1), rows.getString(2)};
+            }
+            statement.execute("INSERT INTO employees(code, full_name, id_type, department_id, hire_date, status, employment_type) SELECT 'RST-ADMIN', '清空测试超管', '其他', id, current_date, 'active', 'regular' FROM departments WHERE code = 'DEPT_FIN'");
+            statement.execute("INSERT INTO users(employee_id, login_account, password_hash, must_change_password, status, is_super_admin) SELECT id, 'reset-superadmin', 'x', false, 'active', true FROM employees WHERE code = 'RST-ADMIN'");
+            try (ResultSet rows = statement.executeQuery("SELECT id::text, login_account FROM users WHERE login_account='reset-superadmin'")) {
+                assertThat(rows.next()).isTrue();
+                return new String[]{rows.getString(1), rows.getString(2)};
+            }
+        }
     }
 
     private void installFailingReceiptTrigger(SimpleDriverDataSource dataSource) throws SQLException {

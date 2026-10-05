@@ -87,7 +87,7 @@ class SchemaIndexHygieneContractTest {
             "audit_log_archive_created_at_idx",
             "审计归档表的索引由审计整改工作流统一处理(分区/精简)，本轮不动",
             "idx_procurement_iqc_stock_in_item_batch",
-            "ops/reset_business_data.sql 的 V448 读路径索引自检要求五个索引都在；删它要同步改重置脚本");
+            "V448 读路径的历史索引, 原清空脚本的自检随脚本删除(ADR-155); 是否删除另行评估");
 
     /** 热点父表：估值图、需求、预留、计划明细、总账凭证。 */
     private static final String HOT_FOREIGN_KEYS_WITHOUT_LEADING_INDEX = """

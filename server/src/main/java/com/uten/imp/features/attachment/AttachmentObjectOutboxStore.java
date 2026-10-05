@@ -54,15 +54,4 @@ class AttachmentObjectOutboxStore {
                 VALUES (?,'DELETE_STAGING',?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING
                 """,sessionId,key,dedupe,Timestamp.from(verifyAt),provider);
     }
-
-    /** An expired upload needs a fresh physical check after its last possible staging write. */
-    void enqueueResetVerification(UUID sessionId, String operation, String key, String version,
-                                  Instant expiresAt, String provider) {
-        String dedupe = provider + "|TEST_RESET_VERIFY|" + operation + "|" + sessionId + "|" + expiresAt;
-        jdbc.update("""
-                INSERT INTO attachment_object_outbox(upload_session_id,operation,storage_key,
-                    storage_version,dedupe_key,available_at,storage_provider)
-                VALUES (?,?,?,?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING
-                """, sessionId, operation, key, version, dedupe, Timestamp.from(expiresAt), provider);
-    }
 }

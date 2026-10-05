@@ -207,6 +207,44 @@ class InternalStorageServiceTest {
         var props=new StorageProperties();props.setProvider("internal");props.getInternal().setRoot(directory.toString());
         props.getInternal().setMinFreeBytes(0);return props;
     }
+    @Test void inspectObjectReadsOnlyTheHeaderAndClassifiesEveryLocationState() throws Exception {
+        var store=store();byte[] bytes="header only inspection".getBytes(StandardCharsets.UTF_8);
+        var object=upload(store,KEY,bytes);
+        var finalObject=store.inspectObject(StorageService.ObjectLocation.FINAL,KEY);
+        assertTrue(finalObject.exists());assertEquals(object.versionId(),finalObject.versionId());assertEquals(bytes.length,finalObject.size());
+        assertTrue(store.inspectObject(StorageService.ObjectLocation.STAGING,KEY).exists());
+        store.delete(KEY,object.versionId());
+        assertFalse(store.inspectObject(StorageService.ObjectLocation.FINAL,KEY).exists(),"absent is not an error");
+        String never="i1_SALES_QUOTE_202610_0123456789abcdef0123456789abcdef.pdf";
+        assertFalse(store.inspectObject(StorageService.ObjectLocation.FINAL,never).exists(),"a never-created partition is absent");
+
+        String directoryKey="1123456789abcdef0123456789abcdef.txt";
+        Files.createDirectory(directory.resolve("final").resolve(directoryKey));
+        var notFile=assertThrows(StorageObjectProblem.class,()->store.inspectObject(StorageService.ObjectLocation.FINAL,directoryKey));
+        assertEquals(StorageObjectProblem.Kind.NOT_REGULAR_FILE,notFile.kind());
+
+        String foreignKey="2123456789abcdef0123456789abcdef.txt";
+        Files.write(directory.resolve("final").resolve(foreignKey),"not an envelope".getBytes(StandardCharsets.UTF_8));
+        var foreign=assertThrows(StorageObjectProblem.class,()->store.inspectObject(StorageService.ObjectLocation.FINAL,foreignKey));
+        assertEquals(StorageObjectProblem.Kind.UNRECOGNIZED_HEADER,foreign.kind());
+        String shortKey="3123456789abcdef0123456789abcdef.txt";
+        Files.write(directory.resolve("final").resolve(shortKey),new byte[]{'U','T','E','N','I','N','T',1,0});
+        assertEquals(StorageObjectProblem.Kind.UNRECOGNIZED_HEADER,
+                assertThrows(StorageObjectProblem.class,()->store.inspectObject(StorageService.ObjectLocation.FINAL,shortKey)).kind());
+
+        Files.move(directory.resolve("final"),directory.resolve("final-offline"));
+        assertThrows(StorageResourceUnavailableException.class,()->store.inspectObject(StorageService.ObjectLocation.FINAL,KEY),
+                "a missing namespace is never proof that one object was deleted");
+    }
+
+    @Test void inspectPathTreatsAConcurrentDeleteAsAbsent() throws Exception {
+        var store=store();
+        // The path passed the namespace checks; the file disappears before its header is read.
+        Path vanished=directory.resolve("final").resolve("4123456789abcdef0123456789abcdef.txt");
+        assertFalse(store.inspectPath(vanished).exists());
+        assertFalse(store.describe("5123456789abcdef0123456789abcdef.txt").exists());
+    }
+
     private InternalStorageService store() throws Exception { return store(properties()); }
     private InternalStorageService store(StorageProperties properties) throws Exception {
         // Codec/resource unit tests are portable; the separate Linux test uses

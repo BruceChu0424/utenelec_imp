@@ -95,6 +95,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             // neither name is a business fixture or a production table.
             "runtime_ddl_should_fail",
             "reset_business_table_policy",
+            // BusinessDataResetRefusalsPostgresTest 建的未分类表探针, 用来触发清空拒绝规则 31;
+            // 规则只看 public 普通表, 所以不能用 TEMP 表。
+            "reset_probe_unclassified",
             // 事务完整性/状态锁探针（tx_test_* 影子表）。
             "tx_test_inventory",
             "tx_test_reservations",

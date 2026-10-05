@@ -105,16 +105,9 @@ class OrderItemSourceMergeMigrationContractTest {
 
     @Test
     void resetTwinCoversNewSourceTables() throws IOException {
-        String ops = Files.readString(
-                Files.exists(Path.of("ops", "reset_business_data.sql"))
-                        ? Path.of("ops", "reset_business_data.sql")
-                        : Path.of("server", "ops", "reset_business_data.sql"),
-                StandardCharsets.UTF_8);
         String twin = migrationSql("V464__reset_twin_order_item_sources.sql");
         for (String table : new String[]{
                 "purchase_order_item_sources", "subcontract_order_item_sources"}) {
-            assertTrue(ops.contains("('" + table + "', 'CLEAR')"),
-                    "ops reset script must classify " + table);
             assertTrue(twin.contains("('" + table + "', 'CLEAR')"),
                     "V464 twin function must classify " + table);
         }

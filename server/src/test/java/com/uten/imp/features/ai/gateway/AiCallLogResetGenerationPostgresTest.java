@@ -190,7 +190,7 @@ class AiCallLogResetGenerationPostgresTest {
     }
 
     private void commitReset() throws Exception {
-        assertThat(gate.beginDrain(5_000)).isTrue();
+        assertThat(gate.beginDrain(5_000)).isEqualTo(com.uten.imp.features.admin.systemtest.BusinessDataResetDrainGate.DrainOutcome.STARTED);
         try { jdbc.queryForList("SELECT * FROM business_data_reset()"); }
         finally { gate.endReset(); }
     }

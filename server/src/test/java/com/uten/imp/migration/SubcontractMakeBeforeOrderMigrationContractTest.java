@@ -18,7 +18,6 @@ class SubcontractMakeBeforeOrderMigrationContractTest {
     private static final Path MIGRATION = Path.of(
             "src/main/resources/db/migration/"
                     + "V458__subcontract_make_before_order.sql");
-    private static final Path RESET = Path.of("ops/reset_business_data.sql");
 
     private static String compact(Path path) throws Exception {
         return Files.readString(path, StandardCharsets.UTF_8)
@@ -145,13 +144,11 @@ class SubcontractMakeBeforeOrderMigrationContractTest {
     }
 
     @Test
-    void resetRegistersBothLedgerTablesAsClearAndCatalogAcceptsV458()
-            throws Exception {
-        String reset = compact(RESET);
-
-        assertThat(reset)
-                .contains("('preplan_subcontract_make_task_batches', 'clear')")
-                .contains("('preplan_subcontract_make_tasks', 'clear')")
-                .contains("(458, 420)");
+    void resetRegistersBothLedgerTablesAsClear() throws Exception {
+        // The reviewed oracle (frozen V464 + registered changes); the installed function is
+        // compared with it by BusinessDataResetCatalogPostgresTest.
+        assertThat(com.uten.imp.ops.BusinessDataResetSqlContractTest.expectedCurrentPolicy())
+                .containsEntry("preplan_subcontract_make_task_batches", "CLEAR")
+                .containsEntry("preplan_subcontract_make_tasks", "CLEAR");
     }
 }

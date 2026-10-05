@@ -142,13 +142,36 @@ public class InternalStorageService implements StorageService, BlobStore {
         } catch (IOException error) { throw storageFailure("Unable to store internal attachment", error); }
     }
 
-    @Override public StoredObject describe(String key) {
-        Path path = resolve(staging, key);
+    @Override public StoredObject describe(String key) { return inspectObject(ObjectLocation.STAGING, key); }
+
+    @Override public StoredObject inspectObject(ObjectLocation location, String key) {
+        if (staging == null || finals == null) throw new StorageResourceUnavailableException("内部存储尚未初始化");
+        Path path = resolve(location == ObjectLocation.STAGING ? staging : finals, key);
         try (Lease lease = lease()) {
             requireObjectNamespaces(path);
+            return inspectPath(path);
+        }
+    }
+
+    /** Header-only inspection of a path that already passed the namespace checks (package seam for races). */
+    StoredObject inspectPath(Path path) {
+        try {
             if (Files.notExists(path, LinkOption.NOFOLLOW_LINKS)) return new StoredObject(false,0,null,null,null);
             try (Envelope envelope = envelope(path)) { return describe(envelope.header); }
-        } catch (IOException error) { throw storageFailure("Unable to inspect internal attachment", error); }
+        } catch (NoSuchFileException concurrentlyDeleted) {
+            return new StoredObject(false,0,null,null,null);
+        } catch (AccessDeniedException denied) {
+            throw new StorageObjectProblem(StorageObjectProblem.Kind.ACCESS_DENIED, "Internal object cannot be read", denied);
+        } catch (EOFException truncated) {
+            throw new StorageObjectProblem(StorageObjectProblem.Kind.UNRECOGNIZED_HEADER, "Internal object header is not recognized", truncated);
+        } catch (IOException error) {
+            String message = error.getMessage() == null ? "" : error.getMessage();
+            if (message.equals("Object is not a regular file"))
+                throw new StorageObjectProblem(StorageObjectProblem.Kind.NOT_REGULAR_FILE, "Internal object is not a regular file", error);
+            if (message.equals("Unknown object envelope") || message.equals("Invalid object envelope bounds"))
+                throw new StorageObjectProblem(StorageObjectProblem.Kind.UNRECOGNIZED_HEADER, "Internal object header is not recognized", error);
+            throw new StorageObjectProblem(StorageObjectProblem.Kind.IO_ERROR, "Internal object cannot be inspected", error);
+        }
     }
 
     @Override public InputStream openForValidation(String key, String versionId) {

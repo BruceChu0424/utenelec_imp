@@ -845,6 +845,10 @@ abstract final class ApiEndpoints {
   // 系统测试（工作台「系统测试」区，仅超管+本地/内网测试环境可用；
   // 后端 features/admin/systemtest/SystemTestController）
   static const systemTestBusinessDataReset = '/system-test/business-data/reset';
+
+  /// 清空前检查(只读)：与清空时的检查是同一个，弹窗据此显示测试文件计数与拒绝原因。
+  static const systemTestBusinessDataPreview =
+      '/system-test/business-data/preview';
   static const systemTestBusinessDataLastResult =
       '/system-test/business-data/last-result';
 }

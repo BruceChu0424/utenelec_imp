@@ -215,13 +215,24 @@ class InternalAttachmentLifecyclePostgresTest {
         for(int i=0;i<50 && outbox.processNext();i++) { /* ordinary deletion retains the original */ }
         assertThat(jdbc.queryForObject("SELECT lifecycle_state FROM attachments WHERE id=?",String.class,attachment)).isEqualTo("RETAINED_HISTORY");
         try(var retained=storage.openFinal(businessKey,version)){assertThat(retained.readAllBytes()).isEqualTo(businessBytes);}
-        // Advance only this owned fixture's upload grant; production code must
-        // still refuse a genuinely active upload token before file destruction.
-        jdbc.update("UPDATE attachment_upload_sessions SET expires_at=now()-interval '1 second' WHERE storage_key=?",businessKey);
+        // The dialog preview over real HTTP: the JSON field names the Flutter client reads (ADR-155).
+        JsonNode preview=json(HttpMethod.GET,"/api/system-test/business-data/preview",null,HttpStatus.OK);
+        assertThat(preview.path("refusals").isArray()).isTrue();
+        assertThat(preview.path("refusals")).isEmpty();
+        assertThat(preview.path("inspectionComplete").asBoolean()).isTrue();
+        assertThat(preview.path("allListedMissing").asBoolean()).isFalse();
+        assertThat(preview.path("presentFiles").asLong()).isPositive();
+        assertThat(preview.path("inspectedObjects").asLong()).isEqualTo(preview.path("locations").asLong());
+        assertThat(preview.has("absentFiles")).isTrue();
+        assertThat(preview.path("deadBackgroundEvents").isArray()).isTrue();
+        assertThat(preview.path("kinds").findValuesAsText("label")).contains("业务附件");
+        assertThat(preview.path("kinds").get(0).path("files").asLong()).isPositive();
+        assertThat(preview.has("refused")).as("derived by the client, not serialized").isFalse();
         UUID attempt=UUID.randomUUID();
         JsonNode result=stepUpJson(HttpMethod.POST,"/api/system-test/business-data/reset",
                 Map.of("confirm","清空业务数据","attemptId",attempt.toString()),HttpStatus.OK);
         assertThat(result.path("deletedAttachmentFiles").asLong()).isPositive();
+        assertThat(result.has("deadBackgroundEventsCleared")).isTrue();
         assertThat(http.exchange("/api/auth/me",HttpMethod.GET,new HttpEntity<>(headers()),JsonNode.class).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders",Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM attachments WHERE id=?",Long.class,attachment)).isZero();
@@ -231,23 +242,12 @@ class InternalAttachmentLifecyclePostgresTest {
         login();
         var receipt=json(HttpMethod.GET,"/api/system-test/business-data/last-result?attemptId="+attempt,null,HttpStatus.OK);
         assertThat(receipt.path("available").asBoolean()).isTrue();assertThat(receipt.path("attemptId").asText()).isEqualTo(attempt.toString());
+        assertThat(receipt.path("deletedAttachmentFiles").asLong()).isEqualTo(result.path("deletedAttachmentFiles").asLong());
+        assertThat(receipt.has("deadBackgroundEventsCleared")).isTrue();
+        assertThat(receipt.path("attemptFailed").asBoolean()).isFalse();
+        assertThat(receipt.has("attemptDeletedAttachmentFiles")).isTrue();
         var original=http.exchange("/api/attachments/raw/"+human.key,HttpMethod.GET,new HttpEntity<>(headers()),byte[].class);
         assertThat(original.getStatusCode()).isEqualTo(HttpStatus.OK);assertThat(original.getBody()).isEqualTo(humanBytes);
-    }
-
-    private Map<String, Integer> reviewedResetPolicyCounts() throws Exception {
-        // Match the separately reviewed operator catalog. Its dedicated
-        // contracts also validate each physical table and its disposition.
-        String sql = Files.readString(Path.of("ops/reset_business_data.sql"));
-        var entries = java.util.regex.Pattern.compile(
-                "(?m)^\\s*\\('([a-z_]+)',\\s*'(CLEAR|PRESERVE)'\\)[,;]?\\s*$").matcher(sql);
-        Map<String, String> policies = new HashMap<>();
-        while (entries.find()) assertThat(policies.put(entries.group(1), entries.group(2))).isNull();
-        assertThat(policies).isNotEmpty();
-        Map<String, Integer> counts = new HashMap<>();
-        policies.values().forEach(disposition -> counts.merge(disposition, 1, Integer::sum));
-        assertThat(counts.keySet()).containsExactlyInAnyOrder("CLEAR", "PRESERVE");
-        return counts;
     }
 
     private Upload upload(String name,String type,byte[] bytes) throws Exception {

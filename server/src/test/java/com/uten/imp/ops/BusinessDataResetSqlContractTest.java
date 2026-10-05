@@ -17,24 +17,24 @@ import java.util.regex.Pattern;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 工作台「系统测试 · 清空业务数据」三处事实的同步锁：
+ * 工作台「系统测试 · 清空业务数据」两处事实的同步锁(ADR-155)：
  * <ol>
- *   <li>ops/reset_business_data.sql（psql 停机版）的全量 CLEAR/PRESERVE 分类；</li>
- *   <li>迁移函数 business_data_reset()（应用内运行的孪生；V464 为最新整函数重发版，
- *       V462 为历史首版）的同一份分类。V474 起经运行时补丁插入
- *       {@link #RUNTIME_RESET_EXTENSIONS} 登记的扩展行（已应用的 V464 字节不可改）；</li>
- *   <li>BusinessDataResetService 只做编排（绑定 actor + 调函数），不内联清空 SQL。</li>
+ *   <li>迁移函数 business_data_reset() 是 CLEAR/PRESERVE 分类唯一的家(V464 为最后一次整函数重发，
+ *       此后的迁移只按锚点补丁增删分类行，登记在下面几张表里)。{@link #expectedCurrentPolicy()}
+ *       由冻结的 V464 加登记的变化独立推导，是评审用的神谕；安装后的函数与它逐表相等由
+ *       BusinessDataResetCatalogPostgresTest 在真实库里核对；</li>
+ *   <li>BusinessDataResetService 只做编排(检查、删除测试文件、绑定 actor、调函数)，不内联清空 SQL。</li>
  * </ol>
- * 迁移新增表后必须同步两份清单，否则本测试失败关闭；运行时未知表同样拒绝执行。
+ * 迁移新增表后必须在这里登记，否则神谕与安装后的函数不一致；运行时未分类的表同样拒绝清空。
  */
-class BusinessDataResetSqlContractTest {
+public class BusinessDataResetSqlContractTest {
 
     private static final Pattern POLICY_ROW = Pattern.compile(
             "\\('([a-z][a-z0-9_]*)'\\s*,\\s*'(CLEAR|PRESERVE)'\\)");
 
     /**
      * V474 起经「读取已安装函数定义 + 失败关闭锚点替换」插入孪生函数的扩展行。
-     * 表名 -> 引入迁移版本号；新增扩展时同步登记，并保持 ops 脚本与补丁锚点一致。
+     * 表名 -> 引入迁移版本号；新增扩展时同步登记。
      */
     private static final Map<String, Integer> RUNTIME_RESET_EXTENSIONS = Map.ofEntries(
             Map.entry("preplan_public_supply_events", 474),
@@ -182,8 +182,7 @@ class BusinessDataResetSqlContractTest {
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
-     * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记，
-     * ops 脚本与 V579 补丁锚点保持一致。
+     * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
             Map.entry("legacy_subcontract_order_import_sources", 624),
@@ -247,8 +246,8 @@ class BusinessDataResetSqlContractTest {
         "platform_record_field_versions","platform_column_usage");
 
     /**
-     * V590 起整表废弃并从清空策略移除的表（「读取已安装定义 + 锚点替换删除」
-     * 补丁）。新增删除时同步登记，并保持 ops 脚本与 V590 补丁锚点一致。
+     * V590 起整表废弃并从清空策略移除的表(「读取已安装定义 + 锚点替换删除」
+     * 补丁)。新增删除时同步登记。
      * 表原来的 CLEAR/PRESERVE 归类取自冻结的 V464 基线，计数公式按归类分别扣减。
      */
     private static final Map<String, Integer> REMOVED_RESET_TABLES = Map.ofEntries(
@@ -269,17 +268,16 @@ class BusinessDataResetSqlContractTest {
             Map.entry("measurement_capture_profiles", 743),
             Map.entry("legacy_measurement_exceptions", 743),
             Map.entry("legacy_measurement_profile_snapshots", 743),
-            Map.entry("legacy_measurement_source_registry", 743));
+            Map.entry("legacy_measurement_source_registry", 743),
+            // V798 / ADR-155：签名意图票据整套机制删除(临时号，合并时随迁移改号)。
+            Map.entry("business_test_object_cleanup_intents", 798));
 
-    private String opsScript;
     private String migrationSql;
     private String serviceSource;
     private String extensionSql;
 
     @BeforeEach
     void loadSources() throws IOException {
-        opsScript = read(Path.of("ops", "reset_business_data.sql"),
-                Path.of("server", "ops", "reset_business_data.sql"));
         migrationSql = read(
                 Path.of("src", "main", "resources", "db", "migration",
                         "V464__reset_twin_order_item_sources.sql"),
@@ -302,27 +300,32 @@ class BusinessDataResetSqlContractTest {
     }
 
     @Test
-    void appTwinFunctionClassifiesExactlyTheOpsScriptTables() throws IOException {
-        // The frozen V464 base and explicit reviewed migrations remain the independent source of truth.
-        assertThat(policy(opsScript)).isEqualTo(expectedCurrentPolicy());
-        assertThat(opsScript).startsWith("\\set ON_ERROR_STOP on");
-        assertThat(opsScript).doesNotContain("PERMANENT_RETAIN prohibits business reset")
-                .contains("CREATE TEMP TABLE reset_business_expected_policy",
-                        "SELECT * FROM public.business_data_reset();",
-                        "FULL JOIN reset_business_table_policy actual USING(table_name)");
-        assertThat(serviceSource).doesNotContain("requirePermanentRecordsPreserved()","PERMANENT_RECORD_REFUSAL")
-                .contains("featureGate.requireEnabled()","previewTestReset(operatorId)","drainTestResetNext(attemptId)");
-    }
-
-    @Test
-    void historicalMigrationCatalogKeepsTheRootSupplyForwardFixSequence() {
-        // Every version/count pair is independently recounted in the test below.
-        // Operator prose no longer describes a second destructive implementation.
-        assertThat(opsScript).contains("(478, 440)", "(479, 441)", "(480, 442)",
-                "(481, 443)", "(482, 444)", "(483, 445)", "(484, 446)");
+    void serviceOnlyOrchestratesTheSingleObjectRule() {
+        assertThat(serviceSource).doesNotContain("requirePermanentRecordsPreserved()", "PERMANENT_RECORD_REFUSAL")
+                .contains("featureGate.requireEnabled()", "files.check(", "files.purge(",
+                        "set_config('app.business_test_reset_objects', ?, true)");
         assertThat(RUNTIME_RESET_EXTENSIONS)
                 .containsEntry("preplan_root_output_events", 478)
                 .containsEntry("sales_order_qty_change_logs", 484);
+    }
+
+    /** V798 patches business_data_reset() by anchors and replaces two small functions after a byte check. */
+    @Test
+    void singleObjectRuleMigrationPatchesByAnchorsAndFailsClosed() throws IOException {
+        String migration = singleObjectRuleMigration();
+        for (String edit : List.of("E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9a", "E9b")) {
+            assertThat(migration).as("edit " + edit + " must be named in the anchor patch").contains("ARRAY['" + edit + "',");
+        }
+        assertThat(migration)
+                .contains("md5(replace(prosrc, chr(13), ''))")
+                .contains("CREATE OR REPLACE FUNCTION public.fn_clear_business_test_object_metadata()")
+                .contains("CREATE OR REPLACE FUNCTION public.fn_attachment_retained_identity_guard()")
+                .contains("REVOKE ALL ON FUNCTION public.fn_business_test_reset_verify_purged(), public.fn_clear_business_test_object_metadata() FROM uten")
+                .contains("DROP TABLE public.business_test_object_cleanup_intents;")
+                .contains("V798 changed reset catalog rows other than business_test_object_cleanup_intents")
+                .doesNotContain("CREATE OR REPLACE FUNCTION public.business_data_reset()")
+                .doesNotContain("CASCADE;");
+        assertThat(policy(migration)).as("tuples only as doubled-quote literals").isEmpty();
     }
 
     @Test
@@ -425,8 +428,9 @@ class BusinessDataResetSqlContractTest {
         assertThat(serviceSource)
                 .contains("FROM business_data_reset()")
                 .contains("SELECT set_config('app.actor_id', ?, true)")
-                .contains("SET LOCAL lock_timeout = '15s'")
+                .contains("SELECT set_config('lock_timeout', ?, true)")
                 .contains("SET LOCAL statement_timeout = '30min'")
+                .contains("SET LOCAL idle_in_transaction_session_timeout = '30min'")
                 .doesNotContain("TRUNCATE TABLE")
                 .doesNotContain("DO $$");
         // 编排门禁与排水
@@ -437,19 +441,13 @@ class BusinessDataResetSqlContractTest {
     }
 
     /**
-     * <b>迁移头一动，清库脚本的 fail-closed 白名单就必须跟着动。</b>
+     * <b>迁移头一动，要人工同步的只剩 docs/数据迁移/README.md 的头行。</b>
      *
-     * <p>这条耦合被踩过不止一次（2026-09-11 加 V552 时 CI 后端整条挂掉：
-     * {@code 仅允许 ...及V511至V551完整目录，当前 V552/510}）。上面那串
-     * {@code .contains("(NNN, MMM)")} 断言只能证明「写了什么」，证明不了
-     * 「有没有漏写最新那条」——所以这里**从迁移目录算出真实的迁移头**再比对，
-     * 漏了就当场报出该补哪一行，不用等跑到真实库才发现。
-     *
-     * <p>注意版本对是 (Flyway 版本号, 已应用迁移条数)，两者因跳号（如 V544 未发布）
-     * 并不相等；条数只能由目录里实际存在的 .sql 个数数出来。
+     * <p>迁移头与条数从迁移目录数出来(版本对是 (Flyway 版本号, 已应用迁移条数)，两者因跳号不相等)，
+     * 再与 {@code MigrationRehearsalSupport} 和迁移总览文档比对；漏改就当场报出该改成什么。</p>
      */
     @Test
-    void resetScriptAllowlistCoversTheCurrentMigrationHead() throws IOException {
+    void migrationHeadSyncPointsFollowTheDirectory() throws IOException {
         Path migrations = resolve(
                 Path.of("src", "main", "resources", "db", "migration"),
                 Path.of("server", "src", "main", "resources", "db", "migration"));
@@ -465,47 +463,20 @@ class BusinessDataResetSqlContractTest {
         }
         assertThat(head).as("迁移目录里没找到任何 V*.sql").isGreaterThan(0);
 
-        String expected = "(" + head + ", " + count + ")";
-        assertThat(opsScript)
-                .as("""
-                        ops/reset_business_data.sql 的迁移头白名单没有覆盖当前迁移头。
-                        请在版本对列表末尾补上 %s，并把异常文案里的上界改成 V%d。
-                        （新增迁移就必须同步这张表，否则整个清库脚本 fail-closed 拒跑。）"""
-                        .formatted(expected, head))
-                .contains(expected);
-        assertThat(opsScript)
-                .as("异常文案里的上界也要同步到 V%d".formatted(head))
-                .contains("及V511至V" + head + "完整目录");
-
-        // 同一条耦合的第三处：迁移演练 / 引导兼容性用例把迁移头钉成两个常量。
-        // 2026-09-11 就是漏了它，CI 后端又挂一轮（expected 509 but was 510）。
+        // MigrationRehearsalSupport 从 classpath db/migration 目录自动推导迁移头与条数(目录是唯一事实源)。
         String rehearsal = read(
                 Path.of("src", "test", "java", "com", "uten", "imp", "migration",
                         "MigrationRehearsalSupport.java"),
                 Path.of("server", "src", "test", "java", "com", "uten", "imp", "migration",
                         "MigrationRehearsalSupport.java"));
-        // 2026-09-16 起 MigrationRehearsalSupport 从 classpath db/migration 目录自动推导这两个常量
-        //（目录是唯一事实源）；旧式手写常量仍被接受，但必须与目录头一致。
-        if (rehearsal.contains("CURRENT_HEAD_VERSION = Integer.toString(head)")) {
-            assertThat(rehearsal)
-                    .as("MigrationRehearsalSupport 自动推导迁移头时条数也必须来自目录")
-                    .contains("CURRENT_MIGRATION_COUNT = count");
-        } else {
-            assertThat(rehearsal)
-                    .as("MigrationRehearsalSupport 的迁移头常量没跟上："
-                            + "请改成 CURRENT_HEAD_VERSION = \"%d\"; CURRENT_MIGRATION_COUNT = %d;"
-                                    .formatted(head, count))
-                    .contains("CURRENT_HEAD_VERSION = \"" + head + "\"")
-                    .contains("CURRENT_MIGRATION_COUNT = " + count);
-        }
+        assertThat(rehearsal)
+                .as("MigrationRehearsalSupport 自动推导迁移头时条数也必须来自目录")
+                .contains("CURRENT_HEAD_VERSION = Integer.toString(head)")
+                .contains("CURRENT_MIGRATION_COUNT = count");
+        assertThat(MigrationRehearsalSupport.CURRENT_HEAD_VERSION).isEqualTo(Integer.toString(head));
+        assertThat(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT).isEqualTo(count);
 
-        // 连带项：PreplanFutureTransferForwardMigrationPostgresTest 断言「从 V569
-        // 升到目录头只跑 V569 之后的迁移」，它的条数常量同样要随新迁移 +1。
-        // 第四处：迁移总览文档的「当前正式目录」。
-        // LegacyMigrationSafetyContractTest 会拿上面那两个常量去比对这一行，
-        // 所以文档漏改一样让 CI 后端整轮挂——2026-09-12 又栽了一次。
-        // 那条断言在另一个测试类里，但**这里是新增迁移时唯一该看的清单**，
-        // 因此把它一并纳入，宁可重复也别再漏。
+        // 迁移总览文档的「当前源码目录」(LegacyMigrationSafetyContractTest 同样锁这一行)。
         String migrationReadme = read(
                 Path.of("..", "docs", "数据迁移", "README.md"),
                 Path.of("docs", "数据迁移", "README.md"));
@@ -516,65 +487,14 @@ class BusinessDataResetSqlContractTest {
                 .contains("当前源码目录：V" + head + "/" + count);
     }
 
-    /**
-     * <b>白名单全量对账（2026-09-18 起）：每一个版本对的条数都必须能从迁移目录数出来。</b>
-     *
-     * <p>上面的 {@code resetScriptAllowlistCoversTheCurrentMigrationHead} 只证明「最后一对
-     * 覆盖当前头」，证明不了中间任何一对没写错（手抄条数打错一位照样绿，直到某次
-     * 真实清库在旧目录上 fail-closed 拒跑）。版本对的第二个数 = 目录里版本号
-     * {@code <= 该版本} 的 .sql 个数（跳号版本天然数不进去），完全可从目录推导——
-     * 所以这里逐对重算：写错任何一对、漏写中间任何一对、顺序错乱，全部当场报出
-     * 该改成什么，不再等真实库。
-     */
-    @Test
-    void everyAllowlistPairIsRecountedFromTheMigrationDirectory() {
-        int whitelistStart = opsScript.indexOf(
-                "(applied_max_version, applied_migration_count) NOT IN (");
-        assertThat(whitelistStart)
-                .as("ops/reset_business_data.sql 里找不到迁移头 fail-closed 白名单锚点")
-                .isGreaterThanOrEqualTo(0);
-        int whitelistEnd = opsScript.indexOf(") THEN", whitelistStart);
-        assertThat(whitelistEnd).isGreaterThan(whitelistStart);
-        String whitelist = opsScript.substring(whitelistStart, whitelistEnd);
-
-        Matcher pair = Pattern.compile("\\((\\d{1,4}),\\s*(\\d{1,4})\\)").matcher(whitelist);
-        int previousVersion = 0;
-        int pairCount = 0;
-        while (pair.find()) {
-            pairCount++;
-            int version = Integer.parseInt(pair.group(1));
-            int claimedCount = Integer.parseInt(pair.group(2));
-            assertThat(version)
-                    .as("白名单版本对必须严格递增，第 %d 对是 (%d, %d)"
-                            .formatted(pairCount, version, claimedCount))
-                    .isGreaterThan(previousVersion);
-            int recounted = MigrationRehearsalSupport.migrationFileCountUpTo(version);
-            assertThat(claimedCount)
-                    .as("""
-                            白名单第 %d 对 (%d, %d) 的条数与迁移目录不符：目录里版本号 \
-                            <= %d 的 .sql 实际有 %d 个。要么这对手抄错了，要么目录有\
-                            增删没同步白名单。"""
-                            .formatted(pairCount, version, claimedCount, version, recounted))
-                    .isEqualTo(recounted);
-            previousVersion = version;
-        }
-        assertThat(pairCount)
-                .as("白名单一个版本对都没解析到——锚点窗口或格式变了，先修本测试")
-                .isGreaterThan(100);
-        assertThat(previousVersion)
-                .as("白名单最后一对的版本必须是当前迁移头 %s"
-                        .formatted(MigrationRehearsalSupport.CURRENT_HEAD_VERSION))
-                .isEqualTo(Integer.parseInt(MigrationRehearsalSupport.CURRENT_HEAD_VERSION));
-    }
-
-    /** Expected complete policy derives from frozen V464 plus explicit reviewed changes, never the ops script. */
-    static java.util.Set<String> expectedOperationalTables() {
+    /** Expected complete policy derives from frozen V464 plus explicit reviewed changes, never the installed function. */
+    public static java.util.Set<String> expectedOperationalTables() {
         return RUNTIME_RESET_EXTENSIONS.entrySet().stream()
                 .filter(entry -> entry.getValue() >= 511)
                 .map(Map.Entry::getKey).collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    static Map<String, String> expectedCurrentPolicy() throws IOException {
+    public static Map<String, String> expectedCurrentPolicy() throws IOException {
         Map<String, String> expected = policy(extensionSql(464));
         RUNTIME_RESET_EXTENSIONS.forEach((table, version) -> {
             assertThat(expected.putIfAbsent(table, "CLEAR"))
@@ -611,6 +531,22 @@ class BusinessDataResetSqlContractTest {
         return Files.readString(matches.getFirst(), StandardCharsets.UTF_8);
     }
 
+    /** The migration that creates the single object rule, located by content (independent of its number). */
+    public static String singleObjectRuleMigration() throws IOException {
+        Path directory = resolve(Path.of("src/main/resources/db/migration"),
+                Path.of("server/src/main/resources/db/migration"));
+        List<Path> matches = new java.util.ArrayList<>();
+        try (var files = Files.list(directory)) {
+            for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".sql")).toList()) {
+                if (Files.readString(file, StandardCharsets.UTF_8).contains("CREATE FUNCTION public.fn_business_test_reset_objects()")) {
+                    matches.add(file);
+                }
+            }
+        }
+        assertThat(matches).as("exactly one migration creates fn_business_test_reset_objects()").hasSize(1);
+        return Files.readString(matches.getFirst(), StandardCharsets.UTF_8);
+    }
+
     private static Path resolve(Path direct, Path fallback) {
         return Files.exists(direct) ? direct : fallback;
     }
@@ -623,7 +559,7 @@ class BusinessDataResetSqlContractTest {
     private static final Pattern MIGRATION_FILE =
             Pattern.compile("^V([0-9]+)__.*\\.sql$");
 
-    static Map<String, String> policy(String sql) {
+    public static Map<String, String> policy(String sql) {
         Map<String, String> result = new LinkedHashMap<>();
         Matcher matcher = POLICY_ROW.matcher(sql);
         while (matcher.find()) {

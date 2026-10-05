@@ -28,9 +28,7 @@ public final class MigrationRehearsalSupport {
     // 迁移头与迁移数：直接从 classpath 的 db/migration 目录推导（2026-09-16 起），
     // 目录本身就是唯一事实源——新增迁移不再需要改这里（历史上"594/551 忘同步"
     // 曾连炸四轮：b971674f/dfb07ebd/6bb5715e 等）。
-    // 剩余靠人肉同步的两处（各有自己的闸门测试兜底）：
-    //   - ops/reset_business_data.sql 的 (installed_rank, version) fail-closed 白名单
-    //     （BusinessDataResetSqlContractTest 会对账目录全量版本对并在漏改时报出该补的行）；
+    // 剩余靠人肉同步的只有一处(有自己的闸门测试兜底)：
     //   - docs/数据迁移/README.md 的头版本说明（LegacyMigrationSafetyContractTest 锁）。
     public static final String CURRENT_HEAD_VERSION;
     public static final int CURRENT_MIGRATION_COUNT;
@@ -74,8 +72,7 @@ public final class MigrationRehearsalSupport {
     /**
      * 目录里版本号 {@code <= version} 的迁移文件个数——即 Flyway 迁到
      * {@code version} 后 {@code flyway_schema_history} 里应有的成功条数
-     * （跳号版本不存在文件，天然数不进去）。ops 白名单版本对的第二个数、
-     * 分段升级的基线条数都以它为准，不再靠人记。
+     * (跳号版本不存在文件，天然数不进去)。分段升级的基线条数以它为准，不再靠人记。
      */
     public static int migrationFileCountUpTo(int version) {
         int total = 0;

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -73,6 +74,27 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
             return new StoredObject(true, Files.size(target), null, null, null);
         } catch (IOException e) {
             throw new StorageResourceUnavailableException("本地原件状态无法确认，请核验后重试");
+        }
+    }
+
+    @Override
+    public StoredObject inspectObject(ObjectLocation location, String storageKey) {
+        return inspectPath(location == ObjectLocation.STAGING ? resolveStaging(storageKey) : resolveFinal(storageKey));
+    }
+
+    /** Metadata-only inspection of a resolved object path (package seam for races). */
+    StoredObject inspectPath(Path target) {
+        try {
+            if (Files.notExists(target, LinkOption.NOFOLLOW_LINKS)) return new StoredObject(false, 0, null, null, null);
+            if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS))
+                throw new StorageObjectProblem(StorageObjectProblem.Kind.NOT_REGULAR_FILE, "Local object is not a regular file", null);
+            return new StoredObject(true, Files.size(target), null, null, null);
+        } catch (NoSuchFileException concurrentlyDeleted) {
+            return new StoredObject(false, 0, null, null, null);
+        } catch (AccessDeniedException denied) {
+            throw new StorageObjectProblem(StorageObjectProblem.Kind.ACCESS_DENIED, "Local object cannot be read", denied);
+        } catch (IOException error) {
+            throw new StorageObjectProblem(StorageObjectProblem.Kind.IO_ERROR, "Local object cannot be inspected", error);
         }
     }
 
@@ -262,7 +284,7 @@ public class LocalDiskStorageService implements StorageService, BlobStore {
         // declare one lost (or delete a guessed layout) when its historical bytes still exist.
         if(Files.notExists(finalObject,LinkOption.NOFOLLOW_LINKS)
             && !Files.notExists(resolveUnder(root,storageKey),LinkOption.NOFOLLOW_LINKS))
-            throw new StorageResourceUnavailableException("发现历史本地平铺原件，请先对账确认存储身份");
+            throw new StorageLegacyLayoutException("发现历史本地平铺原件，请先对账确认存储身份");
         return finalObject;
     }
 

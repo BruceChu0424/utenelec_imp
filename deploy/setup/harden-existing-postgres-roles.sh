@@ -648,6 +648,14 @@ BEGIN
   IF to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NOT NULL THEN
     REVOKE ALL ON FUNCTION public.fn_require_runtime_maintenance(boolean) FROM PUBLIC, uten;
   END IF;
+  -- ADR-155 (V798): only the reset function owner may verify the test file list and clear
+  -- its metadata inside an explicit test reset; the blanket grant above must not expose them.
+  IF to_regprocedure('public.fn_business_test_reset_verify_purged()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.fn_business_test_reset_verify_purged() FROM PUBLIC, uten;
+  END IF;
+  IF to_regprocedure('public.fn_clear_business_test_object_metadata()') IS NOT NULL THEN
+    REVOKE ALL ON FUNCTION public.fn_clear_business_test_object_metadata() FROM PUBLIC, uten;
+  END IF;
   -- ADR-105 (V671): audit evidence is append-only for the runtime login. The general
   -- grants above include UPDATE/DELETE on every table and partition; seal them again so
   -- only the owner-defined retention function can move or drop whole monthly partitions.

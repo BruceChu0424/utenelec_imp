@@ -159,7 +159,7 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 
 - 表结构只来自 [`server/src/main/resources/db/migration`](server/src/main/resources/db/migration); 已应用的迁移**永不修改字节**, 修正一律向前追加。
 - 新迁移号必须大于当前源码迁移头。开号前先查目录与在途修改，目标服务器版本另查其 `flyway_schema_history`；不能用历史部署记录或本地文件数推断。
-- 新增表必须同时登记: 审计三清单、业务数据重置脚本的表分类、主档引用目录(若引用主档); 迁移头变化要同步五处契约(见[编排方法与验收](docs/99-项目治理/全平台整改交接/04-编排方法与验收.md))。
+- 新增表必须同时登记: 审计三清单、`business_data_reset()` 里的 CLEAR/PRESERVE 分类(在同一迁移里按锚点追加, 并在 `BusinessDataResetSqlContractTest` 神谕登记; 库测试 `BusinessDataResetCatalogPostgresTest` 把关)、主档引用目录(若引用主档); 迁移头变化只需同步 [docs/数据迁移/README.md](docs/数据迁移/README.md) 头行(停机清空脚本已于 2026-10-05 删除, 见 [ADR-155](docs/99-决策记录-ADR/ADR-155-清空业务数据测试文件单一规则与幂等删除.md))。
 - 每个迁移有对应说明, 索引见[数据迁移](docs/数据迁移/README.md)。
 - 生产迁移只经发布更新器执行(先自动全量备份)。**不要在服务器上直接运行 migrator 做演练**: 它固定连接正式库; 演练在开发机的库副本上进行。
 

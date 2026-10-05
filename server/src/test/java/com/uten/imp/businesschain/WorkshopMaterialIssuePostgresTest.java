@@ -800,21 +800,30 @@ class WorkshopMaterialIssuePostgresTest {
                     uploadFixture.setObject(1, shop.workshopUser());
                     assertEquals(1, uploadFixture.executeUpdate());
                 }
-                // reset 的附件门拦全库业务附件; 共享库里前面用例留下的附件行会触发拒绝
-                // (单跑恒绿、全量红)。本用例的关注点是认料/机台的保留口径, 按生产
-                // 「附件清理准备已完成」的状态先清业务附件行(事务内, 回滚不留痕)。
-                statement.execute(
-                        """
-                        DELETE FROM attachment_object_outbox
-                        WHERE attachment_id IN (SELECT id FROM attachments
-                                WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT'))
-                           OR upload_session_id IN (SELECT id FROM attachment_upload_sessions
-                                WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT'))
-                        """);
-                statement.execute(
-                        "DELETE FROM attachments WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT')");
-                statement.execute(
-                        "DELETE FROM attachment_upload_sessions WHERE upper(btrim(owner_type)) NOT IN ('EMPLOYEE','EMPLOYEE_CONTRACT')");
+                // 前序附件测试留下的「保留历史」业务附件(这种行平时不能删)。单跑也带上它,
+                // 才能重现全量里的状态: 只有清空函数核对清单之后才允许删掉它。
+                UUID retainedAttachment = UUID.randomUUID();
+                try (var attachmentFixture = connection.prepareStatement("""
+                        INSERT INTO attachments(id, owner_type, owner_id, storage_key, storage_version, original_name,
+                            content_type, size_bytes, sha256, storage_provider, lifecycle_state, scan_engine,
+                            scanned_at, promoted_at, delete_requested_at)
+                        VALUES (?, 'SALES_ORDER', gen_random_uuid(), gen_random_uuid()::text, 'v1', 'reset-retained.pdf',
+                            'application/pdf', 1, repeat('a', 64), 'local', 'RETAINED_HISTORY', 'fixture',
+                            now(), now(), now())
+                        """)) {
+                    attachmentFixture.setObject(1, retainedAttachment);
+                    assertEquals(1, attachmentFixture.executeUpdate());
+                }
+                // 本用例绕过应用直接调 business_data_reset(), 关注点是认料/机台的保留口径。
+                // 共享库里前面用例留下的业务附件(保留历史的原件不能删行)和上面的上传会话
+                // 都在测试文件清单里(单跑恒绿、全量红的根因)。按应用删完文件后的顺序:
+                // 锁来源表 -> 取清单指纹并声明, 由清空函数在同一把锁下核对(ADR-155);
+                // 整段在 finally 回滚, 不留痕。
+                statement.execute("SELECT public.fn_business_test_reset_lock_sources()");
+                try (ResultSet declared = statement.executeQuery("SELECT set_config('app.business_test_reset_objects',"
+                        + " public.fn_business_test_reset_object_fingerprint(), true)")) {
+                    assertTrue(declared.next());
+                }
                 try (ResultSet cleared = statement.executeQuery("SELECT cleared_rows FROM business_data_reset()")) {
                     assertTrue(cleared.next());
                 }
@@ -826,6 +835,13 @@ class WorkshopMaterialIssuePostgresTest {
                     assertEquals(1, kept.getInt(1), "认料保留");
                     assertEquals(2, kept.getInt(2), "机台保留");
                     assertEquals(0, kept.getInt(3), "设置清空, 清空后需重新开启");
+                }
+                try (var gone = connection.prepareStatement("SELECT count(*) FROM attachments WHERE id = ?")) {
+                    gone.setObject(1, retainedAttachment);
+                    try (ResultSet rows = gone.executeQuery()) {
+                        assertTrue(rows.next());
+                        assertEquals(0, rows.getInt(1), "业务附件行随清空删除");
+                    }
                 }
             } finally {
                 connection.rollback();

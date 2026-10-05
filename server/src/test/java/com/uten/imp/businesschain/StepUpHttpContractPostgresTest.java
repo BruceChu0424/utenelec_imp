@@ -103,8 +103,6 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
                 json(put("/api/admin/system-settings"), Map.of("changes", List.of(
                         Map.of("key", "lockout_minutes", "value", "16", "expectedValue", "15"))), admin),
                 json(post("/api/system-test/business-data/reset"), Map.of("confirm", "清空业务数据"), admin),
-                json(post("/api/system-test/business-data/attachments/prepare"),
-                        Map.of("confirm", "清理测试业务附件", "database", "x", "fingerprint", "x"), admin),
                 // 补开账号同样把明文临时密码交给操作人 (评审补例): 不在 /api/admin 前缀下也要再认证
                 json(post("/api/org/employees/" + target.employeeId() + "/account"), Map.of(), admin),
                 // 个人资料改手机号 (即登录账号): 服务端按提交内容要求再认证, 不再只靠前端先问密码

@@ -1,4 +1,4 @@
--- V800 (ADR-147): 车间内料仓开通单一真源 + 发料来源仓 + 直送只送已开通的车间。
+-- V802 (ADR-147): 车间内料仓开通单一真源 + 发料来源仓 + 直送只送已开通的车间。
 --
 -- 背景(2026-10-04 用户反馈):
 --   1. 「仓库资料」里有「装配第一车间内料仓」, 内料仓总览却说装配第一车间「未启用」、内料仓列为空:
@@ -47,15 +47,15 @@ CREATE TABLE workshop_bins (
 );
 CREATE INDEX idx_workshop_bins_source ON workshop_bins(source_warehouse_id) WHERE source_warehouse_id IS NOT NULL;
 COMMENT ON TABLE workshop_bins IS
-    'V800 (ADR-147) 车间内料仓开通记录(唯一真源): 一行 = 这个车间的内料仓已开通(可收车间直送); '
+    'V802 (ADR-147) 车间内料仓开通记录(唯一真源): 一行 = 这个车间的内料仓已开通(可收车间直送); '
     '整批领料另由 workshop_material_settings 引用本行开启。内料仓仓库行只能由开通命令建出';
 COMMENT ON COLUMN workshop_bins.bin_warehouse_id IS
-    'V800 本车间的内料仓(仓库主档里 is_line_side 的那一行, 挂在主仓下)';
+    'V802 本车间的内料仓(仓库主档里 is_line_side 的那一行, 挂在主仓下)';
 COMMENT ON COLUMN workshop_bins.source_warehouse_id IS
-    'V800 默认发料来源仓(可空 = 按货品所属仓库); 只能是启用中的良品子仓, 发料默认值由 fn_workshop_bin_default_source 统一给出';
-COMMENT ON COLUMN workshop_bins.opened_by IS 'V800 开通人; 存量回填行取整批领料开启人或建仓人, 可能为空';
+    'V802 默认发料来源仓(可空 = 按货品所属仓库); 只能是启用中的良品子仓, 发料默认值由 fn_workshop_bin_default_source 统一给出';
+COMMENT ON COLUMN workshop_bins.opened_by IS 'V802 开通人; 存量回填行取整批领料开启人或建仓人, 可能为空';
 COMMENT ON COLUMN workshop_bins.row_version IS
-    'V800 开通状态版本: 改来源仓、开启/撤销整批领料都加一(页面按它判断是否被别人改过)';
+    'V802 开通状态版本: 改来源仓、开启/撤销整批领料都加一(页面按它判断是否被别人改过)';
 
 -- ---------------------------------------------------------------------------
 -- 2. 开通行守卫
@@ -86,7 +86,7 @@ BEGIN
     END IF;
     IF NEW.source_warehouse_id IS NOT NULL
        AND (TG_OP = 'INSERT' OR NEW.source_warehouse_id IS DISTINCT FROM OLD.source_warehouse_id) THEN
-        -- 与仓库停用互斥(同 V798 货品所属仓库守卫的锁法)。
+        -- 与仓库停用互斥(同 V800 货品所属仓库守卫的锁法)。
         PERFORM 1 FROM warehouses WHERE id = NEW.source_warehouse_id FOR SHARE;
         IF NOT fn_warehouse_is_good_stock_leaf(NEW.source_warehouse_id) THEN
             RAISE EXCEPTION '发料来源仓只能选启用中的良品子仓, 不能是主仓、停用仓、不良品仓或车间内料仓'
@@ -106,7 +106,7 @@ $$;
 CREATE TRIGGER trg_guard_workshop_bin BEFORE INSERT OR UPDATE ON workshop_bins
     FOR EACH ROW EXECUTE FUNCTION fn_guard_workshop_bin();
 COMMENT ON FUNCTION fn_guard_workshop_bin() IS
-    'V800 开通行守卫: 生产部车间、本车间的内料仓、来源仓是可选良品子仓(写入或变化时)、车间与内料仓不可改、版本逐一递增';
+    'V802 开通行守卫: 生产部车间、本车间的内料仓、来源仓是可选良品子仓(写入或变化时)、车间与内料仓不可改、版本逐一递增';
 
 -- ---------------------------------------------------------------------------
 -- 3. 存量回填: 用过的内料仓 -> 已开通; 没用过的 -> 软删除; 同车间多个在用 -> 中止
@@ -127,15 +127,15 @@ BEGIN
      WHERE bin.is_deleted OR NOT bin.is_line_side
         OR bin.workshop_department_id IS DISTINCT FROM settings.workshop_department_id;
     IF problem IS NOT NULL THEN
-        RAISE EXCEPTION 'V800: 这些整批领料设置指向的内料仓已删除或不是本车间的内料仓, 请先人工处理: %', problem;
+        RAISE EXCEPTION 'V802: 这些整批领料设置指向的内料仓已删除或不是本车间的内料仓, 请先人工处理: %', problem;
     END IF;
     IF EXISTS (SELECT 1 FROM pg_constraint
                 WHERE confrelid = 'warehouses'::regclass AND contype = 'f'
                   AND cardinality(conkey) <> 1) THEN
-        RAISE EXCEPTION 'V800: 发现多列外键引用仓库, 请先更新本迁移的引用检查';
+        RAISE EXCEPTION 'V802: 发现多列外键引用仓库, 请先更新本迁移的引用检查';
     END IF;
 
-    CREATE TEMP TABLE v800_bins (id UUID PRIMARY KEY, code TEXT, workshop UUID, in_use BOOLEAN) ON COMMIT DROP;
+    CREATE TEMP TABLE v802_bins (id UUID PRIMARY KEY, code TEXT, workshop UUID, in_use BOOLEAN) ON COMMIT DROP;
     FOR line_side IN
         SELECT warehouse.id, warehouse.code, warehouse.workshop_department_id
           FROM warehouses warehouse
@@ -164,15 +164,15 @@ BEGIN
                 EXIT WHEN referenced;
             END LOOP;
         END IF;
-        INSERT INTO v800_bins VALUES (line_side.id, line_side.code, line_side.workshop_department_id, referenced);
+        INSERT INTO v802_bins VALUES (line_side.id, line_side.code, line_side.workshop_department_id, referenced);
     END LOOP;
 
     SELECT string_agg(codes, '; ') INTO problem FROM (
         SELECT string_agg(COALESCE(code, id::text), ' / ' ORDER BY code) AS codes
-          FROM v800_bins WHERE in_use
+          FROM v802_bins WHERE in_use
          GROUP BY workshop HAVING count(*) > 1) duplicate_groups;
     IF problem IS NOT NULL THEN
-        RAISE EXCEPTION 'V800: 同一个车间有多个在用的内料仓, 一个车间只能有一个, 请先人工合并: %', problem;
+        RAISE EXCEPTION 'V802: 同一个车间有多个在用的内料仓, 一个车间只能有一个, 请先人工合并: %', problem;
     END IF;
 
     INSERT INTO workshop_bins (workshop_department_id, bin_warehouse_id, source_warehouse_id, opened_by, opened_at)
@@ -180,19 +180,19 @@ BEGIN
            (SELECT account.id FROM users account
              WHERE account.id = COALESCE(settings.enabled_by, warehouse.created_by)),
            COALESCE(settings.enabled_at, warehouse.created_at, now())
-      FROM v800_bins candidate
+      FROM v802_bins candidate
       JOIN warehouses warehouse ON warehouse.id = candidate.id
       LEFT JOIN workshop_material_settings settings ON settings.periodic_bin_warehouse_id = warehouse.id
      WHERE candidate.in_use
      ORDER BY warehouse.code, warehouse.id;
 
-    SELECT string_agg(COALESCE(code, id::text), ', ' ORDER BY code) INTO dropped FROM v800_bins WHERE NOT in_use;
+    SELECT string_agg(COALESCE(code, id::text), ', ' ORDER BY code) INTO dropped FROM v802_bins WHERE NOT in_use;
     UPDATE warehouses warehouse
        SET is_deleted = TRUE, deleted_at = now(), updated_at = now()
-      FROM v800_bins candidate
+      FROM v802_bins candidate
      WHERE candidate.id = warehouse.id AND NOT candidate.in_use;
     IF dropped IS NOT NULL THEN
-        RAISE NOTICE 'V800: 这些内料仓从来没用过, 已软删除(需要时在「车间内料仓」里重新开通): %', dropped;
+        RAISE NOTICE 'V802: 这些内料仓从来没用过, 已软删除(需要时在「车间内料仓」里重新开通): %', dropped;
     END IF;
 END;
 $backfill$;
@@ -225,7 +225,7 @@ BEGIN
 END;
 $$;
 COMMENT ON FUNCTION fn_require_warehouse_line_side_opened(UUID) IS
-    'V800 每个未删除的车间内料仓恰有一条本车间的开通行; 不满足即拒绝(按提交时的最新状态判定)';
+    'V802 每个未删除的车间内料仓恰有一条本车间的开通行; 不满足即拒绝(按提交时的最新状态判定)';
 
 CREATE FUNCTION fn_assert_warehouse_line_side_opened() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -251,9 +251,9 @@ CREATE CONSTRAINT TRIGGER trg_assert_workshop_bin_withdrawn
     AFTER DELETE ON workshop_bins DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION fn_assert_workshop_bin_withdrawn();
 COMMENT ON FUNCTION fn_assert_warehouse_line_side_opened() IS
-    'V800 提交时校验: 新建内料仓或改内料仓身份后, 它必须有本车间的开通行';
+    'V802 提交时校验: 新建内料仓或改内料仓身份后, 它必须有本车间的开通行';
 COMMENT ON FUNCTION fn_assert_workshop_bin_withdrawn() IS
-    'V800 提交时校验: 删掉开通行(撤销开通)时, 内料仓仓库行必须同一事务里软删除';
+    'V802 提交时校验: 删掉开通行(撤销开通)时, 内料仓仓库行必须同一事务里软删除';
 
 -- ---------------------------------------------------------------------------
 -- 5. 整批领料设置只是开通后的子能力: 复合外键引用开通行
@@ -263,7 +263,7 @@ ALTER TABLE workshop_material_settings
     FOREIGN KEY (workshop_department_id, periodic_bin_warehouse_id)
     REFERENCES workshop_bins (workshop_department_id, bin_warehouse_id);
 COMMENT ON TABLE workshop_material_settings IS
-    '车间整批领料设置 (ADR-131; V800 起只是已开通内料仓的子能力, 用复合外键引用 workshop_bins): '
+    '车间整批领料设置 (ADR-131; V802 起只是已开通内料仓的子能力, 用复合外键引用 workshop_bins): '
     '指定的内料仓与启用日期在有进出记录后不可改; 停用只用来撤销设错的开启';
 
 CREATE OR REPLACE FUNCTION fn_guard_workshop_material_settings() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -277,7 +277,7 @@ BEGIN
         RAISE EXCEPTION '整批领料只能在生产部下的车间开启'
             USING ERRCODE = '23514', CONSTRAINT = 'workshop_material_settings_workshop_guard';
     END IF;
-    -- V800: 整批领料只能开在本车间已开通的内料仓上(开通行是唯一真源; 复合外键兜底)。
+    -- V802: 整批领料只能开在本车间已开通的内料仓上(开通行是唯一真源; 复合外键兜底)。
     IF NEW.periodic_bin_warehouse_id IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM workshop_bins opened
         JOIN warehouses bin ON bin.id = opened.bin_warehouse_id
@@ -333,11 +333,11 @@ BEGIN
 END;
 $$;
 COMMENT ON FUNCTION fn_guard_workshop_material_settings() IS
-    'V740 车间整批领料设置守卫; V800 起整批领料只能开在本车间已开通(workshop_bins)的内料仓上';
+    'V740 车间整批领料设置守卫; V802 起整批领料只能开在本车间已开通(workshop_bins)的内料仓上';
 
 -- ---------------------------------------------------------------------------
 -- 6. 仓库退出新选(停用/删除/改不核算/改不良品仓)前置条件: 已开通的内料仓、仍是发料来源仓的仓
---    (取代 V798 的「已开启整批领料的内料仓」; 停用/删除的 fn_warehouse_retirement_blockers 自动带上)
+--    (取代 V800 的「已开启整批领料的内料仓」; 停用/删除的 fn_warehouse_retirement_blockers 自动带上)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_warehouse_selection_exit_blockers(p_warehouse UUID)
 RETURNS TEXT[] LANGUAGE sql STABLE AS $$
@@ -367,7 +367,7 @@ RETURNS TEXT[] LANGUAGE sql STABLE AS $$
     ], NULL)
 $$;
 COMMENT ON FUNCTION fn_warehouse_selection_exit_blockers(UUID) IS
-    'V800 仓库退出新单可选(停用/删除/改不核算/改不良品仓)的前置条件: 库存、货品所属、未结预留、已开通的内料仓、内料仓发料来源仓';
+    'V802 仓库退出新单可选(停用/删除/改不核算/改不良品仓)的前置条件: 库存、货品所属、未结预留、已开通的内料仓、内料仓发料来源仓';
 
 -- 撤销开通(只撤销设错的开通)的前置条件; 返回给人看的原因(空数组 = 可以撤销)。
 CREATE FUNCTION fn_workshop_bin_revoke_blockers(p_bin UUID)
@@ -407,7 +407,7 @@ RETURNS TEXT[] LANGUAGE sql STABLE AS $$
     ], NULL)
 $$;
 COMMENT ON FUNCTION fn_workshop_bin_revoke_blockers(UUID) IS
-    'V800 撤销开通的前置条件(只撤销设错的开通): 没开整批领料、没有进出、没有余额、没收过直送、没有单据/预留/领料单引用';
+    'V802 撤销开通的前置条件(只撤销设错的开通): 没开整批领料、没有进出、没有余额、没收过直送、没有单据/预留/领料单引用';
 
 -- ---------------------------------------------------------------------------
 -- 7. 车间直送: 收料车间没开通内料仓时不能直送(原因码 WORKSHOP_BIN_NOT_OPEN)
@@ -418,7 +418,7 @@ RETURNS INTEGER LANGUAGE sql IMMUTABLE AS $$
         WHEN 'QTY_EXCEEDS_REMAINING' THEN 10
         WHEN 'SOURCE_SHARE_USED_UP' THEN 20
         WHEN 'DEMAND_ALREADY_COVERED' THEN 21
-        -- V800: 收料车间没开通内料仓。整个车间的上层工单都卡在这一条上, 排在接收状态类原因之前,
+        -- V802: 收料车间没开通内料仓。整个车间的上层工单都卡在这一条上, 排在接收状态类原因之前,
         -- 一个都不能送时界面优先说它(办法是去开通或这次送入仓库)。
         WHEN 'WORKSHOP_BIN_NOT_OPEN' THEN 25
         WHEN 'RECEIVER_STATUS' THEN 30
@@ -439,7 +439,7 @@ RETURNS INTEGER LANGUAGE sql IMMUTABLE AS $$
     END
 $$;
 COMMENT ON FUNCTION fn_workshop_direct_reason_rank(TEXT) IS
-    'V736 不可直送原因的接近程度(数字越小越接近可送); V800 加 WORKSHOP_BIN_NOT_OPEN';
+    'V736 不可直送原因的接近程度(数字越小越接近可送); V802 加 WORKSHOP_BIN_NOT_OPEN';
 
 CREATE OR REPLACE FUNCTION fn_workshop_direct_reason_text(
     p_code TEXT, p_receiver TEXT, p_goods TEXT, p_workshop TEXT, p_state TEXT,
@@ -478,7 +478,7 @@ RETURNS TEXT LANGUAGE sql STABLE AS $$
                  COALESCE(NULLIF(p_goods, ''), '这个货品') AS goods) context
 $$;
 COMMENT ON FUNCTION fn_workshop_direct_reason_text(TEXT, TEXT, TEXT, TEXT, TEXT, NUMERIC, NUMERIC) IS
-    'V736 不可直送原因与报工送仓原因的大白话(唯一一份文案); V800 加「车间还没开通内料仓」';
+    'V736 不可直送原因与报工送仓原因的大白话(唯一一份文案); V802 加「车间还没开通内料仓」';
 
 CREATE OR REPLACE FUNCTION fn_workshop_direct_targets(
     p_producing UUID, p_demand UUID DEFAULT NULL, p_base_qty NUMERIC DEFAULT NULL)
@@ -526,7 +526,7 @@ WITH producing AS MATERIALIZED (
 ), stated AS MATERIALIZED (
     SELECT structured.*,
            COALESCE(structure_code, CASE
-               -- V800: 收料车间没开通内料仓就没有收料的地方(不再第一次直送时自动建仓)。
+               -- V802: 收料车间没开通内料仓就没有收料的地方(不再第一次直送时自动建仓)。
                WHEN NOT EXISTS (SELECT 1 FROM workshop_bins opened
                                 WHERE opened.workshop_department_id = structured.receiving_workshop)
                     THEN 'WORKSHOP_BIN_NOT_OPEN'
@@ -633,7 +633,7 @@ WHERE p_demand IS NULL AND NOT EXISTS (SELECT 1 FROM listed)
 ORDER BY 21
 $$;
 COMMENT ON FUNCTION fn_workshop_direct_targets(UUID, UUID, NUMERIC) IS
-    'V736 车间直送候选与单条校验唯一入口; V800 起收料车间没开通内料仓时原因码 WORKSHOP_BIN_NOT_OPEN';
+    'V736 车间直送候选与单条校验唯一入口; V802 起收料车间没开通内料仓时原因码 WORKSHOP_BIN_NOT_OPEN';
 
 ALTER TABLE production_daily_report_items
     DROP CONSTRAINT production_daily_report_items_output_route_reason_chk,
@@ -691,7 +691,7 @@ BEGIN
                   CONSTRAINT = 'workshop_direct_transfer_item_demand_guard';
     END IF;
 
-    -- 直送单头的车间就是出料工单的车间；内料仓必须是这个车间开通的那一个(V800 workshop_bins)，
+    -- 直送单头的车间就是出料工单的车间；内料仓必须是这个车间开通的那一个(V802 workshop_bins)，
     -- 且与收料需求同主仓(fn_warehouse_same_main 是同主仓分仓领料的硬前提，V489)。
     IF NOT EXISTS (
             SELECT 1
@@ -720,7 +720,7 @@ BEGIN
 END;
 $$;
 COMMENT ON FUNCTION fn_guard_workshop_direct_transfer_item() IS
-    'V736 直送明细身份守卫; V800 起内料仓必须是出料车间在 workshop_bins 里开通的那一个';
+    'V736 直送明细身份守卫; V802 起内料仓必须是出料车间在 workshop_bins 里开通的那一个';
 
 -- ---------------------------------------------------------------------------
 -- 8. 默认发料来源仓(只算一次): 来源仓有可发量 -> 货品所属仓库 -> 可发量最大的良品子仓
@@ -756,7 +756,7 @@ RETURNS UUID LANGUAGE sql STABLE AS $$
           LIMIT 1))
 $$;
 COMMENT ON FUNCTION fn_workshop_bin_default_source(UUID, UUID, UUID) IS
-    'V800 内料仓发料的默认出库仓(唯一定义): 来源仓有可发量 -> 货品所属仓库(可选良品子仓) -> 可发量最大的良品子仓; '
+    'V802 内料仓发料的默认出库仓(唯一定义): 来源仓有可发量 -> 货品所属仓库(可选良品子仓) -> 可发量最大的良品子仓; '
     '内料仓页候选、申请候选、申请行建议仓、直接发料默认值都只调它';
 
 -- ---------------------------------------------------------------------------
@@ -769,14 +769,14 @@ DECLARE definition TEXT; anchor TEXT := '(''stock_movements'', ''CLEAR'')';
 BEGIN
     SELECT pg_get_functiondef('business_data_reset()'::regprocedure) INTO definition;
     IF (length(definition) - length(replace(definition, anchor, ''))) / length(anchor) <> 1 THEN
-        RAISE EXCEPTION 'V800 business_data_reset policy anchor changed';
+        RAISE EXCEPTION 'V802 business_data_reset policy anchor changed';
     END IF;
     EXECUTE replace(definition, anchor, anchor || E',\n            (''workshop_bins'', ''PRESERVE'')');
 END;
 $reset_policy$;
 
 COMMENT ON COLUMN warehouses.is_line_side IS
-    'V800 车间内料仓: 只能由「车间内料仓」的开通命令建出, 每个未删除的内料仓恰有一条 workshop_bins 开通行, '
+    'V802 车间内料仓: 只能由「车间内料仓」的开通命令建出, 每个未删除的内料仓恰有一条 workshop_bins 开通行, '
     '一个车间最多一个; 不计入公共可用量与即时库存';
 
 -- ---------------------------------------------------------------------------
@@ -789,19 +789,19 @@ BEGIN
                   AND NOT EXISTS (SELECT 1 FROM workshop_bins opened
                                    WHERE opened.bin_warehouse_id = warehouse.id
                                      AND opened.workshop_department_id = warehouse.workshop_department_id)) THEN
-        RAISE EXCEPTION 'V800 assertion: every live workshop bin warehouse needs exactly one opening row';
+        RAISE EXCEPTION 'V802 assertion: every live workshop bin warehouse needs exactly one opening row';
     END IF;
     IF EXISTS (SELECT 1 FROM workshop_bins opened
                 JOIN warehouses warehouse ON warehouse.id = opened.bin_warehouse_id
                WHERE warehouse.is_deleted OR NOT warehouse.is_line_side) THEN
-        RAISE EXCEPTION 'V800 assertion: an opening row points at a deleted or ordinary warehouse';
+        RAISE EXCEPTION 'V802 assertion: an opening row points at a deleted or ordinary warehouse';
     END IF;
     IF EXISTS (SELECT 1 FROM workshop_material_settings settings
                 WHERE settings.periodic_enabled
                   AND NOT EXISTS (SELECT 1 FROM workshop_bins opened
                                    WHERE opened.workshop_department_id = settings.workshop_department_id
                                      AND opened.bin_warehouse_id = settings.periodic_bin_warehouse_id)) THEN
-        RAISE EXCEPTION 'V800 assertion: periodic issuing is enabled on a workshop whose bin is not opened';
+        RAISE EXCEPTION 'V802 assertion: periodic issuing is enabled on a workshop whose bin is not opened';
     END IF;
 END;
 $assert$;

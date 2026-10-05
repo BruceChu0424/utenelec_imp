@@ -1,4 +1,4 @@
--- V801 (ADR-148 / ADR-151 §5) 产成品实物交接批 + 到货登记批量命令
+-- V803 (ADR-148 / ADR-151 §5) 产成品实物交接批 + 到货登记批量命令
 --
 -- 背景: 一次报工按归属拆成「需求份 + 计划公共 + 实际超产」几份(ADR-118 切片), 但仓库登记、品质、
 -- 放行建单、点收、通知都把每一份当成一份独立实物: 同一批货进同一个仓, 却生成两张入库单、两个点收任务、
@@ -30,7 +30,7 @@ RETURNS SMALLINT LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
                  ELSE 0 END)::SMALLINT
 $$;
 COMMENT ON FUNCTION fn_daily_report_output_slice_rank(BOOLEAN, BOOLEAN) IS
-    'V801 (ADR-148) 同一批实物内各份的归属优先级(唯一定义): 0 需求份 < 1 计划公共备货 < 2 实际超产。'
+    'V803 (ADR-148) 同一批实物内各份的归属优先级(唯一定义): 0 需求份 < 1 计划公共备货 < 2 实际超产。'
     '合格/实收按升序先满足, 不良/短收按降序先扣; Java 只读这个函数的结果';
 
 -- ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ RETURNS UUID LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
                || p_destination || ':' || COALESCE(p_demand::text, ''))::uuid
 $$;
 COMMENT ON FUNCTION fn_production_output_lot_id(UUID, UUID, TEXT, UUID) IS
-    'V801 (ADR-148) 实物交接批身份 = (报工, 产出批次, 去向, 直送接收需求) 的确定性 UUID';
+    'V803 (ADR-148) 实物交接批身份 = (报工, 产出批次, 去向, 直送接收需求) 的确定性 UUID';
 
 ALTER TABLE production_daily_report_items
     ADD COLUMN output_lot_id UUID GENERATED ALWAYS AS (
@@ -51,7 +51,7 @@ ALTER TABLE production_daily_report_items
     ) STORED;
 CREATE INDEX idx_daily_report_output_lot ON production_daily_report_items(output_lot_id);
 COMMENT ON COLUMN production_daily_report_items.output_lot_id IS
-    'V801 (ADR-148) 实物交接批: 同一报工、同一产出批次(没拆分的行自成一批)、同一去向的各份共用一个批号; '
+    'V803 (ADR-148) 实物交接批: 同一报工、同一产出批次(没拆分的行自成一批)、同一去向的各份共用一个批号; '
     '登记、品质、放行建单、点收都以批为单位办理, 批内各份分账不变';
 
 CREATE VIEW v_production_output_handoff_lots AS
@@ -80,7 +80,7 @@ FROM production_daily_report_items item
 WHERE NOT item.is_deleted AND item.qty > 0
 WINDOW lot AS (PARTITION BY item.report_id, item.output_lot_id);
 COMMENT ON VIEW v_production_output_handoff_lots IS
-    'V801 (ADR-148) 实物交接批投影: 一行一份(报工行), 带批号、归属优先级、批内合计/份数/顺序; '
+    'V803 (ADR-148) 实物交接批投影: 一行一份(报工行), 带批号、归属优先级、批内合计/份数/顺序; '
     '按 report_id 或 lot_id 过滤可下推到窗口里。登记、品质、点收、车间报工详情共用';
 
 -- ---------------------------------------------------------------------------
@@ -176,7 +176,7 @@ CREATE INDEX idx_production_fqc_lot_decision_report ON production_fqc_lot_decisi
 CREATE INDEX idx_production_fqc_lot_decision_pass_all
     ON production_fqc_lot_decision_commands(pass_all_batch_id) WHERE pass_all_batch_id IS NOT NULL;
 COMMENT ON TABLE production_fqc_lot_decision_commands IS
-    'V801 (ADR-148) 品质整批决定命令: 一批实物一次判定合格/不良数量, 服务端按瀑布分给批内各份(各份仍写自己的决定事件)';
+    'V803 (ADR-148) 品质整批决定命令: 一批实物一次判定合格/不良数量, 服务端按瀑布分给批内各份(各份仍写自己的决定事件)';
 CREATE TRIGGER trg_guard_production_fqc_lot_decision_append_only
     BEFORE UPDATE OR DELETE ON production_fqc_lot_decision_commands
     FOR EACH ROW EXECUTE FUNCTION fn_guard_production_fqc_append_only();
@@ -186,7 +186,7 @@ ALTER TABLE production_fqc_decision_events
 CREATE INDEX idx_production_fqc_decision_lot_command
     ON production_fqc_decision_events(lot_command_id) WHERE lot_command_id IS NOT NULL;
 COMMENT ON COLUMN production_fqc_decision_events.lot_command_id IS
-    'V801 (ADR-148) 由哪条整批决定分配出来; 分成多份的批只能经整批决定, 逐份决定只用于单份的批';
+    'V803 (ADR-148) 由哪条整批决定分配出来; 分成多份的批只能经整批决定, 逐份决定只用于单份的批';
 
 -- 逐份决定只适用于单份的批; 整批决定的事件必须属于命令所指的批。
 CREATE FUNCTION fn_guard_production_fqc_lot_decision_event()
@@ -352,9 +352,9 @@ CREATE INDEX idx_warehouse_arrival_registration_batch
     ON warehouse_arrival_registration_commands(maker_id, batch_idempotency_key)
     WHERE batch_idempotency_key IS NOT NULL;
 COMMENT ON COLUMN warehouse_arrival_registration_commands.batch_idempotency_key IS
-    'V801 (ADR-151 §5) 批量登记实际到货的批量键: 一个批量命令按「订货单 x 入库仓库」分成几组, 每组一条命令行共用此键';
+    'V803 (ADR-151 §5) 批量登记实际到货的批量键: 一个批量命令按「订货单 x 入库仓库」分成几组, 每组一条命令行共用此键';
 COMMENT ON COLUMN warehouse_arrival_registration_commands.batch_request_hash IS
-    'V801 批量命令整体指纹: 同一批量键换了内容 = 409, 原样重放返回原结果';
+    'V803 批量命令整体指纹: 同一批量键换了内容 = 409, 原样重放返回原结果';
 
 -- 批量键与批量指纹和命令身份一样不可改。
 DO $arrival_guard$
@@ -362,7 +362,7 @@ DECLARE definition TEXT; needle TEXT := 'OR NEW.created_at IS DISTINCT FROM OLD.
 BEGIN
     SELECT pg_get_functiondef('fn_guard_warehouse_arrival_registration_command()'::regprocedure) INTO definition;
     IF (length(definition) - length(replace(definition, needle, ''))) / length(needle) <> 1 THEN
-        RAISE EXCEPTION 'V801 warehouse arrival command identity anchor changed';
+        RAISE EXCEPTION 'V803 warehouse arrival command identity anchor changed';
     END IF;
     EXECUTE replace(definition, needle,
         'OR NEW.created_at IS DISTINCT FROM OLD.created_at'
@@ -379,7 +379,7 @@ DECLARE definition TEXT; anchor TEXT := '(''stock_movements'', ''CLEAR'')';
 BEGIN
     SELECT pg_get_functiondef('business_data_reset()'::regprocedure) INTO definition;
     IF (length(definition) - length(replace(definition, anchor, ''))) / length(anchor) <> 1 THEN
-        RAISE EXCEPTION 'V801 business_data_reset policy anchor changed';
+        RAISE EXCEPTION 'V803 business_data_reset policy anchor changed';
     END IF;
     EXECUTE replace(definition, anchor, anchor || E',\n            (''production_fqc_lot_decision_commands'', ''CLEAR'')');
 END;
@@ -398,7 +398,7 @@ DECLARE definition TEXT;
 BEGIN
     SELECT pg_get_functiondef('fn_assert_preplan_direct_make_exact_peg(uuid)'::regprocedure) INTO definition;
     IF (length(definition) - length(replace(definition, needle, ''))) / length(needle) <> 1 THEN
-        RAISE EXCEPTION 'V801 direct MAKE origin capacity anchor changed';
+        RAISE EXCEPTION 'V803 direct MAKE origin capacity anchor changed';
     END IF;
     EXECUTE replace(definition, needle,
         E'    JOIN production_plans plan ON plan.id=segment.plan_id\n    WHERE plan.material_analysis_item_id=child.id AND peg.make_public_claim_id IS NULL;');

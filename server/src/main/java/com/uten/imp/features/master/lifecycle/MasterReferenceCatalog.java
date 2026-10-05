@@ -704,7 +704,7 @@ final class MasterReferenceCatalog {
         // 货品的整批发料方式设置随主档保留失效(与称重设置同口径)。
         exempt(out, ExemptReason.OWN_CONFIG, "货品整批发料设置的目标内料仓",
                 "workshop_material_settings", "periodic_bin_warehouse_id");
-        // V800 (ADR-147) 内料仓开通记录: 已开通的内料仓与仍被用作发料来源仓的仓, 停用/删除前置条件
+        // V802 (ADR-147) 内料仓开通记录: 已开通的内料仓与仍被用作发料来源仓的仓, 停用/删除前置条件
         // fn_warehouse_retirement_blockers 已逐条拦下并说明(撤销开通、改来源仓都在「车间内料仓」里办)。
         exempt(out, ExemptReason.COVERED, "内料仓开通记录; 停用/删除前置条件已拦已开通的内料仓与发料来源仓",
                 "workshop_bins", "bin_warehouse_id", "source_warehouse_id");

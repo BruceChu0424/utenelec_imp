@@ -65,7 +65,7 @@ class WorkshopDirectTargetReasonPostgresTest {
         }
         jdbc.update("INSERT INTO departments(id,code,name,level) VALUES (?,'WS_T736_A','一车间','二级班组'),"
                 + "(?,'WS_T736_B','二车间','二级班组')", W1, W2);
-        // ADR-147 (V800): 直送只送已开通内料仓的车间; 两个车间都已开通 (没开通的情形见专门的用例)。
+        // ADR-147 (V802): 直送只送已开通内料仓的车间; 两个车间都已开通 (没开通的情形见专门的用例)。
         for (UUID workshop : List.of(W1, W2)) {
             UUID bin = UUID.randomUUID();
             jdbc.update("""

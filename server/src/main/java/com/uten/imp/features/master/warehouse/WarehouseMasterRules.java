@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 /**
  * 仓库主档形态规则(ADR-145)的服务端唯一入口。
  *
- * <p>每条规则都只调 V798 的 SQL 函数, 数据库守卫用的是同一份定义:
+ * <p>每条规则都只调 V800 的 SQL 函数, 数据库守卫用的是同一份定义:
  * <ul>
  *   <li>唯一主仓 {@code fn_warehouse_root_id()};</li>
  *   <li>新单可选良品子仓 {@code fn_warehouse_is_good_stock_leaf(id)} (字典 selectableForNew);</li>

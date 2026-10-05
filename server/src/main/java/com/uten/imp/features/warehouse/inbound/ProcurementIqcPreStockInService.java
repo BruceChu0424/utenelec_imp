@@ -195,7 +195,7 @@ public class ProcurementIqcPreStockInService {
 
     /**
      * 上架仓必须是启用中的良品记账子仓(祖先链全部启用、无子仓、参与核算、不是不良品仓)，且不能是内料仓。
-     * 口径与 V563 入库选仓守卫、V596/V799 数据库触发器同一个 SQL 函数，仓库主档不跨 feature 直连(ADR-017)。
+     * 口径与 V563 入库选仓守卫、V596/V801 数据库触发器同一个 SQL 函数，仓库主档不跨 feature 直连(ADR-017)。
      * 返回仓名供事件文案。
      */
     private Map<UUID, String> requireGoodStockWarehouses(List<UUID> warehouseIds) {

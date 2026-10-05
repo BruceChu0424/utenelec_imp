@@ -24,7 +24,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * 仓库数据范围的唯一服务端判定(ADR-149 / V802), 实现 {@link WarehouseTaskScopePort} v2。
+ * 仓库数据范围的唯一服务端判定(ADR-149 / V804), 实现 {@link WarehouseTaskScopePort} v2。
  *
  * <p>角色与默认可见仓只由数据库函数 {@code fn_user_warehouse_access} 回答, 本类只做三件事:
  * 按请求缓存一次解析结果(工作台徽章一次汇总十来个来源只解析一次)、校验页面选的仓

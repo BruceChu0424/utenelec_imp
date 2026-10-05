@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * ADR-145 仓库主档单主仓, 走真实服务与真实 PG(V798 守卫):
+ * ADR-145 仓库主档单主仓, 走真实服务与真实 PG(V800 守卫):
  * 新建默认挂主仓、只能挂主仓、规范化重名被拒、仓库资料不能建内料仓;
  * 停用前置条件在单条启停、编辑表单改状态、批量启停三条路径上逐条列出原因;
  * 字典每行的 selectableForNew/defective 就是数据库函数的结果; 有归属的仓不能改成不良品仓。

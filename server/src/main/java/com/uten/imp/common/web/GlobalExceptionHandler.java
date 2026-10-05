@@ -314,7 +314,7 @@ public class GlobalExceptionHandler {
         return "GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method);
     }
 
-    /** 约束名以 _version_guard 结尾的守卫(V409/V740/V800 等的行版本守卫): 别人刚改过, 属于并发冲突。 */
+    /** 约束名以 _version_guard 结尾的守卫(V409/V740/V802 等的行版本守卫): 别人刚改过, 属于并发冲突。 */
     static boolean versionGuard(ServerErrorMessage server) {
         String constraint = server == null ? null : server.getConstraint();
         return constraint != null && constraint.endsWith(VERSION_GUARD_SUFFIX);

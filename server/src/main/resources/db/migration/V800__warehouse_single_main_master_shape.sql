@@ -1,4 +1,4 @@
--- V798 (ADR-145): 仓库主档收敛成「唯一主仓 + 直属子仓」两层树, 禁用仓不可再选。
+-- V800 (ADR-145): 仓库主档收敛成「唯一主仓 + 直属子仓」两层树, 禁用仓不可再选。
 --
 -- 主仓 = 编号 001「仓库(14年版)」: 只作汇总、负责人范围和导航, 不记账、不能被新单选中;
 -- 其余仓(五金/塑胶/包材/成品/五金车间/轨道车间/两个不良品仓/各车间内料仓)全部是它的直属子仓。
@@ -106,10 +106,10 @@ BEGIN
     END IF;
     root := fn_warehouse_root_id();
     IF root IS NULL THEN
-        RAISE EXCEPTION 'V798: 仓库主档没有编号 001 的主仓, 又有多个顶层仓, 无法判断子仓该挂到哪里; 请先确定主仓再升级';
+        RAISE EXCEPTION 'V800: 仓库主档没有编号 001 的主仓, 又有多个顶层仓, 无法判断子仓该挂到哪里; 请先确定主仓再升级';
     END IF;
     IF EXISTS (SELECT 1 FROM warehouses WHERE id = root AND is_defective) THEN
-        RAISE EXCEPTION 'V798: 主仓不能是不良品仓';
+        RAISE EXCEPTION 'V800: 主仓不能是不良品仓';
     END IF;
 
     -- 主仓自身: 顶层、启用。
@@ -123,7 +123,7 @@ BEGIN
       FROM warehouses
      WHERE NOT is_deleted AND is_line_side AND parent_id IS DISTINCT FROM root;
     IF misplaced IS NOT NULL THEN
-        RAISE EXCEPTION 'V798: 这些车间内料仓不在主仓下面, 请先人工处理: %', misplaced;
+        RAISE EXCEPTION 'V800: 这些车间内料仓不在主仓下面, 请先人工处理: %', misplaced;
     END IF;
 
     -- 其余普通仓全部挂到主仓下(只有两层)。
@@ -143,7 +143,7 @@ BEGIN
     IF EXISTS (SELECT 1 FROM pg_constraint
                 WHERE confrelid = 'warehouses'::regclass AND contype = 'f'
                   AND cardinality(conkey) <> 1) THEN
-        RAISE EXCEPTION 'V798: 发现多列外键引用仓库, 请先更新本迁移的引用检查';
+        RAISE EXCEPTION 'V800: 发现多列外键引用仓库, 请先更新本迁移的引用检查';
     END IF;
     FOR candidate IN
         SELECT id FROM warehouses
@@ -183,7 +183,7 @@ BEGIN
                                     WHERE NOT fn_warehouse_is_good_stock_leaf(id));
     GET DIAGNOSTICS cleared = ROW_COUNT;
     IF cleared > 0 THEN
-        RAISE NOTICE 'V798: % 个货品的所属仓库原来指向主仓/不良品仓/停用仓, 已置空', cleared;
+        RAISE NOTICE 'V800: % 个货品的所属仓库原来指向主仓/不良品仓/停用仓, 已置空', cleared;
     END IF;
 
     -- 规范化名称重名(未删除范围)。
@@ -194,7 +194,7 @@ BEGIN
          GROUP BY fn_warehouse_name_key(name)
         HAVING count(*) > 1) duplicate_groups;
     IF duplicates IS NOT NULL THEN
-        RAISE EXCEPTION 'V798: 仓库名称重复(去空白、括号全半角视为相同), 请先改名或合并: %', duplicates;
+        RAISE EXCEPTION 'V800: 仓库名称重复(去空白、括号全半角视为相同), 请先改名或合并: %', duplicates;
     END IF;
 END;
 $migration$;
@@ -299,13 +299,13 @@ BEGIN
         RETURN;
     END IF;
     IF (SELECT count(*) FROM warehouses WHERE NOT is_deleted AND parent_id IS NULL) <> 1 THEN
-        RAISE EXCEPTION 'V798 assertion: exactly one top-level warehouse is required';
+        RAISE EXCEPTION 'V800 assertion: exactly one top-level warehouse is required';
     END IF;
     root := fn_warehouse_root_id();
     IF root IS NULL OR EXISTS (SELECT 1 FROM warehouses
                                 WHERE NOT is_deleted AND id <> root
                                   AND parent_id IS DISTINCT FROM root) THEN
-        RAISE EXCEPTION 'V798 assertion: every other warehouse must be a direct child of the main warehouse';
+        RAISE EXCEPTION 'V800 assertion: every other warehouse must be a direct child of the main warehouse';
     END IF;
     IF EXISTS (SELECT 1 FROM warehouses warehouse
                 WHERE NOT warehouse.is_deleted AND warehouse.status = '禁用'
@@ -313,28 +313,28 @@ BEGIN
                                 WHERE goods.owning_warehouse_id = warehouse.id AND NOT goods.is_deleted)
                        OR EXISTS (SELECT 1 FROM stock_balances balance
                                    WHERE balance.warehouse_id = warehouse.id AND balance.qty <> 0))) THEN
-        RAISE EXCEPTION 'V798 assertion: a disabled warehouse still owns goods or stock';
+        RAISE EXCEPTION 'V800 assertion: a disabled warehouse still owns goods or stock';
     END IF;
 END;
 $assert$;
 
 COMMENT ON FUNCTION fn_warehouse_name_key(TEXT) IS
-    'V798 仓库名称比对键: 去空白、全角括号转半角、不分大小写; 服务层重名校验与迁移断言共用';
+    'V800 仓库名称比对键: 去空白、全角括号转半角、不分大小写; 服务层重名校验与迁移断言共用';
 COMMENT ON FUNCTION fn_warehouse_root_id() IS
-    'V798 唯一主仓: 编号 001; 没有 001 时取唯一的普通顶层仓; 判断不了返回空';
+    'V800 唯一主仓: 编号 001; 没有 001 时取唯一的普通顶层仓; 判断不了返回空';
 COMMENT ON FUNCTION fn_warehouse_is_good_stock_leaf(UUID) IS
-    'V798 新单可选良品子仓 = 启用记账作业叶仓且非不良品仓; 字典 selectableForNew 的唯一定义';
+    'V800 新单可选良品子仓 = 启用记账作业叶仓且非不良品仓; 字典 selectableForNew 的唯一定义';
 COMMENT ON FUNCTION fn_warehouse_selection_exit_blockers(UUID) IS
-    'V798 仓库退出新单可选(停用/删除/改不核算/改不良品仓)的前置条件: 库存、货品所属、未结预留、已开启整批领料的内料仓';
+    'V800 仓库退出新单可选(停用/删除/改不核算/改不良品仓)的前置条件: 库存、货品所属、未结预留、已开启整批领料的内料仓';
 COMMENT ON FUNCTION fn_warehouse_retirement_blockers(UUID) IS
-    'V798 停用/删除仓库的前置条件: 主仓永远不能停用删除、下面还有子仓, 加上退出新选的前置条件';
+    'V800 停用/删除仓库的前置条件: 主仓永远不能停用删除、下面还有子仓, 加上退出新选的前置条件';
 COMMENT ON FUNCTION fn_guard_warehouse_master_lifecycle() IS
-    'V798 仓库主档守卫: 停用/删除与改不核算/改不良品仓的前置条件、主仓加子仓两层、仓库用途变更条件';
+    'V800 仓库主档守卫: 停用/删除与改不核算/改不良品仓的前置条件、主仓加子仓两层、仓库用途变更条件';
 COMMENT ON FUNCTION fn_guard_goods_ordinary_owning_warehouse() IS
-    'V798 货品所属仓库只能是可选良品子仓(新写入或值变化时判定)';
+    'V800 货品所属仓库只能是可选良品子仓(新写入或值变化时判定)';
 COMMENT ON COLUMN warehouses.parent_id IS
-    'V798 上级仓库: 只有主仓(编号 001)没有上级, 其余仓都是它的直属子仓';
+    'V800 上级仓库: 只有主仓(编号 001)没有上级, 其余仓都是它的直属子仓';
 COMMENT ON COLUMN warehouses.is_defective IS
-    'V798 仓库用途: TRUE=不良品仓(只能是子仓, 有库存时不能改用途), FALSE=良品仓';
+    'V800 仓库用途: TRUE=不良品仓(只能是子仓, 有库存时不能改用途), FALSE=良品仓';
 COMMENT ON COLUMN goods.owning_warehouse_id IS
-    'V798 货品所属仓库: 只能是启用中的良品子仓; 入库自动学习不学不良品仓和不可选仓';
+    'V800 货品所属仓库: 只能是启用中的良品子仓; 入库自动学习不学不良品仓和不可选仓';

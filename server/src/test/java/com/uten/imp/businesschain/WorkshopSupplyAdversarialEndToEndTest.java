@@ -690,7 +690,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
                 INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable)
                 VALUES(?,?,?,?,'使用',TRUE)
                 """, leaf, "SUB-" + tag, "普通子仓-" + tag, w.warehouseId());
-        // ADR-147 (V800): 内料仓与开通行同生共死 (提交时校验), 直送只送已开通内料仓的车间; 两行同一事务写。
+        // ADR-147 (V802): 内料仓与开通行同生共死 (提交时校验), 直送只送已开通内料仓的车间; 两行同一事务写。
         new org.springframework.transaction.support.TransactionTemplate(
                 beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status -> {
             db.update("""

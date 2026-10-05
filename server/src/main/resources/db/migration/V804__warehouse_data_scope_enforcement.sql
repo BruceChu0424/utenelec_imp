@@ -1,5 +1,5 @@
 -- =====================================================================
--- V802 (ADR-149) 仓库数据范围服务端强制: 主管 / 子仓负责人 / 其他人
+-- V804 (ADR-149) 仓库数据范围服务端强制: 主管 / 子仓负责人 / 其他人
 -- =====================================================================
 -- 用户口径(2026-10-04): 仓储部负责人或「仓库(14年版)」这个唯一主仓的负责人 = 主管, 看全部,
 --   也能挑任一子仓看; 其余每个子仓在「仓库资料 > 设置负责人」登记一个负责人, 这个人只看、
@@ -62,7 +62,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_warehouse_keeper_user_ids(uuid[]) IS
-    'V802 (ADR-149) 子仓负责人账号: 登记在本仓或主仓以下各级上级仓、员工在职且账号启用; 登记在主仓上的是主管, 不在此列';
+    'V804 (ADR-149) 子仓负责人账号: 登记在本仓或主仓以下各级上级仓、员工在职且账号启用; 登记在主仓上的是主管, 不在此列';
 
 -- ---------------------------------------------------------------------
 -- 2. 主管。指定的主管 = 仓储部(SUB_WH 子树)部门负责人 + 登记在主仓上的负责人;
@@ -92,7 +92,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_warehouse_designated_supervisor_user_ids() IS
-    'V802 (ADR-149) 指定的仓库主管账号: 仓储部(SUB_WH 子树)部门负责人、登记在主仓上的负责人(不含只因超管身份成为主管的账号); 通知分发的主管一级只认它';
+    'V804 (ADR-149) 指定的仓库主管账号: 仓储部(SUB_WH 子树)部门负责人、登记在主仓上的负责人(不含只因超管身份成为主管的账号); 通知分发的主管一级只认它';
 
 CREATE OR REPLACE FUNCTION fn_warehouse_supervisor_user_ids()
 RETURNS uuid[] LANGUAGE sql STABLE AS $$
@@ -109,7 +109,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_warehouse_supervisor_user_ids() IS
-    'V802 (ADR-149) 仓库主管账号(列表范围): 超管 + 指定的主管(仓储部门负责人、登记在主仓上的负责人); 员工在职且账号启用';
+    'V804 (ADR-149) 仓库主管账号(列表范围): 超管 + 指定的主管(仓储部门负责人、登记在主仓上的负责人); 员工在职且账号启用';
 
 -- ---------------------------------------------------------------------
 -- 3. 负责人池扩展: 任一在用仓登记的有效负责人 + 仓储部门负责人(不含只因超管身份成为主管的账号)。
@@ -137,7 +137,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_warehouse_responsible_user_ids() IS
-    'V802 (ADR-149) 仓库任务参与者(登记过仓库负责人或担任仓储部门负责人的账号): 通知弹卡资格把他们当作仓储部门成员';
+    'V804 (ADR-149) 仓库任务参与者(登记过仓库负责人或担任仓储部门负责人的账号): 通知弹卡资格把他们当作仓储部门成员';
 
 -- 一张仓库类单据的通知池要纳入的部门外的人: 这些仓(含上级链)的子仓负责人 + 指定的主管。
 CREATE OR REPLACE FUNCTION fn_warehouse_notice_candidate_user_ids(p_warehouse_ids uuid[])
@@ -151,7 +151,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_warehouse_notice_candidate_user_ids(uuid[]) IS
-    'V802 (ADR-149) 仓库类通知池要纳入的部门外账号: 涉及仓(含上级链)的子仓负责人 + 指定的主管; 不含别的仓的负责人';
+    'V804 (ADR-149) 仓库类通知池要纳入的部门外账号: 涉及仓(含上级链)的子仓负责人 + 指定的主管; 不含别的仓的负责人';
 
 -- ---------------------------------------------------------------------
 -- 4. 账号的仓库数据范围(唯一判定)。
@@ -216,7 +216,7 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_user_warehouse_access(uuid) IS
-    'V802 (ADR-149) 仓库数据范围唯一判定: 角色(SUPERVISOR/KEEPER/OTHER)、本人登记的仓、默认可见仓(NULL=不限)、是否含未定仓任务、是否仓储部门成员';
+    'V804 (ADR-149) 仓库数据范围唯一判定: 角色(SUPERVISOR/KEEPER/OTHER)、本人登记的仓、默认可见仓(NULL=不限)、是否含未定仓任务、是否仓储部门成员';
 
 -- ---------------------------------------------------------------------
 -- 5. 仓库类通知收件人唯一规则。
@@ -239,7 +239,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_warehouse_notice_recipients(uuid[], uuid[]) IS
-    'V802 (ADR-149) 仓库类通知收件人: 该仓链上子仓负责人 ∩ 池; 没有则指定的主管(仓储部门负责人、主仓负责人, 不含只是超管的账号) ∩ 池; 再没有(还没配置)才发整个池';
+    'V804 (ADR-149) 仓库类通知收件人: 该仓链上子仓负责人 ∩ 池; 没有则指定的主管(仓储部门负责人、主仓负责人, 不含只是超管的账号) ∩ 池; 再没有(还没配置)才发整个池';
 
 -- ---------------------------------------------------------------------
 -- 6. 预计到货的「所在仓」: 订货表头子仓 → 采购/委外申请表头子仓 → 货品所属仓 → 表头写的主仓。
@@ -296,7 +296,7 @@ RETURNS uuid LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_procurement_item_inbound_warehouse_id(text, uuid, uuid) IS
-    'V802 (ADR-149) 采购/委外订货行的到货仓: 订货表头子仓, 没有则申请表头子仓, 再没有则货品所属仓, 最后才是表头写的主仓; 都没有 = 未定仓';
+    'V804 (ADR-149) 采购/委外订货行的到货仓: 订货表头子仓, 没有则申请表头子仓, 再没有则货品所属仓, 最后才是表头写的主仓; 都没有 = 未定仓';
 
 CREATE OR REPLACE FUNCTION fn_inbound_expectation_warehouse_ids(p_expectation uuid)
 RETURNS uuid[] LANGUAGE sql STABLE AS $$
@@ -312,7 +312,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_inbound_expectation_warehouse_ids(uuid) IS
-    'V802 (ADR-149) 预计到货任务的所在仓(逐行到货仓去重); 空数组 = 未定仓。列表、计数、徽章、通知同用';
+    'V804 (ADR-149) 预计到货任务的所在仓(逐行到货仓去重); 空数组 = 未定仓。列表、计数、徽章、通知同用';
 
 CREATE OR REPLACE FUNCTION fn_procurement_order_inbound_warehouse_ids(p_order_type text, p_order uuid)
 RETURNS uuid[] LANGUAGE sql STABLE AS $$
@@ -330,7 +330,7 @@ RETURNS uuid[] LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_procurement_order_inbound_warehouse_ids(text, uuid) IS
-    'V802 (ADR-149) 采购/委外订货单的到货仓(逐行到货仓去重), 通知分发用; 与预计到货同一逐行规则';
+    'V804 (ADR-149) 采购/委外订货单的到货仓(逐行到货仓去重), 通知分发用; 与预计到货同一逐行规则';
 
 -- ---------------------------------------------------------------------
 -- 7. 库存单据的「所在仓」= 发出仓或调入仓; 两个都没有 = 未定仓; 制单人自己的草稿不论仓都算。
@@ -353,7 +353,7 @@ RETURNS boolean LANGUAGE sql STABLE AS $$
 $$;
 
 COMMENT ON FUNCTION fn_stock_document_matches_warehouse_scope(uuid, text, boolean, text) IS
-    'V802 (ADR-149) 库存单据在仓库范围内: 发出仓或调入仓在范围内; 两个都没有时按范围是否含未定仓; 给出制单人时他自己的草稿(未提交)不论仓都算。列表、仓库草稿数、分段计数、生产退料计数同用';
+    'V804 (ADR-149) 库存单据在仓库范围内: 发出仓或调入仓在范围内; 两个都没有时按范围是否含未定仓; 给出制单人时他自己的草稿(未提交)不论仓都算。列表、仓库草稿数、分段计数、生产退料计数同用';
 
 -- ---------------------------------------------------------------------
 -- 8. 删除被取代的函数。

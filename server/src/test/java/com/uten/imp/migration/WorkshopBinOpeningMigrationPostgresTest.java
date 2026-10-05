@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V800 (ADR-147) 车间内料仓开通单一真源。
+ * V802 (ADR-147) 车间内料仓开通单一真源。
  *
  * <p>回填: 用过的内料仓(余额行、整批领料设置等任何引用)-> 已开通(有设置的仍整批领料中); 一次都没用过的软删除;
  * 同一车间还剩多个在用的内料仓 -> 迁移中止。
@@ -31,7 +31,7 @@ class WorkshopBinOpeningMigrationPostgresTest {
     void backfillsUsedBinsAsOpenedDropsUnusedOnesAndGuardsTheSingleSource() {
         try (var db = new PostgreSQLContainer<>("postgres:16-alpine")) {
             db.start();
-            migrate(db, "799");
+            migrate(db, "801");
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                     db.getJdbcUrl(), db.getUsername(), db.getPassword()));
             List<UUID> workshops = jdbc.queryForList("""
@@ -186,7 +186,7 @@ class WorkshopBinOpeningMigrationPostgresTest {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO goods(id,code,name,owning_warehouse_id,code_sequence) "
                         + "VALUES (?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
-                id, "V800-" + label, label, owner);
+                id, "V802-" + label, label, owner);
         return id;
     }
 

@@ -1,4 +1,4 @@
--- V799 (ADR-146): 不良品仓业务规则与可用量单一口径。
+-- V801 (ADR-146): 不良品仓业务规则与可用量单一口径。
 --
 -- 仓库用途(warehouses.is_defective)成为一等属性: 良品仓 / 不良品仓。不良品仓平时不能当普通仓用:
 --   1. 正常货品不能入不良品仓, 生产领料/内料仓请领/委外发料/销售出货也不能从不良品仓取货;
@@ -6,7 +6,7 @@
 --   3. 不良品只经两条专门通道进出良品仓: 「转不良品仓」(良品仓 -> 不良品仓) 和「不良复判转回」
 --      (不良品仓 -> 良品仓), 都是仓库调拨单的一种调拨类型, 各有独立权限并必须写明原因;
 --      另外不良品仓还可以盘盈盘亏、报废/其它出库、采购退货、委外成品退回(以及它们的红冲)。
--- 仓库已收敛成单主仓(V798), 「不良仓自成一个主仓」的隐式隔离不复存在, 本迁移把隔离改成显式规则。
+-- 仓库已收敛成单主仓(V800), 「不良仓自成一个主仓」的隐式隔离不复存在, 本迁移把隔离改成显式规则。
 -- 本迁移不搬库存、不改历史流水; 测试服务器不良品仓 0 流水 0 余额, 存量没有需要收敛的数据。
 
 -- ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
 $$;
 
 -- 计入可用量的仓: 未删、记账、非不良品仓、非车间内料仓、作业叶仓(有子仓的主仓不算)。
--- 停用叶仓的既有库存仍可动用(V540 口径; V798 起有库存的仓本来就不能停用)。
+-- 停用叶仓的既有库存仍可动用(V540 口径; V800 起有库存的仓本来就不能停用)。
 CREATE OR REPLACE FUNCTION fn_warehouse_counts_as_usable(p_warehouse UUID)
 RETURNS BOOLEAN LANGUAGE sql STABLE AS $$
     SELECT COALESCE((SELECT NOT warehouse.is_deleted AND warehouse.is_accountable
@@ -321,7 +321,7 @@ BEGIN
                         - length(replace(definition, 'fn_warehouse_is_active_accounting_leaf(', '')))
                        / length('fn_warehouse_is_active_accounting_leaf(');
         IF found_count <> target.expected THEN
-            RAISE EXCEPTION 'V799: % no longer has the expected % accounting-leaf anchor(s), found %',
+            RAISE EXCEPTION 'V801: % no longer has the expected % accounting-leaf anchor(s), found %',
                 target.signature, target.expected, found_count;
         END IF;
         EXECUTE replace(definition, 'fn_warehouse_is_active_accounting_leaf(', 'fn_warehouse_is_good_stock_leaf(');
@@ -334,14 +334,14 @@ BEGIN
                     - length(replace(definition, 'fn_warehouse_is_active_accounting_leaf(', '')))
                    / length('fn_warehouse_is_active_accounting_leaf(');
     IF found_count <> 2 THEN
-        RAISE EXCEPTION 'V799: fn_workshop_material_bin_position no longer has the 2 accounting-leaf anchors, found %',
+        RAISE EXCEPTION 'V801: fn_workshop_material_bin_position no longer has the 2 accounting-leaf anchors, found %',
             found_count;
     END IF;
     EXECUTE replace(definition, 'fn_warehouse_is_active_accounting_leaf(', 'fn_warehouse_is_good_stock_leaf(');
 END;
 $patch$;
 
--- 仓库改成不良品仓之前, 上面不能再有没结束的预留: V798 的退出新选前置条件
+-- 仓库改成不良品仓之前, 上面不能再有没结束的预留: V800 的退出新选前置条件
 -- (fn_warehouse_selection_exit_blockers) 已包含未结预留, 停用/删除/改不核算/改不良品仓同一口径。
 
 -- 本次之前若有跨类别的普通调拨(测试服务器没有), 它们的红冲会被流水守卫拒绝; 先列出来, 由人改走专门通道。
@@ -356,7 +356,7 @@ BEGIN
      WHERE document.doc_type = 'TRANSFER' AND document.status = 1 AND NOT document.is_deleted
        AND source.is_defective IS DISTINCT FROM target.is_defective;
     IF mixed IS NOT NULL THEN
-        RAISE NOTICE 'V799: 这些已审核的普通调拨跨了良品仓/不良品仓, 以后不能直接红冲, 请改用专门通道: %', mixed;
+        RAISE NOTICE 'V801: 这些已审核的普通调拨跨了良品仓/不良品仓, 以后不能直接红冲, 请改用专门通道: %', mixed;
     END IF;
 END;
 $legacy_mixed$;
@@ -412,36 +412,36 @@ BEGIN
                  JOIN warehouses warehouse ON warehouse.id = reservation.warehouse_id
                 WHERE warehouse.is_defective AND NOT reservation.is_deleted AND reservation.status = 0
                   AND reservation.qty - reservation.consumed_qty - reservation.released_qty > 0) THEN
-        RAISE EXCEPTION 'V799: 不良品仓上还有生效的库存预留, 请先释放或把货复判转回良品仓再升级';
+        RAISE EXCEPTION 'V801: 不良品仓上还有生效的库存预留, 请先释放或把货复判转回良品仓再升级';
     END IF;
     IF EXISTS (SELECT 1 FROM goods JOIN warehouses warehouse ON warehouse.id = goods.owning_warehouse_id
                 WHERE warehouse.is_defective AND NOT goods.is_deleted) THEN
-        RAISE EXCEPTION 'V799 assertion: a goods owning warehouse is a defective warehouse';
+        RAISE EXCEPTION 'V801 assertion: a goods owning warehouse is a defective warehouse';
     END IF;
 END;
 $assert$;
 
 COMMENT ON FUNCTION fn_warehouse_is_defective_leaf(UUID) IS
-    'V799 新单可选的不良品子仓 = 启用记账作业叶仓且是不良品仓(转不良品仓的调入仓、不良复判转回的调出仓)';
+    'V801 新单可选的不良品子仓 = 启用记账作业叶仓且是不良品仓(转不良品仓的调入仓、不良复判转回的调出仓)';
 COMMENT ON FUNCTION fn_warehouse_counts_as_usable(UUID) IS
-    'V799 计入可用量的仓 = 未删、记账、非不良品仓、非车间内料仓、作业叶仓; 一切可用/可承诺/可领量的唯一仓口径';
+    'V801 计入可用量的仓 = 未删、记账、非不良品仓、非车间内料仓、作业叶仓; 一切可用/可承诺/可领量的唯一仓口径';
 COMMENT ON VIEW v_stock_usable IS
-    'V799 按仓可用量: 只含计入可用量的仓, 每仓只扣指定本仓的预留; 全局预留只在 fn_stock_global_usable 扣一次';
+    'V801 按仓可用量: 只含计入可用量的仓, 每仓只扣指定本仓的预留; 全局预留只在 fn_stock_global_usable 扣一次';
 COMMENT ON FUNCTION fn_stock_global_usable(UUID, UUID, UUID[]) IS
-    'V799 全局可用量 = 可用仓扣安全库存后的合计 - 全部生效预留(可排除指定销售订单行自己的预留), 最小 0';
+    'V801 全局可用量 = 可用仓扣安全库存后的合计 - 全部生效预留(可排除指定销售订单行自己的预留), 最小 0';
 COMMENT ON FUNCTION fn_stock_movement_class_violation(SMALLINT, BOOLEAN, TEXT, BOOLEAN, BOOLEAN, BOOLEAN) IS
-    'V799 出入库类别矩阵: 每种流水类型能落在哪类仓; 与 Java WarehouseClassMovementRule 逐格一致';
+    'V801 出入库类别矩阵: 每种流水类型能落在哪类仓; 与 Java WarehouseClassMovementRule 逐格一致';
 COMMENT ON FUNCTION fn_guard_stock_movement_warehouse_class() IS
-    'V799 流水落仓守卫: 良品业务不进出不良品仓, 调拨按调拨类型判定两端类别';
+    'V801 流水落仓守卫: 良品业务不进出不良品仓, 调拨按调拨类型判定两端类别';
 COMMENT ON FUNCTION fn_guard_stock_reservation_warehouse_class() IS
-    'V799 不良品仓上不允许任何正向预留(取代 V535 合格来源例外)';
+    'V801 不良品仓上不允许任何正向预留(取代 V535 合格来源例外)';
 COMMENT ON COLUMN stock_documents.transfer_kind IS
-    'V799 调拨类型: NORMAL 普通调拨(两端同类) / TO_DEFECTIVE 转不良品仓 / DEFECT_RELEASE 不良复判转回; 审核后不可改';
+    'V801 调拨类型: NORMAL 普通调拨(两端同类) / TO_DEFECTIVE 转不良品仓 / DEFECT_RELEASE 不良复判转回; 审核后不可改';
 COMMENT ON COLUMN stock_documents.channel_request_key IS
-    'V799 专门通道建单的客户端重试键(同一制单人唯一), 只用于幂等回放';
+    'V801 专门通道建单的客户端重试键(同一制单人唯一), 只用于幂等回放';
 COMMENT ON COLUMN stock_documents.defect_reason IS
-    'V799 转不良品仓的原因或不良复判转回的复判说明(1-500 字), 两种专门通道审核前必填';
+    'V801 转不良品仓的原因或不良复判转回的复判说明(1-500 字), 两种专门通道审核前必填';
 COMMENT ON COLUMN warehouses.is_defective IS
-    'V799 仓库用途: TRUE=不良品仓(不计入任何可用量, 只经专门通道/盘点/报废/退货进出), FALSE=良品仓';
+    'V801 仓库用途: TRUE=不良品仓(不计入任何可用量, 只经专门通道/盘点/报废/退货进出), FALSE=良品仓';
 COMMENT ON COLUMN stock_movements.movement_type IS
-    '出入库类型：1采购入库 2采购退货 3销售出库 4销售退货 5生产领料 6生产退料 7调拨入 8调拨出 9盘盈入 10盘亏出 11其它入 12其它出 13产成品进仓 14产成品出仓 15委外材料出仓 16委外材料退回 17委外成品进仓 18委外成品退 19委外材料损耗 20销售其它出库 21内料仓盘点耗用 22内料仓盘盈 23内料仓盘点修正; 能落在哪类仓见 fn_stock_movement_class_violation(V799)';
+    '出入库类型：1采购入库 2采购退货 3销售出库 4销售退货 5生产领料 6生产退料 7调拨入 8调拨出 9盘盈入 10盘亏出 11其它入 12其它出 13产成品进仓 14产成品出仓 15委外材料出仓 16委外材料退回 17委外成品进仓 18委外成品退 19委外材料损耗 20销售其它出库 21内料仓盘点耗用 22内料仓盘盈 23内料仓盘点修正; 能落在哪类仓见 fn_stock_movement_class_violation(V801)';

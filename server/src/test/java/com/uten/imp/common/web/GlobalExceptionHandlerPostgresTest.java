@@ -51,7 +51,7 @@ class GlobalExceptionHandlerPostgresTest {
         db.update("INSERT INTO warehouses(id, code, name, status, is_accountable, parent_id) "
                 + "VALUES (?, 'MAP-1', '映射测试子仓', '使用', TRUE, ?)", child, root);
 
-        // V798 两层树守卫: RAISE '<中文>' USING ERRCODE='23514', CONSTRAINT='warehouse_master_shape_guard'。
+        // V800 两层树守卫: RAISE '<中文>' USING ERRCODE='23514', CONSTRAINT='warehouse_master_shape_guard'。
         DataIntegrityViolationException guard = captureIntegrity(
                 () -> db.update("UPDATE warehouses SET parent_id = NULL WHERE id = ?", child));
         var guardResponse = new GlobalExceptionHandler().handleDataIntegrity(guard);
@@ -59,7 +59,7 @@ class GlobalExceptionHandlerPostgresTest {
         assertThat(guardResponse.getBody().getMessage())
                 .isEqualTo("仓库「映射测试子仓」是子仓, 不能改成独立的顶层仓 (全公司只有一个主仓)");
 
-        // 主仓无条件不能停用(V798 停用前置条件), 同样是写给人看的中文守卫。
+        // 主仓无条件不能停用(V800 停用前置条件), 同样是写给人看的中文守卫。
         var retire = new GlobalExceptionHandler().handleDataIntegrity(
                 captureIntegrity(() -> db.update("UPDATE warehouses SET status = '禁用' WHERE id = ?", root)));
         assertThat(retire.getStatusCode().value()).isEqualTo(422);

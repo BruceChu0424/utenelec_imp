@@ -62,7 +62,7 @@ class GoodsOwningWarehouseSyncPostgresTest {
                     is_deleted boolean NOT NULL DEFAULT false,
                     name text)
                 """);
-        // ADR-145 / V798: the services ask fn_warehouse_is_good_stock_leaf whether a warehouse may be
+        // ADR-145 / V800: the services ask fn_warehouse_is_good_stock_leaf whether a warehouse may be
         // chosen (enabled, accountable, operational leaf, enabled ancestors, not a workshop bin, not a
         // defective-stock warehouse). This hand-written schema carries only the columns that rule reads,
         // so the test installs the same rule over them; the real function is covered by

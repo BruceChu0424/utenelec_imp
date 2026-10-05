@@ -67,8 +67,8 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
             String migration = new String(resource.readAllBytes(), StandardCharsets.UTF_8);
             db.execute(migration.substring(0, migration.indexOf("DO $migration$")));
         }
-        // 默认出库仓只由 V800 fn_workshop_bin_default_source 给出(ADR-147); 依赖的良品子仓判定(V798)、
-        // 按仓可用量(V799)与开通表原样取自迁移文件。
+        // 默认出库仓只由 V802 fn_workshop_bin_default_source 给出(ADR-147); 依赖的良品子仓判定(V800)、
+        // 按仓可用量(V801)与开通表原样取自迁移文件。
         db.execute("""
                 ALTER TABLE warehouses ADD COLUMN is_defective boolean DEFAULT false;
                 ALTER TABLE stock_balances ADD COLUMN weight numeric;
@@ -76,12 +76,12 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
                     source_warehouse_id uuid, opened_by uuid, opened_at timestamptz DEFAULT now(),
                     updated_by uuid, updated_at timestamptz DEFAULT now(), row_version bigint DEFAULT 0);
                 """);
-        db.execute(definition("V798__warehouse_single_main_master_shape.sql",
+        db.execute(definition("V800__warehouse_single_main_master_shape.sql",
                 "CREATE OR REPLACE FUNCTION fn_warehouse_is_good_stock_leaf("));
-        db.execute(definition("V799__defective_warehouse_business_rules.sql",
+        db.execute(definition("V801__defective_warehouse_business_rules.sql",
                 "CREATE OR REPLACE FUNCTION fn_warehouse_counts_as_usable("));
-        db.execute(definition("V799__defective_warehouse_business_rules.sql", "CREATE OR REPLACE VIEW v_stock_usable AS"));
-        db.execute(definition("V800__workshop_bin_opening_single_source.sql",
+        db.execute(definition("V801__defective_warehouse_business_rules.sql", "CREATE OR REPLACE VIEW v_stock_usable AS"));
+        db.execute(definition("V802__workshop_bin_opening_single_source.sql",
                 "CREATE FUNCTION fn_workshop_bin_default_source("));
         db.update("INSERT INTO units(id,name) VALUES (?, 'kg'), (?, 'g'), (?, '个')", kg, grams, countUnit);
         db.update("INSERT INTO unit_measurement_profiles VALUES (?, 'MASS'), (?, 'MASS'), (?, 'COUNT')", kg, grams, countUnit);

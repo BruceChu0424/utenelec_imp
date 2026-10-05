@@ -60,7 +60,7 @@ BEGIN
     LOOP
         policy_count := policy_count + 1;
         IF clear_table = 'business_record_identities' THEN
-            -- 留痕身份跟着它的来源记录走: 迁移种下的配置行(如 V799 给部门的默认权限)在全新库里就有身份,
+            -- 留痕身份跟着它的来源记录走: 迁移种下的配置行(如 V801 给部门的默认权限)在全新库里就有身份,
             -- 它们不是业务事实; 只有来源表本身是要清空的业务表时才算「目标库已有业务数据」。
             SELECT EXISTS (SELECT 1 FROM public.business_record_identities identity
                             WHERE identity.source_table = ANY(clear_tables)) INTO occupied;

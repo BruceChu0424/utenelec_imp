@@ -2,7 +2,7 @@
 -- 仓库主档迁移(ADR-145)：老库 B_Storage + 审过的仓库对照表 → warehouses(不依赖 server 启动)
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --warehouse-data
--- 前提：V798 已应用(唯一主仓 + 直属子仓两层的守卫与函数)。
+-- 前提：V800 已应用(唯一主仓 + 直属子仓两层的守卫与函数)。
 -- 来源：老库 B_Storage(data/warehouse.csv，6 条)+ server/legacy_migration/warehouse_crosswalk.csv
 --   (入库审过的对照表，不含个人信息)。对照表每一行说清楚一个老库仓 id 去哪里：
 --     SPLIT  老库主仓 132 → 001 主仓(只作汇总；库存明细与余额按货品所属子仓拆分，见 migrate_stock_docs.sql)

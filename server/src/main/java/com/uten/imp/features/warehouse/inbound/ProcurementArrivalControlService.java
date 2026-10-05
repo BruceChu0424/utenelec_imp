@@ -1628,7 +1628,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     /**
-     * 预计到货任务的「所在仓」(ADR-149 / V802, 唯一定义): 逐行到货仓 = 订货表头仓 → 采购/委外申请
+     * 预计到货任务的「所在仓」(ADR-149 / V804, 唯一定义): 逐行到货仓 = 订货表头仓 → 采购/委外申请
      * 表头仓 → 货品所属仓, 去重成数组; 空数组 = 未定仓。ADR-038 起订货不带仓,
      * {@code inbound_expectations.warehouse_id} 恒为空, 不再用它判范围。列表、facets、类型计数、
      * 徽章计数与「采购财务通过」通知共用。

@@ -89,7 +89,7 @@ class GlobalExceptionHandlerTest {
     }
 
     /**
-     * 行版本守卫(约束名 *_version_guard, V409/V740/V800)是别人刚改过: 409, 页面据此重读;
+     * 行版本守卫(约束名 *_version_guard, V409/V740/V802)是别人刚改过: 409, 页面据此重读;
      * 中文原因原样给人看, 英文守卫给通用的「已被他人修改」, 都不带 DETAIL/HINT/WHERE。
      * 同类的规则守卫(同前缀、非版本)仍是 422。
      */

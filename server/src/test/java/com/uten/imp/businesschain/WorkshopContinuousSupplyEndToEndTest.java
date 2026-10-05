@@ -412,7 +412,7 @@ class WorkshopContinuousSupplyEndToEndTest {
                 INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable)
                 VALUES(?,?,?,?,'使用',TRUE)
                 """, leaf, "SUB-" + tag, "普通子仓-" + tag, w.warehouseId());
-        // ADR-147 (V800)：直送只送已开通内料仓的车间；内料仓挂在来源仓的主仓下(同主仓分仓领料前提)。
+        // ADR-147 (V802)：直送只送已开通内料仓的车间；内料仓挂在来源仓的主仓下(同主仓分仓领料前提)。
         com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport.open(bins, transactionManager, workshop, leaf);
         fixture.loginAs(w.superAdminUserId());
 

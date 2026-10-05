@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 车间内料仓开通记录(ADR-147, V800 {@code workshop_bins})的唯一读写点。
+ * 车间内料仓开通记录(ADR-147, V802 {@code workshop_bins})的唯一读写点。
  *
  * <p>内料仓这个仓库行只能由这里建出(开通命令), 一个车间一个, 挂在唯一主仓下; 数据库延迟约束保证
  * 每个未删除的内料仓恰有一条开通行。车间直送只经 {@link LineSideWarehousePort#openedBinOf} 只读取用,

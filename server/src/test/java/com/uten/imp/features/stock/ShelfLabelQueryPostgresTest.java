@@ -222,11 +222,11 @@ class ShelfLabelQueryPostgresTest {
             Fixture fixture = Fixture.create(connection);
             setOwningWarehouse(connection, fixture.parsedA30, fixture.childWh);
             assertEquals(fixture.childWh, masterWarehouse(connection, fixture.parsedA30, fixture.parentWh));
-            // ADR-145 / V798: a main warehouse with sub-warehouses, or a warehouse that still holds stock
+            // ADR-145 / V800: a main warehouse with sub-warehouses, or a warehouse that still holds stock
             // or owns goods, cannot be retired; goods cannot own a main, disabled or non-accounting warehouse.
             assertRefused(connection, "UPDATE warehouses SET status='禁用' WHERE id='" + fixture.parentWh + "'", "它是主仓");
             // The default join still never auto-fills from an invalid master. Such rows can only be
-            // legacy facts from before V798 (replica role skips the guards), so the join keeps refusing them.
+            // legacy facts from before V800 (replica role skips the guards), so the join keeps refusing them.
             asLegacyFact(connection, "UPDATE warehouses SET status='禁用' WHERE id='" + fixture.parentWh + "'");
             assertNull(masterWarehouse(connection, fixture.parsedA30, null), "主仓禁用时仍在使用的子仓也不能自动带入");
             asLegacyFact(connection, "UPDATE warehouses SET status='使用' WHERE id='" + fixture.parentWh + "'");
@@ -271,7 +271,7 @@ class ShelfLabelQueryPostgresTest {
         throw new AssertionError("expected the warehouse master guard to refuse: " + sql);
     }
 
-    /** A row shape that only pre-V798 history can hold: write it with the guards skipped. */
+    /** A row shape that only pre-V800 history can hold: write it with the guards skipped. */
     private static void asLegacyFact(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             statement.execute("SET session_replication_role = replica");

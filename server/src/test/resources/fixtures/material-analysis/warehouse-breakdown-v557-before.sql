@@ -1,4 +1,4 @@
--- ADR-146 (V799): 分仓明细不列不良品仓, 基线同步加上 NOT w.is_defective。
+-- ADR-146 (V801): 分仓明细不列不良品仓, 基线同步加上 NOT w.is_defective。
 WITH dimensions AS (
     SELECT DISTINCT material.goods_id, material.color_id,
            material.unit_id

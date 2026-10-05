@@ -107,8 +107,8 @@ class WorkshopMaterialV740SchemaPostgresTest {
         }
         // V740 改名按「车间 x 主仓」的老口径在多主仓数据上跑一遍 (lineSideRenamedOnlyDuplicatesSuffixed 核对)。
         flyway("740").migrate();
-        // 之后的 V798 (ADR-145 单主仓) 与 V800 (ADR-147 一车间一个开通的内料仓) 要求存量先收敛:
-        // 一号主仓定为 001、挂在二号主仓下的内料仓改挂到主仓下 (V798 只把普通仓改挂, 内料仓要人工处理)。
+        // 之后的 V800 (ADR-145 单主仓) 与 V802 (ADR-147 一车间一个开通的内料仓) 要求存量先收敛:
+        // 一号主仓定为 001、挂在二号主仓下的内料仓改挂到主仓下 (V800 只把普通仓改挂, 内料仓要人工处理)。
         try (Connection connection = template(); Statement statement = connection.createStatement()) {
             statement.execute("SET session_replication_role = replica");
             statement.execute("UPDATE warehouses SET code='001' WHERE id='" + MAIN_A + "'");
@@ -116,7 +116,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
             statement.execute("SET session_replication_role = origin");
         }
         flyway(null).migrate();
-        // V800 把从没用过的内料仓都软删了 (存量回填只保留有引用的); 本用例以注塑车间的 BIN 为已开通的内料仓,
+        // V802 把从没用过的内料仓都软删了 (存量回填只保留有引用的); 本用例以注塑车间的 BIN 为已开通的内料仓,
         // 与开通命令同样在一个事务里: 恢复仓库行并写开通行 (提交时校验两者同生共死)。
         try (Connection connection = template()) {
             connection.setAutoCommit(false);
@@ -220,7 +220,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
 
     @Test
     void settingsRejectForeignOrNonLineSideBin() throws Exception {
-        // V800: 整批领料只能开在本车间已开通 (workshop_bins) 的内料仓上。
+        // V802: 整批领料只能开在本车间已开通 (workshop_bins) 的内料仓上。
         rejected("还没开通内料仓", () -> insertSettings(injection, ASSEMBLY_BIN, true));
         rejected("还没开通内料仓", () -> insertSettings(injection, LEAF, true));
         rejected("整批领料只能在生产部下的车间开启",
@@ -231,7 +231,7 @@ class WorkshopMaterialV740SchemaPostgresTest {
         rejected("已被别人改过", () -> exec(
                 "UPDATE workshop_material_settings SET go_live_date=? WHERE workshop_department_id=?",
                 GO_LIVE.plusDays(1), injection));
-        // V800: 一个车间只有一个开通的内料仓, 换成别的内料仓先被开通守卫拦下。
+        // V802: 一个车间只有一个开通的内料仓, 换成别的内料仓先被开通守卫拦下。
         rejected("还没开通内料仓", () -> exec(
                 "UPDATE workshop_material_settings SET periodic_bin_warehouse_id=? WHERE workshop_department_id=?",
                 BIN_OTHER_MAIN, injection));

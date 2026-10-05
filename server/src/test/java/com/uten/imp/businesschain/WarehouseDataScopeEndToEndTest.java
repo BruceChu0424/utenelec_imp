@@ -53,7 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * ADR-149 仓库数据范围服务端强制, 走真实服务与真实 PG(V802 fn_user_warehouse_access):
+ * ADR-149 仓库数据范围服务端强制, 走真实服务与真实 PG(V804 fn_user_warehouse_access):
  * 七种身份的角色与默认范围; 越界选仓 403; 逐个仓库徽章来源「事实数 == 同身份同范围的列表 total」;
  * 通知收件人与列表同一套负责关系。
  */

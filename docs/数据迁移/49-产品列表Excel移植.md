@@ -1,6 +1,6 @@
 # 49 - 产品列表 Excel 移植（新 ERP → 平台）
 
-> **2026-10-04 后置覆盖([V798](V798-仓库主档单主仓.md) / [ADR-145](../99-决策记录-ADR/ADR-145-仓库主档单主仓与禁用不可选.md))**：所属仓库按名称只匹配「主仓 001 下、启用、非车间内料仓、非不良品」的子仓(比对键与数据库 `fn_warehouse_name_key` 同口径)，找不到就报错并写 `warehouse_name_unmatched.csv`、整体回滚，不再补建 XW 仓库存根；根仓明确取编号 001。全量导入前用 `--emit-owning-csv` 写出 `goods_legacy_id|warehouse_code` 清单，由 `migrate.sh --goods-owning-warehouse` 在交易模块之前填好所属仓库。
+> **2026-10-04 后置覆盖([V800](V800-仓库主档单主仓.md) / [ADR-145](../99-决策记录-ADR/ADR-145-仓库主档单主仓与禁用不可选.md))**：所属仓库按名称只匹配「主仓 001 下、启用、非车间内料仓、非不良品」的子仓(比对键与数据库 `fn_warehouse_name_key` 同口径)，找不到就报错并写 `warehouse_name_unmatched.csv`、整体回滚，不再补建 XW 仓库存根；根仓明确取编号 001。全量导入前用 `--emit-owning-csv` 写出 `goods_legacy_id|warehouse_code` 清单，由 `migrate.sh --goods-owning-warehouse` 在交易模块之前填好所属仓库。
 
 > 时间：2026-07-30 · 依据：用户上传三个新 ERP 产品列表导出（`product lists/20260409172229_{1,2,3}.xls`），
 > 要求：匹配上的产品补上「自制/采购」属性、搬有用数据与分类，并留下平台上架时可直跑的移植代码。

@@ -93,7 +93,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute(migration.substring(migration.indexOf("CREATE OR REPLACE VIEW v_preplan_buy_action_slice_progress")));
         jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V489__same_main_warehouse_material_fulfillment.sql")),"fn_warehouse_main_id"));
         jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V613__operational_warehouse_leaf_identity.sql")),"fn_warehouse_is_operational_leaf"));
-        jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V799__defective_warehouse_business_rules.sql")),"fn_warehouse_counts_as_usable"));
+        jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V801__defective_warehouse_business_rules.sql")),"fn_warehouse_counts_as_usable"));
         original=Files.readString(Path.of("src/test/resources/fixtures/material-analysis/warehouse-breakdown-v557-before.sql"));
     }
 

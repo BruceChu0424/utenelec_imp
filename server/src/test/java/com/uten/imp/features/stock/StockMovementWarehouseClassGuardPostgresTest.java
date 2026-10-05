@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * ADR-146 / V799 真实 PostgreSQL: 出入库类别矩阵在 Java({@link WarehouseClassMovementRule}) 与数据库
+ * ADR-146 / V801 真实 PostgreSQL: 出入库类别矩阵在 Java({@link WarehouseClassMovementRule}) 与数据库
  * (fn_stock_movement_class_violation) 逐格一致; 流水落仓守卫、调拨类型守卫、不良品仓预留守卫、
  * 可用量单一口径(v_stock_usable / fn_stock_global_usable)与历史导入会话豁免。
  * 每个场景在自己的事务里做完后回滚, 互不影响。
@@ -255,7 +255,7 @@ class StockMovementWarehouseClassGuardPostgresTest {
         UUID second = warehouse(c, "H" + SEQUENCE.incrementAndGet(), "测试良品二仓" + SEQUENCE.get(), root, false);
         UUID defective = warehouse(c, "D" + SEQUENCE.incrementAndGet(), "测试不良品仓", root, true);
         UUID goods = UUID.randomUUID();
-        execute(c, "INSERT INTO goods(id,code,name,code_sequence) VALUES ('" + goods + "','V799-" + goods
+        execute(c, "INSERT INTO goods(id,code,name,code_sequence) VALUES ('" + goods + "','V801-" + goods
                 + "','测试货品',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))");
         return new Fixture(root, good, second, defective, goods);
     }

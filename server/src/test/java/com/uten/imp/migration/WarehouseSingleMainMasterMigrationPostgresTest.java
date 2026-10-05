@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * V798 (ADR-145) 仓库主档单主仓: 扁平/多主仓的存量收敛成「主仓 001 + 直属子仓」两层,
+ * V800 (ADR-145) 仓库主档单主仓: 扁平/多主仓的存量收敛成「主仓 001 + 直属子仓」两层,
  * 禁用但仍被归属的仓改回使用, 没人引用的禁用仓软删除, 不良品仓上的货品归属置空;
  * 判断不了主仓、内料仓不在主仓下、规范化重名时迁移中止。之后守卫拦住停用/删除前置条件、
  * 两层树、仓库用途变更和货品所属仓库只能是可选良品子仓。
@@ -39,7 +39,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
             // 1. 没有 001、又有多个顶层仓: 判断不了主仓, 中止。
             UUID first = warehouse(jdbc, "A01", "甲仓", null, "使用", false);
             UUID second = warehouse(jdbc, "B01", "乙仓", null, "使用", false);
-            assertThatThrownBy(() -> migrate(db, "798")).hasStackTraceContaining("没有编号 001 的主仓");
+            assertThatThrownBy(() -> migrate(db, "800")).hasStackTraceContaining("没有编号 001 的主仓");
 
             // 2. 典型的老库形态: 001 下只挂了一部分, 其余仓各自是顶层; 五金仓库被停用却还被货品归属。
             UUID root = warehouse(jdbc, "001", "仓库（14年版）", null, "使用", false);
@@ -64,11 +64,11 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
             replica(jdbc, "INSERT INTO stock_balances(goods_id,warehouse_id,qty) VALUES ('" + plain + "','"
                     + historicalDisabled + "',0)");
 
-            assertThatThrownBy(() -> migrate(db, "798")).hasStackTraceContaining("不在主仓下面");
+            assertThatThrownBy(() -> migrate(db, "800")).hasStackTraceContaining("不在主仓下面");
             jdbc.update("UPDATE warehouses SET parent_id=? WHERE id=?", root, bin);
-            assertThatThrownBy(() -> migrate(db, "798")).hasStackTraceContaining("仓库名称重复");
+            assertThatThrownBy(() -> migrate(db, "800")).hasStackTraceContaining("仓库名称重复");
             jdbc.update("UPDATE warehouses SET name='备件仓（新）' WHERE id=?", duplicate);
-            migrate(db, "798");
+            migrate(db, "800");
 
             // 收敛结果: 只有 001 是顶层, 其余未删除仓都直挂 001。
             assertThat(jdbc.queryForObject(
@@ -182,7 +182,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
     void emptyCatalogOnlyInstallsFunctions() {
         try (var db = new PostgreSQLContainer<>("postgres:16-alpine")) {
             db.start();
-            migrate(db, "798");
+            migrate(db, "800");
             JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
                     db.getJdbcUrl(), db.getUsername(), db.getPassword()));
             assertThat(jdbc.queryForObject("SELECT fn_warehouse_root_id()", UUID.class)).isNull();
@@ -212,7 +212,7 @@ class WarehouseSingleMainMasterMigrationPostgresTest {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO goods(id,code,name,owning_warehouse_id,code_sequence) "
                         + "VALUES (?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
-                id, "V798-" + label, label, owner);
+                id, "V800-" + label, label, owner);
         return id;
     }
 

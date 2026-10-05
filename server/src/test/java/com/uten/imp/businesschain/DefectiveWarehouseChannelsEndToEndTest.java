@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * ADR-146 不良品仓业务规则, 走真实服务与真实 PG(V799 守卫):
+ * ADR-146 不良品仓业务规则, 走真实服务与真实 PG(V801 守卫):
  * 正常入库进不了不良品仓; 「转不良品仓」后销售可预留量、按仓可用量、即时库存默认口径都不含这部分,
  * 货品所属仓库不会被学成不良品仓; 普通调拨不能把不良品搬回良品仓; 「不良复判转回」后恢复;
  * 两条通道各认自己的独立权限, 提交键回放原单, 换内容复用提交键被拒。

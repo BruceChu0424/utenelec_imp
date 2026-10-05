@@ -107,7 +107,7 @@ class WorkshopNoticeScopePostgresTest {
         // This fixture has no execution splits. Full split guards and borrowed
         // material prerequisites are covered by ProductionExecutionBatchEndToEndTest.
         jdbc.execute("CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE'");
-        // V802 仓库任务参与者(部门外登记的仓库负责人): 本夹具里没有仓库负责人登记。
+        // V804 仓库任务参与者(部门外登记的仓库负责人): 本夹具里没有仓库负责人登记。
         jdbc.execute("CREATE FUNCTION fn_warehouse_responsible_user_ids() RETURNS uuid[] LANGUAGE sql AS 'SELECT ARRAY[]::uuid[]'");
         // Load the authoritative read predicate; full migration/event guards are
         // exercised separately in production request integration tests.

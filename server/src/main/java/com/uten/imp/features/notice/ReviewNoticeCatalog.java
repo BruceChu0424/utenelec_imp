@@ -87,15 +87,17 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "PROCUREMENT_FINANCE_APPROVED",
                     new Entry("PROCUREMENT_ORDER", null)),
-            // 委外前置自制待启动（计划行级；目标件真实出仓后办结）
+            // ===== ADR-143 委外领料 =====
+            // 委外可领料 → 委外人员提交领料（订货明细级；按最新可领量覆盖；可领为 0、提交领料、
+            // 结束领料、红冲时撤卡）
             Map.entry(
-                    "SUBCONTRACT_PREPARATION_REQUIRED",
-                    new Entry("SUBCONTRACT_MATERIAL_PLAN_ITEM", null)),
-            // ===== 2026-09-05 委外收敛 + IQC/改量通知补齐 =====
-            // 直接下单有子层目标件：草稿期自动发单给计划（分析级；完工入库后办结）
+                    "SUBCONTRACT_DRAW_AVAILABLE",
+                    new Entry("SUBCONTRACT_ORDER_ITEM", null)),
+            // 委外领料草稿 → 仓库发料（草稿级；发出、撤回时撤卡）
             Map.entry(
-                    "SUBCONTRACT_ORDER_PREPARATION_DISPATCHED",
-                    new Entry("MATERIAL_ANALYSIS", null)),
+                    "SUBCONTRACT_OUTBOUND_READY",
+                    new Entry("SUBCONTRACT_MATERIAL_ISSUE", null)),
+            // ===== IQC/改量通知补齐 =====
             // IQC 不合格建案 → 仓库/订单归属人登记实物退回（case 级；
             // 贷项确认/无贷项结案/反向时撤卡）
             Map.entry(

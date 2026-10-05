@@ -162,8 +162,21 @@ void main() {
         RouteName.productionMaterialAnalysis,
       );
       expect(
-        workbenchRouteFor('SUBCONTRACT_ORDER_PREPARATION_DISPATCHED'),
-        RouteName.productionMaterialAnalysis,
+        workbenchRouteFor('SUBCONTRACT_DRAW_AVAILABLE'),
+        RouteName.operationsSubcontractDrawSegment(),
+      );
+      expect(
+        workbenchRouteFor(
+          'SUBCONTRACT_DRAW_AVAILABLE',
+          actionRoute: RouteName.operationsSubcontractDrawSegment(
+            orderItemId: 'item-1',
+          ),
+        ),
+        RouteName.operationsSubcontractDrawSegment(orderItemId: 'item-1'),
+      );
+      expect(
+        workbenchRouteFor('SUBCONTRACT_OUTBOUND_READY'),
+        RouteName.warehouseSubcontractOutbound,
       );
       expect(
         workbenchRouteFor('PRODUCTION_DRAW_PENDING'),

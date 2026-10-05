@@ -1,12 +1,10 @@
 // 出库任务中心（/warehouse/tasks/outbound）——仓库出库方向的一站式工作台。
 //
 // 大类分段：销售出库（待拣/拣货/已拣/异常/已出库 + 历史单据，仓库不能自建销售
-// 出库单，任务来自财务放行的销售出货）｜委外出库（待出仓任务 + 历史单据）｜
+// 出库单，任务来自财务放行的销售出货）｜委外出库(待发料 + 历史单据)｜
 // 其它出库（新建/历史）｜产成品出库（新建/历史）。徽章口径：只挂真实待办——
-// 销售 = 尚未确认出库的放行单、委外 = 待出仓任务（小类行「待出仓任务」段同数）；
-// 「委外出库」另挂一枚黄(2026-09-22 ADR-103): 等子件到货的任务, 红角标按 ADR-101
-// 不计, 只画黄不画红就会在分段上蒸发; 红黄两枚同出一次请求、互斥、之和 = 列表行数.
-// 黄枚只画在分段上, 不登记黄链(那些委外单已在委外任务中心的 IN_PROGRESS 黄数里).
+// 销售 = 尚未确认出库的放行单、委外 = 委外人员已提交、仓库还没发出的委外领料单张数
+// (ADR-143 §4.3, 按调用者仓库范围; 小类行「待发料」段同数)。
 // 通用单据分段只有草稿与历史（草稿不计入待办数）不挂。进页面不预选大类
 //（未选时显示引导空态）。角标与 hub「出库任务中心」卡/工作台仓库卡一致
 //（WarehouseOutboundTaskBadge）。
@@ -30,9 +28,7 @@ import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../providers/warehouse_sales_outbound_count_provider.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart'
-    show
-        warehouseSubcontractOutboundCountProvider,
-        warehouseSubcontractOutboundWaitingComponentCountProvider;
+    show warehouseSubcontractOutboundCountProvider;
 import '../widgets/warehouse_history_gate.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
 import '../widgets/warehouse_subcontract_outbound_workbench.dart';
@@ -82,9 +78,6 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     final subcontractTaskCount = ref.watch(
       warehouseSubcontractOutboundCountProvider,
     );
-    final subcontractWaitingCount = ref.watch(
-      warehouseSubcontractOutboundWaitingComponentCountProvider,
-    );
 
     final segments = <WarehouseTaskSegmentSpec>[
       if (canSales || canSubcontract || canSubcontractHistory || canStockDocs)
@@ -108,7 +101,6 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
           value: 'subcontract',
           label: '委外出库',
           count: subcontractTaskCount,
-          inProgressCount: subcontractWaitingCount,
         ),
       if (canStockDocs)
         const WarehouseTaskSegmentSpec(value: 'otherOut', label: '其它出库'),
@@ -148,7 +140,6 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
               canTasks: canSubcontract,
               canHistory: canSubcontractHistory,
               taskCount: subcontractTaskCount,
-              waitingComponentCount: subcontractWaitingCount,
               initialTasks:
                   initialSection == 'subcontract' && initialView == 'tasks',
               externalHeader: headerPrefix,
@@ -172,7 +163,7 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
   }
 }
 
-/// 委外出库分段：待出仓任务（仓库执行目标件拣货出仓）｜历史单据（时间门控实物视图）。
+/// 委外出库分段：待发料(委外人员已提交的领料单, 仓库拣货出仓)｜历史单据(时间门控实物视图)。
 class _SubcontractOutboundSegment extends StatefulWidget {
   const _SubcontractOutboundSegment({
     required this.keyword,
@@ -180,7 +171,6 @@ class _SubcontractOutboundSegment extends StatefulWidget {
     required this.canTasks,
     required this.canHistory,
     this.taskCount,
-    this.waitingComponentCount,
     this.initialTasks = false,
     this.externalHeader,
   });
@@ -190,11 +180,8 @@ class _SubcontractOutboundSegment extends StatefulWidget {
   final bool canTasks;
   final bool canHistory;
 
-  /// 「待出仓任务」小类段红徽章（与父分类徽章同源；null = 加载中不显示）。
+  /// 「待发料」小类段红徽章(与父分类徽章同源; null = 加载中不显示)。
   final int? taskCount;
-
-  /// 「待出仓任务」小类段黄徽章: 等子件到货的任务(与父分类黄枚同源)。
-  final int? waitingComponentCount;
   final bool initialTasks;
 
   /// 宿主（任务中心大类行 + 小类行）：与本分段自身小类行合并后挂进
@@ -238,15 +225,13 @@ class _SubcontractOutboundSegmentState
       child: UtenFilterToolbar<int>(
         segmentsKey: const Key('subcontract-outbound-mode'),
         segments: [
-          // 待出仓 = 仓库必须清空的队列 → 红徽章; 等子件到货的任务仓库办不了
-          // → 黄徽章(两枚互斥, 之和 = 列表行数); 历史单据不传 count。
+          // 待发料 = 仓库必须清空的队列 → 红徽章(= 列表行数); 历史单据不传 count。
           if (widget.canTasks)
             UtenFilterSegment(
               value: _tasksMode,
-              label: '待出仓任务',
+              label: '待发料',
               count: widget.taskCount,
               countForm: UtenSegmentCountForm.actionable,
-              inProgressCount: widget.waitingComponentCount,
             ),
           if (widget.canHistory)
             const UtenFilterSegment(value: _historyMode, label: '历史单据'),

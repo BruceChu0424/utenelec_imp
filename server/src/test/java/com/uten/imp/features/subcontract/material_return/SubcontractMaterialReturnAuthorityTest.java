@@ -48,6 +48,8 @@ class SubcontractMaterialReturnAuthorityTest {
         when(query.executeUpdate()).thenReturn(1);
         when(query.getResultList()).thenReturn(List.of());
 
+        com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans =
+                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class);
         SubcontractMaterialReturnService service =
                 new SubcontractMaterialReturnService(
                         returnRepo,
@@ -61,7 +63,8 @@ class SubcontractMaterialReturnAuthorityTest {
                         mock(DocNumberService.class),
                         mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class),
                         mock(com.uten.imp.features.subcontract.LinkedOrderReadGate.class),
-                org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS));
+                org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
+                        materialPlans);
 
         UUID id = UUID.randomUUID();
         SubcontractMaterialReturn document = document(id);
@@ -91,6 +94,7 @@ class SubcontractMaterialReturnAuthorityTest {
         assertFalse(update.contains("material_returned_qty"));
         verify(sourceIntegrity).validateSubcontractMaterialReturn(any(), any());
         verify(stockService).recordMovement(any());
+        verify(materialPlans).syncAfterMaterialReturnApproved(id);
     }
 
     private static SubcontractMaterialReturn document(UUID id) {

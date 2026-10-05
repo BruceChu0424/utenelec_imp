@@ -108,6 +108,28 @@ Color purchaseOrderDisplayColor(
   };
 }
 
+/// ADR-144 允许超收量 T(q, p) = ROUND(q × p / 100, 4)（订货单位，四舍五入；
+/// 比例为空或不大于 0 时为 0）。与服务端 fn_purchase_over_receipt_tolerance 同式，
+/// 前端只用于默认值与展示，收货是否放行以服务端为准。
+double purchaseOverReceiptTolerance(double qty, double? pct) {
+  if (pct == null || pct <= 0 || qty <= 0) return 0;
+  return (qty * pct / 100 * 10000).round() / 10000;
+}
+
+/// 百分比显示：整数不带小数点，其余最多两位并去掉尾零（5.0 → 5，2.50 → 2.5）。
+String purchasePercentText(double value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value
+          .toStringAsFixed(2)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');
+
+double? _decimalOrNull(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim());
+  return null;
+}
+
 class PurchaseDocListItem {
   const PurchaseDocListItem({
     required this.id,
@@ -197,6 +219,7 @@ class PurchaseDocItem {
     this.productionPlanNo,
     this.salesOrderNo,
     this.remark,
+    this.allowedOverReceiptPct,
     this.sourceRequests = const [],
   });
 
@@ -245,6 +268,14 @@ class PurchaseDocItem {
   final String? salesOrderNo;
   final String? remark;
 
+  /// 订货明细允许超收%（ADR-144，0..100；空 = 不允许超收，按 0%）。
+  /// 冻结在明细上，财务批准后不能再改；不受价格遮蔽。
+  final double? allowedOverReceiptPct;
+
+  /// 允许超收量 T = ROUND(数量 × 允许超收% / 100, 4)（订货单位）。
+  double get allowedOverReceiptQty =>
+      purchaseOverReceiptTolerance(qty ?? 0, allowedOverReceiptPct);
+
   /// 全部来源申请（V463 同货品合并行多来源）：明细 id + 申请单 id + 单号，
   /// 稳定顺序与 sources.line_no 一致；单来源行一条、手工/历史行为空。
   final List<PurchaseSourceRequestRef> sourceRequests;
@@ -289,6 +320,7 @@ class PurchaseDocItem {
     productionPlanNo: json['productionPlanNo'] as String?,
     salesOrderNo: json['salesOrderNo'] as String?,
     remark: json['remark'] as String?,
+    allowedOverReceiptPct: _decimalOrNull(json['allowedOverReceiptPct']),
     sourceRequests: [
       for (final entry
           in (json['sourceRequests'] as List<dynamic>? ?? const <dynamic>[]))

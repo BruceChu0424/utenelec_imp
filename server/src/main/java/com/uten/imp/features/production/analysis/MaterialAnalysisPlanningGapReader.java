@@ -48,7 +48,6 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
     private final EntityManager em;
     private final MaterialAnalysisService analyses;
     private final ProductionDocumentAccessPolicy access;
-    private final com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
 
     /**
      * 车间任务需求 → 分析物料行。只取「还缺」的需求(缺口桶)，已领齐、可领、待仓库发料、线边
@@ -323,7 +322,7 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
 
     /**
      * 计划员徽章：本人能看到的物料分析上、仍在催的车间任务数。与分析列表同一可见范围
-     * (制单人数据范围 + 委外备料直接来源对计划池开放)；缺口已补上但核对任务还没轮到的，最多多计一个核对周期。
+     * (制单人数据范围)；缺口已补上但核对任务还没轮到的，最多多计一个核对周期。
      */
     @Transactional(readOnly = true)
     public long openUrgeCount() {
@@ -333,8 +332,8 @@ public class MaterialAnalysisPlanningGapReader implements WorkshopPlanningGapRea
                 FROM production_planning_urges urge
                 JOIN production_material_analyses analysis ON analysis.id = urge.material_analysis_id
                  AND NOT analysis.is_deleted
-                WHERE urge.status = 'OPEN' AND %s
-                """.formatted(draftPreparationAccess.readPredicate("analysis.id", "(" + scope.predicate() + ")")));
+                WHERE urge.status = 'OPEN' AND (%s)
+                """.formatted(scope.predicate()));
         scope.bind(count);
         return ((Number) count.getSingleResult()).longValue();
     }

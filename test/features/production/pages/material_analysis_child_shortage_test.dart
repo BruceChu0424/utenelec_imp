@@ -1030,7 +1030,7 @@ Future<void> _pump(
 /// 顶层产品「开关面板」(自制) 1000 件：
 /// - 铜片 m-c1(采购, 缺 1000)、弹簧 m-c2(采购, 有 500 现货, 缺 500)、
 ///   自制底座 m-c3(自制, 缺 1000) → 底座原料 m-g1(采购, 缺 1000)、已备齐的料 m-ok(不缺)；
-/// - 另一件早就下过单的产品「插座底板」→ 委外件 m-p(我方供料单一子件, 已下单)
+/// - 另一件早就下过单的产品「插座底板」→ 委外件 m-p(我方领料发外, 已下单)
 ///   → 委外件的子料 m-pc(采购, 缺 600)。
 /// [issuedRoot] = 父件与下层都已下够单(父件计划 1000 已排满, 铜片已订 1000)。
 Map<String, dynamic> _analysis({required bool issuedRoot}) => {
@@ -1156,7 +1156,6 @@ Map<String, dynamic> _analysis({required bool issuedRoot}) => {
       name: '委外件',
       product: 'product-2',
       confirmed: 'SUBCONTRACT',
-      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
       net: 0,
       downstream: const [
         {
@@ -1206,13 +1205,11 @@ Map<String, dynamic> _material({
   String nodeRole = 'BOM_NODE',
   int level = 1,
   String? parentLine,
-  String? subcontractOutboundForm,
   String unit = '个',
   String product = 'product-1',
   List<Map<String, dynamic>> downstream = const [],
   String? suggestion = 'BUY',
 }) => {
-  'subcontractOutboundForm': ?subcontractOutboundForm,
   'materialLineId': line,
   'analysisLineId': product,
   'nodeRole': nodeRole,

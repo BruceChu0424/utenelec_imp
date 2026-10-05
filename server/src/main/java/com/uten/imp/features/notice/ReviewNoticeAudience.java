@@ -116,10 +116,13 @@ public class ReviewNoticeAudience {
                     && permissions.containsAll(Set.of("production_material_analysis:view", "production_material_analysis:create"));
             case "PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED" ->
                     departments.contains("SUB_PLAN") && permissions.contains("production_plan:approve");
-            case "SUBCONTRACT_PREPARATION_REQUIRED", "SUBCONTRACT_ORDER_PREPARATION_DISPATCHED" ->
-                    any(departments, "SUB_PLAN", "DEPT_PROD")
-                    && permissions.contains("production_material_analysis:view")
-                    && any(permissions, "production_material_analysis:route", "production_material_analysis:generate");
+            // ADR-143 委外可领料：收件人在发卡时已按订货单归属可见范围精确算好(不限部门)，这里复核
+            // 「现在还能不能领料」。
+            case "SUBCONTRACT_DRAW_AVAILABLE" ->
+                    permissions.containsAll(Set.of("subcontract_order:view", "subcontract_order:draw"));
+            // 委外领料草稿待发料：草稿所在仓库的仓管(发卡时已按仓分发)。
+            case "SUBCONTRACT_OUTBOUND_READY" -> departments.contains("SUB_WH")
+                    && permissions.containsAll(Set.of("subcontract_outbound:view", "subcontract_outbound:execute"));
             case WORKSHOP_EVENT -> canHandleWorkshop(permissions);
             // ADR-117 车间催计划：能在物料分析页下单的人(下达采购委外或下达车间)。收件人在发卡时已按
             // 计划 / 生产部门池 + 制单计划员 + 分析可见范围精确算好，这里不再卡部门(制单人不在池里也要弹)。

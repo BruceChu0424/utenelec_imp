@@ -32,7 +32,7 @@ void main() {
       );
       expect(
         SubcontractPageFactory.list(SubcontractDocType.materialIssue),
-        isA<SubcontractLegacyMaterialIssueHistoryPage>(),
+        isA<SubcontractMaterialIssueListPage>(),
       );
       expect(
         SubcontractPageFactory.list(SubcontractDocType.returnDoc),

@@ -1,4 +1,8 @@
-// 委外出仓工作台仓库（V304）：/api/warehouse/subcontract-outbound/* 。
+// 委外出仓工作台仓库(ADR-143 §4.3)：/api/warehouse/subcontract-outbound/* 。
+//
+// 列表 = 委外人员已提交、仓库未发出的领料单；详情按领料单 id 取拣货明细；
+// 整单不发 = 「退回委外(不发)」(必填原因)。
+// 拣货保存与审核出仓走既有 /api/subcontract/material-issues 的编辑/审核端点。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -17,8 +21,6 @@ class WarehouseSubcontractOutboundRepository {
     int page = 1,
     int size = 20,
     String? keyword,
-    String? supplierId,
-    String? status,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
   }) async {
     final kw = keyword?.trim();
@@ -28,35 +30,25 @@ class WarehouseSubcontractOutboundRepository {
         'page': page,
         'size': size,
         if (kw != null && kw.isNotEmpty) 'keyword': kw,
-        if (supplierId != null && supplierId.isNotEmpty)
-          'supplierId': supplierId,
-        if (status != null && status.isNotEmpty) 'status': status,
         ...scope.queryParameters,
       },
     );
     return PagedResult.fromJson(json, OutboundTask.fromJson);
   }
 
-  Future<OutboundTaskDetail> taskDetail(String planId) async {
+  Future<OutboundTaskDetail> taskDetail(String issueId) async {
     final json = await api.get(
-      ApiEndpoints.warehouseSubcontractOutboundTask(planId),
+      ApiEndpoints.warehouseSubcontractOutboundTask(issueId),
     );
     return OutboundTaskDetail.fromJson((json as Map).cast<String, dynamic>());
   }
 
-  /// 补齐出仓草稿：有剩余量且无未审草稿时重建。返回新草稿 id。
-  Future<String> regenerateDraft(String planId) async {
-    final json = await api.post(
-      ApiEndpoints.warehouseSubcontractOutboundDraft(planId),
-    );
-    return (json as Map)['draftId'] as String;
-  }
-
-  /// 不再出仓：关闭计划剩余量（必填原因）。
-  Future<void> closePlan(String planId, String reason) async {
+  /// 整单不发：把这张领料单退回委外。服务端作废领料单、退回占用的库存并通知
+  /// 提交领料的委外人员；领料单已不在待发料时 404/409，原文提示。
+  Future<void> returnToDraw(String issueId, {required String reason}) async {
     await api.post(
-      ApiEndpoints.warehouseSubcontractOutboundClose(planId),
-      body: {'reason': reason.trim()},
+      ApiEndpoints.warehouseSubcontractOutboundReturnToDraw(issueId),
+      body: {'reason': reason},
     );
   }
 }
@@ -67,22 +59,10 @@ final warehouseSubcontractOutboundRepositoryProvider =
           WarehouseSubcontractOutboundRepository(ref.watch(apiClientProvider)),
     );
 
-/// 红: 轮到仓库动手的待出仓任务数(子件已到货可发 / 已有拣货草稿)。
-/// 等子件到货的任务按 ADR-101 不计(仓库此刻办不了), 走下面那支黄的。
+/// 红: 调用者仓库范围内待发料的委外领料单张数(轮到仓库动手)。
 ///
 /// 随工作台徽章汇总一次带回(ADR-108, 原端点 /warehouse/subcontract-outbound/tasks/count),
 /// 汇总未到/无权为 null。hub「出库任务中心」卡的红数由服务端目录算好。
 final warehouseSubcontractOutboundCountProvider = Provider<int?>(
   (ref) => ref.watch(badgeFactOrNullProvider(BadgeFact.subcontractOutbound)),
 );
-
-/// 黄: 等子件到货的待出仓任务数(有待出量、子件一件都没到)。
-///
-/// 只画在出库任务中心的分段上, 不进任何徽章入口: 这些委外单已在委外任务中心的
-/// IN_PROGRESS 黄数里, 仓库再数一遍是跨卡双计(准则 14 §四之八)。
-final warehouseSubcontractOutboundWaitingComponentCountProvider =
-    Provider<int?>(
-      (ref) => ref.watch(
-        badgeFactOrNullProvider(BadgeFact.subcontractOutboundWaitingComponent),
-      ),
-    );

@@ -25,7 +25,8 @@ import java.util.stream.Collectors;
  * {@link MaterialAnalysisSupplyProgressService#supplyProgress} 提供，两者读同一批
  * 单据事实，本类只做“当前停在哪一步”的归并。判定链：
  * 采购 = 提交需求 → 下单 → 财务批准 → 仓库收货 → 品质验收 → 入库齐套；
- * 委外 = 提交申请 → 下单 → 财务批准 → 目标件准备/出仓 → 回厂 → IQC → 入库；
+ * 委外 = 提交申请 → 下单 → 财务批准 → 领料发外(可领料/等仓库发料/等待物料) → 回厂 → IQC → 入库
+ * (ADR-143：按领料读模型的套数判定，分批回厂的质检、入库子状态随回厂单实时显示)；
  * 自制 = 计划锚点的执行段状态（等待物料 → 等待领料 → 生产中 → 已完工）。
  * 入库齐套的权威口径（2026-09-06 修订）：需求仍在行内（required&gt;0）且缺口归零
  * = 现货/权益覆盖齐套；历史转出行的 required 与 shortage 可能一并归零，不能当作齐套。
@@ -58,6 +59,11 @@ public class MaterialAnalysisFlowStageService {
     static final String SC_PENDING_ISSUE = "SC_PENDING_ISSUE";
     static final String SC_REQUESTED = "SC_REQUESTED";
     static final String SC_PENDING_FINANCE = "SC_PENDING_FINANCE";
+    /** 还有物料没备齐，当前一套也配不出来(可领 0、没有待发领料)。 */
+    static final String SC_WAITING_MATERIAL = "SC_WAITING_MATERIAL";
+    /** 物料已能配出套数，等委外人员在委外任务中心提交领料。 */
+    static final String SC_WAITING_DRAW = "SC_WAITING_DRAW";
+    /** 已提交领料，等仓库发料。 */
     static final String SC_WAIT_OUTBOUND = "SC_WAIT_OUTBOUND";
     static final String SC_WAIT_RETURN = "SC_WAIT_RETURN";
     static final String SC_WAIT_IQC = "SC_WAIT_IQC";
@@ -82,8 +88,8 @@ public class MaterialAnalysisFlowStageService {
      * @param routeByLine        行 → 展示路线（已确认优先，回退建议）
      * @param shortageByLine     行 → shortage_qty（入库齐套权威）
      * @param requiredByLine     行 → required_qty
-     * @param childStatusByLine  行 → 计划锚点子件的执行状态（可空）
-     * @param childZeroByLine    行 → 子件执行段是否全部零料直制
+     * @param childStatusByLine  行 → 自制锚点子件的执行状态（可空，只用于自制行）
+     * @param childZeroByLine    行 → 自制子件执行段是否全部零料直制
      */
     @Transactional(readOnly = true)
     public Map<UUID, String> lineFlowStages(
@@ -112,10 +118,8 @@ public class MaterialAnalysisFlowStageService {
                 case "MAKE" -> result.put(lineId, makeStage(
                         childStatusByLine.get(lineId),
                         childZeroByLine.getOrDefault(lineId, Boolean.FALSE)));
-                case "SUBCONTRACT" -> result.put(lineId, subcontractStage(
-                        lineId, required, shortage, facts,
-                        childStatusByLine.get(lineId),
-                        childZeroByLine.getOrDefault(lineId, Boolean.FALSE)));
+                case "SUBCONTRACT" -> result.put(lineId,
+                        subcontractStage(lineId, shortage, facts));
                 default -> result.put(lineId,
                         purchaseStage(lineId, required, shortage, facts));
             }
@@ -126,7 +130,7 @@ public class MaterialAnalysisFlowStageService {
             if(stage!=null&&stage.endsWith("PENDING_ISSUE")&&chain!=null) {
                 List<String> adoptedStages=new ArrayList<>();
                 if(!chain.purchaseExternalItems.isEmpty())adoptedStages.add(purchaseStage(lineId,required,shortage,facts));
-                if(!chain.subcontractExternalItems.isEmpty())adoptedStages.add(subcontractStage(lineId,required,shortage,facts,null,false));
+                if(!chain.subcontractExternalItems.isEmpty())adoptedStages.add(subcontractStage(lineId,shortage,facts));
                 adoptedStages.stream().min(java.util.Comparator.comparingInt(MaterialAnalysisService::preparationStageRank))
                         .ifPresent(value->result.put(lineId,value));
             }
@@ -187,28 +191,18 @@ public class MaterialAnalysisFlowStageService {
                 ? BUY_WAIT_RECEIPT : BUY_STOCKED;
     }
 
+    /**
+     * 委外行(ADR-143 §4.5)：财务批准后按订货明细的领料读模型判定，不再要求「全部发完才进入回厂」。
+     * 物料能配出套数时「可领料」优先(轮到委外人员动手)；其次是在途回厂单的质检、入库子状态；
+     * 再按各订货明细最靠前的领料状态(等待物料 → 等仓库发料 → 等委外回厂)。
+     * 全部明细回厂(或订货单已结案)后沿用回厂单与合格入库量判定齐套。
+     */
     private static String subcontractStage(
-            UUID lineId, BigDecimal required, BigDecimal shortage, ChainFacts facts,
-            String childStatus, boolean childZero) {
+            UUID lineId, BigDecimal shortage, ChainFacts facts) {
         LineChain chain = facts.lines.get(lineId);
-        boolean hasApplication = chain != null
-                && !chain.subcontractExternalItems.isEmpty();
-        if (!hasApplication) {
-            // 无申请 = 尚未通知委外：有前置自制则先走车间，否则未下达。
-            if (childStatus != null && !childStatus.isBlank()) {
-                return makeStage(childStatus, childZero);
-            }
-            // 台账已建、锚点还没出计划：这是「已下达委外 → 等待下达车间」，
-            // 不是「从未下达」。childStatus 为空同时表示这两件事，所以必须
-            // 用台账这条独立事实兜住（2026-09-15）。
-            return chain != null && chain.hasMakeTask
-                    ? MAKE_PENDING_ISSUE
-                    : SC_PENDING_ISSUE;
+        if (chain == null || chain.subcontractExternalItems.isEmpty()) {
+            return SC_PENDING_ISSUE;
         }
-        // A later preparation batch must remain visible even when an earlier
-        // subcontract application has already returned the original private share.
-        if(childStatus!=null&&!childStatus.isBlank()&&!"COMPLETED".equals(childStatus))
-            return makeStage(childStatus,childZero);
         OrderView orders = facts.subcontractOrders(chain.subcontractExternalItems);
         if (orders.itemIds.isEmpty() || !orders.allOrdered) {
             return SC_REQUESTED;
@@ -216,26 +210,24 @@ public class MaterialAnalysisFlowStageService {
         if (!orders.allApproved || facts.financePending(orders.orderIds, "SUBCONTRACT")) {
             return SC_PENDING_FINANCE;
         }
-        if (!facts.subcontractOutboundComplete(orders.itemIds)) {
-            return SC_WAIT_OUTBOUND;
+        String drawStage = facts.subcontractDrawStage(orders.itemIds);
+        if (SC_WAITING_DRAW.equals(drawStage)) {
+            return SC_WAITING_DRAW;
         }
         List<UUID> approvedReceiptItems =
                 facts.approvedSubcontractReceiptItems(orders.itemIds);
-        if (approvedReceiptItems.isEmpty()) {
-            return SC_WAIT_RETURN;
-        }
         IqcView iqc = facts.iqc("SUBCONTRACT", approvedReceiptItems);
         if (iqc.total < approvedReceiptItems.size() || iqc.open > 0) {
             return SC_WAIT_IQC;
         }
-        // 全部不合格：回厂补货通道，等待补货回厂（V466 同口径）。
-        if (iqc.passed.signum() <= 0) {
-            return SC_WAIT_RETURN;
-        }
         if (iqc.stocked.compareTo(iqc.passed) < 0) {
             return SC_WAIT_STOCK_IN;
         }
-        return shortage.signum() > 0 || !facts.fullyStocked(orders, "SUBCONTRACT")
+        if (drawStage != null) {
+            return drawStage;
+        }
+        // 全部不合格时回厂补货通道仍开着(V466 同口径)：齐套判定要求每条未结案明细都有合格入库。
+        return shortage.signum() > 0 || !facts.fullySubcontractStocked(orders)
                 ? SC_WAIT_RETURN : SC_STOCKED;
     }
 
@@ -294,14 +286,6 @@ public class MaterialAnalysisFlowStageService {
                     entry.getValue().subcontractExternalItems.addAll(items);
                 } else if (type != null && type.startsWith("PURCHASE")) {
                     entry.getValue().purchaseExternalItems.addAll(items);
-                } else if ("SUBCONTRACT_MAKE_TASK".equals(type)
-                        || "PREPLAN_MAKE_TASK".equals(type)) {
-                    // 「前置自制任务已建」也是链路上的一个真实事实。原来这一类
-                    // 动作被整体丢弃，委外行下达之后 hasApplication 仍为假、
-                    // childStatus 又因为锚点还没出计划而为空，于是回落
-                    // SC_PENDING_ISSUE——界面写「等待下发委外」，与「从未下达」
-                    // 一模一样（2026-09-15 用户反馈：下达了委外还是显示未下达）。
-                    entry.getValue().hasMakeTask = true;
                 }
             }
         }
@@ -362,29 +346,50 @@ public class MaterialAnalysisFlowStageService {
             }
         }
 
-        // 委外准备/出仓：出仓完成 = 已出仓量覆盖计划量。
-        Map<UUID, BigDecimal> outboundPlanned = new LinkedHashMap<>();
-        Map<UUID, BigDecimal> outboundIssued = new LinkedHashMap<>();
-        if (!subcontractOrderItemIds.isEmpty()) {
-            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                            SELECT pi.order_item_id, pi.planned_qty, pi.issued_qty
-                            FROM subcontract_material_plan_items pi
-                            JOIN subcontract_material_plans p
-                              ON p.id = pi.plan_id AND p.is_deleted = FALSE
-                            WHERE pi.order_item_id IN (:orderItemIds)
-                              AND pi.is_deleted = FALSE
-                              AND pi.preparation_status <> 'CANCELLED'
-                            """).setParameter("orderItemIds",
-                    List.copyOf(subcontractOrderItemIds)))) {
-                outboundPlanned.merge((UUID) row[0], decimal(row[1]), BigDecimal::add);
-                outboundIssued.merge((UUID) row[0], decimal(row[2]), BigDecimal::add);
-            }
-        }
         return new ChainFacts(
                 lines, purchaseOrderRows, subcontractOrderRows,
                 approvalStatusByOrder,
                 approvedPurchaseReceiptItems, approvedSubcontractReceiptItems,
-                iqcRows, outboundPlanned, outboundIssued);
+                iqcRows, subcontractDraws(subcontractOrderRows));
+    }
+
+    /**
+     * 已批准委外订货明细的领料读模型(套数，订货单位)，与委外任务中心「领料」分段同一个
+     * 服务端函数；不同物料从不相加。回厂量 = 已审回厂单数量 − 已退回委外商的量(订货单位)。
+     */
+    private Map<UUID, SubcontractDraw> subcontractDraws(Map<UUID, List<OrderRow>> orderRows) {
+        List<UUID> approvedItems = orderRows.values().stream().flatMap(List::stream)
+                .filter(row -> row.status() == 1).map(OrderRow::orderItemId).distinct().toList();
+        if (approvedItems.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, SubcontractDraw> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT item.id, summary.order_qty, summary.material_kind_count,
+                               summary.drawn_qty, summary.pending_qty, summary.drawable_qty,
+                               summary.any_open, ord.is_closed,
+                               COALESCE((
+                                   SELECT SUM(returned_item.qty * COALESCE(returned_item.unit_rate, 1))
+                                   FROM subcontract_receipt_items returned_item
+                                   JOIN subcontract_receipts returned_receipt
+                                     ON returned_receipt.id = returned_item.receipt_id
+                                    AND returned_receipt.status = 1
+                                    AND returned_receipt.is_deleted = FALSE
+                                   WHERE returned_item.order_item_id = item.id
+                                     AND returned_item.is_deleted = FALSE), 0)
+                                 / NULLIF(COALESCE(item.unit_rate, 1), 0)
+                                 - COALESCE(item.returned_qty, 0)
+                        FROM subcontract_order_items item
+                        JOIN subcontract_orders ord ON ord.id = item.order_id
+                        CROSS JOIN LATERAL fn_subcontract_draw_summary(item.id) summary
+                        WHERE item.id IN (:orderItemIds)
+                        """).setParameter("orderItemIds", approvedItems))) {
+            result.put((UUID) row[0], new SubcontractDraw(
+                    decimal(row[1]), row[2] == null ? 0 : ((Number) row[2]).intValue(),
+                    decimal(row[3]), decimal(row[4]), decimal(row[5]),
+                    Boolean.TRUE.equals(row[6]), Boolean.TRUE.equals(row[7]), decimal(row[8])));
+        }
+        return result;
     }
 
     private void collectOrders(
@@ -397,7 +402,8 @@ public class MaterialAnalysisFlowStageService {
         // 与 MaterialAnalysisSupplyProgressService 单行版同一连接关系。
         String sql = """
                 SELECT src.%s, ord.id, ord.status, src.order_item_id,
-                       ROUND(COALESCE(item.qty, 0) * COALESCE(item.unit_rate, 1), 4)
+                       ROUND(COALESCE(item.qty, 0) * COALESCE(item.unit_rate, 1), 4),
+                       ord.is_closed
                 FROM %s src
                 JOIN %s item
                   ON item.id = src.order_item_id
@@ -417,7 +423,8 @@ public class MaterialAnalysisFlowStageService {
                 .setParameter("externalItemIds", List.copyOf(externalItemIds)))) {
             UUID externalItemId = (UUID) row[0];
             into.computeIfAbsent(externalItemId, ignored -> new ArrayList<>()).add(new OrderRow(
-                    (UUID) row[1], ((Number) row[2]).intValue(), (UUID) row[3], decimal(row[4])));
+                    (UUID) row[1], ((Number) row[2]).intValue(), (UUID) row[3], decimal(row[4]),
+                    row.length > 5 && Boolean.TRUE.equals(row[5])));
         }
     }
 
@@ -456,12 +463,38 @@ public class MaterialAnalysisFlowStageService {
         final List<UUID> actions = new ArrayList<>();
         final Set<UUID> purchaseExternalItems = new LinkedHashSet<>();
         final Set<UUID> subcontractExternalItems = new LinkedHashSet<>();
-
-        /** 本行已建过前置自制 / 自制备料任务台账（未取消）。 */
-        boolean hasMakeTask;
     }
 
-    private record OrderRow(UUID orderId, int status, UUID orderItemId, BigDecimal requiredBaseQty) {
+    private record OrderRow(UUID orderId, int status, UUID orderItemId, BigDecimal requiredBaseQty,
+                            boolean orderClosed) {
+    }
+
+    /** 一条已批准委外订货明细的领料读模型(订货单位)。 */
+    private record SubcontractDraw(BigDecimal orderQty, int materialKindCount, BigDecimal drawnQty,
+                                   BigDecimal pendingQty, BigDecimal drawableQty, boolean anyOpen,
+                                   boolean orderClosed, BigDecimal returnedQty) {
+
+        /** 本明细当前停在领料段的哪一步；已全部回厂或订货单已结案时为 null。 */
+        String stage() {
+            if (orderClosed || returnedQty.compareTo(orderQty) >= 0) {
+                return null;
+            }
+            // 已批准的委外订货明细一定有冻结领料计划行(缺 BOM 不能下单，ADR-143 §二.3)；
+            // 万一没有，停在「等待物料」，不当成已发外等回厂。
+            if (materialKindCount == 0) {
+                return SC_WAITING_MATERIAL;
+            }
+            if (drawableQty.signum() > 0) {
+                return SC_WAITING_DRAW;
+            }
+            if (pendingQty.signum() > 0) {
+                return SC_WAIT_OUTBOUND;
+            }
+            if (drawnQty.compareTo(returnedQty) > 0 || !anyOpen) {
+                return SC_WAIT_RETURN;
+            }
+            return SC_WAITING_MATERIAL;
+        }
     }
 
     private record IqcRow(
@@ -484,8 +517,7 @@ public class MaterialAnalysisFlowStageService {
         final Map<UUID, Set<UUID>> approvedPurchaseReceiptItems;
         final Map<UUID, Set<UUID>> approvedSubcontractReceiptItems;
         final Map<UUID, IqcRow> iqcRows;
-        final Map<UUID, BigDecimal> outboundPlanned;
-        final Map<UUID, BigDecimal> outboundIssued;
+        final Map<UUID, SubcontractDraw> subcontractDraws;
 
         private ChainFacts(
                 Map<UUID, LineChain> lines,
@@ -495,8 +527,7 @@ public class MaterialAnalysisFlowStageService {
                 Map<UUID, Set<UUID>> approvedPurchaseReceiptItems,
                 Map<UUID, Set<UUID>> approvedSubcontractReceiptItems,
                 Map<UUID, IqcRow> iqcRows,
-                Map<UUID, BigDecimal> outboundPlanned,
-                Map<UUID, BigDecimal> outboundIssued) {
+                Map<UUID, SubcontractDraw> subcontractDraws) {
             this.lines = lines;
             this.purchaseOrderRows = purchaseOrderRows;
             this.subcontractOrderRows = subcontractOrderRows;
@@ -504,8 +535,7 @@ public class MaterialAnalysisFlowStageService {
             this.approvedPurchaseReceiptItems = approvedPurchaseReceiptItems;
             this.approvedSubcontractReceiptItems = approvedSubcontractReceiptItems;
             this.iqcRows = iqcRows;
-            this.outboundPlanned = outboundPlanned;
-            this.outboundIssued = outboundIssued;
+            this.subcontractDraws = subcontractDraws;
         }
 
         OrderView purchaseOrders(Set<UUID> externalItems) {
@@ -562,6 +592,58 @@ public class MaterialAnalysisFlowStageService {
                     .collect(Collectors.toList());
         }
 
+        /**
+         * 委外整单齐套：已结案(短交、损耗已结清)的订货单不再等回厂；其余明细逐条要求
+         * 全部质检结案且合格入库量覆盖订货量。
+         */
+        boolean fullySubcontractStocked(OrderView orders) {
+            Set<UUID> open = new LinkedHashSet<>();
+            for (List<OrderRow> rows : subcontractOrderRows.values()) {
+                for (OrderRow row : rows) {
+                    if (orders.itemIds.contains(row.orderItemId()) && !row.orderClosed()) {
+                        open.add(row.orderItemId());
+                    }
+                }
+            }
+            if (open.isEmpty()) {
+                return !orders.itemIds.isEmpty();
+            }
+            Map<UUID, BigDecimal> required = new LinkedHashMap<>();
+            open.forEach(item -> required.put(item, orders.requiredByOrderItem.get(item)));
+            return fullyStocked(new OrderView(orders.orderIds, open, orders.allApproved,
+                    orders.allOrdered, required), "SUBCONTRACT");
+        }
+
+        /**
+         * 各订货明细领料段的当前一步：任一明细可领料即「可领料」(轮到委外人员动手)，
+         * 否则取最靠前的一步(等待物料 → 等仓库发料 → 等委外回厂)；全部回厂为 null。
+         */
+        String subcontractDrawStage(Set<UUID> orderItemIds) {
+            String earliest = null;
+            for (UUID orderItem : orderItemIds) {
+                SubcontractDraw draw = subcontractDraws.get(orderItem);
+                String stage = draw == null ? null : draw.stage();
+                if (stage == null) {
+                    continue;
+                }
+                if (SC_WAITING_DRAW.equals(stage)) {
+                    return SC_WAITING_DRAW;
+                }
+                if (earliest == null || drawStageRank(stage) < drawStageRank(earliest)) {
+                    earliest = stage;
+                }
+            }
+            return earliest;
+        }
+
+        private static int drawStageRank(String stage) {
+            return switch (stage) {
+                case SC_WAITING_MATERIAL -> 0;
+                case SC_WAIT_OUTBOUND -> 1;
+                default -> 2;
+            };
+        }
+
         /** Transferred legacy demand needs receipt evidence for every order item. */
         boolean fullyStocked(OrderView orders, String receiptType) {
             Map<UUID, Set<UUID>> receipts = "PURCHASE".equals(receiptType)
@@ -597,24 +679,6 @@ public class MaterialAnalysisFlowStageService {
                 stocked = stocked.add(row.stockedBaseQty());
             }
             return new IqcView(total, open, passed, stocked);
-        }
-
-        boolean subcontractOutboundComplete(Set<UUID> orderItemIds) {
-            BigDecimal planned = BigDecimal.ZERO;
-            BigDecimal issued = BigDecimal.ZERO;
-            boolean anyPlan = false;
-            for (UUID orderItem : orderItemIds) {
-                BigDecimal itemPlanned = outboundPlanned.getOrDefault(
-                        orderItem, BigDecimal.ZERO);
-                if (itemPlanned.signum() > 0) {
-                    anyPlan = true;
-                }
-                planned = planned.add(itemPlanned);
-                issued = issued.add(outboundIssued.getOrDefault(
-                        orderItem, BigDecimal.ZERO));
-            }
-            return anyPlan && planned.signum() > 0
-                    && issued.compareTo(planned) >= 0;
         }
     }
 }

@@ -19,6 +19,8 @@ class SubcontractMakeBeforeOrderMigrationContractTest {
             "src/main/resources/db/migration/"
                     + "V458__subcontract_make_before_order.sql");
     private static final Path RESET = Path.of("ops/reset_business_data.sql");
+    private static final Path V798 = Path.of(
+            "src/main/resources/db/migration/V798__subcontract_step_draw.sql");
 
     private static String compact(Path path) throws Exception {
         return Files.readString(path, StandardCharsets.UTF_8)
@@ -144,14 +146,22 @@ class SubcontractMakeBeforeOrderMigrationContractTest {
                 .contains("trg_audit_preplan_subcontract_make_task_batches");
     }
 
+    /**
+     * ADR-143 §五：V798 删除前置自制账本表; 重置策略随之不再登记它们(登记了不存在的表反而会被策略比对拒绝),
+     * 历史目录照旧接受 V458。
+     */
     @Test
-    void resetRegistersBothLedgerTablesAsClearAndCatalogAcceptsV458()
+    void resetDropsTheLedgerTablesRemovedByV798AndCatalogStillAcceptsV458()
             throws Exception {
         String reset = compact(RESET);
+        String v798 = compact(V798);
 
+        assertThat(v798)
+                .contains("drop table preplan_subcontract_make_task_batches;")
+                .contains("drop table preplan_subcontract_make_tasks;");
         assertThat(reset)
-                .contains("('preplan_subcontract_make_task_batches', 'clear')")
-                .contains("('preplan_subcontract_make_tasks', 'clear')")
+                .doesNotContain("'preplan_subcontract_make_task_batches'")
+                .doesNotContain("'preplan_subcontract_make_tasks'")
                 .contains("(458, 420)");
     }
 }

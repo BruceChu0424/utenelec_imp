@@ -36,7 +36,6 @@ import '../../../components/buttons/uten_import_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/forms/maker_audit_fields.dart';
 import '../../../components/inputs/uten_date_field.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -66,7 +65,6 @@ import '../../../shared/attachments/pending_attachment_flow.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
-import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -74,7 +72,6 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/commercial_terms_batch_sheet.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/order_duplicate_goods_review.dart';
-import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
@@ -134,7 +131,6 @@ class _SubcontractOrderEditPageState
   DateTime _billDate = ChinaDateTime.today();
   DateTime? _deliverDate;
   String? _purchaserId;
-  String? _warehouseId;
   final Map<String, UtenEmployeePickerItem> _empCache = {};
 
   final _grid = UtenEditableGridController<SubcontractGridRow>();
@@ -148,6 +144,10 @@ class _SubcontractOrderEditPageState
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
+
+  /// 服务端标「缺 BOM」的委外件(ADR-143 §二.3)：草稿照存，提交财务会被拒，
+  /// 明细行标红并提示等研发完善。
+  Set<String> _bomMissingGoodsIds = const {};
   // 币种默认 (人民币 id)：主档没有默认币种时的回落默认。
   String? _defaultCurrencyId;
   int _termsLoadGeneration = 0;
@@ -189,7 +189,6 @@ class _SubcontractOrderEditPageState
     'text': draftTextValues(_draftHeaderText),
     'billDate': _billDate.toIso8601String(),
     'purchaserId': _purchaserId,
-    'warehouseId': _warehouseId,
     'deliverDate': _deliverDate?.toIso8601String(),
     'employees': draftEmployees(_empCache),
     'rows': draftGridRows(_grid, (row) => row.exportDraft()),
@@ -206,7 +205,6 @@ class _SubcontractOrderEditPageState
     _billDate =
         DateTime.tryParse(data['billDate'] as String? ?? '') ?? _billDate;
     _purchaserId = data['purchaserId'] as String?;
-    _warehouseId = data['warehouseId'] as String?;
     _deliverDate = DateTime.tryParse(data['deliverDate'] as String? ?? '');
     restoreDraftEmployees(_empCache, data['employees']);
     restoreDraftGrid(
@@ -449,10 +447,13 @@ class _SubcontractOrderEditPageState
         _billDate = DateTime.tryParse(d.billDate!) ?? _billDate;
       }
       _purchaserId = d.purchaserId;
-      _warehouseId = d.warehouseId;
       _deliverDate = _parseDate(d.deliverDate);
       _makerName = d.makerName;
       _createdAt = d.createdAt;
+      _bomMissingGoodsIds = {
+        for (final it in d.items)
+          if (it.bomMissing && it.goodsId != null) it.goodsId!,
+      };
       final rows = <SubcontractGridRow>[];
       for (final it in d.items) {
         final row =
@@ -1273,7 +1274,6 @@ class _SubcontractOrderEditPageState
       'billDate': _fmt(_billDate),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'purchaserId': _purchaserId,
-      'warehouseId': _warehouseId,
       if (_deliverDate != null) 'deliverDate': _fmt(_deliverDate!),
       'items': itemsBody,
     };
@@ -1556,29 +1556,6 @@ class _SubcontractOrderEditPageState
                                           onChanged: (d) =>
                                               setState(() => _deliverDate = d),
                                         ),
-                                        if (_grid.rows.any(
-                                          (row) => !row.sourceLocked,
-                                        ))
-                                          UtenDropdownField(
-                                            key: const Key(
-                                              'subcontract-preparation-warehouse',
-                                            ),
-                                            label: workflowFieldText(
-                                              context,
-                                            ).subcontractPreparationWarehouse,
-                                            info: workflowFieldText(
-                                              context,
-                                            ).subcontractPreparationWarehouseHint,
-                                            value: _warehouseId,
-                                            enabled: !_saving,
-                                            items: warehouseHierarchyItems(
-                                              names.warehouseHierarchy,
-                                              currentValue: _warehouseId,
-                                            ),
-                                            onChanged: (id) => setState(
-                                              () => _warehouseId = id,
-                                            ),
-                                          ),
                                       ],
                                     ),
                                     const SizedBox(height: UtenSpacing.s12),
@@ -1658,6 +1635,7 @@ class _SubcontractOrderEditPageState
                               ],
                             ),
                           ),
+                          _bomMissingHint(theme),
                           // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
                           Builder(
                             builder: (_) {
@@ -1695,6 +1673,11 @@ class _SubcontractOrderEditPageState
                                   forceVisibleColumnKeys: {
                                     ...filledBusinessColumnKeys(_grid.rows),
                                   },
+                                  // 缺 BOM 的委外件行标红(提示见表格上方)。
+                                  rowColor: (row) => _rowBomMissing(row)
+                                      ? theme.colorScheme.errorContainer
+                                            .withValues(alpha: 0.42)
+                                      : null,
                                   controller: _grid,
                                   stickyHeaderPinned: _gridPinned,
                                   initialColumnOrder: columnPrefs?.order,
@@ -1840,6 +1823,45 @@ class _SubcontractOrderEditPageState
               ),
           ],
         ),
+      ),
+    );
+  }
+
+  bool _rowBomMissing(SubcontractGridRow row) {
+    final goodsId = row.goods?.id;
+    return goodsId != null && _bomMissingGoodsIds.contains(goodsId);
+  }
+
+  /// 缺 BOM 的委外件红字提示(ADR-143 §二.3)：草稿照存；提交财务时服务端拒绝并
+  /// 通知研发完善，研发保存 BOM 后再提交。
+  Widget _bomMissingHint(ThemeData theme) {
+    final rows = _grid.rows;
+    final labels = [
+      for (var i = 0; i < rows.length; i++)
+        if (_rowBomMissing(rows[i]))
+          '第 ${i + 1} 行(${rows[i].goods!.name ?? rows[i].goods!.code ?? '该委外件'})',
+    ];
+    if (labels.isEmpty) return const SizedBox.shrink();
+    final color = theme.colorScheme.error;
+    return Padding(
+      key: const Key('subcontract-order-bom-missing-hint'),
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 18, color: color),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              '${labels.join('、')}缺 BOM，研发完善后才能提交财务。'
+              '草稿可以先保存；提交财务时系统会通知研发完善 BOM。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

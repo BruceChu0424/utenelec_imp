@@ -79,7 +79,7 @@ class _MaterialSupplyProgressDialogState
         widget.material.goodsName ?? widget.material.goodsCode ?? '当前物料';
     final dialogTitle = switch (_progress?.route) {
       'MAKE' => '自制生产流程',
-      'SUBCONTRACT' => '委外准备与加工进度',
+      'SUBCONTRACT' => '委外领料与加工进度',
       _ => '供给全链路进度',
     };
     return AlertDialog(
@@ -170,9 +170,6 @@ class _MaterialSupplyProgressDialogState
       'SUBCONTRACT_ORDER'
           when permissions.contains(Perm.subcontractOrderView) =>
         RoutePath.subcontractDocDetail('orders', documentId),
-      'SUBCONTRACT_OUTBOUND_PLAN'
-          when permissions.contains(Perm.subcontractOutboundView) =>
-        RouteName.warehouseSubcontractOutboundEdit(documentId),
       'SUBCONTRACT_MATERIAL_ISSUE'
           when permissions.contains(Perm.subcontractMaterialIssueView) =>
         RoutePath.subcontractDocDetail('material-issues', documentId),

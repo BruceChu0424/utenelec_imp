@@ -54,7 +54,6 @@ class _ProductionMaterialAnalysisHistoryPageState
     'STOCK': '备库',
     'OTHER': '其他',
     'MAKE_COMPONENT': '自制子需求',
-    'SUBCONTRACT_PREPARATION': '委外前置自制',
   };
 
   final _search = TextEditingController();

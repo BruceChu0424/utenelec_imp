@@ -10,86 +10,58 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Read-only projection for subcontract target items that have physically left
- * the company but have not yet physically returned.
+ * Read-only projection for subcontract work that the supplier can still turn into
+ * the subcontracted item but has not physically returned yet (ADR-143 §三.6).
  *
- * <p>New V436 target-item flows use the V221 supplier-held ledger's
- * {@code supplier_ending} quantity. It already subtracts return-to-factory
- * consumption, material return and approved loss, so those terminal facts do
- * not produce false overdue warnings. Historical component flows cannot compare
- * BOM component quantities with processed-parent quantity, so they retain the
- * order-line completion equation, but only after an approved subcontract
- * outbound exists for that exact line. IQC is deliberately absent: once the
- * item is physically back, quality owns its separate authoritative queue.
+ * <p>Per order item with frozen draw-plan lines: unreturned = returnable sets
+ * ({@code fn_subcontract_returnable_qty}: complete sets the supplier can make from the
+ * material we actually sent, minus material returns and approved waste) minus the
+ * material-basis quantity of effective approved receipts. Never sums materials of
+ * different kinds. Approved order items always have plan lines; one without any has
+ * returnable 0 and produces no reminder. IQC is deliberately absent: once the item is
+ * physically back, quality owns its separate authoritative queue.
  */
 final class SubcontractReturnDueFacts {
 
     private static final String PROJECTION = """
-            WITH flow_by_item AS (
-                SELECT plan_item.order_item_id,
-                       BOOL_OR(plan_item.flow_mode IN (
-                           'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND',
-                           'COMPONENT_OUTBOUND'))
-                           AS target_item_flow
-                FROM subcontract_material_plan_items plan_item
-                WHERE plan_item.is_deleted = FALSE
-                GROUP BY plan_item.order_item_id
-            ),
-            approved_outbound_by_item AS (
-                SELECT issue_item.order_item_id,
-                       COUNT(*) AS approved_outbound_lines,
-                       COALESCE(SUM(
-                           CASE WHEN plan_item.flow_mode IN (
-                                   'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
-                                THEN GREATEST(
-                                    COALESCE(issue_item.supplier_ending, 0), 0)
-                                -- V581：COMPONENT 行在供应商处的是**子件**，按冻结单耗
-                                -- 折回目标件订货单位后才和其余流向同量纲可加。
-                                WHEN plan_item.flow_mode = 'COMPONENT_OUTBOUND'
-                                 AND COALESCE(issue_item.frozen_unit_qty, 0) > 0
-                                THEN GREATEST(
-                                    COALESCE(issue_item.supplier_ending, 0), 0)
-                                    / issue_item.frozen_unit_qty
-                                ELSE 0 END
-                       ), 0) AS target_supplier_ending
-                FROM subcontract_material_issue_items issue_item
-                JOIN subcontract_material_issues issue
-                  ON issue.id = issue_item.issue_id
-                 AND issue.status = 1
-                 AND issue.is_deleted = FALSE
-                LEFT JOIN subcontract_material_plan_items plan_item
-                  ON plan_item.id = issue_item.plan_item_id
-                 AND plan_item.is_deleted = FALSE
-                WHERE issue_item.order_item_id IS NOT NULL
-                  AND issue_item.is_deleted = FALSE
-                GROUP BY issue_item.order_item_id
-            )
             SELECT order_header.id AS order_id,
                    order_header.bill_no,
                    order_header.deliver_date,
                    order_header.maker_id,
                    COALESCE(SUM(outbound.approved_outbound_lines), 0)
                        AS approved_outbound_lines,
-                   COALESCE(SUM(
-                       CASE WHEN COALESCE(flow.target_item_flow, FALSE)
-                            THEN outbound.target_supplier_ending
-                            ELSE 0 END
-                   ), 0) AS new_unreturned_base,
-                   COUNT(*) FILTER (
-                       WHERE outbound.approved_outbound_lines > 0
-                         AND NOT COALESCE(flow.target_item_flow, FALSE)
-                         AND COALESCE(order_item.qty, 0)
-                             - COALESCE(order_item.received_qty, 0)
-                             + COALESCE(order_item.returned_qty, 0) > 0
-                   ) AS legacy_unreturned_lines
+                   COALESCE(SUM(GREATEST(
+                       COALESCE(supply.returnable_qty, 0)
+                       - COALESCE(received.material_basis_qty, 0), 0)), 0)
+                       AS unreturned_qty
             FROM subcontract_orders order_header
             JOIN subcontract_order_items order_item
               ON order_item.order_id = order_header.id
              AND order_item.is_deleted = FALSE
-            LEFT JOIN flow_by_item flow
-              ON flow.order_item_id = order_item.id
-            LEFT JOIN approved_outbound_by_item outbound
-              ON outbound.order_item_id = order_item.id
+            CROSS JOIN LATERAL (
+                SELECT fn_subcontract_returnable_qty(order_item.id) AS returnable_qty
+            ) supply
+            LEFT JOIN LATERAL (
+                SELECT COUNT(*) AS approved_outbound_lines
+                FROM subcontract_material_issue_items issue_item
+                JOIN subcontract_material_issues issue
+                  ON issue.id = issue_item.issue_id
+                 AND issue.status = 1
+                 AND issue.is_deleted = FALSE
+                WHERE issue_item.order_item_id = order_item.id
+                  AND issue_item.plan_item_id IS NOT NULL
+                  AND issue_item.is_deleted = FALSE
+            ) outbound ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT SUM(receipt_item.material_basis_qty) AS material_basis_qty
+                FROM subcontract_receipt_items receipt_item
+                JOIN subcontract_receipts receipt
+                  ON receipt.id = receipt_item.receipt_id
+                 AND receipt.status = 1
+                 AND receipt.is_deleted = FALSE
+                WHERE receipt_item.order_item_id = order_item.id
+                  AND receipt_item.is_deleted = FALSE
+            ) received ON TRUE
             WHERE order_header.status = 1
               AND order_header.is_deleted = FALSE
               AND order_header.deliver_date IS NOT NULL
@@ -132,8 +104,7 @@ final class SubcontractReturnDueFacts {
                 NativeValueConverters.toLocalDate(row.get("deliver_date")),
                 (UUID) row.get("maker_id"),
                 number(row.get("approved_outbound_lines")),
-                NativeValueConverters.toBigDecimal(row.get("new_unreturned_base")),
-                number(row.get("legacy_unreturned_lines")));
+                NativeValueConverters.toBigDecimal(row.get("unreturned_qty")));
     }
 
     private static long number(Object value) {
@@ -150,13 +121,12 @@ final class SubcontractReturnDueFacts {
             LocalDate deliverDate,
             UUID makerEmployeeId,
             long approvedOutboundLines,
-            BigDecimal newUnreturnedBase,
-            long legacyUnreturnedLines) {
+            BigDecimal unreturnedQty) {
 
         boolean requiresReminder() {
             return approvedOutboundLines > 0
-                    && (newUnreturnedBase.signum() > 0
-                    || legacyUnreturnedLines > 0);
+                    && unreturnedQty != null
+                    && unreturnedQty.signum() > 0;
         }
     }
 }

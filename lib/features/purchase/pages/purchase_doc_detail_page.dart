@@ -1486,6 +1486,20 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                         .join('、'),
                   ),
               ],
+              // ADR-144：订货行允许超收%（累计收货在 数量×(1+允许超收) 以内照常入库立应付，
+              // 超出部分才转财务）。比例不是价格，不随价格遮蔽。
+              if (_cfg.itemHasAllowedOverReceiptPct)
+                MasterColumnDef(
+                  key: 'allowedOverReceiptPct',
+                  label: '允许超收%',
+                  width: 100,
+                  type: 'number',
+                  info:
+                      '供应商累计送货最多可到 数量×(1+允许超收%)，在这以内照常入库、立应付；超出部分才转财务审批。未设 = 不允许超收。',
+                  value: (it) => it.allowedOverReceiptPct == null
+                      ? '未设'
+                      : purchasePercentText(it.allowedOverReceiptPct!),
+                ),
               if (_cfg.showReceived)
                 MasterColumnDef(
                   key: 'received',

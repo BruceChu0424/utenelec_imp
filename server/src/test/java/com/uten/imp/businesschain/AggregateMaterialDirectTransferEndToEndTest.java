@@ -215,25 +215,6 @@ class AggregateMaterialDirectTransferEndToEndTest {
                 WHERE peg.source_stock_document_id=?""",Integer.class,inbound));
     }
 
-    @Test void subcontractPreMakeNeverGoesToTheNextProcessAndItsWarehouseReasonSaysWhy(){
-        var c=flow.create(true,true,"1");flow.setRoute(c,c.common(),"SUBCONTRACT");
-        var raw=flow.input(c,c.common(),"SUBCONTRACT","3",false);
-        var group=new GroupInput(raw.clientGroupKey(),raw.materialLineIds(),raw.route(),raw.qty(),false,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
-        var batch=flow.writer.submit(c.analysis(),flow.command(c,List.of(group))).batches().getFirst();
-        UUID source=segment(batch.planId());
-        UUID worker=worker(c);flow.fixture.loginAs(worker);
-        var listing=direct().candidates(source,c.common(),null);
-        assertTrue(listing.candidates().isEmpty());
-        assertEquals("SUBCONTRACT_ROUTE",listing.unavailableReasonCode());
-        assertTrue(listing.unavailableReason().contains("是委外件"),listing.unavailableReason());
-        flow.fixture.loginAs(c.world().superAdminUserId());
-        flow.produce(c,batch);
-        assertEquals(List.of("SUBCONTRACT_ROUTE"),db.queryForList("""
-                SELECT DISTINCT output_route_reason FROM production_daily_report_items
-                WHERE execution_segment_id=? AND NOT is_deleted AND NOT is_public_output""",String.class,source));
-        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_daily_report_items WHERE execution_segment_id=? AND destination='WORKSHOP'",Integer.class,source));
-    }
-
     @Test void partialParentCannotTakeTheOldChildQuantityRetainedByItsOriginalParent(){
         var c=flow.createWithChild("1.5");var initial=flow.analyses.detail(c.analysis());
         var child=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.child())).findFirst().orElseThrow();

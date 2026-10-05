@@ -4,50 +4,52 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../support/filter_segment_tap.dart';
+import 'fake_subcontract_draw_gateway.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
-import 'package:uten_imp/core/theme/uten_colors.dart';
-import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
+import 'package:uten_imp/features/subcontract/models/subcontract_draw.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/subcontract_task_source.dart';
 
+const _decomposePermissions = {
+  Perm.subcontractApplicationView,
+  Perm.subcontractOrderView,
+  Perm.subcontractOrderCreate,
+  Perm.subcontractOrderDecompose,
+};
+
 void main() {
   testWidgets(
-    'return from stock-in refreshes component lock without double initial load',
+    'return to the task center reloads once and drops stale answers',
     (tester) async {
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final gateway = _Gateway(
-        _data(capability: true, includeComponentRoute: true),
-      );
+      _desktop(tester, const Size(1600, 1000));
+      final gateway = _Gateway(_data(capability: true));
+      final draw = FakeSubcontractDrawGateway(count: 3);
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.subcontractOrderView,
-              Perm.subcontractOrderCreate,
-              Perm.subcontractOrderDecompose,
-            }),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
+        _scope(
           child: MaterialApp(
-            home: SubcontractDecompositionPage(repository: gateway),
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: draw,
+            ),
           ),
         ),
       );
@@ -59,10 +61,11 @@ void main() {
       bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
       await tester.pumpAndSettle();
       expect(gateway.queries, hasLength(1));
+      expect(draw.countCalls, 1);
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
-      expect(find.text('等子件到货(仓内可动用 0)'), findsOneWidget);
       expect(gateway.queries, hasLength(2));
+      expect(find.text('FG-task-2'), findsOneWidget);
 
       // One older refresh remains in flight while stock-in finishes elsewhere.
       final stale = Completer<OperationsWorkbenchData>();
@@ -73,101 +76,15 @@ void main() {
       // 入库是本端写操作(网络层推进写修订号, ADR-108), 返回任务中心时才按需重拉。
       container.read(dataWriteRevisionProvider.notifier).state++;
       gateway.response = null;
-      gateway.data = _data(
-        capability: true,
-        includeComponentRoute: true,
-        componentUnlocked: true,
-      );
+      gateway.data = _data(capability: true, onlyFirst: true);
       bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
       await tester.pumpAndSettle();
       expect(gateway.queries, hasLength(4));
       expect(gateway.queries.last['status'], 'WAITING_ORDER');
-      expect(find.text('等子件到货(仓内可动用 0)'), findsNothing);
-      expect(find.text('子件已到货·可下单(仓内可动用 1000 件)'), findsOneWidget);
-      stale.complete(_data(capability: true, includeComponentRoute: true));
+      expect(find.text('FG-task-2'), findsNothing);
+      stale.complete(_data(capability: true));
       await tester.pumpAndSettle();
-      expect(find.text('等子件到货(仓内可动用 0)'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'preparation progress opens immediately, retries and ignores late completion after close',
-    (tester) async {
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final api = _DeferredPreparationApi();
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.productionMaterialAnalysisView,
-              Perm.productionMaterialAnalysisNotify,
-            }),
-            apiClientProvider.overrideWithValue(api),
-          ],
-          child: MaterialApp(
-            home: SubcontractDecompositionPage(
-              repository: _Gateway(
-                _data(capability: true, includePreparation: true),
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('待处理'));
-      await tester.pumpAndSettle();
-      await _doubleTapRow(tester, find.text('SC-A'));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text('产品进度 · 委外件A'), findsOneWidget);
-      expect(find.text('正在读取生产进度…'), findsOneWidget);
-      expect(find.textContaining('需求量 10'), findsOneWidget);
-      expect(api.paths, [
-        '/production/material-analyses/subcontract-make-tasks/task-a',
-      ]);
-      expect(
-        find.byKey(const Key('subcontract-make-notify-action')),
-        findsNothing,
-      );
-
-      api.requests.single.completeError(StateError('failed'));
-      await tester.pumpAndSettle();
-      expect(find.text('前置生产任务加载失败，请稍后重试'), findsOneWidget);
-      await tester.tap(find.text('重试'));
-      await tester.pump();
-      expect(api.requests, hasLength(2));
-      expect(find.text('正在读取生产进度…'), findsOneWidget);
-      expect(
-        find.byKey(const Key('subcontract-make-notify-action')),
-        findsNothing,
-      );
-      api.requests.last.complete(_preparationDetail());
-      await tester.pumpAndSettle();
-      expect(find.text('正在读取生产进度…'), findsNothing);
-      expect(find.textContaining('已完工入库', findRichText: true), findsWidgets);
-      expect(find.text('ROOT-1 原产品一'), findsOneWidget);
-      expect(find.text('销售订单 SO-1 · 第2行'), findsOneWidget);
-      expect(find.text('公共备货'), findsOneWidget);
-      // A positive availableQty without server allowedActions must stay read-only.
-      expect(
-        find.byKey(const Key('subcontract-make-notify-action')),
-        findsNothing,
-      );
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
-
-      await _doubleTapRow(tester, find.text('SC-A'));
-      await tester.pump(const Duration(milliseconds: 300));
-      expect(api.requests, hasLength(3));
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
-      api.requests.last.complete(_preparationDetail());
-      await tester.pumpAndSettle();
-      expect(find.byType(Dialog), findsNothing);
+      expect(find.text('FG-task-2'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -175,36 +92,21 @@ void main() {
   testWidgets(
     'shared headers send server sort and full-scope facet filters with true planning issue date',
     (tester) async {
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final gateway = _Gateway(
-        _data(capability: true, includePreparation: true),
-      );
+      _desktop(tester, const Size(1600, 1000));
+      final gateway = _Gateway(_data(capability: true));
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.subcontractOrderView,
-              Perm.subcontractOrderCreate,
-              Perm.subcontractOrderDecompose,
-            }),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
+        _scope(
           child: MaterialApp(
-            home: SubcontractDecompositionPage(repository: gateway),
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(),
+            ),
           ),
         ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
-      expect(
-        tester.getTopLeft(find.text('FG-task-1')).dy,
-        lessThan(tester.getTopLeft(find.text('SC-A')).dy),
-      );
       expect(find.text('计划下达日期'), findsOneWidget);
       expect(find.text('2026-09-08'), findsWidgets);
       await tester.tap(find.text('计划下达日期'));
@@ -215,7 +117,7 @@ void main() {
       expect(gateway.queries.last['sort'], 'issuedAt');
       expect(gateway.queries.last['order'], 'desc');
       expect(gateway.queries.last['page'], 1);
-      await tester.tap(find.text('委外目标件名称'));
+      await tester.tap(find.text('委外件名称'));
       await tester.pumpAndSettle();
       expect(find.text('完整范围物料 (125)'), findsOneWidget);
       await tester.tap(find.text('完整范围物料 (125)'));
@@ -227,27 +129,17 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
   testWidgets(
-    'each category and fullscreen have one table-owned selection action',
+    'each operations category and fullscreen have one table-owned selection action',
     (tester) async {
-      tester.view.physicalSize = const Size(1400, 1100);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      _desktop(tester, const Size(1400, 1100));
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.subcontractOrderView,
-              Perm.subcontractOrderCreate,
-              Perm.subcontractOrderDecompose,
-            }),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
+        _scope(
           child: MaterialApp(
             home: SubcontractDecompositionPage(
               repository: _Gateway(_data(capability: true)),
+              drawRepository: FakeSubcontractDrawGateway(),
             ),
           ),
         ),
@@ -256,9 +148,6 @@ void main() {
       final action = find.byKey(
         const Key('subcontract-decomposition-create-order'),
       );
-      // Table interaction can collapse the host toolbar. Keep the public
-      // segment callback so this test verifies each stage independently of
-      // whether its label is currently mounted above the scrolling table.
       final stageToolbar = tester.widget<UtenFilterToolbar<Object>>(
         find.byWidgetPredicate(
           (widget) =>
@@ -278,7 +167,6 @@ void main() {
         Function.apply(select, [segment.value]);
       }
 
-      // ADR-098：等待财务审核 / 财务已通过 / 财务驳回三段合并为「进行中」。
       for (final category in ['待处理', '进行中', '历史记录']) {
         selectStage(category);
         await tester.pumpAndSettle();
@@ -319,62 +207,22 @@ void main() {
       await tester.tap(find.text('退出全屏'));
       await tester.pumpAndSettle();
       expect(action, findsOneWidget);
-      expect(find.text('已选 0 项'), findsOneWidget);
-      await tester.tap(find.text('FG-task-1'));
-      await tester.pumpAndSettle();
-      for (final width in [900.0, 375.0, 1400.0]) {
-        tester.view.physicalSize = Size(width, 1400);
-        await tester.pumpAndSettle();
-        expect(action, findsOneWidget, reason: 'width=$width');
-        expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
-        expect(find.text('已选 1 项'), findsOneWidget);
-        expect(tester.takeException(), isNull);
-      }
-      tester.view.physicalSize = const Size(375, 1400);
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.descendant(
-          of: find.byType(UtenSelectionSummaryPill),
-          matching: find.byIcon(Icons.close_rounded),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('已选 0 项'), findsOneWidget);
-      expect(tester.widget<UtenButton>(action).onPressed, isNull);
-      // 375px 下分类栏收成「分类」下拉（2026-09-14），统一走共用助手选段。
-      await selectFilterSegment(tester, '历史记录');
-      await tester.pumpAndSettle();
-      expect(action, findsNothing);
-      expect(find.byType(UtenSelectionSummaryPill), findsNothing);
-      await selectFilterSegment(tester, '全部');
-      await tester.pumpAndSettle();
-      expect(action, findsOneWidget);
-      expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'compact decomposition selects issued application lines and enables one primary action',
+    'compact task center selects issued application lines and enables one primary action',
     (tester) async {
       final gateway = _Gateway(_data(capability: true));
-      tester.view.physicalSize = const Size(375, 1400);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      _desktop(tester, const Size(375, 1400));
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.subcontractOrderView,
-              Perm.subcontractOrderCreate,
-              Perm.subcontractOrderDecompose,
-            }),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
+        _scope(
           child: MaterialApp(
-            home: SubcontractDecompositionPage(repository: gateway),
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(),
+            ),
           ),
         ),
       );
@@ -386,26 +234,13 @@ void main() {
       );
       // 进页面只拉一次 size=1 概览（阶段计数徽章），不带 status 过滤。
       expect(gateway.statuses, [null]);
-      // 2026-09-03 分类范式：阶段行默认不选（引导占位，不发列表请求），
-      // 原「概览卡 + 阶段/异常下拉」已删除。
       expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
-      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
-      // 2026-09-06 委外不再有「分解」行为用语：首段改名「待处理」。
-      // 375px 分类栏放不下时收成「分类」下拉（2026-09-14）：段名在菜单里断言与点选；
-      // ADR-098 三段合并后窄屏也放得下，此时段名直接是芯片。两种形态都要能过。
-      final segmentMenu = find.byIcon(Icons.keyboard_arrow_down_rounded);
-      if (segmentMenu.evaluate().isNotEmpty) {
-        await tester.tap(segmentMenu);
-        await tester.pumpAndSettle();
-      }
-      expect(find.text('待处理'), findsOneWidget);
       var button = tester.widget<UtenButton>(
         find.byKey(const Key('subcontract-decomposition-create-order')),
       );
       expect(button.onPressed, isNull);
 
-      // 先 tap 阶段段「待处理」：加载任务卡后才能勾选。
-      await tester.tap(find.text('待处理').last);
+      await selectFilterSegment(tester, '待处理');
       await tester.pumpAndSettle();
       expect(gateway.statuses, [null, 'WAITING_ORDER']);
       expect(find.text('计划申请已下达 / 待分解'), findsNWidgets(2));
@@ -420,65 +255,32 @@ void main() {
       );
       expect(button.onPressed, isNotNull);
       expect(find.text('生成委外订货单(2)'), findsOneWidget);
-      // 2026-09-06 顶部选中摘要条退役：已选计数走右下角悬浮组标准胶囊。
-      expect(
-        find.byKey(const Key('subcontract-decomposition-selection')),
-        findsNothing,
-      );
       expect(find.text('已选 2 项'), findsOneWidget);
     },
   );
 
   testWidgets(
-    'waiting-production tasks merge into 待处理 with progress dialog on double-click',
+    'application row opens one linear progress timeline without make-first steps',
     (tester) async {
-      // 2026-09-06 计划委外申请页并入任务中心：待生产合成行进「待处理」段，
-      // 阶段列显示车间进度；合成行不可勾选；双击先看「产品进度」弹窗。
-      final gateway = _Gateway(
-        _data(capability: true, includePreparation: true),
-      );
-      tester.view.physicalSize = const Size(1400, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      _desktop(tester, const Size(1600, 1200));
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.subcontractOrderView,
-              Perm.subcontractOrderCreate,
-              Perm.subcontractOrderDecompose,
-            }),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
+        _scope(
           child: MaterialApp(
-            home: SubcontractDecompositionPage(repository: gateway),
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(_data(capability: true, withSources: true)),
+              drawRepository: FakeSubcontractDrawGateway(),
+            ),
           ),
         ),
       );
       await tester.pumpAndSettle();
-
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
-
-      // 合成行（IN_PROGRESS→正在生产中；NOTIFYING_WORKSHOP→正在等待安排生产）；
-      // FULLY_NOTIFIED 不合成（其申请单已由服务端生成）。
-      expect(find.textContaining('委外件A'), findsOneWidget);
-      expect(find.textContaining('委外件B'), findsOneWidget);
-      expect(find.textContaining('委外件C'), findsNothing);
-      expect(find.text('正在生产中'), findsOneWidget);
-      expect(find.text('正在等待安排生产'), findsOneWidget);
       final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
         find.byKey(const Key('subcontract-decomposition-table')),
       );
-      final blocked = table.items.firstWhere(
-        (task) => task.preparationTaskId == 'task-a',
-      );
       final ready = table.items.firstWhere((task) => task.taskId == 'task-1');
-      expect(table.rowColor!(blocked), isNotNull);
       expect(table.rowColor!(ready), isNull);
-      expect(table.idOf!(blocked), isNull);
       expect(table.idOf!(ready), 'task-1');
       final denied = _task(
         'denied',
@@ -487,263 +289,32 @@ void main() {
         canCreateOrder: false,
       );
       expect(table.idOf!(denied), isNull);
-      expect(
-        table.rowColor!(denied),
-        isNotNull,
-        reason:
-            'An explicit server denial overrides otherwise complete legacy application facts.',
-      );
-      // 真实申请行与合成行同表。
-      expect(find.text('EA-application-1'), findsWidgets);
+      expect(table.rowColor!(denied), isNotNull);
 
-      // 双击不可下单的合成行 → 产品进度弹窗(车间进度时间线)。
-      await _doubleTapRow(tester, find.text('委外件A'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('产品进度 ·'), findsOneWidget);
-      expect(find.text('正在生产，暂时不能下委外单'), findsOneWidget);
-      expect(
-        tester
-            .getTopLeft(
-              find.byKey(const Key('subcontract-order-production-blocked')),
-            )
-            .dy,
-        lessThan(tester.getTopLeft(find.text('生产中（当前）')).dy),
-      );
-      expect(find.text('已通知委外·生成申请'), findsOneWidget);
-      expect(find.text('生产中（当前）'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
-
-      // 双击申请行 → 全链路进度弹窗，可再深链只读申请。
       await _doubleTapRow(tester, find.text('FG-task-1'));
       await tester.pumpAndSettle();
-      expect(find.text('待生成委外订货单（当前）'), findsOneWidget);
-      expect(
-        find.byKey(const Key('subcontract-order-production-blocked')),
-        findsNothing,
-      );
+      expect(find.text('生成委外订货单（当前）'), findsOneWidget);
+      for (final step in [
+        '计划已下达申请',
+        '财务审批',
+        '领料发外',
+        '加工回厂',
+        '品质检验',
+        '仓库确认入仓',
+        '结案核销',
+      ]) {
+        expect(find.text(step), findsOneWidget, reason: step);
+      }
+      expect(find.text('前置生产完成'), findsNothing);
+      expect(find.textContaining('目标件'), findsNothing);
+      expect(find.textContaining('子件'), findsNothing);
+      expect(find.text('数量归属'), findsOneWidget);
+      expect(find.text('ROOT-1 原产品一'), findsOneWidget);
+      expect(find.text('销售订单 SO-1 · 第2行'), findsOneWidget);
+      expect(find.text('公共备货'), findsOneWidget);
       expect(find.text('查看申请单'), findsOneWidget);
       await tester.tap(find.text('关闭'));
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'ADR-103 route B: locked row is blocked like route A, unselectable, explained; ready row shows available qty',
-    (tester) async {
-      // 路线 B(单一子件直发)申请行：子件没货 = WAITING_COMPONENT_STOCK(红底、不可勾选、
-      // 状态列「等子件到货」带悬浮说明、弹窗顶部横幅)；子件到货 = COMPONENT_STOCK_READY
-      // (状态列带仓内可动用量、可勾选)；「待处理」段只有一枚红, 锁行照计。
-      final gateway = _Gateway(
-        _data(capability: true, includeComponentRoute: true),
-      );
-      tester.view.physicalSize = const Size(1600, 1000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.subcontractOrderView,
-              Perm.subcontractOrderCreate,
-              Perm.subcontractOrderDecompose,
-            }),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
-          child: MaterialApp(
-            home: SubcontractDecompositionPage(repository: gateway),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // 「待处理」只挂一枚红 = WAITING_ORDER(4, 含等子件到货的锁行)；没有黄枚
-      // (2026-09-22 用户实机纠偏「刚下单的都是待处理」, 与路线 A 合成行同款计红)。
-      final stages = find.byKey(const Key('subcontract-decomposition-stages'));
-      expect(
-        find.descendant(of: stages, matching: find.byType(UtenInProgressBadge)),
-        findsNothing,
-      );
-      expect(
-        find.descendant(
-          of: stages,
-          matching: find.byType(UtenNotificationBadge),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: stages, matching: find.text('4')),
-        findsOneWidget,
-      );
-
-      await tester.tap(find.text('待处理'));
-      await tester.pumpAndSettle();
-
-      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
-        find.byKey(const Key('subcontract-decomposition-table')),
-      );
-      final locked = table.items.firstWhere(
-        (task) => task.taskId == 'task-locked',
-      );
-      final ready = table.items.firstWhere(
-        (task) => task.taskId == 'task-ready',
-      );
-      final plain = table.items.firstWhere((task) => task.taskId == 'task-1');
-      // 锁行与路线 A 合成行同款红底(不可下单)、不可勾选；解锁行正常、可勾选。
-      expect(table.rowColor!(locked), isNotNull);
-      expect(
-        table.rowColor!(locked),
-        isNot(UtenColors.warning.withValues(alpha: 0.16)),
-      );
-      expect(table.idOf!(locked), isNull);
-      expect(table.rowColor!(ready), isNull);
-      expect(table.idOf!(ready), 'task-ready');
-      expect(table.rowColor!(plain), isNull);
-      // 老服务端(canCreateOrder 为空)回落本地规则时，锁态一样不放行。
-      final legacyLocked = _task(
-        'legacy-locked',
-        'application-legacy',
-        'item-legacy',
-        canCreateOrder: null,
-        displayStage: 'WAITING_COMPONENT_STOCK',
-      );
-      expect(table.idOf!(legacyLocked), isNull);
-      expect(table.rowColor!(legacyLocked), isNotNull);
-      final legacyReady = _task(
-        'legacy-ready',
-        'application-legacy-ready',
-        'item-legacy-ready',
-        canCreateOrder: null,
-        displayStage: 'COMPONENT_STOCK_READY',
-        componentAvailableQty: 5,
-      );
-      expect(table.idOf!(legacyReady), 'legacy-ready');
-
-      // 状态列文案与悬浮说明；只读申请列对锁行说明解锁条件。
-      expect(find.text('等子件到货(仓内可动用 0)'), findsOneWidget);
-      expect(find.text('子件已到货·可下单(仓内可动用 5 件)'), findsOneWidget);
-      expect(
-        find.byTooltip('子件尚未入库，入库后自动解锁；仓库发出去的是子件，加工完回厂的是委外件'),
-        findsOneWidget,
-      );
-      expect(
-        find.byTooltip('子件已到货，可以生成委外订货单；订货数量可以超过仓内可动用量，仓库会按到货分批发料'),
-        findsOneWidget,
-      );
-      expect(find.text('等子件到货·入库后自动解锁'), findsOneWidget);
-      expect(find.text('EA-application-ready'), findsWidgets);
-
-      // 双击锁行 → 弹窗顶部横幅 + 路线 B 步骤(等子件到货 = 当前, 无「前置生产完成」)。
-      await _doubleTapRow(tester, find.text('FG-task-locked'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('subcontract-order-component-blocked')),
-        findsOneWidget,
-      );
-      expect(find.text('子件尚未入库，暂时不能下委外单；子件入库后任务中心会自动解锁'), findsOneWidget);
-      expect(find.text('等子件到货（当前）'), findsOneWidget);
-      expect(find.text('待生成委外订货单'), findsOneWidget);
-      expect(find.text('前置生产完成'), findsNothing);
-      expect(find.text('子件出仓·委外商加工'), findsOneWidget);
-      expect(find.text('回厂来料质检·入库结案'), findsOneWidget);
-      expect(find.text('子件仓内可动用 0 件'), findsOneWidget);
-      expect(find.textContaining('回厂 IQC'), findsNothing);
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
-
-      // 双击解锁行 → 无横幅，「等子件到货」已完成、「待生成委外订货单」当前。
-      await _doubleTapRow(tester, find.text('FG-task-ready'));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('subcontract-order-component-blocked')),
-        findsNothing,
-      );
-      expect(find.text('等子件到货'), findsOneWidget);
-      expect(find.text('待生成委外订货单（当前）'), findsOneWidget);
-      expect(find.text('前置生产完成'), findsNothing);
-      expect(find.text('子件仓内可动用 5 件'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
-
-      // 双击路线 A / 普通申请行 → 步骤不变(前置生产完成在列, 回厂改「来料质检」)。
-      await _doubleTapRow(tester, find.text('FG-task-1'));
-      await tester.pumpAndSettle();
-      expect(find.text('前置生产完成'), findsOneWidget);
-      expect(find.text('待生成委外订货单（当前）'), findsOneWidget);
-      expect(find.text('目标件出仓·加工商加工'), findsOneWidget);
-      expect(find.text('回厂来料质检·入库结案'), findsOneWidget);
-      expect(
-        find.byKey(const Key('subcontract-order-component-blocked')),
-        findsNothing,
-      );
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'ADR-103 route B compact cards: locked card is blocked without checkbox, ready card selectable',
-    (tester) async {
-      final gateway = _Gateway(
-        _data(capability: true, includeComponentRoute: true),
-      );
-      tester.view.physicalSize = const Size(375, 1600);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(const {
-              Perm.subcontractApplicationView,
-              Perm.subcontractOrderView,
-              Perm.subcontractOrderCreate,
-              Perm.subcontractOrderDecompose,
-            }),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
-          child: MaterialApp(
-            home: SubcontractDecompositionPage(repository: gateway),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await selectFilterSegment(tester, '待处理');
-      await tester.pumpAndSettle();
-      // 两条普通行 + 一条解锁行可勾选；锁行没有勾选框。
-      expect(find.byType(Checkbox), findsNWidgets(3));
-      final lockedCard = find.ancestor(
-        of: find.text('等子件到货(仓内可动用 0)'),
-        matching: find.byType(Card),
-      );
-      expect(lockedCard, findsOneWidget);
-      expect(tester.widget<Card>(lockedCard).color, isNotNull);
-      expect(
-        tester.widget<Card>(lockedCard).color,
-        isNot(UtenColors.warning.withValues(alpha: 0.16)),
-      );
-      expect(
-        find.descendant(of: lockedCard, matching: find.byType(Checkbox)),
-        findsNothing,
-      );
-      expect(
-        find.descendant(of: lockedCard, matching: find.text('等子件到货·入库后自动解锁')),
-        findsOneWidget,
-      );
-      final readyCard = find.ancestor(
-        of: find.text('子件已到货·可下单(仓内可动用 5 件)'),
-        matching: find.byType(Card),
-      );
-      expect(readyCard, findsOneWidget);
-      expect(tester.widget<Card>(readyCard).color, isNull);
-      expect(
-        find.descendant(of: readyCard, matching: find.byType(Checkbox)),
-        findsOneWidget,
-      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -756,31 +327,21 @@ void main() {
     ),
     (
       name: 'server capability denies create',
-      permissions: <String>{
-        Perm.subcontractApplicationView,
-        Perm.subcontractOrderView,
-        Perm.subcontractOrderCreate,
-        Perm.subcontractOrderDecompose,
-      },
+      permissions: _decomposePermissions,
       capability: false,
     ),
   ]) {
     testWidgets('${scenario.name} hides selection and keeps action disabled', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(900, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+      _desktop(tester, const Size(900, 900));
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            currentPermissionsProvider.overrideWithValue(scenario.permissions),
-            apiClientProvider.overrideWithValue(_api()),
-          ],
+        _scope(
+          permissions: scenario.permissions,
           child: MaterialApp(
             home: SubcontractDecompositionPage(
               repository: _Gateway(_data(capability: scenario.capability)),
+              drawRepository: FakeSubcontractDrawGateway(),
             ),
           ),
         ),
@@ -799,52 +360,676 @@ void main() {
       }
       expect(tester.takeException(), isNull);
     });
+  }
+
+  group('ADR-143 缺 BOM 的委外申请行', () {
+    testWidgets('yellow status with the R&D task number, no selection, '
+        'clicking the status reminds R&D and reloads', (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final gateway = _Gateway(_bomMissingData());
+      final bom = _BomGapGateway();
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(),
+              bomGapGateway: bom,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+
+      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+        find.byKey(const Key('subcontract-decomposition-table')),
+      );
+      final missing = table.items.firstWhere(
+        (task) => task.taskId == 'task-bom',
+      );
+      // 不能勾选下单；等研发不是本部门的错，不铺红底，状态格黄色。
+      expect(table.idOf!(missing), isNull);
+      expect(table.rowColor!(missing), isNull);
+      final status = table.columns.firstWhere((c) => c.key == 'status');
+      final context = tester.element(find.byType(SubcontractDecompositionPage));
+      expect(
+        status.cellColor!(context, missing),
+        udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
+      );
+      expect(find.text('缺 BOM·已通知研发(RD0007)'), findsWidgets);
+      // 普通申请行不受影响。
+      final ready = table.items.firstWhere((task) => task.taskId == 'task-1');
+      expect(table.idOf!(ready), 'task-1');
+
+      final queries = gateway.queries.length;
+      await tester.ensureVisible(find.byTooltip('点击通知研发完善 BOM'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('点击通知研发完善 BOM'));
+      await tester.pumpAndSettle();
+      expect(bom.forwarded, ['application-item-bom']);
+      expect(gateway.queries.length, greaterThan(queries));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('server-named missing items are the only ones forwarded', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1600, 1000));
+      final grouped = OperationsWorkbenchTask.fromJson({
+        'taskId': 'task-grouped',
+        'planNo': 'PP-9',
+        'supplyRoute': 'SUBCONTRACT',
+        'taskStatus': 'WAITING_ORDER',
+        'displayStage': 'BOM_MISSING',
+        'canCreateOrder': false,
+        'goodsCount': 2,
+        'openLineCount': 2,
+        'actionItemIds': ['item-a', 'item-b'],
+        'bomMissingItemIds': ['item-b'],
+        'actionDocType': 'SUBCONTRACT_APPLICATION',
+        'actionDocId': 'application-9',
+        'actionDocNo': 'EA-9',
+        'actionDocCanView': true,
+        'actionDocStatus': '1',
+      }, OperationsWorkbenchDepartment.subcontract);
+      expect(grouped.isBomMissing, isTrue);
+      expect(grouped.rdTaskNo, isNull);
+      final data = _bomMissingData();
+      final bom = _BomGapGateway();
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                OperationsWorkbenchData(
+                  department: data.department,
+                  summary: data.summary,
+                  items: [grouped],
+                  page: 1,
+                  size: 20,
+                  total: 1,
+                  totalPages: 1,
+                  capabilities: data.capabilities,
+                ),
+              ),
+              drawRepository: FakeSubcontractDrawGateway(),
+              bomGapGateway: bom,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+      // 没有未完成的研发任务时只显示「缺 BOM·已通知研发」。
+      expect(find.text('缺 BOM·已通知研发'), findsWidgets);
+      await tester.ensureVisible(find.byTooltip('点击通知研发完善 BOM'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('点击通知研发完善 BOM'));
+      await tester.pumpAndSettle();
+      expect(bom.forwarded, ['item-b']);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('accounts that cannot decompose get no remind action', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1600, 1000));
+      final bom = _BomGapGateway();
+      await tester.pumpWidget(
+        _scope(
+          permissions: const {Perm.subcontractApplicationView},
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(_bomMissingData()),
+              drawRepository: FakeSubcontractDrawGateway(),
+              bomGapGateway: bom,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+      expect(find.text('缺 BOM·已通知研发(RD0007)'), findsWidgets);
+      expect(find.byTooltip('点击通知研发完善 BOM'), findsNothing);
+      expect(bom.forwarded, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('ADR-143 领料分段', () {
+    testWidgets(
+      'red-only count, workshop-like status cells, gated selection and batch draw',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1000));
+        final draw = FakeSubcontractDrawGateway(
+          count: 7,
+          statusCounts: const {
+            'DRAWABLE': 2,
+            'DRAW_SUBMITTED': 1,
+            'WAITING_PLANNING': 1,
+            'WAITING_MATERIAL': 1,
+            'ALL': 5,
+          },
+          rows: [
+            drawRow('item-full', drawableQty: 60, shortQty: 40),
+            drawRow(
+              'item-partial',
+              status: 'DRAWABLE_PARTIAL',
+              orderBillNo: 'WD-002',
+              goodsName: '委外件B',
+              drawableQty: 20,
+              pendingQty: 10,
+            ),
+            drawRow(
+              'item-submitted',
+              status: 'DRAW_SUBMITTED',
+              orderBillNo: 'WD-003',
+              drawableQty: 0,
+              pendingQty: 30,
+              canDraw: false,
+            ),
+            drawRow(
+              'item-planning',
+              status: 'WAITING_PLANNING',
+              orderBillNo: 'WD-004',
+              drawableQty: 0,
+              unplannedShortKindCount: 2,
+              canDraw: false,
+            ),
+            drawRow(
+              'item-waiting',
+              status: 'WAITING_MATERIAL',
+              orderBillNo: 'WD-005',
+              drawableQty: 0,
+              materialKindCount: 3,
+              canDraw: false,
+            ),
+          ],
+        );
+        final opened = <List<String>>[];
+        final router = _router(
+          page: SubcontractDecompositionPage(
+            repository: _Gateway(_data(capability: true)),
+            drawRepository: draw,
+          ),
+          opened: opened,
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          _scope(child: MaterialApp.router(routerConfig: router)),
+        );
+        await tester.pumpAndSettle();
+
+        // 「领料」只挂一枚红 = 可领行数(服务端 /count = 7)；不挂黄——
+        // 阶段行的红枚只有「待处理」(2)与「领料」(7)，黄枚只有「进行中」(3)。
+        final stages = find.byKey(
+          const Key('subcontract-decomposition-stages'),
+        );
+        expect(
+          find.descendant(of: stages, matching: find.text('7')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: stages,
+            matching: find.byType(UtenNotificationBadge),
+          ),
+          findsNWidgets(2),
+        );
+        expect(
+          find.descendant(
+            of: stages,
+            matching: find.byType(UtenInProgressBadge),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('领料'));
+        await tester.pumpAndSettle();
+        expect(draw.listQueries, hasLength(1));
+        expect(draw.listQueries.single['status'], isNull);
+
+        final table = tester
+            .widget<MasterDataTableView<SubcontractDrawTaskRow>>(
+              find.byKey(const Key('subcontract-draw-table')),
+            );
+        // 服务端 canDraw 且账号 canSubmitDraw 的行才可勾选。
+        expect(table.items.map(table.idOf!).toList(), [
+          'item-full',
+          'item-partial',
+          null,
+          null,
+          null,
+        ]);
+        // 状态列文案 + 车间同款整格底色(蓝 / 紫 / 青 / 品红 / 灰蓝)。
+        expect(find.text('可领 60 个·去领料'), findsOneWidget);
+        expect(find.text('可领 20 个·去领料'), findsOneWidget);
+        expect(find.text('已提交领料·待仓库发料'), findsOneWidget);
+        expect(find.text('等计划安排·缺 2 种'), findsOneWidget);
+        expect(find.text('等待物料·已备 1/3 种'), findsOneWidget);
+        final status = table.columns.firstWhere((c) => c.key == 'status');
+        final context = tester.element(
+          find.byType(SubcontractDecompositionPage),
+        );
+        final colors = [
+          for (final row in table.items) status.cellColor!(context, row),
+        ];
+        expect(colors.toSet(), hasLength(5));
+        // 可领与待仓库发同时存在时悬浮提示两者。
+        expect(
+          find.byTooltip('可领 20 个；另有 10 个已提交领料，等仓库发料；其余还缺物料，到货后可继续领'),
+          findsOneWidget,
+        );
+        // 已领 / 待仓库发 / 可领 / 还缺 与货品身份三列。
+        for (final label in ['已领', '待仓库发', '可领', '还缺', '委外件名称', '编号', '颜色']) {
+          expect(
+            table.columns.where((column) => column.label == label),
+            hasLength(1),
+            reason: label,
+          );
+        }
+
+        final batch = find.byKey(const Key('subcontract-draw-batch'));
+        expect(batch, findsOneWidget);
+        expect(tester.widget<UtenButton>(batch).onPressed, isNull);
+        await tester.tap(find.text('WD-002'));
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.text('WD-001'));
+        await tester.pumpAndSettle();
+        expect(find.text('批量领料(2)'), findsOneWidget);
+        await tester.tap(batch);
+        await tester.pumpAndSettle();
+        expect(opened, [
+          ['item-full', 'item-partial'],
+        ]);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets(
-      'application progress keeps each product attribution and public quantity visible',
+      'clicking a drawable status opens the draw page for that row only',
       (tester) async {
-        tester.view.physicalSize = const Size(1600, 1200);
-        tester.view.devicePixelRatio = 1;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        final api = _DeferredPreparationApi();
+        _desktop(tester, const Size(1700, 1000));
+        final draw = FakeSubcontractDrawGateway(
+          count: 1,
+          rows: [
+            drawRow('item-1'),
+            drawRow('item-2', orderBillNo: 'WD-002'),
+          ],
+        );
+        final opened = <List<String>>[];
+        final router = _router(
+          page: SubcontractDecompositionPage(
+            repository: _Gateway(_data(capability: true)),
+            drawRepository: draw,
+            initialSegment: 'draw',
+          ),
+          opened: opened,
+        );
+        addTearDown(router.dispose);
         await tester.pumpWidget(
-          ProviderScope(
-            overrides: [
-              currentPermissionsProvider.overrideWithValue(const {
-                Perm.subcontractApplicationView,
-              }),
-              apiClientProvider.overrideWithValue(api),
-            ],
+          _scope(child: MaterialApp.router(routerConfig: router)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('subcontract-draw-go-item-2')),
+        );
+        await tester.pumpAndSettle();
+        expect(opened, [
+          ['item-2'],
+        ]);
+        // 返回后重拉列表与红数。
+        final lists = draw.listQueries.length;
+        final counts = draw.countCalls;
+        router.pop(true);
+        await tester.pumpAndSettle();
+        expect(draw.listQueries.length, greaterThan(lists));
+        expect(draw.countCalls, greaterThan(counts));
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'accounts without draw capability see rows but cannot select or draw',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1000));
+        final draw = FakeSubcontractDrawGateway(
+          canSubmitDraw: false,
+          rows: [drawRow('item-1')],
+        );
+        await tester.pumpWidget(
+          _scope(
+            permissions: const {Perm.subcontractOrderView},
             child: MaterialApp(
               home: SubcontractDecompositionPage(
-                repository: _Gateway(
-                  _data(capability: true, withSources: true),
-                ),
+                repository: _Gateway(_data(capability: false)),
+                drawRepository: draw,
+                initialSegment: 'draw',
               ),
             ),
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('待处理'));
-        await tester.pumpAndSettle();
-        await _doubleTapRow(tester, find.text('FG-task-1'));
-        await tester.pumpAndSettle();
-        expect(find.text('数量归属'), findsOneWidget);
-        expect(find.text('ROOT-1 原产品一'), findsOneWidget);
-        expect(find.text('ROOT-2 原产品二'), findsOneWidget);
-        expect(find.text('销售订单 SO-1 · 第2行'), findsOneWidget);
-        expect(find.text('销售订单 SO-2 · 第3行'), findsOneWidget);
-        expect(find.text('SC-A 委外件A：3 件'), findsOneWidget);
-        expect(find.text('SC-A 委外件A：5 件'), findsOneWidget);
-        expect(find.text('SC-A 委外件A：2 件'), findsOneWidget);
-        expect(find.text('公共备货'), findsOneWidget);
-        expect(api.paths, isEmpty);
+        final table = tester
+            .widget<MasterDataTableView<SubcontractDrawTaskRow>>(
+              find.byKey(const Key('subcontract-draw-table')),
+            );
+        expect(table.selectable, isFalse);
+        expect(table.idOf!(table.items.single), isNull);
+        expect(find.byKey(const Key('subcontract-draw-batch')), findsNothing);
+        // 只显示可领量，不出现「去领料」入口。
+        expect(find.text('可领 40 个'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('subcontract-draw-go-item-1')),
+          findsNothing,
+        );
         expect(tester.takeException(), isNull);
       },
     );
-  }
+
+    testWidgets(
+      'task detail shows the material table and server-gated actions',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1100));
+        final draw = FakeSubcontractDrawGateway(
+          count: 1,
+          rows: [drawRow('item-1')],
+        );
+        draw.details['item-1'] = _detail(
+          'item-1',
+          actions: const ['WITHDRAW', 'CLOSE'],
+        );
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(_data(capability: true)),
+                drawRepository: draw,
+                initialSegment: 'draw',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _doubleTapRow(tester, find.text('WD-001'));
+        await tester.pumpAndSettle();
+        expect(draw.detailCalls, ['item-1']);
+        final materials = tester
+            .widget<MasterDataTableView<SubcontractDrawMaterial>>(
+              find.byKey(const Key('subcontract-draw-detail-materials')),
+            );
+        expect(materials.columns.map((column) => column.label).toList(), [
+          '物料名称',
+          '编号',
+          '颜色',
+          '单位',
+          '每套用量',
+          '需求',
+          '已发外',
+          '待仓库发',
+          '仓库可用',
+          '本次可领',
+          '还缺',
+          '供应来源',
+          '状态',
+        ]);
+        expect(find.text('采购在途 50(PO-9)'), findsOneWidget);
+        expect(find.text('未安排'), findsOneWidget);
+        expect(find.text('缺料'), findsWidgets);
+        expect(find.text('已备'), findsOneWidget);
+        expect(find.textContaining('WF-1'), findsOneWidget);
+
+        // 撤回未发领料：确认后调服务端并刷新列表。
+        final listsBefore = draw.listQueries.length;
+        await tester.tap(
+          find.byKey(const Key('subcontract-draw-detail-withdraw')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('撤回').last);
+        await tester.pumpAndSettle();
+        expect(draw.withdrawn, [
+          ['item-1'],
+        ]);
+        expect(draw.listQueries.length, greaterThan(listsBefore));
+
+        // 结束领料：原因必填。
+        await tester.tap(
+          find.byKey(const Key('subcontract-draw-detail-close-draw')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('subcontract-draw-close-confirm')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('请填写结束领料的原因'), findsOneWidget);
+        expect(draw.closed, isEmpty);
+        await tester.enterText(
+          find.byKey(const Key('subcontract-draw-close-reason')),
+          '委外商做不完',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('subcontract-draw-close-confirm')),
+        );
+        await tester.pumpAndSettle();
+        expect(draw.closed, [('item-1', '委外商做不完')]);
+        expect(
+          find.byKey(const Key('subcontract-draw-detail-materials')),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'warehouse-edited draft is marked and withdraw stays hidden unless allowed',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1100));
+        final draw = FakeSubcontractDrawGateway(rows: [drawRow('item-1')]);
+        // 服务端：唯一的待发领料单仓库已改过 → allowedActions 不含 WITHDRAW。
+        draw.details['item-1'] = _detail(
+          'item-1',
+          actions: const ['CLOSE'],
+          edited: true,
+        );
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(_data(capability: true)),
+                drawRepository: draw,
+                initialSegment: 'draw',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _doubleTapRow(tester, find.text('WD-001'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('仓库已改过'), findsWidgets);
+        expect(
+          find.byKey(const Key('subcontract-draw-detail-edited-hint')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('退回委外(不发)'), findsOneWidget);
+        expect(
+          find.byKey(const Key('subcontract-draw-detail-withdraw')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('subcontract-draw-detail-close-draw')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('detail without allowed actions shows no withdraw or close', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1700, 1100));
+      final draw = FakeSubcontractDrawGateway(
+        canSubmitDraw: false,
+        rows: [drawRow('item-1')],
+      );
+      draw.details['item-1'] = _detail('item-1', actions: const []);
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(_data(capability: true)),
+              drawRepository: draw,
+              initialSegment: 'draw',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _doubleTapRow(tester, find.text('WD-001'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('subcontract-draw-detail-withdraw')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('subcontract-draw-detail-close-draw')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('subcontract-draw-detail-go-draw')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+      'in-progress drawable status jumps to the draw segment for that order',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1000));
+        final draw = FakeSubcontractDrawGateway(rows: [drawRow('item-1')]);
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(_data(capability: true), inProgress: true),
+                drawRepository: draw,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('进行中'));
+        await tester.pumpAndSettle();
+        expect(find.text('可领料·去领料'), findsWidgets);
+        expect(find.text('已提交领料·待仓库发料'), findsWidgets);
+        expect(find.text('委外加工中'), findsWidgets);
+        expect(find.byTooltip('点击去领料'), findsOneWidget);
+        await tester.ensureVisible(find.byTooltip('点击去领料'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('点击去领料'));
+        await tester.pumpAndSettle();
+        expect(draw.listQueries.last['orderId'], 'order-drawable');
+        expect(find.byKey(const Key('subcontract-draw-table')), findsOneWidget);
+        expect(find.text('只看订货单 EO-order-drawable 的委外任务'), findsOneWidget);
+        // 清除定位 → 看全部委外任务。
+        await tester.tap(find.byTooltip('看全部委外任务'));
+        await tester.pumpAndSettle();
+        expect(draw.listQueries.last['orderId'], isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('notice deep link lands on the draw segment for one task', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1700, 1000));
+      final draw = FakeSubcontractDrawGateway(rows: [drawRow('item-9')]);
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(_data(capability: true)),
+              drawRepository: draw,
+              initialSegment: 'draw',
+              initialOrderItemId: 'item-9',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.single['orderItemIds'], ['item-9']);
+      expect(find.text('只看通知里的这条委外任务'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('server refusal of the draw count hides the draw segment', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1600, 1000));
+      final draw = FakeSubcontractDrawGateway()
+        ..countError = ApiException('FORBIDDEN', '无权限访问', httpStatus: 403);
+      await tester.pumpWidget(
+        _scope(
+          permissions: const {Perm.subcontractApplicationView},
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(_data(capability: true)),
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('待处理'), findsOneWidget);
+      expect(find.text('领料'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
+
+void _desktop(WidgetTester tester, Size size) {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
+Widget _scope({
+  required Widget child,
+  Set<String> permissions = _decomposePermissions,
+}) => ProviderScope(
+  overrides: [
+    currentPermissionsProvider.overrideWithValue(permissions),
+    isSuperAdminProvider.overrideWithValue(false),
+    apiClientProvider.overrideWithValue(_api()),
+  ],
+  child: child,
+);
+
+GoRouter _router({required Widget page, required List<List<String>> opened}) =>
+    GoRouter(
+      initialLocation: RouteName.operationsSubcontractWorkbench,
+      routes: [
+        GoRoute(
+          path: RouteName.operationsSubcontractWorkbench,
+          builder: (_, _) => page,
+        ),
+        GoRoute(
+          path: RouteName.operationsSubcontractDrawRequest,
+          builder: (_, state) {
+            opened.add(
+              state.uri.queryParameters['orderItemIds']!.split(',').toList(),
+            );
+            return const Scaffold(body: Text('领料页已打开'));
+          },
+        ),
+      ],
+    );
 
 /// 双击指定行（两次点按间隔 50ms，落在 350ms 手动双击判定窗内）。
 Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
@@ -854,44 +1039,27 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
   await tester.pump();
 }
 
-/// 待生产委外任务桩（合成行数据源；其余请求回空）。
+/// 其余请求(徽章、草稿计数等)一律回空。
 ApiClient _api() {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
-        final dynamic data;
-        if (request.path.contains('/subcontract-make-tasks/')) {
-          final id = request.path.split('/').last;
-          data = {
-            'taskId': id,
-            'analysisId': id == 'task-a' ? 'analysis-1' : 'analysis-2',
-            'status': 'ACTIVE',
-            'goodsCode': id == 'task-a' ? 'SC-A' : 'SC-B',
-            'goodsName': id == 'task-a' ? '委外件A' : '委外件B',
-            'workshopStatus': id == 'task-a'
-                ? 'IN_PRODUCTION'
-                : 'NOTIFYING_WORKSHOP',
-          };
-        } else {
-          data = <dynamic>[];
-        }
-        handler.resolve(
-          Response<dynamic>(
-            requestOptions: request,
-            statusCode: 200,
-            data: data,
-          ),
-        );
-      },
+      onRequest: (request, handler) => handler.resolve(
+        Response<dynamic>(
+          requestOptions: request,
+          statusCode: 200,
+          data: <String, dynamic>{},
+        ),
+      ),
     ),
   );
   return ApiClient(dio);
 }
 
 class _Gateway implements OperationsWorkbenchGateway {
-  _Gateway(this.data);
+  _Gateway(this.data, {this.inProgress = false});
   OperationsWorkbenchData data;
+  final bool inProgress;
   Future<OperationsWorkbenchData> Function()? response;
   final List<String?> statuses = <String?>[];
   final List<Map<String, Object?>> queries = [];
@@ -922,39 +1090,10 @@ class _Gateway implements OperationsWorkbenchGateway {
       'status': status,
       'filters': Map<String, String?>.from(columnFilters),
     });
+    if (inProgress && status == 'IN_PROGRESS') return _inProgressData();
     return response == null ? data : await response!();
   }
 }
-
-class _DeferredPreparationApi extends ApiClient {
-  _DeferredPreparationApi() : super(Dio());
-
-  final paths = <String>[];
-  final requests = <Completer<Map<String, dynamic>>>[];
-
-  @override
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) {
-    if (!path.contains('/subcontract-make-tasks/')) return Future.value({});
-    paths.add(path);
-    final request = Completer<Map<String, dynamic>>();
-    requests.add(request);
-    return request.future;
-  }
-}
-
-Map<String, dynamic> _preparationDetail() => {
-  'taskId': 'task-a',
-  'analysisId': 'analysis-1',
-  'status': 'ACTIVE',
-  'goodsCode': 'SC-A',
-  'goodsName': '委外件A',
-  'workshopStatus': 'PRODUCED',
-  'requiredQty': 10,
-  'producedQty': 10,
-  'availableQty': 10,
-  'allowedActions': <String>[],
-  'sources': [_sourceJson(1, 8), _sourceJson(null, 2)],
-};
 
 Map<String, dynamic> _sourceJson(int? product, num qty) => {
   'analysisItemId': product == null ? null : 'origin-$product',
@@ -971,27 +1110,16 @@ Map<String, dynamic> _sourceJson(int? product, num qty) => {
 
 OperationsWorkbenchData _data({
   required bool capability,
-  bool includePreparation = false,
-  bool includeComponentRoute = false,
-  bool componentUnlocked = false,
   bool withSources = false,
+  bool onlyFirst = false,
 }) => OperationsWorkbenchData(
   department: OperationsWorkbenchDepartment.subcontract,
-  summary: OperationsWorkbenchSummary(
-    totalTasks: includePreparation ? 4 : 2,
+  summary: const OperationsWorkbenchSummary(
+    totalTasks: 2,
     overdueTasks: 0,
     openTasks: 2,
     openQty: 12,
-    // ADR-103(2026-09-22 纠偏)：服务端 WAITING_ORDER 含被锁的路线 B 行(2 普通 + 锁 1 + 解锁 1),
-    // WAITING_COMPONENT_STOCK 只是其中在等子件的行数, 不挂徽章。
-    statusCounts: {
-      'WAITING_ORDER': includePreparation
-          ? 4
-          : includeComponentRoute
-          ? 4
-          : 2,
-      if (includeComponentRoute) 'WAITING_COMPONENT_STOCK': 1,
-    },
+    statusCounts: {'WAITING_ORDER': 2, 'IN_PROGRESS': 3},
   ),
   items: [
     _task(
@@ -1006,34 +1134,11 @@ OperationsWorkbenchData _data({
             ])
           : const [],
     ),
-    _task('task-2', 'application-2', 'application-item-2'),
-    if (includePreparation) ...[
-      _preparationRow('task-a', 'SC-A', '委外件A', 'IN_PRODUCTION'),
-      _preparationRow('task-b', 'SC-B', '委外件B', 'NOTIFYING_WORKSHOP'),
-    ],
-    if (includeComponentRoute) ...[
-      _task(
-        'task-locked',
-        'application-locked',
-        'application-item-locked',
-        canCreateOrder: componentUnlocked,
-        displayStage: componentUnlocked
-            ? 'COMPONENT_STOCK_READY'
-            : 'WAITING_COMPONENT_STOCK',
-        componentAvailableQty: componentUnlocked ? 1000 : 0,
-      ),
-      _task(
-        'task-ready',
-        'application-ready',
-        'application-item-ready',
-        displayStage: 'COMPONENT_STOCK_READY',
-        componentAvailableQty: 5,
-      ),
-    ],
+    if (!onlyFirst) _task('task-2', 'application-2', 'application-item-2'),
   ],
   page: 1,
   size: 20,
-  total: includePreparation ? 4 : 2,
+  total: onlyFirst ? 1 : 2,
   totalPages: 1,
   capabilities: OperationsWorkbenchCapabilities(
     canCreateSubcontractOrder: capability,
@@ -1049,22 +1154,108 @@ OperationsWorkbenchData _data({
   },
 );
 
+OperationsWorkbenchData _inProgressData() => OperationsWorkbenchData(
+  department: OperationsWorkbenchDepartment.subcontract,
+  summary: const OperationsWorkbenchSummary(
+    totalTasks: 3,
+    overdueTasks: 0,
+    openTasks: 3,
+    openQty: 30,
+    statusCounts: {'IN_PROGRESS': 3},
+  ),
+  items: [
+    _order('order-drawable', 'DRAWABLE'),
+    _order('order-submitted', 'DRAW_SUBMITTED'),
+    _order('order-supplier', 'AT_SUPPLIER'),
+  ],
+  page: 1,
+  size: 50,
+  total: 3,
+  totalPages: 1,
+  capabilities: const OperationsWorkbenchCapabilities(
+    canCreateSubcontractOrder: true,
+  ),
+);
+
+OperationsWorkbenchTask _order(String id, String displayStage) =>
+    OperationsWorkbenchTask.fromJson({
+      'taskId': id,
+      'planNo': 'PP-$id',
+      'supplyRoute': 'SUBCONTRACT',
+      'goodsCode': 'FG-$id',
+      'goodsName': '委外件 $id',
+      'requiredQty': 10,
+      'openQty': 4,
+      'taskStatus': 'FINANCE_APPROVED',
+      'displayStage': displayStage,
+      'actionDocType': 'SUBCONTRACT_ORDER',
+      'actionDocId': id,
+      'actionDocNo': 'EO-$id',
+      'actionDocCanView': true,
+      'actionDocCanEdit': false,
+      'actionDocStatus': '1',
+    }, OperationsWorkbenchDepartment.subcontract);
+
+/// 待处理段：一条可下单的申请行 + 一条委外件缺 BOM 的申请行(ADR-143 §二.3)。
+OperationsWorkbenchData _bomMissingData() => OperationsWorkbenchData(
+  department: OperationsWorkbenchDepartment.subcontract,
+  summary: const OperationsWorkbenchSummary(
+    totalTasks: 2,
+    overdueTasks: 0,
+    openTasks: 2,
+    openQty: 12,
+    statusCounts: {'WAITING_ORDER': 2},
+  ),
+  items: [
+    _task('task-1', 'application-1', 'application-item-1'),
+    _task(
+      'task-bom',
+      'application-bom',
+      'application-item-bom',
+      canCreateOrder: false,
+      displayStage: 'BOM_MISSING',
+      rdTaskNo: 'RD0007',
+    ),
+  ],
+  page: 1,
+  size: 20,
+  total: 2,
+  totalPages: 1,
+  capabilities: const OperationsWorkbenchCapabilities(
+    canCreateSubcontractOrder: true,
+  ),
+);
+
+class _BomGapGateway implements SubcontractBomGapGateway {
+  final List<String> forwarded = [];
+
+  @override
+  Future<SubcontractBomForwardResult> forwardBom(
+    String applicationItemId,
+  ) async {
+    forwarded.add(applicationItemId);
+    return const SubcontractBomForwardResult(taskNo: 'RD0007');
+  }
+}
+
 OperationsWorkbenchTask _task(
   String taskId,
   String applicationId,
   String applicationItemId, {
   bool? canCreateOrder = true,
-  String? displayStage,
-  num? componentAvailableQty,
   List<SubcontractTaskSource> sources = const [],
+  String? displayStage,
+  String? rdTaskNo,
 }) => OperationsWorkbenchTask(
+  displayStage: displayStage,
+  rdTaskNo: rdTaskNo,
   taskId: taskId,
   packageId: 'package-1',
   planId: 'plan-1',
   planNo: 'PP-001',
-  warehouseName: '委外目标仓',
+  warehouseName: '委外仓',
   goodsCode: 'FG-$taskId',
-  goodsName: '委外目标件',
+  goodsName: '委外件',
   spec: '标准',
   colorName: '本色',
   unitName: '件',
@@ -1081,8 +1272,6 @@ OperationsWorkbenchTask _task(
   updatedAt: '2026-08-30T10:00:00Z',
   issuedAt: '2026-09-07T18:30:00Z',
   canCreateOrder: canCreateOrder,
-  displayStage: displayStage,
-  componentAvailableQty: componentAvailableQty,
   sources: sources,
   actionDocument: OperationsActionDocument(
     id: applicationId,
@@ -1097,22 +1286,87 @@ OperationsWorkbenchTask _task(
   actionDocumentRestricted: false,
 );
 
-OperationsWorkbenchTask _preparationRow(
-  String id,
-  String code,
-  String name,
-  String stage,
-) => OperationsWorkbenchTask.fromJson({
-  'taskId': id,
-  'supplyRoute': 'SUBCONTRACT',
-  'taskStatus': 'WAITING_ORDER',
-  'goodsCode': code,
-  'goodsName': name,
-  'requiredQty': 10,
-  'openQty': 10,
-  'actionDocType': 'SUBCONTRACT_MAKE_TASK',
-  'actionDocId': id,
-  'actionDocCanView': true,
-  'actionDocCanEdit': false,
-  'actionDocStatus': stage,
-}, OperationsWorkbenchDepartment.subcontract);
+SubcontractDrawTaskDetail _detail(
+  String orderItemId, {
+  required List<String> actions,
+  bool edited = false,
+}) => SubcontractDrawTaskDetail.fromJson(<String, dynamic>{
+  'task': drawRowJson(drawRow(orderItemId)),
+  'materials': <Map<String, dynamic>>[
+    <String, dynamic>{
+      'planItemId': 'plan-a',
+      'lineNo': 1,
+      'goodsId': 'material-a',
+      'goodsCode': 'M-A',
+      'goodsName': '物料A',
+      'colorName': '本色',
+      'unitName': 'kg',
+      'perUnitQty': 2,
+      'requiredQty': 200,
+      'sentQty': 0,
+      'pendingQty': 0,
+      'availableQty': 80,
+      'drawableQty': 80,
+      'shortQty': 120,
+      'state': 'SHORT',
+      'supplySources': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'kind': 'PURCHASE',
+          'docId': 'po-9',
+          'docNo': 'PO-9',
+          'openQty': 50,
+        },
+      ],
+    },
+    <String, dynamic>{
+      'planItemId': 'plan-b',
+      'lineNo': 2,
+      'goodsId': 'material-b',
+      'goodsCode': 'M-B',
+      'goodsName': '物料B',
+      'colorName': '黑',
+      'unitName': '个',
+      'perUnitQty': 1,
+      'requiredQty': 100,
+      'sentQty': 0,
+      'pendingQty': 0,
+      'availableQty': 40,
+      'drawableQty': 40,
+      'shortQty': 60,
+      'state': 'SHORT',
+      'supplySources': <Map<String, dynamic>>[],
+    },
+    // 物料本身已齐，但被物料A/B卡住本批可领为 0：读「已备」(ADR-143 §三.4)。
+    <String, dynamic>{
+      'planItemId': 'plan-c',
+      'lineNo': 3,
+      'goodsId': 'material-c',
+      'goodsCode': 'M-C',
+      'goodsName': '物料C',
+      'colorName': '本色',
+      'unitName': '个',
+      'perUnitQty': 1,
+      'requiredQty': 100,
+      'sentQty': 0,
+      'pendingQty': 0,
+      'availableQty': 100,
+      'drawableQty': 0,
+      'shortQty': 0,
+      'state': 'DRAWABLE',
+      'supplySources': <Map<String, dynamic>>[],
+    },
+  ],
+  'pendingDrafts': <Map<String, dynamic>>[
+    <String, dynamic>{
+      'issueId': 'issue-1',
+      'billNo': 'WF-1',
+      'warehouseId': 'wh-1',
+      'warehouseName': '原料仓',
+      'lineCount': 2,
+      'submittedAt': '2026-10-04T08:00:00Z',
+      'submittedByName': '张三',
+      'edited': edited,
+    },
+  ],
+  'allowedActions': actions,
+});

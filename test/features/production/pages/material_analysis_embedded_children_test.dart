@@ -15,52 +15,49 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 void main() {
-  for (final subcontract in [false, true]) {
-    testWidgets(
-      '${subcontract ? "subcontract" : "make"} child materials stay actionable inside the source tree',
-      (tester) async {
-        await _pumpAnalysis(tester, _analysis(subcontract: subcontract));
-        final parent = _row('source-parent');
-        final child = _row('child-material');
-        expect(parent, findsOneWidget);
-        expect(child, findsOneWidget);
-        expect(_row('delegated-shadow'), findsNothing);
-        expect(
-          tester.getTopLeft(child).dy,
-          greaterThan(tester.getTopLeft(parent).dy),
-        );
-        expect(
-          find.byKey(const ValueKey('material-route-dropdown-child-material')),
-          findsOneWidget,
-        );
-
-        final search = find.descendant(
-          of: find.byKey(const Key('material-bom-search')),
-          matching: find.byType(TextField),
-        );
-        await tester.enterText(search, '真实子件原料');
-        await tester.pump(const Duration(milliseconds: 500));
-        await tester.pumpAndSettle();
-        expect(parent, findsOneWidget);
-        expect(child, findsOneWidget);
-        expect(find.text('原始销售产品'), findsWidgets);
-
-        await tester.enterText(search, '');
-        await tester.pump(const Duration(milliseconds: 500));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('按物料汇总'));
-        await tester.pumpAndSettle();
-        expect(find.text('真实子件原料'), findsWidgets);
-        expect(find.text('委派旧原料'), findsNothing);
-        expect(tester.takeException(), isNull);
-      },
+  testWidgets('make child materials stay actionable inside the source tree', (
+    tester,
+  ) async {
+    await _pumpAnalysis(tester, _analysis());
+    final parent = _row('source-parent');
+    final child = _row('child-material');
+    expect(parent, findsOneWidget);
+    expect(child, findsOneWidget);
+    expect(_row('delegated-shadow'), findsNothing);
+    expect(
+      tester.getTopLeft(child).dy,
+      greaterThan(tester.getTopLeft(parent).dy),
     );
-  }
+    expect(
+      find.byKey(const ValueKey('material-route-dropdown-child-material')),
+      findsOneWidget,
+    );
+
+    final search = find.descendant(
+      of: find.byKey(const Key('material-bom-search')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(search, '真实子件原料');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(parent, findsOneWidget);
+    expect(child, findsOneWidget);
+    expect(find.text('原始销售产品'), findsWidgets);
+
+    await tester.enterText(search, '');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('按物料汇总'));
+    await tester.pumpAndSettle();
+    expect(find.text('真实子件原料'), findsWidgets);
+    expect(find.text('委派旧原料'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('completed zero-quantity ownership boundary stays visible', (
     tester,
   ) async {
-    final analysis = _analysis(subcontract: false);
+    final analysis = _analysis();
     final materials = (analysis['flatMaterials'] as List)
         .cast<Map<String, dynamic>>();
     materials.first.addAll({
@@ -80,7 +77,7 @@ void main() {
   testWidgets(
     'unlinked historical child remains visible without pretending to be an external product',
     (tester) async {
-      final analysis = _analysis(subcontract: false);
+      final analysis = _analysis();
       final materials = (analysis['flatMaterials'] as List)
           .cast<Map<String, dynamic>>();
       materials.removeWhere(
@@ -220,7 +217,7 @@ class _WarehousePrefs extends MaterialAnalysisWarehousePrefsNotifier {
   }
 }
 
-Map<String, dynamic> _analysis({required bool subcontract}) => {
+Map<String, dynamic> _analysis() => {
   'analysisId': 'analysis-child',
   'status': 'ACTIVE',
   'version': 2,
@@ -241,7 +238,7 @@ Map<String, dynamic> _analysis({required bool subcontract}) => {
     },
     {
       'analysisLineId': 'child-product',
-      'sourceType': subcontract ? 'SUBCONTRACT_MAKE' : 'MAKE_COMPONENT',
+      'sourceType': 'MAKE_COMPONENT',
       'parentAnalysisLineId': 'external-product',
       'goodsId': 'parent-goods',
       'goodsCode': 'M001',
@@ -260,16 +257,14 @@ Map<String, dynamic> _analysis({required bool subcontract}) => {
         '来源自制件',
       ),
       'nodeKey': 'same-bom-node',
-      'confirmedRoute': subcontract ? 'SUBCONTRACT' : 'MAKE',
-      'sourceConfirmed': subcontract ? 'SUBCONTRACT' : 'MAKE',
+      'confirmedRoute': 'MAKE',
+      'sourceConfirmed': 'MAKE',
       'routeConfirmed': true,
       'downstreamReferences': [
         {
           'actionId': 'source-action',
-          'route': subcontract ? 'SUBCONTRACT' : 'MAKE',
-          'documentType': subcontract
-              ? 'SUBCONTRACT_MAKE_TASK'
-              : 'PREPLAN_MAKE_TASK',
+          'route': 'MAKE',
+          'documentType': 'PREPLAN_MAKE_TASK',
           'documentId': 'child-product',
           'status': 'IN_PROGRESS',
           'qty': 4,

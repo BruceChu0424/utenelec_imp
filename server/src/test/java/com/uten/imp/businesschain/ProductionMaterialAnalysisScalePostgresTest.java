@@ -143,6 +143,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
         assertEquals(secondRoutes, routeState(second.analysisId()),
                 "Route confirmation must be isolated by analysis, even for the same BOM path");
 
+        long subcontractGroups = routed.flatMaterials().stream().filter(MaterialView::actionable)
+                .filter(row -> "SUBCONTRACT".equals(row.sourceConfirmed())).map(MaterialView::actionGroupKey).distinct().count();
         for (String route : List.of("BUY", "SUBCONTRACT")) {
             var groups = routed.flatMaterials().stream().filter(MaterialView::actionable)
                     .filter(row -> route.equals(row.sourceConfirmed())).map(MaterialView::actionGroupKey).distinct().toList();
@@ -153,9 +155,17 @@ class ProductionMaterialAnalysisScalePostgresTest {
             assertActionConservation(routed.analysisId());
             assertNoInventoryOrSalesCompletion(scenario);
         }
-        assertEquals(2, jdbc.queryForObject("""
-                select count(*) from preplan_subcontract_make_tasks where analysis_id=? and status='ACTIVE'
-                """, Integer.class, first.analysisId()), "One preparation per source path; no repeated child expansion");
+        // ADR-143 §4.5: every subcontract node (with direct materials) is notified straight into a subcontract
+        // application; one action per source path, no in-house preparation task and no repeated child expansion.
+        assertEquals(subcontractGroups, jdbc.queryForObject("""
+                select count(*) from preplan_supply_actions
+                where analysis_id=? and route='SUBCONTRACT' and status='CREATED'
+                  and external_document_type='SUBCONTRACT_APPLICATION'
+                """, Long.class, first.analysisId()), "One subcontract application action per notified subcontract group");
+        assertEquals(0, jdbc.queryForObject("""
+                select count(*) from preplan_supply_actions
+                where analysis_id=? and route='SUBCONTRACT' and external_document_type<>'SUBCONTRACT_APPLICATION'
+                """, Integer.class, first.analysisId()), "No subcontract node is externalized as anything but an application");
         IssueWorkshopPlansRequest issue = issueRequest(scenario, routed, 2, "small-concurrent-" + suffix());
         UUID analysisId = routed.analysisId();
         var workers = Executors.newFixedThreadPool(2);
@@ -415,7 +425,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
     }
 
     @Test
-    void twoSourcesPurchaseSubcontractAndPreparationNotificationsKeepPhysicalFactsAndReplay() throws Exception {
+    void twoSourcesPurchaseAndSubcontractNotificationsKeepPhysicalFactsAndReplay() throws Exception {
         measureBulkSupplyNotifications(factory.sharedTree("notify-small-"+suffix(),2),2);
     }
 
@@ -438,15 +448,12 @@ class ProductionMaterialAnalysisScalePostgresTest {
         List<RouteDecision> roots=view.flatMaterials().stream().filter(row->row.level()==0)
                 .map(row->new RouteDecision(null,row.actionGroupKey(),"MAKE",null)).toList();
         view=analysis.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"notify-roots-"+suffix(),roots));
-        for (String mode:List.of("BUY","SUBCONTRACT","SUBCONTRACT_PREPARATION")) {
-            String route=mode.equals("BUY")?"BUY":"SUBCONTRACT";
-            var parents=view.flatMaterials().stream().filter(row->row.parentNodeKey()!=null)
-                    .map(row->row.analysisLineId()+"|"+row.parentNodeKey()).collect(java.util.stream.Collectors.toSet());
+        // ADR-143 §4.5: subcontract nodes (all with direct materials) are notified as subcontract applications only.
+        for (String mode:List.of("BUY","SUBCONTRACT")) {
+            String route=mode;
             var groups=new LinkedHashMap<String,MaterialView>();
             for (MaterialView row:view.flatMaterials()) {
-                boolean preparation=parents.contains(row.analysisLineId()+"|"+row.nodeKey());
-                if (row.actionable() && route.equals(row.sourceSuggestion()) && row.shortageQty().signum()>0
-                        && (route.equals("BUY") || preparation==mode.equals("SUBCONTRACT_PREPARATION"))) {
+                if (row.actionable() && route.equals(row.sourceSuggestion()) && row.shortageQty().signum()>0) {
                     groups.putIfAbsent(row.actionGroupKey(),row);
                 }
             }
@@ -476,13 +483,12 @@ class ProductionMaterialAnalysisScalePostgresTest {
             long actions=jdbc.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route=?",
                     Long.class,analysisId,route);
             assertEquals(selected.size(),actions-actionsBefore,"Every selected demand group must have exactly one downstream action");
-            String expectedDocument=mode.equals("SUBCONTRACT_PREPARATION")?"SUBCONTRACT_MAKE_TASK"
-                    :mode.equals("SUBCONTRACT")?"SUBCONTRACT_APPLICATION":"PURCHASE_REQUEST";
+            String expectedDocument=mode.equals("SUBCONTRACT")?"SUBCONTRACT_APPLICATION":"PURCHASE_REQUEST";
             assertEquals(selected.size(),jdbc.queryForObject("""
                     SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND external_document_type=?
                       AND action_group_key IN (SELECT unnest(string_to_array(?, ',')))
                     """,Integer.class,analysisId,expectedDocument,String.join(",",selected)),
-                    "Subcontract preparation must not be presented as an already-created external application");
+                    "Every notified demand group must point at its real downstream request");
             BigDecimal allocated=jdbc.queryForObject("SELECT coalesce(sum(allocated_qty),0) FROM preplan_supply_action_allocations WHERE analysis_id=?",
                     BigDecimal.class,analysisId);
             measured("SERVICE","analysis.notify."+mode+"."+selected.size()+".replay",size,
@@ -517,7 +523,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
             jdbc.execute("ANALYZE goods");
             Map<String, Object> scale = new LinkedHashMap<>();
             scale.put("event", "scale"); scale.put("products", size); scale.put("salesSources", scenario.sources().size());
-            scale.put("physicalBomRows", scenario.physicalBomRows()); scale.put("expectedExpandedRows", size * 98);
+            scale.put("physicalBomRows", scenario.physicalBomRows()); scale.put("expectedExpandedRows", size * scenario.expectedExpandedRowsPerProduct());
             scale.put("depth", 2); scale.put("terminalMetadataRows",historyRows); scale.put("historicalBomRows",historyRows); scale.put("samples", samples);
             scale.put("actualDatabaseBomRows",jdbc.queryForObject("select count(*) from goods_bom_items",Long.class));
             scale.put("actualAnalysisSourceRows",jdbc.queryForObject("select count(*) from production_material_analysis_items",Long.class));

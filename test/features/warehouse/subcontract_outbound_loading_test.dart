@@ -42,17 +42,14 @@ void main() {
       }
 
       final bundles = await loadSubcontractOutboundDetails(
-        planIds: ['1', '2', '3', '4', '5', '1'],
+        issueIds: ['1', '2', '3', '4', '5', '1'],
         taskDetail: (id) async {
           taskReads.add(id);
           await delay();
           return OutboundTaskDetail.fromJson({
-            'planId': id,
+            'issueId': id,
             'orderId': 'order-$id',
-            'status': 'OPEN',
-            'drafts': [
-              {'issueId': 'd-$id', 'status': 0},
-            ],
+            'lines': <Object>[],
           });
         },
         documentDetail: (id) async {
@@ -67,11 +64,10 @@ void main() {
       );
       expect(maxActive, 4);
       expect(taskReads, ['1', '2', '3', '4', '5']);
-      expect(documentReads, ['d-1', 'd-2', 'd-3', 'd-4', 'd-5']);
-      expect(
-        bundles.map((bundle) => bundle.documents.single.id),
-        documentReads,
-      );
+      expect(documentReads, ['1', '2', '3', '4', '5']);
+      // 每张领料单的拣货视图与它自己的出仓单草稿是同一个 id, 按原顺序配对。
+      expect(bundles.map((bundle) => bundle.task.issueId), taskReads);
+      expect(bundles.map((bundle) => bundle.document.id), documentReads);
     },
   );
 
@@ -106,7 +102,7 @@ void main() {
     );
     // 只进去看了一眼就返回(期间本端没有写、未满 30 秒): 不重拉(ADR-108)。
     container.read(pageResumeProvider.notifier).state = (
-      location: '/warehouse/subcontract-outbound/task',
+      location: '/warehouse/subcontract-outbound/issue-1',
       tick: 2,
     );
     await tester.pump();
@@ -118,7 +114,7 @@ void main() {
     expect(find.text('revision:0'), findsOneWidget);
     // 在出仓页办了出仓(网络层推进写修订号)后返回: 第一次真正的返回就立即重拉。
     container.read(pageResumeProvider.notifier).state = (
-      location: '/warehouse/subcontract-outbound/task',
+      location: '/warehouse/subcontract-outbound/issue-1',
       tick: 4,
     );
     await tester.pump();

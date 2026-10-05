@@ -1,3 +1,10 @@
+// 委外领料批量出库页(ADR-143 §4.3): 一次核对并审核多张委外领料单。
+//
+// 打开只读不写; 确认后逐张保存(只改数量/重量/备注与表头)再审核各自的出仓单草稿,
+// 保留已完成结果, 出错即暂停并允许 GET 核实后继续尚未执行的单据。
+// 每行数量只能改少(0 ≤ 数量 ≤ 委外提交的领料数量), 不能改多、不能加行; 填 0 = 这条物料
+// 本次不发, 保存时不回传这一行(服务端删行退库存)。一张单至少要发一行, 整单不发要在
+// 单张拣货页「退回委外(不发)」。
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -45,12 +52,12 @@ import '../widgets/subcontract_outbound_detail_table.dart';
 class WarehouseSubcontractOutboundBatchPage extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundBatchPage({
     super.key,
-    required this.planIds,
-    this.initialBundles,
+    required this.issueIds,
     this.onCompleted,
   });
-  final List<String> planIds;
-  final List<SubcontractOutboundReadBundle>? initialBundles;
+
+  /// 勾选的委外领料单(出仓单草稿) id。
+  final List<String> issueIds;
   final VoidCallback? onCompleted;
 
   @override
@@ -61,20 +68,18 @@ class WarehouseSubcontractOutboundBatchPage extends ConsumerStatefulWidget {
 class _BatchDraft {
   _BatchDraft({
     required this.detail,
+    required this.document,
     required this.lines,
-    this.document,
     this.workerId,
-  }) : warehouseId = document?.warehouseId,
+  }) : warehouseId = document.warehouseId ?? detail.warehouseId,
        date =
-           DateTime.tryParse(document?.billDate ?? '') ?? ChinaDateTime.today(),
-       deliveryDate = DateTime.tryParse(
-         document?.deliverDate ?? detail.deliverDate ?? '',
-       ),
-       remark = TextEditingController(text: document?.remark ?? '');
+           DateTime.tryParse(document.billDate ?? '') ?? ChinaDateTime.today(),
+       deliveryDate = DateTime.tryParse(document.deliverDate ?? ''),
+       remark = TextEditingController(text: document.remark ?? '');
 
   final OutboundTaskDetail detail;
   final List<SubcontractOutboundLineDraft> lines;
-  SubcontractDocDetail? document;
+  SubcontractDocDetail document;
   String? warehouseId;
   String? workerId;
   DateTime date;
@@ -96,7 +101,7 @@ class _BatchDraft {
 }
 
 /// Opening this page performs reads only. Confirmation saves and approves each
-/// original plan's own EC draft, preserving supplier, plan UUIDs and quantities.
+/// draw document's own EC draft, preserving supplier, plan UUIDs and quantities.
 class _WarehouseSubcontractOutboundBatchPageState
     extends ConsumerState<WarehouseSubcontractOutboundBatchPage> {
   final _drafts = <_BatchDraft>[];
@@ -106,7 +111,6 @@ class _WarehouseSubcontractOutboundBatchPageState
   bool _confirming = false;
   bool _changed = false;
   String? _error;
-  bool _usedInitialBundles = false;
   int _loadGeneration = 0;
   Set<String> _submittedDraftIds = {};
 
@@ -145,32 +149,16 @@ class _WarehouseSubcontractOutboundBatchPageState
     super.dispose();
   }
 
-  Future<void> _load({bool preserveEdits = false}) async {
+  Future<void> _load() async {
     if (_saving) return;
     final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
     });
-    final lockedDocuments = {
-      for (final draft in _drafts)
-        if (!draft.pending && draft.document != null) draft.document!.id: draft,
-    };
-    final lockedPlans = {
-      for (final draft in _drafts)
-        if (!draft.pending && draft.document == null)
-          draft.detail.planId: draft,
-    };
-    final previous = preserveEdits
-        ? {
-            for (final draft in _drafts)
-              if (draft.document != null && draft.pending)
-                draft.document!.id: draft,
-          }
-        : <String, _BatchDraft>{};
     final loaded = <_BatchDraft>[];
     try {
-      final ids = widget.planIds.where((id) => id.isNotEmpty).toSet().toList();
+      final ids = widget.issueIds.where((id) => id.isNotEmpty).toSet().toList();
       if (ids.isEmpty) {
         throw FormatException(l10n.warehouseSubcontractOutboundSelectRequired);
       }
@@ -181,125 +169,40 @@ class _WarehouseSubcontractOutboundBatchPageState
       final docRepo = ref.read(
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
-      final initial = _usedInitialBundles ? null : widget.initialBundles;
-      _usedInitialBundles = true;
       final results = await Future.wait([
         ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
-        initial == null
-            ? loadSubcontractOutboundDetails(
-                planIds: ids,
-                taskDetail: taskRepo.taskDetail,
-                documentDetail: docRepo.detail,
-              )
-            : Future.value(initial),
+        loadSubcontractOutboundDetails(
+          issueIds: ids,
+          taskDetail: taskRepo.taskDetail,
+          documentDetail: docRepo.detail,
+        ),
       ]);
       if (!mounted || generation != _loadGeneration) return;
       final bundles = results[1] as List<SubcontractOutboundReadBundle>;
       final weightUnit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
+      final defaultWorker = ref.read(sessionProvider).user?.employeeId;
       for (final bundle in bundles) {
-        final detail = bundle.task;
-        if (detail.status != 'OPEN') {
+        final document = bundle.document;
+        if (document.status != 0) {
           throw FormatException(l10n.warehouseSubcontractOutboundChanged);
         }
-        final List<SubcontractDocDetail?> documents = bundle.documents.isEmpty
-            ? [null]
-            : bundle.documents;
-        // Prepared output can be split across real warehouses. Each existing
-        // draft stays separate, even when two drafts reference the same plan.
-        for (final document in documents) {
-          if (document != null && document.status != 0) {
-            throw FormatException(l10n.warehouseSubcontractOutboundChanged);
-          }
-          final byPlan = {
-            for (final item in document?.items ?? <SubcontractDocItem>[])
-              if (item.planItemId != null) item.planItemId!: item,
-          };
-          final lines = <SubcontractOutboundLineDraft>[];
-          for (final line in detail.lines) {
-            final existing = byPlan[line.planItemId];
-            if (document != null && existing == null) continue;
-            if (document == null && line.readyOutboundQty <= 0) continue;
-            // 无草稿预填可发量(服务端 min(计划余量, 仓内合格可动用)), 老服务端回落计划余量。
-            final draftLine = SubcontractOutboundLineDraft(
-              line,
-              existing?.id,
-              subcontractOutboundQuantity(
-                existing?.qty ?? line.freeIssuableQty,
-              ),
-              weight: existing?.weight,
-              qtyFromWeight: existing?.qtyFromWeight ?? false,
-              weightUnit: weightUnit,
-              remark: existing?.remark,
-              unitRate: existing?.unitRate,
-            );
-            // 子件还没到货的行按行放行(ADR-103 §2.4): 默认不勾、标「等子件到货」，
-            // 同单其余有货的行照常生成草稿出库。
-            if (draftLine.waitingComponentStock) draftLine.selected = false;
-            lines.add(draftLine);
-          }
-          if (document != null && lines.length != document.items.length) {
-            for (final line in lines) {
-              line.dispose();
-            }
-            throw FormatException(l10n.warehouseSubcontractOutboundChanged);
-          }
-          final draft = _BatchDraft(
-            detail: detail,
+        // 拣货行与草稿明细按草稿明细 id 一一对上; 对不上即单据已变, 不按货品猜行。
+        final lines = subcontractOutboundLinesOf(
+          bundle.task,
+          document,
+          weightUnit: weightUnit,
+        );
+        if (lines == null) {
+          throw FormatException(l10n.warehouseSubcontractOutboundChanged);
+        }
+        loaded.add(
+          _BatchDraft(
+            detail: bundle.task,
             document: document,
             lines: lines,
-            workerId:
-                document?.workerId ??
-                ref.read(sessionProvider).user?.employeeId,
-          );
-          // 只有整单一行都发不出去才整单阻断; 文案区分「子件还没到货」与「没有可出库明细」。
-          if (lines.isEmpty) {
-            draft.state = SubcontractOutboundExecutionState.blocked;
-            draft.error = l10n.warehouseSubcontractOutboundNoLines;
-          } else if (lines.every((line) => line.maxEditableQty <= 0)) {
-            draft.state = SubcontractOutboundExecutionState.blocked;
-            draft.error = lines.every((line) => line.waitingComponentStock)
-                ? l10n.warehouseSubcontractOutboundComponentNotArrived
-                : l10n.warehouseSubcontractOutboundNoLines;
-          }
-          final old = previous[document?.id];
-          if (old != null &&
-              document != null &&
-              subcontractOutboundDraftFingerprint(old.document!) ==
-                  subcontractOutboundDraftFingerprint(document)) {
-            draft.warehouseId = old.warehouseId;
-            draft.workerId = old.workerId;
-            draft.date = old.date;
-            draft.deliveryDate = old.deliveryDate;
-            draft.remark.text = old.remark.text;
-            final byItem = {
-              for (final line in old.lines) line.draftItemId: line,
-            };
-            for (final line in draft.lines) {
-              final oldLine = byItem[line.draftItemId];
-              if (oldLine != null) {
-                if (oldLine.qty.autofilled) {
-                  line.qty.setAutomaticText(oldLine.qty.text);
-                } else {
-                  line.qty.text = oldLine.qty.text;
-                }
-                // 实称重量 (含「数量按称重推算」标记) 随未保存的编辑一起搬回。
-                line.weight.weight.setKg(
-                  oldLine.weight.kg,
-                  qtyFromWeight: oldLine.weight.qtyFromWeight,
-                );
-                line.remarkController.text = oldLine.remarkController.text;
-                line.selected = oldLine.selected;
-              }
-            }
-          }
-          final locked =
-              lockedDocuments[document?.id] ?? lockedPlans[detail.planId];
-          if (locked != null) {
-            draft.state = locked.state;
-            draft.error = locked.error;
-          }
-          loaded.add(draft);
-        }
+            workerId: document.workerId ?? defaultWorker,
+          ),
+        );
       }
       final user = ref.read(sessionProvider).user;
       if (user?.employeeId != null && user!.name.isNotEmpty) {
@@ -308,12 +211,6 @@ class _WarehouseSubcontractOutboundBatchPageState
           name: user.name,
           departmentName: user.department,
         );
-      }
-      if (!mounted) {
-        for (final draft in loaded) {
-          draft.dispose();
-        }
-        return;
       }
       setState(() {
         for (final draft in _drafts) {
@@ -389,17 +286,20 @@ class _WarehouseSubcontractOutboundBatchPageState
 
   String? _validate(_BatchDraft draft) {
     if (draft.warehouseId == null ||
-        (draft.warehouseId != draft.document?.warehouseId &&
+        (draft.warehouseId != draft.document.warehouseId &&
             !WarehouseSelection(
               ref.read(masterNameServiceProvider).warehouseHierarchy,
             ).selectableIds.contains(draft.warehouseId))) {
       return l10n.warehouseSubcontractOutboundWarehouseRequired;
     }
     for (final line in draft.lines) {
-      final error = line.validate(l10n);
+      final error = line.validate();
       if (error != null) {
         return '${line.line.goodsName ?? line.line.goodsCode ?? ''}: $error';
       }
+    }
+    if (draft.lines.every((line) => line.skipped)) {
+      return '每行都填了 0。$subcontractOutboundNothingToIssue(先取消勾选这张单，再打开它的拣货页办理)';
     }
     return null;
   }
@@ -413,10 +313,6 @@ class _WarehouseSubcontractOutboundBatchPageState
       context.appWarning(l10n.warehouseSubcontractOutboundSelectRequired);
       return;
     }
-    if (targets.any((draft) => draft.document == null)) {
-      await _prepareDrafts(targets);
-      return;
-    }
     for (final target in targets) {
       final error = _validate(target);
       if (error != null) {
@@ -425,17 +321,6 @@ class _WarehouseSubcontractOutboundBatchPageState
       }
     }
     setState(() => _confirming = true);
-    // 任一单发的是子件(单一子件直发 / 历史 BOM 子件发料)时, 弹窗说清楚出库的是子件、
-    // 回厂登记的是委外件, 不再说「目标件出库」。
-    final issuesComponent = targets.any(
-      (draft) => draft.lines.any(
-        (line) =>
-            line.line.flowMode ==
-                SubcontractOutboundFlowMode.componentOutbound ||
-            line.line.flowMode ==
-                SubcontractOutboundFlowMode.legacyBomComponent,
-      ),
-    );
     try {
       final confirmed = await showUtenReviewerConfirmDialog(
         context,
@@ -445,7 +330,7 @@ class _WarehouseSubcontractOutboundBatchPageState
         responsibilityDescription:
             l10n.warehouseSubcontractOutboundConfirmResponsibility,
         message:
-            '${issuesComponent ? l10n.warehouseSubcontractOutboundComponentEffects : l10n.warehouseSubcontractOutboundSubcontractEffects}\n\n${l10n.warehouseSubcontractOutboundBatchHint}',
+            '$subcontractOutboundApproveEffects\n\n${l10n.warehouseSubcontractOutboundBatchHint}',
       );
       if (!confirmed || !mounted || !_canExecute) return;
       setState(() {
@@ -455,13 +340,13 @@ class _WarehouseSubcontractOutboundBatchPageState
       final repo = ref.read(
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
-      _submittedDraftIds = targets.map((draft) => draft.document!.id).toSet();
+      _submittedDraftIds = targets.map((draft) => draft.document.id).toSet();
       for (final draft in targets) {
         var writeStarted = false;
         try {
-          // Re-read the exact EC draft. Never choose the next auto-generated
-          // draft after another employee has already executed this one.
-          final document = draft.document!;
+          // Re-read the exact EC draft. Never overwrite a draft that another
+          // employee (or the subcontract side) has changed since it was read.
+          final document = draft.document;
           final fresh = await repo.detail(document.id);
           if (subcontractOutboundDraftFingerprint(fresh) !=
               subcontractOutboundDraftFingerprint(document)) {
@@ -473,7 +358,7 @@ class _WarehouseSubcontractOutboundBatchPageState
           );
           draft.document = await repo.update(document.id, {
             'billDate': _date(draft.date),
-            'supplierId': draft.detail.supplierId,
+            'supplierId': document.supplierId,
             'warehouseId': draft.warehouseId,
             'workerId': draft.workerId,
             'deliverDate': draft.deliveryDate == null
@@ -482,18 +367,19 @@ class _WarehouseSubcontractOutboundBatchPageState
             'remark': draft.remark.text.trim().isEmpty
                 ? null
                 : draft.remark.text.trim(),
-            'items': [for (final line in draft.lines) line.toPayload()],
+            // 填 0 的行不回传: 服务端删行并退回它占用的库存。
+            'items': subcontractOutboundPayloadItems(draft.lines),
           });
           _changed = true;
-          final beforeApproval = await repo.detail(draft.document!.id);
+          final beforeApproval = await repo.detail(draft.document.id);
           if (subcontractOutboundDraftFingerprint(beforeApproval) !=
-              subcontractOutboundDraftFingerprint(draft.document!)) {
+              subcontractOutboundDraftFingerprint(draft.document)) {
             throw FormatException(l10n.warehouseSubcontractOutboundChanged);
           }
           setState(
             () => draft.state = SubcontractOutboundExecutionState.approving,
           );
-          final approved = await repo.approve(draft.document!.id);
+          final approved = await repo.approve(draft.document.id);
           if (approved.status != 1) {
             throw FormatException(l10n.warehouseSubcontractOutboundUncertain);
           }
@@ -548,52 +434,6 @@ class _WarehouseSubcontractOutboundBatchPageState
     }
   }
 
-  Future<void> _prepareDrafts(List<_BatchDraft> targets) async {
-    setState(() => _saving = true);
-    final repo = ref.read(warehouseSubcontractOutboundRepositoryProvider);
-    try {
-      for (final draft in targets.where((draft) => draft.document == null)) {
-        var writeStarted = false;
-        try {
-          final fresh = await repo.taskDetail(draft.detail.planId);
-          if (fresh.status != 'OPEN') {
-            throw FormatException(l10n.warehouseSubcontractOutboundChanged);
-          }
-          if (!fresh.drafts.any((item) => item.status == 0)) {
-            setState(
-              () => draft.state = SubcontractOutboundExecutionState.saving,
-            );
-            writeStarted = true;
-            _changed = true;
-            await repo.regenerateDraft(draft.detail.planId);
-          }
-          draft.state = SubcontractOutboundExecutionState.pending;
-        } catch (error) {
-          if (mounted) {
-            setState(() {
-              draft.state = writeStarted
-                  ? SubcontractOutboundExecutionState.needsVerification
-                  : SubcontractOutboundExecutionState.blocked;
-              draft.error = writeStarted
-                  ? l10n.warehouseSubcontractOutboundUncertain
-                  : _message(error);
-            });
-          }
-          return;
-        }
-      }
-      if (!mounted) return;
-      setState(() => _saving = false);
-      await _load(preserveEdits: true);
-      if (mounted) {
-        context.appInfo(l10n.warehouseSubcontractOutboundDraftsGenerated);
-      }
-      invalidateWarehouseTaskCounts(ref);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
   Future<void> _verify() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -605,10 +445,8 @@ class _WarehouseSubcontractOutboundBatchPageState
         (draft) =>
             draft.state == SubcontractOutboundExecutionState.needsVerification,
       )) {
-        final document = draft.document;
-        if (document == null) continue;
         try {
-          final fresh = await repo.detail(document.id);
+          final fresh = await repo.detail(draft.document.id);
           // A draft still visible after a timeout is not proof that an earlier
           // mutation cannot commit later. Keep it blocked; verification is GET only.
           if (fresh.status == 1) {
@@ -628,7 +466,7 @@ class _WarehouseSubcontractOutboundBatchPageState
           _submittedDraftIds.every(
             (id) => _drafts.any(
               (draft) =>
-                  draft.document?.id == id &&
+                  draft.document.id == id &&
                   draft.state == SubcontractOutboundExecutionState.completed,
             ),
           )) {
@@ -730,7 +568,9 @@ class _WarehouseSubcontractOutboundBatchPageState
                                           orderBillNo: draft.detail.orderBillNo,
                                           supplierName:
                                               draft.detail.supplierName,
-                                          documentNo: draft.document?.billNo,
+                                          documentNo:
+                                              draft.detail.issueBillNo ??
+                                              draft.document.billNo,
                                           documentRemark: draft.remark,
                                           warehouseId: draft.warehouseId,
                                           warehouses: names.warehouseHierarchy,
@@ -749,9 +589,8 @@ class _WarehouseSubcontractOutboundBatchPageState
                                       (draft) =>
                                           draft.lines.contains(row.draft),
                                     );
+                                    // 按整张领料单勾选: 一张单要么整单出库, 要么整单不动。
                                     for (final line in document.lines) {
-                                      // 等子件到货的行不跟整单联动勾选: 它此刻发不出去。
-                                      if (line.waitingComponentStock) continue;
                                       line.selected = selected;
                                     }
                                   },
@@ -808,14 +647,7 @@ class _WarehouseSubcontractOutboundBatchPageState
                           ? _submit
                           : null,
                       child: Text(
-                        _drafts.any(
-                              (draft) =>
-                                  draft.pending &&
-                                  draft.selected &&
-                                  draft.document == null,
-                            )
-                            ? l10n.warehouseSubcontractOutboundPrepareDrafts
-                            : _changed
+                        _changed
                             ? l10n.warehouseSubcontractOutboundContinue
                             : l10n.warehouseSubcontractOutboundBatchConfirm,
                       ),
@@ -830,8 +662,7 @@ class _WarehouseSubcontractOutboundBatchPageState
     key: const Key('subcontract-outbound-document-cards'),
     title: l10n.warehouseSubcontractOutboundDocuments,
     titleTrailing: Text('(${_drafts.length})'),
-    // 列数既按容器宽度算，也不超过卡片张数：只有一张单据时整张卡横铺满屏，
-    // 不再固定占半屏、右半边空着。
+    // 列数既按容器宽度算，也不超过卡片张数：只有一张单据时整张卡横铺满屏。
     child: UtenResponsiveGrid(
       columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
       maxColumns: _drafts.isEmpty ? 1 : _drafts.length,
@@ -845,9 +676,7 @@ class _WarehouseSubcontractOutboundBatchPageState
     final theme = Theme.of(context);
     final editable = draft.pending && _canExecute;
     return UtenCard(
-      key: ValueKey(
-        'subcontract-outbound-card-${draft.document?.id ?? draft.detail.planId}',
-      ),
+      key: ValueKey('subcontract-outbound-card-${draft.document.id}'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -857,7 +686,7 @@ class _WarehouseSubcontractOutboundBatchPageState
             runSpacing: UtenSpacing.s4,
             children: [
               Text(
-                '${l10n.warehouseStockOutboundBillNo}: ${draft.document?.billNo ?? '—'}',
+                '${l10n.warehouseStockOutboundBillNo}: ${draft.detail.issueBillNo ?? draft.document.billNo ?? '—'}',
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -891,9 +720,7 @@ class _WarehouseSubcontractOutboundBatchPageState
               AbsorbPointer(
                 absorbing: !editable,
                 child: UtenEmployeePicker(
-                  key: ValueKey(
-                    '${draft.document?.id ?? draft.detail.planId}:${draft.workerId}',
-                  ),
+                  key: ValueKey('${draft.document.id}:${draft.workerId}'),
                   label: l10n.warehouseSubcontractOutboundWorker,
                   initial: _employees[draft.workerId],
                   loader: _loadEmployees,
@@ -912,7 +739,7 @@ class _WarehouseSubcontractOutboundBatchPageState
                       setState(() => draft.deliveryDate = value),
                 ),
               ),
-              if (draft.document?.createdAt != null)
+              if (draft.document.createdAt != null)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -925,7 +752,7 @@ class _WarehouseSubcontractOutboundBatchPageState
                     const SizedBox(height: UtenSpacing.s4),
                     Text(
                       ChinaDateTime.formatIsoInstant(
-                        draft.document?.createdAt,
+                        draft.document.createdAt,
                         fallback: '—',
                       ),
                       style: theme.textTheme.bodyMedium,

@@ -276,7 +276,7 @@ void main() {
           _draft(
             'outbound-local',
             BadgeModule.warehouse,
-            '/warehouse/subcontract-outbound/plan-1',
+            '/warehouse/subcontract-outbound/issue-1',
           ),
           _draft(
             'stock-local',

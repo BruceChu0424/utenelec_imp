@@ -123,7 +123,7 @@ class ProductionFlowSteps extends StatelessWidget {
     '等待下发委外',
     '等待下单',
     '待财务审批',
-    '目标件出仓',
+    '领料发外',
     '等待回厂',
     '等待品质验货',
     '等待入库',

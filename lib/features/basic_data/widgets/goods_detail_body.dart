@@ -53,6 +53,7 @@ import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
 import 'goods_issue_method_dialog.dart';
 import 'goods_name_en_field.dart';
+import 'goods_purchase_receipt_policy_field.dart';
 import 'goods_quote_history_tab.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
@@ -104,6 +105,16 @@ class _GoodsNameEnDetailRow extends MasterDetailRow {
   }) : super(label, value);
 
   final bool learned;
+  final VoidCallback? onEdit;
+}
+
+/// 查看态「采购」区的采购允许超收% 行 (ADR-144)：由
+/// [GoodsPurchaseOverReceiptViewCell] 渲染，货品可编辑时带修改按钮。
+class _GoodsPurchaseOverReceiptDetailRow extends MasterDetailRow {
+  _GoodsPurchaseOverReceiptDetailRow({required this.pct, required this.onEdit})
+    : super('采购允许超收%', goodsPurchaseOverReceiptText(pct));
+
+  final double? pct;
   final VoidCallback? onEdit;
 }
 
@@ -766,6 +777,19 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     widget.onDataChanged?.call();
   }
 
+  /// 采购允许超收% 只改这一个记忆值 (ADR-144)，不进整张货品编辑表单。
+  Future<void> _editPurchaseOverReceipt() async {
+    final d = _detail;
+    if (d == null) return;
+    final reload = await showGoodsPurchaseReceiptPolicyDialog(
+      context,
+      detail: d,
+    );
+    if (!reload || !mounted) return;
+    await _refreshDetail();
+    widget.onDataChanged?.call();
+  }
+
   Future<void> _refreshDetail() async {
     if (_goodsId == null) return;
     try {
@@ -1313,6 +1337,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           '订货倍数',
           withUnit(goodsQtyText(d.orderMultipleQty), d.unitId, d.unitLegacyId),
         ),
+        // ADR-144 采购允许超收记忆：订货行预填用；每次保存采购订货单自动写回。
+        // 比例不是价格，不看成本权限；能编辑货品就能改。
+        _GoodsPurchaseOverReceiptDetailRow(
+          pct: d.purchaseAllowedOverReceiptPct,
+          onEdit: _canEditSaved ? _editPurchaseOverReceipt : null,
+        ),
         // V593 单一事实源两价：订货行价预填；每次保存采购/委外单自动写回最新价。
         if (canViewLearnedPrice)
           MasterDetailRow(
@@ -1374,6 +1404,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   }
 
   Widget _cell(ThemeData theme, MasterDetailRow r) {
+    if (r is _GoodsPurchaseOverReceiptDetailRow) {
+      return GoodsPurchaseOverReceiptViewCell(pct: r.pct, onEdit: r.onEdit);
+    }
     if (r is _GoodsNameEnDetailRow) {
       return GoodsNameEnViewCell(
         nameEn: r.value,

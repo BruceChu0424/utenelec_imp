@@ -196,10 +196,6 @@ class ProcurementRejectedOrderEditTest {
                         org.mockito.Mockito.mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class, org.mockito.Mockito.RETURNS_DEEP_STUBS),
                         org.mockito.Mockito.mock(com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService.class));
 
-        var preparation = mock(com.uten.imp.application.port.SubcontractOrderPreparationPort.class);
-        org.springframework.test.util.ReflectionTestUtils.setField(
-                service, "orderPreparation", preparation);
-
         var request =
                 new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
         request.setBillDate(LocalDate.of(2026, 8, 3));

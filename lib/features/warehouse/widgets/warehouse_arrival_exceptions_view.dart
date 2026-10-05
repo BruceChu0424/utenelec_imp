@@ -769,6 +769,17 @@ class _WarehouseArrivalExceptionsViewState
       type: 'number',
       value: (task) => procurementQty(task.approvedRemainingQty),
     ),
+    // ADR-144：采购允许超收(检出时快照)「p%(最多 Q+T)」；委外与旧异常显示「—」。
+    MasterColumnDef(
+      key: 'allowedOverReceipt',
+      label: '允许超收',
+      width: 150,
+      info: '采购订货行允许超收比例与最多可收数量(订货量加允许超收量)；累计收货超过最多可收的部分才转财务审批。',
+      value: (task) => task.hasReceiptToleranceSnapshot
+          ? '${procurementQty(task.allowedOverReceiptPctSnapshot ?? 0)}%'
+                '(最多 ${procurementQty(task.orderQtySnapshot! + (task.toleranceQtySnapshot ?? 0))})'
+          : '—',
+    ),
     MasterColumnDef(
       key: 'acceptedQty',
       label: '财务接收',
@@ -939,6 +950,17 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
                   _DetailLine(
                     label: '超量申请',
                     value: procurementQty(task.requestedExcessQty) + unit,
+                  ),
+                ],
+                // ADR-144：采购按允许超收口径说明一句（订 Q，允许超收 p%(最多 Q+T)…）。
+                if (task.receiptToleranceSummary case final summary?) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Text(
+                    '$summary$unit',
+                    key: ValueKey(
+                      'warehouse-arrival-exception-tolerance-${task.id}',
+                    ),
+                    style: theme.textTheme.bodyMedium,
                   ),
                 ],
                 const SizedBox(height: UtenSpacing.s12),

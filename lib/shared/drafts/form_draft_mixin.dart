@@ -608,7 +608,19 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
               (error.httpStatus == 409 && error.code == 'CONFLICT'));
       if (rejected) {
         _draftSubmissionPending = false;
-        await saveFormDraftNow();
+        // The server's definite rejection is what the user must see. A failing
+        // local checkpoint here must not replace it with a generic local error
+        // (2026-10-05: a 409 from 批量登记实际到货 surfaced only as
+        // 「批量登记失败」). The durable pre-submit marker stays on disk until
+        // the next successful autosave, which is the safe direction.
+        try {
+          await saveFormDraftNow();
+        } catch (checkpointError) {
+          if (!_draftDisposed) {
+            _draftError = checkpointError;
+            _draftStatus.value = '服务端未接受本次提交，内容仍在页面；本机草稿暂未保存成功，请勿关闭页面。';
+          }
+        }
       } else if (!formDraftCanReplaySubmission && mounted) {
         super.setState(() => _draftSubmissionBlocked = true);
       }

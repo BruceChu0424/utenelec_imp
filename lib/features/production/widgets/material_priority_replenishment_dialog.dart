@@ -223,10 +223,6 @@ class _MaterialPriorityReplenishmentDialogState
           ? '超出待补量的部分须勾选公共备货'
           : '当前补供最多 ${_number(preview.remainingSupplementQty)}，额外备货请另建完整任务';
     }
-    if (preview.requiresPreparation &&
-        (value - preview.remainingSupplementQty).abs() > .000001) {
-      return '前置自制须承接全部待补量，建立后可分批安排车间';
-    }
     return null;
   }
 
@@ -493,7 +489,6 @@ class _MaterialPriorityReplenishmentDialogState
                                   ),
                                   controller: _quantity,
                                   enabled: !_locked && blocked == null,
-                                  readOnly: preview.requiresPreparation,
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
                                         decimal: true,
@@ -508,9 +503,7 @@ class _MaterialPriorityReplenishmentDialogState
                                               _quantityError!,
                                             ),
                                     ),
-                                    info: preview.requiresPreparation
-                                        ? '先完整建立前置自制责任，之后可以分批安排车间。'
-                                        : _canExtra
+                                    info: _canExtra
                                         ? '先补原计划，超出当前待补量的部分单独进入公共余量。'
                                         : '最多 ${_number(preview.remainingSupplementQty)}；额外备货请另建完整任务。',
                                   ),

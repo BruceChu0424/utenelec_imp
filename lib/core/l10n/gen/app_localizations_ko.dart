@@ -157,7 +157,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get bomDesignReasonSubcontractOutbound =>
-      '이번에는 단일 구성품 외주로 출고되어 외주 계약 수량을 따릅니다';
+      '상위 품목이 외주이므로 이 자재를 외주처에 출고하며, 외주 계약(설계) 수량을 따릅니다';
 
   @override
   String get bomDesignReasonOther => '사용할 수 있는 실제 데이터가 없습니다';
@@ -2705,19 +2705,6 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String materialPreparedChildCreated(int count) {
-    return 'Created $count preparation tasks; they have not been issued to a workshop yet.';
-  }
-
-  @override
-  String get materialPreparedChildNext =>
-      'Check quantity, workshop and owner in the selected rows, then generate the production plan. Approval is required before release.';
-
-  @override
-  String get materialPreparedChildNeedPlanner =>
-      'A planner with production-plan generation permission must set quantity, workshop and owner and submit the plan.';
-
-  @override
   String get materialRootRoutePending => 'Route pending';
 
   @override
@@ -2985,64 +2972,13 @@ class AppLocalizationsKo extends AppLocalizations {
       '대기 중인 출처가 하나이면 자동으로 판별합니다. 정상 입고와 반품 보충이 함께 남아 있으면 이번 물품의 출처를 선택하세요. 반품 보충 우선은 반품 수량부터 채우고 나머지는 정상 입고로 처리합니다. 무상 보충 또는 재청구 여부는 원래 반품 처리 결과를 따릅니다.';
 
   @override
-  String get subcontractPreparationWarehouse => '내부 생산 입고 창고';
-
-  @override
-  String get subcontractPreparationWarehouseHint =>
-      '직접 주문한 외주품에 하위 부품이 있고 재고가 부족하면 내부 생산 입고 창고를 선택하세요. 계획부가 부족량을 생산하고 실제 입고한 후 재무에 제출할 수 있습니다. 하위 부품이 없거나 재고가 충분하면 선택하지 않아도 됩니다.';
-
-  @override
-  String get subcontractInternalProduction => '내부 생산';
-
-  @override
-  String get subcontractPreparedQuantity => '준비 완료';
-
-  @override
-  String get subcontractPreparationShortage => '추가 생산 필요';
-
-  @override
-  String get subcontractOpenPreparation => '생산 계획 보기';
-
-  @override
-  String get subcontractDraftPreparationHint =>
-      '계획부에서 먼저 내부 생산을 준비합니다. 실제 입고가 완료되면 재무에 제출하세요.';
-
-  @override
-  String get subcontractWaitingPlan => '계획 대기';
-
-  @override
-  String get subcontractReadyForFinance => '준비 완료, 재무 제출 가능';
-
-  @override
   String get materialIssuedPlanSyncPending => '지시 완료, 계획 진행 동기화 대기';
-
-  @override
-  String get subcontractOrderBlockedProducing => '생산 중이므로 아직 외주 주문을 할 수 없습니다.';
-
-  @override
-  String get subcontractOrderBlockedPreparation =>
-      '선행 생산이 완료되지 않아 아직 외주 주문을 할 수 없습니다.';
-
-  @override
-  String get subcontractOrderBlockedNotification =>
-      '선행 생산이 완료되었습니다. 외주에 통지한 후 주문하세요.';
-
-  @override
-  String get subcontractOrderBlockedCancelled => '생산 작업이 취소되어 외주 주문을 할 수 없습니다.';
-
-  @override
-  String get subcontractOrderBlockedComponentStock =>
-      '부품이 아직 입고되지 않아 외주 주문을 할 수 없습니다. 부품이 입고되면 작업 센터가 자동으로 잠금 해제됩니다.';
 
   @override
   String get subcontractPlanIssuedDate => '계획 지시일';
 
   @override
   String get subcontractPlanIssuedDateHint => '계획부에서 이 외주 작업을 최초로 지시한 날짜입니다.';
-
-  @override
-  String get subcontractOrderBlockedRefresh =>
-      '외주에 통지했습니다. 작업 목록을 새로 고친 후 주문하세요.';
 
   @override
   String get serverStatusTitle => '서버 상태';
@@ -3413,7 +3349,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundBatchHint =>
-      'Lines are selected together for each outbound document. Reduce quantities for a partial issue. Each document is saved and approved separately; completed results are retained. Processing pauses on errors. Verify the result before continuing unprocessed documents.';
+      '출고 문서 단위로 명세를 함께 선택합니다. 부분 출고는 수량을 줄이고, 이번에 보내지 않을 자재는 0을 입력합니다(저장 시 해당 행 삭제). 문서 전체를 보내지 않으려면 개별 피킹 화면에서 \"외주로 반려(미출고)\"를 사용하세요. 문서별로 저장·승인하며 완료된 결과는 유지됩니다. 오류가 나면 일시 중지되며, 결과를 확인한 뒤 남은 문서를 계속 처리합니다.';
 
   @override
   String get warehouseSubcontractOutboundDocuments => 'Document details';
@@ -3456,20 +3392,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseSubcontractOutboundUnit => 'Unit';
 
   @override
-  String get warehouseSubcontractOutboundPlanned => 'Planned quantity';
-
-  @override
-  String get warehouseSubcontractOutboundPrepared => 'Prepared quantity';
-
-  @override
-  String get warehouseSubcontractOutboundIssued => 'Issued quantity';
-
-  @override
   String get warehouseSubcontractOutboundStockAvailable =>
       'Available in warehouse';
-
-  @override
-  String get warehouseSubcontractOutboundAvailable => 'Maximum this issue';
 
   @override
   String get warehouseSubcontractOutboundQuantity => 'Issue quantity';
@@ -3510,20 +3434,12 @@ class AppLocalizationsKo extends AppLocalizations {
       'Select an issue warehouse.';
 
   @override
-  String get warehouseSubcontractOutboundQuantityInvalid =>
-      'Issue quantity must be greater than zero and cannot exceed the maximum this issue.';
-
-  @override
   String get warehouseSubcontractOutboundLoadFailed =>
       'Could not load outbound details. Please retry.';
 
   @override
   String get warehouseSubcontractOutboundConfirmResponsibility =>
       'Confirmation records the signed-in employee as responsible for this outbound approval.';
-
-  @override
-  String get warehouseSubcontractOutboundSubcontractEffects =>
-      'Approval issues the target goods from the selected warehouse to the subcontractor. Returned goods still require registration and quality inspection.';
 
   @override
   String warehouseSubcontractOutboundBatchResult(int done, int total) {
@@ -3538,9 +3454,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseSubcontractOutboundVerify => 'Verify processing result';
 
   @override
-  String get warehouseSubcontractOutboundDraft => 'Outbound draft';
-
-  @override
   String get warehouseSubcontractOutboundNoLines =>
       'No outbound lines are currently available';
 
@@ -3549,14 +3462,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseStockOutboundSeries => 'Series';
-
-  @override
-  String get warehouseSubcontractOutboundDraftsGenerated =>
-      'Outbound drafts have been generated. Review each draft\'s actual warehouse and quantities before confirming outbound.';
-
-  @override
-  String get warehouseSubcontractOutboundPrepareDrafts =>
-      'Generate drafts and review';
 
   @override
   String get warehouseOutboundBatchDocuments => '문서 정보';
@@ -3591,90 +3496,14 @@ class AppLocalizationsKo extends AppLocalizations {
       'These notes are shared by every line of the same outbound document. Use line notes for information specific to one line.';
 
   @override
-  String get warehouseSubcontractOutboundStageDraftPicking => '출고 초안 피킹 대기';
-
-  @override
-  String warehouseSubcontractOutboundStageReady(String qty) {
-    return '준비 완료·출고 대기 (출고 가능 $qty)';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundStageReadyPlain => '준비 완료·출고 대기';
-
-  @override
-  String get warehouseSubcontractOutboundWaitingComponent => '부품 입고 대기';
-
-  @override
-  String get warehouseSubcontractOutboundStageBlockedPreparation =>
-      '사전 자체 제작 차단됨';
-
-  @override
-  String get warehouseSubcontractOutboundStageWaitingPreparation =>
-      '사전 자체 제작 대기';
-
-  @override
-  String get warehouseSubcontractOutboundStagePendingDraft => '출고 전표 생성 대기';
-
-  @override
   String get warehouseSubcontractOutboundOpenPicking => '피킹 출고 열기';
-
-  @override
-  String get warehouseSubcontractOutboundBannerComponent =>
-      '부품을 출고하는 외주 품목: 부품이 입고된 후에야 출고 가능 수량이 표시됩니다. 창고는 부품을 출고하고, 외주 업체는 외주 품목을 반환합니다.';
-
-  @override
-  String warehouseSubcontractOutboundWaitingComponentStock(String qty) {
-    return '부품 입고 대기 (창고 가용 $qty)';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundSuggestedWarehouse => '권장 출고 창고';
-
-  @override
-  String get warehouseSubcontractOutboundComponentEffects =>
-      '승인 후 부품이 선택한 창고에서 실제 출고되어 외주 업체에 전달됩니다. 가공 후 반환 시 외주 품목으로 등록되며 품질 검사를 거쳐야 정식 입고됩니다.';
-
-  @override
-  String get warehouseSubcontractOutboundComponentNotArrived =>
-      '부품이 아직 입고되지 않아 창고에 하나도 없습니다. 부품이 입고되면 시스템이 자동으로 초안을 보충하고 창고에 알립니다.';
 
   @override
   String get warehouseSubcontractOutboundBannerScope =>
       '창고 작업 보기에는 가격과 금액이 없으며 외주 업무 편집 기능도 제공하지 않습니다.';
 
   @override
-  String warehouseSubcontractOutboundBannerDraftPending(String billNo) {
-    return '초안 $billNo 피킹 검토 대기';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundBannerWaitingComponent =>
-      '부품 입고 대기: 부품이 입고되면 시스템이 자동으로 초안을 보충하고 알립니다';
-
-  @override
-  String warehouseSubcontractOutboundBannerIssuable(String qty) {
-    return '출고 가능 $qty';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundFactDraftNo => '출고 초안 번호';
-
-  @override
-  String get warehouseSubcontractOutboundFactLatestIssue => '최근 출고 문서';
-
-  @override
-  String warehouseSubcontractOutboundHistoryTitle(int count) {
-    return '출고 기록 ($count)';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundSaveDraft => '초안 저장';
-
-  @override
   String get warehouseSubcontractOutboundApprove => '출고 승인';
-
-  @override
-  String get warehouseSubcontractOutboundClosePlan => '출고 중단';
 
   @override
   String get productionBatchTitle => 'Batch production and material request';

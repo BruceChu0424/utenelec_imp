@@ -93,16 +93,17 @@ void main() {
   );
 
   testWidgets(
-    'over supply permission is independent and unsupported preparation never accepts public extra',
+    'subcontract without server over-supply capability never accepts public extra',
     (tester) async {
       final repo = _Repository()
-        ..json = _preview(route: 'SUBCONTRACT', preparation: true, over: false);
+        ..json = _preview(route: 'SUBCONTRACT', over: false);
       await _pump(tester, repo, size: const Size(375, 844));
       expect(
         find.byKey(const Key('priority-replenishment-public-extra')),
         findsNothing,
       );
-      expect(tester.widget<TextField>(find.byKey(_quantity)).readOnly, isTrue);
+      // 委外与采购同一条补供通道(ADR-143)：数量可改，不再有整量承接的只读格。
+      expect(tester.widget<TextField>(find.byKey(_quantity)).readOnly, isFalse);
       await tester.tap(find.byKey(_submit));
       await tester.pumpAndSettle();
       expect(repo.notifications.single['target'], 'SUBCONTRACT');
@@ -215,7 +216,6 @@ Future<void> _pump(
 
 Map<String, dynamic> _preview({
   String route = 'BUY',
-  bool preparation = false,
   bool over = true,
   double remaining = 4,
   String? child,
@@ -249,7 +249,6 @@ Map<String, dynamic> _preview({
   'route': route,
   'allowedRoutes': [route],
   'operation': route == 'MAKE' ? 'ISSUE_WORKSHOP_PLANS' : 'NOTIFY_SUPPLY',
-  'requiresPreparation': preparation,
   'canOverSupply': over,
   'safetyReplenishmentQty': 0,
   'existingChildAnalysisLineId': ?child,

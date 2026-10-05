@@ -85,10 +85,7 @@ void main() {
     Widget page,
     Set<String> permissions, {
     bool withDrafts = false,
-    ({int count, int waitingComponent}) subcontractCounts = (
-      count: 2,
-      waitingComponent: 0,
-    ),
+    int subcontractOutboundCount = 2,
   }) {
     return ProviderScope(
       overrides: [
@@ -99,7 +96,7 @@ void main() {
         isSuperAdminProvider.overrideWithValue(false),
         // 分段数字随徽章汇总一次带回(ADR-108):
         // 销售出库待出库红徽章与父分类同数(5), 已出库中性括号(12);
-        // 委外待出仓红黄两数同出一个来源(ADR-103): 红 = 可出仓 / 黄 = 等子件到货.
+        // 委外出库红数 = 待发料的委外领料单张数(ADR-143 §4.3), 没有黄数.
         fixedBadgeSummaryOverride(
           badgeSummaryFixture(
             facts: {
@@ -107,9 +104,7 @@ void main() {
               BadgeFact.warehouseSalesOutboundShipped: 12,
               BadgeFact.productionDraw: 3,
               BadgeFact.productionReturn: 0,
-              BadgeFact.subcontractOutbound: subcontractCounts.count,
-              BadgeFact.subcontractOutboundWaitingComponent:
-                  subcontractCounts.waitingComponent,
+              BadgeFact.subcontractOutbound: subcontractOutboundCount,
               BadgeFact.warehouseArrivalException: 0,
               BadgeFact.finishedInbound: 0,
             },
@@ -373,61 +368,54 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('outbound subcontract segment carries red and yellow badges', (
+  testWidgets('outbound subcontract segment carries only the red draft count', (
     tester,
   ) async {
-    // 红 0 黄 1: 委外单财务批准后子件一件没到, 红角标按 ADR-101 不计——此前分段
-    // 上什么都不显示(用户 2026-09-22 截图); 现在黄枚单独画出来, 红枚不画 0.
+    // 红 = 委外人员已提交、仓库还没发出的领料单张数; 等物料的委外任务在委外任务
+    // 中心「领料」里, 仓库这边不再画黄枚(原「等子件到货」).
     await tester.pumpWidget(
-      app(
-        const WarehouseOutboundTaskCenterPage(),
-        const {Perm.subcontractOutboundView},
-        subcontractCounts: (count: 0, waitingComponent: 1),
-      ),
+      app(const WarehouseOutboundTaskCenterPage(), const {
+        Perm.subcontractOutboundView,
+      }),
     );
     await tester.pump();
     expect(find.text('委外出库'), findsOneWidget);
-    expect(find.byType(UtenInProgressBadge), findsOneWidget);
-    expect(find.byType(UtenNotificationBadge), findsNothing);
-    expect(find.text('1'), findsOneWidget);
-    expect(find.text('0'), findsNothing);
+    expect(find.byType(UtenNotificationBadge), findsOneWidget);
+    expect(find.byType(UtenInProgressBadge), findsNothing);
+    expect(find.text('2'), findsOneWidget);
 
-    // 小类行「待出仓任务」与父分类同源同数: 黄枚再画一次, 仍没有红枚.
+    // 小类行「待发料」与父分类同源同数.
     await tester.tap(find.text('委外出库'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('待出仓任务'), findsOneWidget);
-    expect(find.byType(UtenInProgressBadge), findsNWidgets(2));
-    expect(find.byType(UtenNotificationBadge), findsNothing);
-    expect(find.text('1'), findsNWidgets(2));
+    expect(find.text('待发料'), findsOneWidget);
+    expect(find.text('待出仓任务'), findsNothing);
+    expect(find.byType(UtenNotificationBadge), findsNWidgets(2));
+    expect(find.byType(UtenInProgressBadge), findsNothing);
+    expect(find.text('2'), findsNWidgets(2));
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
 
-  testWidgets('outbound subcontract segment draws both badges when both > 0', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      app(
-        const WarehouseOutboundTaskCenterPage(),
-        const {Perm.subcontractOutboundView},
-        subcontractCounts: (count: 2, waitingComponent: 3),
-      ),
-    );
-    await tester.pump();
-    // 黄左红右(与 hub 卡右上角同序), 两枚互斥不重叠.
-    expect(find.byType(UtenInProgressBadge), findsOneWidget);
-    expect(find.byType(UtenNotificationBadge), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('2'), findsOneWidget);
-    final yellow = tester.getTopLeft(find.byType(UtenInProgressBadge));
-    final red = tester.getTopLeft(find.byType(UtenNotificationBadge));
-    expect(yellow.dx, lessThan(red.dx));
-    await tester.pump(const Duration(seconds: 61));
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
-  });
+  testWidgets(
+    'outbound subcontract segment draws nothing when no draft waits',
+    (tester) async {
+      await tester.pumpWidget(
+        app(const WarehouseOutboundTaskCenterPage(), const {
+          Perm.subcontractOutboundView,
+        }, subcontractOutboundCount: 0),
+      );
+      await tester.pump();
+      expect(find.text('委外出库'), findsOneWidget);
+      expect(find.byType(UtenNotificationBadge), findsNothing);
+      expect(find.byType(UtenInProgressBadge), findsNothing);
+      expect(find.text('0'), findsNothing);
+      await tester.pump(const Duration(seconds: 61));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    },
+  );
 
   testWidgets('outbound generic segment offers create with permission', (
     tester,

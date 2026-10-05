@@ -405,6 +405,97 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 2026-10-05 委外批量登记实测：服务端 409(数据库守卫)只显示「批量登记失败，请保持当前内容后重试」。
+  // 服务端明确拒绝必须给出服务端原因；只有结果不确定(5xx/超时/断网)才说「保持当前内容重试」。
+  for (final failure in <String, Object>{
+    'definite409': ApiException(
+      'CONFLICT',
+      '回厂数量超过委外商用已发直属物料能做成的套数，超出部分要先在到货异常里经财务批准(委外商自带料)',
+      httpStatus: 409,
+    ),
+    'definite422': ApiException(
+      'VALIDATION_FAILED',
+      '先入库后质检：第 1 行必须填写上架库位',
+      httpStatus: 422,
+    ),
+    'server500': ApiException('INTERNAL', '服务器繁忙，请稍后再试', httpStatus: 500),
+    'timeout': NetworkTimeoutException(),
+  }.entries) {
+    testWidgets('批量登记页：登记失败提示口径 ${failure.key}', (tester) async {
+      tester.view.physicalSize = const Size(1400, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = _BatchApi(arrivalError: failure.value);
+      final router = GoRouter(
+        initialLocation: RouteName.warehouseArrivalReceiptBatch,
+        routes: [
+          GoRoute(
+            path: RouteName.warehouseArrivalReceiptBatch,
+            builder: (_, _) => WarehouseArrivalBatchReceiptPage(
+              prefills: [_prefills().first],
+              canRegister: true,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.warehouseInboundExpectations,
+            builder: (_, _) => const Scaffold(body: Text('预计到货任务中心')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sessionProvider.overrideWith(_TestSessionNotifier.new),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            builder: (context, child) => Column(
+              children: [
+                const AppNotificationHost(),
+                Expanded(child: child ?? const SizedBox()),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final submit = find.byKey(const Key('inbound-route-submit-inspectFirst'));
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认登记送检'));
+      await tester.pump();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(api.arrivalPostBodies, hasLength(1));
+      final toasts = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+        listen: false,
+      ).read(appNotificationProvider).map((notice) => notice.message).toList();
+      final error = failure.value as ApiException;
+      final definite = failure.key.startsWith('definite');
+      expect(
+        toasts.last,
+        definite
+            ? error.message
+            : '登记结果未确认(网络中断、超时或服务器异常)，请保持当前内容直接重试，同一内容重试不会重复登记',
+      );
+      expect(toasts.last, isNot(contains('批量登记失败')));
+      // 停在原页，内容保留，可改后再提交。
+      expect(find.text('预计到货任务中心'), findsNothing);
+      expect(submit, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('批量登记页：明细默认全选，没勾行时提交置灰，只提交勾选行', (tester) async {
     tester.view.physicalSize = const Size(1400, 2000);
     tester.view.devicePixelRatio = 1;
@@ -773,8 +864,11 @@ class _ExpectationsApi extends ApiClient {
 
 /// 批量登记页桩：主档字典 + 登记端点回执。
 class _BatchApi extends ApiClient {
-  _BatchApi({this.disabledFirst = false}) : super(Dio());
+  _BatchApi({this.disabledFirst = false, this.arrivalError}) : super(Dio());
   final bool disabledFirst;
+
+  /// 非空时登记端点按它失败(服务端明确拒绝 / 结果不确定)。
+  final Object? arrivalError;
 
   final List<Map<String, dynamic>> arrivalPostBodies = [];
 
@@ -815,6 +909,8 @@ class _BatchApi extends ApiClient {
   }) async {
     if (path == '/warehouse/inbound/arrivals') {
       arrivalPostBodies.add(Map<String, dynamic>.from(body! as Map));
+      final error = arrivalError;
+      if (error != null) throw error;
       return const {
         'outcome': 'SUBMITTED_FOR_INSPECTION',
         'receiptId': 'po-receipt-1',

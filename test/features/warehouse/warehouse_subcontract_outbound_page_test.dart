@@ -1,27 +1,36 @@
-import 'package:dio/dio.dart';
+// 委外出仓工作台列表(ADR-143 §4.3): 一行 = 一张委外人员已提交、仓库未发出的
+// 领料单; 单击选中、双击按领料单 id 进拣货页; 有执行权限才可勾选批量出库。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/subcontract_outbound.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart';
+import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+
 import 'outbound_weight_fakes.dart';
+import 'subcontract_outbound_test_support.dart';
+
+late SharedPreferences _preferences;
 
 void main() {
-  testWidgets('shared task table uses single selection and double-click open', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
+  setUpAll(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
+
+  testWidgets('一行一张领料单: 单击选中、双击按领料单进拣货页, 返回后重拉列表', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final api = _OutboundTaskApi();
+    final api = SubcontractOutboundFakeApi();
     final router = _router();
     addTearDown(router.dispose);
 
@@ -29,27 +38,38 @@ void main() {
     await tester.pumpAndSettle();
 
     final table = _table(tester);
-    expect(table.selectable, isFalse);
+    expect(table.selectable, isFalse, reason: '没有出仓执行权限不给勾选');
     expect(table.batchActionsBuilder, isNull);
-    expect(
-      table.columns.map((column) => column.label),
-      containsAll(<String>['任务状态', '委外订货单', '委外商', '交货日期', '目标件行数', '出仓草稿单']),
-    );
+    expect(table.facets, isEmpty, reason: '列表只有待发料一种状态');
+    expect(table.columns.map((column) => column.label), [
+      '领料单号',
+      '委外订货单',
+      '委外商',
+      '领料仓',
+      '物料种数',
+      '明细行数',
+      '提交时间',
+      '提交人',
+    ]);
     final labels = table.columns.map((column) => column.label);
-    for (final mixedUnitTotal in const ['目标件总量', '当前可出仓', '目标件已出仓', '订单未出仓']) {
-      expect(
-        labels,
-        isNot(contains(mixedUnitTotal)),
-        reason: 'mixed goods units must not be summed at task level',
-      );
+    for (final retired in const ['任务状态', '目标件行数', '出仓草稿单', '等子件到货']) {
+      expect(labels, isNot(contains(retired)));
     }
+    expect(table.items.map((task) => task.issueId), [
+      'issue-1',
+      'issue-2',
+      'issue-3',
+    ]);
+    final query = api.taskQueries.first;
+    expect(query.containsKey('status'), isFalse);
+    expect(query.containsKey('supplierId'), isFalse);
     final menu = table.rowMenuBuilder!(table.items.first);
-    expect(menu, hasLength(1));
     expect((menu.single as UtenMenuItem).label, '进入拣货出仓');
     expect(find.text('共 3 项 · 单击选中，双击详情'), findsOneWidget);
     expect(find.byType(Checkbox), findsNothing);
+    expect(find.textContaining('数量只能改少不能改多'), findsOneWidget);
 
-    await tester.tap(find.text('WW202608300001'));
+    await tester.tap(find.text('EC-1'));
     await tester.pump();
     expect(
       router.routeInformationProvider.value.uri.path,
@@ -57,146 +77,104 @@ void main() {
     );
 
     await tester.pump(const Duration(milliseconds: 400));
-    await _doubleTapRow(tester, find.text('WW202608300001'));
+    await _doubleTapRow(tester, find.text('EC-1'));
     await tester.pumpAndSettle();
-    expect(find.text('detail-plan-1'), findsOneWidget);
+    expect(find.text('detail-issue-1'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('complete-outbound-task')));
     await tester.pumpAndSettle();
-    expect(api.taskRequests, 2);
+    expect(api.listRequests, 2);
     expect(find.text('委外出仓任务中心'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('等子件到货的计划显示为第三桶且不可勾选, 有可发量的显示可发合计', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
+  testWidgets('有出仓执行权限时可勾选多张领料单进批量出库页', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final api = _OutboundTaskApi()..componentStockRows = true;
+    final api = SubcontractOutboundFakeApi();
+    final router = _router();
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      _app(
+        api: api,
+        router: router,
+        permissions: subcontractOutboundPermissions,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final table = _table(tester);
+    expect(table.selectable, isTrue);
+    expect(table.idOf!(table.items.first), 'issue-1');
+    table.onSelectedIdsChanged!({'issue-1', 'issue-3'});
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const Key('subcontract-outbound-batch-action')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WarehouseSubcontractOutboundBatchPage), findsOneWidget);
+    expect(api.taskReads.toSet(), {'issue-1', 'issue-3'});
+    expect(api.updates, isEmpty, reason: '打开批量页只读不写');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('窄屏仍是表格, 搜索 / 翻页 / 加载失败照常', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(375, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = SubcontractOutboundFakeApi();
     final router = _router();
     addTearDown(router.dispose);
 
     await tester.pumpWidget(_app(api: api, router: router));
     await tester.pumpAndSettle();
 
-    final table = _table(tester);
     expect(
-      table.facets['status']?.map((bucket) => bucket.value),
-      containsAll(<String>[
-        'DRAFT_PICKING',
-        'READY_OUTBOUND',
-        'WAITING_COMPONENT',
-      ]),
+      find.byKey(const Key('subcontract-outbound-task-table')),
+      findsOneWidget,
     );
-    expect(
-      table.facets['status']
-          ?.firstWhere((bucket) => bucket.value == 'WAITING_COMPONENT')
-          .label,
-      '等子件到货',
-    );
-    expect(find.text('等子件到货'), findsOneWidget);
-    expect(find.text('已备齐·待出仓 (可发 300)'), findsOneWidget);
-    expect(find.text('目标件已备齐，待出仓'), findsNothing);
-    final waiting = table.items.firstWhere(
-      (task) => task.stage == OutboundTaskStage.waitingComponent,
-    );
-    final ready = table.items.firstWhere(
-      (task) => task.stage == OutboundTaskStage.readyOutbound,
-    );
-    expect(table.idOf!(waiting), isNull, reason: '可发 0 的行勾了也只会撞 409');
-    expect(table.idOf!(ready), ready.planId);
-    expect(find.textContaining('子件入库后才会出现可发量'), findsOneWidget);
     expect(tester.takeException(), isNull);
-  });
 
-  testWidgets(
-    'compact layout stays a table and keeps search pager error states',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(375, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final api = _OutboundTaskApi();
-      final router = _router();
-      addTearDown(router.dispose);
-
-      await tester.pumpWidget(_app(api: api, router: router));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const Key('subcontract-outbound-task-table')),
-        findsOneWidget,
-      );
-      expect(tester.takeException(), isNull);
-
-      final searchField = find.descendant(
-        of: find.byKey(const Key('subcontract-outbound-search')),
-        matching: find.byType(TextField),
-      );
-      await tester.enterText(searchField, 'missing');
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pumpAndSettle();
-
-      expect(api.taskQueries.last['keyword'], 'missing');
-      expect(find.text('没有匹配「missing」的出仓任务'), findsOneWidget);
-
-      await tester.enterText(searchField, '');
-      await tester.pump(const Duration(milliseconds: 350));
-      await tester.pumpAndSettle();
-      _table(tester).onPageChange!(2);
-      await tester.pumpAndSettle();
-      expect(api.taskQueries.last['page'], 2);
-      expect(find.text('WW202608300003'), findsOneWidget);
-
-      api.failNext = true;
-      await tester.tap(find.text('刷新'));
-      await tester.pumpAndSettle();
-      expect(find.text('委外出仓任务加载失败，请检查网络后重试'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('multiple actual-warehouse drafts open together from one plan', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final api = _MultiDraftOutboundApi();
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          fakeWeightRepositoryOverride(),
-          apiClientProvider.overrideWithValue(api),
-          sharedPreferencesProvider.overrideWithValue(preferences),
-        ],
-        child: const MaterialApp(
-          home: Scaffold(
-            body: WarehouseSubcontractOutboundEditPage(planId: 'plan-multi'),
-          ),
-        ),
-      ),
+    final searchField = find.descendant(
+      of: find.byKey(const Key('subcontract-outbound-search')),
+      matching: find.byType(TextField),
     );
+    await tester.enterText(searchField, 'missing');
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
 
-    expect(api.loadedDraftIds, ['draft-a', 'draft-b']);
-    await tester.tap(find.text('单据信息'));
+    expect(api.taskQueries.last['keyword'], 'missing');
+    expect(find.text('没有匹配「missing」的委外领料单'), findsOneWidget);
+
+    await tester.enterText(searchField, '');
+    await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
-    expect(find.text('ITEM-B'), findsOneWidget);
-    expect(find.text('当前草稿目标件'), findsOneWidget);
-    expect(find.text('ITEM-A'), findsOneWidget);
-    expect(find.text('其它仓草稿目标件'), findsOneWidget);
-    final qty = tester.widget<TextField>(
-      find.byKey(const ValueKey('subcontract-outbound-draft-item-b-quantity')),
-    );
-    expect(qty.controller?.text, '3');
+    _table(tester).onPageChange!(2);
+    await tester.pumpAndSettle();
+    expect(api.taskQueries.last['page'], 2);
+
+    api.failNextList = true;
+    await tester.tap(find.text('刷新'));
+    await tester.pumpAndSettle();
+    expect(find.text('委外领料单加载失败，请检查网络后重试'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
 
-Widget _app({required _OutboundTaskApi api, required GoRouter router}) {
+Widget _app({
+  required SubcontractOutboundFakeApi api,
+  required GoRouter router,
+  Set<String> permissions = const {Perm.subcontractOutboundView},
+}) {
   return ProviderScope(
     overrides: [
       fakeWeightRepositoryOverride(),
       apiClientProvider.overrideWithValue(api),
+      masterNameServiceProvider.overrideWithValue(OutboundNames(api)),
+      currentPermissionsProvider.overrideWithValue(permissions),
+      isSuperAdminProvider.overrideWithValue(false),
+      sharedPreferencesProvider.overrideWithValue(_preferences),
     ],
     child: MaterialApp.router(routerConfig: router),
   );
@@ -211,11 +189,11 @@ GoRouter _router() {
         builder: (_, _) => const WarehouseSubcontractOutboundPage(),
       ),
       GoRoute(
-        path: '/warehouse/subcontract-outbound/:planId',
+        path: '/warehouse/subcontract-outbound/:issueId',
         builder: (context, state) => Scaffold(
           body: Column(
             children: [
-              Text('detail-${state.pathParameters['planId']}'),
+              Text('detail-${state.pathParameters['issueId']}'),
               FilledButton(
                 key: const Key('complete-outbound-task'),
                 onPressed: () => context.pop(true),
@@ -242,207 +220,3 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
   await tester.pump(const Duration(milliseconds: 40));
   await tester.tap(finder);
 }
-
-class _OutboundTaskApi extends ApiClient {
-  _OutboundTaskApi() : super(Dio());
-
-  final List<Map<String, dynamic>> taskQueries = [];
-  int taskRequests = 0;
-  bool failNext = false;
-  bool componentStockRows = false;
-
-  @override
-  Future<Map<String, dynamic>> get(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    if (path != ApiEndpoints.warehouseSubcontractOutboundTasks) {
-      throw StateError('Unexpected GET $path');
-    }
-    taskRequests++;
-    taskQueries.add(Map<String, dynamic>.from(query ?? const {}));
-    if (failNext) {
-      failNext = false;
-      throw StateError('offline');
-    }
-
-    final page = (query?['page'] as num?)?.toInt() ?? 1;
-    final keyword = query?['keyword']?.toString();
-    if (keyword == 'missing') {
-      return const {
-        'items': <Map<String, dynamic>>[],
-        'page': 1,
-        'size': 20,
-        'total': 0,
-        'totalPages': 1,
-      };
-    }
-    final items = componentStockRows
-        ? <Map<String, dynamic>>[
-            {
-              ..._task(1),
-              'readyOutboundQty': 5000,
-              'issuableTotal': 0,
-              'waitingComponentLineCount': 1,
-            },
-            {
-              ..._task(2),
-              'readyOutboundQty': 5000,
-              'issuableTotal': 300,
-              'waitingComponentLineCount': 0,
-            },
-          ]
-        : page == 1
-        ? <Map<String, dynamic>>[_task(1, hasDraft: true), _task(2)]
-        : <Map<String, dynamic>>[_task(3, hasDraft: true)];
-    return {
-      'items': items,
-      'page': page,
-      'size': 20,
-      'total': 3,
-      'totalPages': 2,
-    };
-  }
-}
-
-class _MultiDraftOutboundApi extends ApiClient {
-  _MultiDraftOutboundApi() : super(Dio());
-
-  final List<String> loadedDraftIds = [];
-
-  @override
-  Future<List<Map<String, dynamic>>> getList(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async => const [];
-
-  @override
-  Future<Map<String, dynamic>> get(
-    String path, {
-    Map<String, dynamic>? query,
-  }) async {
-    if (path == ApiEndpoints.warehouseSubcontractOutboundTask('plan-multi')) {
-      return {
-        'planId': 'plan-multi',
-        'orderId': 'order-multi',
-        'orderBillNo': 'WW-MULTI',
-        'status': 'OPEN',
-        'supplierId': 'supplier-1',
-        'supplierName': '委外商',
-        'deliverDate': '2026-09-01',
-        'lines': [
-          _outboundLine(
-            planItemId: 'plan-item-a',
-            orderItemId: 'order-item-a',
-            goodsId: 'goods-a',
-            goodsCode: 'ITEM-A',
-            goodsName: '其它仓草稿目标件',
-            draftReservedQty: 5,
-          ),
-          _outboundLine(
-            planItemId: 'plan-item-b',
-            orderItemId: 'order-item-b',
-            goodsId: 'goods-b',
-            goodsCode: 'ITEM-B',
-            goodsName: '当前草稿目标件',
-            draftReservedQty: 3,
-          ),
-        ],
-        'drafts': const [
-          {
-            'issueId': 'draft-a',
-            'billNo': 'EC-A',
-            'status': 0,
-            'warehouseName': 'A 仓',
-            'totalQty': 5,
-          },
-          {
-            'issueId': 'draft-b',
-            'billNo': 'EC-B',
-            'status': 0,
-            'warehouseName': 'B 仓',
-            'totalQty': 3,
-          },
-        ],
-      };
-    }
-    if (path == '/subcontract/material-issues/draft-a') {
-      loadedDraftIds.add('draft-a');
-      return const {
-        'id': 'draft-a',
-        'billNo': 'EC-A',
-        'billDate': '2026-08-30',
-        'warehouseId': 'warehouse-a',
-        'status': 0,
-        'items': [
-          {
-            'id': 'draft-item-a',
-            'planItemId': 'plan-item-a',
-            'orderItemId': 'order-item-a',
-            'goodsId': 'goods-a',
-            'qty': 5,
-          },
-        ],
-      };
-    }
-    if (path == '/subcontract/material-issues/draft-b') {
-      loadedDraftIds.add('draft-b');
-      return const {
-        'id': 'draft-b',
-        'billNo': 'EC-B',
-        'billDate': '2026-08-30',
-        'warehouseId': 'warehouse-b',
-        'status': 0,
-        'items': [
-          {
-            'id': 'draft-item-b',
-            'planItemId': 'plan-item-b',
-            'orderItemId': 'order-item-b',
-            'goodsId': 'goods-b',
-            'qty': 3,
-            'weight': 1.5,
-          },
-        ],
-      };
-    }
-    throw StateError('Unexpected GET $path');
-  }
-}
-
-Map<String, dynamic> _outboundLine({
-  required String planItemId,
-  required String orderItemId,
-  required String goodsId,
-  required String goodsCode,
-  required String goodsName,
-  required num draftReservedQty,
-}) => {
-  'planItemId': planItemId,
-  'orderItemId': orderItemId,
-  'goodsId': goodsId,
-  'goodsCode': goodsCode,
-  'goodsName': goodsName,
-  'plannedQty': 10,
-  'issuedQty': 0,
-  'draftReservedQty': draftReservedQty,
-  'flowMode': 'DIRECT_OUTBOUND',
-  'preparationStatus': 'READY_OUTBOUND',
-  'preparedQty': 10,
-  'readyOutboundQty': 0,
-  'remainingQty': 10,
-  'allowedActions': const ['HANDLE_OUTBOUND'],
-};
-
-Map<String, dynamic> _task(int index, {bool hasDraft = false}) => {
-  'planId': 'plan-$index',
-  'orderId': 'order-$index',
-  'orderBillNo': 'WW20260830000$index',
-  'supplierName': '委外商$index',
-  'deliverDate': '2026-09-0$index',
-  'lineCount': index + 1,
-  'plannedQty': 100 * index,
-  'issuedQty': 20 * index,
-  'remainingQty': 80 * index,
-  'draftId': hasDraft ? 'draft-$index' : null,
-  'draftBillNo': hasDraft ? 'WCF20260830000$index' : null,
-};

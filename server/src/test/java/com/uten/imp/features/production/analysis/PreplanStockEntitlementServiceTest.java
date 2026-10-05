@@ -26,19 +26,6 @@ import static org.mockito.Mockito.when;
 class PreplanStockEntitlementServiceTest {
 
     @Test
-    void makeDelegationQuantityIsCappedByTargetHeadroomAndReplaySafe() {
-        assertThat(PreplanStockEntitlementService.makeDelegationTake(
-                new BigDecimal("10"), new BigDecimal("4"),
-                new BigDecimal("10"))).isEqualByComparingTo("6");
-        assertThat(PreplanStockEntitlementService.makeDelegationTake(
-                new BigDecimal("4"), BigDecimal.ZERO,
-                new BigDecimal("10"))).isEqualByComparingTo("4");
-        assertThat(PreplanStockEntitlementService.makeDelegationTake(
-                new BigDecimal("4"), new BigDecimal("4"),
-                new BigDecimal("10"))).isZero();
-    }
-
-    @Test
     void beneficiaryLotBalanceIncludesMakeDelegateInAndConsumesMakeDelegateOut() {
         EntityManager em = mock(EntityManager.class);
         Query query = mock(Query.class);
@@ -178,12 +165,12 @@ class PreplanStockEntitlementServiceTest {
                 .contains("WITH RECURSIVE entitlement_lineage")
                 .contains("current_positive.event_type IN (")
                 .contains("'RESTORE', 'MAKE_DELEGATE_IN'")
-                .contains("'SUBCONTRACT_HANDOFF_IN'")
+                .doesNotContain("SUBCONTRACT_HANDOFF")
                 .contains("current_positive.counter_event_id")
                 .contains("counter_negative.source_entitlement_event_id")
                 .contains("lineage.depth < 64")
                 .contains("positive.event_type IN (")
-                .contains("'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT'")
+                .contains("'MAKE_DELEGATE_OUT',")
                 .contains("'REALLOCATE_IN', 'PRIORITY_IN'");
     }
 

@@ -4,7 +4,6 @@ import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
-import com.uten.imp.features.subcontract.SubcontractOutboundFlowSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -79,6 +78,13 @@ public class SubcontractReceiptService {
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
+
+    /**
+     * ADR-143 §4.4 领料重算唤醒(按订货明细): 回厂审核与红冲改变订货明细是否结清, 「可领 N」行动卡要随之收回
+     * 或重新提醒。字段注入可空: 单测手工构造时没有, 只跳过唤醒。
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.SubcontractOutboundWakePort drawRecheck;
 
 
     private static final short STATUS_DRAFT = 0;
@@ -351,27 +357,23 @@ public class SubcontractReceiptService {
                         it.getWeight())).toList(),
                 now);
         for (SubcontractReceiptItem it : items) {
-            // ② 回写订货明细 received_qty + 重算订货单 is_closed
+            // ② 回写订货明细 received_qty(订货单 is_closed 在本单落成已审核之后重算, 见下)
             if (it.getOrderItemId() != null) {
                 em.createNativeQuery(
                         "UPDATE subcontract_order_items SET received_qty = COALESCE(received_qty,0) + :q WHERE id = :id")
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
-                recalcOrderClosed(it.getOrderItemId());
-                // ③ 回厂按冻结 BOM 消费发料子件（守恒：consumed_qty += 回厂父件量×frozen_unit_qty）
-                // ADR-103 §2.5：财务在到货异常任务中心批准的那份「委外商自带料」不消费我方子件——
-                // 那不是我方发出去的料, 供应商手上根本没有这份余量, 照旧消费会在
-                // consumeIssuedMaterials 里 409 整笔回滚, 财务批准形同作废。扣的是本收货明细
-                // 自己那条异常记录的 approved_excess_qty(V201 表按 receipt_item_id 唯一, 天然逐
-                // 行落痕), 与 V642 DB 守卫从守恒台账里摘掉的正是同一批行。
+                // ③ ADR-143 §三.7：审核时落定本行的物料口径回厂量 = 回厂量 − 本单质检补回分配
+                // − 财务批准的委外商自带料(那两份不是用我方发出的料做的)，之后不随实时状态重算；
+                // 再按目标跟踪逐种核销委外商处物料。
                 BigDecimal replacementQty=iqcReplacementAllocation
                         .activeAllocatedQty("SUBCONTRACT",it.getId());
                 BigDecimal supplierOwnQty=financeApprovedSupplierOwnQty(it.getId());
-                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty).subtract(supplierOwnQty);
-                if(firstReturnQty.signum()>0){
-                    consumeIssuedMaterials(it.getId(),it.getOrderItemId(),firstReturnQty,+1);
-                }
+                BigDecimal materialBasisQty=it.getQty().subtract(replacementQty).subtract(supplierOwnQty)
+                        .max(BigDecimal.ZERO);
+                recordMaterialBasis(it.getId(),materialBasisQty);
+                consumeTowardsTarget(r.getId(),it.getId(),it.getOrderItemId());
             }
         }
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
@@ -386,6 +388,11 @@ public class SubcontractReceiptService {
         arrivalControl.recordApproval(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         em.flush();
+        // 结案按「已审核回厂单的 IQC 合格入库量」算, 必须在本单 status=1 落库之后重算: 否则本明细的
+        // 第一张回厂单还是草稿, 结案口径退回历史 received_qty 分支, 质检未完就把订货单关掉,
+        // 上层委外任务看不到这张单的「委外在途」(ADR-143 §二.5)。
+        items.stream().map(SubcontractReceiptItem::getOrderItemId).filter(java.util.Objects::nonNull)
+                .distinct().forEach(this::recalcOrderClosed);
         procurementValue.receiptApproved("SUBCONTRACT",id,currentUser.requireId());
     }
     /** Dedicated warehouse-arrival gateway; normal approval keeps its exact action authority. */
@@ -451,16 +458,9 @@ public class SubcontractReceiptService {
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
                 recalcOrderClosed(it.getOrderItemId());
-                // 回退回厂消费（consumed_qty -= 回厂父件量×frozen_unit_qty）
-                // ADR-103 §2.5：与审核同款扣掉财务批准的自带料——整行都是自带料的收货明细审核时
-                // 没记过消费切片, 红冲不能再去找「原发料来源」(找不到会 409 把红冲拦死)。
-                BigDecimal replacementQty=iqcReplacementAllocation
-                        .activeAllocatedQty("SUBCONTRACT",it.getId());
-                BigDecimal firstReturnQty=it.getQty().subtract(replacementQty)
-                        .subtract(financeApprovedSupplierOwnQty(it.getId()));
-                if(firstReturnQty.signum()>0){
-                    consumeIssuedMaterials(it.getId(),it.getOrderItemId(),firstReturnQty,-1);
-                }
+                // 按审核时记下的核销切片原样退回委外商处(ADR-143 §三.7)；本行审核时没有核销
+                // (整行是质检补回或委外商自带料、目标量已被前批覆盖)就没有可退的切片。
+                reverseReceiptMaterialConsumptions(it.getId());
             }
         }
         iqcReplacementAllocation.reverseForReceipt(
@@ -555,123 +555,140 @@ public class SubcontractReceiptService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** 重算订货单结案：新链以 IQC 合格净量为准；无 IQC 的历史单兼容实到净量。 */
+    /**
+     * 重算订货单结案：新链以 IQC 合格净量为准；无 IQC 的历史单兼容实到净量。已收量/结案变了,
+     * 本明细的委外领料可领量随之变化(结清即收回「可领」卡, 红冲重新打开再提醒), 同事务追加领料重算。
+     */
     private void recalcOrderClosed(UUID orderItemId) {
         ProcurementOrderClosurePolicy.recalculate(
                 em, ProcurementOrderClosurePolicy.SUBCONTRACT, orderItemId);
+        if (drawRecheck != null && orderItemId != null) {
+            drawRecheck.enqueueDrawRecheckForOrderItems(List.of(orderItemId));
+        }
+    }
+
+    /** 审核时落定本行物料口径回厂量(ADR-143 §三.7)；红冲后随单据状态失效，不回写。 */
+    private void recordMaterialBasis(UUID receiptItemId, BigDecimal materialBasisQty) {
+        int updated = em.createNativeQuery("""
+                UPDATE subcontract_receipt_items SET material_basis_qty = :qty
+                WHERE id = :id AND is_deleted = FALSE
+                """).setParameter("qty", materialBasisQty).setParameter("id", receiptItemId).executeUpdate();
+        if (updated != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外回厂明细已变化，请刷新后重试");
+        }
     }
 
     /**
-     * 委外回厂进仓按冻结 BOM 消费发料子件（守恒）。
+     * 回厂核销委外商处物料：目标跟踪(ADR-143 §三.7)。
      *
-     * <p>sign=+1 进仓消费 / -1 红冲回退。<b>按子件维度（货品+颜色）聚合</b>：同一订货明细下
-     * 同一子件可能分多张发料单/多行，回厂消费量必须按「回厂父件量 × frozen_unit_qty」对每个
-     * 子件只算一次，再在组内按发料行 FIFO 分摊——绝不能对组内每行重复消费全额。
-     *
-     * <ul>
-     *   <li>同组各行冻结单耗不一致（BOM 版本分叉）→ 409 人工核销（fail-closed，不猜测版本）；</li>
-     *   <li>消费（+1）：组内 FIFO 按 {@code supplier_ending = at_supplier − consumed − returned − wasted}
-     *       分摊，逐行 CAS；组内余量合计不足 → 409（DB CHECK supplier_ending≥0 为兜底）；</li>
-     *   <li>反向(-1)只回退本回厂明细冻结的原发料切片；原消费来源未核定的历史单不按累计量猜源。</li>
-     * </ul>
-     *
-     * <p>单位口径：回厂父件量（父件单据单位）× frozen_unit_qty（子件/父件）= 子件单据单位，与
-     * at_supplier_qty / returned_qty / wasted_qty 同口径。
+     * <p>R = 本订货明细有效回厂(已审 + 本单已落定的行)的物料口径回厂量之和(订货单位)。
+     * 每种冻结物料(计划行)本次核销 = GREATEST(0, f_i(R) − 当前有效核销量_i)，
+     * f_i(S) = CEIL(S × b_i, 4)，再按发料先进先出(发料日期、创建时间、行号)切片记账；
+     * 不同物料各算各的，绝不相加。前批红冲留下的尾差由这一次自动纠正。
+     * 某种物料委外商处不够核销即整单回滚并点名该物料。
      */
-    private void consumeIssuedMaterials(UUID receiptItemId, UUID orderItemId, BigDecimal receivedParentQty, int sign) {
-        if (orderItemId == null || receivedParentQty == null || receivedParentQty.signum() == 0) return;
-        if(sign<0){
-            reverseReceiptMaterialConsumptions(receiptItemId);
-            return;
-        }
+    private void consumeTowardsTarget(UUID receiptId, UUID receiptItemId, UUID orderItemId) {
+        // 先按 id 顺序锁住本订货明细的全部发料明细，再读先进先出顺序(锁序与其它台账写入一致)。
+        em.createNativeQuery("""
+                SELECT issue_item.id FROM subcontract_material_issue_items issue_item
+                WHERE issue_item.order_item_id = :orderItemId AND issue_item.is_deleted = FALSE
+                ORDER BY issue_item.id
+                FOR UPDATE
+                """).setParameter("orderItemId", orderItemId).getResultList();
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        SELECT item.id, item.goods_id, item.color_id, COALESCE(item.frozen_unit_qty, 0),
-                               COALESCE(item.at_supplier_qty, 0), COALESCE(item.consumed_qty, 0),
-                               COALESCE(item.returned_qty, 0), COALESCE(item.wasted_qty, 0),
-                               COALESCE(item.compensated_qty,0),item.unit_id,item.unit_rate
-                        FROM subcontract_material_issue_items item
-                        JOIN subcontract_material_issues header ON header.id=item.issue_id
-                          AND header.status=1 AND header.is_deleted=FALSE
-                        JOIN subcontract_material_plan_items plan ON plan.id=item.plan_item_id
-                          AND plan.order_item_id=item.order_item_id AND plan.is_deleted=FALSE
-                        WHERE item.order_item_id = :oid AND item.is_deleted=FALSE
-                          AND COALESCE(item.at_supplier_qty,0)+COALESCE(item.compensated_qty,0)>0
-                          AND COALESCE(item.frozen_unit_qty, 0) > 0
-                        ORDER BY item.goods_id, item.color_id NULLS FIRST, item.id
-                        FOR UPDATE OF item
-                        """)
-                .setParameter("oid", orderItemId)
+        List<Object[]> materials = em.createNativeQuery("""
+                WITH basis AS (
+                    SELECT COALESCE(SUM(item.material_basis_qty), 0) AS received_basis
+                    FROM subcontract_receipt_items item
+                    JOIN subcontract_receipts receipt ON receipt.id = item.receipt_id
+                     AND receipt.is_deleted = FALSE
+                     AND (receipt.status = 1 OR receipt.id = :receiptId)
+                    WHERE item.order_item_id = :orderItemId AND item.is_deleted = FALSE
+                      AND item.material_basis_qty IS NOT NULL
+                )
+                SELECT plan_item.id,
+                       COALESCE(goods.name, ''),
+                       fn_subcontract_draw_f(basis.received_basis, plan_item.bom_unit_qty) AS target_qty,
+                       COALESCE((
+                           SELECT SUM(issue_item.consumed_qty)
+                           FROM subcontract_material_issue_items issue_item
+                           JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
+                            AND issue.status = 1 AND issue.is_deleted = FALSE
+                           WHERE issue_item.plan_item_id = plan_item.id
+                             AND issue_item.is_deleted = FALSE
+                       ), 0) AS consumed_qty
+                FROM subcontract_material_plan_items plan_item
+                JOIN goods ON goods.id = plan_item.goods_id
+                CROSS JOIN basis
+                WHERE plan_item.order_item_id = :orderItemId AND plan_item.is_deleted = FALSE
+                ORDER BY plan_item.line_no ASC NULLS LAST, plan_item.id
+                """).setParameter("receiptId", receiptId).setParameter("orderItemId", orderItemId)
                 .getResultList();
-        Map<ComponentKey, List<Object[]>> groups = new java.util.LinkedHashMap<>();
-        for (Object[] row : rows) {
-            com.uten.imp.common.integrity.SourceQuantityBasis.requireKnown((UUID)row[9],(BigDecimal)row[10]);
-            groups.computeIfAbsent(new ComponentKey((UUID) row[1], (UUID) row[2]), k -> new ArrayList<>())
-                    .add(row);
-        }
-        for (Map.Entry<ComponentKey, List<Object[]>> entry : groups.entrySet()) {
-            List<Object[]> group = entry.getValue();
-            BigDecimal unitQty = (BigDecimal) group.getFirst()[3];
-            for (Object[] row : group) {
-                BigDecimal rowRate = (BigDecimal) row[3];
-                if (rowRate.compareTo(unitQty) != 0) {
-                    throw new ApiException(ErrorCode.CONFLICT,
-                            "委外订货明细下同一子件存在多个冻结 BOM 单耗版本(" + unitQty.stripTrailingZeros().toPlainString()
-                                    + " / " + rowRate.stripTrailingZeros().toPlainString()
-                                    + ")，无法确定回厂消费口径，请人工核销");
-                }
+        UUID actor = currentUser.requireId();
+        for (Object[] material : materials) {
+            BigDecimal remaining = decimal(material[2]).subtract(decimal(material[3]));
+            if (remaining.signum() <= 0) continue;
+            @SuppressWarnings("unchecked")
+            List<Object[]> sources = em.createNativeQuery("""
+                    SELECT issue_item.id,
+                           issue_item.at_supplier_qty + COALESCE(issue_item.compensated_qty, 0)
+                               - issue_item.consumed_qty - COALESCE(issue_item.returned_qty, 0)
+                               - COALESCE(issue_item.wasted_qty, 0) AS supplier_ending,
+                           issue_item.unit_id, issue_item.unit_rate
+                    FROM subcontract_material_issue_items issue_item
+                    JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
+                     AND issue.status = 1 AND issue.is_deleted = FALSE
+                    WHERE issue_item.plan_item_id = :planItemId
+                      AND issue_item.order_item_id = :orderItemId
+                      AND issue_item.is_deleted = FALSE
+                    ORDER BY issue.bill_date ASC NULLS LAST, issue.created_at ASC,
+                             issue_item.line_no ASC NULLS LAST, issue_item.id
+                    """).setParameter("planItemId", (UUID) material[0])
+                    .setParameter("orderItemId", orderItemId).getResultList();
+            BigDecimal supplierHeld = BigDecimal.ZERO;
+            for (Object[] source : sources) {
+                supplierHeld = supplierHeld.add(decimal(source[1]).max(BigDecimal.ZERO));
             }
-            BigDecimal required = MoneyPolicy.quantity(receivedParentQty.multiply(unitQty));
-            if (required.signum() == 0) continue;
-            BigDecimal remaining = required;
-            if (sign > 0) {
-                for (Object[] row : group) {
-                    if (remaining.signum() <= 0) break;
-                    BigDecimal ending = ((BigDecimal) row[4])
-                            .add((BigDecimal)row[8])
-                            .subtract((BigDecimal) row[5])
-                            .subtract((BigDecimal) row[6])
-                            .subtract((BigDecimal) row[7]);
-                    BigDecimal take = remaining.min(ending);
-                    if (take.signum() <= 0) continue;
-                    int updated = em.createNativeQuery("""
-                                    UPDATE subcontract_material_issue_items
-                                    SET consumed_qty = consumed_qty + :delta
-                                    WHERE id = :id
-                                      AND :delta <= at_supplier_qty+COALESCE(compensated_qty,0)
-                                          - consumed_qty-COALESCE(returned_qty,0)
-                                          - COALESCE(wasted_qty,0)
-                                    """)
-                            .setParameter("delta", take)
-                            .setParameter("id", (UUID) row[0])
-                            .executeUpdate();
-                    if (updated != 1) {
-                        throw new ApiException(ErrorCode.CONFLICT,
-                                "委外回厂消费超过供应商在制余量(发料−已消费−已退−已损耗)，疑似超耗或错料，请人工核销");
-                    }
-                    em.createNativeQuery("""
-                            INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,
-                                qty_doc,qty_base,consumption_basis,created_by)
-                            SELECT :receipt,issue.id,:qty,:qty*issue.unit_rate,
-                                CASE WHEN EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
-                                    JOIN subcontract_receipt_items receipt ON receipt.id=:receipt
-                                    WHERE plan.id=issue.plan_item_id AND plan.flow_mode<>'LEGACY_BOM_COMPONENT'
-                                      AND issue.goods_id=receipt.goods_id AND issue.color_id IS NOT DISTINCT FROM receipt.color_id
-                                      AND issue.frozen_unit_qty*issue.unit_rate=receipt.unit_rate)
-                                    THEN 'DIRECT_TARGET' ELSE 'FROZEN_BOM_ESTIMATE' END,:actor
-                            FROM subcontract_material_issue_items issue WHERE issue.id=:issue
-                            """).setParameter("receipt",receiptItemId).setParameter("issue",(UUID)row[0])
-                            .setParameter("qty",take).setParameter("actor",currentUser.requireId()).executeUpdate();
-                    remaining = remaining.subtract(take);
-                }
-                if (remaining.signum() > 0) {
+            if (supplierHeld.compareTo(remaining) < 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "委外商处的「" + material[1] + "」不够核销这批回厂(本次需核销 "
+                                + plain(remaining) + "，委外商处只剩 " + plain(supplierHeld)
+                                + ")；请先核对领料发出、退料和损耗记录");
+            }
+            for (Object[] source : sources) {
+                if (remaining.signum() <= 0) break;
+                BigDecimal take = remaining.min(decimal(source[1]));
+                if (take.signum() <= 0) continue;
+                com.uten.imp.common.integrity.SourceQuantityBasis.requireKnown(
+                        (UUID) source[2], (BigDecimal) source[3]);
+                int updated = em.createNativeQuery("""
+                                UPDATE subcontract_material_issue_items
+                                SET consumed_qty = consumed_qty + :delta
+                                WHERE id = :id
+                                  AND :delta <= at_supplier_qty + COALESCE(compensated_qty, 0)
+                                      - consumed_qty - COALESCE(returned_qty, 0)
+                                      - COALESCE(wasted_qty, 0)
+                                """)
+                        .setParameter("delta", take)
+                        .setParameter("id", (UUID) source[0])
+                        .executeUpdate();
+                if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外回厂消费超过供应商在制余量(发料−已消费−已退−已损耗)，疑似超耗或错料，请人工核销");
+                            "委外商处的「" + material[1] + "」结存已变化，请刷新后重试");
                 }
+                em.createNativeQuery("""
+                        INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,
+                            qty_doc,qty_base,consumption_basis,created_by)
+                        SELECT :receipt,issue.id,:qty,:qty*issue.unit_rate,'FROZEN_BOM_ESTIMATE',:actor
+                        FROM subcontract_material_issue_items issue WHERE issue.id=:issue
+                        """).setParameter("receipt", receiptItemId).setParameter("issue", (UUID) source[0])
+                        .setParameter("qty", take).setParameter("actor", actor).executeUpdate();
+                remaining = remaining.subtract(take);
             }
         }
     }
 
+    /** 红冲只按审核时记下的核销切片原样退回；本行没有核销切片时无事可做。 */
     private void reverseReceiptMaterialConsumptions(UUID receiptItemId){
         @SuppressWarnings("unchecked")
         List<Object[]> sources=em.createNativeQuery("""
@@ -680,7 +697,6 @@ public class SubcontractReceiptService {
                   AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=original.id)
                 ORDER BY issue_item_id,id
                 """).setParameter("receipt",receiptItemId).getResultList();
-        if(sources.isEmpty())throw new ApiException(ErrorCode.CONFLICT,"历史回厂未保存实际发料来源，须先核对原消费明细后红冲");
         for(Object[] source:sources){
             int updated=em.createNativeQuery("""
                     UPDATE subcontract_material_issue_items SET consumed_qty=consumed_qty-:qty
@@ -696,11 +712,14 @@ public class SubcontractReceiptService {
         }
     }
 
-    /** V436 new flow: target-item receipt base quantity can never precede outbound. */
+    /**
+     * 回厂审核的守恒闸(ADR-143 §三.6)：本订货明细累计回厂(其它已审 + 本单) ≤ 委外商处物料
+     * 可做成的完整套数 + 已退回委外商的质检不合格量 + 财务批准的委外商自带料。
+     * 到货异常闸先跑：超出的部分已经落成待财务审批的到货异常、不会走到这里；
+     * 走到这里还超，就是并发或数据被改，整单拒绝。订货明细行锁之后再锁计划行(与发料审核同序)。
+     */
     private void requireTargetOutboundCapacity(
             List<SubcontractReceiptItem> items, UUID currentReceiptId) {
-        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireConsistentTargetBasis(em,
-                items.stream().map(SubcontractReceiptItem::getOrderItemId).filter(java.util.Objects::nonNull).distinct().toList());
         Map<UUID, BigDecimal> currentBaseByOrderItem = new java.util.LinkedHashMap<>();
         for (SubcontractReceiptItem item : items) {
             if (item.getOrderItemId() == null) continue;
@@ -709,53 +728,22 @@ public class SubcontractReceiptService {
             currentBaseByOrderItem.merge(item.getOrderItemId(),
                     item.getQty().multiply(rate), BigDecimal::add);
         }
+        if (currentBaseByOrderItem.isEmpty()) return;
+        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireKnownReceiptBasis(
+                em, "SUBCONTRACT", currentBaseByOrderItem.keySet());
+        Map<UUID, SubcontractReturnCapacity.Facts> capacity = SubcontractReturnCapacity.lockAndRead(
+                em, currentBaseByOrderItem.keySet(), currentReceiptId);
+        em.createNativeQuery("""
+                SELECT plan_item.id
+                FROM subcontract_material_plan_items plan_item
+                WHERE plan_item.order_item_id IN (:orderItemIds)
+                  AND plan_item.is_deleted = FALSE
+                ORDER BY plan_item.id FOR UPDATE
+                """).setParameter("orderItemIds", currentBaseByOrderItem.keySet()).getResultList();
         for (Map.Entry<UUID, BigDecimal> entry : currentBaseByOrderItem.entrySet()) {
-            UUID orderItemId = entry.getKey();
-            @SuppressWarnings("unchecked")
-            List<Object[]> flowRows = em.createNativeQuery("""
-                    SELECT plan_item.id
-                    FROM subcontract_material_plan_items plan_item
-                    WHERE plan_item.order_item_id = :orderItemId
-                      AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                      AND plan_item.is_deleted = FALSE
-                    ORDER BY plan_item.id FOR UPDATE
-                    """).setParameter("orderItemId", orderItemId).getResultList();
-            if (flowRows.isEmpty()) continue;
-            BigDecimal issuedBase = decimal(em.createNativeQuery("""
-                    SELECT COALESCE(
-                    """ + SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM + """
-                    , 0)
-                    FROM subcontract_material_issue_items issue_item
-                    JOIN subcontract_material_issues issue
-                      ON issue.id = issue_item.issue_id
-                     AND issue.status = 1 AND issue.is_deleted = FALSE
-                    JOIN subcontract_material_plan_items plan_item
-                      ON plan_item.id = issue_item.plan_item_id
-                     AND plan_item.flow_mode IN ('DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                    JOIN subcontract_order_items order_unit
-                      ON order_unit.id = issue_item.order_item_id
-                    WHERE issue_item.order_item_id = :orderItemId
-                      AND issue_item.is_deleted = FALSE
-                    """).setParameter("orderItemId", orderItemId).getSingleResult());
-            BigDecimal receivedBase = decimal(em.createNativeQuery("""
-                    SELECT COALESCE(SUM(receipt_item.qty * receipt_item.unit_rate),0)
-                    FROM subcontract_receipt_items receipt_item
-                    JOIN subcontract_receipts receipt
-                      ON receipt.id = receipt_item.receipt_id
-                     AND receipt.status = 1 AND receipt.is_deleted = FALSE
-                    WHERE receipt_item.order_item_id = :orderItemId
-                      AND receipt_item.receipt_id <> :currentReceiptId
-                      AND receipt_item.is_deleted = FALSE
-                    """).setParameter("orderItemId", orderItemId)
-                    .setParameter("currentReceiptId", currentReceiptId).getSingleResult());
-            BigDecimal returnedFailureBase=iqcReplacementAllocation
-                    .releasedCapacity("SUBCONTRACT",orderItemId).baseQty();
-            // ADR-101：财务已经批准的那份「委外商自带料」也算额度。走到这一步说明到货异常闸
-            // 已经放行，即财务在到货异常任务中心确认过价格与归属；此处再拒就等于把财务的批准
-            // 作废。没有这份批准时本行仍然守恒，超量在上一道闸就被隔离走了。
-            BigDecimal approvedExcessBase=financeApprovedExcessBase(orderItemId);
-            if (receivedBase.add(entry.getValue())
-                    .compareTo(issuedBase.add(returnedFailureBase).add(approvedExcessBase)) > 0) {
+            SubcontractReturnCapacity.Facts facts = capacity.get(entry.getKey());
+            if (facts.approvedReceiptBase().add(entry.getValue())
+                    .compareTo(facts.authorizedBase()) > 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "回厂数量超过我方发给委外商的材料能做出来的数量，且没有财务批准的"
                                 + "委外商自带料额度；请在到货异常任务中心先由财务确认");
@@ -766,9 +754,8 @@ public class SubcontractReceiptService {
     /**
      * ADR-103 §2.5：本收货明细已获财务批准的「委外商自带料」数量(订货单位, 与 receipt_item.qty
      * 同口径)。procurement_arrival_exceptions 按 (order_type, receipt_item_id) 唯一, 财务判定
-     * 落在这一行的 approved_excess_qty 上, 所以不需要按订货明细累计再分摊; 红冲只回退本明细
-     * 真正记过的消费切片(reverseReceiptMaterialConsumptions), 两边自然对称。
-     * 状态与决定的过滤与 {@link #financeApprovedExcessBase} / V642 DB 守卫逐字同口径。
+     * 落在这一行的 approved_excess_qty 上；它不计入物料口径回厂量(不核销我方物料)。
+     * 状态与决定的过滤与 {@link SubcontractReturnCapacity} 同口径。
      */
     private BigDecimal financeApprovedSupplierOwnQty(UUID receiptItemId) {
         return decimal(em.createNativeQuery("""
@@ -784,29 +771,7 @@ public class SubcontractReceiptService {
     }
 
     /**
-     * 财务在到货异常任务中心批准的「委外商自带料」数量，折算到目标件基本量(ADR-101)。
-     * 口径与 {@code SubcontractReceiptAmountAuthority} 的授权额度同源：只认已调整收货
-     * (RECEIPT_ADJUSTED) 且决定是批准的异常。
-     */
-    private BigDecimal financeApprovedExcessBase(UUID orderItemId) {
-        return decimal(em.createNativeQuery("""
-                SELECT COALESCE(SUM(exception_row.approved_excess_qty
-                        * COALESCE(order_item.unit_rate, 1)), 0)
-                FROM procurement_arrival_exceptions exception_row
-                JOIN subcontract_order_items order_item
-                  ON order_item.id = exception_row.order_item_id
-                WHERE exception_row.order_type = 'SUBCONTRACT'
-                  AND exception_row.order_item_id = :orderItemId
-                  AND exception_row.status IN (
-                      'RECEIPT_ADJUSTED', 'RECEIPT_POSTED', 'CLOSED')
-                  AND exception_row.decision IN ('APPROVE_ALL', 'APPROVE_CUSTOM')
-                  AND exception_row.approved_excess_qty > 0
-                """).setParameter("orderItemId", orderItemId).getSingleResult());
-    }
-
-    /**
-     * 新流委外在创建/改写回厂草稿前按订货明细锁定同一把行锁，并扣除其它活动草稿。
-     * 这既防重复登记，也与出仓红冲共享并发边界；没有新流 plan 的历史单继续按旧口径。
+     * 创建/改写回厂草稿前按订货明细锁定同一把行锁，并扣除其它活动草稿；与发料红冲共享并发边界。
      * 审核时仍由 {@link #requireTargetOutboundCapacity(List, UUID)} 重新锁定并做权威校验。
      */
     private void lockAndRequireDraftOutboundCapacity(
@@ -832,105 +797,24 @@ public class SubcontractReceiptService {
                 .sorted()
                 .toList();
         if (orderItemIds.isEmpty()) return;
-        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireConsistentTargetBasis(em,orderItemIds);
-
-        String currentDraftExclusion = currentReceiptId == null
-                ? ""
-                : " AND draft.id <> :currentReceiptId";
-        var query = em.createNativeQuery(("""
-                SELECT order_item.id,
-                       order_item.unit_rate AS order_unit_rate,
-                       EXISTS (
-                           SELECT 1
-                           FROM subcontract_material_plan_items plan_item
-                           WHERE plan_item.order_item_id = order_item.id
-                             AND plan_item.flow_mode IN (
-                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                             AND plan_item.is_deleted = FALSE
-                       ) AS new_flow,
-                       COALESCE((
-                           SELECT
-                           """ + SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM + """
-                           FROM subcontract_material_issue_items issue_item
-                           JOIN subcontract_material_issues issue
-                             ON issue.id = issue_item.issue_id
-                            AND issue.status = 1
-                            AND issue.is_deleted = FALSE
-                           JOIN subcontract_material_plan_items plan_item
-                             ON plan_item.id = issue_item.plan_item_id
-                            AND plan_item.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                            AND plan_item.is_deleted = FALSE
-                           JOIN subcontract_order_items order_unit
-                             ON order_unit.id = issue_item.order_item_id
-                           WHERE issue_item.order_item_id = order_item.id
-                             AND issue_item.is_deleted = FALSE
-                       ), 0) AS issued_base,
-                       COALESCE((
-                           SELECT SUM(rejection.failed_base_qty)
-                           FROM procurement_iqc_rejection_cases rejection
-                           WHERE rejection.receipt_type = 'SUBCONTRACT'
-                             AND rejection.order_item_id = order_item.id
-                             AND rejection.is_deleted = FALSE
-                             AND rejection.return_recorded_at IS NOT NULL
-                             AND rejection.status IN (
-                                 'RETURN_RECORDED','CREDIT_CONFIRMED',
-                                 'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
-                       ), 0) AS returned_failure_base,
-                       COALESCE((
-                           SELECT SUM(receipt_item.qty * receipt_item.unit_rate)
-                           FROM subcontract_receipt_items receipt_item
-                           JOIN subcontract_receipts receipt
-                             ON receipt.id = receipt_item.receipt_id
-                            AND receipt.status = 1
-                            AND receipt.is_deleted = FALSE
-                           WHERE receipt_item.order_item_id = order_item.id
-                             AND receipt_item.is_deleted = FALSE
-                       ), 0) AS approved_receipt_base,
-                       COALESCE((
-                           SELECT SUM(draft_item.qty * draft_item.unit_rate)
-                           FROM subcontract_receipt_items draft_item
-                           JOIN subcontract_receipts draft
-                             ON draft.id = draft_item.receipt_id
-                            AND draft.status = 0 AND draft.legacy_id IS NULL
-                            AND draft.is_deleted = FALSE
-                           WHERE draft_item.order_item_id = order_item.id
-                             AND draft_item.is_deleted = FALSE
-                """ + currentDraftExclusion + """
-                       ), 0) AS active_draft_base
-                FROM subcontract_order_items order_item
-                WHERE order_item.id IN (:orderItemIds)
-                  AND COALESCE(order_item.is_deleted, FALSE) = FALSE
-                ORDER BY order_item.id
-                FOR UPDATE OF order_item
-                """)).setParameter("orderItemIds", orderItemIds);
-        if (currentReceiptId != null) {
-            query.setParameter("currentReceiptId", currentReceiptId);
-        }
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = query.getResultList();
-        if (rows.size() != orderItemIds.size()) {
-            throw new ApiException(ErrorCode.CONFLICT, "委外回厂来源订货明细不存在或已删除");
-        }
-        for (Object[] row : rows) {
-            UUID orderItemId = (UUID) row[0];
-            if (!Boolean.TRUE.equals(row[2])) continue;
+        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireKnownReceiptBasis(
+                em, "SUBCONTRACT", orderItemIds);
+        for (SubcontractReturnCapacity.Facts facts
+                : SubcontractReturnCapacity.lockAndRead(em, orderItemIds, currentReceiptId).values()) {
             BigDecimal requestedBase = requestedQty
-                    .getOrDefault(orderItemId, BigDecimal.ZERO)
-                    .multiply(decimal(row[1]));
-            // 「我方供料 + IQC 返修额度 − 已审回厂」：这是物理上限本身。
-            BigDecimal physicalBase = decimal(row[3])
-                    .add(decimal(row[4]))
-                    .subtract(decimal(row[5]))
+                    .getOrDefault(facts.orderItemId(), BigDecimal.ZERO)
+                    .multiply(facts.unitRate());
+            // 「委外商处物料可做套数 + IQC 返修额度 + 财务批准自带料 − 已审回厂」：物理上限本身。
+            BigDecimal physicalBase = facts.authorizedBase()
+                    .subtract(facts.approvedReceiptBase())
                     .max(BigDecimal.ZERO);
             // 再扣掉其它未审草稿已经占住的额度。
             BigDecimal availableBase = physicalBase
-                    .subtract(decimal(row[6]))
+                    .subtract(facts.activeDraftBase())
                     .max(BigDecimal.ZERO);
-            // ADR-101：超过物理上限不再在登记这一步拒收。实物已经到厂了，多出来的部分说明
-            // 委外商贴了自己的料——那是价格和归属问题，要财务定案，不是让仓库改数或少登记，
-            // 否则超出的实物就落在账外。登记照常建草稿，审核时由到货异常闸落 PENDING_FINANCE
-            // 并通知财务审核组，货不入库、不立应付。
+            // ADR-101：超过物理上限不在登记这一步拒收。实物已经到厂了，多出来的部分说明
+            // 委外商贴了自己的料——那是价格和归属问题，要财务定案；审核时由到货异常闸落
+            // PENDING_FINANCE 并通知财务审核组，货不入库、不立应付。
             // 仍然拦的只有一种：物理上够，但额度被同明细的另一张未审草稿占住了——那是并发
             // 冲突，刷新一下就能看清，不该变成一条挂在财务那里的异常。
             if (requestedBase.compareTo(physicalBase) <= 0
@@ -939,20 +823,6 @@ public class SubcontractReceiptService {
                         ErrorCode.CONFLICT,
                         "本行可回厂额度已被同一订货明细的其它回厂草稿占用；请刷新预计到货任务后再登记");
             }
-        }
-    }
-
-    /** 子件身份（货品+颜色，颜色可空）：同一订货明细下的同名子件分多行也视为同一物。 */
-    private record ComponentKey(UUID goodsId, UUID colorId) {
-        @Override
-        public boolean equals(Object o) {
-            if (!(o instanceof ComponentKey(UUID g, UUID c))) return false;
-            return java.util.Objects.equals(goodsId, g) && java.util.Objects.equals(colorId, c);
-        }
-
-        @Override
-        public int hashCode() {
-            return java.util.Objects.hash(goodsId, colorId);
         }
     }
 
@@ -1226,6 +1096,10 @@ public class SubcontractReceiptService {
 
     private static BigDecimal decimal(Object value) {
         return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
+    }
+
+    private static String plain(BigDecimal value) {
+        return value == null ? "0" : value.stripTrailingZeros().toPlainString();
     }
 
     private ReceiptDetail finishHistory(ReceiptDetail view, SubcontractReceipt entity, boolean historyRead) {

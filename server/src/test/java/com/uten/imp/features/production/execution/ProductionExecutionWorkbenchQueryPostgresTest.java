@@ -233,8 +233,6 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 new ProductionMaterialSettlementService(em, mock(TxSessionVars.class),
                         mock(ProductionMaterialTaskAccessPolicy.class), mock(ProductionInventoryValueService.class),
                         mock(com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService.class)), membership);
-        org.springframework.test.util.ReflectionTestUtils.setField(service,"draftPreparationAccess",
-                mock(com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy.class));
     }
 
     @Test

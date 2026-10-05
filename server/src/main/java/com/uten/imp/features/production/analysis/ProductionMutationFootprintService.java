@@ -228,7 +228,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
 
     @Override
     public FulfillmentMutationLockPlan forPreview(
-            Collection<UUID> salesItemIds, Collection<UUID> subcontractItemIds,
+            Collection<UUID> salesItemIds,
             Collection<WarehouseDimension> manualRoots, Collection<UUID> warehouseIds,
             Collection<UUID> existingAnalysisIds) {
         var result = new Footprint(); ids(existingAnalysisIds).forEach(result::analysis);
@@ -237,7 +237,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             result.inventory(root.goodsId(),root.colorId()); roots.add(root.goodsId());
             result.parts.add("preview-root:" + root);
         }
-        List<UUID> sales = ids(salesItemIds), subcontract = ids(subcontractItemIds), warehouses = ids(warehouseIds);
+        List<UUID> sales = ids(salesItemIds), warehouses = ids(warehouseIds);
         if (!sales.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id,item.order_id,item.goods_id,item.color_id,
                        item.xmin::text,header.xmin::text
@@ -245,19 +245,6 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
                 WHERE item.id IN (:ids) ORDER BY item.id
                 """).setParameter("ids",sales))) {
             result.row("preview-sale",row); result.sales((UUID)row[1]);
-            result.inventory((UUID)row[2],(UUID)row[3]); roots.add((UUID)row[2]);
-        }
-        if (!subcontract.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT item.id,item.order_id,item.goods_id,item.color_id,source.id,application.application_id,
-                       item.xmin::text,source.xmin::text
-                FROM subcontract_order_items item
-                LEFT JOIN subcontract_order_item_sources source ON source.order_item_id=item.id
-                LEFT JOIN subcontract_application_items application ON application.id=source.application_item_id
-                WHERE item.id IN (:ids) ORDER BY item.id,source.id
-                """).setParameter("ids",subcontract))) {
-            result.row("preview-subcontract",row);
-            result.sources.add(new CommercialSource(CommercialType.SUBCONTRACT_ORDER,(UUID)row[1]));
-            if (row[5]!=null) result.sources.add(new CommercialSource(CommercialType.SUBCONTRACT_APPLICATION,(UUID)row[5]));
             result.inventory((UUID)row[2],(UUID)row[3]); roots.add((UUID)row[2]);
         }
         if (!warehouses.isEmpty()) for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -542,12 +529,6 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             };
             result.sources.add(new CommercialSource(type,(UUID)row[2]));
         }
-        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT source.id,item.order_id,item.xmin::text,orders.xmin::text
-                FROM production_material_analysis_items source JOIN subcontract_order_items item ON source.source_ref='SC-ORDER:'||item.id::text
-                JOIN subcontract_orders orders ON orders.id=item.order_id
-                WHERE source.analysis_id IN(:ids) AND source.source_type='SUBCONTRACT_PREPARATION' AND source.is_deleted=FALSE ORDER BY source.id
-                """).setParameter("ids",analyses))){result.row("direct-subcontract-order",row);result.sources.add(new CommercialSource(CommercialType.SUBCONTRACT_ORDER,(UUID)row[1]));}
         // Cancelling or regenerating a supply action calls the owning request
         // lifecycle. Those commercial headers must precede I/A, even if the
         // current operation is initiated from the analysis page.
@@ -610,33 +591,6 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
             result.row("reservation", row); result.inventory((UUID) row[1], (UUID) row[2]);
             if (row[4]!=null) result.warehouses.add((UUID)row[4]);
         }
-        // Intermediate SC assembly stays outside final-component entitlement.
-        // Its original task and converted outbound reservations still require
-        // their actual warehouses in the same directed mutation lock plan.
-        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT reservation.id,reservation.goods_id,reservation.color_id,
-                       fn_warehouse_main_id(reservation.warehouse_id),reservation.xmin::text
-                FROM stock_reservations reservation
-                WHERE NOT reservation.is_deleted AND reservation.status=0 AND reservation.qty>reservation.released_qty
-                  AND reservation.supply_type='PRODUCTION_FINISHED_IN'
-                  AND (reservation.owner_type='SUBCONTRACT_PREPARE_TASK' AND EXISTS(
-                        SELECT 1 FROM preplan_subcontract_make_tasks task
-                        WHERE task.id=reservation.owner_id AND task.analysis_id IN (:ids))
-                    OR reservation.owner_type='SUBCONTRACT_OUTBOUND' AND EXISTS(
-                        SELECT 1 FROM subcontract_material_plan_items item
-                        WHERE item.id=reservation.owner_id AND item.preparation_analysis_id IN (:ids))
-                    OR reservation.owner_type='SUBCONTRACT_ORDER_PREPARATION' AND EXISTS(
-                        SELECT 1 FROM stock_document_items item
-                        JOIN production_plan_items production_item ON production_item.id=item.upstream_item_id
-                        JOIN production_plans plan ON plan.id=production_item.plan_id
-                        WHERE item.id=reservation.supply_id AND plan.material_analysis_id IN (:ids)))
-                  AND fn_subcontract_preparation_reservation_has_qualified_origin(reservation.id)
-                ORDER BY reservation.id
-                """).setParameter("ids",analyses))) {
-            result.row("subcontract-preparation-source",row);
-            result.inventory((UUID)row[1],(UUID)row[2]);
-            if(row[3]!=null)result.warehouses.add((UUID)row[3]);
-        }
     }
 
     /**
@@ -672,7 +626,7 @@ public class ProductionMutationFootprintService implements ProductionMutationFoo
         List<UUID> roots = NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT item.goods_id FROM production_material_analysis_items item
                 WHERE item.analysis_id IN (:ids) AND item.is_deleted=FALSE
-                  AND item.source_type NOT IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE') ORDER BY item.goods_id
+                  AND item.source_type<>'MAKE_COMPONENT' ORDER BY item.goods_id
                 """, UUID.class).setParameter("ids", analyses), UUID.class);
         return new MaterialAnalysisStructureScope.Snapshot(roots, materials, readCurrentBom(roots));
     }

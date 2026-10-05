@@ -183,7 +183,14 @@ public final class MigrationRehearsalSupport {
                 "measurement_capture_decision_events", "measurement_capture_evidence",
                 "measurement_capture_line_snapshots", "measurement_capture_profiles",
                 "legacy_measurement_exceptions", "legacy_measurement_profile_snapshots",
-                "legacy_measurement_source_registry");
+                "legacy_measurement_source_registry",
+                // V798(ADR-143) 委外前置自制全家删除: V447 交接五表、前置自制任务三表与准备命令账。
+                // V798 前置检查要求这些表已由显式测试清空清成 0 行, 删除不丢业务事实。
+                "subcontract_outbound_preparation_commands",
+                "preplan_subcontract_entitlement_handoff_slices", "preplan_subcontract_requirement_handoff_events",
+                "preplan_subcontract_requirement_handoff_items", "preplan_subcontract_requirement_handoffs",
+                "preplan_subcontract_requirement_supply_claims", "preplan_subcontract_make_task_batches",
+                "preplan_subcontract_make_batch_reversals", "preplan_subcontract_make_tasks");
         Set<String> requiredTables = new java.util.HashSet<>(before.tableRows().keySet());
         requiredTables.removeAll(intentionallyDropped);
         // V673(ADR-105) production_plan_costs 由按年分区改为普通单表: 各年分区子表与 default 分区

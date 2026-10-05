@@ -411,8 +411,7 @@ final class MasterReferenceCatalog {
                        COALESCE(h.bill_no, mp.order_bill_no, '(无单号)'), h.maker_id, 'subcontract'
                 FROM subcontract_material_plans mp JOIN subcontract_orders h ON h.id = mp.order_id
                 WHERE mp.supplier_id %s AND %s""".formatted(TARGETS, materialPlanOpen)));
-        for (Col col : with(GCU, new Col(GOODS, "parent_goods_id"), new Col(COLOR, "parent_color_id"),
-                new Col(WAREHOUSE, "preparation_warehouse_id"))) {
+        for (Col col : with(GCU, new Col(GOODS, "parent_goods_id"), new Col(COLOR, "parent_color_id"))) {
             out.add(new Reference(col.target(), "subcontract_material_plan_items", col.column(),
                     RefKind.SUBCONTRACT_MATERIAL_PLAN, """
                     SELECT i.%1$s, 'SUBCONTRACT_MATERIAL_PLAN', CAST(h.id AS text),
@@ -421,7 +420,7 @@ final class MasterReferenceCatalog {
                     JOIN subcontract_material_plans mp ON mp.id = i.plan_id
                     JOIN subcontract_orders h ON h.id = mp.order_id
                     WHERE i.%1$s %2$s AND NOT i.is_deleted
-                      AND i.preparation_status NOT IN ('OUTBOUND_COMPLETE', 'CANCELLED') AND %3$s"""
+                      AND i.draw_closed_at IS NULL AND i.issued_qty < i.planned_qty AND %3$s"""
                     .formatted(col.column(), TARGETS, materialPlanOpen)));
         }
         String lossOpen = "NOT c.is_deleted AND c.status IN ('OPEN', 'ACCEPTED', 'DISPUTED', 'AWAITING_FULFILLMENT')";
@@ -450,25 +449,17 @@ final class MasterReferenceCatalog {
                     .formatted(col.column(), TARGETS)));
         }
 
-        // 物料分析：来源行、物料行、备料动作、借料、改派、委外交接(均要求分析本身在办)。
+        // 物料分析：来源行、物料行、备料动作、借料、改派(均要求分析本身在办)。
         for (Col col : GCU) {
             out.add(analysis(col, "production_material_analysis_items", "x.analysis_id", "NOT x.is_deleted"));
             out.add(analysis(col, "production_material_analysis_materials", "x.analysis_id", "x.active"));
             out.add(analysis(col, "production_material_analysis_borrows", "x.analysis_id", "x.status = 'ACTIVE'"));
-            out.add(analysis(col, "preplan_subcontract_requirement_handoff_items",
-                    "x.source_analysis_id, x.target_analysis_id", "TRUE"));
         }
         for (Col col : with(GCU, new Col(WAREHOUSE, "warehouse_id"))) {
             out.add(analysis(col, "preplan_supply_actions", "x.analysis_id",
                     "x.status IN ('OPEN', 'CREATED', 'IN_PROGRESS')"));
-            out.add(analysis(col, "preplan_subcontract_make_tasks", "x.analysis_id", "x.status = 'ACTIVE'"));
             out.add(analysis(col, "preplan_material_reallocations", "x.from_analysis_id, x.to_analysis_id",
                     "x.status IN ('OPEN', 'PARTIAL')"));
-        }
-        for (Col col : List.of(new Col(WAREHOUSE, "warehouse_id"), new Col(GOODS, "target_goods_id"),
-                new Col(COLOR, "target_color_id"), new Col(UNIT, "target_unit_id"))) {
-            out.add(analysis(col, "preplan_subcontract_requirement_handoffs",
-                    "x.source_analysis_id, x.target_analysis_id", "TRUE"));
         }
         out.add(new Reference(WAREHOUSE, "production_material_analyses", "warehouse_id", RefKind.ANALYSIS, """
                 SELECT a.warehouse_id, 'ANALYSIS', CAST(a.id AS text), %s, CAST(NULL AS uuid), 'public'

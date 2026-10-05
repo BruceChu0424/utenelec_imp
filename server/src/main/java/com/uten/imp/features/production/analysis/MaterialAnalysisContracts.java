@@ -33,8 +33,6 @@ public final class MaterialAnalysisContracts {
     public static final String REQUIREMENT_STATE_ACTIVE = "ACTIVE";
     public static final String REQUIREMENT_STATE_DELEGATED_TO_MAKE_CHILD =
             "DELEGATED_TO_MAKE_CHILD";
-    public static final String REQUIREMENT_STATE_DELEGATED_TO_SUBCONTRACT_PREPARATION =
-            "DELEGATED_TO_SUBCONTRACT_PREPARATION";
     public static final String REQUIREMENT_STATE_INACTIVE_PARENT_COVERED =
             "INACTIVE_PARENT_COVERED";
     public static final String REQUIREMENT_STATE_INACTIVE_PARENT_ROUTE =
@@ -188,7 +186,7 @@ public final class MaterialAnalysisContracts {
 
     /**
      * 下达车间（ADR-071，2026-09-05 重构）：所有自制行（顶层产品 / 自制候选 /
-     * 委外先自制候选 / 已有子件）一视同仁，单次调用原子完成「候选先建子件任务
+     * 已有子件）一视同仁，单次调用原子完成「候选先建子件任务
      * → 按行内数量/车间/负责人生成生产计划 → 有审核权限同事务审核下达」。
      * 物料齐不齐不再由计划侧判断：计划照常创建，缺料批次进入 WAITING，由车间
      * 侧执行段在齐套后自动提升 READY。
@@ -206,8 +204,8 @@ public final class MaterialAnalysisContracts {
             /**
              * ADR-099 修订(2026-09-29)：null/false = 原行为——顶层产品行先自动认领
              * 自制公共超产与同主仓公共在途、只为余下部分排产；true = 「足额下单，
-             * 不扣可用数量」，跳过认领按提交数量直接生成计划。内部为「先自制委外」
-             * 预排锚点的 notify 腿随本标志一起跳过。
+             * 不扣可用数量」，跳过认领按提交数量直接生成计划。委外节点不经下达车间，
+             * 一律走下达委外(ADR-143)。
              */
             Boolean skipAutoClaim) {
 
@@ -454,7 +452,6 @@ public final class MaterialAnalysisContracts {
             List<String> allowedRoutes,
             String operation,
             boolean canOverSupply,
-            boolean requiresPreparation,
             UUID existingChildAnalysisLineId,
             BigDecimal safetyReplenishmentQty,
             String blockedReason) {
@@ -834,7 +831,7 @@ public final class MaterialAnalysisContracts {
             String usageBasis,
             /**
              * 按设计值算的原因：NO_DATA 没有真实数据 / NOT_LINEAR 整包或固定批次 /
-             * OUTPUT_UNIT_CHANGED 父件单位变了 / SUBCONTRACT_OUTBOUND 发给委外商按合同用量；
+             * OUTPUT_UNIT_CHANGED 父件单位变了 / SUBCONTRACT_OUTBOUND 委外件的直属物料按合同用量(ADR-143)；
              * 按真实值算时为空。只给界面选说明文案，不直接展示。
              */
             String usageReason,
@@ -851,7 +848,6 @@ public final class MaterialAnalysisContracts {
             BigDecimal inboundQty,
             BigDecimal shortageQty,
             BigDecimal demandSupplyGapQty,
-            BigDecimal subcontractHandoffFutureQty,
             LocalDate expectedReadyDate,
             String sourceSuggestion,
             String sourceConfirmed,
@@ -895,17 +891,6 @@ public final class MaterialAnalysisContracts {
             BigDecimal sharedFuturePendingQty,
             BigDecimal lateSharedFutureAvailableQty,
             /**
-             * V581 委外发出物形态。目前只有两种取值：
-             * {@code "COMPONENT_OUTBOUND"} 表示该委外件的活动 BOM 恰好只有一个
-             * PER_UNIT 投入的叶子子件——不先自制，仓库直接把那个子件发给委外商，
-             * 委外商加工后交回目标件；{@code null} 表示其余所有情况（无子层的纯
-             * 外协、需要先自制的有子层件、非委外路线，以及旧服务端）。
-             *
-             * <p>客户端拿 null 一律按旧口径（有子层 ⇒ 先自制）回退，不得把 null
-             * 当成 COMPONENT_OUTBOUND。
-             */
-            String subcontractOutboundForm,
-            /**
              * V587 货品主档的「所属仓库」(这批货平时归哪个仓管)。
              * 既不是单据落点仓，也不是本次分析的范围仓 (warehouseIds)；未登记为 null。
              */
@@ -926,8 +911,9 @@ public final class MaterialAnalysisContracts {
              */
             BigDecimal sharedFutureClaimableQty,
             /**
-             * 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位；
-             * 已建自制/前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量
+             * 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位
+             * (顶层委外件含未结委外申请的申请量 + 公共超量 − 合格入库回厂量，ADR-143)；
+             * 已建自制锚点的物料行 = 锚点已下达且仍有效的计划总量
              * （归需求量 + 公共备货产出）；其余行为 0。下层物料按它展开。
              */
             BigDecimal plannedOutputQty,
@@ -968,7 +954,23 @@ public final class MaterialAnalysisContracts {
             BigDecimal preparationOwnedAvailableQty,
             BigDecimal preparationUncoveredBeforeSharedQty,
             BigDecimal preparationAdoptableSharedQty,
-            List<PreparationSharedSupplySlice> preparationSharedSupplySlices) {
+            List<PreparationSharedSupplySlice> preparationSharedSupplySlices,
+            /**
+             * 缺 BOM(ADR-143 §二.3)：本行路线是委外，而货品没有任何可发外的直属物料
+             * (fn_subcontract_draw_edges 没有行)。这样的行不能下达委外(服务端同样拒绝)，
+             * 页面显示「缺 BOM·已通知研发」，下达委外的勾选框不可勾。
+             */
+            boolean bomMissing,
+            /** 缺 BOM 时该货品未完成的「完善 BOM」研发任务编号；还没登记或不缺 BOM 时为空。 */
+            String rdTaskNo) {
+        /** 缺 BOM 标记与研发任务编号(只在详情最后一步按库内判定写入)。 */
+        public MaterialView withBomGap(boolean missing, String taskNo) {
+            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, designBomQty, actualBomQty, usageBasis, usageReason, usageSampleCount, usageDefectRate, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices, missing, missing ? taskNo : null);
+        }
+        /** 本行路线是委外(已确认路线优先，未确认按建议)。 */
+        public boolean subcontractRoute() {
+            return "SUBCONTRACT".equals(sourceConfirmed != null ? sourceConfirmed : sourceSuggestion);
+        }
         public MaterialView withAggregatePreparation(AggregatePreparationView value) {
             return withProjection(flowStage, value, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices);
         }
@@ -995,7 +997,7 @@ public final class MaterialAnalysisContracts {
                 List<PreplanMakePublicSupplyService.Candidate> candidates, BigDecimal adopted, String pool,
                 BigDecimal shared, BigDecimal owned, BigDecimal beforeShared, BigDecimal adoptableShared,
                 List<PreparationSharedSupplySlice> slices) {
-            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, designBomQty, actualBomQty, usageBasis, usageReason, usageSampleCount, usageDefectRate, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, subcontractHandoffFutureQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, stage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, subcontractOutboundForm, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregate, available, candidates, adopted, pool, shared, owned, beforeShared, adoptableShared, slices);
+            return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, designBomQty, actualBomQty, usageBasis, usageReason, usageSampleCount, usageDefectRate, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, stage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregate, available, candidates, adopted, pool, shared, owned, beforeShared, adoptableShared, slices, bomMissing, rdTaskNo);
         }
         @JsonProperty("nodeRole")
         public String nodeRole() {
@@ -1065,7 +1067,6 @@ public final class MaterialAnalysisContracts {
             UUID documentId,
             String documentNo,
             BigDecimal allocatedQty,
-            boolean notificationReversalPending,
             /**
              * ADR-099：该行动锚定的申请明细仍未订货(采购/委外部门还没动过, 追加会
              * 就地改大)时 = 明细当前数量(需求份 + 公共份)；已订货/已处理为 null。
@@ -1073,13 +1074,7 @@ public final class MaterialAnalysisContracts {
             BigDecimal growableLineQty) {
         public DownstreamReference(UUID actionId, String route, String status,
                 String documentType, UUID documentId, String documentNo, BigDecimal allocatedQty) {
-            this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,false,null);
-        }
-        public DownstreamReference(UUID actionId, String route, String status,
-                String documentType, UUID documentId, String documentNo, BigDecimal allocatedQty,
-                boolean notificationReversalPending) {
-            this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,
-                    notificationReversalPending,null);
+            this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,null);
         }
     }
 

@@ -139,6 +139,9 @@ public class GoodsDetail {
     /** 委外允许损耗默认值(%)(ADR-098): 委外订货明细预填记忆; 不是成本字段, 不随成本脱敏。 */
     private BigDecimal subcontractAllowedLossPct;
 
+    /** 采购允许超收默认值(%)(ADR-144): 采购订货明细预填记忆; 不是价格或成本, 不脱敏。 */
+    private BigDecimal purchaseAllowedOverReceiptPct;
+
     // ===== 发料方式 (V740 / ADR-131; 只读展示, 切换走 /issue-method/preview → /issue-method/batch) =====
     private String issueMethod;          // ORDER 按工单领料 / PERIODIC 整批领到车间内料仓
     private String periodicCostBasis;    // OWN 主料 / SHARED 辅料 / EXPENSE 记车间费用; 按工单领料为 null

@@ -1033,34 +1033,23 @@ Map<String, dynamic> _issuedPlanAnchors({bool partialSecondPath = false}) {
     'additionalSupplyRecommendedQty': 10000,
   });
   for (var index = 1; index <= 6; index++) {
-    final subcontract = index == 6;
     final partial = partialSecondPath && index == 2;
     final sameGoods = index <= 2 ? 'shared-make-goods' : 'make-goods-$index';
     materials[index].addAll({
       'goodsId': sameGoods,
       'goodsCode': 'M-$index',
       'goodsName': '来源自制件 $index',
-      'sourceSuggestion': subcontract ? 'SUBCONTRACT' : 'MAKE',
-      'sourceConfirmed': subcontract ? 'SUBCONTRACT' : 'MAKE',
+      'sourceSuggestion': 'MAKE',
+      'sourceConfirmed': 'MAKE',
       'routeConfirmed': true,
       'requiredQty': 10000, 'shortageQty': 10000, 'demandSupplyGapQty': 10000,
-      'additionalSupplyRecommendedQty': subcontract ? 0 : 10000,
-      'planAnchorAnalysisLineId': 'plan-anchor-$index',
+      'additionalSupplyRecommendedQty': 10000,
       // Direct MAKE issuance has a persistent anchor but no supply action.
-      if (subcontract)
-        'notifiedTargets': [
-          {
-            'target': 'SUBCONTRACT',
-            'documentType': 'SUBCONTRACT_MAKE_TASK',
-            'documentId': 'plan-anchor-$index',
-            'status': 'CREATED',
-            'qty': 10000,
-          },
-        ],
+      'planAnchorAnalysisLineId': 'plan-anchor-$index',
     });
     products.add({
       'analysisLineId': 'plan-anchor-$index',
-      'sourceType': subcontract ? 'SUBCONTRACT_MAKE' : 'MAKE_COMPONENT',
+      'sourceType': 'MAKE_COMPONENT',
       'parentAnalysisLineId': 'p1',
       'goodsId': sameGoods,
       'goodsCode': 'M-$index',

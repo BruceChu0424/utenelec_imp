@@ -74,7 +74,8 @@ class SubcontractShortDeliveryEndToEndTest {
 
     @Test void shortDeliveryIsConfirmedByWarehouseDecidedBySubcontractAndSettledWithLossRatio() {
         var w=fixture.seedWorld("sc-short-delivery");fixture.loginAs(w.superAdminUserId());
-        ReflectionTestUtils.invokeMethod(fixture,"receiveOpeningInputsForA",w,"20"); // goodsE 现货 20，直下委外发目标件。
+        // ADR-143: 委外件 E 发外的是直属物料 M(按件用量 1), 现货 M 20(真实其它入库)。
+        UUID material=fixture.ensureSubcontractDirectMaterial(w,w.goodsE());fixture.receiveSubcontractMaterial(w,material,"20");
 
         // ① 订货 20 件、允许损耗 5%：保存即冻结到本行，并回写货品主档记忆；/last-terms 下次预填 5。
         UUID orderId=orders.create(orderRequest(w,"20","5")).getId();
@@ -84,16 +85,11 @@ class SubcontractShortDeliveryEndToEndTest {
         var memory=orders.masterDefaultTermsPerGoods(List.of(w.goodsE())).get(w.goodsE());
         assertNotNull(memory);rate("5",memory.allowedLossPct());assertEquals("GOODS_MASTER",memory.allowedLossPctSource());
 
-        // ② 财务批准 → 目标件出仓草稿按计划审核(20 件到供应商处)。
+        // ② 财务批准 → 委外人员领满 20 套, 仓库审核发出(直属物料 20 件到供应商处)。
         UUID reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);
         financeApproval.submit("SUBCONTRACT",orderId);
         fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId);fixture.loginAs(w.superAdminUserId());
-        UUID issueId=db.queryForObject("""
-                SELECT issue.id FROM subcontract_material_issues issue
-                JOIN subcontract_material_issue_items item ON item.issue_id=issue.id
-                WHERE item.order_item_id=? AND issue.status=0 AND issue.is_deleted=FALSE
-                """,UUID.class,itemId);
-        materialIssues.approve(issueId);
+        fixture.drawAndIssueSubcontract(itemId,new BigDecimal("20"),"sc-short-draw-"+itemId);
         rate("20",db.queryForObject("SELECT SUM(at_supplier_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",BigDecimal.class,itemId));
 
         // ③ 第一批回厂 12：下限 19、短交率 40% → 严重短交，未确认先 409 逐行说明；仓库确认后登记成功。
@@ -265,7 +261,7 @@ class SubcontractShortDeliveryEndToEndTest {
 
     @Test void completeArrivalAndUnsetToleranceNeverAskTheWarehouseAndCloseWaitingCasesOnArrival() {
         var w=fixture.seedWorld("sc-short-complete");fixture.loginAs(w.superAdminUserId());
-        ReflectionTestUtils.invokeMethod(fixture,"receiveOpeningInputsForA",w,"10");
+        UUID material=fixture.ensureSubcontractDirectMaterial(w,w.goodsE());fixture.receiveSubcontractMaterial(w,material,"10");
         // 未设允许损耗：短交只开中性案件, 登记不需要确认; 到齐后案件自然完成。
         UUID orderId=orders.create(orderRequest(w,"10",null)).getId();
         UUID itemId=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
@@ -273,12 +269,9 @@ class SubcontractShortDeliveryEndToEndTest {
         UUID reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);
         financeApproval.submit("SUBCONTRACT",orderId);
         fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId);fixture.loginAs(w.superAdminUserId());
-        UUID issueId=db.queryForObject("""
-                SELECT issue.id FROM subcontract_material_issues issue
-                JOIN subcontract_material_issue_items item ON item.issue_id=issue.id
-                WHERE item.order_item_id=? AND issue.status=0 AND issue.is_deleted=FALSE
-                """,UUID.class,itemId);
-        materialIssues.approve(issueId);
+        fixture.drawAndIssueSubcontract(itemId,BigDecimal.TEN,"sc-short-complete-draw-"+itemId);
+        // 判定页分段计数是全库口径(同一测试库里别的用例也会留下容差内案件), 这里只看本单带来的变化。
+        var countsBefore=shortDeliveries.counts();
 
         assertEquals("SUBMITTED_FOR_INSPECTION",arrivals.register(arrival(w,itemId,"4",false,"sc-1")).outcome(),"未设允许损耗不弹窗");
         Map<String,Object> c=caseRow(itemId);
@@ -289,7 +282,8 @@ class SubcontractShortDeliveryEndToEndTest {
         // 中性案件：任务中心状态列「容差内待结案」不标红、不算异常；红徽章不计, 判定页计入容差内段。
         assertEquals("TOLERANT_SHORT",workbenchRow(orderId).displayStage());
         assertNull(workbenchRow(orderId).exceptionCode());
-        assertEquals(0,shortDeliveries.counts().pending());assertEquals(1,shortDeliveries.counts().tolerant());
+        assertEquals(countsBefore.pending(),shortDeliveries.counts().pending());
+        assertEquals(countsBefore.tolerant()+1,shortDeliveries.counts().tolerant());
         assertEquals(1,shortDeliveries.list("TOLERANT",null,null,orderId,null,null,1,20).getTotal());
 
         assertEquals("SUBMITTED_FOR_INSPECTION",arrivals.register(arrival(w,itemId,"6",false,"sc-2")).outcome(),"到齐不弹窗");

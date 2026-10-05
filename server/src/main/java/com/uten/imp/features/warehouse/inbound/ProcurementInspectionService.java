@@ -480,8 +480,10 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
      * 整单在本次结论里结案时，结案回调本来就会按整单 RESOLVED 维度刷新同一批物料分析，自动转正那一步
      * 只推进供给状态与到货通知、不再先刷一遍(同一事务里两遍算的是同一份事实，此前每张单白刷一次)。
      */
-    private void completeReceiptDisposition(String receiptType, UUID receiptId,
-                                            List<ProcurementIqcStockInService.PreStockedRelease> preStocked) {
+    private ProcurementIqcStockInService.PreStockedAutoStockIn completeReceiptDisposition(
+            String receiptType, UUID receiptId, List<ProcurementIqcStockInService.PreStockedRelease> preStocked) {
+        // 委外回厂短交待判定(ADR-098 × ADR-090)：已上架的合格行先不转正(heldPassEventIds)，也不改投
+        // 「待仓库确认入库」——货已经在库位上，委外判定后由判定的同一事务自动转正，仓库没有要做的事。
         var autoStockIn = iqcStockIn.confirmPreStockedReleases(receiptType, receiptId, preStocked);
         Map<UUID, UUID> inspectionByPassEvent = new java.util.HashMap<>();
         for (var release : preStocked) inspectionByPassEvent.put(release.passEventId(), release.inspectionItemId());
@@ -502,6 +504,39 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         if (wholeReceiptResolved) {
             chainNotice.resolveReviewNotices("IQC_INSPECTION", receiptId, "INSPECTED");
         }
+        return autoStockIn;
+    }
+
+    /**
+     * ADR-098 × ADR-090(2026-10-05)：委外回厂走「先入库后质检」，品质合格时这张收货单还有待委外判定的
+     * 回厂短交，自动转正被扣住(品质结论已记下，货在库位上)。委外判定(分批到货 / 接受损耗)或后续到货
+     * 让它不再被扣住时，由判定 / 登记的同一事务调这里补做——与品质结论收尾同一条路：按上架位置合成
+     * 自动转正批次(上架仓已不可用的退回「待仓库确认入库」)、推进生产联动、重算订单结案。
+     *
+     * <p>调用方已在本事务首次预锁时并入这张收货单的品质与入库足迹
+     * ({@code ProcurementMutationLocks.subcontractShortDeliveryDecision / arrivalInputs})，这里的取锁只做覆盖检查。
+     *
+     * @return 本次自动转正的放行事件数；仍被扣住、或没有待转正的已上架合格品时为 0
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int releaseHeldPreStock(String receiptType, UUID receiptId) {
+        if (!SUBCONTRACT.equals(receiptType) || receiptId == null) return 0;
+        if (iqcStockIn.subcontractStockInHeld(receiptType, receiptId)) return 0;
+        List<com.uten.imp.common.concurrency.SubcontractHeldPreStock.Release> held =
+                com.uten.imp.common.concurrency.SubcontractHeldPreStock.ofReceipt(em, receiptId);
+        if (held.isEmpty()) return 0;
+        lockInspectionRows(receiptType, receiptId, held.stream()
+                .map(com.uten.imp.common.concurrency.SubcontractHeldPreStock.Release::inspectionItemId)
+                .distinct().toList());
+        // 行锁之后重读：同一时刻别的事务可能已经把它们转正或改投仓库确认。
+        held = com.uten.imp.common.concurrency.SubcontractHeldPreStock.ofReceipt(em, receiptId);
+        if (held.isEmpty()) return 0;
+        List<ProcurementIqcStockInService.PreStockedRelease> releases = held.stream()
+                .map(release -> new ProcurementIqcStockInService.PreStockedRelease(release.passEventId(),
+                        release.inspectionItemId(), release.warehouseId(), release.place()))
+                .toList();
+        var outcome = completeReceiptDisposition(receiptType, receiptId, releases);
+        return releases.size() - outcome.fallbackPassEventIds().size() - outcome.heldPassEventIds().size();
     }
 
     private boolean productionWakePending(String receiptType, UUID receiptId, boolean wholeReceiptResolved) {

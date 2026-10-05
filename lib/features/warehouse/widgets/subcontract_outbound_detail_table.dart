@@ -14,6 +14,7 @@ import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../../subcontract/models/subcontract_doc.dart';
 import '../models/outbound_weight_entry.dart';
 import '../models/subcontract_outbound.dart';
 import 'outbound_weight_columns.dart';
@@ -23,108 +24,114 @@ String subcontractOutboundQuantity(double value) =>
     ? value.toStringAsFixed(0)
     : value.toString();
 
-/// 这两种流向发出去的都不是委外件本身，父件列才有意义：历史 V304 的 BOM 子件
-/// 发料单，以及 ADR-085「只有一个叶子子件」时直接发那颗子件。其余流向发的就是
-/// 委外件自己，再列一遍父件只会让人以为发错货。
-bool _showsParentGoods(SubcontractOutboundFlowMode mode) =>
-    mode == SubcontractOutboundFlowMode.legacyBomComponent ||
-    mode == SubcontractOutboundFlowMode.componentOutbound;
+/// 本次出库数量不合法(空 / 非数字 / 负数 / 超过委外提交的领料数量)。0 = 本次不发。
+const String subcontractOutboundQuantityInvalid =
+    '本次出库数量要在 0 到委外提交的领料数量之间(填 0 表示这条物料本次不发)';
 
-/// One plan UUID remains attached to each editable quantity, including when
-/// several orders contain the same goods and colour.
+/// 一张领料单每行都填了 0：整单不发不能靠删光明细，要退回委外。
+const String subcontractOutboundNothingToIssue = '整单不发请点「退回委外(不发)」或联系委外人员撤回领料';
+
+/// 「本次出库数量」列头说明(单张拣货页与批量出库页同一口径)。
+const String subcontractOutboundQuantityHint =
+    '只能改少，不能超过领料数量。某条物料这次不发就填 0：保存后这一行从领料单删掉，'
+    '占用的库存退回，委外下次领料时可以再领。';
+
+/// 实称重量格里有看不懂的输入。
+const String subcontractOutboundWeightInvalid = '实称重量看不懂，请改成如 12.5 或 850g';
+
+/// 审核出仓确认弹窗里说明的效果(单张拣货页与批量出库页同一口径)。
+const String subcontractOutboundApproveEffects =
+    '审核后将：\n'
+    '① 所列直属物料从所选仓库实际出库，交委外商加工；\n'
+    '② 改少或填 0 不发的物料不会丢：委外下次领料时系统自动补齐；\n'
+    '③ 委外商加工完交回的是委外件，回厂后仍需登记和品质检查，合格后才正式入仓。';
+
+/// 领料单的一条可拣货明细：[line] 是服务端拣货视图(领料数量 / 库位 / 回厂委外件)，
+/// [item] 是同一行在出仓单草稿里的原样明细(货品、颜色、单位、来源链 UUID)。
+/// 仓库只能把数量改少(0 ≤ 数量 ≤ [OutboundPickLine.requestedQty])，不能改多、不能加行；
+/// 填 0 = 本次不发这条物料，保存时不回传这一行，服务端删行并退回它占用的库存。
 class SubcontractOutboundLineDraft {
   SubcontractOutboundLineDraft(
     this.line,
-    this.draftItemId,
-    String initialQty, {
-    double? weight,
-    bool qtyFromWeight = false,
+    this.item, {
     WeightUnit weightUnit = WeightUnit.kg,
-    String? remark,
-    this.unitRate,
-  }) : qty = UtenAutofillTextController(text: initialQty, autofilled: false),
-       remarkController = TextEditingController(text: remark ?? ''),
-       ownDraftQty = draftItemId == null
-           ? 0
-           : double.tryParse(initialQty) ?? 0 {
-    this.weight = OutboundWeightEntry(
-      goodsId: line.goodsId,
-      colorId: line.colorId,
+  }) : qty = UtenAutofillTextController(
+         text: subcontractOutboundQuantity(item.qty ?? line.qty),
+         autofilled: false,
+       ),
+       remarkController = TextEditingController(text: item.remark ?? '') {
+    weight = OutboundWeightEntry(
+      goodsId: item.goodsId ?? line.goodsId,
+      colorId: item.colorId,
       qtyOf: () => double.tryParse(qty.text.trim()),
       qtyController: qty,
-      unitRate: unitRate ?? 1,
-      kg: weight,
-      qtyFromWeight: qtyFromWeight,
+      unitRate: item.unitRate ?? 1,
+      kg: item.weight,
+      qtyFromWeight: item.qtyFromWeight,
       unit: weightUnit,
     );
     // 已保存草稿里「数量按称重推算」的行：数量保留黄框并说明来源(与仓库单据编辑页同口径)。
-    if (this.weight.qtyFromWeight &&
-        this.weight.kg != null &&
-        initialQty.trim().isNotEmpty) {
-      qty.setAutomaticText(initialQty);
-      this.weight.weight.markQtyDerived(initialQty, note: '保存时按称重折算的数量');
+    if (weight.qtyFromWeight && weight.kg != null && qty.text.isNotEmpty) {
+      final initial = qty.text;
+      qty.setAutomaticText(initial);
+      weight.weight.markQtyDerived(initial, note: '保存时按称重折算的数量');
     }
   }
 
-  final OutboundPlanLine line;
-  final String? draftItemId;
+  final OutboundPickLine line;
+  final SubcontractDocItem item;
 
-  /// 本次出仓数量 (空着时可按称重推算, 黄框预填)。
+  /// 本次出库数量 (空着时可按称重推算, 黄框预填)。
   final UtenAutofillTextController qty;
 
   /// 仓库实称重量 (ADR-135 §3.8): 随草稿保存, 审核出仓时落委外出仓流水。
   late final OutboundWeightEntry weight;
-  final double ownDraftQty;
   final TextEditingController remarkController;
   String? get remark => remarkController.text.trim().isEmpty
       ? null
       : remarkController.text.trim();
-  final double? unitRate;
   bool selected = true;
 
-  // A plan can have drafts in several real warehouses. Reuse this draft's
-  // quantity only; other drafts' reservations belong to their own EC documents.
-  //
-  // 服务端下发可发量时，已有草稿的上限是「还空着的可发量 + 本草稿已占的量」——
-  // 子件陆续到货后仓库可以把这张草稿直接改大，不必删了重建(分批发料的常态)。
-  double get maxEditableQty {
-    if (line.maxEditableQty == 0) return 0;
-    if (draftItemId == null) return line.freeIssuableQty;
-    return line.issuableQty == null
-        ? ownDraftQty
-        : line.freeIssuableQty + ownDraftQty;
-  }
+  /// 出仓单草稿明细 id(保存时原样回传, 服务端据此只改数量不换行)。
+  String get draftItemId => item.id ?? line.issueItemId;
 
-  /// 发的是子件、服务端明说此刻可发 0: 子件还没到货(ADR-103 §2.4)。
-  /// 这种行数量格禁用、批量页默认不勾, 等子件入库后系统补草稿再发; 老服务端
-  /// (issuableQty 缺失)不判, 沿用纯计划口径。
-  bool get waitingComponentStock =>
-      _showsParentGoods(line.flowMode) &&
-      line.issuableQty != null &&
-      maxEditableQty <= 0;
+  /// 本次最多 = 委外提交的领料数量; 只能改少不能改多。
+  double get maxEditableQty => line.requestedQty;
 
-  String? validate(AppLocalizations l10n) {
+  /// 填了 0 = 本次不发这条物料(保存时不回传这一行)。
+  bool get skipped => double.tryParse(qty.text.trim()) == 0;
+
+  String? validate() {
     if (!selected) return null;
     final quantity = double.tryParse(qty.text.trim());
     if (quantity == null ||
         !quantity.isFinite ||
-        quantity <= 0 ||
+        quantity < 0 ||
         quantity - maxEditableQty > 0.0000001) {
-      return l10n.warehouseSubcontractOutboundQuantityInvalid;
+      return subcontractOutboundQuantityInvalid;
     }
+    if (quantity == 0) return null;
     if (weight.weight.hasError) return subcontractOutboundWeightInvalid;
     return null;
   }
 
+  /// 按出仓单草稿原行回传: 货品/颜色/单位/来源链 UUID 不由客户端重选, 只改数量、
+  /// 实称重量和行备注。
   Map<String, dynamic> toPayload() => {
-    if (draftItemId != null) 'id': draftItemId,
-    ...line.toMaterialIssueItemPayload(
-      qty: double.parse(qty.text.trim()),
-      weight: weight.kg,
-      qtyFromWeight: weight.qtyFromWeight,
-    ),
+    'id': draftItemId,
+    if (item.lineNo != null) 'lineNo': item.lineNo,
+    'goodsId': item.goodsId ?? line.goodsId,
+    'colorId': item.colorId,
+    'unitId': item.unitId,
+    'unitRate': item.unitRate ?? 1,
+    'qty': double.parse(qty.text.trim()),
+    'weight': ?weight.kg,
+    'qtyFromWeight': weight.qtyFromWeight,
+    'orderItemId': item.orderItemId,
+    'planItemId': line.planItemId,
+    if (item.parentGoodsId != null) 'parentGoodsId': item.parentGoodsId,
+    if (item.parentColorId != null) 'parentColorId': item.parentColorId,
     'remark': remark,
-    if (unitRate != null) 'unitRate': unitRate,
   };
 
   void dispose() {
@@ -134,8 +141,47 @@ class SubcontractOutboundLineDraft {
   }
 }
 
-/// 实称重量格里有看不懂的输入。
-const String subcontractOutboundWeightInvalid = '实称重量看不懂，请改成如 12.5 或 850g';
+/// 保存回传的明细：只回传本次要发的行(数量 > 0)；填 0 的行不回传，服务端删行退库存。
+/// 一行都不发时返回空列表，调用方提示 [subcontractOutboundNothingToIssue]，不调服务端。
+List<Map<String, dynamic>> subcontractOutboundPayloadItems(
+  Iterable<SubcontractOutboundLineDraft> lines,
+) => [
+  for (final line in lines)
+    if (!line.skipped) line.toPayload(),
+];
+
+/// 把领料单拣货视图 [task] 与它自己的出仓单草稿 [document] 按草稿明细 id 一一对上。
+///
+/// 对不上(行数不同 / 有拣货行在草稿里找不到)返回 null: 说明单据在两次读取之间被
+/// 撤回或改过, 调用方按「单据已变」处理, 绝不按货品去猜行。
+List<SubcontractOutboundLineDraft>? subcontractOutboundLinesOf(
+  OutboundTaskDetail task,
+  SubcontractDocDetail document, {
+  WeightUnit weightUnit = WeightUnit.kg,
+}) {
+  final byId = <String, SubcontractDocItem>{
+    for (final item in document.items)
+      if (item.id != null) item.id!: item,
+  };
+  if (task.lines.isEmpty ||
+      task.lines.length != document.items.length ||
+      byId.length != document.items.length ||
+      task.lines.map((line) => line.issueItemId).toSet().length !=
+          task.lines.length ||
+      task.lines.any(
+        (line) => byId[line.issueItemId]?.planItemId != line.planItemId,
+      )) {
+    return null;
+  }
+  return [
+    for (final line in task.lines)
+      SubcontractOutboundLineDraft(
+        line,
+        byId[line.issueItemId]!,
+        weightUnit: weightUnit,
+      ),
+  ];
+}
 
 class SubcontractOutboundTableRow extends EditableGridRow {
   SubcontractOutboundTableRow({
@@ -165,11 +211,11 @@ class SubcontractOutboundTableRow extends EditableGridRow {
   final ValueChanged<String?>? onWarehouseChanged;
 }
 
-/// Shared by single-plan picking and batch picking. It uses the same compact,
-/// horizontally scrollable table as the inbound confirmation pages.
+/// Shared by single-document picking and batch picking. It uses the same
+/// compact, horizontally scrollable table as the inbound confirmation pages.
 ///
 /// 实称重量 (ADR-135 §3.8) 紧跟「单位」: 选填, 占位「应称 X」, 偏差框只提醒;
-/// 本次出仓数量空着时填重量按称重推算数量 (黄框, 行打上 qtyFromWeight)。
+/// 本次出库数量空着时填重量按称重推算数量 (黄框, 行打上 qtyFromWeight)。
 /// 单重参数由表格自己按行批量取 (页内缓存, 离开页面释放)。
 class SubcontractOutboundDetailTable extends ConsumerStatefulWidget {
   const SubcontractOutboundDetailTable({
@@ -260,10 +306,7 @@ class _SubcontractOutboundDetailTableState
         : ref.watch(weightParamsCacheProvider);
     final weightCache = _weightCache;
     bool rowEditable(SubcontractOutboundTableRow row) =>
-        widget.editable &&
-        row.editable &&
-        row.draft.selected &&
-        !row.draft.waitingComponentStock;
+        widget.editable && row.editable && row.draft.selected;
     EditableGridColumn<SubcontractOutboundTableRow> textColumn(
       String key,
       String label,
@@ -286,15 +329,19 @@ class _SubcontractOutboundDetailTableState
     EditableGridColumn<SubcontractOutboundTableRow> quantityColumn(
       String key,
       String label,
-      double Function(SubcontractOutboundTableRow) value, {
-      String? Function(SubcontractOutboundTableRow)? exactValue,
+      double? Function(SubcontractOutboundTableRow) value, {
+      String? info,
     }) => textColumn(
       key,
       label,
       115,
-      (row) => subcontractOutboundQuantity(value(row)),
+      (row) {
+        final quantity = value(row);
+        return quantity == null ? '—' : subcontractOutboundQuantity(quantity);
+      },
       numeric: true,
-      exactValue: exactValue ?? (row) => value(row).toString(),
+      info: info,
+      exactValue: (row) => value(row)?.toString(),
     );
     final grid = UtenEditableGrid<SubcontractOutboundTableRow>(
       tableKey:
@@ -313,10 +360,9 @@ class _SubcontractOutboundDetailTableState
               entries: [for (final row in widget.rows) row.draft.weight],
               params: weightCache,
             ),
-      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
-      // 不再「编号 名称」拼一格；历史父件同样拆名称 + 编号。
-      // 委外发料最容易错的就是同名不同色（自制白色 / 委外香槟金）——
-      // 名称/编号/颜色在前几列同屏可见。
+      // 2026-09-14 用户口径(全站表格统一)：名称 / 编号 / 颜色各占一列。
+      // 委外发料最容易错的就是同名不同色——名称/编号/颜色在前几列同屏可见;
+      // 「领料数量」紧跟数量组, 仓库一眼看出只能改少到多少。
       initialColumnOrder: const [
         'document',
         'goodsName',
@@ -327,27 +373,21 @@ class _SubcontractOutboundDetailTableState
         'unit',
         // 实称重量紧跟数量组 (数量 + 单位) 之后 (ADR-135 §3.8)。
         'weight',
-        // 「建议发料仓」→「仓内可动用」→「本次最多」：上限被库存压住时，仓库一眼看出
-        // 是计划没量还是仓里没货、货在哪个仓，不用靠保存被打回来才知道。
-        'suggestedWarehouse',
+        'requested',
         'stockAvailable',
-        'maximum',
         'place',
+        // 每条明细都是某个委外件的直属物料: 这两列是回厂交回的委外件。
+        'parentGoodsName',
+        'parentGoodsCode',
         'lineRemark',
         'documentRemark',
-        'planned',
-        'prepared',
-        'issued',
         'order',
         'supplier',
         'status',
-        // 发出去的不是委外件本身的两种流向才有父件列(历史 BOM 子件发料、单一子件直发)。
-        'parentGoodsName',
-        'parentGoodsCode',
       ],
       selectable: widget.editable && widget.selectable,
       selectionEnabled: widget.editable,
-      canSelectRow: (row) => row.editable && !row.draft.waitingComponentStock,
+      canSelectRow: (row) => row.editable,
       selectedOf: (row) => row.draft.selected,
       onRowSelect: (row, next) {
         widget.onRowSelected?.call(row, next);
@@ -390,29 +430,19 @@ class _SubcontractOutboundDetailTableState
           130,
           (row) => row.draft.line.goodsCode ?? '—',
         ),
-        // 发出去的不是委外件本身的两种流向(历史 V304 的 BOM 子件发料，以及
-        // ADR-085 的单一子件直发)才有父件可显示：上面两列是**发出去的子件**，
-        // 这两列是**回厂交回的委外件**，仓库要能一眼看出发的和收的不是同一个货号。
-        if (widget.rows.any(
-          (row) => _showsParentGoods(row.draft.line.flowMode),
-        )) ...[
-          textColumn(
-            'parentGoodsName',
-            l10n.warehouseSubcontractOutboundParentName,
-            200,
-            (row) => _showsParentGoods(row.draft.line.flowMode)
-                ? row.draft.line.parentGoodsName ?? '—'
-                : '—',
-          ),
-          textColumn(
-            'parentGoodsCode',
-            l10n.warehouseSubcontractOutboundParentCode,
-            130,
-            (row) => _showsParentGoods(row.draft.line.flowMode)
-                ? row.draft.line.parentGoodsCode ?? '—'
-                : '—',
-          ),
-        ],
+        textColumn(
+          'parentGoodsName',
+          l10n.warehouseSubcontractOutboundParentName,
+          200,
+          (row) => row.draft.line.parentGoodsName ?? '—',
+          info: '上面几列是发给委外商的物料; 这一列是委外商加工后交回的委外件, 回厂时按它登记。',
+        ),
+        textColumn(
+          'parentGoodsCode',
+          l10n.warehouseSubcontractOutboundParentCode,
+          130,
+          (row) => row.draft.line.parentGoodsCode ?? '—',
+        ),
         textColumn(
           'color',
           l10n.warehouseSubcontractOutboundColor,
@@ -438,7 +468,7 @@ class _SubcontractOutboundDetailTableState
           enabledOf: rowEditable,
           qtyAutofill: WeightQtyAutofill<SubcontractOutboundTableRow>(
             qtyControllerOf: (row) => row.draft.qty,
-            unitRateOf: (row) => row.draft.unitRate ?? 1,
+            unitRateOf: (row) => row.draft.item.unitRate ?? 1,
             enabledOf: rowEditable,
           ),
           onWeighCount: (context, row) => weighOutboundEntry(
@@ -456,51 +486,18 @@ class _SubcontractOutboundDetailTableState
           ),
         ),
         quantityColumn(
-          'planned',
-          l10n.warehouseSubcontractOutboundPlanned,
-          (row) => row.draft.line.plannedQty,
+          'requested',
+          '领料数量',
+          (row) => row.draft.line.requestedQty,
+          info:
+              '委外人员提交的领料数量。本次出库只能小于或等于它, 填 0 表示这次不发; '
+              '少发、不发的部分, 委外下次领料时系统会自动补齐。',
         ),
         quantityColumn(
-          'prepared',
-          l10n.warehouseSubcontractOutboundPrepared,
-          (row) => row.draft.line.preparedQty,
-        ),
-        quantityColumn(
-          'issued',
-          l10n.warehouseSubcontractOutboundIssued,
-          (row) => row.draft.line.issuedQty,
-        ),
-        // 「建议发料仓」是服务端按合格可动用量算好的仓(ADR-101 §2.3 / ADR-103 §2.4)，
-        // 无草稿时拣货页「发出仓」就按它预填；有货在哪一目了然。
-        if (widget.rows.any(
-          (row) => row.draft.line.stockWarehouseName?.isNotEmpty == true,
-        ))
-          textColumn(
-            'suggestedWarehouse',
-            l10n.warehouseSubcontractOutboundSuggestedWarehouse,
-            150,
-            (row) => row.draft.line.stockWarehouseName ?? '—',
-          ),
-        // 「仓内可动用」是这次能不能发得出去的真正原因，排在「本次最多」前面：
-        // 上限被库存压住时，仓库不用猜是计划没量还是仓里没货。
-        if (widget.rows.any((row) => row.draft.line.stockAvailableQty != null))
-          quantityColumn(
-            'stockAvailable',
-            l10n.warehouseSubcontractOutboundStockAvailable,
-            // 服务端下发的是「还空着的可动用量」——本草稿已经占住的那部分已经被预留扣掉了。
-            // 仓库要看的是「这个仓里这张单能动多少」，所以把自己占的量加回来，
-            // 否则一张刚开出来的草稿会显示「仓内可动用 0 / 本次最多 6」，像是自相矛盾。
-            (row) =>
-                (row.draft.line.stockAvailableQty ?? 0) + row.draft.ownDraftQty,
-            exactValue: (row) => row.draft.line.stockAvailableQty == null
-                ? null
-                : (row.draft.line.stockAvailableQty! + row.draft.ownDraftQty)
-                      .toString(),
-          ),
-        quantityColumn(
-          'maximum',
-          l10n.warehouseSubcontractOutboundAvailable,
-          (row) => row.draft.maxEditableQty,
+          'stockAvailable',
+          l10n.warehouseSubcontractOutboundStockAvailable,
+          (row) => row.draft.line.stockAvailableQty,
+          info: '领料单所在仓里这条物料当前可动用的合格数量, 用于核对实物。',
         ),
         EditableGridColumn(
           key: 'quantity',
@@ -510,47 +507,24 @@ class _SubcontractOutboundDetailTableState
           width: 150,
           required: true,
           numeric: true,
-          textOf: (row) => row.draft.waitingComponentStock
-              ? l10n.warehouseSubcontractOutboundWaitingComponentStock(
-                  subcontractOutboundQuantity(
-                    row.draft.line.stockAvailableQty ?? 0,
-                  ),
-                )
-              : row.draft.qty.text,
+          headerInfo: subcontractOutboundQuantityHint,
+          textOf: (row) => row.draft.qty.text,
           listenableOf: (row) => row.draft.qty,
-          // 子件还没到货的行: 数量格禁用、不描红, 行内直说原因——不是仓库填错了,
-          // 是货还没进来; 子件入库后系统自动补草稿。
-          cellBuilder: (context, row) => row.draft.waitingComponentStock
-              ? Text(
-                  key: ValueKey(
-                    'subcontract-outbound-${row.draft.line.planItemId}-waiting-component',
-                  ),
-                  l10n.warehouseSubcontractOutboundWaitingComponentStock(
-                    subcontractOutboundQuantity(
-                      row.draft.line.stockAvailableQty ?? 0,
-                    ),
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                )
-              : RequiredCellFrame(
-                  listenable: row.draft.qty,
-                  isEmpty: () {
-                    final value = double.tryParse(row.draft.qty.text.trim());
-                    return row.draft.selected &&
-                        (value == null ||
-                            !value.isFinite ||
-                            value <= 0 ||
-                            value - row.draft.maxEditableQty > 0.0000001);
-                  },
-                  child: _quantityField(
-                    row,
-                    l10n.warehouseSubcontractOutboundQuantity,
-                  ),
-                ),
+          cellBuilder: (context, row) => RequiredCellFrame(
+            listenable: row.draft.qty,
+            isEmpty: () {
+              final value = double.tryParse(row.draft.qty.text.trim());
+              return row.draft.selected &&
+                  (value == null ||
+                      !value.isFinite ||
+                      value < 0 ||
+                      value - row.draft.maxEditableQty > 0.0000001);
+            },
+            child: _quantityField(
+              row,
+              l10n.warehouseSubcontractOutboundQuantity,
+            ),
+          ),
         ),
         EditableGridColumn(
           key: 'warehouse',
@@ -563,7 +537,7 @@ class _SubcontractOutboundDetailTableState
               ? Text(row.warehouse)
               : WarehouseHierarchyDropdown(
                   key: ValueKey(
-                    'subcontract-outbound-${row.draft.draftItemId ?? row.draft.line.planItemId}-warehouse',
+                    'subcontract-outbound-${row.draft.draftItemId}-warehouse',
                   ),
                   entries: row.warehouses,
                   value: row.warehouseId,
@@ -578,7 +552,7 @@ class _SubcontractOutboundDetailTableState
           'place',
           l10n.warehouseSubcontractOutboundPlace,
           120,
-          (row) => row.draft.line.goodsStockPlace ?? '—',
+          (row) => row.draft.line.locationHint ?? '—',
         ),
         EditableGridColumn(
           key: 'lineRemark',
@@ -625,9 +599,7 @@ class _SubcontractOutboundDetailTableState
     TextEditingController controller,
     String suffix,
   ) => TextField(
-    key: ValueKey(
-      'subcontract-outbound-${row.draft.draftItemId ?? row.draft.line.planItemId}-$suffix',
-    ),
+    key: ValueKey('subcontract-outbound-${row.draft.draftItemId}-$suffix'),
     controller: controller,
     enabled: widget.editable && row.editable && row.draft.selected,
     maxLength: 200,
@@ -637,40 +609,42 @@ class _SubcontractOutboundDetailTableState
     ),
   );
 
-  /// 本次出仓数量格: 按称重推算的数量黄框预填, ⓘ 说明推算区间。
-  Widget _quantityField(
-    SubcontractOutboundTableRow row,
-    String label,
-  ) => Semantics(
-    textField: true,
-    label: label,
-    child: ValueListenableBuilder<TextEditingValue>(
-      valueListenable: row.draft.qty,
-      builder: (context, _, _) {
-        final autofilled = row.draft.qty.autofilled;
-        return TextField(
-          key: ValueKey(
-            'subcontract-outbound-${row.draft.draftItemId ?? row.draft.line.planItemId}-quantity',
-          ),
-          controller: row.draft.qty,
-          enabled: widget.editable && row.editable && row.draft.selected,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}$')),
-          ],
-          decoration: applyAutofillHint(
-            UtenInputDecoration(
-              const InputDecoration(isDense: true),
-              info: autofilled
-                  ? (row.draft.weight.weight.qtyEstimateNote ?? '按称重推算')
-                  : null,
-            ),
-            Theme.of(context),
-            autofilled: autofilled,
-          ),
-        );
-      },
-    ),
-  );
+  /// 本次出库数量格: 按称重推算的数量黄框预填, ⓘ 说明推算区间; 填 0 时 ⓘ 说明本次不发。
+  Widget _quantityField(SubcontractOutboundTableRow row, String label) =>
+      Semantics(
+        textField: true,
+        label: label,
+        child: ValueListenableBuilder<TextEditingValue>(
+          valueListenable: row.draft.qty,
+          builder: (context, _, _) {
+            final autofilled = row.draft.qty.autofilled;
+            return TextField(
+              key: ValueKey(
+                'subcontract-outbound-${row.draft.draftItemId}-quantity',
+              ),
+              controller: row.draft.qty,
+              enabled: widget.editable && row.editable && row.draft.selected,
+              textAlign: TextAlign.right,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,4}$')),
+              ],
+              decoration: applyAutofillHint(
+                UtenInputDecoration(
+                  const InputDecoration(isDense: true),
+                  info: autofilled
+                      ? (row.draft.weight.weight.qtyEstimateNote ?? '按称重推算')
+                      : row.draft.skipped
+                      ? '本次不发：保存后这一行从领料单删掉，占用的库存退回'
+                      : null,
+                ),
+                Theme.of(context),
+                autofilled: autofilled,
+              ),
+            );
+          },
+        ),
+      );
 }

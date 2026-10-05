@@ -91,7 +91,7 @@ class MaterialAnalysisPlanningGapAggregationTest {
         when(material.netShortageQty()).thenReturn(BigDecimal.ZERO);
         when(material.controlStage()).thenReturn("START");
 
-        var reader = new MaterialAnalysisPlanningGapReader(em, analyses, null, null);
+        var reader = new MaterialAnalysisPlanningGapReader(em, analyses, null);
         var result = reader.freshPlanningGaps(List.of(SEGMENT));
         assertFalse(result.isUnknown(SEGMENT));
         assertEquals(1, result.of(SEGMENT).size());
@@ -113,7 +113,7 @@ class MaterialAnalysisPlanningGapAggregationTest {
         when(analyses.detailInternal(ANALYSIS, false))
                 .thenThrow(new ApiException(ErrorCode.CONFLICT, "需要重新分析"));
 
-        var reader = new MaterialAnalysisPlanningGapReader(em, analyses, null, null);
+        var reader = new MaterialAnalysisPlanningGapReader(em, analyses, null);
         var result = reader.freshPlanningGaps(List.of(SEGMENT));
         assertTrue(result.isUnknown(SEGMENT));
         assertTrue(result.of(SEGMENT).isEmpty());

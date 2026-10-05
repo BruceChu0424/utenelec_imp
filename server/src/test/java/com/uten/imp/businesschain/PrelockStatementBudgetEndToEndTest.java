@@ -86,25 +86,23 @@ class PrelockStatementBudgetEndToEndTest {
     void draftSubcontractMaterialIssueEditRunsOneDiscoveryAndNoRowHashes() {
         var w = fixture.seedWorld("prelock-issue-put");
         fixture.loginAs(w.superAdminUserId());
-        opening(w, "10");
+        // ADR-143: 委外件 E 发外的是它的直属物料(按件用量 1); 委外人员领 5 套, 仓库拣货时改少成 4。
+        UUID material = fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
+        opening(w, material, "10");
         var submitted = fixture.submitLeafSubcontractForFinance(w, new BigDecimal("5"));
         fixture.loginAs(submitted.reviewerUserId());
         fixture.approvePendingFinance("SUBCONTRACT", submitted.orderId());
         fixture.loginAs(w.superAdminUserId());
         UUID item = db.queryForObject("select id from subcontract_order_items where order_id=?",
                 UUID.class, submitted.orderId());
-        UUID issue = db.queryForObject("""
-                select header.id from subcontract_material_issues header
-                join subcontract_material_issue_items line on line.issue_id=header.id
-                where line.order_item_id=? and header.status=0 and not header.is_deleted
-                """, UUID.class, item);
+        UUID issue = fixture.submitSubcontractDraw(item, new BigDecimal("5"), "prelock-issue-draw-" + item).getFirst();
         var original = issues.detail(issue).getItems().getFirst();
         var command = new MaterialIssueSaveRequest();
         command.setBillDate(BusinessTime.today());
         command.setSupplierId(w.supplierId());
         command.setWarehouseId(w.warehouseId());
         var line = new MaterialIssueItemLine();
-        line.setGoodsId(w.goodsE());
+        line.setGoodsId(material);
         line.setParentGoodsId(w.goodsE());
         line.setUnitId(w.unitId());
         line.setUnitRate(BigDecimal.ONE);
@@ -245,13 +243,13 @@ class PrelockStatementBudgetEndToEndTest {
         }
     }
 
-    private void opening(FullChainEndToEndTest.World w, String quantity) {
+    private void opening(FullChainEndToEndTest.World w, UUID goodsId, String quantity) {
         var command = new StockDocSaveRequest();
         command.setDocType("OTHER_IN");
         command.setBillDate(BusinessTime.today());
         command.setWarehouseId(w.warehouseId());
         var line = new StockDocItemLine();
-        line.setGoodsId(w.goodsE());
+        line.setGoodsId(goodsId);
         line.setUnitId(w.unitId());
         line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal(quantity));

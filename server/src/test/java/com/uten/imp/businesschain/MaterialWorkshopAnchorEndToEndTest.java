@@ -691,17 +691,25 @@ class MaterialWorkshopAnchorEndToEndTest {
     }
 
     /**
-     * 混合候选一次下达（2 个自制 + 1 个有自制子层的委外）：每行各一张计划、各一条子件锚点
-     * （MAKE_COMPONENT / SUBCONTRACT_MAKE）、委外台账一条；batchChildLineIds 一次 IN 按父行映射，
-     * 唯一部分索引保证每父至多一子（无重复子件）；同请求重放不重复建行。
+     * 混合候选一次下达（2 个自制 + 1 个委外）：ADR-143 §4.5 删除「下达车间先做委外件」, 委外候选只能走
+     * 「下达委外」, 整批下达车间被拒且不留半截计划/锚点; 两个自制候选同批下达各一张计划、各一条子件锚点
+     * （MAKE_COMPONENT）, 不落委外行动; batchChildLineIds 一次 IN 按父行映射，唯一部分索引保证每父至多
+     * 一子（无重复子件）；同请求重放不重复建行。
      */
-    @Test void mixedMakeAndSubcontractCandidatesIssueInOneBatchWithOneAnchorEach(){
+    @Test void mixedBatchRejectsTheSubcontractCandidateAndMakeCandidatesIssueWithOneAnchorEach(){
         MixedCase c=createMixed("anchor-mixed");
         AnalysisView view=analyses.detail(c.analysis());
-        var request=issueRequest(c.analysis(),view,c.world(),"mixed",
+        var mixed=issueRequest(c.analysis(),view,c.world(),"mixed",
                 line(c.makeLines().get(0),"6000"),line(c.makeLines().get(1),"6000"),line(c.subcontractLine(),"6000"));
+        ApiException rejected=assertThrows(ApiException.class,()->commands.issueWorkshopPlans(c.analysis(),mixed));
+        assertTrue(rejected.getMessage().contains("下达委外"),rejected.getMessage());
+        assertEquals(0,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(0,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()),
+                "整批被拒不得留下半截锚点");
+        var request=issueRequest(c.analysis(),analyses.detail(c.analysis()),c.world(),"make-only",
+                line(c.makeLines().get(0),"6000"),line(c.makeLines().get(1),"6000"));
         GenerateResult result=commands.issueWorkshopPlans(c.analysis(),request);
-        assertFalse(result.replayed());assertEquals(3,result.plans().size());
+        assertFalse(result.replayed());assertEquals(2,result.plans().size());
         AnalysisView after=analyses.detail(c.analysis());
         for(UUID make:c.makeLines()){
             UUID anchor=material(after,make).planAnchorAnalysisLineId();
@@ -710,130 +718,12 @@ class MaterialWorkshopAnchorEndToEndTest {
             qty("10000",product(after,anchor).requestedQty());qty("6000",product(after,anchor).approvedQty());
         }
         assertEquals(2,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE",c.analysis()));
-        assertEquals(1,count("SELECT count(*) FROM production_material_analysis_items WHERE analysis_id=? AND source_type='SUBCONTRACT_MAKE' AND is_deleted=FALSE",c.analysis()));
-        assertEquals(1,count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route='SUBCONTRACT'",c.analysis()));
-        assertEquals(3,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
-        assertEquals(0,count("SELECT count(*) FROM (SELECT parent_analysis_material_id FROM production_material_analysis_items WHERE analysis_id=? AND source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE') AND is_deleted=FALSE GROUP BY 1 HAVING count(*)>1) dup",c.analysis()));
+        assertEquals(0,count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route='SUBCONTRACT'",c.analysis()));
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
+        assertEquals(0,count("SELECT count(*) FROM (SELECT parent_analysis_material_id FROM production_material_analysis_items WHERE analysis_id=? AND source_type='MAKE_COMPONENT' AND is_deleted=FALSE GROUP BY 1 HAVING count(*)>1) dup",c.analysis()));
         var replay=commands.issueWorkshopPlans(c.analysis(),request);
         assertTrue(replay.replayed());
-        assertEquals(3,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
-    }
-
-    /**
-     * V589（2026-09-15）用户口径「顶层要做 5000，委外件就要加工 5000」：有自制
-     * 子层的委外候选超量下达车间时，委外链如实跟量——ARRANGE 行动记
-     * requested=归需求量(锁) + public_surplus=超量，台账 required=两者之和，
-     * 锚点计划一张（link 分账，V577 形状）。人工「下达委外」通道不变：仍整量
-     * 接管、仍禁公共超量。
-     */
-    @Test void subcontractMakeFirstTaskFollowsWorkshopOverquantity(){
-        MixedCase c=createMixed("anchor-sc-over");
-        AnalysisView view=analyses.detail(c.analysis());
-        var result=commands.issueWorkshopPlans(c.analysis(),issueRequest(c.analysis(),view,c.world(),"sc-over",
-                line(c.subcontractLine(),"15000")));
-        assertEquals(1,result.plans().size());
-        var action=db.queryForMap("SELECT requested_qty,public_surplus_qty FROM preplan_supply_actions WHERE analysis_id=? AND route='SUBCONTRACT'",c.analysis());
-        qty("10000",(BigDecimal)action.get("requested_qty"));
-        qty("5000",(BigDecimal)action.get("public_surplus_qty"));
-        qty("15000",db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
-                BigDecimal.class,c.analysis()));
-        qty("15000",db.queryForObject("""
-                SELECT COALESCE(SUM(pi.qty),0) FROM production_plan_items pi
-                JOIN production_plans p ON p.id=pi.plan_id
-                WHERE p.material_analysis_id=? AND pi.is_deleted=FALSE
-                """,BigDecimal.class,c.analysis()));
-        var links=db.queryForList("SELECT submitted_qty,public_surplus_qty FROM production_material_analysis_plan_links WHERE analysis_id=?",c.analysis());
-        assertEquals(1,links.size());
-        qty("10000",(BigDecimal)links.get(0).get("submitted_qty"));
-        qty("5000",(BigDecimal)links.get(0).get("public_surplus_qty"));
-        // 锚点行需求侧仍只记需求量（10000）——超量在台账与行动上，不抬需求账。
-        AnalysisView after=analyses.detail(c.analysis());
-        UUID anchor=material(after,c.subcontractLine()).planAnchorAnalysisLineId();
-        qty("10000",product(after,anchor).requestedQty());
-        qty("0", material(after, c.subcontractLine()).externalFutureCoverageQty());
-        qty("15000", material(after, c.subcontractLine()).internalCommittedOutputQty());
-    }
-
-    @Test void subcontractSecondCandidateBatchConsumesExistingCommitmentBeforeAddingSurplus() {
-        assertSubcontractSecondBatch(false, "4000", "10000", "0");
-    }
-
-    @Test void subcontractSecondCandidateOverquantityAddsOnlyTrueSurplus() {
-        assertSubcontractSecondBatch(false, "6000", "12000", "2000");
-    }
-
-    @Test void subcontractSecondAnchorBatchConsumesExistingCommitmentBeforeAddingSurplus() {
-        assertSubcontractSecondBatch(true, "4000", "10000", "0");
-    }
-
-    @Test void subcontractSecondAnchorOverquantityUpdatesPreparationCommitment() {
-        assertSubcontractSecondBatch(true, "6000", "12000", "2000");
-    }
-
-    @Test void subcontractSurplusCancellationProtectsPlansThenReleasesExactAndPublicCommitment() {
-        MixedCase c = createMixed("sc-cancel-" + UUID.randomUUID().toString().substring(0, 8));
-        var before = analyses.detail(c.analysis());
-        var first = commands.issueWorkshopPlans(c.analysis(), new IssueWorkshopPlansRequest(
-                before.version(), before.fingerprint(), "sc-cancel-first-" + c.analysis(), c.world().warehouseId(),
-                BusinessTime.today(), null, false, List.of(line(c.subcontractLine(), "6000"))));
-        var second = commands.issueWorkshopPlans(c.analysis(), new IssueWorkshopPlansRequest(
-                first.analysis().version(), first.analysis().fingerprint(), "sc-cancel-second-" + c.analysis(),
-                c.world().warehouseId(), BusinessTime.today(), null, false, List.of(line(c.subcontractLine(), "6000"))));
-        UUID surplusAction = db.queryForObject("SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND public_surplus_qty>0",
-                UUID.class, c.analysis());
-        assertThrows(ApiException.class, () -> commands.cancelAction(c.analysis(), surplusAction,
-                cancel(second.analysis(), "blocked")), "Public-only actions also protect actual plan output");
-        // ADR-104：两批都是草稿、都没开工, 第二批并进第一张草稿——只有一张计划可删。
-        assertTrue(second.plans().getFirst().mergedIntoExisting());
-        assertEquals(first.plans().getFirst().planId(), second.plans().getFirst().planId());
-        plans.delete(second.plans().getFirst().planId());
-        commands.cancelAction(c.analysis(), surplusAction, cancel(analyses.detail(c.analysis()), "surplus"));
-        qty("10000", db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
-                BigDecimal.class, c.analysis()));
-        UUID original = db.queryForObject("SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND requested_qty>0",
-                UUID.class, c.analysis());
-        commands.cancelAction(c.analysis(), original, cancel(analyses.detail(c.analysis()), "original"));
-        assertEquals("CANCELLED", db.queryForObject("SELECT status FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
-                String.class, c.analysis()));
-        assertEquals(0, count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND status<>'CANCELLED'", c.analysis()));
-    }
-
-    private static CancelRequest cancel(AnalysisView view, String suffix) {
-        return new CancelRequest(view.version(), view.fingerprint(), "cancel-" + view.analysisId() + "-" + suffix,
-                "回归验证撤回未生产承诺");
-    }
-
-    private void assertSubcontractSecondBatch(boolean anchorInput, String secondQty,
-            String required, String surplus) {
-        MixedCase c = createMixed("sc-repeat-" + UUID.randomUUID().toString().substring(0, 8));
-        var first = commands.issueWorkshopPlans(c.analysis(), issueRequest(c.analysis(),
-                analyses.detail(c.analysis()), c.world(), "first", line(c.subcontractLine(), "6000")));
-        UUID anchor = material(first.analysis(), c.subcontractLine()).planAnchorAnalysisLineId();
-        var secondLine = anchorInput
-                ? new IssueWorkshopPlansRequest.IssuePlanLine(null, anchor, new BigDecimal(secondQty),
-                        null, null, null, null, null, null, null)
-                : line(c.subcontractLine(), secondQty);
-        var request = issueRequest(c.analysis(), first.analysis(), c.world(), "second", secondLine);
-        var second = commands.issueWorkshopPlans(c.analysis(), request);
-        assertEquals(1, second.plans().size());
-        qty(required, db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
-                BigDecimal.class, c.analysis()));
-        qty("10000", db.queryForObject("SELECT SUM(requested_qty) FROM preplan_supply_actions WHERE analysis_id=? AND status<>'CANCELLED'",
-                BigDecimal.class, c.analysis()));
-        qty(surplus, db.queryForObject("SELECT SUM(public_surplus_qty) FROM preplan_supply_actions WHERE analysis_id=? AND status<>'CANCELLED'",
-                BigDecimal.class, c.analysis()));
-        qty(surplus, db.queryForObject("SELECT SUM(public_surplus_qty) FROM production_material_analysis_plan_links WHERE analysis_id=?",
-                BigDecimal.class, c.analysis()));
-        qty("10000", product(second.analysis(), anchor).requestedQty());
-        var replay = commands.issueWorkshopPlans(c.analysis(), request);
-        assertTrue(replay.replayed());
-        assertEquals(second.plans().getFirst().planId(), replay.plans().getFirst().planId());
-        qty(required, db.queryForObject("SELECT required_qty FROM preplan_subcontract_make_tasks WHERE analysis_id=?",
-                BigDecimal.class, c.analysis()));
-        // ADR-104：前置自制那张计划没开工, 第二批并进同一张。
-        assertTrue(second.plans().getFirst().mergedIntoExisting());
-        assertEquals(first.plans().getFirst().planId(), second.plans().getFirst().planId());
-        assertEquals(1, count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?", c.analysis()));
+        assertEquals(2,count("SELECT count(*) FROM production_plans WHERE material_analysis_id=?",c.analysis()));
     }
 
     /** 同一批自制候选二次下达：走既有锚点，各自原工单加量。 */
@@ -957,10 +847,8 @@ class MaterialWorkshopAnchorEndToEndTest {
         }
         UUID sub=UUID.randomUUID();fixture.insertGoods(sub,"S-"+tag,"有自制子层的委外件","委外",w.unitId(),w.unitLegacy());
         fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");
-        // 必须挂**两颗**子件：V581 起「只有一个叶子子件」的委外件属直接发那颗子件
-        // 出去（COMPONENT_OUTBOUND），issue-plans 会明确拒掉它。本用例测的正是
-        // 「有自制子层的委外件与自制候选同批下达车间」，夹具要落在前置自制那一类。
-        // 第二颗取已存在的采购件 goodsD（路线映射里是 BUY），不会多出自制锚点。
+        // 委外件挂两颗直属物料(自制 C + 采购 D)；第二颗取已存在的采购件 goodsD（路线映射里是 BUY），
+        // 不会多出自制锚点。
         fixture.insertBom(sub,w.goodsD(),"1");
         fixture.insertBom(root,w.goodsD(),"1");
         UUID planner=fixture.createUserWithPerms(w,"planner-"+tag,

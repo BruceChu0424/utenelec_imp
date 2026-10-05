@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -2474,7 +2475,7 @@ void main() {
     expect(find.textContaining('产品任务（按产品办理）'), findsNothing);
   });
 
-  testWidgets('汇总委外后续流转只展示进度，不把同批来源和公共份重复算下单', (tester) async {
+  testWidgets('汇总委外是外部批次：只展示进度，不把同批来源和公共份重复算下单', (tester) async {
     await _pump(
       tester,
       mutate: (data) {
@@ -2489,31 +2490,14 @@ void main() {
                 as Map<String, dynamic>;
         final action = _records(next['supplyActions']).single;
         action['route'] = 'SUBCONTRACT';
-        action['documentType'] = 'SUBCONTRACT_MAKE_TASK';
-        next['supplyActions'] = [
-          ..._records(next['supplyActions']),
-          {
-            ...action,
-            'actionId': 'continuation',
-            'operationType': 'AGGREGATE_CONTINUATION',
-            'documentType': 'SUBCONTRACT_APPLICATION',
-          },
-        ];
+        action['documentType'] = 'SUBCONTRACT_APPLICATION';
         for (final material in _records(
           next['flatMaterials'],
         ).where((m) => (m['materialLineId'] as String).startsWith('shared-'))) {
           material['sourceConfirmed'] = 'SUBCONTRACT';
           final target = _records(material['downstreamReferences']).single;
           target['route'] = 'SUBCONTRACT';
-          material['downstreamReferences'] = [
-            ..._records(material['downstreamReferences']),
-            {
-              ...target,
-              'actionId': 'continuation',
-              'documentId': 'application',
-              'documentType': 'SUBCONTRACT_APPLICATION',
-            },
-          ];
+          target['documentType'] = 'SUBCONTRACT_APPLICATION';
         }
         return next;
       },
@@ -2533,10 +2517,6 @@ void main() {
       '3100',
     );
     expect(
-      find.byKey(const ValueKey('material-aggregate-cancel-continuation')),
-      findsNothing,
-    );
-    expect(
       tester
           .widget<TextButton>(
             find.byKey(
@@ -2544,8 +2524,8 @@ void main() {
             ),
           )
           .onPressed,
-      isNull,
-      reason: '前置生产撤回需generate，不用普通notify替代',
+      isNotNull,
+      reason: '委外汇总只建外部委外申请(ADR-143)，有下达委外权限即可整批撤回',
     );
     await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
     await tester.pumpAndSettle();
@@ -4017,85 +3997,103 @@ void main() {
     expect(_appendQty('m-6'), findsNothing);
   });
 
-  testWidgets('前置自制委外统一要求车间权限与可见指派，缺权限不能退回外发绕过', (tester) async {
-    // 2026-09-22 用户实机：把一行改成委外后「下单数量就定死了不能修改, 我都没有下单过」——
-    // 原来这类行不看权限一律锁死, 而有权限时它走 issue-plans 的 ARRANGE 段, 数量可改可超。
-    await _pump(tester, mutate: _withPreparationSubcontract);
-    expect(_qtyText(tester, _orderQty('m-u')), '800');
-    expect(_appendQty('m-u'), findsNothing);
-    expect(_nodeSelected(tester, 'm-u'), isFalse);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('material-table-row-m-u')),
-        matching: find.byType(Checkbox),
-      ),
-      findsNothing,
-    );
-
-    await _pump(
-      tester,
-      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
-      mutate: (data) {
-        (data['allowedActions'] as List).add('GENERATE_PLAN');
-        return _withPreparationSubcontract(data);
-      },
-    );
+  testWidgets('有直属物料的委外件照常下达委外：数量可改、可勾，不要求车间指派', (tester) async {
+    // ADR-143：委外节点不管有没有下层都只下达委外申请，有「下达委外」权限即可；
+    // 直属物料照常作为需求节点按各自路线准备。
+    await _pump(tester, mutate: _withDrawSubcontract);
     final field = tester.widget<TextField>(_orderQty('m-u'));
     expect(field.enabled, isTrue);
     expect(field.controller!.text, '800');
-    // 还没下达过：追加格仍是只读的 0(不是横杠)。
+    // 还没下达过：追加格仍是只读的。
     expect(_appendQty('m-u'), findsNothing);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('material-table-row-m-u')),
-        matching: find.text('0'),
-      ),
-      findsWidgets,
-    );
-    // 前置制造也必须有可见的车间/负责人入口，不能藏起必填项。
+    expect(_nodeSelected(tester, 'm-u'), isFalse);
+    expect(_rowCheckbox('m-u'), findsOneWidget);
     expect(
       find.byKey(ValueKey('material-analysis-workshop-${_groupKey('m-u')}')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
       find.byKey(ValueKey('material-analysis-worker-${_groupKey('m-u')}')),
-      findsOneWidget,
-    );
-    expect(_rowCheckbox('m-u'), findsOneWidget);
-    expect(
-      find.byKey(ValueKey('material-analysis-workshop-${_groupKey('m-6')}')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 
-  testWidgets('已建前置自制任务且多下过的委外子件：按锚点计划算已下达与覆盖, 父件追加时不再被算成还缺', (tester) async {
-    // 2026-09-22 用户实机：顶层追加后下单 409「当前分析需求已全部转入生产计划」——
-    // 子层里一颗要先自制的委外件之前多下了(需求 3000 的锚点排了 4000), 主表按发外申请
-    // 3000 当「已下达」, 父件追加就把它算成还缺、送去 ARRANGE 一段, 服务端按锚点判它排满。
-    await _pump(
-      tester,
-      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
-      mutate: _withOverIssuedAnchoredSubcontractChild,
-      defaultWorkshops: _workshopDefaultsFor(const ['g-m-v', 'g-m-vc']),
+  testWidgets('缺 BOM 的委外件：进度列显示已通知研发和任务号，下达委外的勾选框灰掉', (tester) async {
+    // ADR-143 §二.3：委外件没有维护直属物料时不能下达(服务端同样拒绝)，系统已自动
+    // 通知研发完善；研发保存后分析自动刷新，标记随之消失。
+    await _pump(tester, mutate: _withBomMissingSubcontract);
+    expect(find.text('缺 BOM·已通知研发(RD0042)'), findsWidgets);
+    final box = tester.widget<Checkbox>(_rowCheckbox('m-nb'));
+    expect(box.value, isFalse);
+    expect(box.onChanged, isNull);
+    expect(_nodeSelected(tester, 'm-nb'), isFalse);
+    // 表头全选也带不上它。
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const Key('material-analysis-material-table')),
     );
-    // 累计已下单按锚点计划 1400(不是发外申请 1000), 追加格预填 0。
+    expect(table.selectedIds.contains(_groupKey('m-nb')), isFalse);
+    // 有直属物料的委外件照常可勾(只拦缺 BOM 的那一行)。
+    final ok = tester.widget<Checkbox>(_rowCheckbox('m-u'));
+    expect(ok.onChanged, isNotNull);
+  });
+
+  testWidgets('缺 BOM 的委外件：右键「下达委外」同样不可执行(与勾选框同一判定)', (tester) async {
+    await _pump(tester, mutate: _withBomMissingSubcontract);
+    Future<bool> issueEnabled(String line) async {
+      final cell = find
+          .descendant(
+            of: find.byKey(ValueKey('material-table-row-$line')),
+            matching: find.text(line == 'm-nb' ? '缺BOM的委外件' : '有直属物料的委外件'),
+          )
+          .first;
+      await tester.ensureVisible(cell);
+      await tester.pumpAndSettle();
+      final gesture = await tester.startGesture(
+        tester.getCenter(cell),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+      final item = find.ancestor(
+        of: find.text('下达委外'),
+        matching: find.byType(InkWell),
+      );
+      expect(item, findsWidgets);
+      final enabled = tester.widget<InkWell>(item.first).onTap != null;
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+      return enabled;
+    }
+
+    expect(await issueEnabled('m-nb'), isFalse);
+    expect(await issueEnabled('m-u'), isTrue);
+  });
+
+  test('物料行读取缺 BOM 标记与研发任务号，缺省为未缺', () {
+    final missing = ProductionMaterialAnalysisMaterial.fromJson({
+      'materialLineId': 'm-1',
+      'actionable': true,
+      'bomMissing': true,
+      'rdTaskNo': 'RD0042',
+    });
+    expect(missing.bomMissing, isTrue);
+    expect(missing.rdTaskNo, 'RD0042');
+    final normal = ProductionMaterialAnalysisMaterial.fromJson({
+      'materialLineId': 'm-2',
+      'actionable': true,
+    });
+    expect(normal.bomMissing, isFalse);
+    expect(normal.rdTaskNo, isNull);
+  });
+
+  testWidgets('多下过的委外子件按委外申请算已下达(含同一行动的公共份)，没有车间锚点', (tester) async {
+    // ADR-143：委外行的「已下达」= 归本需求的分摊量 + 同一条行动记的公共备货份，
+    // 与采购同一口径；不再按前置自制锚点的计划量算。
+    await _pump(tester, mutate: _withOverIssuedSubcontractChild);
     expect(_orderQty('m-vc'), findsNothing);
     expect(_issuedTooltip('1400'), findsOneWidget);
     expect(_qtyText(tester, _appendQty('m-vc')), '0');
-
-    // 父件追加 600 → 子件需求 1000 → 1600, 锚点 1400 + 现货 200 全盖住：追加格保持 0、不勾。
-    await tester.enterText(_appendQty('m-v'), '600');
-    await tester.pump();
-    expect(_qtyText(tester, _appendQty('m-vc')), '0');
-    await _settleRebuild(tester);
-    expect(_rowChecked(tester, 'm-vc'), isFalse);
-    // 追加 1000 → 需求 2000, 才缺 400。
-    await tester.enterText(_appendQty('m-v'), '1000');
-    await tester.pump();
-    expect(_qtyText(tester, _appendQty('m-vc')), '400');
-    await _settleRebuild(tester);
-    expect(_rowChecked(tester, 'm-vc'), isTrue);
-    await _settlePreview(tester);
   });
 
   testWidgets('顶层行不再是一排横杠：调拨按钮、下单数量、还缺数量都在', (tester) async {
@@ -4126,11 +4124,11 @@ void main() {
     expect(tooltip.message, contains('本次要覆盖的总量 1000'));
   });
 
-  testWidgets('纯采用制造来源显示来源进度，不冒充本行前置自制', (tester) async {
+  testWidgets('委外行采用制造来源时显示来源进度，不加任何前缀', (tester) async {
     await _pump(
       tester,
       mutate: (data) {
-        _withPreparationSubcontract(data);
+        _withDrawSubcontract(data);
         final material = _fixtureMaterial(data, 'm-u');
         material['preparationAdoptedQty'] = 2;
         material['flowStage'] = 'MAKE_WAIT_STOCK_IN';
@@ -4138,21 +4136,7 @@ void main() {
       },
     );
     expect(find.text('等待实收入库'), findsOneWidget);
-    expect(find.textContaining('前置自制 · 等待实收入库'), findsNothing);
-  });
-
-  testWidgets('本行有真实前置计划时仍保留前置制造进度', (tester) async {
-    await _pump(
-      tester,
-      mutate: (data) {
-        _withOverIssuedAnchoredSubcontractChild(data);
-        final material = _fixtureMaterial(data, 'm-vc');
-        material['preparationAdoptedQty'] = 2;
-        material['flowStage'] = 'MAKE_WAIT_STOCK_IN';
-        return data;
-      },
-    );
-    expect(find.textContaining('前置自制 · 等待实收入库'), findsOneWidget);
+    expect(find.textContaining('前置自制'), findsNothing);
   });
 
   testWidgets('纯采用供给显示真实下单0和采用量，锁定原格并可继续追加', (tester) async {
@@ -4185,7 +4169,7 @@ void main() {
     expect(_issueButton('m-5'), findsNothing);
   });
 
-  testWidgets('全选下单的提交顺序：父先子后——直接外发委外父件先于它的采购子件，采购最后一次', (tester) async {
+  testWidgets('全选下单的提交顺序：父先子后——委外父件先于它的采购子件，采购最后一次', (tester) async {
     await _pump(tester, mutate: _withSubcontractPair, delayMs: 350);
     // 委外父件(直接外发、我方供料)有下层：改量会去抖要一次服务端重算。
     await tester.enterText(_orderQty('m-s'), '700');
@@ -5764,7 +5748,7 @@ Future<void> _pump(
             final appended = switch (line) {
               'm-qc1' => typed['m-q'],
               'm-rc' => typed['m-r'],
-              // 多下过的委外子件：锚点计划 1400 + 现货 200 盖住 1600。
+              // 多下过的委外子件：委外申请 1000 + 公共份 400 + 现货 200 盖住 1600。
               'm-vc' => typed['m-v'],
               // 顶层(已下 2000)追加 → 自制子件按 (2000 + 追加) / 2000 展开, 覆盖 600。
               'm-6' => typed['m-root'],
@@ -5786,20 +5770,6 @@ Future<void> _pump(
                 ? residual
                 : 0.0;
             material['netShortageQty'] = residual > 0 ? residual : 0.0;
-          }
-          // 服务端「锚点配额随父件长大」：多下过的委外子件的前置自制锚点需求 = 物料
-          // 需求 − 现货 200, 剩余可排量 = 需求 − 已排 1400(封顶 0)。
-          final appendedV = typed['m-v'];
-          if (appendedV != null) {
-            for (final raw in (scaled['products'] as List)) {
-              final product = raw as Map<String, dynamic>;
-              if (product['analysisLineId'] != 'anchor-vc') continue;
-              final requested = 800 + appendedV;
-              final remaining = requested - 1400;
-              product['requestedQty'] = requested;
-              product['remainingQty'] = remaining > 0 ? remaining : 0.0;
-              product['canSchedule'] = remaining > 0;
-            }
           }
           result = preview?.call(scaled, typed) ?? scaled;
         } else if (request.path.endsWith('/issue-plans')) {
@@ -6016,9 +5986,6 @@ Map<String, dynamic> _deepProductAnalysis(Map<String, dynamic> data) {
         'goodsId': spec.$4,
         'parentNodeKey': parent['nodeKey'],
         'sourceRequiredQty': 1000,
-        'subcontractOutboundForm': spec.$3 == 'SUBCONTRACT'
-            ? 'FINISHED_GOOD_OUTBOUND'
-            : null,
       });
     }
   }
@@ -6628,8 +6595,7 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
       line: 'm-p',
       name: '已下达委外父件',
       confirmed: 'SUBCONTRACT',
-      // V581 我方供料的单一子件件：直接外发、不建前置自制任务，所以追加格可填。
-      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
+      // 有直属物料的委外件照常下达委外申请(ADR-143)，所以追加格可填。
       netShortageQty: 0,
       stockQty: 0,
       downstream: [
@@ -6656,7 +6622,6 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
       line: 'm-q',
       name: '已下达父件二',
       confirmed: 'SUBCONTRACT',
-      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
       netShortageQty: 0,
       stockQty: 0,
       downstream: [
@@ -6692,7 +6657,6 @@ Map<String, dynamic> _analysis({bool overSupply = false}) => {
       line: 'm-r',
       name: '已下达父件三',
       confirmed: 'SUBCONTRACT',
-      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
       netShortageQty: 0,
       stockQty: 0,
       downstream: [
@@ -6880,9 +6844,9 @@ Map<String, dynamic> _withConfirmedMakeSubtree(Map<String, dynamic> data) {
   return data;
 }
 
-/// 已排满的自制父件(锚点 1000/1000) → 已建前置自制任务且**多下过**的委外子件(锚点需求 1000、
-/// 计划 1400, 发外申请 1000) → 它的自制子件(没下过)。父件追加时子件按锚点计划 1400 算覆盖。
-Map<String, dynamic> _withOverIssuedAnchoredSubcontractChild(
+/// 已排满的自制父件(锚点 1000/1000) → **多下过**的委外子件(委外申请分摊 1000 + 同一
+/// 行动的公共备货份 400) → 委外子件的自制直属物料(没下过)。
+Map<String, dynamic> _withOverIssuedSubcontractChild(
   Map<String, dynamic> data,
 ) {
   (data['flatMaterials'] as List)
@@ -6904,7 +6868,6 @@ Map<String, dynamic> _withOverIssuedAnchoredSubcontractChild(
         netShortageQty: 0,
         level: 2,
         parentLine: 'm-v',
-        planAnchorAnalysisLineId: 'anchor-vc',
         downstream: [
           {
             'actionId': 'act-vc',
@@ -6926,58 +6889,43 @@ Map<String, dynamic> _withOverIssuedAnchoredSubcontractChild(
         parentLine: 'm-vc',
       ),
     );
+  (data['supplyActions'] as List).add({
+    'actionId': 'act-vc',
+    'route': 'SUBCONTRACT',
+    'operationType': 'SUPPLY',
+    'requestedQty': 1000,
+    'publicSurplusQty': 400,
+  });
   (data['allowedActions'] as List).add('GENERATE_PLAN');
-  (data['products'] as List).addAll([
-    {
-      'analysisLineId': 'anchor-v',
-      'sourceType': 'MAKE_COMPONENT',
-      'parentAnalysisLineId': 'product-1',
-      'goodsId': 'g-m-v',
-      'goodsCode': 'M-m-v',
-      'goodsName': '已排满的自制父件',
-      'requestedQty': 1000,
-      'submittedQty': 0,
-      'approvedQty': 1000,
-      'remainingQty': 0,
-      'issuedPlanQty': 1000,
-      'canSchedule': false,
-      'canIssueSurplus': true,
-      'unitName': '个',
-    },
-    {
-      'analysisLineId': 'anchor-vc',
-      'sourceType': 'SUBCONTRACT_MAKE',
-      'parentAnalysisLineId': 'product-1',
-      'goodsId': 'g-m-vc',
-      'goodsCode': 'M-m-vc',
-      'goodsName': '多下过的委外子件',
-      // 锚点需求 = 物料需求 1000 − 本批分到的现货 200; 计划 1400 = 多下了 600。
-      'requestedQty': 800,
-      'submittedQty': 0,
-      'approvedQty': 800,
-      'remainingQty': 0,
-      'issuedPlanQty': 1400,
-      'canSchedule': false,
-      'canIssueSurplus': true,
-      'unitName': '个',
-    },
-  ]);
-  for (final product
-      in (data['products'] as List).cast<Map<String, dynamic>>()) {
-    if (const ['anchor-v', 'anchor-vc'].contains(product['analysisLineId'])) {
-      _fixturePlanAssignment(product);
-    }
-  }
+  final anchor = <String, dynamic>{
+    'analysisLineId': 'anchor-v',
+    'sourceType': 'MAKE_COMPONENT',
+    'parentAnalysisLineId': 'product-1',
+    'goodsId': 'g-m-v',
+    'goodsCode': 'M-m-v',
+    'goodsName': '已排满的自制父件',
+    'requestedQty': 1000,
+    'submittedQty': 0,
+    'approvedQty': 1000,
+    'remainingQty': 0,
+    'issuedPlanQty': 1000,
+    'canSchedule': false,
+    'canIssueSurplus': true,
+    'unitName': '个',
+  };
+  _fixturePlanAssignment(anchor);
+  (data['products'] as List).add(anchor);
   return data;
 }
 
-/// 一个「要先自制目标件再发外」的委外件(带一个自制子件, 不是 V581 单一子件件), 没下过单。
-Map<String, dynamic> _withPreparationSubcontract(Map<String, dynamic> data) {
+/// 一个有直属物料(一个自制子件)的委外件，没下过单。ADR-143 起它与其它委外件
+/// 一样只下达委外申请，直属物料按自己的路线准备。
+Map<String, dynamic> _withDrawSubcontract(Map<String, dynamic> data) {
   (data['flatMaterials'] as List)
     ..add(
       _material(
         line: 'm-u',
-        name: '要先自制的委外件',
+        name: '有直属物料的委外件',
         confirmed: 'SUBCONTRACT',
         netShortageQty: 800,
       ),
@@ -6995,7 +6943,24 @@ Map<String, dynamic> _withPreparationSubcontract(Map<String, dynamic> data) {
   return data;
 }
 
-/// 一对「直接外发委外父件 + 我方供料采购子件」，都还没下过单(提交顺序用例)。
+/// 有直属物料的委外件(可下达) + 一个缺 BOM 的委外件(服务端 bomMissing，研发任务
+/// RD0042，ADR-143 §二.3)。
+Map<String, dynamic> _withBomMissingSubcontract(Map<String, dynamic> data) {
+  _withDrawSubcontract(data);
+  (data['flatMaterials'] as List).add({
+    ..._material(
+      line: 'm-nb',
+      name: '缺BOM的委外件',
+      confirmed: 'SUBCONTRACT',
+      netShortageQty: 500,
+    ),
+    'bomMissing': true,
+    'rdTaskNo': 'RD0042',
+  });
+  return data;
+}
+
+/// 一对「委外父件 + 我方供料采购子件」，都还没下过单(提交顺序用例)。
 Map<String, dynamic> _withSubcontractPair(Map<String, dynamic> data) {
   (data['flatMaterials'] as List)
     ..add(
@@ -7003,7 +6968,6 @@ Map<String, dynamic> _withSubcontractPair(Map<String, dynamic> data) {
         line: 'm-s',
         name: '待外发委外父件',
         confirmed: 'SUBCONTRACT',
-        subcontractOutboundForm: 'COMPONENT_OUTBOUND',
         netShortageQty: 800,
       ),
     )
@@ -7232,7 +7196,6 @@ Map<String, dynamic> _material({
   int level = 1,
   List<Map<String, dynamic>> downstream = const [],
   String? parentLine,
-  String? subcontractOutboundForm,
   String? planAnchorAnalysisLineId,
   // 本批分到的合格现货(默认 200)；已下达的父件给 0 = 「下了 1000 刚好覆盖需求 1000」。
   double stockQty = 200,
@@ -7242,7 +7205,6 @@ Map<String, dynamic> _material({
   // 确认, 2026-09-27 起页面不再补发)；要测「红框待选」形态的行传 null(服务端 REVIEW)。
   String? suggestion = 'BUY',
 }) => {
-  'subcontractOutboundForm': ?subcontractOutboundForm,
   'planAnchorAnalysisLineId': ?planAnchorAnalysisLineId,
   'materialLineId': line,
   'analysisLineId': 'product-1',

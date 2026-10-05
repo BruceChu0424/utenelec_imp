@@ -4,6 +4,7 @@ import com.uten.imp.application.port.SubcontractChainNoticePort;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
+import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.admin.workflow.SalesOrderFinanceConfirmerEligibility;
 import com.uten.imp.features.auth.PermissionResolver;
@@ -101,18 +102,26 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             "PREPLAN_SUPPLY_ACTION_CREATED";
     static final String EVENT_PREPLAN_SUPPLY_DOCUMENT_CREATED =
             "PREPLAN_SUPPLY_DOCUMENT_CREATED";
-    static final String EVENT_SUBCONTRACT_PREPARATION_REQUIRED =
-            "SUBCONTRACT_PREPARATION_REQUIRED";
-    static final String EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED =
-            "SUBCONTRACT_ORDER_PREPARATION_DISPATCHED";
-    static final String EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED =
-            "SUBCONTRACT_ORDER_PREPARATION_ARRIVED";
-    static final String EVENT_SUBCONTRACT_PREPARE_SHORTAGE =
-            "SUBCONTRACT_PREPARE_SHORTAGE";
-    static final String EVENT_SUBCONTRACT_MAKE_TASK_CREATED =
-            "SUBCONTRACT_MAKE_TASK_CREATED";
-    static final String EVENT_SUBCONTRACT_MAKE_NOTIFIED =
-            "SUBCONTRACT_MAKE_NOTIFIED";
+    /**
+     * ADR-143 §4.4 领料重算: 库存入库、预留释放、财务批准、改量之后由业务事务追加(载荷
+     * {goodsId,colorId} 或订货明细), 只在 Outbox 投递时(事务已提交)才计算可领量并维护通知卡。
+     * 不产生任何通知行。
+     */
+    public static final String EVENT_SUBCONTRACT_DRAW_RECHECK =
+            com.uten.imp.application.port.SubcontractDrawRecheckPort.EVENT_TYPE;
+    /** 委外可领料行动卡(每个订货明细一张, 按最新可领量覆盖)。 */
+    static final String EVENT_SUBCONTRACT_DRAW_AVAILABLE =
+            "SUBCONTRACT_DRAW_AVAILABLE";
+    /** 内部事件: 撤掉某订货明细的可领料行动卡(提交领料、结束领料、订单红冲)。 */
+    static final String EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED =
+            "SUBCONTRACT_DRAW_AVAILABLE_RESOLVED";
+    /** 委外人员撤回未发出的领料 → 通知草稿所在仓库。 */
+    static final String EVENT_SUBCONTRACT_DRAW_WITHDRAWN =
+            "SUBCONTRACT_DRAW_WITHDRAWN";
+    /** 仓库把一张委外领料草稿整张退回(本次不发) → 通知提交领料的委外人员(载荷 reason)。 */
+    static final String EVENT_SUBCONTRACT_DRAW_RETURNED =
+            "SUBCONTRACT_DRAW_RETURNED";
+    /** 一张委外领料草稿等仓库发料(事件名沿用, 含义改为「领料草稿待发料」)。 */
     static final String EVENT_SUBCONTRACT_OUTBOUND_READY =
             "SUBCONTRACT_OUTBOUND_READY";
     static final String EVENT_SUBCONTRACT_OUTBOUND_COMPLETED =
@@ -160,6 +169,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     static final String SUBCONTRACT_SHORT_DELIVERY_AGGREGATE = "SUBCONTRACT_SHORT_DELIVERY_CASE";
     static final String SUBCONTRACT_SHORT_DELIVERY_DECIDE_AUTHORITY = "subcontract_short_delivery:decide";
     static final String EVENT_BOM_UPDATED = "GOODS_BOM_UPDATED";
+    /** ADR-143 §二.3 委外件缺 BOM 新建「完善 BOM」研发任务(RdBomGapService 发)。 */
+    static final String EVENT_RD_TASK_FORWARDED = "RD_TASK_FORWARDED";
+    /**
+     * ADR-143 §二.3 研发完善委外件 BOM 后刷新一张物料分析(notifyBomUpdated 按候选分析各排一条,
+     * 聚合 = 物料分析)：每张分析在自己的投递里刷新，失败只让这一条退避重试。
+     */
+    static final String EVENT_MATERIAL_ANALYSIS_BOM_REFRESH = "MATERIAL_ANALYSIS_BOM_REFRESH";
+    static final String AGGREGATE_MATERIAL_ANALYSIS = "PRODUCTION_MATERIAL_ANALYSIS";
     static final String EVENT_RD_TASK_RESOLVED = "RD_TASK_RESOLVED";
     static final String EVENT_IQC_PENDING = "PROCUREMENT_IQC_PENDING";
     /** V459 订单全部完工（累计成品入库 ≥ 订货量）→ 通知负责销售可发货。 */
@@ -218,6 +235,24 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private static final String PURCHASE_REQUEST_VIEW_AUTHORITY = "purchase_request:view";
     private static final String SUBCONTRACT_APPLICATION_VIEW_AUTHORITY =
             "subcontract_application:view";
+    private static final String SUBCONTRACT_ORDER_VIEW_AUTHORITY = "subcontract_order:view";
+    /** ADR-143 新权限点「委外领料(提交、撤回、结束领料)」。 */
+    private static final String SUBCONTRACT_ORDER_DRAW_AUTHORITY = "subcontract_order:draw";
+    /** 委外单据归属可见范围(与 SubcontractDocumentAccessPolicy 同一 scope / 查看全部权限)。 */
+    private static final String SUBCONTRACT_OWNER_SCOPE = "subcontract";
+    private static final String SUBCONTRACT_VIEW_ALL_AUTHORITY = "subcontract:view:all";
+    private static final String SUBCONTRACT_OUTBOUND_VIEW_AUTHORITY = "subcontract_outbound:view";
+    private static final String SUBCONTRACT_OUTBOUND_EXECUTE_AUTHORITY = "subcontract_outbound:execute";
+    static final String AGGREGATE_SUBCONTRACT_ORDER_ITEM = "SUBCONTRACT_ORDER_ITEM";
+    static final String AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE = "SUBCONTRACT_MATERIAL_ISSUE";
+    /** 委外任务中心「领料」分段(按订货明细筛选), 可领料行动卡的落点。 */
+    static final String SUBCONTRACT_DRAW_SEGMENT_ROUTE = "/operations/workbench/subcontract?segment=DRAW&orderItemId=";
+    /** 仓库委外出仓工作台的一张领料草稿(拣货页)。 */
+    static final String SUBCONTRACT_OUTBOUND_DRAFT_ROUTE = "/warehouse/subcontract-outbound/";
+    /** 仓库委外出仓工作台的待发料列表(草稿已整张撤销时的落点: 拣货页只认待发草稿, 打开会是「不存在」)。 */
+    static final String SUBCONTRACT_OUTBOUND_LIST_ROUTE = "/warehouse/subcontract-outbound";
+    /** 委外任务中心「领料」分段(不限订货明细)。 */
+    static final String SUBCONTRACT_DRAW_LIST_ROUTE = "/operations/workbench/subcontract?segment=DRAW";
     private static final ThreadLocal<Boolean> OUTBOX_DELIVERY =
             ThreadLocal.withInitial(() -> false);
     /** 当前锁定 Outbox 事件；用于给未显式传 sourceEvent 的通知补齐可靠事件来源。 */
@@ -295,6 +330,30 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setWarehouseKeepers(com.uten.imp.application.port.WarehouseTaskScopePort warehouseKeepers) {
         this.warehouseKeepers = warehouseKeepers;
+    }
+
+    /**
+     * ADR-143 领料重算的执行方(委外领料模块)。它自己又依赖本类发可领料卡, 所以经
+     * ObjectProvider 延迟取用, 不形成构造期循环依赖。
+     */
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.SubcontractDrawRecheckPort> drawRecheck;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setDrawRecheck(
+            org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.SubcontractDrawRecheckPort> drawRecheck) {
+        this.drawRecheck = drawRecheck;
+    }
+
+    /**
+     * ADR-143 §二.3 研发完善委外件 BOM 后自动刷新物料分析(生产物料分析模块实现)。物料分析又依赖
+     * 本类发通知, 经 ObjectProvider 延迟取用; 直接 new 本类的单测里为空, 只跳过刷新。
+     */
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.MaterialAnalysisBomRefreshPort> bomRefresh;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setBomRefresh(
+            org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.MaterialAnalysisBomRefreshPort> bomRefresh) {
+        this.bomRefresh = bomRefresh;
     }
 
     /**
@@ -420,14 +479,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                 aggregateId, payload.path("documentType").asText(""));
                     }
                 }
-                case EVENT_SUBCONTRACT_PREPARATION_REQUIRED ->
-                        notifySubcontractPreparationRequired(aggregateId);
-                case EVENT_SUBCONTRACT_PREPARE_SHORTAGE ->
-                        notifySubcontractPrepareShortage(aggregateId);
-                case EVENT_SUBCONTRACT_MAKE_TASK_CREATED ->
-                        notifySubcontractMakeTaskCreated(aggregateId);
-                case EVENT_SUBCONTRACT_MAKE_NOTIFIED ->
-                        notifySubcontractMakeNotified(aggregateId);
+                case EVENT_SUBCONTRACT_DRAW_RECHECK ->
+                        deliverSubcontractDrawRecheck(aggregateId, payload);
+                case EVENT_SUBCONTRACT_DRAW_AVAILABLE ->
+                        notifySubcontractDrawAvailable(aggregateId);
+                case EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED ->
+                        resolveSubcontractDrawAvailable(aggregateId);
+                case EVENT_SUBCONTRACT_DRAW_WITHDRAWN ->
+                        notifySubcontractDrawWithdrawn(aggregateId);
+                case EVENT_SUBCONTRACT_DRAW_RETURNED ->
+                        notifySubcontractDrawReturned(aggregateId, payload.path("reason").asText(""));
                 case EVENT_SUBCONTRACT_OUTBOUND_READY ->
                         notifySubcontractOutboundReady(aggregateId);
                 case EVENT_SUBCONTRACT_OUTBOUND_COMPLETED ->
@@ -474,15 +535,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                      EVENT_PROCUREMENT_FINANCE_APPROVED,
                      EVENT_PROCUREMENT_FINANCE_REJECTED ->
                         notifyProcurementFinanceEvent(eventType, aggregateId);
-                case EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED ->
-                        notifySubcontractOrderPreparationDispatched(
-                                aggregateId,
-                                uuidOrNull(payload.path("orderItemId").asText(null)),
-                                payload.path("billNo").asText(""),
-                                uuidOrNull(payload.path("goodsId").asText(null)),
-                                bd(payload.path("baseQty").asText("0")));
-                case EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED ->
-                        notifySubcontractOrderPreparationArrived(aggregateId);
                 case EVENT_PROCUREMENT_ARRIVAL_DETECTED,
                      EVENT_PROCUREMENT_ARRIVAL_DECIDED,
                      EVENT_PROCUREMENT_RETURN_REQUIRED,
@@ -493,6 +545,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                      EVENT_SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE,
                      EVENT_SUBCONTRACT_SHORT_DELIVERY_RESOLVED ->
                         notifySubcontractShortDeliveryEvent(eventType, aggregateId, payload);
+                case EVENT_RD_TASK_FORWARDED -> notifyRdTaskForwarded(aggregateId);
                 case EVENT_RD_TASK_RESOLVED -> notifyRdTaskResolved(aggregateId);
                 case EVENT_IQC_PENDING ->
                         notifyIqcPendingForQuality(
@@ -526,6 +579,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     // FINANCE_EXCEPTION) afterwards; it must not notify twice.
                 }
                 case EVENT_BOM_UPDATED -> notifyBomUpdated(aggregateId);
+                case EVENT_MATERIAL_ANALYSIS_BOM_REFRESH -> deliverMaterialAnalysisBomRefresh(aggregateId, payload);
                 case EVENT_PRODUCTION_PLANNING_URGED -> deliverProductionPlanningUrged(aggregateId);
                 case "STOCK_WEIGHT_OBSERVATION_CHANGED" -> {
                     // 单重学习重算(ADR-135)由库存模块的领域处理器在同一事务完成, 这里不发通知。
@@ -622,7 +676,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             if (successor != null) candidates.add(successor);
             Set<UUID> recipients = new LinkedHashSet<>();
             for (UUID candidate : candidates) {
-                if (canHandlePlanningUrge(candidate) && canReadProductionAnalysis(candidate, analysisId, makerEmployeeId)) {
+                if (canHandlePlanningUrge(candidate) && canReadProductionAnalysis(candidate, makerEmployeeId)) {
                     recipients.add(candidate);
                 }
             }
@@ -652,52 +706,40 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     /**
      * 这个人打开物料分析页能不能看到这份分析——与物料分析详情同一套归属可见范围(生产计划域
      * production_plan)：全量查看(含超管) / 本人制单 / 交接给本人的前任的单 / user_data_scopes
-     * 授权的归属人 / 委外备料直接来源的分析对计划池开放(SubcontractDraftPreparationAccessPolicy
-     * 同一谓词)。看不到的人收了卡也打不开，还会泄露物料与数量，所以不发。
+     * 授权的归属人。看不到的人收了卡也打不开，还会泄露物料与数量，所以不发。
      */
-    private boolean canReadProductionAnalysis(UUID userId, UUID analysisId, UUID makerEmployeeId) {
+    private boolean canReadProductionAnalysis(UUID userId, UUID makerEmployeeId) {
         if (userHasAllAuthorities(userId, "production_plan:view:all")) return true;
-        // 交接给别人的计划员的单，现负责人照样能看(OwnerVisibility 同一条交接链)。
-        UUID responsible = handoverVisibility == null ? null
-                : handoverVisibility.currentResponsible("production_plan", makerEmployeeId);
+        return canReadOwnedDocument(userId, "production_plan", makerEmployeeId);
+    }
+
+    /**
+     * 归属可见范围(OwnerVisibility 同口径, 不含「查看全部」权限——调用方先判): 本人是归属人 /
+     * 交接链上的现负责人 / user_data_scopes 授权了该归属人(按再入职代次)。超管恒可见。
+     */
+    private boolean canReadOwnedDocument(UUID userId, String scope, UUID ownerEmployeeId) {
+        // 交接给别人的单，现负责人照样能看(OwnerVisibility 同一条交接链)。
+        UUID responsible = handoverVisibility == null || ownerEmployeeId == null ? null
+                : handoverVisibility.currentResponsible(scope, ownerEmployeeId);
         Boolean readable = jdbc.queryForObject("""
-                WITH RECURSIVE pool(id) AS (
-                    SELECT id FROM departments WHERE code IN ('SUB_PLAN','DEPT_PROD') AND is_deleted = FALSE
-                    UNION SELECT child.id FROM departments child JOIN pool parent ON child.parent_id = parent.id
-                    WHERE child.is_deleted = FALSE
-                )
                 SELECT EXISTS (
                     SELECT 1 FROM users account
-                    LEFT JOIN employees employee ON employee.id = account.employee_id AND employee.is_deleted = FALSE
                     WHERE account.id = ? AND account.is_deleted = FALSE AND account.status = 'active'
                       AND (
-                        account.employee_id = CAST(? AS uuid)
+                        account.is_super_admin
+                        OR account.employee_id = CAST(? AS uuid)
                         OR account.employee_id = CAST(? AS uuid)
                         OR EXISTS (
                             SELECT 1 FROM user_data_scopes data_scope
-                            WHERE data_scope.user_id = account.id AND data_scope.scope = 'production_plan'
+                            WHERE data_scope.user_id = account.id AND data_scope.scope = ?
                               AND data_scope.owner_employee_id = CAST(? AS uuid)
                               AND data_scope.owner_employment_generation = (
                                   SELECT count(*) FROM employment_history history
                                   WHERE history.employee_id = data_scope.owner_employee_id
                                     AND history.event_type = 'rehire'))
-                        OR (employee.id IS NOT NULL AND employee.status <> 'resigned'
-                            AND (employee.department_id IN (SELECT id FROM pool)
-                                 OR EXISTS (SELECT 1 FROM employee_secondary_departments secondary
-                                            WHERE secondary.employee_id = employee.id
-                                              AND secondary.department_id IN (SELECT id FROM pool)))
-                            AND EXISTS (
-                                SELECT 1 FROM production_material_analysis_items draft_source
-                                JOIN subcontract_order_items draft_item
-                                  ON draft_item.id = draft_source.subcontract_order_item_id
-                                JOIN subcontract_orders draft_order ON draft_order.id = draft_item.order_id
-                                WHERE draft_source.analysis_id = ? AND draft_source.source_type = 'SUBCONTRACT_PREPARATION'
-                                  AND draft_source.source_ref = 'SC-ORDER:' || draft_item.id::text
-                                  AND draft_source.is_deleted = FALSE AND draft_item.is_deleted = FALSE
-                                  AND draft_order.is_deleted = FALSE))
                       )
                 )
-                """, Boolean.class, userId, makerEmployeeId, responsible, makerEmployeeId, analysisId);
+                """, Boolean.class, userId, ownerEmployeeId, responsible, scope, ownerEmployeeId);
         return Boolean.TRUE.equals(readable);
     }
 
@@ -2525,550 +2567,470 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         });
     }
 
+    // ---------- ADR-143 委外领料: 可领料卡 / 领料待发料 / 撤回 / 发料回执 / 红冲 ----------
+
     /**
-     * V458：物料分析对有子层级的委外件下达了前置自制任务（2026-09-05 委外=自制
-     * 同构直下修订：委外部从下达一刻起即参与跟踪）。
-     * 计划/生产仍按正常自制链完成齐套、领料、报工、FQC 与成品实收入库；
-     * 委外部同步收到「新委外单（车间先产）」提醒，可在委外准备中心·分析来源
-     * 页签查看车间进度（正在通知车间生产/车间正在等物料/车间生产中），
-     * 成品入库后自动/手动生成委外申请并通知取货。账本行仍是权威，通知只是提醒。
+     * 领料重算(Outbox 投递, 业务事务已提交): 交给委外领料模块按实时数据算受影响订货明细的可领量,
+     * 由它比对提醒水位后回调 {@link #notifySubcontractDrawAvailable} / {@link #resolveSubcontractDrawAvailable}。
+     * 载荷 {goodsId,colorId} 按物料找受影响的订货明细; 否则按 orderItemIds / orderItemId / 聚合 id。
+     * 先取委外领料提醒的全局串行锁: 两个并发投递不会各自读到旧水位重复提醒, 旧快照也不会把刚撤掉的卡发回来。
      */
-    public void notifySubcontractMakeTaskCreated(UUID taskId) {
+    private void deliverSubcontractDrawRecheck(UUID aggregateId, JsonNode payload) {
+        com.uten.imp.application.port.SubcontractDrawRecheckPort recheck =
+                drawRecheck == null ? null : drawRecheck.getIfAvailable();
+        if (recheck == null) {
+            throw new IllegalStateException("委外领料可领量重算服务未注册");
+        }
+        JsonNode facts = payload == null
+                ? com.fasterxml.jackson.databind.node.MissingNode.getInstance() : payload;
+        lockSubcontractDrawNotices();
+        UUID goodsId = uuidOrNull(facts.path("goodsId").asText(null));
+        if (goodsId != null) {
+            recheck.recheckForMaterial(goodsId, uuidOrNull(facts.path("colorId").asText(null)));
+            return;
+        }
+        Set<UUID> orderItemIds = new LinkedHashSet<>();
+        for (JsonNode id : facts.path("orderItemIds")) {
+            UUID orderItemId = uuidOrNull(id.asText(null));
+            if (orderItemId != null) orderItemIds.add(orderItemId);
+        }
+        UUID single = uuidOrNull(facts.path("orderItemId").asText(null));
+        if (single != null) orderItemIds.add(single);
+        if (orderItemIds.isEmpty() && aggregateId != null) orderItemIds.add(aggregateId);
+        if (!orderItemIds.isEmpty()) recheck.recheckForOrderItems(List.copyOf(orderItemIds));
+    }
+
+    /** 委外领料提醒的全局串行锁: 只在 Outbox 投递事务里取, 业务事务从不取, 不参与业务锁顺序。 */
+    private void lockSubcontractDrawNotices() {
+        jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text",
+                String.class, "subcontract-draw-notice");
+    }
+
+    /**
+     * 同一张领料草稿的待发料卡在投递之间串行重建(待发料 / 撤回 / 发出回执): 先撤后发不会被并发投递
+     * 插成两张卡, 也不会让旧快照在发出后把卡发回来。同样只在 Outbox 投递事务里取。
+     */
+    private void lockSubcontractDrawDraftNotices(UUID issueId) {
+        jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text",
+                String.class, "subcontract-draw-draft-notice:" + issueId);
+    }
+
+    /**
+     * 可领料行动卡(ADR-143 §4.4): 每个订货明细一张, 重要级, 收件人 = 订货单可见范围内持有
+     * 领料权限的人。文案在投递时按 fn_subcontract_draw_summary 的实时可领量生成, 每次先撤旧卡
+     * 再发新卡; 可领为 0、订货单已不在执行或领料计划已关闭时只撤卡。
+     */
+    @Override
+    public void notifySubcontractDrawAvailable(UUID orderItemId) {
+        if (orderItemId == null) return;
         if (!isOutboxDelivery()) {
-            outbox.publishOnce(
-                    EVENT_SUBCONTRACT_MAKE_TASK_CREATED,
-                    "PREPLAN_SUBCONTRACT_MAKE_TASK",
-                    taskId,
-                    Map.of(),
-                    EVENT_SUBCONTRACT_MAKE_TASK_CREATED + ':' + taskId);
+            outbox.publish(EVENT_SUBCONTRACT_DRAW_AVAILABLE, AGGREGATE_SUBCONTRACT_ORDER_ITEM,
+                    orderItemId, Map.of());
             return;
         }
         deliverAtomically(() -> {
-            Map<String, Object> task = one("""
-                    SELECT make_task.analysis_id,
-                           make_task.required_qty,
-                           goods.code AS goods_code, goods.name AS goods_name
-                    FROM preplan_subcontract_make_tasks make_task
-                    JOIN goods ON goods.id = make_task.goods_id
-                    WHERE make_task.id = ?
-                      AND make_task.status = 'ACTIVE'
-                    """, taskId);
-            if (task == null) return;
-            UUID analysisId = (UUID) task.get("analysis_id");
-            String goodsLabel = subcontractGoodsLabel(task);
-            String quantity = qty(bd(task.get("required_qty")));
-            Set<UUID> recipients = new LinkedHashSet<>();
-            recipients.addAll(departmentUserIdsWithAuthorities(
-                    "SUB_PLAN",
-                    NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view"));
-            recipients.addAll(departmentUserIdsWithAuthorities(
-                    "DEPT_PROD",
-                    NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view"));
-            for (UUID recipient : recipients) {
-                sendToUser(
-                        recipient,
-                        TYPE_TASK,
-                        "委外件前置自制待安排：" + goodsLabel,
-                        "有子层级的委外件 " + goodsLabel + "，需求量 " + quantity
-                                + " 已按自制同构路线下达车间。请按正常自制流程检查子层级、"
-                                + "安排生产并完成领料、报工、FQC 和成品实收入库；"
-                                + "委外部已同步收到新委外单提醒并在跟踪车间进度，"
-                                + "成品入库后才会生成委外申请并通知取货。"
-                                + "可执行操作以物料分析实时状态为准。",
-                        "/production/material-analyses/" + analysisId + "/summary",
-                        EVENT_SUBCONTRACT_MAKE_TASK_CREATED);
+            lockSubcontractDrawNotices();
+            publishSubcontractDrawAvailable(orderItemId);
+        });
+    }
+
+    private void publishSubcontractDrawAvailable(UUID orderItemId) {
+        Map<String, Object> task = one("""
+                SELECT order_header.id AS order_id, order_header.bill_no AS order_bill_no,
+                       order_header.maker_id,
+                       goods.code AS goods_code, goods.name AS goods_name,
+                       unit.name AS unit_name,
+                       summary.drawable_qty
+                FROM subcontract_order_items order_item
+                JOIN subcontract_orders order_header
+                  ON order_header.id = order_item.order_id
+                 AND order_header.status = 1
+                 AND order_header.is_deleted = FALSE
+                 AND COALESCE(order_header.is_closed, FALSE) = FALSE
+                JOIN goods ON goods.id = order_item.goods_id
+                LEFT JOIN units unit ON unit.id = order_item.unit_id
+                CROSS JOIN LATERAL fn_subcontract_draw_summary(order_item.id) summary
+                WHERE order_item.id = ?
+                  AND order_item.is_deleted = FALSE
+                  AND EXISTS (SELECT 1 FROM subcontract_material_plans plan
+                              JOIN subcontract_material_plan_items open_line
+                                ON open_line.plan_id = plan.id
+                               AND open_line.order_item_id = order_item.id
+                               AND open_line.is_deleted = FALSE
+                               AND open_line.draw_closed_at IS NULL
+                               AND open_line.issued_qty < fn_subcontract_draw_needed_qty(
+                                   open_line.order_item_id, open_line.planned_qty, open_line.bom_unit_qty)
+                              WHERE plan.order_id = order_header.id
+                                AND plan.status = 'OPEN'
+                                AND plan.is_deleted = FALSE)
+                  AND GREATEST(COALESCE(order_item.received_qty, 0) - COALESCE(order_item.returned_qty, 0), 0)
+                      + %s < order_item.qty
+                """.formatted(SubcontractLossSettlementSql.acceptedLossQty("order_item.id")), orderItemId);
+        BigDecimal drawable = task == null ? BigDecimal.ZERO : bd(task.get("drawable_qty"));
+        resolveReviewNotices(AGGREGATE_SUBCONTRACT_ORDER_ITEM, orderItemId,
+                drawable.signum() > 0 ? "STATE_CHANGED" : "NOT_DRAWABLE");
+        if (drawable.signum() <= 0) return;
+        String orderNo = str(task.get("order_bill_no"));
+        String target = subcontractTargetName(task);
+        String quantity = qtyWithUnit(drawable, task.get("unit_name"));
+        String title = "委外可领料：" + orderNo + " " + target + " 可领 " + quantity;
+        String content = "委外订货单 " + orderNo + " 的委外件 " + target + " 现在可领 " + quantity
+                + "(直属物料已备齐这部分)。请到委外任务中心「领料」核对后提交领料，提交后由仓库发料；"
+                + "可领数量以领料页实时计算为准，被别的委外任务先领走时会变少。";
+        String route = SUBCONTRACT_DRAW_SEGMENT_ROUTE + orderItemId;
+        for (UUID recipient : subcontractDrawRecipients((UUID) task.get("maker_id"))) {
+            sendToUser(recipient, TYPE_TASK, title, content, route,
+                    EVENT_SUBCONTRACT_DRAW_AVAILABLE, "important", orderItemId);
+        }
+    }
+
+    /** 提交领料、结束领料、订单红冲或可领归零: 撤掉该订货明细的可领料行动卡。 */
+    @Override
+    public void resolveSubcontractDrawAvailable(UUID orderItemId) {
+        if (orderItemId == null) return;
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED, AGGREGATE_SUBCONTRACT_ORDER_ITEM,
+                    orderItemId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            lockSubcontractDrawNotices();
+            resolveReviewNotices(AGGREGATE_SUBCONTRACT_ORDER_ITEM, orderItemId, "DRAW_HANDLED");
+        });
+    }
+
+    /**
+     * 委外领料行动的收件人: 能读通知、能看委外订货、持有领料权限, 且这张订货单在其归属可见
+     * 范围内(查看全部 / 本人经手 / 交接现负责人 / 数据范围授权)。经手人没有领料权限时不发。
+     */
+    private List<UUID> subcontractDrawRecipients(UUID makerEmployeeId) {
+        List<UUID> recipients = new ArrayList<>();
+        for (UUID userId : userIdsWithPermissions(NOTICE_READ_AUTHORITY,
+                SUBCONTRACT_ORDER_VIEW_AUTHORITY, SUBCONTRACT_ORDER_DRAW_AUTHORITY)) {
+            if (userHasAllAuthorities(userId, SUBCONTRACT_VIEW_ALL_AUTHORITY)
+                    || canReadOwnedDocument(userId, SUBCONTRACT_OWNER_SCOPE, makerEmployeeId)) {
+                recipients.add(userId);
             }
-            notifyPreplanSupplyRecipients(
-                    TYPE_TASK,
-                    "新委外单（车间先产）：" + goodsLabel,
-                    "有子层级的委外件 " + goodsLabel + " 需求量 " + quantity
-                            + " 已下达：先由车间按自制流程生产（正在通知车间生产），"
-                            + "成品入库后将自动生成委外申请并通知取货。"
-                            + "车间进度（正在通知车间生产/车间正在等物料/车间生产中）"
-                            + "可在委外准备中心·分析来源页签实时查看。",
-                    "/subcontract/preparations",
-                    SUBCONTRACT_APPLICATION_VIEW_AUTHORITY);
-        });
+        }
+        return recipients;
     }
 
     /**
-     * V458：前置自制成品入库后按账本生成了委外申请（满批自动或手动分批）。
-     * 委外部自此开始参与：到委外任务中心分解订货。
+     * 一张委外领料草稿等仓库发料(ADR-143 §4.4「委外领料待发料」): 每张草稿一张行动卡, 发给草稿
+     * 所在仓库的仓管(ADR-115 按仓分发)。草稿永不合并, 所以一张草稿只投递一次。
      */
-    public void notifySubcontractMakeNotified(UUID batchId) {
-        if (!isOutboxDelivery()) {
-            outbox.publishOnce(
-                    EVENT_SUBCONTRACT_MAKE_NOTIFIED,
-                    "PREPLAN_SUBCONTRACT_MAKE_TASK_BATCH",
-                    batchId,
-                    Map.of(),
-                    EVENT_SUBCONTRACT_MAKE_NOTIFIED + ':' + batchId);
-            return;
-        }
-        deliverAtomically(() -> {
-            Map<String, Object> batch = one("""
-                    SELECT batch.application_id, batch.notify_qty,
-                           application.bill_no,
-                           make_task.analysis_id,
-                           make_task.required_qty, make_task.produced_qty,
-                           make_task.notified_qty,
-                           goods.code AS goods_code, goods.name AS goods_name
-                    FROM preplan_subcontract_make_task_batches batch
-                    JOIN preplan_subcontract_make_tasks make_task
-                      ON make_task.id = batch.task_id
-                    JOIN subcontract_applications application
-                      ON application.id = batch.application_id
-                     AND application.is_deleted = FALSE
-                     AND application.status = 1
-                    JOIN goods ON goods.id = make_task.goods_id
-                    WHERE batch.id = ?
-                      AND make_task.status='ACTIVE'
-                      AND NOT EXISTS (SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal
-                                      WHERE reversal.batch_id=batch.id)
-                    """, batchId);
-            if (batch == null) return;
-            UUID applicationId = (UUID) batch.get("application_id");
-            String billNo = str(batch.get("bill_no"));
-            String goodsLabel = subcontractGoodsLabel(batch);
-            String quantity = qty(bd(batch.get("notify_qty")));
-            String produced = qty(bd(batch.get("produced_qty")));
-            String required = qty(bd(batch.get("required_qty")));
-            notifyPreplanSupplyRecipients(
-                    TYPE_TASK,
-                    "新委外需求（前置自制已入库）：" + billNo,
-                    "委外件 " + goodsLabel + " 的前置自制成品已入库（累计 " + produced
-                            + " / 需求 " + required + "），计划部已通知委外 "
-                            + quantity + "。请到委外申请详情核对，并从委外任务中心"
-                            + "分解订货；本通知不代表已订货或已出仓。",
-                    "/subcontract/applications/" + applicationId,
-                    SUBCONTRACT_APPLICATION_VIEW_AUTHORITY);
-        });
-    }
-
-    /**
-     * A target item with active BOM children must complete the normal MAKE
-     * chain before warehouse outbound. The database task remains authoritative;
-     * this event only points eligible planning/production users to that task.
-     */
-    public void notifySubcontractPreparationRequired(UUID planItemId) {
-        if (!isOutboxDelivery()) {
-            outbox.publishOnce(
-                    EVENT_SUBCONTRACT_PREPARATION_REQUIRED,
-                    "SUBCONTRACT_MATERIAL_PLAN_ITEM",
-                    planItemId,
-                    Map.of(),
-                    EVENT_SUBCONTRACT_PREPARATION_REQUIRED + ':' + planItemId);
-            return;
-        }
-        deliverAtomically(() -> {
-            Map<String, Object> item = subcontractPreparationRequiredSnapshot(
-                    planItemId);
-            if (item == null) return;
-            UUID orderId = (UUID) item.get("order_id");
-            String orderNo = str(item.get("order_bill_no"));
-            String goods = subcontractGoodsLabel(item);
-            String quantity = qty(bd(item.get("planned_qty")));
-            String taskRoute = "/subcontract/orders/" + orderId;
-            String taskContent = "委外订货单 " + orderNo + " 的目标件 "
-                    + goods + "，数量 " + quantity
-                    + " 存在有效子层级，不能直接委外出仓。系统已自动创建前置生产"
-                    + "分析（无分析时由自动启动补偿器补建），请在物料分析工作台安排"
-                    + "车间完成领料、生产、报工、品质检验和仓库实收入库；"
-                    + "进度以订货单详情的全链路跟踪为准。";
-            Set<UUID> productionRecipients = new LinkedHashSet<>();
-            productionRecipients.addAll(departmentUserIdsWithAuthorities(
-                    "SUB_PLAN",
-                    NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view",
-                    "production_material_analysis:route"));
-            productionRecipients.addAll(departmentUserIdsWithAuthorities(
-                    "DEPT_PROD",
-                    NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view",
-                    "production_material_analysis:route"));
-            for (UUID recipient : productionRecipients) {
-                // 2026-09-05 起升级为居中行动卡：aggregate 绑定
-                // (SUBCONTRACT_MATERIAL_PLAN_ITEM, planItemId)，目标件真实
-                // 出仓（OUTBOUND_READY）后按聚合办结撤回。
-                sendToUser(
-                        recipient,
-                        TYPE_TASK,
-                        "待启动委外前置自制：" + orderNo,
-                        taskContent,
-                        taskRoute,
-                        EVENT_SUBCONTRACT_PREPARATION_REQUIRED,
-                        null,
-                        planItemId);
-            }
-
-            UUID makerUserId = subcontractMakerUserId(
-                    (UUID) item.get("maker_id"));
-            notifyUser(
-                    makerUserId,
-                    TYPE_WORKFLOW,
-                    "委外前置自制待安排：" + orderNo,
-                    "委外订货单 " + orderNo + " 的目标件 " + goods
-                            + " 需先完成正常自制流程。计划/生产岗位已收到前置任务；"
-                            + "只有品质放行并经仓库实收入库后，目标件才会转入委外出仓。"
-                            + "本通知仅作进度提醒，不代表已领料、已完工或已入库。",
-                    "/subcontract/orders/" + orderId,
-                    EVENT_SUBCONTRACT_PREPARATION_REQUIRED);
-        });
-    }
-
-    /**
-     * 2026-09-05 委外收敛：直接下单的有子层目标件在草稿保存期自动「发单给计划」
-     * ——前置生产分析已创建，计划部在自己的物料分析工作台安排车间（无认领排他，
-     * 完工入库后按分析聚合计办结撤回）。
-     */
-    public void notifySubcontractOrderPreparationDispatched(
-            UUID analysisId, UUID orderItemId, String billNo,
-            UUID goodsId, BigDecimal baseQty) {
-        if (!isOutboxDelivery()) {
-            outbox.publishOnce(
-                    EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED,
-                    "MATERIAL_ANALYSIS",
-                    analysisId,
-                    Map.of(
-                            "orderItemId", String.valueOf(orderItemId),
-                            "billNo", String.valueOf(billNo),
-                            "goodsId", String.valueOf(goodsId),
-                            "baseQty", baseQty.toPlainString()),
-                    EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED
-                            + ':' + analysisId);
-            return;
-        }
-        deliverAtomically(() -> {
-            Map<String, Object> row = one("""
-                    SELECT COALESCE(goods.code, '') || ' ' || COALESCE(goods.name, '')
-                           AS goods_label
-                    FROM goods WHERE id = ?
-                    """, goodsId);
-            String goods = row == null ? "" : str(row.get("goods_label"));
-            String content = "委外订货单 " + billNo + " 的目标件 " + goods
-                    + "，缺口数量 " + qty(baseQty)
-                    + " 已创建前置生产分析并等待排产。请在物料分析工作台安排车间"
-                    + "生产（领料 → 报工 → FQC → 仓库实收入库）；产出入库后系统会"
-                    + "自动通知委外提交财务审核。";
-            Set<UUID> recipients = new LinkedHashSet<>();
-            recipients.addAll(departmentUserIdsWithAuthorities(
-                    "SUB_PLAN", NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view",
-                    "production_material_analysis:route"));
-            recipients.addAll(departmentUserIdsWithAuthorities(
-                    "DEPT_PROD", NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view",
-                    "production_material_analysis:route"));
-            for (UUID recipient : recipients) {
-                sendToUser(
-                        recipient,
-                        TYPE_TASK,
-                        "委外目标件待生产：" + billNo,
-                        content,
-                        "/production/material-analyses/" + analysisId + "/summary",
-                        EVENT_SUBCONTRACT_ORDER_PREPARATION_DISPATCHED,
-                        null,
-                        analysisId);
-            }
-        });
-    }
-
-    /**
-     * 前置生产产出完工入库：通知委外制单人目标件开始回笼；全部有子层行库存
-     * 备齐后即可提交财务审核（提交时系统按全局可用量严格校验）。
-     */
-    public void notifySubcontractOrderPreparationArrived(UUID orderItemId) {
-        if (!isOutboxDelivery()) {
-            outbox.publishOnce(
-                    EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED,
-                    "SUBCONTRACT_ORDER_PREPARATION_ITEM",
-                    orderItemId,
-                    Map.of(),
-                    EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED
-                            + ':' + orderItemId);
-            return;
-        }
-        deliverAtomically(() -> {
-            Map<String, Object> row = one("""
-                    SELECT item.order_id, orders.bill_no, orders.maker_id,
-                           COALESCE(goods.code, '') || ' ' || COALESCE(goods.name, '')
-                           AS goods_label
-                    FROM subcontract_order_items item
-                    JOIN subcontract_orders orders ON orders.id = item.order_id
-                    LEFT JOIN goods ON goods.id = item.goods_id
-                    WHERE item.id = ?
-                      AND COALESCE(item.is_deleted, FALSE) = FALSE
-                    """, orderItemId);
-            if (row == null) return;
-            UUID orderId = (UUID) row.get("order_id");
-            if (!Integer.valueOf(0).equals(
-                    ((Number) one(
-                            "SELECT status FROM subcontract_orders WHERE id = ?",
-                            orderId).get("status")).intValue())) {
-                // 仅草稿期需要「等生产完再提交财务」的提醒；已批/红冲单不再打扰。
-                return;
-            }
-            String billNo = str(row.get("bill_no"));
-            String goods = str(row.get("goods_label"));
-            UUID makerUserId = subcontractMakerUserId((UUID) row.get("maker_id"));
-            notifyUser(
-                    makerUserId,
-                    TYPE_WORKFLOW,
-                    "委外目标件已生产入库：" + billNo,
-                    "委外订货单 " + billNo + " 的目标件 " + goods
-                            + " 前置生产已有产出入库。请在本单详情核对全部有子层"
-                            + "目标件的备齐情况；全部备齐后即可提交财务审核——"
-                            + "财务批准通过后仓库即可目标件出仓去委外加工。",
-                    "/subcontract/orders/" + orderId,
-                    EVENT_SUBCONTRACT_ORDER_PREPARATION_ARRIVED);
-        });
-    }
-
-    /**
-     * 直下单销售式供货：有子层目标件批准时按全局可用量拆行，仅缺口部分保留
-     * 前置自制（计划行量=缺口）；现货直发行另行触发 OUTBOUND_READY。本事件把
-     * 缺口指向计划/生产岗位，数据库任务仍是权威。
-     */
-    public void notifySubcontractPrepareShortage(UUID planItemId) {
-        if (!isOutboxDelivery()) {
-            outbox.publishOnce(
-                    EVENT_SUBCONTRACT_PREPARE_SHORTAGE,
-                    "SUBCONTRACT_MATERIAL_PLAN_ITEM",
-                    planItemId,
-                    Map.of(),
-                    EVENT_SUBCONTRACT_PREPARE_SHORTAGE + ':' + planItemId);
-            return;
-        }
-        deliverAtomically(() -> {
-            Map<String, Object> item = subcontractPreparationRequiredSnapshot(
-                    planItemId);
-            if (item == null) return;
-            UUID orderId = (UUID) item.get("order_id");
-            String orderNo = str(item.get("order_bill_no"));
-            String goods = subcontractGoodsLabel(item);
-            String shortage = qty(bd(item.get("planned_qty")));
-            // 2026-09-05 委外收敛：准备中心页面退役，缺口任务直达订货单详情
-            //（前置生产分析已由系统自动创建，计划在物料分析工作台安排车间）。
-            String taskRoute = "/subcontract/orders/" + orderId;
-            String taskContent = "委外订货单 " + orderNo + " 的目标件 "
-                    + goods + " 仓库现货不足，缺口 " + shortage
-                    + " 需按自制链补产(现货部分已另行通知仓库直接出仓)。"
-                    + "请在委外前置自制任务队列启动物料分析，并按正常自制链完成领料、"
-                    + "生产、报工、品质检验和仓库实收入库；能做哪些操作以任务页上"
-                    + "实际显示的按钮为准。";
-            Set<UUID> productionRecipients = new LinkedHashSet<>();
-            productionRecipients.addAll(departmentUserIdsWithAuthorities(
-                    "SUB_PLAN",
-                    NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view",
-                    "production_material_analysis:route"));
-            productionRecipients.addAll(departmentUserIdsWithAuthorities(
-                    "DEPT_PROD",
-                    NOTICE_READ_AUTHORITY,
-                    "production_material_analysis:view",
-                    "production_material_analysis:route"));
-            for (UUID recipient : productionRecipients) {
-                sendToUser(
-                        recipient,
-                        TYPE_TASK,
-                        "待补产委外缺口：" + orderNo,
-                        taskContent,
-                        taskRoute,
-                        EVENT_SUBCONTRACT_PREPARE_SHORTAGE);
-            }
-
-            UUID makerUserId = subcontractMakerUserId(
-                    (UUID) item.get("maker_id"));
-            notifyUser(
-                    makerUserId,
-                    TYPE_WORKFLOW,
-                    "委外目标件存在生产缺口：" + orderNo,
-                    "委外订货单 " + orderNo + " 的目标件 " + goods
-                            + " 仓库现货不足，缺口 " + shortage
-                            + " 已交计划/生产岗位补产；现货部分已直接安排委外出仓。"
-                            + "本通知仅作进度提醒，不代表已领料、已完工或已入库。",
-                    "/subcontract/orders/" + orderId,
-                    EVENT_SUBCONTRACT_PREPARE_SHORTAGE);
-        });
-    }
-
-    /** A prepared target item is now visible in the warehouse outbound queue. */
-    public void notifySubcontractOutboundReady(UUID planItemId) {
+    @Override
+    public void notifySubcontractOutboundReady(UUID issueId) {
+        if (issueId == null) return;
         if (!isOutboxDelivery()) {
             outbox.publishOnce(
                     EVENT_SUBCONTRACT_OUTBOUND_READY,
-                    "SUBCONTRACT_MATERIAL_PLAN_ITEM",
-                    planItemId,
+                    AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE,
+                    issueId,
                     Map.of(),
-                    EVENT_SUBCONTRACT_OUTBOUND_READY + ':' + planItemId);
+                    EVENT_SUBCONTRACT_OUTBOUND_READY + ':' + issueId);
+            return;
+        }
+        deliverAtomically(() -> publishSubcontractDrawPending(issueId, null));
+    }
+
+    /**
+     * 按草稿当前明细重建「委外领料待发料」卡: 先撤旧卡; 草稿已发出、已撤销或已没有领料行时只撤卡,
+     * 返回 null。{@code leadIn} 非空时作为卡片正文开头(撤回部分领料后刷新卡片用)。
+     */
+    private Map<String, Object> publishSubcontractDrawPending(UUID issueId, String leadIn) {
+        lockSubcontractDrawDraftNotices(issueId);
+        Map<String, Object> draft = one("""
+                SELECT issue.bill_no AS issue_bill_no, issue.warehouse_id,
+                       warehouse.name AS warehouse_name,
+                       supplier.name AS supplier_name,
+                       COALESCE(submitter.full_name, issue.maker_name) AS submitter_name,
+                       MIN(order_header.bill_no) AS order_bill_no,
+                       COUNT(DISTINCT concat_ws(':', item.goods_id::text, item.color_id::text))
+                           AS material_kind_count
+                FROM subcontract_material_issues issue
+                JOIN subcontract_material_issue_items item
+                  ON item.issue_id = issue.id
+                 AND item.is_deleted = FALSE
+                 AND item.plan_item_id IS NOT NULL
+                JOIN subcontract_order_items order_item ON order_item.id = item.order_item_id
+                JOIN subcontract_orders order_header ON order_header.id = order_item.order_id
+                LEFT JOIN warehouses warehouse ON warehouse.id = issue.warehouse_id
+                LEFT JOIN suppliers supplier ON supplier.id = issue.supplier_id
+                LEFT JOIN employees submitter ON submitter.id = issue.maker_id
+                WHERE issue.id = ?
+                  AND issue.status = 0
+                  AND issue.is_deleted = FALSE
+                GROUP BY issue.bill_no, issue.warehouse_id, warehouse.name, supplier.name,
+                         submitter.full_name, issue.maker_name
+                """, issueId);
+        resolveReviewNotices(AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE, issueId,
+                draft == null ? "STATE_CHANGED" : "PENDING_REFRESHED");
+        if (draft == null) return null;
+        String orderNo = str(draft.get("order_bill_no"));
+        String kinds = str(draft.get("material_kind_count"));
+        String warehouse = str(draft.get("warehouse_name"));
+        String supplier = str(draft.get("supplier_name"));
+        String submitter = str(draft.get("submitter_name"));
+        String content = (leadIn == null || leadIn.isBlank() ? "" : leadIn.strip())
+                + "委外人员" + (submitter.isBlank() ? "" : " " + submitter)
+                + " 已提交委外订货单 " + orderNo + " 的领料，出仓草稿 "
+                + str(draft.get("issue_bill_no")) + "，共 " + kinds + " 种物料"
+                + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
+                + (supplier.isBlank() ? "" : "，发给委外商「" + supplier + "」")
+                + "。请核对实物后拣货发出：实发只能少于或等于提交数量，少发的部分下次领料自动补齐；"
+                + "能做哪些操作以拣货页上实际显示的按钮为准。";
+        for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
+                "SUB_WH",
+                NOTICE_READ_AUTHORITY,
+                SUBCONTRACT_OUTBOUND_VIEW_AUTHORITY,
+                SUBCONTRACT_OUTBOUND_EXECUTE_AUTHORITY), warehouseIdsOf(draft.get("warehouse_id")))) {
+            sendToUser(
+                    warehouseUser,
+                    TYPE_TASK,
+                    "委外领料待发料：" + orderNo + " 共 " + kinds + " 种物料",
+                    content,
+                    SUBCONTRACT_OUTBOUND_DRAFT_ROUTE + issueId,
+                    EVENT_SUBCONTRACT_OUTBOUND_READY,
+                    null,
+                    issueId);
+        }
+        return draft;
+    }
+
+    /**
+     * 委外人员撤回了这张草稿里尚未发出的领料。部分撤回: 按草稿剩余明细刷新待发料卡;
+     * 整张撤销: 撤掉待发料卡并告诉仓管不用再拣货。
+     */
+    @Override
+    public void notifySubcontractDrawWithdrawn(UUID issueId) {
+        if (issueId == null) return;
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_SUBCONTRACT_DRAW_WITHDRAWN, AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE,
+                    issueId, Map.of());
             return;
         }
         deliverAtomically(() -> {
-            Map<String, Object> item = subcontractOutboundReadySnapshot(planItemId);
-            if (item == null) return;
-            // 目标件真实出仓：撤回「待启动委外前置自制」居中行动卡（按计划行聚合）。
-            resolveReviewNotices(
-                    "SUBCONTRACT_MATERIAL_PLAN_ITEM", planItemId,
-                    "OUTBOUND_READY");
-            UUID planId = (UUID) item.get("plan_id");
-            UUID orderId = (UUID) item.get("order_id");
-            String orderNo = str(item.get("order_bill_no"));
-            String goods = subcontractGoodsLabel(item);
-            // COMPONENT_OUTBOUND(ADR-085/ADR-101)发出去的是子件、交回来的是委外件，
-            // 两者不是同一个货号；再叫它「目标件」会让仓库以为发错货。
-            boolean sendsComponent = "COMPONENT_OUTBOUND".equals(str(item.get("flow_mode")));
-            String parentLabel = (str(item.get("parent_goods_code")) + " "
-                    + str(item.get("parent_goods_name"))).strip();
-            // 可发量优先取「已经给仓库开好的草稿量」：ADR-101 起草稿按该仓此刻的合格可动用量
-            // 截断，所以这个数才是仓库现在真能拣出来的量，计划余量不是。
-            // 通知走 Outbox 异步投递，投递时草稿可能已经被审核掉了；那时回落到计划余量，
-            // 与 ADR-101 之前的口径一致，不会给出一句「当前可发 0」的死消息。
-            BigDecimal remaining = bd(item.get("prepared_qty"))
-                    .min(bd(item.get("planned_qty")))
-                    .subtract(bd(item.get("issued_qty")))
-                    .max(BigDecimal.ZERO);
-            BigDecimal draftQty = bd(item.get("draft_qty")).max(BigDecimal.ZERO);
-            BigDecimal issuable = draftQty.signum() > 0 ? draftQty.min(remaining) : remaining;
-            String warehouseContent = (sendsComponent
-                    ? "委外订货单 " + orderNo + " 要发出去加工的是子件 " + goods
-                        + "，加工完交回的是 " + (parentLabel.isEmpty() ? "委外件" : parentLabel)
-                        + "。当前可发 " + qty(issuable)
-                    : "委外订货单 " + orderNo + " 的目标件 " + goods
-                        + " 当前可出仓 " + qty(issuable))
-                    + "。请打开委外出仓任务核对来源仓、库位和实物后拣货并"
-                    + "审核出仓；通知不代表已预留、已拣货或已出仓，能做哪些操作以任务页上"
-                    + "实际显示的按钮为准。";
-            // 来源仓: 计划行的备料仓 + 已开好的出仓草稿仓。
-            List<UUID> outboundWarehouses = warehouseIdsQuery("""
-                    SELECT preparation_warehouse_id FROM subcontract_material_plan_items WHERE id = ?
-                    UNION
-                    SELECT issue.warehouse_id
-                    FROM subcontract_material_issue_items issue_item
-                    JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
-                    WHERE issue_item.plan_item_id = ? AND issue.status = 0 AND issue.is_deleted = FALSE
-                    """, planItemId, planItemId);
+            Map<String, Object> remaining = publishSubcontractDrawPending(
+                    issueId, "委外人员撤回了这张草稿里的部分领料，请按草稿现有明细拣货，已撤回的物料不要再发。");
+            if (remaining != null) return;
+            Map<String, Object> header = one("""
+                    SELECT issue.bill_no AS issue_bill_no, issue.warehouse_id, issue.status,
+                           (SELECT order_header.bill_no
+                            FROM subcontract_material_issue_items item
+                            JOIN subcontract_order_items order_item ON order_item.id = item.order_item_id
+                            JOIN subcontract_orders order_header ON order_header.id = order_item.order_id
+                            WHERE item.issue_id = issue.id
+                            ORDER BY item.line_no, item.id
+                            LIMIT 1) AS order_bill_no
+                    FROM subcontract_material_issues issue
+                    WHERE issue.id = ?
+                    """, issueId);
+            // 已经审核发出的草稿不是被撤回的(发料回执另行通知), 不发撤回。
+            Object status = header == null ? null : header.get("status");
+            if (header == null || (status instanceof Number number && number.intValue() == 1)) return;
+            String issueNo = str(header.get("issue_bill_no"));
+            String orderNo = str(header.get("order_bill_no"));
             for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
                     "SUB_WH",
                     NOTICE_READ_AUTHORITY,
-                    "subcontract_outbound:view",
-                    "subcontract_outbound:execute"), outboundWarehouses)) {
+                    SUBCONTRACT_OUTBOUND_VIEW_AUTHORITY), warehouseIdsOf(header.get("warehouse_id")))) {
                 sendToUser(
                         warehouseUser,
-                        TYPE_TASK,
-                        (sendsComponent ? "待发委外子件出仓：" : "待执行委外目标件出仓：")
-                                + orderNo,
-                        warehouseContent,
-                        "/warehouse/subcontract-outbound/" + planId,
-                        EVENT_SUBCONTRACT_OUTBOUND_READY);
+                        TYPE_WORKFLOW,
+                        "委外领料已撤回：" + issueNo,
+                        "委外人员已撤回出仓草稿 " + issueNo
+                                + (orderNo.isBlank() ? "" : "(委外订货单 " + orderNo + ")")
+                                + " 的全部未发领料，草稿已撤销、占用的库存已释放，不用再拣货。",
+                        // 草稿已撤销, 拣货页只认待发草稿: 落到待发料列表, 不落到打不开的拣货页。
+                        SUBCONTRACT_OUTBOUND_LIST_ROUTE,
+                        EVENT_SUBCONTRACT_DRAW_WITHDRAWN,
+                        "normal");
             }
-
-            UUID makerUserId = subcontractMakerUserId(
-                    (UUID) item.get("maker_id"));
-            notifyUser(
-                    makerUserId,
-                    TYPE_WORKFLOW,
-                    (sendsComponent ? "委外子件已可发料：" : "委外目标件已可出仓：") + orderNo,
-                    (sendsComponent
-                            ? "委外订货单 " + orderNo + " 的子件 " + goods
-                                + " 已有现货可发，仓储部已收到发料任务；加工完交回的是 "
-                                + (parentLabel.isEmpty() ? "委外件" : parentLabel) + "。"
-                                + "本通知仅作进度提醒，不代表子件已经发出。"
-                            : "委外订货单 " + orderNo + " 的目标件 " + goods
-                                + " 已达到委外出仓条件，仓储部已收到出仓任务。"
-                                + "本通知仅作进度提醒，不代表目标件已经出仓。"),
-                    "/subcontract/orders/" + orderId,
-                    EVENT_SUBCONTRACT_OUTBOUND_READY);
         });
     }
 
-    /** Approved target-item outbound receipt for the subcontract order maker. */
+    /**
+     * 仓库把一张委外领料草稿整张退回(本次不发): 撤掉仓库的待发料卡; 告诉提交领料的委外人员这批没有发、
+     * 占用已释放、原因是什么, 料到了可以重新领。草稿永远是提交人建的(created_by), 不按订货经手人猜。
+     */
+    @Override
+    public void notifySubcontractDrawReturned(UUID issueId, String reason) {
+        if (issueId == null) return;
+        String normalizedReason = reason == null ? "" : reason.strip();
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_SUBCONTRACT_DRAW_RETURNED, AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE,
+                    issueId, Map.of("reason", normalizedReason));
+            return;
+        }
+        deliverAtomically(() -> {
+            // 草稿已作废: 这里只撤仓库的待发料卡, 不会再发新卡。
+            publishSubcontractDrawPending(issueId, null);
+            Map<String, Object> header = one("""
+                    SELECT issue.bill_no AS issue_bill_no, issue.created_by AS submitter_user_id,
+                           warehouse.name AS warehouse_name,
+                           (SELECT order_header.bill_no
+                            FROM subcontract_material_issue_items item
+                            JOIN subcontract_order_items order_item ON order_item.id = item.order_item_id
+                            JOIN subcontract_orders order_header ON order_header.id = order_item.order_id
+                            WHERE item.issue_id = issue.id
+                            ORDER BY item.line_no, item.id
+                            LIMIT 1) AS order_bill_no,
+                           (SELECT CASE WHEN COUNT(DISTINCT item.order_item_id) = 1
+                                        THEN MIN(item.order_item_id::text) END
+                            FROM subcontract_material_issue_items item
+                            WHERE item.issue_id = issue.id AND item.plan_item_id IS NOT NULL) AS order_item_id
+                    FROM subcontract_material_issues issue
+                    LEFT JOIN warehouses warehouse ON warehouse.id = issue.warehouse_id
+                    WHERE issue.id = ? AND issue.status = 0
+                    """, issueId);
+            if (header == null || !(header.get("submitter_user_id") instanceof UUID submitter)) return;
+            String issueNo = str(header.get("issue_bill_no"));
+            String orderNo = str(header.get("order_bill_no"));
+            String warehouse = str(header.get("warehouse_name"));
+            String orderItemId = str(header.get("order_item_id"));
+            sendToUser(
+                    submitter,
+                    TYPE_WORKFLOW,
+                    "仓库退回了领料：" + (orderNo.isBlank() ? issueNo : orderNo),
+                    (warehouse.isBlank() ? "仓库" : "仓库「" + warehouse + "」") + "退回了"
+                            + (orderNo.isBlank() ? "" : "委外订货单 " + orderNo + " 的")
+                            + "领料出仓单 " + issueNo + "，这批物料没有发出，占用的库存已释放"
+                            + (normalizedReason.isBlank() ? "" : "。退回原因：" + normalizedReason)
+                            + "。物料备齐后请在委外任务中心重新领料。",
+                    orderItemId.isBlank()
+                            ? SUBCONTRACT_DRAW_LIST_ROUTE
+                            : SUBCONTRACT_DRAW_SEGMENT_ROUTE + orderItemId,
+                    EVENT_SUBCONTRACT_DRAW_RETURNED,
+                    "normal");
+        });
+    }
+
+    /**
+     * 仓库审核发出一张委外领料草稿(ADR-143 §4.4): 撤掉待发料卡; 告诉经手人与持有领料权限的人
+     * 「本次发出后累计已发齐 X」并列出少发的物料; 委外商能做成委外件时提醒仓库预计回厂;
+     * 来源分析的计划员收进度提醒。回厂登记的是委外件, 不按物料登记。
+     */
+    @Override
     public void notifySubcontractOutboundCompleted(UUID issueId) {
+        if (issueId == null) return;
         if (!isOutboxDelivery()) {
             outbox.publishOnce(
                     EVENT_SUBCONTRACT_OUTBOUND_COMPLETED,
-                    "SUBCONTRACT_MATERIAL_ISSUE",
+                    AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE,
                     issueId,
                     Map.of(),
                     EVENT_SUBCONTRACT_OUTBOUND_COMPLETED + ':' + issueId);
             return;
         }
         deliverAtomically(() -> {
-            // ADR-103: 发子件的行(COMPONENT_OUTBOUND / LEGACY_BOM_COMPONENT)出仓的是子件、
-            // 回厂要登记的是委外件, 两者不是同一个货号; 按 flow_mode 分桶并 JOIN 父件, 文案
-            // 把「发出去的」和「回来要登记的」分开说, 免得仓库按子件登记回厂。父件优先取
-            // 计划行冻结的 parent_goods_id, 旧 LEGACY 行没回填就退到订货明细的货品。
-            List<Map<String, Object>> orders = jdbc.queryForList("""
-                    SELECT plan.order_id, plan.order_bill_no,
-                           order_header.maker_id,
-                           issue.bill_no AS issue_bill_no,
-                           (plan_item.flow_mode IN ('COMPONENT_OUTBOUND', 'LEGACY_BOM_COMPONENT'))
-                               AS sends_component,
-                           SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
-                               AS issued_base_qty,
-                           MIN(concat_ws(' ', goods.code, goods.name)) AS first_goods,
-                           COUNT(DISTINCT plan_item.goods_id) AS goods_count,
-                           MIN(concat_ws(' ', parent_goods.code, parent_goods.name))
-                               AS first_parent_goods,
-                           COUNT(DISTINCT parent_goods.id) AS parent_goods_count
+            lockSubcontractDrawDraftNotices(issueId);
+            resolveReviewNotices(AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE, issueId, "ISSUED");
+            List<Map<String, Object>> targets = jdbc.queryForList("""
+                    SELECT order_header.id AS order_id, order_header.bill_no AS order_bill_no,
+                           order_header.maker_id, issue.bill_no AS issue_bill_no,
+                           goods.code AS goods_code, goods.name AS goods_name,
+                           unit.name AS unit_name,
+                           summary.drawn_qty,
+                           GREATEST(COALESCE(fn_subcontract_returnable_qty(order_item.id), 0)
+                               - COALESCE((SELECT SUM(receipt_item.material_basis_qty)
+                                           FROM subcontract_receipt_items receipt_item
+                                           JOIN subcontract_receipts receipt
+                                             ON receipt.id = receipt_item.receipt_id
+                                            AND receipt.status = 1
+                                            AND receipt.is_deleted = FALSE
+                                           WHERE receipt_item.order_item_id = order_item.id
+                                             AND receipt_item.is_deleted = FALSE), 0), 0)
+                               AS returnable_qty
                     FROM subcontract_material_issues issue
-                    JOIN subcontract_material_issue_items issue_item
-                      ON issue_item.issue_id = issue.id
-                    JOIN subcontract_material_plan_items plan_item
-                      ON plan_item.id = issue_item.plan_item_id
-                     AND plan_item.is_deleted = FALSE
-                     AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND',
-                         'COMPONENT_OUTBOUND', 'LEGACY_BOM_COMPONENT')
-                    JOIN subcontract_material_plans plan
-                      ON plan.id = plan_item.plan_id
-                     AND plan.is_deleted = FALSE
+                    JOIN subcontract_order_items order_item
+                      ON EXISTS (SELECT 1 FROM subcontract_material_issue_items issue_item
+                                 WHERE issue_item.issue_id = issue.id
+                                   AND issue_item.order_item_id = order_item.id
+                                   AND issue_item.is_deleted = FALSE
+                                   AND issue_item.plan_item_id IS NOT NULL)
                     JOIN subcontract_orders order_header
-                      ON order_header.id = plan.order_id
+                      ON order_header.id = order_item.order_id
                      AND order_header.status = 1
                      AND order_header.is_deleted = FALSE
-                    JOIN goods ON goods.id = plan_item.goods_id
-                    LEFT JOIN subcontract_order_items order_item
-                      ON order_item.id = issue_item.order_item_id
-                    LEFT JOIN goods parent_goods
-                      ON parent_goods.id = COALESCE(plan_item.parent_goods_id, order_item.goods_id)
+                    JOIN goods ON goods.id = order_item.goods_id
+                    LEFT JOIN units unit ON unit.id = order_item.unit_id
+                    CROSS JOIN LATERAL fn_subcontract_draw_summary(order_item.id) summary
                     WHERE issue.id = ?
                       AND issue.status = 1
                       AND issue.is_deleted = FALSE
-                    GROUP BY plan.order_id, plan.order_bill_no,
-                             order_header.maker_id, issue.bill_no, sends_component
-                    ORDER BY plan.order_id, sends_component
+                    ORDER BY order_header.id, order_item.line_no, order_item.id
                     """, issueId);
-            for (Map<String, Object> order : orders) {
-                UUID makerUserId = subcontractMakerUserId(
-                        (UUID) order.get("maker_id"));
-                UUID orderId = (UUID) order.get("order_id");
-                String orderNo = str(order.get("order_bill_no"));
-                String issueNo = str(order.get("issue_bill_no"));
-                String issued = qty(bd(order.get("issued_base_qty")));
-                String goods = countedGoodsLabel(
-                        str(order.get("first_goods")), order.get("goods_count"));
-                boolean sendsComponent = Boolean.TRUE.equals(order.get("sends_component"));
-                String parentLabel = countedGoodsLabel(
-                        str(order.get("first_parent_goods")), order.get("parent_goods_count"));
-                String parent = parentLabel.isBlank() ? "委外件" : "委外件 " + parentLabel;
-                if (makerUserId != null) {
+            if (targets.isEmpty()) return;
+            List<String> shortIssued = new ArrayList<>();
+            // 少发 = 每种物料「提交量」(在用的行 + 仓库整行删掉不发的行) − 实发(在用的行)。
+            // 委外人员撤回的行不写 warehouse_dropped_at, 不算少发。
+            for (Map<String, Object> line : jdbc.queryForList("""
+                    SELECT goods.code AS goods_code, goods.name AS goods_name,
+                           unit.name AS unit_name,
+                           SUM(issue_item.requested_qty)
+                               - COALESCE(SUM(issue_item.qty) FILTER (WHERE issue_item.is_deleted = FALSE), 0)
+                               AS short_qty
+                    FROM subcontract_material_issue_items issue_item
+                    JOIN goods ON goods.id = issue_item.goods_id
+                    LEFT JOIN units unit ON unit.id = issue_item.unit_id
+                    WHERE issue_item.issue_id = ?
+                      AND issue_item.plan_item_id IS NOT NULL
+                      AND (issue_item.is_deleted = FALSE OR issue_item.warehouse_dropped_at IS NOT NULL)
+                    GROUP BY goods.id, goods.code, goods.name, unit.name
+                    HAVING SUM(issue_item.requested_qty)
+                           - COALESCE(SUM(issue_item.qty) FILTER (WHERE issue_item.is_deleted = FALSE), 0) > 0
+                    ORDER BY goods.code, goods.name
+                    """, issueId)) {
+                shortIssued.add(goodsName(line, "物料") + " "
+                        + qtyWithUnit(bd(line.get("short_qty")), line.get("unit_name")));
+            }
+            Map<UUID, List<Map<String, Object>>> byOrder = new LinkedHashMap<>();
+            for (Map<String, Object> target : targets) {
+                byOrder.computeIfAbsent((UUID) target.get("order_id"), ignored -> new ArrayList<>())
+                        .add(target);
+            }
+            for (List<Map<String, Object>> orderTargets : byOrder.values()) {
+                Map<String, Object> first = orderTargets.get(0);
+                UUID orderId = (UUID) first.get("order_id");
+                String orderNo = str(first.get("order_bill_no"));
+                String issueNo = str(first.get("issue_bill_no"));
+                List<String> drawn = new ArrayList<>();
+                List<String> returnable = new ArrayList<>();
+                for (Map<String, Object> target : orderTargets) {
+                    BigDecimal drawnQty = bd(target.get("drawn_qty"));
+                    if (drawnQty.signum() > 0) {
+                        drawn.add(subcontractTargetName(target) + " "
+                                + qtyWithUnit(drawnQty, target.get("unit_name")));
+                    }
+                    BigDecimal returnableQty = bd(target.get("returnable_qty"));
+                    if (returnableQty.signum() > 0) {
+                        returnable.add(subcontractTargetName(target) + " "
+                                + qtyWithUnit(returnableQty, target.get("unit_name")));
+                    }
+                }
+                String content = "委外出仓单 " + issueNo + " 已审核发出直属物料。"
+                        + (drawn.isEmpty()
+                                ? "本次发出后还没有发齐一整套委外件，其余物料发出后再通知委外商加工"
+                                : "本次发出后累计已发齐 " + String.join("、", drawn) + "，可通知委外商加工")
+                        + (shortIssued.isEmpty()
+                                ? ""
+                                : "；少发：" + String.join("、", shortIssued) + "(下次领料自动补齐)")
+                        + "。回厂时登记的是委外件，不按物料登记；通知不代表已回厂。";
+                Set<UUID> recipients = new LinkedHashSet<>();
+                UUID makerUserId = subcontractMakerUserId((UUID) first.get("maker_id"));
+                if (makerUserId != null) recipients.add(makerUserId);
+                recipients.addAll(subcontractDrawRecipients((UUID) first.get("maker_id")));
+                for (UUID recipient : recipients) {
                     sendToUser(
-                            makerUserId,
+                            recipient,
                             TYPE_WORKFLOW,
-                            (sendsComponent ? "委外子件已发出：" : "委外目标件已出仓：") + orderNo,
-                            (sendsComponent
-                                    ? "委外出仓单 " + issueNo + " 已审核，发出去加工的子件 "
-                                        + goods + " 本批已实际出仓 " + issued
-                                        + "，加工完回厂要登记的是" + parent + "。"
-                                    : "委外出仓单 " + issueNo + " 已审核，目标件 " + goods
-                                        + " 已完成出仓 " + issued + "。")
-                                    + "请在订单进度中跟进加工交期、回厂收货和"
-                                    + "来料质检；通知不代表已回厂或品质已结案。",
+                            "委外直属物料已发出：" + orderNo,
+                            content,
                             "/subcontract/orders/" + orderId,
                             EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
                 }
+                if (returnable.isEmpty()) continue;
                 for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
                         "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
                         subcontractOrderWarehouseIds(orderId))) {
@@ -3076,16 +3038,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             warehouseUser,
                             TYPE_TASK,
                             "委外预计回厂：" + orderNo,
-                            (sendsComponent
-                                    ? "委外出仓单 " + issueNo + " 已审核，发出去加工的子件 "
-                                        + goods + " 本批已实际出仓 " + issued
-                                        + "，加工完回厂要登记的是" + parent
-                                        + "；请在预计到货任务中心按" + parent
-                                        + "登记实际回厂，不要按子件登记"
-                                    : "委外出仓单 " + issueNo + " 已审核，目标件 " + goods
-                                        + " 本批已真实出仓 " + issued
-                                        + "，现在可能回厂。请在预计到货任务中心登记实际回厂")
-                                    + "；通知不代表已经到货。",
+                            "委外出仓单 " + issueNo + " 已审核发出直属物料，委外商手里的料还能做成 "
+                                    + String.join("、", returnable)
+                                    + "。回厂时请在预计到货任务中心按委外件登记实际回厂，不要按物料登记；"
+                                    + "通知不代表已经到货。",
                             "/warehouse/inbound/expectations",
                             EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
                 }
@@ -3097,12 +3053,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     FROM subcontract_material_issues issue
                     JOIN subcontract_material_issue_items issue_item
                       ON issue_item.issue_id = issue.id
-                    JOIN subcontract_material_plan_items plan_item
-                      ON plan_item.id = issue_item.plan_item_id
-                     AND plan_item.is_deleted = FALSE
-                     AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND',
-                         'COMPONENT_OUTBOUND')
+                     AND issue_item.is_deleted = FALSE
+                     AND issue_item.plan_item_id IS NOT NULL
                     JOIN subcontract_order_items order_item
                       ON order_item.id = issue_item.order_item_id
                      AND COALESCE(order_item.is_deleted, FALSE) = FALSE
@@ -3136,9 +3088,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 notifyUser(
                         makerUserId,
                         TYPE_WORKFLOW,
-                        "委外供给已出仓：" + str(analysis.get("issue_bill_no")),
-                        "委外目标件已完成审核出仓，现等待委外加工、回厂收货和来料质检。"
-                                + "请在原物料分析查看该供给行动进度；本通知不代表已回厂或"
+                        "委外直属物料已发出：" + str(analysis.get("issue_bill_no")),
+                        "委外订货的直属物料已审核发给委外商，现等待委外加工、回厂收货和来料质检。"
+                                + "请在原物料分析查看该委外行动的进度；本通知不代表已回厂或"
                                 + "品质已结案。",
                         "/production/material-analyses/"
                                 + analysis.get("analysis_id") + "/summary",
@@ -3147,63 +3099,79 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         });
     }
 
-    /** 已审目标件出仓被红冲后，补偿此前“可能回厂”通知并要求以实时任务为准。 */
+    /**
+     * 已发出的委外领料被红冲: 按物料列出撤销发出的数量, 告诉经手人与持有领料权限的人;
+     * 并补偿此前给仓库的「预计回厂」提醒。可领量由领料重算另行刷新。
+     */
+    @Override
     public void notifySubcontractOutboundReversed(UUID issueId) {
+        if (issueId == null) return;
         if (!isOutboxDelivery()) {
             outbox.publishOnce(
                     EVENT_SUBCONTRACT_OUTBOUND_REVERSED,
-                    "SUBCONTRACT_MATERIAL_ISSUE",
+                    AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE,
                     issueId,
                     Map.of(),
                     EVENT_SUBCONTRACT_OUTBOUND_REVERSED + ':' + issueId);
             return;
         }
         deliverAtomically(() -> {
-            List<Map<String, Object>> orders = jdbc.queryForList("""
-                    SELECT plan.order_id, plan.order_bill_no,
-                           order_header.maker_id,
-                           issue.bill_no AS issue_bill_no,
-                           SUM(issue_item.qty * COALESCE(issue_item.unit_rate, 1))
-                               AS reversed_base_qty
+            Map<UUID, List<Map<String, Object>>> byOrder = new LinkedHashMap<>();
+            for (Map<String, Object> line : jdbc.queryForList("""
+                    SELECT order_header.id AS order_id, order_header.bill_no AS order_bill_no,
+                           order_header.maker_id, issue.bill_no AS issue_bill_no,
+                           goods.code AS goods_code, goods.name AS goods_name,
+                           unit.name AS unit_name,
+                           SUM(issue_item.qty) AS reversed_qty
                     FROM subcontract_material_issues issue
                     JOIN subcontract_material_issue_items issue_item
                       ON issue_item.issue_id = issue.id
                      AND issue_item.is_deleted = FALSE
-                    JOIN subcontract_material_plan_items plan_item
-                      ON plan_item.id = issue_item.plan_item_id
-                     AND plan_item.is_deleted = FALSE
-                     AND plan_item.flow_mode IN (
-                         'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND',
-                         'COMPONENT_OUTBOUND')
-                    JOIN subcontract_material_plans plan
-                      ON plan.id = plan_item.plan_id
-                     AND plan.is_deleted = FALSE
+                     AND issue_item.plan_item_id IS NOT NULL
+                    JOIN subcontract_order_items order_item
+                      ON order_item.id = issue_item.order_item_id
                     JOIN subcontract_orders order_header
-                      ON order_header.id = plan.order_id
+                      ON order_header.id = order_item.order_id
                      AND order_header.is_deleted = FALSE
+                    JOIN goods ON goods.id = issue_item.goods_id
+                    LEFT JOIN units unit ON unit.id = issue_item.unit_id
                     WHERE issue.id = ?
                       AND issue.status = -1
                       AND issue.is_deleted = FALSE
-                    GROUP BY plan.order_id, plan.order_bill_no,
-                             order_header.maker_id, issue.bill_no
-                    ORDER BY plan.order_id
-                    """, issueId);
-            for (Map<String, Object> order : orders) {
-                UUID orderId = (UUID) order.get("order_id");
-                String orderNo = str(order.get("order_bill_no"));
-                String issueNo = str(order.get("issue_bill_no"));
-                String reversedQty = qty(bd(order.get("reversed_base_qty")));
-                UUID makerUserId = subcontractMakerUserId(
-                        (UUID) order.get("maker_id"));
-                notifyUser(
-                        makerUserId,
-                        TYPE_URGENT,
-                        "委外目标件出仓已红冲：" + orderNo,
-                        "委外出仓单 " + issueNo + " 已红冲，本批目标件出仓 "
-                                + reversedQty + " 已撤销。请重新跟进目标件准备和"
-                                + "出仓；实时订单/任务投影为准。",
-                        "/subcontract/orders/" + orderId,
-                        EVENT_SUBCONTRACT_OUTBOUND_REVERSED);
+                    GROUP BY order_header.id, order_header.bill_no, order_header.maker_id,
+                             issue.bill_no, goods.id, goods.code, goods.name, unit.name
+                    ORDER BY order_header.id, goods.code, goods.name
+                    """, issueId)) {
+                byOrder.computeIfAbsent((UUID) line.get("order_id"), ignored -> new ArrayList<>())
+                        .add(line);
+            }
+            for (List<Map<String, Object>> lines : byOrder.values()) {
+                Map<String, Object> first = lines.get(0);
+                UUID orderId = (UUID) first.get("order_id");
+                String orderNo = str(first.get("order_bill_no"));
+                String issueNo = str(first.get("issue_bill_no"));
+                List<String> materials = new ArrayList<>();
+                for (Map<String, Object> line : lines) {
+                    materials.add(goodsName(line, "物料") + " "
+                            + qtyWithUnit(bd(line.get("reversed_qty")), line.get("unit_name")));
+                }
+                String content = "委外出仓单 " + issueNo + " 已红冲，撤销发出："
+                        + String.join("、", materials)
+                        + "。这些物料视为没有发给委外商，已领数量与可回厂数量按实时数据重算；"
+                        + "需要时请到委外任务中心「领料」重新领料。";
+                Set<UUID> recipients = new LinkedHashSet<>();
+                UUID makerUserId = subcontractMakerUserId((UUID) first.get("maker_id"));
+                if (makerUserId != null) recipients.add(makerUserId);
+                recipients.addAll(subcontractDrawRecipients((UUID) first.get("maker_id")));
+                for (UUID recipient : recipients) {
+                    sendToUser(
+                            recipient,
+                            TYPE_URGENT,
+                            "委外领料发出已红冲：" + orderNo,
+                            content,
+                            "/subcontract/orders/" + orderId,
+                            EVENT_SUBCONTRACT_OUTBOUND_REVERSED);
+                }
                 for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
                         "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
                         subcontractOrderWarehouseIds(orderId))) {
@@ -3211,9 +3179,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             warehouseUser,
                             TYPE_URGENT,
                             "委外预计回厂已撤回：" + orderNo,
-                            "委外出仓单 " + issueNo + " 已红冲，本批出仓事实已撤销。"
-                                    + "请刷新预计到货任务中心；若其它有效出仓批次仍有容量，"
-                                    + "对应任务会继续保留。",
+                            "委外出仓单 " + issueNo + " 已红冲，本批发出的物料已撤销。"
+                                    + "请刷新预计到货任务中心；委外商手里其余已发物料能做成的委外件仍可登记回厂。",
                             "/warehouse/inbound/expectations",
                             EVENT_SUBCONTRACT_OUTBOUND_REVERSED);
                 }
@@ -3284,7 +3251,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     ? "委外回厂已逾期："
                     : "委外回厂交期提醒：") + order.billNo();
             String content = "委外订货单 " + order.billNo() + " " + timing
-                    + "。该单已有审核通过的委外出仓，但仍有加工件尚未物理回厂。"
+                    + "。该单已把直属物料发给委外商，委外商手里还有能做成的委外件尚未物理回厂。"
                     + "请跟进委外商，并在实物到厂后由仓库登记回厂。"
                     + "本通知仅作交期提醒，不代表已回厂、来料质检已结案或订单完成；"
                     + "实际状态以订单全链路进度为准。";
@@ -3303,68 +3270,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         });
     }
 
-    private Map<String, Object> subcontractPreparationRequiredSnapshot(
-            UUID planItemId) {
-        return one("""
-                SELECT item.plan_id, plan.order_id, plan.order_bill_no,
-                       order_header.maker_id, item.planned_qty,
-                       goods.code AS goods_code, goods.name AS goods_name
-                FROM subcontract_material_plan_items item
-                JOIN subcontract_material_plans plan
-                  ON plan.id = item.plan_id
-                 AND plan.status = 'OPEN'
-                 AND plan.is_deleted = FALSE
-                JOIN subcontract_orders order_header
-                  ON order_header.id = plan.order_id
-                 AND order_header.status = 1
-                 AND order_header.is_deleted = FALSE
-                JOIN goods ON goods.id = item.goods_id
-                WHERE item.id = ?
-                  AND item.is_deleted = FALSE
-                  AND item.flow_mode = 'MAKE_THEN_OUTBOUND'
-                  AND item.preparation_status = 'ACTION_REQUIRED'
-                  AND item.planned_qty > 0
-                """, planItemId);
-    }
-
-    private Map<String, Object> subcontractOutboundReadySnapshot(UUID planItemId) {
-        return one("""
-                SELECT item.plan_id, plan.order_id, plan.order_bill_no,
-                       order_header.maker_id, item.planned_qty,
-                       item.prepared_qty, item.issued_qty,
-                       goods.code AS goods_code, goods.name AS goods_name,
-                       item.flow_mode,
-                       parent_goods.code AS parent_goods_code,
-                       parent_goods.name AS parent_goods_name,
-                       COALESCE(draft.qty, 0) AS draft_qty
-                FROM subcontract_material_plan_items item
-                JOIN subcontract_material_plans plan
-                  ON plan.id = item.plan_id
-                 AND plan.status = 'OPEN'
-                 AND plan.is_deleted = FALSE
-                JOIN subcontract_orders order_header
-                  ON order_header.id = plan.order_id
-                 AND order_header.status = 1
-                 AND order_header.is_deleted = FALSE
-                JOIN goods ON goods.id = item.goods_id
-                LEFT JOIN goods parent_goods ON parent_goods.id = item.parent_goods_id
-                LEFT JOIN LATERAL (
-                    SELECT SUM(issue_item.qty) AS qty
-                    FROM subcontract_material_issue_items issue_item
-                    JOIN subcontract_material_issues issue
-                      ON issue.id = issue_item.issue_id
-                    WHERE issue_item.plan_item_id = item.id
-                      AND issue.status = 0 AND issue.is_deleted = FALSE
-                ) draft ON TRUE
-                WHERE item.id = ?
-                  AND item.is_deleted = FALSE
-                  AND item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND',
-                                         'PREPARED_OUTBOUND', 'COMPONENT_OUTBOUND')
-                  AND item.preparation_status = 'READY_OUTBOUND'
-                  AND LEAST(item.planned_qty, item.prepared_qty) > item.issued_qty
-                """, planItemId);
-    }
-
     /** 出货单涉及的仓库: 表头仓 + 拣货时逐行选定的仓(V631)。 */
     private List<UUID> shipmentWarehouseIds(UUID shipmentId) {
         return warehouseIdsQuery("""
@@ -3381,17 +3286,30 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         return warehouseIdsQuery("SELECT warehouse_id FROM subcontract_orders WHERE id = ?", orderId);
     }
 
-    /** 「首个货品 + 等 N 项」汇总标签; first 为空(没 JOIN 到货品)返回空串由调用方兜底。 */
-    private static String countedGoodsLabel(String first, Object count) {
-        if (first == null || first.isBlank()) return "";
-        long n = count instanceof Number number ? number.longValue() : 1L;
-        return first.strip() + (n > 1 ? " 等 " + n + " 项" : "");
-    }
-
+    /** 「编号 名称」标签(委外件); 两者都没有时用「委外件」。 */
     private static String subcontractGoodsLabel(Map<String, Object> item) {
         String label = (str(item.get("goods_code")) + " "
                 + str(item.get("goods_name"))).strip();
-        return label.isBlank() ? "目标件" : label;
+        return label.isBlank() ? "委外件" : label;
+    }
+
+    /** 委外件名称(没有名称时用编号)。 */
+    private static String subcontractTargetName(Map<String, Object> row) {
+        return goodsName(row, "委外件");
+    }
+
+    /** 货品名称; 没有名称时用编号, 都没有时用 fallback。 */
+    private static String goodsName(Map<String, Object> row, String fallback) {
+        String name = str(row.get("goods_name")).strip();
+        if (!name.isBlank()) return name;
+        String code = str(row.get("goods_code")).strip();
+        return code.isBlank() ? fallback : code;
+    }
+
+    /** 数量 + 单位(单位为空时只有数量)。 */
+    private static String qtyWithUnit(BigDecimal value, Object unitName) {
+        String unit = str(unitName).strip();
+        return qty(value) + (unit.isBlank() ? "" : " " + unit);
     }
 
     /** ④ 数量不足（补产）通知销售：报工完结缺额自动生成补产计划后。 */
@@ -4748,8 +4666,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     ? "/subcontract/orders/" + orderId
                     : "/purchase/orders/" + orderId;
             String approvedResult = subcontract
-                    ? "已生成目标件准备/待出仓任务；有子层级的目标件须先完成前置自制，"
-                            + "目标件真实审核出仓后才进入仓库预计到货。"
+                    ? "直属物料备齐后会提醒你到委外任务中心「领料」提交领料，仓库发出后委外商才能加工、"
+                            + "才进入仓库预计到货。"
                     : "仓储部已收到预计到货提醒。";
             notifyUser(
                     (UUID) approval.get("submitted_by_user_id"),
@@ -4896,8 +4814,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     }
 
     /**
-     * ADR-103 §2.6「到货超量待财务审核」的委外补句：多出来的是委外商自带料做出来的委外件;
-     * 路线 B(单一子件直发, COMPONENT_OUTBOUND)再点明「我方发出去的是子件 A, 回厂的是委外件 B」。
+     * 「到货超量待财务审核」的委外补句(ADR-143 §二.3/§二.12)。已批准的委外明细一定有冻结领料计划行
+     * (缺 BOM 的委外件不能批准): 多出来的超出了我方已发直属物料能做成的数量, 是委外商自带料做的,
+     * 并列出我方发给委外商的全部直属物料(万一没有计划行, 只说超出了我方已发直属物料能做成的数量)。
      * 采购单或算不出超出量时返回空串, 原文案一个字不动。
      */
     private String subcontractSupplierOwnMaterialSentence(String orderType, UUID orderItemId,
@@ -4908,35 +4827,27 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         Map<String, Object> line = one("""
                 SELECT goods.code AS goods_code, goods.name AS goods_name,
                        unit.name AS unit_name,
-                       component.code AS component_code, component.name AS component_name
+                       materials.labels AS material_labels
                 FROM subcontract_order_items order_item
                 JOIN goods ON goods.id = order_item.goods_id
                 LEFT JOIN units unit ON unit.id = order_item.unit_id
                 LEFT JOIN LATERAL (
-                    SELECT component_goods.code, component_goods.name
+                    SELECT string_agg(concat_ws(' ', material.code, material.name), '、'
+                                      ORDER BY plan_item.line_no, plan_item.id) AS labels
                     FROM subcontract_material_plan_items plan_item
-                    JOIN goods component_goods ON component_goods.id = plan_item.goods_id
+                    JOIN goods material ON material.id = plan_item.goods_id
                     WHERE plan_item.order_item_id = order_item.id
-                      AND plan_item.flow_mode = 'COMPONENT_OUTBOUND'
                       AND plan_item.is_deleted = FALSE
-                    ORDER BY plan_item.line_no, plan_item.id
-                    LIMIT 1
-                ) component ON TRUE
+                ) materials ON TRUE
                 WHERE order_item.id = ?
                 """, orderItemId);
         String target = line == null ? "委外件" : subcontractGoodsLabel(line);
         String unit = line == null || line.get("unit_name") == null ? "" : " " + str(line.get("unit_name"));
-        StringBuilder sentence = new StringBuilder()
-                .append("多出来的 ").append(plainQty(excess)).append(unit)
-                .append(" 是委外商自带料做出来的委外件 ").append(target)
-                .append("，请确认价格与归属。");
-        if (line != null && line.get("component_code") != null) {
-            String component = (str(line.get("component_code")) + " "
-                    + str(line.get("component_name"))).strip();
-            sentence.append("我方发出去的是子件 ").append(component)
-                    .append("，回厂的是委外件 ").append(target).append("。");
-        }
-        return sentence.toString();
+        String materials = line == null ? "" : str(line.get("material_labels")).strip();
+        return "多出来的 " + plainQty(excess) + unit
+                + " 超出了我方已发直属物料能做成的数量，是委外商自带料做出来的委外件 " + target
+                + "，请确认价格与归属。"
+                + (materials.isBlank() ? "" : "我方发给委外商的直属物料：" + materials + "。");
     }
 
     private void notifyProcurementArrivalEvent(String eventType, UUID exceptionId) {
@@ -4957,6 +4868,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                            exception.finance_reason,
                            exception.order_item_id,
                            exception.warehouse_id,
+                           exception.order_qty_snapshot,
+                           exception.allowed_over_receipt_pct_snapshot,
+                           exception.tolerance_qty_snapshot,
+                           exception.prior_net_received_qty_snapshot,
                            return_task.qty AS return_qty,
                            return_task.status AS return_status
                     FROM procurement_arrival_exceptions exception
@@ -4973,16 +4888,35 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
             if (EVENT_PROCUREMENT_ARRIVAL_DETECTED.equals(eventType)) {
                 String title = "到货超量待财务审核：" + orderNo;
-                String content = "收货单 " + receiptNo + " 的实际到货量 "
-                        + str(arrival.get("declared_qty"))
-                        + " 超过当前财务批准剩余可收量 "
-                        + str(arrival.get("approved_remaining_qty"))
-                        + "。本次未入库、未立应付；请财务持权人员到仓库到货异常任务中心审核。"
-                        + subcontractSupplierOwnMaterialSentence(
-                                str(arrival.get("order_type")),
-                                (UUID) arrival.get("order_item_id"),
-                                bd(arrival.get("declared_qty")),
-                                bd(arrival.get("approved_remaining_qty")));
+                String content;
+                if ("PURCHASE".equals(str(arrival.get("order_type")))
+                        && arrival.get("order_qty_snapshot") != null) {
+                    // ADR-144 §2.3: 采购写明订货量、允许超收比例与最多可收、此前已收与累计, 以及要审批的超量。
+                    BigDecimal declared = bd(arrival.get("declared_qty"));
+                    BigDecimal orderQty = bd(arrival.get("order_qty_snapshot"));
+                    BigDecimal priorNet = bd(arrival.get("prior_net_received_qty_snapshot"));
+                    BigDecimal excess = declared.subtract(bd(arrival.get("approved_remaining_qty")))
+                            .max(BigDecimal.ZERO);
+                    content = "收货单 " + receiptNo + " 实到 " + plainQty(declared)
+                            + "：订 " + plainQty(orderQty)
+                            + "，允许超收 " + plainQty(arrival.get("allowed_over_receipt_pct_snapshot"))
+                            + "%(最多 " + plainQty(orderQty.add(bd(arrival.get("tolerance_qty_snapshot"))))
+                            + ")，此前已收 " + plainQty(priorNet)
+                            + "，累计 " + plainQty(priorNet.add(declared))
+                            + "，需审批超量 " + plainQty(excess)
+                            + "。本次未入库、未立应付；请财务持权人员到仓库到货异常任务中心审核。";
+                } else {
+                    content = "收货单 " + receiptNo + " 的实际到货量 "
+                            + str(arrival.get("declared_qty"))
+                            + " 超过当前财务批准剩余可收量 "
+                            + str(arrival.get("approved_remaining_qty"))
+                            + "。本次未入库、未立应付；请财务持权人员到仓库到货异常任务中心审核。"
+                            + subcontractSupplierOwnMaterialSentence(
+                                    str(arrival.get("order_type")),
+                                    (UUID) arrival.get("order_item_id"),
+                                    bd(arrival.get("declared_qty")),
+                                    bd(arrival.get("approved_remaining_qty")));
+                }
                 UUID assignee = (UUID) arrival.get("finance_assignee_user_id");
                 Set<UUID> reviewers = new LinkedHashSet<>(financeReviewerUserIds());
                 if (assignee != null) {
@@ -5760,7 +5694,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     // ---------- 研发任务 / BOM 维护 通知 ----------
 
-    /** BOM 维护完成（GoodsBomService create/update/delete 后发）：若 BOM 已就绪，自动完成对应未完成 BOM 任务 + 通知生产转发人。 */
+    /**
+     * BOM 维护完成(GoodsBomService 增删改、BOM 学习后发 GOODS_BOM_UPDATED)。ADR-143 §二.3，货品现在有
+     * 可发外的直属物料时：
+     * <ol>
+     *   <li>还没按新 BOM 展开出这些直属物料的未结束物料分析，每张排一条
+     *       {@value #EVENT_MATERIAL_ANALYSIS_BOM_REFRESH}。这里只排队不刷新：一张分析刷新要几秒，
+     *       放在本投递里会卡住所有通知的投递，某一张失败也没人重试；</li>
+     *   <li>自动完成它未完成的「完善 BOM」研发任务，并按等待名单逐个通知(直达各自被挡住的物料分析 /
+     *       委外订货单 / 委外任务中心)。等着要刷新的那张物料分析的人，由那张分析刷新完再通知；
+     *       其余的人马上通知，文案不说物料分析已更新。</li>
+     * </ol>
+     * 清空 BOM、或只剩不能发外的边(按包装、出货阶段、整批领料)时什么都不做，任务保持未完成。
+     */
     public void notifyBomUpdated(UUID goodsId) {
         deliverAtomically(() -> {
             // 删除清空 BOM 时不应误完成——仅当确实已有可用 BOM 行才处理。
@@ -5768,20 +5714,168 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     "SELECT COUNT(*) FROM goods_bom_items WHERE goods_id = ? AND is_deleted = false",
                     Integer.class, goodsId);
             if (ready == null || ready == 0) return;
-            List<UUID> reporters = rdTaskService.openBomTaskReporters(goodsId);
-            int updated = rdTaskService.resolveOpenBomTasksForGoods(goodsId, "BOM已维护，自动完成");
+            // 「完善 BOM」任务等的是可发外的直属物料(唯一判定 fn_subcontract_draw_edges)，有了才算完成。
+            Boolean drawable = jdbc.queryForObject(
+                    "SELECT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(?))", Boolean.class, goodsId);
+            if (!Boolean.TRUE.equals(drawable)) return;
+            List<RdTaskService.BomTaskWaiter> waiters = rdTaskService.openBomTaskWaiters(goodsId);
+            Set<UUID> refreshing = enqueueMaterialAnalysisBomRefreshes(goodsId, waiters);
+            int updated = rdTaskService.resolveOpenBomTasksForGoods(goodsId, "BOM 已完善，自动完成");
             if (updated == 0) return;
-            String goodsLabel = oneStr(
-                    "SELECT COALESCE(code,'') || ' ' || COALESCE(name,'') FROM goods WHERE id = ?",
-                    goodsId);
-            for (UUID empId : reporters) {
-                UUID uid = userIdOfEmployee(empId);
+            String goodsLabel = bomGoodsLabel(goodsId);
+            for (RdTaskService.BomTaskWaiter waiter : waiters) {
+                if (waitsForAnalysisRefresh(waiter, refreshing)) continue;
+                UUID uid = userIdOfEmployee(waiter.employeeId());
                 if (uid != null) {
                     sendToUser(uid, TYPE_TASK,
-                            "BOM 已维护：" + goodsLabel,
-                            "工程研发部已维护该货品的组装物料，可继续排产。",
-                            "/production/schedule");
+                            "BOM 已完善：" + goodsLabel,
+                            bomReadyContent(goodsLabel, waiter.sourceDocType()),
+                            bomWaiterRoute(waiter));
                 }
+            }
+        });
+    }
+
+    /**
+     * 给还没按新 BOM 展开的每张物料分析排一条刷新事件，带上等这张分析的人(研发任务在本事务里随即完成，
+     * 刷新那边已读不到等待名单)。去重键 = 分析 + 货品 + 本次 BOM 事件投递：排队与本条 BOM 事件的「已投递」
+     * 在同一事务提交，本条事件只会在整体回滚后重新投递，那时这些排队也一并撤销。
+     *
+     * @return 排了刷新事件的分析
+     */
+    private Set<UUID> enqueueMaterialAnalysisBomRefreshes(UUID goodsId, List<RdTaskService.BomTaskWaiter> waiters) {
+        var refresher = bomRefresh == null ? null : bomRefresh.getIfAvailable();
+        if (refresher == null || goodsId == null) return Set.of();
+        List<UUID> analyses = refresher.analysesAwaitingBomRefresh(goodsId);
+        if (analyses.isEmpty()) return Set.of();
+        String delivery = UUID.randomUUID().toString();
+        Set<UUID> queued = new LinkedHashSet<>();
+        for (UUID analysisId : analyses) {
+            List<String> waiting = waiters.stream()
+                    .filter(waiter -> waitsForAnalysisRefresh(waiter, Set.of(analysisId)))
+                    .map(waiter -> waiter.employeeId().toString())
+                    .distinct().sorted().toList();
+            outbox.publishOnce(EVENT_MATERIAL_ANALYSIS_BOM_REFRESH, AGGREGATE_MATERIAL_ANALYSIS, analysisId,
+                    Map.of("analysisId", analysisId.toString(), "goodsId", goodsId.toString(),
+                            "waiterEmployeeIds", waiting),
+                    EVENT_MATERIAL_ANALYSIS_BOM_REFRESH + ':' + analysisId + ':' + goodsId + ':' + delivery);
+            queued.add(analysisId);
+        }
+        return queued;
+    }
+
+    /**
+     * 按新 BOM 刷新一张物料分析({@link #notifyBomUpdated} 按分析各排一条)。刷新在实现方自己的独立事务里、
+     * 以分析负责人身份进行；刷新失败原样抛出，本条事件退避重试(不再只记日志就算了)。刷新完、或这张分析
+     * 早已按新 BOM 展开，才告诉等这张分析的人「物料分析已自动更新」；不能自动刷新(分析已结束、负责人账号
+     * 不能用)时改请他们打开物料分析刷新。
+     */
+    private void deliverMaterialAnalysisBomRefresh(UUID analysisId, JsonNode payload) {
+        deliverAtomically(() -> {
+            UUID goodsId = uuidOrNull(payload.path("goodsId").asText(null));
+            if (analysisId == null || goodsId == null) return;
+            var refresher = bomRefresh == null ? null : bomRefresh.getIfAvailable();
+            var outcome = refresher == null
+                    ? com.uten.imp.application.port.MaterialAnalysisBomRefreshPort.Outcome.SKIPPED
+                    : outsideNoticeDelivery(() -> refresher.refreshAnalysisAfterBomUpdated(analysisId, goodsId));
+            List<UUID> waiting = new ArrayList<>();
+            payload.path("waiterEmployeeIds").forEach(node -> {
+                UUID employeeId = uuidOrNull(node.asText(null));
+                if (employeeId != null) waiting.add(employeeId);
+            });
+            if (waiting.isEmpty()) return;
+            String goodsLabel = bomGoodsLabel(goodsId);
+            String content = outcome == com.uten.imp.application.port.MaterialAnalysisBomRefreshPort.Outcome.SKIPPED
+                    ? bomReadyContent(goodsLabel, com.uten.imp.application.port.RdBomGapPort.SOURCE_MATERIAL_ANALYSIS)
+                    : goodsLabel + " 的 BOM 已完善，物料分析已自动更新，可以下达。";
+            String route = bomWaiterRoute(new RdTaskService.BomTaskWaiter(null,
+                    com.uten.imp.application.port.RdBomGapPort.SOURCE_MATERIAL_ANALYSIS, analysisId));
+            for (UUID employeeId : waiting) {
+                UUID uid = userIdOfEmployee(employeeId);
+                if (uid != null) {
+                    sendToUser(uid, TYPE_TASK, "BOM 已完善：" + goodsLabel, content, route, EVENT_BOM_UPDATED);
+                }
+            }
+        });
+    }
+
+    /**
+     * 刷新物料分析期间暂时撤下「正在投递 outbox」标记：刷新顺带产生的通知照常进 outbox 排队，
+     * 不在本投递事务里直接送达。
+     */
+    private <T> T outsideNoticeDelivery(java.util.function.Supplier<T> work) {
+        String event = OUTBOX_EVENT.get();
+        OUTBOX_DELIVERY.set(false);
+        OUTBOX_EVENT.remove();
+        try {
+            return work.get();
+        } finally {
+            OUTBOX_DELIVERY.set(true);
+            if (event != null) OUTBOX_EVENT.set(event);
+        }
+    }
+
+    /** 等的是这些物料分析之一(由那张分析刷新完再通知)。 */
+    private static boolean waitsForAnalysisRefresh(RdTaskService.BomTaskWaiter waiter, Set<UUID> analyses) {
+        return waiter.employeeId() != null && waiter.sourceDocId() != null
+                && com.uten.imp.application.port.RdBomGapPort.SOURCE_MATERIAL_ANALYSIS.equals(waiter.sourceDocType())
+                && analyses.contains(waiter.sourceDocId());
+    }
+
+    /** 不说物料分析已更新的「BOM 已完善」文案：等物料分析的请他打开分析刷新，其余可以直接继续办。 */
+    private static String bomReadyContent(String goodsLabel, String sourceDocType) {
+        return com.uten.imp.application.port.RdBomGapPort.SOURCE_MATERIAL_ANALYSIS.equals(sourceDocType)
+                ? goodsLabel + " 的 BOM 已完善，打开物料分析刷新后即可下达。"
+                : goodsLabel + " 的 BOM 已完善，可以继续下达 / 下委外单。";
+    }
+
+    /** 货品显示名「名称(编号)」。 */
+    private String bomGoodsLabel(UUID goodsId) {
+        return oneStr("""
+                SELECT COALESCE(name, '')
+                       || CASE WHEN COALESCE(code, '') = '' THEN '' ELSE '(' || code || ')' END
+                FROM goods WHERE id = ?
+                """, goodsId);
+    }
+
+    /** 等待人被挡住的来源单据：物料分析 / 委外订货单 / 生产计划直达，委外申请回委外任务中心。 */
+    private static String bomWaiterRoute(RdTaskService.BomTaskWaiter waiter) {
+        String type = waiter.sourceDocType() == null ? "" : waiter.sourceDocType();
+        UUID id = waiter.sourceDocId();
+        return switch (type) {
+            case com.uten.imp.application.port.RdBomGapPort.SOURCE_SUBCONTRACT_ORDER ->
+                    id == null ? "/operations/workbench/subcontract" : "/subcontract/orders/" + id;
+            case com.uten.imp.application.port.RdBomGapPort.SOURCE_SUBCONTRACT_APPLICATION ->
+                    "/operations/workbench/subcontract";
+            case com.uten.imp.application.port.RdBomGapPort.SOURCE_MATERIAL_ANALYSIS ->
+                    id == null ? "/production/material-analysis"
+                            : "/production/material-analysis?analysisId=" + id;
+            case com.uten.imp.application.port.RdBomGapPort.SOURCE_PRODUCTION_PLAN ->
+                    id == null ? "/production/plans" : "/production/plans/" + id;
+            default -> "/production/material-analysis";
+        };
+    }
+
+    /**
+     * 委外件缺 BOM 新建「完善 BOM」研发任务(RdBomGapService 发，同一货品只在建任务时发一次)：
+     * 通知工程研发部里能看研发任务的人。
+     */
+    public void notifyRdTaskForwarded(UUID taskId) {
+        deliverAtomically(() -> {
+            Map<String, Object> t = one("""
+                    SELECT r.source_doc_no, g.code AS goods_code, g.name AS goods_name
+                    FROM rd_tasks r LEFT JOIN goods g ON g.id = r.goods_id
+                    WHERE r.id = ? AND r.is_deleted = false AND r.status IN ('OPEN','IN_PROGRESS')
+                    """, taskId);
+            if (t == null) return;
+            String goodsLabel = com.uten.imp.application.port.RdBomGapPort.goodsLabel(
+                    str(t.get("goods_name")), str(t.get("goods_code")));
+            String sourceNo = str(t.get("source_doc_no")).strip();
+            String content = goodsLabel + " 是委外件，还没有维护直属物料，计划和委外都在等。"
+                    + (sourceNo.isEmpty() ? "" : "来源 " + sourceNo);
+            for (UUID uid : departmentUserIdsWithAuthorities(
+                    "DEPT_ENG", NOTICE_READ_AUTHORITY, "rd_task:view")) {
+                sendToUser(uid, TYPE_TASK, "请完善 BOM：" + goodsLabel, content, "/rd/tasks");
             }
         });
     }
@@ -5790,20 +5884,22 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     public void notifyRdTaskResolved(UUID taskId) {
         deliverAtomically(() -> {
             Map<String, Object> t = one("""
-                    SELECT r.title, r.reporter_employee_id,
+                    SELECT r.title, r.reporter_employee_id, r.source_doc_type, r.source_doc_id,
                            g.code AS goods_code, g.name AS goods_name
                     FROM rd_tasks r LEFT JOIN goods g ON g.id = r.goods_id
                     WHERE r.id = ? AND r.is_deleted = false
                     """, taskId);
             if (t == null) return;
-            UUID uid = userIdOfEmployee((UUID) t.get("reporter_employee_id"));
+            UUID reporter = (UUID) t.get("reporter_employee_id");
+            UUID uid = userIdOfEmployee(reporter);
             if (uid == null) return;
-            String goodsLabel = str(t.get("goods_code")) + " " + str(t.get("goods_name"));
+            String goodsLabel = com.uten.imp.application.port.RdBomGapPort.goodsLabel(
+                    str(t.get("goods_name")), str(t.get("goods_code")));
             sendToUser(uid, TYPE_TASK,
                     "研发任务已完成：" + goodsLabel,
-                    "工程研发部已标记完成：" + str(t.get("title"))
-                            + "。若为 BOM 维护任务，可继续排产。",
-                    "/production/schedule");
+                    "工程研发部已标记完成：" + str(t.get("title")) + "。",
+                    bomWaiterRoute(new RdTaskService.BomTaskWaiter(reporter,
+                            (String) t.get("source_doc_type"), (UUID) t.get("source_doc_id"))));
         });
     }
 

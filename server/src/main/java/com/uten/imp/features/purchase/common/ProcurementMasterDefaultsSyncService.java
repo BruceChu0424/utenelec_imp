@@ -21,6 +21,7 @@ public class ProcurementMasterDefaultsSyncService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void syncFromPurchaseOrder(UUID orderId) {
         sync(orderId, "purchase");
+        syncPurchaseAllowedOverReceipt(orderId);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -50,6 +51,32 @@ public class ProcurementMasterDefaultsSyncService {
                 ) line
                 WHERE g.id = line.goods_id AND NOT g.is_deleted
                   AND g.subcontract_allowed_loss_pct IS DISTINCT FROM line.allowed_loss_pct
+                """, orderId);
+    }
+
+    /**
+     * ADR-144 允许超收记忆：采购订货明细填了允许超收%的行, 把该货品主档默认值改成最近一次填写值
+     * (同货品多行取行号最大的一行; 值相同不写)。空行不清主档——用户没填就沿用上次记忆。
+     * 在 sync() 按 UUID 锁住本单货品之后执行, 与委外允许损耗记忆同一写法。
+     */
+    private void syncPurchaseAllowedOverReceipt(UUID orderId) {
+        if (orderId == null) return;
+        jdbc.update("""
+                UPDATE goods g
+                SET purchase_allowed_over_receipt_pct = line.allowed_over_receipt_pct,
+                    version = g.version + 1,
+                    updated_at = now(),
+                    updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
+                FROM (
+                    SELECT DISTINCT ON (i.goods_id) i.goods_id, i.allowed_over_receipt_pct
+                    FROM purchase_order_items i
+                    JOIN purchase_orders o ON o.id = i.order_id
+                    WHERE i.order_id = ? AND NOT i.is_deleted AND NOT o.is_deleted
+                      AND o.status IN (0,1) AND i.allowed_over_receipt_pct IS NOT NULL
+                    ORDER BY i.goods_id, i.line_no DESC NULLS LAST, i.created_at DESC, i.id DESC
+                ) line
+                WHERE g.id = line.goods_id AND NOT g.is_deleted
+                  AND g.purchase_allowed_over_receipt_pct IS DISTINCT FROM line.allowed_over_receipt_pct
                 """, orderId);
     }
 

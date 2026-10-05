@@ -322,6 +322,64 @@ void main() {
     expect(find.text('未填写'), findsOneWidget);
   });
 
+  testWidgets('ADR-144 采购允许超收%：列只在采购显示，改比例标记修改，历史快照也能比', (tester) async {
+    final json = _pendingReviewJson();
+    final original = Map<String, dynamic>.from(
+      (json['items'] as List).single as Map,
+    );
+    final review = FinanceProcurementApprovalReview.fromJson({
+      ...json,
+      'orderType': 'PURCHASE',
+      'previousItems': [
+        // 旧提交快照：展示快照不完整，但允许超收在审批哈希快照里，照样能比。
+        {...original, 'displaySnapshotComplete': false},
+      ],
+      'items': [
+        {...original, 'allowedOverReceiptPct': '5.00'},
+      ],
+    });
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(review));
+    final finder = find.byKey(const Key('procurement-approval-revision-table'));
+    await tester.scrollUntilVisible(
+      finder,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final table = tester
+        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(finder);
+    final column = table.columns.singleWhere(
+      (column) => column.key == 'allowedOverReceiptPct',
+    );
+    expect(column.label, '允许超收(%)');
+    expect(table.rows.map((row) => column.value(row.value)), ['不允许', '5']);
+    expect(table.rows.last.changedKeys, contains('allowedOverReceiptPct'));
+    expect(
+      table.columns.where((column) => column.key == 'allowedLossPct'),
+      isEmpty,
+      reason: '采购不显示委外允许损耗列',
+    );
+  });
+
+  testWidgets('ADR-144 委外订货不显示允许超收列', (tester) async {
+    final review = FinanceProcurementApprovalReview.fromJson({
+      ..._pendingReviewJson(),
+      'orderType': 'SUBCONTRACT',
+    });
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(review));
+    final finder = find.byKey(const Key('procurement-approval-revision-table'));
+    await tester.scrollUntilVisible(
+      finder,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final table = tester
+        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(finder);
+    expect(
+      table.columns.where((column) => column.key == 'allowedOverReceiptPct'),
+      isEmpty,
+    );
+  });
+
   testWidgets(
     'unknown old fields are counted for checking rather than claimed edits',
     (tester) async {

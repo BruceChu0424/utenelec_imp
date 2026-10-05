@@ -15,25 +15,18 @@ import java.util.Collection;
 public final class ProcurementOrderQuantityBounds {
     private ProcurementOrderQuantityBounds() {}
 
-    /** Legacy inconsistent target-unit facts require their original reversal path, never a guessed rewrite. */
-    public static void requireConsistentTargetBasis(EntityManager em,Collection<UUID> orderItemIds) {
-        if(orderItemIds.isEmpty()) return;
-        requireKnownReceiptBasis(em,"SUBCONTRACT",orderItemIds);
-        var issues=em.createNativeQuery("""
-                SELECT problem.plan_item_id FROM v_subcontract_quantity_basis_issues problem
-                JOIN subcontract_material_plan_items pi ON pi.id=problem.plan_item_id
-                WHERE problem.order_item_id IN (:ids)
-                  AND (pi.is_deleted=FALSE OR problem.effective_issue_basis_inconsistent)
-                ORDER BY problem.plan_item_id LIMIT 1
-                """).setParameter("ids",orderItemIds).getResultList();
-        if(!issues.isEmpty()) throw new ApiException(ErrorCode.CONFLICT,
-                "历史委外目标件的基本单位与冻结换算率不一致，请先核对原出回仓记录并执行对应反向，不能继续累计数量");
-    }
-
-    public record ReceiptBound(BigDecimal retainedBase, BigDecimal postedExcessBase) {
+    /**
+     * @param allowedOverReceiptPct purchase line over-receipt allowance (ADR-144); always null for
+     *                              subcontract lines, null means 0.
+     */
+    public record ReceiptBound(BigDecimal retainedBase, BigDecimal postedExcessBase,
+                               BigDecimal allowedOverReceiptPct) {
+        /** Smallest order qty N (order units) with N + T(N, p) covering the retained receipts. */
         public BigDecimal minimumOrderedQty(BigDecimal orderUnitRate) {
-            return retainedBase.subtract(postedExcessBase).max(BigDecimal.ZERO)
-                    .divide(orderUnitRate,4,RoundingMode.CEILING);
+            return PurchaseOverReceiptTolerance.minimumOrderedQty(
+                    retainedBase.subtract(postedExcessBase).max(BigDecimal.ZERO)
+                            .divide(orderUnitRate,4,RoundingMode.CEILING),
+                    allowedOverReceiptPct);
         }
     }
 
@@ -45,7 +38,8 @@ public final class ProcurementOrderQuantityBounds {
                            COALESCE(facts.received_base,0)),
                        GREATEST(COALESCE(oi.returned_qty,0)*oi.unit_rate,
                            COALESCE(facts.returned_base,0)),
-                       COALESCE(facts.iqc_returned_base,0), COALESCE(facts.excess_base,0)
+                       COALESCE(facts.iqc_returned_base,0), COALESCE(facts.excess_base,0),
+                       %2$s
                 FROM %1$s_order_items oi
                 LEFT JOIN LATERAL (
                     SELECT SUM(ri.qty*ri.unit_rate) AS received_base,
@@ -82,13 +76,15 @@ public final class ProcurementOrderQuantityBounds {
                     WHERE ri.order_item_id=oi.id AND ri.is_deleted=FALSE
                 ) facts ON TRUE
                 WHERE oi.id=:itemId AND oi.is_deleted=FALSE
-                """.formatted(prefix)).setParameter("orderType",orderType)
+                """.formatted(prefix,"PURCHASE".equals(orderType)
+                        ? "oi.allowed_over_receipt_pct" : "CAST(NULL AS numeric)"))
+                .setParameter("orderType",orderType)
                 .setParameter("itemId",itemId).getSingleResult();
         // Imported aggregate-only history remains a conservative lower bound; do not silently
         // discard recorded receipts because a legacy detail is unavailable. Replacement receipts
         // are already in received_base. Their allocation ledger must not be subtracted a second time.
         BigDecimal retained=decimal(row[0]).subtract(decimal(row[1])).subtract(decimal(row[2])).max(BigDecimal.ZERO);
-        return new ReceiptBound(retained,decimal(row[3]).min(retained));
+        return new ReceiptBound(retained,decimal(row[3]).min(retained),(BigDecimal)row[4]);
     }
 
     /** Never turn a missing historical order/receipt/return conversion into a one-to-one quantity. */

@@ -1,61 +1,50 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/warehouse/models/subcontract_outbound.dart';
 import 'package:uten_imp/features/warehouse/models/subcontract_outbound_execution.dart';
 import 'package:uten_imp/features/warehouse/widgets/subcontract_outbound_detail_table.dart';
 
+import 'subcontract_outbound_test_support.dart';
+
 void main() {
-  final l10n = AppLocalizationsZh();
+  OutboundPickLine line({num requested = 10000}) => OutboundPickLine.fromJson(
+    outboundPickLine(
+      issueItemId: 'issue-item',
+      planItemId: 'plan-item',
+      goodsId: 'goods',
+      requestedQty: requested,
+    ),
+  );
 
-  OutboundPlanLine line({
-    String flow = 'PREPARED_OUTBOUND',
-    double ready = 0,
-  }) => OutboundPlanLine.fromJson({
-    'planItemId': 'plan-item',
-    'orderItemId': 'order-item',
-    'goodsId': 'goods',
-    'flowMode': flow,
-    'preparationStatus': 'READY_OUTBOUND',
-    'plannedQty': 10000,
-    'preparedQty': 10000,
-    'draftReservedQty': 10000,
-    'readyOutboundQty': ready,
-  });
+  SubcontractDocItem item({num qty = 10000, num? weight}) =>
+      SubcontractDocItem.fromJson(
+        outboundDocItem(
+          id: 'issue-item',
+          planItemId: 'plan-item',
+          orderItemId: 'order-item',
+          goodsId: 'goods',
+          qty: qty,
+          weight: weight,
+        ),
+      );
 
-  test('同一计划跨实际仓拆草稿时不可借用另一草稿的占用数量', () {
+  test('本次最多就是委外提交的领料数量, 不借用其它单据或库存的量', () {
     final draft = SubcontractOutboundLineDraft(
-      line(),
-      'own-issue-item',
-      '3000',
+      line(requested: 3000),
+      item(qty: 3000),
     );
     addTearDown(draft.dispose);
     expect(draft.maxEditableQty, 3000);
-    expect(draft.validate(l10n), isNull);
+    expect(draft.validate(), isNull);
     draft.qty.text = '3000.0001';
-    expect(draft.validate(l10n), isNotNull);
-  });
-
-  test('未知流不能借用已存草稿数量放行', () {
-    final draft = SubcontractOutboundLineDraft(
-      line(flow: 'UNKNOWN_NEXT'),
-      'issue-item',
-      '10000',
-    );
-    addTearDown(draft.dispose);
-    expect(draft.maxEditableQty, 0);
-    expect(draft.validate(l10n), isNotNull);
+    expect(draft.validate(), isNotNull);
   });
 
   test('精确数量校验保留计划 UUID 与货品颜色单位链, 原单实称重量带回', () {
-    final draft = SubcontractOutboundLineDraft(
-      line(),
-      'issue-item',
-      '10000',
-      weight: 2.75,
-    );
+    final draft = SubcontractOutboundLineDraft(line(), item(weight: 2.75));
     addTearDown(draft.dispose);
-    expect(draft.validate(l10n), isNull);
+    expect(draft.validate(), isNull);
+    expect(draft.toPayload(), containsPair('id', 'issue-item'));
     expect(draft.toPayload(), containsPair('planItemId', 'plan-item'));
     expect(draft.toPayload(), containsPair('orderItemId', 'order-item'));
     expect(draft.toPayload(), containsPair('qty', 10000));
@@ -63,21 +52,21 @@ void main() {
     expect(draft.toPayload(), containsPair('weight', 2.75));
     expect(draft.toPayload(), containsPair('qtyFromWeight', false));
     draft.qty.text = 'NaN';
-    expect(draft.validate(l10n), isNotNull);
+    expect(draft.validate(), isNotNull);
     draft.selected = false;
-    expect(draft.validate(l10n), isNull);
+    expect(draft.validate(), isNull);
   });
 
   test('实称重量格接受单位后缀并换成千克, 看不懂的输入挡在保存前', () {
-    final draft = SubcontractOutboundLineDraft(line(), 'issue-item', '10000');
+    final draft = SubcontractOutboundLineDraft(line(), item());
     addTearDown(draft.dispose);
     expect(draft.toPayload(), isNot(contains('weight')), reason: '没称不带重量');
     draft.weight.weight.text.text = '850g';
     expect(draft.toPayload(), containsPair('weight', 0.85));
     draft.weight.weight.text.text = '一袋';
-    expect(draft.validate(l10n), subcontractOutboundWeightInvalid);
+    expect(draft.validate(), subcontractOutboundWeightInvalid);
     draft.weight.weight.text.text = '';
-    expect(draft.validate(l10n), isNull);
+    expect(draft.validate(), isNull);
   });
 
   test('已保存的「数量按称重推算」行回显黄框并原样再保存标记', () {
@@ -90,13 +79,7 @@ void main() {
     });
     expect(item.qtyFromWeight, isTrue);
     expect(SubcontractDocItem.fromJson({'id': 'x'}).qtyFromWeight, isFalse);
-    final draft = SubcontractOutboundLineDraft(
-      line(),
-      item.id,
-      '5373',
-      weight: item.weight,
-      qtyFromWeight: item.qtyFromWeight,
-    );
+    final draft = SubcontractOutboundLineDraft(line(), item);
     addTearDown(draft.dispose);
     expect(draft.qty.autofilled, isTrue);
     expect(draft.weight.weight.qtyEstimateNote, '保存时按称重折算的数量');

@@ -198,21 +198,24 @@ class WarehouseArrivalRegistrationContractTest {
     }
 
     @Test
-    void subcontractRegistrationRequiresARealApprovedTargetOutbound() throws Exception {
+    void subcontractRegistrationRequiresMaterialActuallySentToTheSupplier() throws Exception {
         Path direct = Path.of(
                 "src/main/java/com/uten/imp/features/warehouse/inbound/"
                         + "WarehouseArrivalRegistrationService.java");
         Path source = Files.exists(direct) ? direct : Path.of("server").resolve(direct);
         String java = Files.readString(source);
 
+        // ADR-143 §三.6: 登记回厂要求委外商用已发直属物料至少能做成一点委外件;
+        // 没有计划行的明细可回厂套数按 0 计(§二.3 缺 BOM 不能下单, fail-closed, 没有自备料豁免)。
         assertThat(java)
                 .contains("requireSubcontractOutboundReleased")
-                .contains("subcontract_material_issue_items issue_item")
-                .contains("issue.status = 1")
-                .contains("'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND'")
-                .contains("NOT EXISTS (")
-                .contains("new_flow_plan.flow_mode IN")
-                .contains("委外目标件尚未真实审核出仓，不能登记回厂");
+                .contains("fn_subcontract_returnable_qty(order_item.id)")
+                .contains("COALESCE(supplied.returnable_qty, 0) > 0")
+                .contains("请先在委外任务中心领料并由仓库发出直属物料")
+                .doesNotContain("returnable_qty IS NULL")
+                .doesNotContain("自备料")
+                .doesNotContain("flow_mode")
+                .doesNotContain("前置自制");
         assertThat(java.split("requireSubcontractOutboundReleased\\(", -1))
                 .hasSize(4);
     }
@@ -220,11 +223,10 @@ class WarehouseArrivalRegistrationContractTest {
     @Test
     void subcontractReceiptSendsSupplierSuppliedExcessToFinanceInsteadOfRefusingIt()
             throws Exception {
-        Path direct = Path.of(
-                "src/main/java/com/uten/imp/features/subcontract/receipt/"
-                        + "SubcontractReceiptService.java");
-        Path source = Files.exists(direct) ? direct : Path.of("server").resolve(direct);
-        String java = Files.readString(source);
+        String java = read("src/main/java/com/uten/imp/features/subcontract/receipt/"
+                + "SubcontractReceiptService.java");
+        String capacity = read("src/main/java/com/uten/imp/features/subcontract/receipt/"
+                + "SubcontractReturnCapacity.java");
 
         // ADR-101 §2.8：到货异常闸必须**先**跑。它会把「超过我方供料能做出来的数量」那部分
         // 落成 PENDING_FINANCE 到货异常并通知财务(抛的是不回滚的 Blocked 异常，异常记录照常
@@ -236,18 +238,32 @@ class WarehouseArrivalRegistrationContractTest {
                 "requireTargetOutboundCapacity(items, id);");
         assertThat(java)
                 .contains("lockAndRequireDraftOutboundCapacity(req.getItems(), null, List.of())")
-                .contains("FOR UPDATE OF order_item")
-                .contains("active_draft_base")
+                // ADR-143 §三.6：草稿保存、审核守恒闸与发料红冲共用同一个容量读取口。
+                .contains("SubcontractReturnCapacity.lockAndRead(")
+                .contains("facts.activeDraftBase()")
                 // 登记只拦并发撞单：物理上够、但额度被同明细另一张未审草稿占住。
                 .contains("本行可回厂额度已被同一订货明细的其它回厂草稿占用")
                 .doesNotContain("真实出仓可回厂额度不足，或额度已被其它回厂草稿占用")
-                .contains("issue.status = 1 AND issue.is_deleted = FALSE")
-                .contains("receivedBase.add(entry.getValue())")
-                // 守恒额度里要认财务已批准的委外商自带料，否则财务批准完这单仍然审不过去。
-                .contains("issuedBase.add(returnedFailureBase).add(approvedExcessBase)")
-                .contains("financeApprovedExcessBase")
+                .contains("facts.approvedReceiptBase().add(entry.getValue())")
+                .contains("facts.authorizedBase()")
                 .contains("回厂数量超过我方发给委外商的材料能做出来的数量")
+                .doesNotContain("ISSUED_TARGET_BASE_SUM")
                 .doesNotContain("委外目标件尚未足额出仓且无足够IQC失败返修额度");
+        // 守恒额度 = 可做套数(逐种物料取短板, 不相加) + 已退回的质检不合格量 + 财务批准的
+        // 委外商自带料；否则财务批准完这单仍然审不过去。
+        assertThat(capacity)
+                .contains("COALESCE(fn_subcontract_returnable_qty(order_item.id), 0)")
+                .contains("returnableBase.add(returnedFailureBase).add(approvedSupplierOwnBase)")
+                .contains("FOR UPDATE OF order_item")
+                .contains("active_draft_base")
+                .contains("receipt.status = 1")
+                .doesNotContain("returnable_qty IS NULL");
+    }
+
+    private static String read(String relative) throws Exception {
+        Path direct = Path.of(relative);
+        Path source = Files.exists(direct) ? direct : Path.of("server").resolve(direct);
+        return Files.readString(source).replace("\r\n", "\n");
     }
 
     @Test

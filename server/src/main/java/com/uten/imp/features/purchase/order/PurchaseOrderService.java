@@ -430,7 +430,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
      * (goods.default_purchase_price)。汇率取币种现行汇率。「按最近一张订货单推导」的
      * 回退路径已退役 (2026-09-16): 主档没有绑定就不预填, 不再实时扫订单表。
      *
-     * <p>货品有默认供应商或默认单价才返回行; supplierId 只在供应商未删且非内部车间时给出
+     * <p>货品有默认供应商、默认单价或采购允许超收%记忆才返回行; supplierId 只在供应商未删且非内部车间时给出
      * (停用供应商照给, 是否可回填由前端按字典判断), 条款随供应商一起为空。批量一次查询。
      */
     @Transactional(readOnly = true)
@@ -453,7 +453,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                        g.default_purchase_price_color_id,
                        g.default_purchase_price_unit_id,
                        g.default_purchase_price_currency_id,
-                       g.default_purchase_price_tax_rate
+                       g.default_purchase_price_tax_rate,
+                       g.purchase_allowed_over_receipt_pct
                 FROM goods g
                 LEFT JOIN suppliers sup
                   ON sup.id = g.default_supplier_id
@@ -463,15 +464,18 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 WHERE g.id IN (:ids)
                   AND g.is_deleted = false
                   AND (g.default_supplier_id IS NOT NULL
-                       OR g.default_purchase_price IS NOT NULL)
+                       OR g.default_purchase_price IS NOT NULL
+                       OR g.purchase_allowed_over_receipt_pct IS NOT NULL)
                 """).setParameter("ids", goodsIds))) {
+            BigDecimal allowedOverReceiptPct = (BigDecimal) row[12];
             result.put((UUID) row[0], new MasterDefaultTermsPerGoods(
                     (UUID) row[1], priceMasked ? null : (UUID) row[2],
                     priceMasked ? null : (UUID) row[3], priceMasked ? null : (BigDecimal) row[4],
                     priceMasked ? null : (BigDecimal) row[5], priceMasked ? null : (BigDecimal) row[6],
                     priceMasked ? null : new com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext(
                             (UUID) row[7], (UUID) row[8], (UUID) row[9],
-                            (UUID) row[10], (BigDecimal) row[11])));
+                            (UUID) row[10], (BigDecimal) row[11]),
+                    allowedOverReceiptPct, allowedOverReceiptPct == null ? null : "GOODS_MASTER"));
         }
         return result;
     }
@@ -479,6 +483,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     /**
      * 主档默认条款视图 (/last-terms 返回体; 字段口径见 goods / suppliers 主档列)。
      * purchasePrice=goods.default_purchase_price (行价预填)。
+     * allowedOverReceiptPct=goods.purchase_allowed_over_receipt_pct (ADR-144 允许超收记忆, 来源 GOODS_MASTER;
+     * 不随价格脱敏, 它不是价格)。
      */
     public record MasterDefaultTermsPerGoods(
             UUID supplierId,
@@ -487,7 +493,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             BigDecimal exchangeRate,
             BigDecimal taxRate,
             BigDecimal purchasePrice,
-            com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext) {}
+            com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext,
+            BigDecimal allowedOverReceiptPct,
+            String allowedOverReceiptPctSource) {}
 
     @Transactional
     @PreAuthorize("hasAuthority('purchase_order:edit')")
@@ -1050,7 +1058,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                                 item.getPrice(),
                                 item.getAmountOriginal(),
                                 item.getAmountLocal(),
-                                item.getDeliverDate(), item.getTotalAmountInput()))
+                                item.getDeliverDate(), item.getTotalAmountInput(),
+                                item.getAllowedOverReceiptPct()))
                         .toList());
     }
 
@@ -1194,6 +1203,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     : MoneyPolicy.referenceUnitPrice(totalInput, l.getQty());
             it.setTotalAmountInput(totalInput);
             it.setPrice(price);
+            com.uten.imp.common.finance.PurchaseOverReceiptTolerance.requireExactTotalInputOverage(
+                    totalInput, l.getQty(), l.getAllowedOverReceiptPct(), lineNo);
+            it.setAllowedOverReceiptPct(l.getAllowedOverReceiptPct());
             it.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.resolveForSave(businessColumns, "purchase_order",
                     l.getExtraColumns(), previousColumns.getOrDefault(l, List.of()), purchasePriceMasked()));
             BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
@@ -1467,7 +1479,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getGiftQty(),
                 it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(),
                 it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
-                sourceRequests);
+                it.getAllowedOverReceiptPct(), sourceRequests);
         dto.setTotalAmountInput(it.getTotalAmountInput());
         dto.setExtraColumns(it.getExtraColumns());
         return dto;
@@ -1527,7 +1539,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
                 it.getGiftQty(), it.getRequestItemId(), it.getDeliverDate(), it.getWeight(),
                 it.getSourceDocNo(), it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
-                it.getSourceRequests());
+                it.getAllowedOverReceiptPct(), it.getSourceRequests());
         dto.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.visible(it.getExtraColumns(), true));
         return dto;
     }

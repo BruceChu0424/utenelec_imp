@@ -70,6 +70,7 @@ import '../../purchase/config/purchase_doc_config.dart';
 import '../../purchase/models/purchase_doc.dart';
 import '../../subcontract/config/subcontract_doc_config.dart';
 import '../../subcontract/models/subcontract_doc.dart';
+import '../widgets/arrival_registration_failure.dart';
 import '../widgets/subcontract_short_delivery_confirm_dialog.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/inbound_allocation.dart';
@@ -724,12 +725,14 @@ class _WarehouseArrivalReceiptPageState
                     '品质部到库位检验，合格后系统自动按上架位置转正入库，不合格由仓库从库位取出登记退回；'
                     '${groups.length > 1 ? '本批将按 ${groups.length} 个入库仓库分别建立收货单；' : ''}'
                     '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
-                    '实到超过财务批准量时系统自动隔离并通知财务审核组，隔离单不上架、不入库、不生成应付。'
+                    '${_isPurchase ? '实到在最多可收(订货量加允许超收)以内照常处理，超过最多可收时' : '实到超过财务批准量时'}'
+                    '系统自动隔离并通知财务审核组，隔离单不上架、不入库、不生成应付。'
               : '确认后按本次实收数量登记到货并直接送品质部待检(IQC)：'
                     '检验合格后转仓库待入库任务，仓库确认实物与库位后库存才增加；'
                     '${groups.length > 1 ? '本批将按 ${groups.length} 个入库仓库分别建立收货单；' : ''}'
                     '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
-                    '实到超过财务批准量时系统自动隔离并通知财务审核组，'
+                    '${_isPurchase ? '实到在最多可收(订货量加允许超收)以内照常处理，超过最多可收时' : '实到超过财务批准量时'}'
+                    '系统自动隔离并通知财务审核组，'
                     '不会入库、不会生成应付。最终预定归属以 IQC 合格后仓库确认入库事务为准。') +
           (excludedCount > 0
               ? '另有 $excludedCount 行未勾选：本次不登记、不写库存，仍留在待登记送检。'
@@ -820,15 +823,17 @@ class _WarehouseArrivalReceiptPageState
           registrations.add(registration);
         } on ApiException catch (e) {
           if (!mounted) return;
-          // 部分失败：停在原页保住已选内容；已成功仓同键重放，直接重试即可。
+          // 部分失败：停在原页保住已选内容；已成功仓同键重放，不会重复登记。
+          // 服务端明确拒绝给服务端原因；只有结果不确定才说「保持当前内容重试」。
+          final reason = arrivalRegistrationFailureReason(e);
           if (registrations.isNotEmpty) {
             context.appError(
               '已按 ${registrations.length} 个仓库登记送检；仓库'
-              '「${_warehouseLabel(entry.key) ?? entry.key}」登记失败：${e.message}。'
-              '可直接重试，已成功部分不会重复登记',
+              '「${_warehouseLabel(entry.key) ?? entry.key}」登记失败：$reason。'
+              '已成功部分不会重复登记',
             );
           } else {
-            context.appError(e.message);
+            context.appError(reason);
           }
           return;
         }
@@ -856,8 +861,9 @@ class _WarehouseArrivalReceiptPageState
       } else {
         context.go(RouteName.warehouseInboundExpectations);
       }
-    } catch (_) {
-      if (mounted) context.appError('登记送检失败，请稍后重试');
+    } catch (error) {
+      // 本机草稿保护等非网络异常自带可行动文案，原样给出；未知异常才按结果未确认提示。
+      if (mounted) context.appError(arrivalRegistrationFailureReason(error));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1149,7 +1155,9 @@ class _WarehouseArrivalReceiptPageState
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
                     _removedLineCount == 0
-                        ? '本次实收默认=批准剩余量，可改；入库仓库行级必填(按订货单建议仓或上次所选仓'
+                        ? '本次实收默认=批准剩余量，可改；'
+                              '${_isPurchase ? '超过最多可收的部分才转财务；' : ''}'
+                              '入库仓库行级必填(按订货单建议仓或上次所选仓'
                               '预填)，库位按该仓记住的库位或货品资料带出(黄框请核对)，入库后自动记住'
                               '为该仓默认库位。明细默认全选，提交只含勾选行。'
                         : '已移出 $_removedLineCount 行(仅本页临时选择)；这些来源行未写收货、未写库存，仍在待登记。'
@@ -1308,6 +1316,24 @@ class _WarehouseArrivalReceiptPageState
         textOf: (line) => inboundQty(line.item.approvedRemainingQty),
         exactValueOf: (line) => line.item.approvedRemainingQty.toString(),
       ),
+      // ADR-144：采购明细显示「最多可收(含允许超收 p%)」，超过它的部分才转财务。
+      if (_isPurchase)
+        EditableGridColumn(
+          key: 'maxReceivableQty',
+          label: '最多可收',
+          width: 170,
+          numeric: true,
+          headerInfo: procurementMaxReceivableHint,
+          textOf: (line) => line.item.maxReceivableLabel,
+          exactValueOf: (line) => line.item.maxReceivableQty?.toString(),
+          cellBuilder: (context, line) => Text(
+            line.item.maxReceivableLabel,
+            key: ValueKey(
+              'warehouse-arrival-max-receivable-${line.item.orderItemId}',
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ),
       EditableGridColumn(
         key: 'arrivalSource',
         label: workflowFieldText(context).warehouseArrivalSourceLabel,

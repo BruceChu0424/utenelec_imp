@@ -114,7 +114,17 @@ public class SubcontractShortDeliveryService
                    color.name, unit.name, oi.line_no, oi.qty, oi.allowed_loss_pct,
                    COALESCE(oi.unit_rate, 1),
                    %s AS delivered_qty,
-                   NOT EXISTS (
+                   -- 已批准明细一定有冻结计划行(缺 BOM 不能批准); 万一一行都没有, 不算「料已发完」(fail-closed)。
+                   EXISTS (
+                       SELECT 1
+                       FROM subcontract_material_plan_items any_line
+                       JOIN subcontract_material_plans any_plan
+                         ON any_plan.id = any_line.plan_id
+                        AND any_plan.is_deleted = FALSE
+                       WHERE any_line.order_item_id = oi.id
+                         AND any_line.is_deleted = FALSE
+                   )
+                   AND NOT EXISTS (
                        SELECT 1
                        FROM subcontract_material_plan_items plan_item
                        JOIN subcontract_material_plans plan
@@ -123,9 +133,12 @@ public class SubcontractShortDeliveryService
                         AND plan.is_deleted = FALSE
                        WHERE plan_item.order_item_id = oi.id
                          AND plan_item.is_deleted = FALSE
-                         -- 备齐的是当前可发批次, 不是总发料承诺。前置生产只做完并发出首批时,
-                         -- 不能按 prepared_qty 把余下还没做完的计划量当作已全部发完。
-                         AND plan_item.issued_qty < plan_item.planned_qty
+                         -- ADR-143 §二.13：每一种直属物料的已发净量都达到我方需发量, 或该物料已结束领料,
+                         -- 才算「料已发完」; 不同物料不按套数相加或互抵。需发量 = LEAST(计划量, f(Qm)),
+                         -- 财务批准的委外商自带料那部分不用我方物料(§三.4a)。
+                         AND plan_item.draw_closed_at IS NULL
+                         AND plan_item.issued_qty < fn_subcontract_draw_needed_qty(
+                             oi.id, plan_item.planned_qty, plan_item.bom_unit_qty)
                    ) AS material_fully_issued,
                    fn_subcontract_settled_loss_qty(oi.id) AS settled_loss_qty
             FROM subcontract_order_items oi
@@ -150,6 +163,21 @@ public class SubcontractShortDeliveryService
     private final ObjectMapper objectMapper;
     @Autowired
     private ObjectProvider<com.uten.imp.application.port.ProcurementArrivalControlPort> arrivalControl;
+    /**
+     * ADR-143 §4.4 领料重算唤醒(按订货明细): 认损耗结案与损耗红冲改变订货明细是否结清,
+     * 「可领 N」行动卡要随之收回或重新提醒。手工构造的单测里为空, 只跳过唤醒。
+     */
+    @Autowired
+    private ObjectProvider<com.uten.imp.application.port.SubcontractOutboundWakePort> drawRecheck;
+    /**
+     * ADR-098 × ADR-090(2026-10-05): 判定完成后同一事务把被扣住的「先入库后质检」合格品自动转正
+     * (仓库 feature 实现, 委外只经端口)。手工构造的单测里为空, 只跳过转正。
+     */
+    @Autowired
+    private ObjectProvider<com.uten.imp.application.port.SubcontractPreStockReleasePort> preStockRelease;
+    /** 判定的事务首次预锁(订货单 + 被扣住的先入库合格品); 手工构造的单测里为空, 只跳过预锁。 */
+    @Autowired(required = false)
+    private com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
 
     public SubcontractShortDeliveryService(
             JdbcTemplate jdbc,
@@ -224,6 +252,24 @@ public class SubcontractShortDeliveryService
     @Override
     @Transactional(readOnly = true)
     public String stockInHoldReason(UUID receiptId) {
+        String held = holdFinding(receiptId);
+        return held == null ? null : held + "判定完成前这批先不入库, 货先留在待入库不要上架。";
+    }
+
+    /**
+     * 同一道闸的「先入库后质检」说法(ADR-098 × ADR-090, 2026-10-05): 货在登记时已经按库位上架, 品质
+     * 结论照常记; 只是转为可用库存要等委外判定, 判定完成后系统在判定的同一事务里自动转正。
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public String preStockedHoldReason(UUID receiptId) {
+        String held = holdFinding(receiptId);
+        return held == null ? null
+                : held + "货已上架, 等委外判定短交后才能转为可用库存; 判定完成系统自动转入, 仓库不用再点确认入库。";
+    }
+
+    /** 入库闸的事实句(两种入库路线共用前半句), 不放行时以「; 」结尾; 可以入库时返回 null。 */
+    private String holdFinding(UUID receiptId) {
         if (receiptId == null) return null;
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT DISTINCT order_doc.bill_no AS order_bill_no,
@@ -263,7 +309,7 @@ public class SubcontractShortDeliveryService
                 + "(订 " + plain(decimal(first.get("ordered_qty"))) + unit
                 + ", 累计到 " + plain(decimal(first.get("delivered_qty"))) + unit + "), "
                 + (overdue ? "此前判定的分批到货已过预计到齐日, " : "")
-                + "已通知委外判定是分批到货还是接受损耗; 判定完成前这批先不入库, 货先留在待入库不要上架。";
+                + "已通知委外判定是分批到货还是接受损耗; ";
     }
 
     @Override
@@ -373,11 +419,13 @@ public class SubcontractShortDeliveryService
         }
         if (!items.isEmpty() && arrivalControl != null)
             arrivalControl.getObject().refreshAfterReturn("SUBCONTRACT",items);
+        wakeDrawRecheck(items);
     }
 
     @Transactional
     public CaseDetail decide(UUID caseId, DecisionRequest request) {
         tx.bind();
+        lockDecisionFootprint(caseId);
         LockedCase locked = lockCase(caseId);
         if (!STATUS_PENDING.equals(locked.status()) && !STATUS_WAITING.equals(locked.status())) {
             throw new ApiException(ErrorCode.CONFLICT, "该短交案件已结案或已作废，请刷新后查看最新状态");
@@ -411,9 +459,36 @@ public class SubcontractShortDeliveryService
             if (note != null && !note.isBlank()) snapshot.put("note", note);
             appendEvent(caseId, "WAIT_MORE_DECIDED", actorUser, actorEmployee, snapshot);
             publishResolved(caseId, locked.version() + 1, "WAIT_MORE_DECIDED");
+            releaseHeldPreStock(locked.orderItemId());
             return detail(caseId);
         }
-        return acceptLoss(caseId, locked, fact, note, actorUser, actorEmployee, false);
+        CaseDetail decided = acceptLoss(caseId, locked, fact, note, actorUser, actorEmployee, false);
+        releaseHeldPreStock(locked.orderItemId());
+        return decided;
+    }
+
+    /**
+     * 判定事务的首次预锁(ADR-098 × ADR-090, 2026-10-05): 订货单足迹 ∪ 本明细上被扣住的「先入库后质检」
+     * 合格品所在收货单。先于案件行锁, 与品质结论 / 入库(先预锁、后锁案件)同一顺序; 判定写完后补做
+     * 自动转正时嵌套命令只剩覆盖检查。案件不存在时不取锁, 由 {@link #lockCase} 报 404。
+     */
+    private void lockDecisionFootprint(UUID caseId) {
+        if (mutationLocks == null || caseId == null) return;
+        UUID[] head = jdbc.query("""
+                SELECT order_id, order_item_id FROM subcontract_short_delivery_cases WHERE id = ?
+                """, rs -> rs.next() ? new UUID[]{rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)} : null,
+                caseId);
+        if (head == null || head[0] == null || head[1] == null) return;
+        mutationLocks.subcontractShortDeliveryDecision(head[0], List.of(head[1])).verifyUnchanged();
+    }
+
+    /**
+     * 判定完成(分批到货 / 接受损耗)即解锁: 本明细上因待判定而扣住的「先入库后质检」合格品在同一事务里
+     * 按上架位置自动转为可用库存(ADR-098 × ADR-090, 2026-10-05)。同一张收货单另一行仍待判定的照旧扣住。
+     */
+    private void releaseHeldPreStock(UUID orderItemId) {
+        if (orderItemId == null || preStockRelease == null) return;
+        preStockRelease.ifAvailable(port -> port.releaseHeldPreStock(List.of(orderItemId)));
     }
 
     /**
@@ -449,7 +524,7 @@ public class SubcontractShortDeliveryService
                 + plain(shortfall) + (fact.unitName() == null ? "" : " " + fact.unitName()) + ")";
         // 数量合同不变。成本分摊在事务提交前读最终损耗事实，不需要制造财务改量复核。
         UUID wasteId = wasteService.recordShortDeliveryLoss(
-                fact.orderItemId(), fact.orderUnitRate(), shortfall, allowedShortfall,
+                fact.orderItemId(), shortfall, allowedShortfall,
                 fact.allowedLossPct(), cause, BusinessTime.today());
         BigDecimal lossPct = SubcontractShortDeliveryPolicy.shortfallPct(fact.orderedQty(), fact.deliveredQty());
         // ADR-103 §2.5：WAITING_MORE 案件也走这一条 UPDATE。V636 的 CHECK 要求 status<>'WAITING_MORE'
@@ -474,6 +549,7 @@ public class SubcontractShortDeliveryService
                 em, "SUBCONTRACT", fact.orderItemId());
         if (arrivalControl != null) arrivalControl.getObject().refreshAfterReturn(
                 "SUBCONTRACT", List.of(fact.orderItemId()));
+        wakeDrawRecheck(List.of(fact.orderItemId()));
         Map<String, Object> snapshot = new LinkedHashMap<>(snapshot(fact, null, null));
         snapshot.put("lossQty", shortfall);
         snapshot.put("lossPct", lossPct);
@@ -528,7 +604,7 @@ public class SubcontractShortDeliveryService
     }
 
     /**
-     * ADR-103 §2.5「不再出仓」：出仓计划关闭后 FACT_SQL 只看 OPEN 计划, 本行即算「料已发完」,
+     * ADR-143 §二.15「结束领料」：该明细的领料计划行关闭后 FACT_SQL 即算「料已发完」,
      * 与入库同款评估。没有 receiptId——补开的案件 receipt_id 记空(V636 该列可空), 有回厂才评。
      */
     @Override
@@ -591,6 +667,12 @@ public class SubcontractShortDeliveryService
                             SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE),
                     fact, note, actorUser, actorEmployee, true);
         }
+    }
+
+    /** 损耗结案/红冲后按订货明细追加领料重算(同事务 outbox; 单测手工构造时跳过)。 */
+    private void wakeDrawRecheck(List<UUID> orderItemIds) {
+        if (orderItemIds.isEmpty() || drawRecheck == null) return;
+        drawRecheck.ifAvailable(port -> port.enqueueDrawRecheckForOrderItems(orderItemIds));
     }
 
     // ===================== 读模型 =====================
@@ -894,7 +976,7 @@ public class SubcontractShortDeliveryService
             UUID goodsId, UUID colorId, UUID unitId, String goodsCode, String goodsName, String colorName,
             String unitName, Integer lineNo, BigDecimal orderedQty, BigDecimal allowedLossPct,
             BigDecimal orderUnitRate, BigDecimal deliveredQty,
-            /** 本行的料是不是已经全部发给委外商了(没有 OPEN 计划行还留着未发的量)。 */
+            /** 本行每一种直属物料是不是都已发足计划量或已结束领料(ADR-143 §二.13)。 */
             boolean materialFullyIssued, BigDecimal settledLossQty) {
         ItemFacts {
             settledLossQty = settledLossQty == null ? BigDecimal.ZERO : settledLossQty;
@@ -940,7 +1022,7 @@ public class SubcontractShortDeliveryService
      * <p>委外是「先发料、后回厂」，分批发料时供应商手上只有已经发过去的那部分，回厂自然
      * 少于订货量。此前按整张订货行的数量直判，于是每一批回厂都会被判成严重短交、开红档
      * 案件、通知委外、并把整单锁住不让入库——分批发货在这条口径下根本走不通。
-     * 料发完之后(含仓库「不再出仓」关掉余量)再判，口径与用户给的 1000 / 10% / 900 完全一致。
+     * 料发完之后(含委外人员「结束领料」关掉余量)再判，口径与用户给的 1000 / 10% / 900 完全一致。
      */
     private String severityOf(ItemFacts fact, BigDecimal deliveredQty) {
         if (!fact.materialFullyIssued()) return null;

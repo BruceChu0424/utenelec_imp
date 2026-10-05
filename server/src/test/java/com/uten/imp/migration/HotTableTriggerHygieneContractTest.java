@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <ul>
  *   <li>热表上的延迟约束触发器凡是对 UPDATE 起跳的，必须带 WHEN(只在相关列真变了时排队)；</li>
- *   <li>V674 重建的 38 条 ENABLE ALWAYS 守卫(含 _upd 变体)仍是 ALWAYS；</li>
+ *   <li>V674 重建、至今仍在的 33 条 ENABLE ALWAYS 守卫(含 _upd 变体)仍是 ALWAYS；</li>
  *   <li>单号取号函数只挂 INSERT；UPDATE 由列级 WHEN 守卫接管，且每张表都有；</li>
  *   <li>被同表覆盖校验完全包含的三条采购来源溯源触发器不能再装回来；</li>
  *   <li>收付款类别引用方取共享锁、层级/状态变更方取排他锁。</li>
@@ -39,8 +39,9 @@ class HotTableTriggerHygieneContractTest {
             """;
 
     /**
-     * V674 重建的触发器里必须是 ENABLE ALWAYS 的全部 38 条(表.触发器)：V645 时为 ALWAYS 的 27 条原名，
-     * 加上从它们拆出的 11 条 _upd 变体。写死清单而不是拿变体和原名互比——两条一起丢了 ALWAYS 时互比照样相等。
+     * V674 重建的触发器里必须是 ENABLE ALWAYS 的 33 条(表.触发器)：V645 时为 ALWAYS 的 24 条原名，
+     * 加上从它们拆出的 9 条 _upd 变体(V798 随委外前置自制删除了 3 条原名与 2 条 _upd)。
+     * 写死清单而不是拿变体和原名互比——两条一起丢了 ALWAYS 时互比照样相等。
      */
     private static final List<String> ALWAYS_GUARDS_REBUILT_BY_V674 = List.of(
             "production_execution_segments.trg_00_material_snapshot_product_qty",
@@ -50,12 +51,7 @@ class HotTableTriggerHygieneContractTest {
             "production_execution_segments.trg_guard_execution_split_segment_identity_upd",
             "production_execution_segments.trg_guard_execution_start_material_custody",
             "production_execution_segments.trg_guard_execution_workshop_material_custody",
-            "production_material_analyses.trg_direct_subcontract_analysis_preparation",
             "production_material_analyses.trg_future_transfer_analysis",
-            "production_material_analysis_items.trg_bind_direct_subcontract_preparation",
-            "production_material_analysis_items.trg_bind_direct_subcontract_preparation_upd",
-            "production_material_analysis_items.trg_subcontract_preparation_analysis_source_guard",
-            "production_material_analysis_items.trg_subcontract_preparation_analysis_source_guard_upd",
             "production_plan_items.trg_guard_production_plan_item_supply_update",
             "stock_document_items.trg_guard_production_draw_issue_requested_qty",
             "stock_reservations.trg_00_capture_material_reservation_projection",

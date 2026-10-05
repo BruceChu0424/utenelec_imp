@@ -113,6 +113,12 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         analysis.projectIssuePreviewBase(analysisId,overlay);
         Preview reviewed=previews.resolve(analysisId,request.previewRequest(),analysis.issuePreviewView(analysisId,overlay,Map.of()));
         if(!Objects.equals(reviewed.previewFingerprint(),request.previewFingerprint()))throw conflict("汇总来源、已下达或可用供给已变化，请重新核对");
+        // ADR-143 §二.3：缺 BOM 的委外件先转研发(独立事务立即提交，随后的 409 不撤销)，再拒绝本次汇总下达。
+        Map<UUID,MaterialView> reviewedRows=reviewed.analysis().flatMaterials().stream()
+                .collect(Collectors.toMap(MaterialView::materialLineId,row->row,(left,right)->left));
+        analysis.rejectSubcontractBomGaps(header,reviewed.groups().stream().filter(group->"SUBCONTRACT".equals(group.route()))
+                .flatMap(group->group.sources().stream()).map(source->reviewedRows.get(source.materialLineId()))
+                .filter(Objects::nonNull).toList());
         if(reviewed.groups().stream().anyMatch(group->group.blockedReason()!=null))throw conflict(reviewed.groups().stream().map(GroupPreview::blockedReason).filter(Objects::nonNull).findFirst().orElseThrow());
         // Parent groups commit first inside this transaction. Each following group
         // resolves its unchanged original ids against the refreshed exact alias graph.
@@ -146,7 +152,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             PreviewRequest step=new PreviewRequest(current.version(),current.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),List.of(remapped));
             GroupPreview group=previews.resolve(analysisId,step,current).groups().getFirst();
             if(group.blockedReason()!=null)throw conflict(group.blockedReason());
-            boolean manufacturing=manufacturing(group,current);
+            boolean manufacturing=manufacturing(group);
             if(manufacturing&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))throw forbidden("立即审核需要生产计划审核权限");
             String permission=manufacturing?"production_material_analysis:generate":"production_material_analysis:notify";
             if(!access.hasAuthority(permission))throw forbidden("缺少本次汇总下达路线权限");
@@ -232,7 +238,6 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 entitlements.delegateAggregateMakeEntitlements(analysisId,batch.action());
                 var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,input.allowedOverproductionRate(),
                         request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
-                if("SUBCONTRACT".equals(group.route()))createSubcontractTask(batch,group);
                 analysis.refreshWithAnchorGrowth(analysisId);
                 results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
             } else {
@@ -501,7 +506,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                     """).setParameter("id",anchor).setParameter("analysis",analysisId).setParameter("goods",group.goodsId()).setParameter("color",group.colorId()).setParameter("unit",group.unitId())
                     .setParameter("ref","共享制造 "+BusinessTime.today()+" "+id.toString().substring(0,8)).setParameter("qty",sum(group.sources())).setParameter("date",group.deliveryDate())
                     .setParameter("priority",group.sources().stream().mapToInt(SourcePreview::allocationPriority).min().orElse(1)).setParameter("actor",user.requireId()).executeUpdate();
-            markExternal(batch,"MAKE".equals(group.route())?"PREPLAN_MAKE_TASK":"SUBCONTRACT_MAKE_TASK",anchor,"共享制造 "+id.toString().substring(0,8),anchor,null,null);
+            markExternal(batch,"PREPLAN_MAKE_TASK",anchor,"共享制造 "+id.toString().substring(0,8),anchor,null,null);
         }
         event(batch,"CREATE",group,original,request.idempotencyKey(),hash,privateProof,privateFlow);
         return new Batch(id,analysisId,action,anchor,null,group.route(),1);
@@ -863,16 +868,6 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 FROM jsonb_to_recordset(CAST(:updates AS jsonb)) input(id uuid,route text) WHERE material.id=input.id
                 """).setParameter("actor",user.requireId()).setParameter("updates",updates.toString()).executeUpdate();
     }
-    private void createSubcontractTask(Batch batch,GroupPreview group) {
-        UUID task=(UUID)em.createNativeQuery("""
-                INSERT INTO preplan_subcontract_make_tasks(analysis_id,analysis_material_id,supply_action_id,preparation_item_id,goods_id,color_id,unit_id,warehouse_id,required_qty,created_by,updated_by)
-                SELECT batch.analysis_id,NULL,batch.action_id,batch.anchor_analysis_item_id,action.goods_id,action.color_id,action.unit_id,action.warehouse_id,action.requested_qty+action.public_surplus_qty,:actor,:actor
-                FROM preplan_aggregate_batches batch JOIN preplan_supply_actions action ON action.id=batch.action_id WHERE batch.id=:batch
-                ON CONFLICT (preparation_item_id) WHERE status='ACTIVE' AND analysis_material_id IS NULL DO UPDATE SET required_qty=EXCLUDED.required_qty,version=preplan_subcontract_make_tasks.version+1,updated_at=now(),updated_by=EXCLUDED.updated_by
-                RETURNING id
-                """).setParameter("actor",user.requireId()).setParameter("batch",batch.id()).getSingleResult();
-        notices.notifySubcontractMakeTaskCreated(task);
-    }
     private List<MaterialIdentityBridge> materialBridges(List<UUID> batches) {
         if(batches.isEmpty())return List.of();
         List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery(EXACT_BOM_DESCENDANTS_SQL + """
@@ -888,8 +883,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         for(Object[] row:rows){if(row[0]==null)throw conflict("共享BOM路径存在循环或层级超过256，不能提交身份映射");UUID target=(UUID)row[0];origins.computeIfAbsent(target,ignored->new ArrayList<>());if(decimal(row[2]).signum()==0&&!origins.get(target).contains((UUID)row[1]))origins.get(target).add((UUID)row[1]);quantities.put(target,decimal(row[3]));paths.put(target,(String)row[4]);}
         return origins.entrySet().stream().map(entry->new MaterialIdentityBridge(entry.getValue(),entry.getKey(),paths.get(entry.getKey()),quantities.get(entry.getKey()))).toList();
     }
-    private boolean manufacturing(GroupPreview group,AnalysisView view){if("MAKE".equals(group.route()))return true;if(!"SUBCONTRACT".equals(group.route()))return false;
-        return commands.activeBomParentIds(List.of(group.goodsId())).contains(group.goodsId())&&!commands.soleComponentSubcontractGoodsIds(List.of(group.goodsId())).contains(group.goodsId());}
+    /** ADR-143：只有自制建共享制造批次；委外批次永远是外部批次(无锚点)，成员 P 节点各自展开直属物料。 */
+    private static boolean manufacturing(GroupPreview group){return "MAKE".equals(group.route());}
     private static GroupPreview quantities(GroupPreview group,List<SourcePreview> sources,BigDecimal quantity){return new GroupPreview(group.clientGroupKey(),group.compatibilityKey(),group.route(),group.goodsId(),group.goodsCode(),group.goodsName(),group.colorId(),group.colorName(),group.unitId(),group.unitName(),group.sourceRequiredQty(),group.orderedQty(),group.remainingQty(),quantity,group.publicExtraQty(),group.safetyQty(),group.departmentId(),group.workerId(),group.teamDepartmentId(),group.billDate(),group.deliveryDate(),group.productNo(),group.allowedOverproductionRate(),sources,group.sharedBomChildren(),group.blockedReason());}
     private static SourcePreview source(SourcePreview source,BigDecimal qty){return new SourcePreview(source.materialLineId(),source.analysisLineId(),source.sourceLabel(),source.allocationPriority(),source.needDate(),source.sourceRequiredQty(),source.remainingQty(),qty,source.orderedQty(),source.originalMaterialLineIds());}
     private static BigDecimal sum(List<SourcePreview> sources){return sources.stream().map(SourcePreview::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add);}

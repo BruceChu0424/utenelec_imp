@@ -46,8 +46,8 @@ MaterialPreparationStatusPhase materialPreparationStatusPhase({
       _ => MaterialPreparationStatusPhase.unknown,
     };
   }
-  // Receive/inspect/stock-in are the same arrival phase for BUY and SC. A
-  // subcontract row with a MAKE_* preparation stage follows its MAKE step.
+  // Receive/inspect/stock-in are the same arrival phase for BUY and SC; the
+  // subcontract return wait (after materials were sent out) belongs to it too.
   if (stage.tone == ProductionFlowTone.waiting ||
       (stage.key.startsWith('BUY_') && stage.stepIndex >= 3) ||
       (stage.key.startsWith('SC_') && stage.stepIndex >= 4)) {

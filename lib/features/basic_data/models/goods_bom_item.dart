@@ -97,7 +97,7 @@ enum BomActualStatus {
   }
 }
 
-/// 物料分析节点独有的原因代码(usage_reason)：本次由委外单一子件发料。
+/// 物料分析节点独有的原因代码(usage_reason)：上级委外件按领料把这个物料发给委外商。
 const _reasonSubcontractOutbound = 'SUBCONTRACT_OUTBOUND';
 
 /// 为什么按设计使用数量算：原因代码 → 人话(只是原因本身，不带「计算按设计」)。

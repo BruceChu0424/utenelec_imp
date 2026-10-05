@@ -1,7 +1,6 @@
 package com.uten.imp.features.subcontract.material_issue;
 
 import com.uten.imp.common.finance.MoneyPolicy;
-import com.uten.imp.features.subcontract.SubcontractOutboundFlowSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -51,12 +50,11 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 委外出仓单服务：V436 目标件新流 + V304/V221 历史材料行兼容。
+ * 委外材料出仓单服务(ADR-143)：一张草稿 = 委外人员一次领料提交在某个仓库的那部分直属物料。
  *
- * <p>V436 计划行只发订货目标件，并先消费本 planItem/warehouse 的专属统一库存预留；
- * 无足额专属预留即失败。V221 供应商处台账继续记录发出、回仓消费、退回和损耗，
- * 新流冻结换算率以把回仓单据单位转换为目标件基本单位。历史
- * {@code LEGACY_BOM_COMPONENT} 行继续按冻结 BOM 子件口径处理。
+ * <p>草稿只由委外领料提交生成(每行写入 requested_qty 并占用库存)；仓库拣货时只能把某行
+ * 改少(qty ≤ requested_qty)、不能改多、不能加行，改少后立即按新数量重整预留；审核出仓
+ * 先消费本草稿的预留，再按冻结计划行单耗建委外商处物料台账(V221)。
  * <b>不立应付</b>（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。无 Price（amount 可空）。
  *
  * <p>红冲（1→-1）：反向 DIR_IN + 置 status=-1；已有退料/损耗/回厂消费的发料行禁止红冲
@@ -105,7 +103,7 @@ public class SubcontractMaterialIssueService {
     private CommercialPriceVisibility commercialPriceVisibility;
 
     /**
-     * 写操作准入：自有手工单维持 maker 归属隔离；系统按发料计划生成的单据除当前动作权限外，
+     * 写操作准入：个人归属单据维持 maker 归属隔离；领料草稿(仓库出仓池)除当前动作权限外，
      * 还必须持有委外出仓 execute 权限，确保独立撤权对旧 CRUD 端点同样生效。
      *
      * @return 单据当前挂接的计划行 id；更新时也作为不可越权替换的允许集合
@@ -239,17 +237,41 @@ public class SubcontractMaterialIssueService {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
         mutationGuard.verifyUnchanged();
-        canonicalizePlanLines(req.getItems(), existingPlanItemIds, !existingPlanItemIds.isEmpty());
+        canonicalizePlanLines(id, req.getItems(), existingPlanItemIds, !existingPlanItemIds.isEmpty());
         MaterialIssueDraftRows.Reconciled reconciled = MaterialIssueDraftRows.reconcile(id,
                 itemRepo.findByIssueIdOrderByLineNoAsc(id), req.getItems());
         applyHeader(req, r);
-        if (!reconciled.removed().isEmpty()) itemRepo.deleteAll(reconciled.removed());
+        dropRemovedLines(r.getId(), reconciled.removed());
         itemRepo.flush();
         List<MaterialIssueItemDto> items = saveItems(r, req.getItems(), reconciled.targets());
         itemRepo.flush();
+        // 仓库改少或删行后按草稿现有数量重整预留：多出的预留立即释放(ADR-143 §4.3)。
         planService.reserveDraft(r.getId(), r.getWarehouseId());
         applyTotals(r, items);
         return toDetail(r, items);
+    }
+
+    /**
+     * 保存时客户端没再带上的行。领料行(挂计划行)是仓库「本次不发这种物料」: 软删并记
+     * warehouse_dropped_at, 提交量与原数量原样保留, 发料回执据此列出少发(ADR-143 §二.9);
+     * 委外人员撤回、仓库整张退回都不写这一列。没挂计划行的旧草稿行照旧直接删除。
+     */
+    private void dropRemovedLines(UUID issueId, List<SubcontractMaterialIssueItem> removed) {
+        if (removed.isEmpty()) return;
+        List<SubcontractMaterialIssueItem> unplanned = removed.stream()
+                .filter(item -> item.getPlanItemId() == null).toList();
+        List<UUID> dropped = removed.stream().filter(item -> item.getPlanItemId() != null)
+                .map(SubcontractMaterialIssueItem::getId).toList();
+        if (!unplanned.isEmpty()) itemRepo.deleteAll(unplanned);
+        if (dropped.isEmpty()) return;
+        em.createNativeQuery("""
+                UPDATE subcontract_material_issue_items
+                SET is_deleted = TRUE, warehouse_dropped_at = now(), updated_at = now(), updated_by = :actorId
+                WHERE issue_id = :issueId AND id IN (:ids) AND is_deleted = FALSE
+                """).setParameter("actorId", currentUser.requireId())
+                .setParameter("issueId", issueId)
+                .setParameter("ids", dropped)
+                .executeUpdate();
     }
 
     @Transactional
@@ -258,8 +280,12 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        requireIssueWritable(r, "subcontract_material_issue:delete");
+        Set<UUID> planItemIds = requireIssueWritable(r, "subcontract_material_issue:delete");
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
+        if (!planItemIds.isEmpty()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外领料草稿不能直接删除；整张都不发请在拣货页把这张领料退回委外人员");
+        }
         mutationGuard.verifyUnchanged();
         planService.releaseDraftReservations(id);
         r.setDeleted(true);
@@ -276,14 +302,17 @@ public class SubcontractMaterialIssueService {
     }
 
     /**
-     * 保存前置校验（计划挂接行）：绑定只能来自当前系统草稿；除数量外的库存键、单位、
-     * 订货/父件关系全部以计划快照覆盖客户端值。审核时另有 CAS 兜底并发超发。
+     * 保存前置校验(领料草稿行，ADR-143 §4.3)：计划行绑定只能来自本草稿已有的行，不能新增或替换；
+     * 仓库只能把数量改少(0 < qty ≤ 委外人员提交的 requested_qty)，本次不发的物料整行删掉(至少留一行，
+     * 整张都不发走拣货页「退回」)；库存键、单位及订货/父件关系全部以冻结计划行覆盖客户端值。
+     * 审核时另有计划行 CAS 与库内守卫兜底。
      */
-    void canonicalizePlanLines(List<MaterialIssueItemLine> lines,
+    void canonicalizePlanLines(UUID issueId,
+                               List<MaterialIssueItemLine> lines,
                                Set<UUID> allowedPlanItemIds,
                                boolean planBindingRequired) {
         if (planBindingRequired && (lines == null || lines.isEmpty())) {
-            throw new ApiException(ErrorCode.CONFLICT, "计划生成的出仓草稿不可移除全部计划行");
+            throw new ApiException(ErrorCode.CONFLICT, "领料出仓单至少要发一种物料；整张都不发请在拣货页把这张领料退回委外人员");
         }
         if (lines == null) {
             return;
@@ -292,35 +321,50 @@ public class SubcontractMaterialIssueService {
         for (MaterialIssueItemLine line : lines) {
             if (line.getPlanItemId() == null) {
                 if (planBindingRequired) {
-                    throw new ApiException(ErrorCode.CONFLICT, "计划生成的出仓明细不可移除计划行绑定");
+                    throw new ApiException(ErrorCode.CONFLICT, "领料出仓明细不可移除计划行绑定，也不能新增物料行");
                 }
                 continue;
             }
             if (!allowedPlanItemIds.contains(line.getPlanItemId())) {
-                throw new ApiException(ErrorCode.CONFLICT, "出仓明细不可新增或替换发料计划行绑定");
+                throw new ApiException(ErrorCode.CONFLICT, "出仓明细不可新增或替换领料计划行绑定");
             }
             if (!seenPlanItemIds.add(line.getPlanItemId())) {
-                throw new ApiException(ErrorCode.CONFLICT, "同一发料计划行不可重复提交");
+                throw new ApiException(ErrorCode.CONFLICT, "同一领料计划行不可重复提交");
             }
-            List<Object[]> rows = jdbcRows("""
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = (List<Object[]>) em.createNativeQuery("""
                     SELECT pi.plan_id, pi.order_item_id,
                            pi.parent_goods_id, pi.parent_color_id,
                            pi.goods_id, pi.color_id, pi.unit_id, pi.unit_rate,
-                           pi.planned_qty, pi.issued_qty, p.status
+                           p.status, pi.draw_closed_at IS NOT NULL,
+                           (SELECT item.requested_qty
+                            FROM subcontract_material_issue_items item
+                            WHERE item.issue_id = :issueId AND item.plan_item_id = pi.id
+                              AND item.is_deleted = FALSE
+                            ORDER BY item.id LIMIT 1)
                     FROM subcontract_material_plan_items pi
                     JOIN subcontract_material_plans p ON p.id = pi.plan_id AND p.is_deleted = FALSE
                     WHERE pi.id = :id AND pi.is_deleted = FALSE
-                    """, line.getPlanItemId());
+                    """).setParameter("id", line.getPlanItemId())
+                    .setParameter("issueId", issueId).getResultList();
             if (rows.isEmpty()) {
-                throw new ApiException(ErrorCode.CONFLICT, "关联的委外发料计划行不存在，请刷新后重试");
+                throw new ApiException(ErrorCode.CONFLICT, "关联的委外领料计划行不存在，请刷新后重试");
             }
             Object[] row = rows.getFirst();
-            if (!"OPEN".equals(row[10])) {
-                throw new ApiException(ErrorCode.CONFLICT, "发料计划已关闭或取消，禁止挂接出仓");
+            if (!"OPEN".equals(row[8]) || Boolean.TRUE.equals(row[9])) {
+                throw new ApiException(ErrorCode.CONFLICT, "该物料的领料已结束或订货已取消，不能继续出仓");
             }
-            BigDecimal remaining = decimal(row[8]).subtract(decimal(row[9]));
-            if (line.getQty() == null || line.getQty().compareTo(remaining) > 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "出仓量超过发料计划余量(剩余 " + remaining.stripTrailingZeros().toPlainString() + ")");
+            if (row[10] == null) {
+                throw new ApiException(ErrorCode.CONFLICT, "出仓明细缺少委外人员提交的领料数量，请刷新后重试");
+            }
+            BigDecimal requested = decimal(row[10]);
+            if (line.getQty() == null || line.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "出仓数量必须大于 0；本次不发的物料请删除该行");
+            }
+            if (line.getQty().compareTo(requested) > 0) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "仓库只能少发不能多发：本行委外人员提交的领料数量是 "
+                                + requested.stripTrailingZeros().toPlainString());
             }
             // plan_item_id 是唯一客户端引用；库存键、单位及父件/订货关系全部以计划快照回填。
             line.setOrderItemId((UUID) row[1]);
@@ -333,24 +377,15 @@ public class SubcontractMaterialIssueService {
         }
     }
 
-    private List<Object[]> jdbcRows(String sql, UUID id) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = (List<Object[]>) em.createNativeQuery(sql)
-                .setParameter("id", id).getResultList();
-        return rows;
-    }
-
     private static BigDecimal decimal(Object value) {
         return value == null ? BigDecimal.ZERO : (BigDecimal) value;
     }
 
     /**
-     * 审核：0→1。冻结 BOM 版本 + 建供应商处子件台账（at_supplier_qty = 发料量）+ 材料出库（type15, DIR_OUT）。
-     *
-     * <p>放开原 fail-closed 门禁：发料现在有权威台账，回厂进仓可按冻结 BOM 守恒消费
-     * （supplier_ending = at_supplier − consumed − returned − wasted，DB 强制 ≥ 0）。
-     * 要求每条明细挂委外订货明细（order_item_id），以便回厂按父件 BOM 消费。
-     * 不立应付（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。
+     * 审核：0→1。先消费本草稿预留(改少的余量一并释放)，材料出库（type15, DIR_OUT），
+     * 再按冻结计划行单耗建委外商处物料台账（at_supplier_qty = 发料量，V221 守恒：
+     * supplier_ending = at_supplier + compensated − consumed − returned − wasted ≥ 0），
+     * 最后回写计划行已发净量。不立应付（材料发出不是加工费结算，加工费走进仓单 BOM 成本）。
      */
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_material_issue:approve')")
@@ -373,15 +408,15 @@ public class SubcontractMaterialIssueService {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
         for (SubcontractMaterialIssueItem it : items) {
-            if (it.getOrderItemId() == null) {
-                throw new ApiException(ErrorCode.BUSINESS, "委外发料明细须关联委外订货明细，以便回厂按 BOM 守恒消费");
+            if (it.getOrderItemId() == null || it.getPlanItemId() == null) {
+                throw new ApiException(ErrorCode.BUSINESS, "委外出仓明细必须来自委外人员提交的领料，请刷新后重试");
             }
             if (it.getQty() == null || it.getQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "发料明细数量必须大于 0");
             }
         }
         lockAndValidateOrderItems(r, items);
-        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireConsistentTargetBasis(em,
+        com.uten.imp.common.finance.ProcurementOrderQuantityBounds.requireKnownReceiptBasis(em, "SUBCONTRACT",
                 items.stream().map(SubcontractMaterialIssueItem::getOrderItemId).distinct().toList());
         captureGoodsSnapshots(
                 items,
@@ -396,20 +431,17 @@ public class SubcontractMaterialIssueService {
         for (SubcontractMaterialIssueItem it : items) {
             StockService.PostedMovement posted = applyMovement(r, it, StockService.DIR_OUT, now, null);
             recordIssueObservation(r, it, posted, now);
-            // 冻结 BOM 版本（每单位父件耗用本子件量）+ 建供应商处子件台账（at_supplier = 发料量）。
-            // 计划挂接行冻结批准时计划的 bom_unit_qty（与计划量同快照，BOM 后改不影响在途守恒）；
-            // 历史手工行回落当前 goods_bom_items 首条活动边。
+            // 建委外商处物料台账（at_supplier = 发料量），单耗取财务批准时冻结的计划行
+            // bom_unit_qty（BOM 后改不影响在途守恒）。
             it.setAtSupplierQty(it.getQty());
-            it.setFrozenUnitQty(it.getPlanItemId() != null
-                    ? planUnitQty(it.getPlanItemId())
-                    : lookupFrozenUnitQty(it.getParentGoodsId(), it.getGoodsId()));
+            it.setFrozenUnitQty(planUnitQty(it.getPlanItemId()));
             itemRepo.save(it);
         }
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
         issueRepo.save(r);
-        // 计划回写（同事务）：issued_qty += 本次出仓量（CAS 防超计划）；分批余量自动续生草稿。
+        // 计划回写（同事务）：已发净量 += 本次出仓量（CAS 防超计划）；不自动续生草稿，下一批由委外人员领料。
         planService.syncAfterIssueApproved(id);
         return detail(id);
     }
@@ -420,7 +452,10 @@ public class SubcontractMaterialIssueService {
                 SELECT bom_unit_qty FROM subcontract_material_plan_items
                 WHERE id = :id AND is_deleted = FALSE
                 """).setParameter("id", planItemId).getResultList();
-        return rows.isEmpty() ? null : (BigDecimal) rows.getFirst();
+        if (rows.isEmpty() || rows.getFirst() == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外领料计划行不存在或缺少冻结单耗，请刷新后重试");
+        }
+        return (BigDecimal) rows.getFirst();
     }
 
     /**
@@ -470,29 +505,9 @@ public class SubcontractMaterialIssueService {
     }
 
     /**
-     * 查当前 goods_bom_items 的子件单位用量（每单位父件耗用本子件），作为本次发料的冻结 BOM 版本。
-     * 无 BOM 边返回 null（该子件不按 BOM 消费；回厂消费将跳过此子件）。
-     * 整批领料的料 (ADR-131 期间边) 不参与委外, 同样返回 null。
+     * 红冲：1→-1。反向 DIR_IN + 计划行已发净量对称回减；已有退料/损耗/回厂核销的发料行先红冲下游。
+     * 红冲后委外商处物料可做成的套数必须仍覆盖已审核与草稿回厂(ADR-143 §三.6)。
      */
-    private BigDecimal lookupFrozenUnitQty(UUID parentGoodsId, UUID componentGoodsId) {
-        if (parentGoodsId == null || componentGoodsId == null) return null;
-        @SuppressWarnings("unchecked")
-        List<BigDecimal> rows = em.createNativeQuery("""
-                SELECT bom.qty FROM goods_bom_items bom
-                WHERE bom.goods_id = :parent AND bom.component_goods_id = :component
-                  AND COALESCE(bom.is_deleted, false) = false
-                  AND NOT EXISTS (SELECT 1 FROM goods c
-                                  WHERE c.id = bom.component_goods_id AND c.issue_method = 'PERIODIC')
-                ORDER BY bom.sort_order ASC NULLS LAST, bom.id ASC
-                LIMIT 1
-                """)
-                .setParameter("parent", parentGoodsId)
-                .setParameter("component", componentGoodsId)
-                .getResultList();
-        return rows.isEmpty() ? null : rows.getFirst();
-    }
-
-    /** 红冲：1→-1。反向 DIR_IN + 计划 issued 对称回减；不再改写成品行 legacy issued_qty（无 ArAp）。 */
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_material_issue:reverse')")
     public MaterialIssueDetail reverse(UUID id) {
@@ -510,7 +525,14 @@ public class SubcontractMaterialIssueService {
                         || positive(it.getConsumedQty()))) {
             throw new ApiException(ErrorCode.BUSINESS, "委外发料已有退料/损耗/回厂消费记录，请先红冲下游单据");
         }
-        requireReturnCapacityAfterReverse(id, items);
+        // 与回厂草稿保存/审核共用订货明细行锁，先于库存锁取得。
+        List<UUID> orderItemIds = items.stream()
+                .map(SubcontractMaterialIssueItem::getOrderItemId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+        lockOrderItems(orderItemIds);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -528,92 +550,41 @@ public class SubcontractMaterialIssueService {
         planService.reverseOutboundReservations(id);
         r.setStatus(STATUS_REVERSED);
         issueRepo.save(r);
-        // 计划回写（同事务）：issued_qty -= 红冲量；不自动补草稿（工作台「补齐出仓单」）。
+        // 计划回写（同事务）：已发净量 −= 红冲量；不自动补草稿。
         planService.syncAfterIssueReversed(id);
+        em.flush();
+        requireReturnCapacityAfterReverse(orderItemIds);
         return detail(id);
     }
 
-    /**
-     * 与回厂草稿 create/update 共用订货明细行锁。红冲后剩余的真实出仓 + 合法返修
-     * 容量必须仍覆盖已审核回厂和活动草稿；有其它批次足额覆盖时不做无条件阻断。
-     */
-    private void requireReturnCapacityAfterReverse(
-            UUID issueId, List<SubcontractMaterialIssueItem> items) {
-        List<UUID> orderItemIds = items.stream()
-                .map(SubcontractMaterialIssueItem::getOrderItemId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .sorted()
-                .toList();
+    private void lockOrderItems(List<UUID> orderItemIds) {
         if (orderItemIds.isEmpty()) return;
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT order_item.id,
-                       EXISTS (
-                           SELECT 1
-                           FROM subcontract_material_plan_items plan_item
-                           WHERE plan_item.order_item_id = order_item.id
-                             AND plan_item.flow_mode IN (
-                                 'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                             AND plan_item.is_deleted = FALSE
-                       ) AS new_flow,
-                       COALESCE((
-                           SELECT
-                           """ + SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM + """
-                           FROM subcontract_material_issue_items issue_item
-                           JOIN subcontract_material_issues issue
-                             ON issue.id = issue_item.issue_id
-                            AND issue.status = 1
-                            AND issue.is_deleted = FALSE
-                           JOIN subcontract_material_plan_items plan_item
-                             ON plan_item.id = issue_item.plan_item_id
-                            AND plan_item.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                            AND plan_item.is_deleted = FALSE
-                           JOIN subcontract_order_items order_unit
-                             ON order_unit.id = issue_item.order_item_id
-                           WHERE issue_item.order_item_id = order_item.id
-                             AND issue_item.issue_id <> :issueId
-                             AND issue_item.is_deleted = FALSE
-                       ), 0)
-                       + COALESCE((
-                           SELECT SUM(rejection.failed_base_qty)
-                           FROM procurement_iqc_rejection_cases rejection
-                           WHERE rejection.receipt_type = 'SUBCONTRACT'
-                             AND rejection.order_item_id = order_item.id
-                             AND rejection.is_deleted = FALSE
-                             AND rejection.return_recorded_at IS NOT NULL
-                             AND rejection.status IN (
-                                 'RETURN_RECORDED','CREDIT_CONFIRMED',
-                                 'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
-                       ), 0) AS authorized_base_after_reverse,
-                       COALESCE((
-                           SELECT SUM(receipt_item.qty * COALESCE(receipt_item.unit_rate, 1))
-                           FROM subcontract_receipt_items receipt_item
-                           JOIN subcontract_receipts receipt
-                             ON receipt.id = receipt_item.receipt_id
-                            AND receipt.status IN (0, 1)
-                            AND receipt.is_deleted = FALSE
-                           WHERE receipt_item.order_item_id = order_item.id
-                             AND receipt_item.is_deleted = FALSE
-                       ), 0) AS claimed_base
+        List<?> locked = em.createNativeQuery("""
+                SELECT order_item.id
                 FROM subcontract_order_items order_item
                 WHERE order_item.id IN (:orderItemIds)
                   AND COALESCE(order_item.is_deleted, FALSE) = FALSE
                 ORDER BY order_item.id
                 FOR UPDATE OF order_item
-                """).setParameter("issueId", issueId)
-                .setParameter("orderItemIds", orderItemIds)
-                .getResultList();
-        if (rows.size() != orderItemIds.size()) {
+                """).setParameter("orderItemIds", orderItemIds).getResultList();
+        if (locked.size() != orderItemIds.size()) {
             throw new ApiException(ErrorCode.CONFLICT, "委外出仓来源订货明细不存在或已删除");
         }
-        for (Object[] row : rows) {
-            if (!Boolean.TRUE.equals(row[1])) continue;
-            if (decimal(row[3]).compareTo(decimal(row[2])) > 0) {
+    }
+
+    /**
+     * 红冲已写入本事务后复核：委外商处物料剩下能做成的套数 + 质检退回额度 + 财务批准自带料
+     * 仍须覆盖已审核与草稿回厂(与回厂草稿保存/审核同一段 SQL)；有其它批次足额覆盖时不阻断。
+     */
+    private void requireReturnCapacityAfterReverse(List<UUID> orderItemIds) {
+        for (com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity.Facts facts
+                : com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity
+                        .lockAndRead(em, orderItemIds, null).values()) {
+            if (facts.approvedReceiptBase().add(facts.activeDraftBase())
+                    .compareTo(facts.authorizedBase()) > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "红冲后目标件真实出仓额度不足以覆盖已审核或草稿回厂，请先处理下游回厂单");
+                        "红冲后委外商处物料能做出来的数量不够覆盖已审核或草稿回厂，请先处理下游回厂单");
             }
         }
     }
@@ -892,8 +863,8 @@ public class SubcontractMaterialIssueService {
         return new MaterialIssueItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
-                it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
-                it.getAmountLocal(), it.getReturnedQty(), it.getWastedQty(),
+                it.getUnitId(), it.getUnitRate(), it.getQty(), it.getRequestedQty(), it.getPrice(),
+                it.getAmountOriginal(), it.getAmountLocal(), it.getReturnedQty(), it.getWastedQty(),
                 it.getAtSupplierQty(), it.getConsumedQty(), it.getFrozenUnitQty(),
                 it.getOrderItemId(), it.getPlanItemId(),
                 it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(), it.getParentGoodsNameSnapshot(),
@@ -926,7 +897,7 @@ public class SubcontractMaterialIssueService {
         return new MaterialIssueItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
-                it.getQty(), null, null, null, it.getReturnedQty(), it.getWastedQty(),
+                it.getQty(), it.getRequestedQty(), null, null, null, it.getReturnedQty(), it.getWastedQty(),
                 it.getAtSupplierQty(), it.getConsumedQty(), it.getFrozenUnitQty(), it.getOrderItemId(),
                 it.getPlanItemId(), it.getParentGoodsId(), it.getParentGoodsCodeSnapshot(),
                 it.getParentGoodsNameSnapshot(), it.getParentGoodsSnapshotSource(),

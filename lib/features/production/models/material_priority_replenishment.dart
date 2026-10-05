@@ -13,7 +13,6 @@ class MaterialPriorityReplenishmentPreview {
     required this.operation,
     this.route,
     this.canOverSupply = false,
-    this.requiresPreparation = false,
     this.safetyReplenishmentQty = 0,
     this.blockedReason,
     this.existingChildAnalysisLineId,
@@ -30,7 +29,6 @@ class MaterialPriorityReplenishmentPreview {
   final Set<MaterialSupplyRoute> allowedRoutes;
   final String operation;
   final bool canOverSupply;
-  final bool requiresPreparation;
   final double safetyReplenishmentQty;
   final String? blockedReason;
   final String? existingChildAnalysisLineId;
@@ -61,7 +59,6 @@ class MaterialPriorityReplenishmentPreview {
           .toSet(),
       operation: json['operation'] as String? ?? '',
       canOverSupply: json['canOverSupply'] == true,
-      requiresPreparation: json['requiresPreparation'] == true,
       safetyReplenishmentQty: qty('safetyReplenishmentQty'),
       blockedReason: json['blockedReason'] as String?,
       existingChildAnalysisLineId:

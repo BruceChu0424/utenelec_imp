@@ -105,6 +105,17 @@ public class SubcontractApplicationController {
         return service.decompositionPreview(req.itemIds());
     }
 
+    /**
+     * 委外任务中心「通知研发完善」(ADR-143 §二.3)：申请明细的委外件缺 BOM 时转工程研发部完善。
+     * 权限与分解订货同一组(能分解这张申请的人才会被缺 BOM 挡住)。返回 {@code {taskNo, created}}。
+     */
+    @PostMapping("/items/{applicationItemId}/forward-bom")
+    @PreAuthorize("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')")
+    public com.uten.imp.features.subcontract.application.dto.ForwardBomResult forwardBom(
+            @PathVariable UUID applicationItemId) {
+        return service.forwardBom(applicationItemId);
+    }
+
     @GetMapping("/{id}/history/rows")
     @PreAuthorize("hasAuthority('subcontract_application:view')")
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(

@@ -55,6 +55,9 @@ class SubcontractCommercialPriceVisibilityTest {
     @Mock private ProductionSupplySourceGuard productionSourceGuard;
     @Mock private ProcurementApprovalProjectionQuery approvalProjection;
     @Mock private EmployeeNameResolver nameResolver;
+    /** 草稿详情会查「缺 BOM」的委外件(ADR-143 §二.3)；这里没有缺 BOM 的货品。 */
+    @Mock private jakarta.persistence.EntityManager em;
+    @Mock private jakarta.persistence.Query nativeQuery;
 
     @InjectMocks private SubcontractOrderService orderService;
     @InjectMocks private SubcontractReturnService returnService;
@@ -64,6 +67,10 @@ class SubcontractCommercialPriceVisibilityTest {
 
     @BeforeEach
     void denyCommercialPricePermission() {
+        lenient().when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn(nativeQuery);
+        lenient().when(nativeQuery.setParameter(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any())).thenReturn(nativeQuery);
+        lenient().when(nativeQuery.getResultList()).thenReturn(List.of());
         lenient().when(commercialPriceVisibility.canViewSubcontractOrder()).thenReturn(false);
         lenient().when(commercialPriceVisibility.canViewSubcontractReturn()).thenReturn(false);
         lenient().when(commercialPriceVisibility.canViewSubcontractWasteSuggestion())
@@ -194,7 +201,7 @@ class SubcontractCommercialPriceVisibilityTest {
         WasteDoc waste = new WasteDoc(UUID.randomUUID(), "SL-1", (short) 1,
                 LocalDate.now(), new BigDecimal("2"), new BigDecimal("5"), true);
         OrderProgress raw = new OrderProgress(UUID.randomUUID(), "SO-1", (short) 1,
-                "APPROVED", null, true, "OPEN", null,
+                "APPROVED", null, "OPEN", null,
                 List.of(), List.of(), List.of(receipt), List.of(finishedReturn), List.of(waste),
                 List.of(), new BigDecimal("20"), new BigDecimal("5"), false);
 

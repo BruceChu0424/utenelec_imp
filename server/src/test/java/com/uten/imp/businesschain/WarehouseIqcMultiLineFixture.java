@@ -7,6 +7,8 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.purchase.order.PurchaseOrderService;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
 import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawCommandService;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
@@ -89,12 +91,18 @@ final class WarehouseIqcMultiLineFixture {
         return new WarehouseIqcScaleFixture.Scenario(w,view.analysisId(),confirmer,List.of(first,second),List.copyOf(sources),required,List.copyOf(buys),List.copyOf(subs));
     }
 
+    /**
+     * ADR-143: every subcontract SKU issues its own direct material (per-unit 1). One real OTHER_IN receives
+     * the materials, finance approves the order, the subcontract clerk draws every line in full and the
+     * warehouse issues each draw draft as submitted.
+     */
     private void openAndIssueSubcontract(FullChainEndToEndTest.World w,UUID warehouse,List<UUID> goods,
                                         BigDecimal qty,UUID settlement,UUID reviewer) {
+        List<UUID> materials=goods.stream().map(id->masters.ensureSubcontractDirectMaterial(w,id)).toList();
         var stock=beans.getBean(StockDocService.class);
         var opening=new com.uten.imp.features.stock.dto.StockDocSaveRequest();
         opening.setDocType("OTHER_IN");opening.setBillDate(BusinessTime.today());opening.setWarehouseId(warehouse);
-        opening.setItems(goods.stream().map(id->{var row=new com.uten.imp.features.stock.dto.StockDocItemLine();
+        opening.setItems(materials.stream().map(id->{var row=new com.uten.imp.features.stock.dto.StockDocItemLine();
             row.setGoodsId(id);row.setUnitId(w.unitId());row.setUnitRate(BigDecimal.ONE);row.setQty(qty);row.setPrice(BigDecimal.TEN);
             row.setAmountOriginal(qty.multiply(BigDecimal.TEN));row.setAmountLocal(row.getAmountOriginal());return row;}).toList());
         stock.approve(stock.create(opening).getId());
@@ -107,16 +115,17 @@ final class WarehouseIqcMultiLineFixture {
         UUID orderId=beans.getBean(SubcontractOrderService.class).create(order).getId();
         beans.getBean(ProcurementFinanceApprovalService.class).submit("SUBCONTRACT",orderId);
         masters.loginAs(reviewer);masters.approvePendingFinance("SUBCONTRACT",orderId);masters.loginAs(w.superAdminUserId());
-        var issueIds=jdbc.queryForList("SELECT DISTINCT h.id FROM subcontract_material_issues h JOIN subcontract_material_issue_items i ON i.issue_id=h.id JOIN subcontract_order_items oi ON oi.id=i.order_item_id WHERE oi.order_id=? AND h.status=0 AND NOT h.is_deleted AND NOT i.is_deleted",UUID.class,orderId);
-        assertFalse(issueIds.isEmpty());
+        List<UUID> orderItems=jdbc.queryForList("SELECT id FROM subcontract_order_items WHERE order_id=? AND NOT is_deleted ORDER BY line_no,id",UUID.class,orderId);
+        assertEquals(goods.size(),orderItems.size());
+        var draws=beans.getBean(SubcontractDrawCommandService.class);
         var service=beans.getBean(SubcontractMaterialIssueService.class);
-        for(UUID id:issueIds) {
-            var draft=service.detail(id);var command=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest();
-            command.setBillDate(BusinessTime.today());command.setSupplierId(w.supplierId());command.setWarehouseId(warehouse);
-            command.setItems(draft.getItems().stream().map(item->{var row=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine();
-                row.setGoodsId(item.getGoodsId());row.setColorId(item.getColorId());row.setUnitId(w.unitId());row.setUnitRate(BigDecimal.ONE);row.setQty(qty);
-                row.setOrderItemId(item.getOrderItemId());row.setPlanItemId(item.getPlanItemId());row.setParentGoodsId(item.getParentGoodsId());return row;}).toList());
-            service.update(id,command);service.approve(id);
+        for(int from=0;from<orderItems.size();from+=50) {
+            var chunk=orderItems.subList(from,Math.min(orderItems.size(),from+50));
+            var submitted=draws.submit(new SubcontractDrawContracts.DrawSubmitRequest(
+                    chunk.stream().map(item->new SubcontractDrawContracts.DrawItemRequest(item,qty)).toList(),
+                    "iqc-large-draw-"+orderId+"-"+from));
+            assertFalse(submitted.issueIds().isEmpty());
+            for(UUID id:submitted.issueIds())service.approve(id);
         }
     }
 

@@ -147,7 +147,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomDesignReasonOutputUnitChanged => '父件单位变了，需重新学习';
 
   @override
-  String get bomDesignReasonSubcontractOutbound => '本次由委外单一子件发料，按委外合同用量';
+  String get bomDesignReasonSubcontractOutbound =>
+      '上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量';
 
   @override
   String get bomDesignReasonOther => '没有可用的真实数据';
@@ -2669,19 +2670,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String materialPreparedChildCreated(int count) {
-    return '已创建 $count 个备料子任务，尚未下达车间';
-  }
-
-  @override
-  String get materialPreparedChildNext =>
-      '核对下方已选行的数量、车间和负责人，再点击“生成生产计划”；无审核权限时将提交审批。';
-
-  @override
-  String get materialPreparedChildNeedPlanner =>
-      '请由有生成生产计划权限的员工填写数量、车间和负责人并提交计划。';
-
-  @override
   String get materialRootRoutePending => '路线待确认';
 
   @override
@@ -2932,60 +2920,13 @@ class AppLocalizationsZh extends AppLocalizations {
       '只有一种待收来源时，系统自动识别。同时有正常待到货和已退未补数量时，请按这批实物选择。选“先补退货”会先补回已退数量，超出的部分按正常到货处理；免费补回或重新计款由原退货处理结果决定。';
 
   @override
-  String get subcontractPreparationWarehouse => '内部生产入库仓库';
-
-  @override
-  String get subcontractPreparationWarehouseHint =>
-      '直接下单的委外件有子件且现货不够时，需要先选内部生产的入库仓库。系统把缺口交给计划部，做好并实际入库后才能提交财务；没有子件或现货足够时可不选。';
-
-  @override
-  String get subcontractInternalProduction => '内部生产';
-
-  @override
-  String get subcontractPreparedQuantity => '已备齐';
-
-  @override
-  String get subcontractPreparationShortage => '还需生产';
-
-  @override
-  String get subcontractOpenPreparation => '查看生产安排';
-
-  @override
-  String get subcontractDraftPreparationHint => '先由计划安排内部生产，备齐入库后再提交财务。';
-
-  @override
-  String get subcontractWaitingPlan => '等待计划安排';
-
-  @override
-  String get subcontractReadyForFinance => '已备齐，可提交财务';
-
-  @override
   String get materialIssuedPlanSyncPending => '已下达，计划进度待同步';
-
-  @override
-  String get subcontractOrderBlockedProducing => '正在生产，暂时不能下委外单';
-
-  @override
-  String get subcontractOrderBlockedPreparation => '前置生产尚未完成，暂时不能下委外单';
-
-  @override
-  String get subcontractOrderBlockedNotification => '前置生产已完成，请先通知委外后再下单';
-
-  @override
-  String get subcontractOrderBlockedCancelled => '生产任务已取消，暂时不能下委外单';
-
-  @override
-  String get subcontractOrderBlockedComponentStock =>
-      '子件尚未入库，暂时不能下委外单；子件入库后任务中心会自动解锁';
 
   @override
   String get subcontractPlanIssuedDate => '计划下达日期';
 
   @override
   String get subcontractPlanIssuedDateHint => '计划部门首次下达这项委外任务的日期';
-
-  @override
-  String get subcontractOrderBlockedRefresh => '已通知委外，请刷新任务列表后下单';
 
   @override
   String get serverStatusTitle => '服务器状态';
@@ -3347,7 +3288,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundBatchHint =>
-      '明细按整张出库单勾选，本次数量可改小分批出库。各单独立保存并审核，保留已完成结果；发生异常时暂停，核实后继续尚未执行的单据。';
+      '明细按整张出库单勾选，本次数量可改小分批出库；某条物料这次不发就填 0(保存时删掉这一行)，整张单都不发请到单张拣货页「退回委外(不发)」。各单独立保存并审核，保留已完成结果；发生异常时暂停，核实后继续尚未执行的单据。';
 
   @override
   String get warehouseSubcontractOutboundDocuments => '单据信息';
@@ -3389,19 +3330,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundUnit => '单位';
 
   @override
-  String get warehouseSubcontractOutboundPlanned => '计划数量';
-
-  @override
-  String get warehouseSubcontractOutboundPrepared => '已备齐';
-
-  @override
-  String get warehouseSubcontractOutboundIssued => '已出库';
-
-  @override
   String get warehouseSubcontractOutboundStockAvailable => '仓内可动用';
-
-  @override
-  String get warehouseSubcontractOutboundAvailable => '本次最多';
 
   @override
   String get warehouseSubcontractOutboundQuantity => '本次出库';
@@ -3437,19 +3366,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundWarehouseRequired => '请选择发出仓。';
 
   @override
-  String get warehouseSubcontractOutboundQuantityInvalid =>
-      '本次出库数量必须大于 0 且不能超过本次最多数量。';
-
-  @override
   String get warehouseSubcontractOutboundLoadFailed => '出库详情加载失败，请重试。';
 
   @override
   String get warehouseSubcontractOutboundConfirmResponsibility =>
       '确认后，系统将以当前登录员工记录本次出库审核责任。';
-
-  @override
-  String get warehouseSubcontractOutboundSubcontractEffects =>
-      '审核后，目标件从所选仓库实际出库并交委外商加工；回厂后仍需登记和品质检查。';
 
   @override
   String warehouseSubcontractOutboundBatchResult(int done, int total) {
@@ -3463,9 +3384,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseSubcontractOutboundVerify => '核实处理结果';
 
   @override
-  String get warehouseSubcontractOutboundDraft => '出库草稿';
-
-  @override
   String get warehouseSubcontractOutboundNoLines => '当前没有可出库明细';
 
   @override
@@ -3473,13 +3391,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseStockOutboundSeries => '系列';
-
-  @override
-  String get warehouseSubcontractOutboundDraftsGenerated =>
-      '出库草稿已生成，请重新核对各张单据的实际仓库和数量，再确认出库。';
-
-  @override
-  String get warehouseSubcontractOutboundPrepareDrafts => '生成草稿并核对';
 
   @override
   String get warehouseOutboundBatchDocuments => '单据信息';
@@ -3514,88 +3425,14 @@ class AppLocalizationsZh extends AppLocalizations {
       '同一出库单共用此备注，修改后在该单所有明细同步显示。单行说明填写在明细备注中。';
 
   @override
-  String get warehouseSubcontractOutboundStageDraftPicking => '出仓草稿待拣货';
-
-  @override
-  String warehouseSubcontractOutboundStageReady(String qty) {
-    return '已备齐·待出仓 (可发 $qty)';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundStageReadyPlain => '已备齐·待出仓';
-
-  @override
-  String get warehouseSubcontractOutboundWaitingComponent => '等子件到货';
-
-  @override
-  String get warehouseSubcontractOutboundStageBlockedPreparation => '前置自制受阻';
-
-  @override
-  String get warehouseSubcontractOutboundStageWaitingPreparation => '等待前置自制';
-
-  @override
-  String get warehouseSubcontractOutboundStagePendingDraft => '待生成出仓单';
-
-  @override
   String get warehouseSubcontractOutboundOpenPicking => '进入拣货出仓';
-
-  @override
-  String get warehouseSubcontractOutboundBannerComponent =>
-      '发子件的委外件: 子件入库后才会出现可发量, 仓库发的是子件, 回厂交回的是委外件。';
-
-  @override
-  String warehouseSubcontractOutboundWaitingComponentStock(String qty) {
-    return '等子件到货 (仓内可动用 $qty)';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundSuggestedWarehouse => '建议发料仓';
-
-  @override
-  String get warehouseSubcontractOutboundComponentEffects =>
-      '审核后，子件从所选仓库实际出库并交委外商加工；加工完回厂登记的是委外件，仍需品质检查，合格后才正式入仓。';
-
-  @override
-  String get warehouseSubcontractOutboundComponentNotArrived =>
-      '子件还没到货，仓里一件都没有；子件入库后系统会自动补草稿并通知仓库。';
 
   @override
   String get warehouseSubcontractOutboundBannerScope =>
       '仓库作业视图不含价格与金额, 也不提供委外业务编辑操作。';
 
   @override
-  String warehouseSubcontractOutboundBannerDraftPending(String billNo) {
-    return '草稿 $billNo 待拣货审核';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundBannerWaitingComponent =>
-      '等子件到货: 子件入库后系统会自动补草稿并通知';
-
-  @override
-  String warehouseSubcontractOutboundBannerIssuable(String qty) {
-    return '可发 $qty';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundFactDraftNo => '出仓草稿单号';
-
-  @override
-  String get warehouseSubcontractOutboundFactLatestIssue => '最近出仓单';
-
-  @override
-  String warehouseSubcontractOutboundHistoryTitle(int count) {
-    return '出仓记录 ($count)';
-  }
-
-  @override
-  String get warehouseSubcontractOutboundSaveDraft => '保存草稿';
-
-  @override
   String get warehouseSubcontractOutboundApprove => '审核出仓';
-
-  @override
-  String get warehouseSubcontractOutboundClosePlan => '不再出仓';
 
   @override
   String get productionBatchTitle => '分批生产领料';

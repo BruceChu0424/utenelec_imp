@@ -40,6 +40,7 @@ class PurchaseDocConfig {
     // 明细列开关
     this.showReceived = false,
     this.showReturned = false,
+    this.itemHasAllowedOverReceiptPct = false, // 允许超收%（订货明细；ADR-144）
     // 管理卡片点进直达新增页（true=跳过列表，列表仍可从新增页"查看历史"进入）
     this.skipListOnCreate = false,
     this.allowDirectCreate = true,
@@ -119,6 +120,10 @@ class PurchaseDocConfig {
   final bool showReceived; // 订货/收货明细显示已收
   final bool showReturned; // 订货/收货/退货明细显示已退
 
+  /// 允许超收%（订货明细；ADR-144）：主档记忆预填，累计收货在 数量×(1+允许超收)
+  /// 以内照常入库立应付，超出部分才转财务。
+  final bool itemHasAllowedOverReceiptPct;
+
   /// 管理卡片点进是否直达新增页（跳过列表）。
   final bool skipListOnCreate;
   final bool allowDirectCreate;
@@ -164,6 +169,7 @@ class PurchaseDocConfig {
     linkToRequestItem: true,
     showReceived: true,
     showReturned: true,
+    itemHasAllowedOverReceiptPct: true,
     // 管理卡片点进直达新建（与销售/财务一致）；明细经「从上游引入」从计划申请拉取。
     skipListOnCreate: true,
   );

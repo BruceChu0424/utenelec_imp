@@ -216,12 +216,14 @@ class ProcurementArrivalWorkflowContractTest {
                 .contains("arrival_overage_posted_qty =")
                 .contains("status = 'RECEIPT_ADJUSTED'")
                 .contains("status = 'PENDING_FINANCE'")
-                // V581：共享折算式必须以**格式参数**注入，不能拼进这个带 .formatted 的
+                // V581：共享片段必须以**格式参数**注入，不能拼进这个带 .formatted 的
                 // 文本块——`.formatted` 只作用于紧挨它的那一段字面量，拆段会让前面几段的
                 // %1$s 原样留在 SQL 里（真库 bad SQL grammar，两条到货边界用例红）。
-                // ADR-114(V688) 起追加第 3 个格式参数(已独立结清的损耗量), 仍须以格式参数注入。
-                .contains(".formatted(itemAlias, SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM,")
-                .contains("SELECT %2$s");
+                // ADR-143 §三.6：委外可回厂量只认 fn_subcontract_returnable_qty(完整套数)，
+                // 不再把各物料已发量折算相加(ISSUED_TARGET_BASE_SUM 已删)。
+                .contains(".formatted(itemAlias,")
+                .contains("fn_subcontract_returnable_qty(supplied_item.id)")
+                .doesNotContain("ISSUED_TARGET_BASE_SUM");
     }
 
     @Test

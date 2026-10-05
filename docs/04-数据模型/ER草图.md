@@ -145,7 +145,7 @@ erDiagram
   production_workshop_direct_transfer_items ||--o{ preplan_aggregate_direct_transfer_slices : exact_handover
 ```
 
-共享制造另有唯一系统准备项与计划；原产品仍保留独立需求。别名同时引用原父、原子料和共享子料，不能按名称合并库存。共享委外台账通过批次关联多个原来源，普通单父关系不变。模型与交接上限见 [ADR-120](../99-决策记录-ADR/ADR-120-物料汇总办理与共享制造来源.md)。本节是源码设计，安装状态以各数据库实际迁移记录为准。
+共享制造另有唯一系统准备项与计划；原产品仍保留独立需求。别名同时引用原父、原子料和共享子料，不能按名称合并库存。委外汇总批次永远是外部批次、不带锚点(2026-10-04 V798 CHECK `preplan_aggregate_subcontract_external_chk`，前置自制共享台账删除)，普通单父关系不变。模型与交接上限见 [ADR-120](../99-决策记录-ADR/ADR-120-物料汇总办理与共享制造来源.md)。本节是源码设计，安装状态以各数据库实际迁移记录为准。
 
 <a id="material-discovery-bom"></a>
 
@@ -534,7 +534,7 @@ BOM reject 仍须单独治理。
 `goods_bom_actual_usages` (父件+组件+组件基本单位)。一条真实使用数量的状态与本轮窗口只由视图
 `v_goods_bom_actual_usage` 定义；每条边的「计算用量」由建在它上面的视图 `v_goods_bom_item_usage`
 定义 (线性边有真实值用真实值，否则设计值，6 位向上取整)：物料分析快照、车间领料需求、MRP 与计划导入单台用量
-读它；委外单一子件发料、成本预算 `source_e`、反查报表与 BOM 复制/粘贴仍读设计值。边上的
+读它；委外领料计划冻结单耗(2026-10-04 ADR-143 起为委外节点全部直属物料)、成本预算 `source_e`、反查报表与 BOM 复制/粘贴仍读设计值。边上的
 `learning_profile_goods_id` 标记系统学习边，`learning_released_at` 记人工删除后不再自动加回。
 
 ### 2.10 资产与待摊专业子账（V183）

@@ -286,7 +286,9 @@ class AuditTriggerCoverageMigrationContractTest {
                     Set.of(
                         "notice_acknowledgments", "notice_blessings",
                         "notice_celebration_subjects", "notice_user_states", "notices",
-                        "suggestion_likes")),
+                        "suggestion_likes",
+                        // V798(ADR-143) 委外可领料通知高水位: 投递后的重算写入, 决定是否再次提醒。
+                        "subcontract_draw_notice_marks")),
             new NoneGroup("queue",
                     "队列、任务、认领、幂等命令与系统核对结果: 系统协调状态, 人的操作由请求级语义事件记录",
                     Set.of(
@@ -296,7 +298,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "production_fqc_release_commands", "production_material_analysis_commands",
                         "production_planning_drafts", "production_planning_urges", "production_bom_learning_refresh_queue", "stock_value_jobs",
                         "stock_value_production_cost_dirty", "stock_value_production_cost_tasks",
-                        "stock_value_tasks", "subcontract_outbound_preparation_commands",
+                        "stock_value_tasks",
                         "task_claims", "warehouse_arrival_registration_commands",
                         "workshop_material_commands", "goods_cost_commands",
                         // AI 识别任务协调态；原上传独立永久保全，提交人及原生单据范围控制读取。
@@ -334,10 +336,6 @@ class AuditTriggerCoverageMigrationContractTest {
                         "preplan_analysis_stock_exact_pegs", "preplan_future_supply_transfers",
                         "preplan_make_entitlement_delegations",
                         "preplan_reallocation_make_supplements",
-                        "preplan_subcontract_make_task_batches", "preplan_subcontract_make_tasks",
-                        "preplan_subcontract_requirement_handoff_items",
-                        "preplan_subcontract_requirement_handoffs",
-                        "preplan_subcontract_requirement_supply_claims",
                         "preplan_supply_action_allocations", "preplan_supply_actions",
                         "procurement_inspection_items", "procurement_iqc_replacement_allocations",
                         "production_fqc_release_allocations",
@@ -385,9 +383,6 @@ class AuditTriggerCoverageMigrationContractTest {
                         "preplan_aggregate_batch_events", "preplan_aggregate_material_aliases", "preplan_aggregate_direct_transfer_slices",
                         "preplan_public_supply_events",
                         "preplan_root_output_events", "preplan_stock_entitlement_events",
-                        "preplan_subcontract_entitlement_handoff_slices",
-                        "preplan_subcontract_make_batch_reversals",
-                        "preplan_subcontract_requirement_handoff_events",
                         "procurement_arrival_exception_events", "procurement_inspection_events",
                         "procurement_iqc_consideration_reversals",
                         "procurement_iqc_consideration_review_approvals",

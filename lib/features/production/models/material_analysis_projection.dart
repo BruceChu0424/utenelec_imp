@@ -58,6 +58,7 @@ class MaterialAnalysisMaterialDefaults {
     'routeConfirmed',
     'actionable',
     'lowerLevelPending',
+    'bomMissing',
   };
   static const _textLists = {'path', 'notifiedTargets'};
   static const _objectLists = {
@@ -95,7 +96,6 @@ class MaterialAnalysisMaterialDefaults {
     'publicSurplusExpectedDate',
     'flowStage',
     'planAnchorAnalysisLineId',
-    'subcontractOutboundForm',
     'owningWarehouseId',
     'owningWarehouseName',
     'owningWorkshopId',
@@ -103,6 +103,7 @@ class MaterialAnalysisMaterialDefaults {
     'nodeRole',
     'usageBasis',
     'usageReason',
+    'rdTaskNo',
   };
   static const _integers = {'level', 'usageSampleCount'};
 

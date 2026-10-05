@@ -220,7 +220,7 @@ class WorkshopDirectTargetReasonPostgresTest {
             assertThat(row).containsEntry("demand_id", aggregateDemand).containsEntry("eligible", false)
                     .containsEntry("reason_code", "SUBCONTRACT_ROUTE");
             assertThat((String) row.get("reason_text"))
-                    .isEqualTo("HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
+                    .isEqualTo("上层 HVZJ12 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
         });
 
         assertThat(jdbc.queryForList("SELECT * FROM fn_workshop_direct_targets(?)", topSource)).singleElement()
@@ -256,7 +256,7 @@ class WorkshopDirectTargetReasonPostgresTest {
                     assertThat(row).containsEntry("demand_id", null).containsEntry("eligible", false)
                             .containsEntry("reason_code", "SUBCONTRACT_ROUTE");
                     assertThat((String) row.get("reason_text"))
-                            .isEqualTo("HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
+                            .isEqualTo("上层 HVZJ12 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
                 });
     }
 
@@ -272,7 +272,7 @@ class WorkshopDirectTargetReasonPostgresTest {
         assertThat(text("DEMAND_ALREADY_COVERED", "HVT001")).isEqualTo("上层工单的 HVT001 已经备齐 (仓库备料或其它直送)");
         assertThat(text("RECEIVER_STATUS", null)).isEqualTo("上层工单已开工或已结束，不再接收直送");
         assertThat(text("SUBCONTRACT_ROUTE", "HVZJ12"))
-                .isEqualTo("HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
+                .isEqualTo("上层 HVZJ12 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
         // 数量超出时点名是哪个上层工单(一行分给多个工单时才知道是哪一条)。
         assertThat(single(source, earlier, null)).containsEntry("receiver_label", "上层工单 " + segmentCode(earlier));
         assertThat((String) single(source, earlier, new BigDecimal("60")).get("reason_text"))
@@ -291,7 +291,7 @@ class WorkshopDirectTargetReasonPostgresTest {
                 .rootCause().isInstanceOfSatisfying(PSQLException.class, error -> {
                     assertThat(error.getSQLState()).isEqualTo("23514");
                     assertThat(error.getServerErrorMessage().getMessage())
-                            .isEqualTo("无法转到下一道工序：HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
+                            .isEqualTo("无法转到下一道工序：上层 HVZJ12 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
                     assertThat(error.getServerErrorMessage().getHint()).isEqualTo("SUBCONTRACT_ROUTE");
                     assertThat(error.getServerErrorMessage().getConstraint()).isEqualTo("workshop_direct_target_guard");
                 });

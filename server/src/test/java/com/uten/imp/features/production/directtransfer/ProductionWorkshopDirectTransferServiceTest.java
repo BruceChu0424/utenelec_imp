@@ -235,7 +235,7 @@ class ProductionWorkshopDirectTransferServiceTest {
                     ? java.util.Collections.singletonList(new Object[]{
                             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                             UUID.randomUUID(), UUID.randomUUID(), "READY", false, "子件", false,
-                            "HV5ZJ012 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料"})
+                            "上层 HV5ZJ012 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商"})
                     : List.of());
             when(query.executeUpdate()).thenAnswer(ignored -> { writes.add(sql); return 1; });
             return query;
@@ -249,7 +249,7 @@ class ProductionWorkshopDirectTransferServiceTest {
         report.setId(UUID.randomUUID());
         assertThatThrownBy(() -> service.executeForApprovedReport(report, List.of(item("2", "1"))))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class)
-                .hasMessage("无法转到下一道工序：HV5ZJ012 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
+                .hasMessage("无法转到下一道工序：上层 HV5ZJ012 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
         assertThat(writes).isEmpty();
         verifyNoInteractions(locations);
     }
@@ -261,7 +261,7 @@ class ProductionWorkshopDirectTransferServiceTest {
         Object[] crossWorkshop = targetRow(UUID.randomUUID(), goods, false, "DIFFERENT_WORKSHOP",
                 "上层工单 ZX1 在二车间，跨车间必须送入仓库", 40);
         Object[] subcontract = targetRow(UUID.randomUUID(), goods, false, "SUBCONTRACT_ROUTE",
-                "子件 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料", 50);
+                "上层 子件 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商", 50);
         var withReceiver = candidateService(List.of(subcontract, eligible, crossWorkshop))
                 .candidates(segment, goods, null);
         assertThat(withReceiver.candidates()).extracting(ProductionWorkshopDirectTransferService.Candidate::demandId)

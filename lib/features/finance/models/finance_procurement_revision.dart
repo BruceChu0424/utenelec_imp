@@ -117,6 +117,11 @@ Set<String> procurementChangedFields(
           before.currencyName != after.currencyName))
     'currencyName',
   if (before.deliverDate != after.deliverDate) 'deliverDate',
+  // ADR-144：允许超收进审批哈希快照(非空才出现)，新旧快照都能如实比较，
+  // 不依赖展示快照是否完整；空与 0 同义(都不允许超收)，不算修改。
+  if ((_decimal(before.allowedOverReceiptPct) ?? '0') !=
+      (_decimal(after.allowedOverReceiptPct) ?? '0'))
+    'allowedOverReceiptPct',
   if (before.sourceItemId != after.sourceItemId) 'sourceApplicationNos',
   if (before.displaySnapshotComplete && after.displaySnapshotComplete) ...{
     if (before.sourceDocNo != after.sourceDocNo) 'sourceDocNo',

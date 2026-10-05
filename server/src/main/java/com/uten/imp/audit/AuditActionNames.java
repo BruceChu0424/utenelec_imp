@@ -50,6 +50,7 @@ public final class AuditActionNames {
             Map.entry("submit", "提交"),
             Map.entry("submit_finance", "提交财务审核"),
             Map.entry("withdraw", "撤回"),
+            Map.entry("return_to_draw", "退回领料"),
             Map.entry("close", "结案"),
             Map.entry("close_plan", "结案计划"),
             Map.entry("set_stopped", "中止或恢复"),

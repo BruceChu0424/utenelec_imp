@@ -70,6 +70,8 @@ class InboundExpectationItem {
     this.expectedAllocations = const [],
     this.lastReceiptWarehouseId,
     this.lastReceiptWarehouseName,
+    this.allowedOverReceiptPct,
+    this.maxReceivableQty,
   });
 
   final String id;
@@ -104,9 +106,24 @@ class InboundExpectationItem {
   final String? lastReceiptWarehouseId;
   final String? lastReceiptWarehouseName;
 
+  /// 采购订货行允许超收%（ADR-144，仅展示；空 = 不允许超收，委外恒为空）。
+  final num? allowedOverReceiptPct;
+
+  /// 采购订货行最多还可收 = 订货量 + 允许超收量 − 已净收货（服务端计算，仅展示；
+  /// 委外恒为空）。预计到货仍在累计收满订货量时关闭，超过它的部分才转财务。
+  final num? maxReceivableQty;
+
   /// 还可登记量 = 当前服务端释放容量 − 已登记待审核量。
   num get effectiveRemainingQty {
     final value = remainingQty - registeredQty;
+    return value > 0 ? value : 0;
+  }
+
+  /// 最多还可收(扣已登记待审核量)：超过它的部分才转财务；无数据时为空。
+  num? get effectiveMaxReceivableQty {
+    final max = maxReceivableQty;
+    if (max == null) return null;
+    final value = max - registeredQty;
     return value > 0 ? value : 0;
   }
 
@@ -139,6 +156,8 @@ class InboundExpectationItem {
       expectedAllocations: _allocationList(json['expectedAllocations']),
       lastReceiptWarehouseId: _text(json['lastReceiptWarehouseId']),
       lastReceiptWarehouseName: _text(json['lastReceiptWarehouseName']),
+      allowedOverReceiptPct: _numberOrNull(json['allowedOverReceiptPct']),
+      maxReceivableQty: _numberOrNull(json['maxReceivableQty']),
     );
   }
 }
@@ -287,6 +306,8 @@ class InboundExpectation {
               unitPrice: item.unitPrice,
               approvedRemainingQty: item.effectiveRemainingQty,
               expectedAllocations: item.expectedAllocations,
+              allowedOverReceiptPct: item.allowedOverReceiptPct,
+              maxReceivableQty: item.effectiveMaxReceivableQty,
             ),
           )
           .toList(growable: false),
@@ -380,12 +401,35 @@ class ProcurementReceiptPrefillItem {
     this.baseUnitName,
     this.unitPrice,
     this.expectedAllocations = const [],
+    this.allowedOverReceiptPct,
+    this.maxReceivableQty,
   });
 
   final String orderItemId;
   final String goodsId;
   final String goodsCode;
   final String goodsName;
+
+  /// 采购订货行允许超收%（ADR-144，仅展示；空 = 不允许超收，委外恒为空）。
+  final num? allowedOverReceiptPct;
+
+  /// 采购订货行最多还可收(含允许超收，已扣已登记待审核量；仅展示，委外恒为空)：
+  /// 超过它的部分才转财务审批。
+  final num? maxReceivableQty;
+
+  /// 允许超收比例大于 0 的采购行：登记页提示「最多可收(含允许超收 p%)」。
+  bool get hasOverReceiptAllowance =>
+      maxReceivableQty != null && (allowedOverReceiptPct ?? 0) > 0;
+
+  /// 「最多可收」列文字：`105(含允许超收 5%)`；比例为 0 只显示数量；
+  /// 没有这项数据(委外 / 旧接口)为「—」。
+  String get maxReceivableLabel {
+    final max = maxReceivableQty;
+    if (max == null) return '—';
+    return hasOverReceiptAllowance
+        ? '${procurementQty(max)}(含允许超收 ${procurementQty(allowedOverReceiptPct!)}%)'
+        : procurementQty(max);
+  }
 
   /// 货品主档当前值：登记页库位号/系列文本框初值；保存后学习端点回写差异。
   final String? goodsSeries;
@@ -475,6 +519,10 @@ class ProcurementArrivalException {
     this.returnTask,
     this.allowedActions = const <String>{},
     this.priceMasked = false,
+    this.orderQtySnapshot,
+    this.allowedOverReceiptPctSnapshot,
+    this.toleranceQtySnapshot,
+    this.priorNetReceivedQtySnapshot,
   });
 
   final String id;
@@ -516,6 +564,40 @@ class ProcurementArrivalException {
 
   /// 价格族字段已对当前用户脱敏（仓库视角无收货单价格权限时单价/金额为 null；V302）。
   final bool priceMasked;
+
+  /// ADR-144 采购允许超收口径（检出时快照，订货单位；委外与旧异常为空）：
+  /// 订货量 Q、允许超收% p(空 = 0)、允许超收量 T、此前已净收货 R。
+  final num? orderQtySnapshot;
+  final num? allowedOverReceiptPctSnapshot;
+  final num? toleranceQtySnapshot;
+  final num? priorNetReceivedQtySnapshot;
+
+  /// 有允许超收快照（采购新异常）：卡片按「订 Q，允许超收 p%(最多 Q+T)…」说明。
+  bool get hasReceiptToleranceSnapshot =>
+      orderType == ProcurementInboundOrderType.purchase &&
+      orderQtySnapshot != null;
+
+  /// 「订 Q，允许超收 p%(最多 Q+T)，此前已收 R，本次实到 D，累计 R+D」；
+  /// 无快照时为空（委外 / 旧异常沿用「实到 / 已批准剩余」说法）。
+  String? get receiptToleranceFacts {
+    final orderQty = orderQtySnapshot;
+    if (!hasReceiptToleranceSnapshot || orderQty == null) return null;
+    final pct = allowedOverReceiptPctSnapshot ?? 0;
+    final tolerance = toleranceQtySnapshot ?? 0;
+    final prior = priorNetReceivedQtySnapshot ?? 0;
+    return '订 ${procurementQty(orderQty)}，'
+        '允许超收 ${procurementQty(pct)}%(最多 ${procurementQty(orderQty + tolerance)})，'
+        '此前已收 ${procurementQty(prior)}，'
+        '本次实到 ${procurementQty(declaredQty)}，'
+        '累计 ${procurementQty(prior + declaredQty)}';
+  }
+
+  /// 完整一句：「订 Q，允许超收 p%(最多 Q+T)，此前已收 R，本次实到 D，累计 R+D，需审批超量 X」。
+  String? get receiptToleranceSummary {
+    final facts = receiptToleranceFacts;
+    if (facts == null) return null;
+    return '$facts，需审批超量 ${procurementQty(requestedExcessQty)}';
+  }
 
   bool get canApproveAll =>
       version > 0 && allowedActions.contains('APPROVE_ALL');
@@ -596,6 +678,14 @@ class ProcurementArrivalException {
           : ProcurementArrivalReturnTask.fromJson(returnTask),
       allowedActions: _actions(json['allowedActions']),
       priceMasked: json['priceMasked'] == true,
+      orderQtySnapshot: _numberOrNull(json['orderQtySnapshot']),
+      allowedOverReceiptPctSnapshot: _numberOrNull(
+        json['allowedOverReceiptPctSnapshot'],
+      ),
+      toleranceQtySnapshot: _numberOrNull(json['toleranceQtySnapshot']),
+      priorNetReceivedQtySnapshot: _numberOrNull(
+        json['priorNetReceivedQtySnapshot'],
+      ),
     );
   }
 }
@@ -615,7 +705,8 @@ enum FinanceArrivalDecision {
   };
 
   String get description => switch (this) {
-    FinanceArrivalDecision.rejectExcess => '推荐。只接收原订单已批准剩余量，超出部分退供应商。',
+    FinanceArrivalDecision.rejectExcess =>
+      '推荐。只接收原订单已批准剩余量(采购含允许超收，收到最多可收为止)，超出部分退供应商。',
     FinanceArrivalDecision.approveCustom => '批准一部分超量，其余数量退供应商。',
     FinanceArrivalDecision.approveAll => '批准全部实际到货数量进入后续收货审核。',
   };
@@ -741,6 +832,12 @@ class WarehouseArrivalBatchCompleteItem {
   );
 }
 
+/// 到货登记页「最多可收」列头说明（ADR-144，单张 / 批量共用）。
+const String procurementMaxReceivableHint =
+    '采购订货行按订货量加允许超收量算出的最多还可收数量(已扣已登记待审核量)。'
+    '本次实收在最多可收以内照常送检入库、立应付；超过最多可收的部分才转财务审批。'
+    '委外明细不适用，显示「—」。';
+
 String procurementQty(num value) {
   final fixed = value.toStringAsFixed(4);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
@@ -762,6 +859,13 @@ List<WarehouseInboundAllocation> _allocationList(Object? value) => value is List
 num _number(Object? value) {
   if (value is num) return value;
   return num.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+/// 可空数量：缺失 / 空 / 非数字为 null（与 0 区分：0 是事实，null 是没有这项）。
+num? _numberOrNull(Object? value) {
+  if (value is num) return value;
+  final text = _text(value);
+  return text == null ? null : num.tryParse(text);
 }
 
 int? _integer(Object? value) {

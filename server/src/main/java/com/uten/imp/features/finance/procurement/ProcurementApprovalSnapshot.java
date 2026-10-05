@@ -57,6 +57,10 @@ final class ProcurementApprovalSnapshot {
         row.put("deliverDate", item.deliverDate());
         // Preserve old hashes; only new total-priced rows acquire a new fact.
         if (item.totalAmountInput() != null) row.put("totalAmountInput", decimal(item.totalAmountInput()));
+        // ADR-144: the over-receipt allowance authorizes extra AP, so finance approves it; absent when unset.
+        if (item.allowedOverReceiptPct() != null) {
+            row.put("allowedOverReceiptPct", decimal(item.allowedOverReceiptPct()));
+        }
         return row;
     }
 

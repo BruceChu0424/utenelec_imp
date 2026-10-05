@@ -271,9 +271,8 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// 本组「还可下达」的权威量。
   ///
   /// **唯一主口径是服务端投影的 `additionalSupplyRecommendedQty`**
-  /// （= max(0, 本批缺口 − 有效在途覆盖)，见 MaterialAnalysisService 的
-  /// ACTIVE_FUTURE_COVERAGE_SQL：采购/委外在途、公共认领、以及委外前置自制台账的
-  /// `required_qty − notified_qty` 都在里面）。
+  /// (= max(0, 本批缺口 − 有效在途覆盖)，见 MaterialAnalysisService 的
+  /// ACTIVE_FUTURE_COVERAGE_SQL：采购/委外在途与公共认领都在里面)。
   ///
   /// 2026-09-15 修正：这个判定原来还捆着「sharedFuturePendingQty 非空 或 已认领 > 0」
   /// 两个条件，读起来像「只有用了公共在途的行才走服务端口径」，实际上服务端恒定
@@ -371,8 +370,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       material.notifiedTargets.any(
         (target) =>
             target.status?.toUpperCase() != 'CANCELLED' &&
-            (target.documentType == 'PREPLAN_MAKE_TASK' ||
-                target.documentType == 'SUBCONTRACT_MAKE_TASK'),
+            target.documentType == 'PREPLAN_MAKE_TASK',
       );
 
   bool _isPriorityMakeSupplementGroup(
@@ -455,6 +453,8 @@ abstract class _MaterialAnalysisSupplyActionsState
 
   /// [allowExtra]：还需安排为 0 的组也算可执行（ADR-099 父层级追加：填的量
   /// 就是追加量，服务端按超量分账为公共备货）。
+  /// 走委外而缺 BOM 的组(ADR-143 §二.3，服务端标 bomMissing)不可执行：研发
+  /// 完善 BOM 前任何下达入口都不能带上它(服务端同样 409)。
   bool _isExecutableSupplyGroup(
     _MaterialGroup group,
     MaterialSupplyRoute route, {
@@ -464,6 +464,8 @@ abstract class _MaterialAnalysisSupplyActionsState
           group.paths.any((path) => path.hasPriorityMakeSupplement) ||
           _hasRootStockToAllocate(group, route)) &&
       _planningBlockForGroup(group) == null &&
+      !(route == MaterialSupplyRoute.subcontract &&
+          group.paths.any((path) => path.bomMissing)) &&
       group.paths.every(_hasResolvedMaterialSource) &&
       !group.paths.any(
         (path) =>
@@ -561,12 +563,6 @@ abstract class _MaterialAnalysisSupplyActionsState
       icon: Icons.account_tree_outlined,
       color: theme.colorScheme.primary,
     ),
-    MaterialRequirementState.delegatedToSubcontractPreparation => (
-      title: '需求已由委外前置自制接管',
-      detail: '本节点不再重复采购或生产；请在委外订货进度中跟踪',
-      icon: Icons.precision_manufacturing_outlined,
-      color: theme.colorScheme.primary,
-    ),
     MaterialRequirementState.inactiveParentCovered => (
       title: '上级件已由合格库存覆盖',
       detail: '本节点本批不激活；上级出现新缺口后会自动重算',
@@ -655,113 +651,6 @@ abstract class _MaterialAnalysisSupplyActionsState
     ),
   );
 
-  /// V458/ADR-062 修订一②：有子层级委外件与自制完全同构的第二段——「下达委外」
-  /// 建 SUBCONTRACT_MAKE 前置自制任务后**留在本页**，已可生产的委外子件自动
-  /// 勾选并预填「最多可生产量」，员工核对后点底部「安排子件生产」进入计划
-  /// 向导；同批无子层委外件仍由服务端立即合并生成委外申请并通知委外部。
-  ///
-  /// [silent] = 父件段由「一起下单」弹窗编排（ADR-081，2026-09-14 弹窗前置）：
-  /// 只做 notify，跳过两段式自动勾选与总结提示（下层由弹窗接手），返回是否
-  /// 提交成功。
-  Future<bool> _arrangeSubcontractProduction({
-    Set<String>? onlyGroupKeys,
-    Map<String, String>? qtyByActionGroupKey,
-    bool silent = false,
-    bool allowExtra = false,
-  }) async {
-    final analysis = _analysis;
-    if (analysis == null || !_canNotify || _notifyingRoute != null) {
-      return false;
-    }
-    final groups = onlyGroupKeys != null
-        ? _executableSupplyGroups(
-                MaterialSupplyRoute.subcontract,
-                allowExtra: allowExtra,
-              )
-              .where((group) => onlyGroupKeys.contains(group.key))
-              .toList(growable: false)
-        : const <_MaterialGroup>[];
-    if (groups.isEmpty) {
-      if (!silent) context.appInfo('请先勾选要下达的委外件');
-      return false;
-    }
-    final view = await _notifyRoute(
-      MaterialSupplyRoute.subcontract,
-      onlyGroupKeys: {for (final group in groups) group.key},
-      qtyByActionGroupKey: qtyByActionGroupKey,
-      silent: silent,
-      allowExtra: allowExtra,
-    );
-    if (!mounted || view == null) return false;
-    if (silent) return true;
-    final requestedLineIds = {
-      for (final group in groups) group.representative.materialLineId,
-    };
-    var created = 0;
-    var readySelected = 0;
-    var waiting = 0;
-    var needPermission = 0;
-    setState(() {
-      for (final material in view.materials) {
-        if (!requestedLineIds.contains(material.materialLineId)) continue;
-        // 直接外发的委外件（无子层，或 V581 只有一个叶子子件）不建前置自制
-        // 子任务：已直接合并生成委外申请，不进入两段式。
-        final child = _subcontractMakeChildProductOf(material);
-        if (child == null) continue;
-        created++;
-        if (!_canSelectProduct(child)) {
-          waiting++;
-          continue;
-        }
-        if (!_canGenerate) {
-          needPermission++;
-          continue;
-        }
-        _selectedPlanLineIds.add(child.analysisLineId);
-        _seedSuggestedPlanBatchQty(child);
-        readySelected++;
-      }
-    });
-    // 全部为无子层时 _notifyRoute 的「合并为 N 张委外申请」提示已足够。
-    if (created > 0) {
-      final parts = <String>[
-        _l10n.materialPreparedChildCreated(created),
-        if (readySelected > 0) _l10n.materialPreparedChildNext,
-        if (waiting > 0) '$waiting 个子件状态已变化，请刷新后核对',
-        if (needPermission > 0) _l10n.materialPreparedChildNeedPlanner,
-      ];
-      context.appSuccess(parts.join('；'));
-    }
-    return true;
-  }
-
-  /// 该分析节点在当前快照内是否还有下层节点。**只回答 BOM 形状**：本节点下面
-  /// 还有没有东西要办。是不是要先自制目标件再发外，另见
-  /// `_subcontractNeedsPreparation`——V581 起「只有一个叶子子件」的委外件有下层
-  /// 却直接外发，两者不再等价。经父节点索引判定（原为全表扫描）。
-  bool _analysisMaterialHasChildren(
-    ProductionMaterialAnalysisMaterial material,
-  ) {
-    final analysis = _analysis;
-    if (analysis != null && material.isRootSupply) {
-      final indexes = _analysisIndexes(analysis);
-      return indexes
-                  .productsById[material.analysisLineId]
-                  ?.hasProductionMaterialChildren ==
-              true ||
-          (indexes.materialsByProduct[material.analysisLineId]?.any(
-                (node) => !node.isRootSupply && node.level == 1,
-              ) ??
-              false);
-    }
-    final nodeKey = material.nodeKey;
-    if (analysis == null || nodeKey == null || nodeKey.isEmpty) return false;
-    return _analysisIndexes(analysis).childrenByParentNodeKey.containsKey((
-      analysisLineId: material.analysisLineId,
-      parentNodeKey: nodeKey,
-    ));
-  }
-
   List<_SupplyNotificationTarget> _notificationTargetsForGroups(
     Iterable<_MaterialGroup> groups,
   ) {
@@ -836,19 +725,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       return null;
     }
     final targets = _notificationTargetsForGroups(groups);
-    // MAKE / 有子层委外当前仍是整节点 ownership，显式创建
-    // child 时必须全量接管剩余需求。下层未齐不再阻止创建；
-    // child 后续可按 maxSchedulableQty 先排车间，审批后进 WAITING。
-    // 无子层委外和采购仍可分批/公共超量。
+    // MAKE 当前仍是整节点 ownership，显式创建 child 时必须全量接管剩余需求。
+    // 下层未齐不再阻止创建；child 后续可按 maxSchedulableQty 先排车间，审批后
+    // 进 WAITING。委外(有无下层都一样，ADR-143)和采购可分批/公共超量。
     List<MaterialSupplyQuantityInput>? quantities;
     if (route == MaterialSupplyRoute.make) {
       quantities = _fullResidualSupplyQuantities(route, targets);
-    } else if (route == MaterialSupplyRoute.subcontract) {
-      quantities = await _resolveSubcontractQuantities(
-        groups,
-        qtyByActionGroupKey,
-        silent: silent,
-      );
     } else {
       quantities = await _resolveSupplyQuantities(
         route,
@@ -998,11 +880,10 @@ abstract class _MaterialAnalysisSupplyActionsState
               MaterialSupplyRoute.buy =>
                 '采购需求已提交：${groups.length} 条货品合并为 '
                     '${batches.length} 张采购需求单，已通知采购',
-              // V458：有子层级的委外件由服务端转前置自制，成品入库后才通知委外部。
-              // ADR-065：无子层委外同批合并为一张委外申请（分批提交时每批一张）。
+              // ADR-065：同批委外合并为一张委外申请(分批提交时每批一张)；
+              // 有直属物料的委外件下单后在委外任务中心按齐套领料发外(ADR-143)。
               MaterialSupplyRoute.subcontract =>
-                '委外任务已下达：无子层合并为 '
-                    '${batches.length} 张委外申请并通知委外部；有子层已转前置自制，入库后自动通知',
+                '委外任务已下达：合并为 ${batches.length} 张委外申请并通知委外部',
               MaterialSupplyRoute.make => '自制备料任务已创建（${groups.length} 条）',
             };
       if (!silent) {
@@ -1076,78 +957,8 @@ abstract class _MaterialAnalysisSupplyActionsState
     return [for (final entry in entries) entry.toInput(entry.maxQty)];
   }
 
-  /// 委外「下达委外」的数量裁决 + 总结确认（2026-09-06 对齐采购口径）：
-  /// **要先自制目标件**的委外件 = 与自制同构的全量剩余（服务端转前置自制，
-  /// 不可改量）；**直接外发**的委外件 = 行内数量裁决（校验同采购）。
-  /// 两类合并为**一张**总结弹窗二次确认，取消整批放弃。
-  ///
-  /// V581 起「直接外发」含两种：无子层的纯外协，以及只有一个叶子子件、由我方
-  /// 发那颗子件的件——后者也是一张普通委外订货，可分批、可按权限超量，
-  /// 不再被当成「创建子件任务必须整量接管」。
-  Future<List<MaterialSupplyQuantityInput>?> _resolveSubcontractQuantities(
-    List<_MaterialGroup> groups,
-    Map<String, String>? qtyByActionGroupKey, {
-    bool silent = false,
-  }) async {
-    const route = MaterialSupplyRoute.subcontract;
-    // 要不要先自制目标件再发外：有下层**且**不是 V581「只有一个叶子子件」的
-    // 直接外发件。形态由服务端 subcontractOutboundForm 明确告知，旧服务端
-    // 返回 null 时 isComponentOutbound 为 false，自然回落旧口径。
-    bool needsPreparation(_MaterialGroup group) =>
-        !group.representative.isComponentOutbound &&
-        _analysisMaterialHasChildren(group.representative);
-    final childGroups = groups.where(needsPreparation).toList(growable: false);
-    final leafGroups = groups
-        .where((group) => !needsPreparation(group))
-        .toList(growable: false);
-    // 先自制：显式创建 child 时必须全量接管剩余需求（仅当选中含这类行时校验）。
-    final childEntries = [
-      for (final target in _notificationTargetsForGroups(childGroups))
-        _supplyQuantityEntry(target, route),
-    ];
-    if (childGroups.isNotEmpty &&
-        (childEntries.isEmpty ||
-            childEntries.any(
-              (entry) => entry.maxQty <= 0 && entry.rootAllocatedStockQty <= 0,
-            ))) {
-      context.appWarning('当前自制任务已无可安排余量，请刷新后重试');
-      return null;
-    }
-    // 无子层：行内数量裁决（公共补库 fail-closed、超上限拦截同采购），不单独弹窗。
-    final leaf = _adjudicateSupplyQuantities(
-      route,
-      _notificationTargetsForGroups(leafGroups),
-      qtyByActionGroupKey,
-    );
-    if (leaf == null) return null;
-    final entries = [...childEntries, ...leaf.entries];
-    final quantities = [
-      for (final entry in childEntries) entry.maxQty,
-      ...leaf.quantities,
-    ];
-    final confirmed =
-        silent ||
-        await showDialog<bool>(
-              context: context,
-              builder: (_) => MaterialSupplySubmitConfirmDialog(
-                route: route,
-                entries: entries,
-                quantities: quantities,
-                qtyText: _qty,
-              ),
-            ) ==
-            true;
-    if (!confirmed) return null;
-    return [
-      for (var i = 0; i < entries.length; i++)
-        // 前 childEntries.length 个是「要先自制」的行——恒不许超量；其后是
-        // 直接外发段（无子层 + V581 单一子件），按行内裁决结果决定。
-        entries[i].toInput(quantities[i]),
-    ];
-  }
-
-  /// 「提交采购/委外」前的数量裁决与总结确认（2026-09-05 改版；2026-09-06 拆出
-  /// 无弹窗裁决段 [_adjudicateSupplyQuantities] 供委外混合批次复用）：
+  /// 「提交采购/委外」前的数量裁决与总结确认(2026-09-05 改版；2026-09-06 拆出
+  /// 无弹窗裁决段 [_adjudicateSupplyQuantities])：
   ///
   /// 数量编辑已前移到分桶表格行内（默认/上限来自 demandSupplyGapQty −
   /// 已在途需求），这里只做三件事：按 [qtyByActionGroupKey]（行内编辑值，
@@ -1375,7 +1186,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       openSafetySupplyQty: openSafetySupply,
       safetyReplenishmentGapQty: safetyGap,
       // 2026-09-21 用户口径「采购能超量下，委外也要能」：我方供料的委外件
-      // (有生产性子层，含 V581 单一子件件)从此同样可以超量。原先这里与
+      // (有直属物料，ADR-143 领料发外)从此同样可以超量。原先这里与
       // 服务端、数据库一起拒绝，理由是「多下的量会凭空多出一份无人负责的
       // 子件需求」——那条理由已被 ADR-099 修订解决：多下的量按计划产出量
       // 如实带大子件需求，在「父件 + 下层一起下单」页里一并办掉(V641)。

@@ -99,7 +99,9 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/operations/workbench/purchase') {
     return _operationsPurchaseScope;
   }
-  if (path == '/operations/workbench/subcontract') {
+  // 委外领料页(ADR-143)是委外任务中心的子页，与入口页同一权限面。
+  if (path == '/operations/workbench/subcontract' ||
+      path == '/operations/workbench/subcontract/draw-request') {
     return _operationsSubcontractScope;
   }
   if (path == '/rd/tasks') return _rdTaskScope;

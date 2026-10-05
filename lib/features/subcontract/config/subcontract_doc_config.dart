@@ -7,9 +7,9 @@
 //  - 回厂进仓：供应商+币种+交货人+lastDate；明细链到订货；审核进入 IQC 隔离并立加工费 AP，
 //    IQC PASS 形成仓库待入库切片，仓库确认后才增加合格库存；FAIL 走正式退回/贷项反向。
 //  - 退货(成品退)：供应商+仓库(必)+币种+lastDate；明细链到进仓&订货；审核出库+反向立应付(ap_posted)。
-//  - 出仓执行：新流由仓库专属任务出订货目标件；本配置承载生成的执行草稿与
-//    LEGACY_BOM_COMPONENT 历史单，无币种/单价。禁止从委外模块空白新建。
-//  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；必须链到已审发料，审核入库并回写发料子件已退量。
+//  - 出仓执行(委外材料出仓单)：委外人员在任务中心「领料」提交后生成草稿，仓库拣货发出
+//    委外件的直属物料(ADR-143)；无币种/单价。禁止从委外模块空白新建。
+//  - 材料退：仓库(必)+经办人+bStyle；无币种/单价；必须链到已审发料，审核入库并回写发料物料已退量。
 //  - 损耗：仓库(必)+经办人+总重；无币种/单价；明细含 ending/standard/waste_rate/cause；必须链到已审发料；
 //    审核只登记供应商处材料损耗，不重复扣公司库存；金额仅为建议索赔，不自动冲应付。
 //
@@ -110,7 +110,7 @@ class SubcontractDocConfig {
   /// 草稿计数类型（新建页「草稿(N)」按钮 / hub 卡徽章）。
   ///
   /// 申请/询价是计划系统生成的只读需求单，回厂收货由仓储任务中心办理，
-  /// 历史 BOM 子件发料已退役——三者无人工草稿，故返回 null（不显示草稿入口）。
+  /// 委外材料出仓单由「领料」提交生成——三者无人工草稿，故返回 null（不显示草稿入口）。
   /// 2026-09-11 补齐：成品退回 / 余料退回 / 损耗与责任接入跨模块草稿计数。
   DraftDocKind? get draftKind => switch (type) {
     SubcontractDocType.order => DraftDocKind.subcontractOrder,
@@ -265,9 +265,9 @@ class SubcontractDocConfig {
     linkToApplicationItem: true,
     showReceived: true,
     approveEffect:
-        '财务批准后订货单生效；服务端逐行判断目标件准备路线：'
-        '无子层级先预留合格库存并通知仓库出仓，有子层级先通知计划员完成前置自制、'
-        'FQC 和成品入仓，备齐后再通知仓库出仓。',
+        '财务批准后订货单生效，按当时的 BOM 冻结每种直属物料的领料计划；'
+        '直属物料齐套后在委外任务中心「领料」提交，仓库发出后委外商加工、分批回厂。'
+        '缺 BOM 的委外件要先由研发完善 BOM 才能提交财务。',
     // 管理卡片点进直达新建（与销售/采购一致）；明细经「从上游引入」从计划申请拉取。
     skipListOnCreate: true,
   );
@@ -301,8 +301,8 @@ class SubcontractDocConfig {
     skipListOnCreate: true,
   );
 
-  /// 委外出仓执行单。V436 新流出订货目标件并按 1:1 转委外商保管；
-  /// LEGACY_BOM_COMPONENT 历史单继续按冻结 BOM 子件单耗守恒解释。
+  /// 委外材料出仓单(ADR-143)：委外人员「领料」提交后生成的草稿，仓库拣货发出委外件的
+  /// 直属物料并转委外商保管；实发不超过领料数量，按冻结单耗守恒。
   static const materialIssue = SubcontractDocConfig(
     type: SubcontractDocType.materialIssue,
     label: '委外发料单',
@@ -315,16 +315,16 @@ class SubcontractDocConfig {
     hasDeliverDate: true,
     itemHasPrice: false,
     itemHasWeight: true,
-    itemHasParent: true, // 仅历史 BOM 子件行使用；新流目标件行不据此推断层级
+    itemHasParent: true, // 每行物料所属的委外件(物料的上层)
     itemHasBoxQty: true,
-    itemHasStockPlace: true, // 目标件/历史子件出仓的拣货指引
+    itemHasStockPlace: true, // 直属物料出仓的拣货指引
     linkToOrderItem: true,
     showReturned: true,
     showWasted: true,
     showSupplierLedger: true,
     approveEffect:
-        '审核将服务端已放行的目标件出仓并转为委外商处保管；'
-        '历史 BOM 子件发料单继续按冻结子件单耗守恒。',
+        '审核即仓库按委外人员提交的领料发出直属物料，转为委外商处保管；'
+        '实发不能超过领料数量，少发的部分下次领料自动补齐。',
     skipListOnCreate: true,
   );
 
@@ -372,7 +372,7 @@ class SubcontractDocConfig {
     linkToMaterialIssueItem: true,
     linkToOrderItem: true,
     showReturned: true,
-    approveEffect: '审核将入库(材料退)并回写来源发料子件已退量，不再回写订货历史累计量。',
+    approveEffect: '审核将入库(材料退)并回写来源发料物料已退量，不再回写订货历史累计量。',
     skipListOnCreate: true,
   );
 
@@ -394,7 +394,7 @@ class SubcontractDocConfig {
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
     approveEffect:
-        '审核只登记来源发料子件已损耗量(发料时已转出公司仓，不会再次扣公司库存)；'
+        '审核只登记来源发料物料已损耗量(发料时已转出公司仓，不会再次扣公司库存)；'
         '建议索赔金额仅供后续财务责任决定参考，不自动扣款、抵销或生成负应付。',
     skipListOnCreate: true,
   );

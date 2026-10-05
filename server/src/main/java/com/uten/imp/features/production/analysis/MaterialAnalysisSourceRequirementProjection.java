@@ -14,8 +14,8 @@ import java.util.UUID;
 
 /**
  * The source batch's original gross BOM requirement, independent of execution.
- * Callers provide admitted source lines, excluding MAKE_COMPONENT and
- * SUBCONTRACT_MAKE execution anchors whose requested quantities may grow.
+ * Callers provide admitted source lines, excluding MAKE_COMPONENT execution
+ * anchors whose requested quantities may grow.
  * Nodes retain their original source/path identity even after an anchor is made.
  *
  * <p>This projection neither reads stock nor consumes planned, fulfilled,

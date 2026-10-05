@@ -11,7 +11,12 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.UUID;
 
-/** Read-only draft projection of the same source consideration used at posting. */
+/**
+ * Read-only draft projection of the same source consideration used at posting.
+ * Purchase lines apply the same ADR-144 T_used rule as {@code PurchaseReceiptAmountAuthority}:
+ * the over-receipt tolerance never joins the pro-rata base, only the used part is added and
+ * priced like approved excess.
+ */
 @Service
 @RequiredArgsConstructor
 public class ProcurementReceiptAmountPreview {
@@ -46,9 +51,12 @@ public class ProcurementReceiptAmountPreview {
             default -> throw new IllegalArgumentException("Unknown receipt kind");
         };
         if (orderItemId == null) return MoneyPolicy.line(qty, price, null, rate);
+        // Only purchase lines carry an over-receipt tolerance (ADR-144); the column is fixed per kind.
+        String tolerancePct = "PURCHASE".equals(kind) ? "i.allowed_over_receipt_pct" : "CAST(NULL AS numeric)";
         @SuppressWarnings("unchecked")
         List<Object[]> sources = em.createNativeQuery("SELECT i.qty,i.price,i.amount_original,i.amount_local,"
-                + "h.exchange_rate,COALESCE(i.arrival_overage_posted_qty,0),i.extra_columns::text,i.total_amount_input "
+                + "h.exchange_rate,COALESCE(i.arrival_overage_posted_qty,0),i.extra_columns::text,i.total_amount_input,"
+                + tolerancePct + " "
                 + "FROM " + prefix + "_order_items i JOIN " + prefix + "_orders h ON h.id=i.order_id "
                 + "WHERE i.id=:id AND NOT i.is_deleted AND NOT h.is_deleted")
                 .setParameter("id", orderItemId).getResultList();
@@ -95,7 +103,10 @@ public class ProcurementReceiptAmountPreview {
                 + "AND decision IN('APPROVE_ALL','APPROVE_CUSTOM')")
                 .setParameter("kind", kind).setParameter("receipt", receiptId)
                 .setParameter("id", orderItemId).getSingleResult());
-        BigDecimal overage = decimal(source[5]).add(allowance);
+        BigDecimal approvedOverage = decimal(source[5]).add(allowance);
+        BigDecimal overage = approvedOverage.add(PurchaseOverReceiptTolerance.usedTolerance(
+                priorQty.add(qty), sourceQty.add(approvedOverage),
+                PurchaseOverReceiptTolerance.toleranceQty(sourceQty, decimal(source[8]))));
         BigDecimal overageOriginal = MoneyPolicy.orderOverageAmount(
                 overage, sourcePrice, decimal(source[7]), sourceQty);
         MoneyPolicy.LineAmounts result = allocated(qty, priorQty, sourceQty.add(overage), sourceOriginal.add(overageOriginal),

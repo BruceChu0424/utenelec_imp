@@ -609,7 +609,8 @@ class _WarehouseInboundExpectationsViewState
       context.appWarning(
         '已登记送检 ${total - quarantined} 张收货单；'
         '$quarantined 张实到超量已隔离：待财务在到货异常审批定案后，'
-        '可在「到货异常任务中心」一键入库',
+        '可在「到货异常任务中心」一键入库。采购按订货量加允许超收比例算最多可收，'
+        '超过的部分才要财务审批',
       );
       return;
     }

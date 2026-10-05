@@ -101,8 +101,8 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         assertEquals(original,planHistory(first.planId()));
     }
 
-    @Test void completedLeafSubcontractSupplyCanReplaceFourYieldedQualifiedUnitsThroughANewApplication() {
-        var c=scenario("subcontract-leaf-supplement",false);
+    @Test void completedSubcontractSupplyCanReplaceFourYieldedQualifiedUnitsThroughANewApplication() {
+        var c=scenario("subcontract-supplement",false);
         AnalysisView a=preview(c,"A","10");
         UUID materialId=material(a,c.child()).materialLineId();
         notifySubcontract(a,materialId,"subcontract-first-"+a.analysisId());
@@ -167,44 +167,6 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         qty("4",ReflectionTestUtils.invokeMethod(fixture,"publicAvailable",c.world().warehouseId(),c.child()));
     }
 
-    @Test void completedSubcontractPreparationCanManufactureAndNotifyOnlyFourReplacementUnitsAfterYield() {
-        var c=scenario("subcontract-make-supplement",false);fixture.insertBom(c.child(),c.raw(),"1");
-        // V581 起「只有一个叶子子件」的委外件走 COMPONENT_OUTBOUND 委外下达，issue-plans
-        // 拒收；本用例测「让料后补 4 件」的前置自制链，挂第二颗采购叶子让它保留车间路线
-        //（同 MaterialWorkshopAnchorEndToEndTest#createMixed 的做法，路线映射里补 BUY）。
-        // goodsD 库存要等两张分析的路由都定型后再补（preview 前播种会把该行折叠成
-        // 不可行动行致 saveRoutes 悬空），见下方 yieldFour 之后。
-        fixture.insertBom(c.child(),c.world().goodsD(),"1");
-        ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",c.world(),c.raw(),"10");
-        AnalysisView a=preview(c,"A","10");UUID materialId=material(a,c.child()).materialLineId();
-        // 路由定型后、下达前补 goodsD 库存：段的就绪在下达时实时重算（库存变化不作废
-        // 请求 CAS），而 preview 前播种会把 goodsD 行折叠成不可行动行令 saveRoutes 悬空。
-        ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",c.world(),c.world().goodsD(),"100");
-        var first=commands.issueWorkshopPlans(a.analysisId(),planRequest(c,a,materialId,"10","submake-first-"+a.analysisId())).plans().getFirst();
-        UUID childItem=db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,first.planId());
-        finish(c,first,"10");
-        UUID originalApplication=latestSubcontractApplicationItem(a.analysisId(),c.child());
-        completeSubcontract(c,originalApplication,"10");a=analyses.detail(a.analysisId());
-        qty("10",material(a,c.child()).exactPeggedQty());String history=planHistory(first.planId());
-        AnalysisView b=preview(c,"B","4");yieldFour(c,a,b);
-        var yielded=analyses.detail(a.analysisId());qty("4",material(yielded,c.child()).demandSupplyGapQty());
-        var next=commands.issueWorkshopPlans(a.analysisId(),planRequest(c,yielded,materialId,"4","submake-supplement-"+a.analysisId())).plans().getFirst();
-        assertEquals(childItem,db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,next.planId()));
-        qty("14",db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?",BigDecimal.class,childItem));
-        var task=db.queryForMap("SELECT required_qty,produced_qty,notified_qty FROM preplan_subcontract_make_tasks WHERE preparation_item_id=? AND status='ACTIVE'",childItem);
-        qty("14",(BigDecimal)task.get("required_qty"));qty("10",(BigDecimal)task.get("produced_qty"));qty("10",(BigDecimal)task.get("notified_qty"));
-        replenishRaw(c,a.analysisId(),next.planId());
-        finish(c,next,"4");
-        UUID replacement=latestSubcontractApplicationItem(a.analysisId(),c.child());assertNotEquals(originalApplication,replacement);
-        qty("4",db.queryForObject("SELECT qty FROM subcontract_application_items WHERE id=?",BigDecimal.class,replacement));
-        completeSubcontract(c,replacement,"4");
-        var finalA=material(analyses.detail(a.analysisId()),c.child());qty("10",finalA.requiredQty());qty("10",finalA.exactPeggedQty());
-        qty("0",finalA.priorityPendingQty());qty("4",finalA.priorityFulfilledQty());
-        qty("4",material(analyses.detail(b.analysisId()),c.child()).exactPeggedQty());
-        assertEquals(history,planHistory(first.planId()));
-        qty("14",db.queryForObject("SELECT notified_qty FROM preplan_subcontract_make_tasks WHERE preparation_item_id=? AND status='ACTIVE'",BigDecimal.class,childItem));
-    }
-
     @Test void aggregateEntryKeepsTheExistingChildAndIssuesOnlyTheTwoUnitNetSupplement() {
         var c=scenario("aggregate-net-make-supplement",true);
         ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",c.world(),c.raw(),"10");
@@ -248,7 +210,8 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         fixture.insertGoods(root,"Y-ROOT-"+root,"让料原父产品","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(child,"Y-CHILD-"+child,"让料可补子件",make?"自制":"委外",w.unitId(),w.unitLegacy());
         fixture.insertGoods(raw,"Y-RAW-"+raw,"子件实际原材料","采购",w.unitId(),w.unitLegacy());
-        fixture.insertBom(root,child,"1");if(make)fixture.insertBom(child,raw,"1");
+        // 自制子件领 raw 生产; 委外子件(ADR-143 §二.3 必须有直属物料)把 raw 领出发给委外商。
+        fixture.insertBom(root,child,"1");fixture.insertBom(child,raw,"1");
         db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),child,raw);
         UUID production=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD'",UUID.class);
         db.update("INSERT INTO departments(id,code,name,parent_id,level) VALUES(?,?,?,?,'二级班组')",workshop,"Y-WORK-"+workshop,"让料补供车间",production);
@@ -336,24 +299,16 @@ class PreplanReallocationMakeSupplementEndToEndTest {
     }
     private void completeSubcontract(Scenario c,UUID applicationItem,String quantity) {
         var w=c.world();fixture.loginAs(w.superAdminUserId());BigDecimal amount=new BigDecimal(quantity);
-        if(db.queryForObject("SELECT count(*) FROM goods_bom_items WHERE goods_id=? AND NOT is_deleted",Integer.class,c.child())==0) {
-            // A leaf subcontract is external processing of an existing target
-            // blank. Receive its real public input only after the supply request;
-            // the order must issue this blank before the supplier can return it.
-            ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",w,c.child(),quantity);
-        }
+        // ADR-143: receive the real public direct material only after the supply request; the subcontract clerk
+        // draws it and the warehouse issues it before the supplier can return the child.
+        fixture.receiveSubcontractMaterial(w,c.raw(),quantity);
         var order=new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
         order.setSettlementMethodId(ReflectionTestUtils.invokeMethod(fixture,"activeSettlementMethodId"));
         order.setBillDate(BusinessTime.today());order.setSupplierId(w.supplierId());order.setWarehouseId(w.warehouseId());order.setCurrencyId(w.currencyId());order.setExchangeRate(BigDecimal.ONE);order.setTaxRate(BigDecimal.ZERO);
         var orderLine=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();orderLine.setGoodsId(c.child());orderLine.setApplicationItemId(applicationItem);orderLine.setUnitId(w.unitId());orderLine.setUnitRate(BigDecimal.ONE);orderLine.setQty(amount);orderLine.setPrice(new BigDecimal("30"));order.setItems(List.of(orderLine));
         UUID orderId=subcontractOrders.create(order).getId();UUID orderItem=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
         UUID approver=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);finance.submit("SUBCONTRACT",orderId);fixture.loginAs(approver);ReflectionTestUtils.invokeMethod(fixture,"approvePendingFinance","SUBCONTRACT",orderId);fixture.loginAs(w.superAdminUserId());
-        for(UUID issueId:db.queryForList("SELECT DISTINCT issue.id FROM subcontract_material_issues issue JOIN subcontract_material_issue_items item ON item.issue_id=issue.id WHERE item.order_item_id=? AND issue.status=0 AND NOT issue.is_deleted",UUID.class,orderItem)) {
-            var detail=subcontractIssues.detail(issueId);var issue=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest();
-            issue.setBillDate(detail.getBillDate());issue.setSupplierId(detail.getSupplierId());issue.setWarehouseId(w.warehouseId());issue.setWorkerId(detail.getWorkerId());issue.setDeliverDate(detail.getDeliverDate());
-            issue.setItems(detail.getItems().stream().map(original->{var line=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine();line.setLineNo(original.getLineNo());line.setGoodsId(original.getGoodsId());line.setColorId(original.getColorId());line.setUnitId(original.getUnitId());line.setUnitRate(original.getUnitRate());line.setQty(original.getQty());line.setOrderItemId(original.getOrderItemId());line.setPlanItemId(original.getPlanItemId());line.setParentGoodsId(original.getParentGoodsId());line.setParentColorId(original.getParentColorId());return line;}).toList());
-            subcontractIssues.update(issueId,issue);subcontractIssues.approve(issueId);
-        }
+        fixture.drawAndIssueSubcontract(orderItem,amount,"yield-draw-"+orderItem);
         var receipt=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();receipt.setBillDate(BusinessTime.today());receipt.setSupplierId(w.supplierId());receipt.setWarehouseId(w.warehouseId());receipt.setCurrencyId(w.currencyId());receipt.setExchangeRate(BigDecimal.ONE);receipt.setTaxRate(BigDecimal.ZERO);receipt.setSettlementMethodId(order.getSettlementMethodId());
         var receiptLine=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();receiptLine.setOrderItemId(orderItem);receiptLine.setGoodsId(c.child());receiptLine.setUnitId(w.unitId());receiptLine.setUnitRate(BigDecimal.ONE);receiptLine.setQty(amount);receiptLine.setPrice(new BigDecimal("30"));receipt.setItems(List.of(receiptLine));
         UUID receiptId=subcontractReceipts.create(receipt).getId();subcontractReceipts.approve(receiptId);

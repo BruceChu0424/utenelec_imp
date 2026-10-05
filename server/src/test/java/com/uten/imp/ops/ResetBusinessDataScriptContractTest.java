@@ -35,7 +35,9 @@ class ResetBusinessDataScriptContractTest {
                 .containsEntry("business_record_identities","CLEAR").containsEntry("platform_record_field_versions","CLEAR")
                 .containsEntry("platform_column_usage","CLEAR").containsEntry("ai_jobs","CLEAR")
                 .containsEntry("ai_input_originals","CLEAR").containsEntry("ai_input_original_bindings","CLEAR")
-                .containsEntry("sales_quote_template_candidate_history","CLEAR");
+                .containsEntry("sales_quote_template_candidate_history","CLEAR")
+                .containsEntry("subcontract_draw_notice_marks","CLEAR")
+                .doesNotContainKeys("preplan_subcontract_make_tasks","subcontract_outbound_preparation_commands");
     }
 
     @Test void installedAndExecutedPolicyAreBothComparedInsideTheResetTransaction() {

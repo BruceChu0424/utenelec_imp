@@ -186,6 +186,7 @@ class UnplacedPublicSupplyEndToEndTest {
         var world=fixture.seedWorld("same-public-"+UUID.randomUUID());fixture.loginAs(world.superAdminUserId());
         UUID goods=UUID.randomUUID();fixture.insertGoods(goods,"SAME-PUBLIC-"+goods,"同单共享物料",route.equals("BUY")?"采购":"委外",world.unitId(),world.unitLegacy());
         db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",world.supplierId(),goods);
+        if(route.equals("SUBCONTRACT"))fixture.addSubcontractDirectMaterial(world,goods,"1"); // ADR-143 §二.3: 委外件要有直属物料才能下达
         UUID parent=nested?UUID.randomUUID():goods;
         if(nested){fixture.insertGoods(parent,"SAME-PARENT-"+parent,"同单共有父件","自制",world.unitId(),world.unitLegacy());fixture.insertBom(parent,goods,"1");}
         List<PreviewItem> inputs=new ArrayList<>();
@@ -254,6 +255,7 @@ class UnplacedPublicSupplyEndToEndTest {
         var world=fixture.seedWorld("unplaced-"+route+"-"+UUID.randomUUID().toString().substring(0,8));fixture.loginAs(world.superAdminUserId());
         UUID goods=UUID.randomUUID();fixture.insertGoods(goods,"UNPLACED-"+goods,"未操作公共物料",route.equals("BUY")?"采购":"委外",world.unitId(),world.unitLegacy());
         db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",world.supplierId(),goods);
+        if(route.equals("SUBCONTRACT"))fixture.addSubcontractDirectMaterial(world,goods,"1"); // ADR-143 §二.3: 委外件要有直属物料才能下达
         var source=target(world,goods,"source");var sm=material(source,goods);
         if(!route.equals(sm.sourceConfirmed()))source=analyses.saveRoutes(source.analysisId(),new RouteRequest(source.version(),source.fingerprint(),"route-"+source.analysisId(),List.of(new RouteDecision(sm.materialLineId(),sm.actionGroupKey(),route,null))));
         sm=material(source,goods);

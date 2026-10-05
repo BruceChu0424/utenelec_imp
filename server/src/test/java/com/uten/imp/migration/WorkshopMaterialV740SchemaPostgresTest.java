@@ -750,11 +750,9 @@ class WorkshopMaterialV740SchemaPostgresTest {
 
     @Test
     void periodicEdgeReadersOnlyFollowOrderEdges() throws Exception {
-        for (String function : List.of("fn_subcontract_component_entitled_lots(uuid,uuid)",
-                "fn_subcontract_component_available_stock(uuid,uuid)")) {
-            assertThat(str("SELECT pg_get_functiondef(?::regprocedure)", function))
-                    .as(function).contains("edge_component.issue_method<>'PERIODIC'");
-        }
+        // V798(ADR-143): 委外可发外直属边只剩一个判据 fn_subcontract_draw_edges, 整批领料的料不发外。
+        assertThat(str("SELECT pg_get_functiondef('fn_subcontract_draw_edges(uuid)'::regprocedure)"))
+                .contains("component.issue_method <> 'PERIODIC'");
         assertThat(str("SELECT pg_get_functiondef('fn_preplan_future_source_private_capacity_qty(uuid)'::regprocedure)"))
                 .contains("NOT fn_goods_has_order_bom(action.goods_id)")
                 .doesNotContain("NOT EXISTS(SELECT 1 FROM goods_bom_items bom WHERE bom.goods_id=action.goods_id");

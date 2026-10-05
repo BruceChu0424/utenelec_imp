@@ -33,7 +33,7 @@ abstract final class SubcontractPageFactory {
       embedded: embedded,
     ),
     SubcontractDocType.materialIssue =>
-      const SubcontractLegacyMaterialIssueHistoryPage(),
+      const SubcontractMaterialIssueListPage(),
     SubcontractDocType.returnDoc => SubcontractFinishedReturnHistoryPage(
       initialStatus: initialStatus,
       embedded: embedded,
@@ -99,9 +99,11 @@ abstract final class SubcontractPageFactory {
       if (type == SubcontractDocType.materialIssue) {
         return const SubcontractExecutionCreateBlockedPage(
           title: '不能手工空白新建委外出仓单',
-          description: '新委外单始终出仓订货目标件。财务批准且目标件备齐后，系统自动释放到仓库专属委外出仓任务。',
-          actionLabel: '去仓库委外出仓',
-          actionRoute: RouteName.warehouseSubcontractOutbound,
+          description:
+              '委外材料出仓单由委外人员在委外任务中心「领料」提交后生成，'
+              '仓库在委外出仓工作台拣货发出直属物料。',
+          actionLabel: '进入委外任务中心',
+          actionRoute: RouteName.operationsSubcontractWorkbench,
         );
       }
       if (type == SubcontractDocType.receipt) {

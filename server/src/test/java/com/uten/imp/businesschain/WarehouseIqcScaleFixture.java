@@ -2,7 +2,6 @@ package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
-import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueService;
 import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementInspectionService;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.*;
@@ -27,7 +26,6 @@ final class WarehouseIqcScaleFixture {
     private final JdbcTemplate jdbc;
     private final MaterialAnalysisService analysis;
     private final SubcontractReceiptService subcontractReceipts;
-    private final SubcontractMaterialIssueService issues;
     private final ProcurementInspectionService quality;
 
     WarehouseIqcScaleFixture(AutowireCapableBeanFactory beans, JdbcTemplate jdbc) {
@@ -36,7 +34,6 @@ final class WarehouseIqcScaleFixture {
         this.jdbc = jdbc;
         analysis = beans.getBean(MaterialAnalysisService.class);
         subcontractReceipts = beans.getBean(SubcontractReceiptService.class);
-        issues = beans.getBean(SubcontractMaterialIssueService.class);
         quality = beans.getBean(ProcurementInspectionService.class);
     }
 
@@ -58,27 +55,17 @@ final class WarehouseIqcScaleFixture {
         var sourceWorld = withWarehouse(w, first);
         BigDecimal required = RECEIPT_QTY.multiply(BigDecimal.valueOf(count / 2));
 
-        // A real OTHER_IN establishes company-owned unfinished pieces at 10/unit;
-        // the subcontract issue consumes all of them before any return is measured.
-        ReflectionTestUtils.invokeMethod(masters, "putDirectTargetStock", sourceWorld, w.goodsE(), required.toPlainString());
+        // ADR-143: E's direct material (per-unit 1) is received by a real OTHER_IN at 10/unit into the
+        // first leaf; the subcontract clerk draws the whole order and the warehouse issues all of it
+        // before any return is measured.
+        UUID material = masters.ensureSubcontractDirectMaterial(w, w.goodsE());
+        masters.receiveSubcontractMaterial(sourceWorld, material, required.toPlainString());
         var subcontract = masters.submitLeafSubcontractForFinance(sourceWorld, required);
         masters.loginAs(subcontract.reviewerUserId());
         masters.approvePendingFinance("SUBCONTRACT", subcontract.orderId());
         masters.loginAs(w.superAdminUserId());
         UUID subcontractItem = jdbc.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=? AND is_deleted=FALSE", UUID.class, subcontract.orderId());
-        UUID issue = jdbc.queryForObject("""
-                SELECT h.id FROM subcontract_material_issues h
-                JOIN subcontract_material_issue_items i ON i.issue_id=h.id
-                WHERE i.order_item_id=? AND h.status=0 AND h.is_deleted=FALSE AND i.is_deleted=FALSE
-                """, UUID.class, subcontractItem);
-        var draft = issues.detail(issue);
-        var outgoing = new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest();
-        outgoing.setBillDate(BusinessTime.today()); outgoing.setSupplierId(w.supplierId()); outgoing.setWarehouseId(first);
-        var issuedLine = new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine();
-        issuedLine.setGoodsId(w.goodsE()); issuedLine.setUnitId(w.unitId()); issuedLine.setUnitRate(BigDecimal.ONE);
-        issuedLine.setQty(required); issuedLine.setOrderItemId(subcontractItem); issuedLine.setParentGoodsId(w.goodsE());
-        issuedLine.setPlanItemId(draft.getItems().getFirst().getPlanItemId()); outgoing.setItems(List.of(issuedLine));
-        issues.update(issue, outgoing); issues.approve(issue);
+        masters.drawAndIssueSubcontract(subcontractItem, required, "iqc-scale-draw-" + subcontractItem);
 
         UUID finished = UUID.randomUUID();
         masters.insertGoods(finished, "IQC-F-"+tag, "IQC scale finished", "自制", w.unitId(), w.unitLegacy());

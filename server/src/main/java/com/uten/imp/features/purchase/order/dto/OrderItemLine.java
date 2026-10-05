@@ -61,6 +61,15 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private String remark;
 
     /**
+     * 本行允许超收百分比(ADR-144)：0 到 100, 最多 2 位小数; 空 = 0。保存时回写货品主档
+     * purchase_allowed_over_receipt_pct 作为下次预填的记忆(空行不清记忆)。
+     */
+    @jakarta.validation.constraints.DecimalMin("0.00")
+    @jakarta.validation.constraints.DecimalMax("100.00")
+    @jakarta.validation.constraints.Digits(integer = 3, fraction = 2)
+    private BigDecimal allowedOverReceiptPct;
+
+    /**
      * 本行全部来源申请明细（稳定顺序：需求日期升序、id 升序）：
      * requestItemIds 非空取其与 requestItemId 的并集，否则单来源。
      */

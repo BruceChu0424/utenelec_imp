@@ -26,18 +26,12 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import 'outbound_weight_fakes.dart';
+import 'subcontract_outbound_test_support.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
-const _route = '/warehouse/subcontract-outbound/plan-1';
+const _route = '/warehouse/subcontract-outbound/issue-1';
 const _server = 'https://draft-restore.example/api';
 const _scope = AuthenticatedScope(userId: 'warehouse-user');
-const _permissions = {
-  Perm.subcontractOutboundView,
-  Perm.subcontractOutboundExecute,
-  Perm.subcontractMaterialIssueView,
-  Perm.subcontractMaterialIssueEdit,
-  Perm.subcontractMaterialIssueApprove,
-};
 
 void main() {
   for (final approve in [false, true]) {
@@ -63,7 +57,7 @@ void main() {
       expect(payload['qty'], 500);
       expect(payload['weight'], 10);
       expect(jsonEncode(payload), isNot(contains('old-local-item')));
-      expect(api.approvals, approve ? ['server-draft-1'] : isEmpty);
+      expect(api.approvals, approve ? ['issue-1'] : isEmpty);
       expect(harness.container.read(formDraftsProvider), isEmpty);
       expect(
         harness.router.routeInformationProvider.value.uri.path,
@@ -83,13 +77,13 @@ void main() {
           {
             ..._localRow(
               planItemId: 'plan-item-2',
-              sourceIdentity: _sourceIdentity(api.planLines[1], api.items[1]),
+              sourceIdentity: _sourceIdentity(api.pickLines[1], api.items[1]),
             ),
             'qty': '300',
             'weightKg': 6,
           },
           _localRow(
-            sourceIdentity: _sourceIdentity(api.planLines[0], api.items[0]),
+            sourceIdentity: _sourceIdentity(api.pickLines[0], api.items[0]),
           ),
         ],
       ),
@@ -163,15 +157,14 @@ void main() {
     'unitRate': 2.0,
     'parentGoodsId': 'changed-parent',
     'parentColorId': 'changed-parent-color',
-    'flowMode': 'COMPONENT_OUTBOUND',
+    'requestedQty': 1200,
   }.entries) {
     testWidgets('同计划行的 ${change.key} 变化不恢复旧输入，重载后使用最新来源', (tester) async {
       final api = _DraftApi();
-      final original = _sourceIdentity(api.planLines.single, api.items.single);
-      if (change.key == 'unitRate') {
-        api.items.single[change.key] = change.value;
+      final original = _sourceIdentity(api.pickLines.single, api.items.single);
+      if (change.key == 'requestedQty') {
+        api.pickLines.single[change.key] = change.value;
       } else {
-        api.planLines.single[change.key] = change.value;
         api.items.single[change.key] = change.value;
       }
       final harness = await _pumpDraft(
@@ -180,7 +173,7 @@ void main() {
         _draftData(rows: [_localRow(sourceIdentity: original)]),
       );
       await _expectBlockedThenReloadAndApprove(tester, api, harness);
-      if (change.key != 'flowMode') {
+      if (change.key != 'requestedQty') {
         final payload =
             (api.savedBodies.single['items'] as List).first
                 as Map<String, dynamic>;
@@ -214,7 +207,7 @@ Future<void> _expectBlockedThenReloadAndApprove(
   expect(_table(tester).rows.first.draft.weight.kg, 20);
   expect(harness.storage.records[harness.storageKey], originalRecord);
   await _submit(tester, approve: true);
-  expect(api.approvals, ['server-draft-1']);
+  expect(api.approvals, ['issue-1']);
   final savedRows = (api.savedBodies.single['items'] as List)
       .cast<Map<String, dynamic>>();
   expect(savedRows.map((row) => row['id']), api.items.map((row) => row['id']));
@@ -260,11 +253,10 @@ Map<String, dynamic> _localRow({
   'weightKg': 10,
   'qtyFromWeight': false,
   'remark': '本机已核对',
-  'selected': true,
 };
 
 Map<String, dynamic> _draftData({
-  String draftId = 'server-draft-1',
+  String draftId = 'issue-1',
   List<Map<String, dynamic>>? rows,
 }) => {
   'draftId': draftId,
@@ -274,16 +266,17 @@ Map<String, dynamic> _draftData({
   'rows': rows ?? [_localRow()],
 };
 
+/// 与拣货页同口径: 草稿原行的来源链 + 委外提交的领料数量(数值按页面解析后的 double)。
 String _sourceIdentity(Map<String, dynamic> line, Map<String, dynamic> item) =>
     [
-      line['orderItemId'],
-      line['goodsId'],
-      line['colorId'],
-      line['unitId'],
-      item['unitRate'],
-      line['parentGoodsId'],
-      line['parentColorId'],
-      line['flowMode'],
+      item['orderItemId'],
+      item['goodsId'],
+      item['colorId'],
+      item['unitId'],
+      (item['unitRate'] as num?)?.toDouble(),
+      item['parentGoodsId'],
+      item['parentColorId'],
+      (line['requestedQty'] as num).toDouble(),
     ].join('|');
 
 typedef _Harness = ({
@@ -324,9 +317,11 @@ Future<_Harness> _pumpDraft(
       sessionSnapshotProvider.overrideWith(_Snapshot.new),
       apiClientProvider.overrideWithValue(api),
       apiBaseUrlProvider.overrideWithValue(_server),
-      masterNameServiceProvider.overrideWithValue(_Names(api)),
+      masterNameServiceProvider.overrideWithValue(OutboundNames(api)),
       authenticatedScopeProvider.overrideWithValue(_scope),
-      currentPermissionsProvider.overrideWithValue(_permissions),
+      currentPermissionsProvider.overrideWithValue(
+        subcontractOutboundPermissions,
+      ),
       isSuperAdminProvider.overrideWithValue(false),
       sharedPreferencesProvider.overrideWithValue(preferences),
       formDraftStorageProvider.overrideWithValue(storage),
@@ -340,10 +335,10 @@ Future<_Harness> _pumpDraft(
         builder: (_, _) => const Scaffold(body: Text('返回列表')),
       ),
       DraftAwareGoRoute(
-        path: '/warehouse/subcontract-outbound/:planId',
+        path: '/warehouse/subcontract-outbound/:issueId',
         builder: (_, state) => WarehouseSubcontractOutboundEditPage(
           key: state.pageKey,
-          planId: state.pathParameters['planId']!,
+          issueId: state.pathParameters['issueId']!,
         ),
       ),
       DraftAwareGoRoute(
@@ -400,20 +395,6 @@ class _MemoryStorage implements FormDraftStorage {
   }
 }
 
-class _Names extends MasterNameService {
-  _Names(super.api);
-  @override
-  Future<void> ensureLoaded() async {}
-  @override
-  Future<void> ensureWarehousesLoaded() async {}
-  @override
-  List<WarehouseDictEntry> get warehouseHierarchy => const [
-    WarehouseDictEntry(id: 'actual-leaf', name: '实物仓'),
-  ];
-  @override
-  String warehouse(String? id) => id == 'actual-leaf' ? '实物仓' : '—';
-}
-
 class _Snapshot extends SessionSnapshotNotifier {
   @override
   Future<SessionSnapshot?> build() async => null;
@@ -421,7 +402,7 @@ class _Snapshot extends SessionSnapshotNotifier {
 
 class _DraftApi extends ApiClient {
   _DraftApi() : super(Dio());
-  final planLines = <Map<String, dynamic>>[_planLine(1)];
+  final pickLines = <Map<String, dynamic>>[_pickLine(1)];
   final items = <Map<String, dynamic>>[_item(1)];
   final savedBodies = <Map<String, dynamic>>[];
   final approvals = <String>[];
@@ -430,29 +411,17 @@ class _DraftApi extends ApiClient {
   Map<String, dynamic> savedHeader = {};
 
   void addSecondLine() {
-    planLines.add(_planLine(2));
+    pickLines.add(_pickLine(2));
     items.add(_item(2));
   }
 
-  static Map<String, dynamic> _planLine(int index) => {
-    'planItemId': 'plan-item-$index',
-    'orderItemId': 'order-item-$index',
-    'goodsId': 'goods-1',
-    'goodsCode': 'ITEM-1',
-    'goodsName': '同款物料',
-    'unitId': 'unit-1',
-    'unitName': '个',
-    'plannedQty': 1000,
-    'issuedQty': 0,
-    'draftReservedQty': 1000,
-    'flowMode': 'DIRECT_OUTBOUND',
-    'preparationStatus': 'READY_OUTBOUND',
-    'preparedQty': 1000,
-    'readyOutboundQty': 0,
-    'remainingQty': 1000,
-    'issuableQty': 0,
-    'allowedActions': ['HANDLE_OUTBOUND'],
-  };
+  static Map<String, dynamic> _pickLine(int index) => outboundPickLine(
+    issueItemId: 'current-item-$index',
+    planItemId: 'plan-item-$index',
+    goodsCode: 'ITEM-1',
+    goodsName: '同款物料',
+    requestedQty: 1000,
+  );
 
   static Map<String, dynamic> _item(int index) => {
     'id': 'current-item-$index',
@@ -466,7 +435,7 @@ class _DraftApi extends ApiClient {
   };
 
   Map<String, dynamic> get document => {
-    'id': 'server-draft-1',
+    'id': 'issue-1',
     'billNo': 'EC20261001000001',
     'billDate': '2026-09-30',
     'warehouseId': 'actual-leaf',
@@ -489,32 +458,34 @@ class _DraftApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.warehouseSubcontractOutboundTask('plan-1')) {
+    if (path == ApiEndpoints.warehouseSubcontractOutboundTask('issue-1')) {
       taskReads++;
       return {
-        'planId': 'plan-1',
+        'issueId': 'issue-1',
+        'issueBillNo': 'EC20261001000001',
         'orderId': 'order-1',
         'orderBillNo': 'WW-1',
-        'status': 'OPEN',
-        'supplierId': 'supplier-1',
         'supplierName': '加工商',
-        'lines': planLines,
-        'drafts': [
-          {
-            'issueId': 'server-draft-1',
-            'billNo': 'EC20261001000001',
-            'status': status,
-          },
+        'warehouseId': 'actual-leaf',
+        'warehouseName': '轨道车间',
+        'lines': [
+          for (final line in pickLines)
+            {
+              ...line,
+              'qty': items.firstWhere(
+                (item) => item['id'] == line['issueItemId'],
+              )['qty'],
+            },
         ],
       };
     }
-    if (path == '/subcontract/material-issues/server-draft-1') return document;
+    if (path == '/subcontract/material-issues/issue-1') return document;
     throw StateError('Unexpected GET $path');
   }
 
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
-    if (path != '/subcontract/material-issues/server-draft-1') {
+    if (path != '/subcontract/material-issues/issue-1') {
       throw StateError('Unexpected PUT $path');
     }
     final payload = Map<String, dynamic>.from(body as Map<String, dynamic>);
@@ -540,10 +511,10 @@ class _DraftApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path != '/subcontract/material-issues/server-draft-1/approve') {
+    if (path != '/subcontract/material-issues/issue-1/approve') {
       throw StateError('Unexpected POST $path');
     }
-    approvals.add('server-draft-1');
+    approvals.add('issue-1');
     status = 1;
     return document;
   }

@@ -222,13 +222,36 @@ public class SubcontractOwnMaterialCostService {
                 inputs.add(new Input(root,fact,InputKind.CONSUMED));
         }
         BigDecimal target=(BigDecimal)receipt.get("target");
-        boolean complete=!materials.isEmpty()&&materials.stream().allMatch(row->"DIRECT_TARGET".equals(row.get("consumption_basis")))
-                &&materials.stream().map(row->(BigDecimal)row.get("qty_base")).reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(target)==0;
+        boolean complete=materialScopeComplete(receiptItem,target);
         long version=db.queryForObject("SELECT version FROM stock_value_production_cost_objects WHERE execution_segment_id=:id",Map.of("id",receiptItem),Long.class);
         String basis=receiptItem+"|"+target.toPlainString()+"|"+complete+"|"+materials.stream().map(row->row.get("id").toString()).toList();
         costs.revise(new Revision(support.context("SUBCONTRACT_COST_BUSINESS",physical.sourceEventId(),receiptItem,receiptItem,
                 physical.actorUserId(),physical.occurredAt()),receiptItem,product,version,target,complete,receiptItem,hash(basis),inputs,List.of()));
         db.update("UPDATE stock_value_production_cost_objects SET business_refresh_pending=FALSE WHERE execution_segment_id=:id",Map.of("id",receiptItem));
+    }
+
+    /**
+     * ADR-143 §三.8 成本完整性(与 fn_check_subcontract_cost_scope_facts 同口径，宁严勿宽)：
+     * 本回厂明细的物料口径回厂量就是全部计费基数(没有委外商自带料份额)，且订货明细的每一种
+     * 冻结物料(计划行)都有本行仍有效的核销切片。没有计划行的明细不认完整。
+     */
+    private boolean materialScopeComplete(UUID receiptItem,BigDecimal target){
+        if(target==null||target.signum()<=0)return false;
+        return Boolean.TRUE.equals(db.queryForObject("""
+                SELECT item.material_basis_qty IS NOT NULL
+                   AND item.material_basis_qty*COALESCE(item.unit_rate,1)=:target
+                   AND EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
+                       WHERE plan.order_item_id=item.order_item_id AND plan.is_deleted=FALSE)
+                   AND NOT EXISTS(SELECT 1 FROM subcontract_material_plan_items plan
+                       WHERE plan.order_item_id=item.order_item_id AND plan.is_deleted=FALSE
+                         AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions c
+                             JOIN subcontract_material_issue_items issue ON issue.id=c.issue_item_id
+                             WHERE c.receipt_item_id=item.id AND issue.plan_item_id=plan.id
+                               AND c.reversal_of IS NULL AND c.qty_doc>0
+                               AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversed
+                                   WHERE reversed.reversal_of=c.id)))
+                FROM subcontract_receipt_items item WHERE item.id=:id
+                """,Map.of("id",receiptItem,"target",target),Boolean.class));
     }
 
     public void refresh(UUID receiptItem,UUID event,UUID actor){

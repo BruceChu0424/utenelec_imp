@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.finance.ProcurementIqcReplacementAllocationService;
+import com.uten.imp.common.finance.PurchaseOverReceiptTolerance;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,7 +18,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Derives purchase receipt AP and stock values from finance-approved order facts. */
+/**
+ * Derives purchase receipt AP and stock values from finance-approved order facts.
+ *
+ * <p>ADR-144: the line's over-receipt tolerance T is optional headroom, never part of the
+ * pro-rata base. Authorized qty = Q + posted excess + this receipt's approved excess + T_used,
+ * T_used = clamp(cumulative effective receipts after this one - (Q + both excesses), 0, T); the
+ * used tolerance is priced like approved excess ({@link MoneyPolicy#orderOverageAmount}). Receiving
+ * exactly Q therefore posts exactly the order amount, extra columns included.
+ */
 @Service
 @RequiredArgsConstructor
 public class PurchaseReceiptAmountAuthority {
@@ -45,7 +54,8 @@ public class PurchaseReceiptAmountAuthority {
                            source_order.status,
                            COALESCE(source_order.is_stopped,FALSE),
                            COALESCE(source_item.arrival_overage_posted_qty,0),
-                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input
+                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input,
+                           source_item.allowed_over_receipt_pct
                     FROM purchase_order_items source_item
                     JOIN purchase_orders source_order ON source_order.id=source_item.order_id
                     WHERE source_item.id=:itemId
@@ -96,9 +106,6 @@ public class PurchaseReceiptAmountAuthority {
             if (currentAllowance.size() > 1) throw conflict("采购到货超量财务授权缺失或重复");
             BigDecimal currentApproved = currentAllowance.isEmpty()
                     ? BigDecimal.ZERO : decimal(currentAllowance.getFirst());
-            AuthorizedSource authorized = authorizedSource(
-                    sourceQty, sourceOriginal, sourceLocal, sourcePrice, sourceRate,
-                    postedOverageQty, currentApproved, decimal(source[12]));
             Object[] prior = (Object[]) em.createNativeQuery("""
                     SELECT COALESCE(SUM(receipt_item.qty),0),
                            COALESCE(SUM(receipt_item.amount_original),0),
@@ -137,6 +144,14 @@ public class PurchaseReceiptAmountAuthority {
                     ||effectivePriorLocal.signum()<0){
                 throw conflict("采购IQC失败退回释放额度超过历史有效收货累计");
             }
+            BigDecimal toleranceQty = PurchaseOverReceiptTolerance.toleranceQty(sourceQty, decimal(source[13]));
+            BigDecimal authorizedBaseQty = sourceQty.add(postedOverageQty).add(currentApproved);
+            BigDecimal toleranceUsedQty = PurchaseOverReceiptTolerance.usedTolerance(
+                    item.getQty() == null ? effectivePriorQty : effectivePriorQty.add(item.getQty()),
+                    authorizedBaseQty, toleranceQty);
+            AuthorizedSource authorized = authorizedSource(
+                    sourceQty, sourceOriginal, sourceLocal, sourcePrice, sourceRate,
+                    postedOverageQty, currentApproved, decimal(source[12]), toleranceUsedQty);
             ReceiptAmounts amounts = sourceAmounts(
                     item.getQty(), sourcePrice, sourceRate,
                     authorized.qty(), authorized.original(), authorized.local(),
@@ -148,7 +163,7 @@ public class PurchaseReceiptAmountAuthority {
             item.setReplacementIntent(replacementAllocation.allocateForReceiptItem(
                     "PURCHASE",receipt.getId(),item.getId(),item.getOrderItemId(),
                     item.getQty(),item.getUnitRate(),amounts.original(),amounts.local(),
-                    authorized.qty(),rawPriorQty,item.getReplacementIntent()));
+                    authorizedBaseQty,toleranceQty,rawPriorQty,item.getReplacementIntent()));
             totalOriginal = totalOriginal.add(amounts.original());
             totalLocal = totalLocal.add(amounts.local());
         }
@@ -185,23 +200,25 @@ public class PurchaseReceiptAmountAuthority {
             BigDecimal sourcePrice, BigDecimal sourceRate,
             BigDecimal postedOverageQty, BigDecimal currentApprovedOverageQty) {
         return authorizedSource(baseQty, baseOriginal, baseLocal, sourcePrice, sourceRate,
-                postedOverageQty, currentApprovedOverageQty, null);
+                postedOverageQty, currentApprovedOverageQty, null, BigDecimal.ZERO);
     }
 
     static AuthorizedSource authorizedSource(
             BigDecimal baseQty, BigDecimal baseOriginal, BigDecimal baseLocal,
             BigDecimal sourcePrice, BigDecimal sourceRate,
-            BigDecimal postedOverageQty, BigDecimal currentApprovedOverageQty, BigDecimal totalInput) {
+            BigDecimal postedOverageQty, BigDecimal currentApprovedOverageQty, BigDecimal totalInput,
+            BigDecimal toleranceUsedQty) {
         if (baseQty == null || baseQty.signum() <= 0
                 || baseOriginal == null || baseOriginal.signum() < 0
                 || baseLocal == null || baseLocal.signum() < 0
                 || sourcePrice == null || sourcePrice.signum() < 0
                 || sourceRate == null || sourceRate.signum() <= 0
                 || postedOverageQty == null || postedOverageQty.signum() < 0
-                || currentApprovedOverageQty == null || currentApprovedOverageQty.signum() < 0) {
+                || currentApprovedOverageQty == null || currentApprovedOverageQty.signum() < 0
+                || toleranceUsedQty == null || toleranceUsedQty.signum() < 0) {
             throw conflict("采购到货授权数量或金额快照无效");
         }
-        BigDecimal overageQty = postedOverageQty.add(currentApprovedOverageQty);
+        BigDecimal overageQty = postedOverageQty.add(currentApprovedOverageQty).add(toleranceUsedQty);
         BigDecimal overageOriginal = MoneyPolicy.orderOverageAmount(overageQty, sourcePrice, totalInput, baseQty);
         BigDecimal overageLocal = MoneyPolicy.local(overageOriginal, sourceRate);
         return new AuthorizedSource(baseQty.add(overageQty),

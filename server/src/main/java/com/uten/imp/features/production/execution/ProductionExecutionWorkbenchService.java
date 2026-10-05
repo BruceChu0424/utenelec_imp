@@ -47,8 +47,6 @@ public class ProductionExecutionWorkbenchService {
     private final SecurityContextCurrentUser currentUser;
     private final ProductionMaterialUsageReadPort materialUsage;
     private final com.uten.imp.features.production.ProductionWorkshopMembership workshopMembership;
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccess;
     /** 详情里「仓库已到多少」与齐套提升同口径(ADR-095)；只读端口，单任务粒度调用。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort materialAvailability;
@@ -58,10 +56,6 @@ public class ProductionExecutionWorkbenchService {
      */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.application.port.WorkshopPlanningGapReadPort planningGaps;
-
-    private String rootVisibility(String normal){
-        return draftPreparationAccess.inPlanningPool()?"("+normal+" OR (root.root_type='ANALYSIS' AND "+draftPreparationAccess.sourcePredicate("root.root_id")+"))":normal;
-    }
 
     @Transactional(readOnly = true)
     public PageResponse<ProductionExecutionWorkbenchGroup> list(
@@ -84,7 +78,7 @@ public class ProductionExecutionWorkbenchService {
                 keyword, workshopDepartmentId, mine, employeeId,
                 canSearchClient, salesOrder);
         String from = " FROM v_production_execution_workbench_roots root WHERE ("
-                + rootVisibility(scope.predicate()) + ") " + filters;
+                + scope.predicate() + ") " + filters;
         Query count = em.createNativeQuery("SELECT COUNT(*)" + from);
         scope.bind(count);
         bindRootFilters(count, keyword, workshopDepartmentId, mine, employeeId,
@@ -130,7 +124,7 @@ public class ProductionExecutionWorkbenchService {
         var query = em.createNativeQuery(
                 "SELECT COALESCE(root.sales_order_preview, ''), COUNT(*)"
                 + " FROM v_production_execution_workbench_roots root WHERE ("
-                + rootVisibility(scope.predicate()) + ") " + filters
+                + scope.predicate() + ") " + filters
                 + " GROUP BY 1 HAVING COALESCE(root.sales_order_preview, '') <> ''"
                 + " ORDER BY 1");
         scope.bind(query);
@@ -151,7 +145,7 @@ public class ProductionExecutionWorkbenchService {
                 "root.owner_employee_id", "rootOwners");
         Query count = em.createNativeQuery(
                 "SELECT COUNT(*) FROM v_production_execution_workbench_roots root"
-                        + " WHERE (" + rootVisibility(scope.predicate()) + ")");
+                        + " WHERE (" + scope.predicate() + ")");
         scope.bind(count);
         return ((Number) count.getSingleResult()).longValue();
     }
@@ -167,7 +161,7 @@ public class ProductionExecutionWorkbenchService {
                 WHERE root.root_type = :rootType
                   AND root.root_id = :rootId
                   AND (%s)
-                """.formatted(rootVisibility(scope.predicate())));
+                """.formatted(scope.predicate()));
         query.setParameter("rootType", rootType);
         query.setParameter("rootId", rootId);
         scope.bind(query);
@@ -231,7 +225,7 @@ public class ProductionExecutionWorkbenchService {
         String predicate = "task.segment_status = 'IN_PROGRESS' AND " + (planningScope
                 ? "EXISTS (SELECT 1 FROM v_production_execution_workbench_roots root"
                     + " WHERE root.root_type = task.root_type AND root.root_id = task.root_id AND ("
-                    + rootVisibility(rootScope.predicate()) + "))"
+                    + rootScope.predicate() + "))"
                 : seeAllWorkshops ? "TRUE" : assignmentPredicate("task"));
         if (keyword != null) predicate += " AND (strpos(lower(COALESCE(task.product_code,'')), :productKeyword) > 0"
                 + " OR strpos(lower(COALESCE(task.product_name,'')), :productKeyword) > 0)";
@@ -929,13 +923,6 @@ public class ProductionExecutionWorkbenchService {
                           AND %s
                         """.formatted(scope.predicate()));
                 bindings.add(new ScopeBinding(scope));
-                branches.add("""
-                        SELECT 'SUBCONTRACT', 'SUBCONTRACT_ORDER', document.id,document.bill_no,document.status::text
-                        FROM production_material_analysis_items preparation
-                        JOIN subcontract_order_items item ON item.id=preparation.subcontract_order_item_id AND item.is_deleted=FALSE
-                        JOIN subcontract_orders document ON document.id=item.order_id AND document.is_deleted=FALSE
-                        WHERE preparation.analysis_id=:rootId AND preparation.is_deleted=FALSE AND %s
-                        """.formatted(scope.predicate()));
             }
         }
         if (productionAccess.hasAuthority("production_plan:view")) {

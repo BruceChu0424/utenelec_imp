@@ -249,8 +249,12 @@ public class GlobalExceptionHandler {
                     if(message!=null && message.startsWith("无法转到下一道工序：")) return message;
                     return "无法转到下一道工序：上层工单当前不能接收，请刷新后重新选择";
                 }
+                String subcontractDraw = subcontractDrawGuardMessage(constraint, databaseError.getMessage());
+                if (subcontractDraw != null) return subcontractDraw;
             }
             String detail = sql.getMessage();
+            String subcontractDraw = subcontractDrawGuardMessage(null, detail);
+            if (subcontractDraw != null) return subcontractDraw;
             if (detail != null && (detail.contains("Custody has already been issued by its destination task")
                     || detail.contains("Returned source has already been consumed by its destination"))) {
                 return "这批余料已被后续工单领用，请先处理对应后续领料，再撤回收仓";
@@ -262,13 +266,6 @@ public class GlobalExceptionHandler {
             // 并发或旁路写入撞上数据库闸时出现，给一句能照着做的话，不回显库内细节。
             String masterGuard = masterIntegrityMessage(detail);
             if (masterGuard != null) return masterGuard;
-            // V458/V634 委外前置自制谱系守卫(DEFERRED, 在 COMMIT 时抛): 订货行数量超过前置自制
-            // 台账 required_qty 或通知批次 notify_qty。2026-09-21 实测这类 409 只显示通用文案,
-            // 财务/委外部无法判断该改哪张单。
-            if (detail != null && detail.contains("subcontract prepared-outbound lineage is inconsistent")) {
-                return "委外订货明细数量超过前置自制台账或通知批次可下单量(或订货行来源与前置自制批次对不上)，"
-                        + "请核对委外前置自制台账与通知批次后重新提交";
-            }
         }
         String message = root == null ? null : root.getMessage();
         if (message != null
@@ -286,6 +283,76 @@ public class GlobalExceptionHandler {
                 root == null ? "unknown" : root.getClass().getSimpleName(),
                 firstLine.length() > 300 ? firstLine.substring(0, 300) : firstLine);
         return "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
+    }
+
+    /**
+     * ADR-143(V798) 委外按工序领料 / 分批回厂的数据库闸(23514)的大白话。服务端正常路径会先给出逐行原因
+     * (例如「仓库只能少发不能多发」「请先在委外任务中心领料」), 这里只在并发或旁路写入撞上数据库闸时出现;
+     * 先认约束名, 驱动没带约束名(纯 SQLException)时按固定英文句首或约束名子串认。不回显 SQL/DETAIL/WHERE。
+     * 不是这几条就返回 null, 交给后面的通用文案。
+     */
+    static String subcontractDrawGuardMessage(String constraint, String message) {
+        String text = message == null ? "" : message;
+        if (matches(constraint, text, "subcontract_target_outbound_first_guard")
+                || text.contains("subcontract receipt material basis nets more than")
+                || text.contains("subcontract receipt has no frozen draw plan lines")
+                || text.contains("subcontract receipt consumes more of a material than the supplier holds")) {
+            if (text.contains("has no frozen draw plan lines")) {
+                return "该委外订货明细没有领料计划(直属物料)，可回厂数量为 0；请先维护委外件 BOM，并在委外任务中心领料后再登记回厂";
+            }
+            if (text.contains("consumes more of a material than the supplier holds")) {
+                return "委外商手里的直属物料不够核销这次回厂(已被回厂核销的发料也不能再红冲或退料)；"
+                        + "请刷新后核对委外领料、退料与回厂记录";
+            }
+            return "回厂数量超过委外商用已发直属物料能做成的套数，超出部分要先在到货异常里经财务批准(委外商自带料)；"
+                    + "请刷新预计到货后按可回厂数量登记，或先在委外任务中心领料";
+        }
+        if (matches(constraint, text, "subcontract_target_outbound_consumption_guard")
+                || text.contains("subcontract receipt material consumption")) {
+            return "委外回厂核销的直属物料数量与回厂数量对不上，本次操作已回滚；请刷新后重试";
+        }
+        if (matches(constraint, text, "subcontract_receipt_material_basis_guard")
+                || matches(constraint, text, "subcontract_receipt_item_material_basis_chk")
+                || text.contains("approved subcontract receipt line lacks its frozen material basis")) {
+            return "委外回厂明细缺少物料核销依据，本次操作已回滚；请刷新后重试";
+        }
+        if (matches(constraint, text, "subcontract_material_issue_item_requested_qty_chk")) {
+            return "仓库出仓数量不能超过委外人员提交的领料数量，只能改少；请改小后再提交";
+        }
+        if (matches(constraint, text, "subcontract_draw_issue_requested_guard")
+                || text.contains("submitted draw quantity and its plan line are immutable")
+                || text.contains("draw-plan issue lines are created only by a subcontract draw submission")
+                || text.contains("only draw-plan issue lines carry a submitted draw quantity")) {
+            return "委外领料单的物料行和提交数量只能由委外领料生成，仓库只能改少、填 0 不发或整张退回委外；请刷新拣货页后重试";
+        }
+        if (matches(constraint, text, "subcontract_draw_issue_identity_guard")
+                || text.contains("subcontract draw is only accepted on an open plan line")
+                || text.contains("subcontract issue line must carry the exact frozen draw-plan material")) {
+            if (text.contains("open plan line")) {
+                return "该委外任务已结束领料或订货已结清，不能再领料发料；请刷新后核对";
+            }
+            return "委外领料行必须是该任务领料计划里的物料(物料与颜色不能改)；请刷新拣货页后重试";
+        }
+        if (matches(constraint, text, "subcontract_draw_plan_basis_guard")
+                || text.contains("subcontract draw plan line must freeze one drawable direct BOM edge")) {
+            return "委外件的 BOM 刚有改动，领料计划与当前 BOM 的直属物料对不上；请刷新后重新审批";
+        }
+        if (matches(constraint, text, "subcontract_material_plan_items_check")) {
+            return "委外直属物料累计发出不能超过领料计划量；请刷新后核对本次出仓数量";
+        }
+        if (matches(constraint, text, "subcontract_material_plan_items_issued_qty_check")) {
+            return "该直属物料已发外的数量不够这次红冲或退料；请刷新后核对委外发料与退料记录";
+        }
+        if (text.contains("approved subcontract draw issue lacks exact reservation coverage")
+                || text.contains("subcontract outbound allocation provenance is inconsistent")
+                || text.contains("subcontract outbound reservation lacks exact issue allocation")) {
+            return "委外领料单的库存占用与出仓明细对不上(可能刚被撤回、退回或改少)，本次操作已回滚；请刷新拣货页后重试";
+        }
+        return null;
+    }
+
+    private static boolean matches(String constraint, String message, String name) {
+        return name.equals(constraint) || message.contains(name);
     }
 
     /** V683/V684 主档触发器(23514)的大白话；不是这几条就返回 null 交给通用文案。 */

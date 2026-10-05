@@ -3,14 +3,15 @@
 // 结构（2026-08-16 收敛）：面板状态机与外壳在共享组件
 // [showUtenDocLinkPickerSheet]（components/layout/uten_doc_link_picker_sheet.dart），
 // 本文件只保留委外领域差异：
-//  - 新流目标件出仓由仓库任务生成；本面板的发料来源只服务历史兼容与既有草稿；
+//  - 委外材料出仓单只由任务中心「领料」提交生成(ADR-143)；本面板不新建发料，发料只作
+//    材料退、损耗单的来源；
 //  - 4 个上游方向推断（见 upstreamTypeOf）；
 //  - 剩余可引量口径（进仓←订货 / 发料←订货 / 退货←进仓/订货 / 材料退·损耗←发料）；
 //  - 单据表与明细表列定义。
 //
 // 委外 8 单据链路更复杂（4 个上游方向，见 upstreamTypeOf）：
 //   订货 → 申请；进仓 → 订货；退货 → 进仓优先/订货；
-//   新流禁止从订货手工空白创建发料；LEGACY_BOM_COMPONENT 历史单保留来源兼容；
+//   禁止从订货手工空白创建发料；
 //   材料退 → 发料优先/订货；损耗 → 发料。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

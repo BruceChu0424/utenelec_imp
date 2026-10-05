@@ -322,7 +322,7 @@ class PreplanAnalysisStockPegServiceTest {
     }
 
     @Test
-    void analysisCancellationCannotReleaseChildAlreadyHandedToSubcontract() {
+    void analysisCancellationCannotReleaseMaterialAlreadyHandedToSubcontractDraw() {
         EntityManager em = mock(EntityManager.class);
         Query empty = mock(Query.class);
         Query custody = mock(Query.class);
@@ -343,7 +343,8 @@ class PreplanAnalysisStockPegServiceTest {
                 service.releaseForAnalysis(UUID.randomUUID(), "取消", "cancel-subcontract-custody"));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertThat(error.getMessage()).contains("子件已交接委外发料");
+        // ADR-143 §4.2: 交接给委外领料的专属批次只能先撤回未发领料或发料红冲后才能放。
+        assertThat(error.getMessage()).contains("物料已交给委外领料").contains("撤回").contains("发料红冲");
         verify(entitlement, never()).appendReleaseForBeneficiaryAnalysis(any(), any(), anyString());
         verify(custody, never()).executeUpdate();
     }

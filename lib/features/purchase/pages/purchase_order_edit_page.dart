@@ -481,6 +481,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         );
         row.pricing.restoreRecordedTotal(it.totalAmountInputText);
         row.remark.text = it.remark ?? '';
+        // ADR-144：已保存的允许超收原样回显（冻结在本行，不再按主档预填黄标）；
+        // 空 = 当时就选了不允许超收，之后加行也不回填。
+        row.allowedOverReceiptPct.text = it.allowedOverReceiptPct == null
+            ? ''
+            : purchasePercentText(it.allowedOverReceiptPct!);
+        row.overReceiptPrefillConsumed = true;
         // 既有单一套条款：明细不落条款，编辑回显按单头条款回填各行。
         row
           ..supplierId = d.supplierId
@@ -517,6 +523,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     );
     if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
     void fill(PurchaseGridRow target, GoodsListItem goods) {
+      // 换了货品：旧货品带入的允许超收(黄标)作废，新货品重新按主档预填一次。
+      target.resetAllowedOverReceiptForGoods(goods.id);
       target
         ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)
         ..colorId = goods.colorId
@@ -571,16 +579,21 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                   r.currencyId == null ||
                   r.exchangeRate.text.trim().isEmpty ||
                   r.taxRate.text.trim().isEmpty ||
-                  r.price.text.trim().isEmpty),
+                  r.price.text.trim().isEmpty ||
+                  // ADR-144：其它条款已带齐的行也要补预填允许超收(每行每个货品只一次)。
+                  (!r.overReceiptPrefillConsumed &&
+                      r.allowedOverReceiptPct.text.trim().isEmpty)),
         )
         .map((r) => r.goods!.id)
         .toSet();
     if (pending.isEmpty) return;
     Map<String, ProcurementLastTerms> remembered = const {};
+    var rememberedLoaded = false;
     try {
       remembered = await ref
           .read(purchaseRepositoryProvider(PurchaseDocType.order))
           .lastTermsByGoods(pending);
+      rememberedLoaded = true;
     } catch (_) {
       // 学习预填失败静默：用户可逐行手选或勾选多行统一设置。
     }
@@ -679,7 +692,21 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           );
           changed = true;
         }
+        // ADR-144 允许超收记忆（货品主档默认值，不看供应商、不受价格遮蔽）：
+        // 每行每个货品只预填一次，空位预填并挂黄标提醒核对。
+        if (!r.overReceiptPrefillConsumed &&
+            r.allowedOverReceiptPct.text.trim().isEmpty &&
+            terms.allowedOverReceiptPct != null) {
+          r.allowedOverReceiptPct.text = purchasePercentText(
+            terms.allowedOverReceiptPct!,
+          );
+          r.markAllowedOverReceiptAutofilled(r.allowedOverReceiptPct.text);
+          changed = true;
+        }
       }
+      // 主档记忆已读到(有没有记忆都算)：本行这个货品的预填机会用掉，之后留空
+      // 就是不允许超收，再跑预填也不回填。读失败不算，下次再试。
+      if (rememberedLoaded) r.overReceiptPrefillConsumed = true;
       changed = _applyTermDefaults(r) || changed;
     }
     if (changed && mounted) setState(() {});
@@ -1051,6 +1078,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         financeExactTrimmed(r.qty.text) ?? r.qty.text.trim(),
         financeExactTrimmed(r.price.text) ?? r.price.text.trim(),
         r.weight.text.trim(),
+        financeExactTrimmed(r.allowedOverReceiptPct.text) ??
+            r.allowedOverReceiptPct.text.trim(),
         r.remark.text.trim(),
       ].join('|'),
     );
@@ -1159,6 +1188,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     final badQty = <String>[];
     final badPrice = <String>[];
     final badWeight = <String>[];
+    final badOverReceipt = <String>[];
     final gridRows = _grid.rows;
     // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
     String labelOf(int i, PurchaseGridRow r) =>
@@ -1184,6 +1214,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
         badWeight.add(label);
       }
+      // ADR-144 允许超收%：空 = 0%；填了必须是 0 到 100 的数。
+      if (!parsePurchaseOverReceiptPct(r.allowedOverReceiptPct.text).valid) {
+        badOverReceipt.add(label);
+      }
     }
     // 指路要落到真实入口上：批量条款只在行右键菜单里，含糊的「统一设置」会让用户
     // 在工具条上找一个 2026-09-11 已撤掉的按钮。
@@ -1205,6 +1239,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         _rowIssueMessage(badPrice, '的采购单价无效（须为不小于 0 的数字）', action: '请改正后再提交'),
       if (badWeight.isNotEmpty)
         _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
+      if (badOverReceipt.isNotEmpty)
+        _rowIssueMessage(
+          badOverReceipt,
+          '的允许超收不是 0 到 100 之间的数(留空表示不允许超收)',
+          action: '请改正后再提交',
+        ),
     ];
     if (rowIssues.isNotEmpty) {
       // 不同类别分行列出，混成一句会让人看不清到底要改哪几处。
@@ -1263,7 +1303,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         return;
       }
       final remarkText = r.remark.text.trim();
+      // 逐行校验已保证合法；空 = 不允许超收(不提交，服务端按 0%)，两位小数提交。
+      final overReceiptPct = parsePurchaseOverReceiptPct(
+        r.allowedOverReceiptPct.text,
+      ).value;
       itemsBody.add({
+        'allowedOverReceiptPct': ?overReceiptPct,
         'goodsId': r.goods!.id,
         'extraColumns': r.extraColumnsPayload(),
         if (r.documentItemId != null) 'id': r.documentItemId,
@@ -1758,6 +1803,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                     onOpenSource: _openSourceRequest,
                                     // 行级商业条款（2026-09）：单头不再录，逐行选择/填写。
                                     showCommercial: true,
+                                    // ADR-144 允许超收%（主档记忆预填黄标）。
+                                    showAllowedOverReceipt:
+                                        _cfg.itemHasAllowedOverReceiptPct,
                                     currencyEntries: names.currencyEntries,
                                     settlementEntries:
                                         ref

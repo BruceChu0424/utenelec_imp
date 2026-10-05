@@ -658,10 +658,11 @@ class _ProductionFinishedArrivalBatchRegistrationPageState
         context.appError(error.message);
       }
       return;
-    } catch (_) {
+    } catch (error) {
+      // 本机草稿保护等异常自带可行动文案，原样给出；未知异常才说「保持当前内容重试」。
       if (mounted) {
         setState(() => _saving = false);
-        context.appError('批量登记失败，请保持当前内容后重试');
+        context.appError(describeFormSaveError(error) ?? '批量登记失败，请保持当前内容后重试');
       }
       return;
     }

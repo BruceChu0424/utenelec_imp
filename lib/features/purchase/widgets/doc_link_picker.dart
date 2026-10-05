@@ -87,6 +87,9 @@ String _upTypeLabel(PurchaseDocType t) {
 
 /// 上游明细剩余可引量（也是"本次数量"默认值）：
 /// 收货←订货 = 订货数 − 已收 + 已退（退货回补后供应商仍欠交，与服务端权威口径一致）；
+///   欠交已收齐时(ADR-144)改为允许超收余量 = 订货数 + 允许超收量 − 已收 + 已退：
+///   预计到货在收满订货量时已关闭，供应商再送来允许超收以内的货由采购员在这里
+///   引入订货行手工登记（审核走同一闸门，超出最多可收的部分仍转财务）；
 /// 退货←收货/订货 = 原单数 − 已退；订货←申请 = 申请数 − 已订；其它 = 全额。
 double _remainQty(
   PurchaseDocConfig cfg,
@@ -98,7 +101,11 @@ double _remainQty(
     return q - (it.returnedQty ?? 0);
   }
   if (upType == PurchaseDocType.order && cfg.type == PurchaseDocType.receipt) {
-    return q - (it.receivedQty ?? 0) + (it.returnedQty ?? 0);
+    final owed = q - (it.receivedQty ?? 0) + (it.returnedQty ?? 0);
+    if (owed > 0) return owed;
+    final toleranceLeft =
+        ((owed + it.allowedOverReceiptQty) * 10000).round() / 10000;
+    return toleranceLeft > 0 ? toleranceLeft : owed;
   }
   if (upType == PurchaseDocType.request && cfg.type == PurchaseDocType.order) {
     return q - (it.orderedQty ?? 0);
@@ -288,4 +295,17 @@ _middleItemColumns(PurchaseDocType upstream) => [
           .toStringAsFixed(1),
     ),
   ),
+  // ADR-144：订货行允许超收%（收满订货量后剩余量即按它给出的超收余量）。
+  if (upstream == PurchaseDocType.order)
+    EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(
+      key: 'allowedOverReceiptPct',
+      label: '允许超收%',
+      width: 100,
+      numeric: true,
+      cellBuilder: (context, row) => Text(
+        row.item.allowedOverReceiptPct == null
+            ? '—'
+            : purchasePercentText(row.item.allowedOverReceiptPct!),
+      ),
+    ),
 ];

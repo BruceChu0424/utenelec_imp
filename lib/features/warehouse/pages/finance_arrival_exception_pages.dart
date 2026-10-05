@@ -263,8 +263,9 @@ class _FinanceTaskCard extends StatelessWidget {
     final theme = Theme.of(context);
     return Semantics(
       button: true,
-      label:
-          '${task.orderType.label} ${task.orderBillNo}，超量 ${procurementQty(task.requestedExcessQty)}',
+      label: task.receiptToleranceSummary == null
+          ? '${task.orderType.label} ${task.orderBillNo}，超量 ${procurementQty(task.requestedExcessQty)}'
+          : '${task.orderType.label} ${task.orderBillNo}，${task.receiptToleranceSummary}',
       child: Material(
         color: theme.colorScheme.surface,
         borderRadius: UtenRadius.lgAll,
@@ -305,8 +306,11 @@ class _FinanceTaskCard extends StatelessWidget {
                 const SizedBox(height: UtenSpacing.s12),
                 Text('${task.goodsCode} ${task.goodsName}'.trim()),
                 const SizedBox(height: UtenSpacing.s4),
+                // ADR-144：采购按「订 Q，允许超收 p%(最多 Q+T)，此前已收 R，本次实到 D，
+                // 累计 R+D」说明；委外与旧异常沿用「实到 / 已批准剩余」。
                 Text(
-                  '实到 ${procurementQty(task.declaredQty)}，已批准剩余 ${procurementQty(task.approvedRemainingQty)}',
+                  task.receiptToleranceFacts ??
+                      '实到 ${procurementQty(task.declaredQty)}，已批准剩余 ${procurementQty(task.approvedRemainingQty)}',
                 ),
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
@@ -720,11 +724,36 @@ class _ArrivalFactsCard extends StatelessWidget {
             _Fact(label: '仓库收货单', value: task.receiptBillNo),
             _Fact(label: '供应商', value: task.supplierName ?? '—'),
             _Fact(label: '仓库', value: task.warehouseName ?? '—'),
+            // ADR-144 采购允许超收口径(检出时快照)：订货量 / 允许超收 / 此前已收。
+            if (task.hasReceiptToleranceSnapshot) ...[
+              _Fact(
+                label: '订货量',
+                value:
+                    '${procurementQty(task.orderQtySnapshot!)} ${task.unitName ?? ''}',
+              ),
+              _Fact(
+                label: '允许超收',
+                value:
+                    '${procurementQty(task.allowedOverReceiptPctSnapshot ?? 0)}%'
+                    '(最多可收 ${procurementQty(task.orderQtySnapshot! + (task.toleranceQtySnapshot ?? 0))} ${task.unitName ?? ''})',
+              ),
+              _Fact(
+                label: '此前已收',
+                value:
+                    '${procurementQty(task.priorNetReceivedQtySnapshot ?? 0)} ${task.unitName ?? ''}',
+              ),
+            ],
             _Fact(
               label: '实际到货',
               value:
                   '${procurementQty(task.declaredQty)} ${task.unitName ?? ''}',
             ),
+            if (task.hasReceiptToleranceSnapshot)
+              _Fact(
+                label: '累计到货(含本次)',
+                value:
+                    '${procurementQty((task.priorNetReceivedQtySnapshot ?? 0) + task.declaredQty)} ${task.unitName ?? ''}',
+              ),
             _Fact(
               label: '财务已批准剩余',
               value:

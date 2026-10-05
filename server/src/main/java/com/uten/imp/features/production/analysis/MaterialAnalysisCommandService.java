@@ -40,7 +40,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -85,9 +84,6 @@ public class MaterialAnalysisCommandService {
     private final ObjectMapper objectMapper;
     private final PreplanAnalysisStockPegService analysisPeg;
     private final PreplanStockEntitlementService stockEntitlement;
-    private final SubcontractPreparationEntitlementHandoffService
-            subcontractPreparationHandoffs;
-    private final SubcontractMakeTaskService subcontractMakeTasks;
     private final com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
     private final com.uten.imp.application.port.ProductionMutationFootprintPort mutationFootprints;
     @org.springframework.beans.factory.annotation.Autowired
@@ -101,12 +97,6 @@ public class MaterialAnalysisCommandService {
      */
     @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
-        return notifySupplyInternal(analysisId, request, false, null);
-    }
-
-    private AnalysisView notifySupplyInternal(
-            UUID analysisId, NotifyRequest request, boolean allocationCurrent,
-            Map<UUID, BigDecimal> arrangeQtyByMaterialLine) {
         tx.bind();
         // ADR-099：外部路线下达时会先自动认领同主仓公共在途，认领引用的是别的分析的
         // 申请/委外申请，必须与本分析一起预锁(与 claimSharedFuture 同一份足迹)，否则
@@ -127,7 +117,7 @@ public class MaterialAnalysisCommandService {
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
         // Stock, receipts and downstream document lifecycle can change without touching the
         // analysis header. Rebuild the authoritative allocation before calculating a delta.
-        if (!allocationCurrent) analysisService.refreshLocked(analysisId);
+        analysisService.refreshLocked(analysisId);
         AnalysisView view = analysisService.detailInternal(analysisId, false);
         List<ActionGroup> groups = selectedGroups(view, request);
         for (ActionGroup group : groups) {
@@ -158,22 +148,9 @@ public class MaterialAnalysisCommandService {
                         .collect(Collectors.toSet()));
         Map<String, SupplyQuantityInput> quantityInputs =
                 quantityInputs(view, request, groups);
-        List<UUID> subcontractGoodsIds = groups.stream()
-                .filter(group -> "SUBCONTRACT".equals(group.route()))
-                .map(group -> group.dimension().goodsId()).toList();
-        Set<UUID> subcontractBomParents = activeBomParentIds(subcontractGoodsIds);
-        // V581：有子层里再分一刀——「只有一个直属子件」的委外件直接发那个子件出去，
-        // 不建前置自制任务，因此它和无子层叶子走同一条「出委外申请」通道。
-        Set<UUID> subcontractSoleComponents =
-                soleComponentSubcontractGoodsIds(subcontractGoodsIds);
-        Set<UUID> subcontractMakeFirst = subcontractBomParents.stream()
-                .filter(goodsId -> !subcontractSoleComponents.contains(goodsId))
-                .collect(Collectors.toSet());
         var coverage = supplyCoverage(analysisId, groups);
-        Map<UUID, ProductView> productsById = view.products().stream()
-                .collect(Collectors.toMap(ProductView::analysisLineId, product -> product));
         List<ActionPlan> plans = new ArrayList<>();
-        // ADR-099：下达采购/直接外发委外时先自动认领同主仓公共在途（按期优先、
+        // ADR-099：下达采购/委外时先自动认领同主仓公共在途（按期优先、
         // 晚到其次），只为余下部分新下单；认领动作与新单一起记进本次命令。
         List<UUID> claimActionIds = new ArrayList<>();
         Map<UUID,BigDecimal> makeAdoptedQuantities=new LinkedHashMap<>();
@@ -193,78 +170,36 @@ public class MaterialAnalysisCommandService {
             SupplyQuantityInput input = quantityInputs.get(group.groupKey());
             BigDecimal demandQty = delta;
             BigDecimal publicExtraQty = BigDecimal.ZERO.setScale(4);
-            // 「本次必须整量接管」只对真正会创建下层责任的行成立：自制，以及
-            // 需要先自制目标件的委外件。V581 的单一子件委外只是一张普通委外
-            // 订货，可分批下达。
-            boolean createsChildOwnership = "MAKE".equals(group.route())
-                    || ("SUBCONTRACT".equals(group.route())
-                        && subcontractMakeFirst.contains(group.dimension().goodsId()));
-            // 我方供料的带 BOM 委外件(含 V581 单一子件件)原本被两条禁令同时罩着：
-            // 既不许自己公共超量备货, 也不许自动认领别人的公共在途。2026-09-21/22 两条
-            // 分别由两路改动放开, 本合并把它们并在一起 —— 它们本来就是相反的两件事:
-            //
-            // - 超量备货(V641/ADR-099 修订): 多下的量此前会凭空多出一份无人负责的子件需求,
-            //   所以禁着。现在层级表上填多少子层就按多少算, 下达时在同一张「父件 + 下层
-            //   一起下单」页里一并办掉, 无人负责的情形不再存在, 于是放开。
-            // - 自动认领(ADR-101): 认领吃的是别人已经下好、料也由别人备的那一批成品, 本计划
-            //   这一层不会因此多出任何子件需求 —— 认领行落的是 SHARED_FUTURE_CLAIM, 按
-            //   EXTERNAL 归类, 正好把下层展开基准同步净掉。不放开的话同一颗件别人已经在路上,
-            //   本计划仍要再下一单, 正是用户说的「需要的也要减去公共的、包括公共在途的」。
-            //
-            // 两条都放开之后这里不再需要 ownSupplyBom 这个判据, 故不再计算它;
-            // subcontractBomParents 仍被 subcontractMakeFirst 用来识别「需先自制的委外件」。
-            if (input != null) {
+            // 委外件(任何层级、有没有直属物料)一律走这条「下达委外」通道(ADR-143 §4.5)：
+            // 可分批下达、可超量备货(需超量权限)、可自动认领别人的公共在途。我方领直属物料
+            // 发外的委外件多下的量按计划产出量如实带大直属物料需求, 下达时在同一张
+            // 「父件 + 下层一起下单」页里一并办掉。
+            // 「本次必须整量接管」只对自制成立：自制会建下层子件任务(MAKE_COMPONENT)，
+            // 本批生产数量在子件任务的计划向导里填，通知时不能拆量、也不能带公共超量。
+            boolean createsChildOwnership = "MAKE".equals(group.route());
+            if (input != null && createsChildOwnership) {
                 BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
-                if (createsChildOwnership) {
-                    if (requested.compareTo(delta) != 0) {
-                        throw validation("「" + groupLabel(group)
-                                + "」子件任务当前必须按全部剩余需求 "
-                                + delta.stripTrailingZeros().toPlainString()
-                                + " 创建；本批生产数量请在子件任务创建后的计划向导中填写");
-                    }
-                } else {
-                    // ADR-099 数量单一口径：填多少下多少——不超过「还需安排」的部分归本
-                    // 需求，超出的部分记公共备货（需超量下达权限）。客户端不再拆成
-                    // 「需求量 + 公共量」两个数，服务端按权威余量自行分账。
-                    demandQty = requested.min(delta);
-                    publicExtraQty = requested.subtract(demandQty).max(BigDecimal.ZERO)
-                            .setScale(4, RoundingMode.CEILING);
-                    if (publicExtraQty.signum() > 0
-                            && !access.hasAuthority(
-                                    "production_material_analysis:over_supply")) {
-                        throw new ApiException(ErrorCode.FORBIDDEN,
-                                "「" + groupLabel(group) + "」本次最多还能按需求下达 "
-                                + delta.stripTrailingZeros().toPlainString()
-                                + "，超出部分属主动公共备货，需要独立的超量下达权限");
-                    }
-                    // 2026-09-21 用户口径「采购能超量下, 委外和车间也要能」：我方供料的
-                    // 委外件(含 V581 单一子件件)从此同样可以超量。原先这里与数据库
-                    // preplan_public_surplus_subcontract_leaf_guard 一起拒绝, 理由是
-                    // 「多下的量会凭空多出一份无人负责的子件需求」——那条理由已经不
-                    // 成立：多下的量现在按计划产出量如实带大子件需求(ADR-099 修订,
-                    // 层级表上填多少, 子层就按多少算), 下达时在同一张「父件 + 下层
-                    // 一起下单」页里一并办掉, 没人负责的情形不再存在。V641 同步放开
-                    // 数据库侧的形状守卫与运行时超订容量。
+                if (requested.compareTo(delta) != 0) {
+                    throw validation("「" + groupLabel(group)
+                            + "」子件任务当前必须按全部剩余需求 "
+                            + delta.stripTrailingZeros().toPlainString()
+                            + " 创建；本批生产数量请在子件任务创建后的计划向导中填写");
                 }
-            } else if (arrangeQtyByMaterialLine != null) {
-                // Existing preparation commitment can still have unscheduled output.
-                // A second workshop batch consumes that quota before adding public output;
-                // the supply delta alone is zero once the original action owns the demand.
-                BigDecimal arrangeQty = group.materials().stream()
-                        .map(material -> arrangeQtyByMaterialLine.get(
-                                material.materialLineId()))
-                        .filter(Objects::nonNull)
-                        .reduce(BigDecimal.ZERO, BigDecimal::max);
-                if (arrangeQty.signum() > 0 && createsChildOwnership) {
-                    BigDecimal unplannedCommitment = group.materials().stream()
-                            .map(MaterialView::planAnchorAnalysisLineId)
-                            .filter(Objects::nonNull).distinct()
-                            .map(productsById::get).filter(Objects::nonNull)
-                            .map(ProductView::remainingQty)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    publicExtraQty = arrangeQty.subtract(unplannedCommitment).subtract(delta)
-                            .max(BigDecimal.ZERO)
-                            .setScale(4, RoundingMode.CEILING);
+            } else if (input != null) {
+                BigDecimal requested = input.qty().setScale(4, RoundingMode.CEILING);
+                // ADR-099 数量单一口径：填多少下多少——不超过「还需安排」的部分归本
+                // 需求，超出的部分记公共备货（需超量下达权限）。客户端不再拆成
+                // 「需求量 + 公共量」两个数，服务端按权威余量自行分账。
+                demandQty = requested.min(delta);
+                publicExtraQty = requested.subtract(demandQty).max(BigDecimal.ZERO)
+                        .setScale(4, RoundingMode.CEILING);
+                if (publicExtraQty.signum() > 0
+                        && !access.hasAuthority(
+                                "production_material_analysis:over_supply")) {
+                    throw new ApiException(ErrorCode.FORBIDDEN,
+                            "「" + groupLabel(group) + "」本次最多还能按需求下达 "
+                            + delta.stripTrailingZeros().toPlainString()
+                            + "，超出部分属主动公共备货，需要独立的超量下达权限");
                 }
             }
             SafetySnapshot safety = groupSafetySnapshot(group.materials());
@@ -299,7 +234,7 @@ public class MaterialAnalysisCommandService {
                 }
             }
             // ADR-099：外部路线先自动认领公共在途，认领到多少就少下多少新单。
-            // ADR-101：我方供料的带 BOM 委外件也走这条路(只有「超量备货」仍然禁止)。
+            // 委外件认领的是别人已经备好料下好单的那一批, 落 SHARED_FUTURE_CLAIM 按外部在途计。
             // ADR-099 修订(2026-09-29)：skipAutoClaim = 用户明确选择「足额下单，
             // 不扣可用数量」，自制公共超产与公共在途两类认领一并不做，按提交量足额新下单。
             BigDecimal claimedQty = BigDecimal.ZERO.setScale(4);
@@ -325,6 +260,13 @@ public class MaterialAnalysisCommandService {
             }
             plans.add(new ActionPlan(group, demandQty, publicExtraQty, safety, claimedQty));
         }
+        // ADR-143 §二.3：要新下(或在原申请上追加)委外申请的委外件必须先有可发外的直属物料。缺 BOM 时
+        // 先转研发(独立事务立即提交，随后的 409 不撤销)，再拒绝本次下达；认领别人已下的在途不受影响。
+        analysisService.rejectSubcontractBomGaps(header, plans.stream()
+                .filter(plan -> "SUBCONTRACT".equals(plan.group().route()))
+                .filter(plan -> plan.demandQty().signum() > 0 || plan.publicExtraQty().signum() > 0)
+                .flatMap(plan -> plan.group().materials().stream())
+                .toList());
 
         // 安全库存的物理粒度是仓+货+色；同一通知中的多个节点只能生成
         // 一份公共补库。稳定优先附着到本次有 demand exact 的 BUY action，
@@ -354,10 +296,7 @@ public class MaterialAnalysisCommandService {
                     && safetyQty.signum() == 0) continue;
             // ADR-099：申请还没被采购/委外部门动过（明细未订货）时，追加量直接改到
             // 原申请明细上，不另立新单；带安全补库切片的批次仍走新单通道。
-            boolean childOwnership = "MAKE".equals(group.route())
-                    || ("SUBCONTRACT".equals(group.route())
-                        && subcontractMakeFirst.contains(group.dimension().goodsId()));
-            if (!childOwnership && safetyQty.signum() == 0) {
+            if (safetyQty.signum() == 0) {
                 GrowableSupplyLine line = growableSupplyLine(analysisId, group);
                 if (line != null) {
                     growSupplyLine(analysisId, line, group,
@@ -425,11 +364,11 @@ public class MaterialAnalysisCommandService {
                     safetyQty, safetyQty.signum() > 0 ? UUID.randomUUID() : null));
         }
 
-        // ADR-065 同批合并：一次通知的全部 BUY 合并生成一张采购申请、全部无子层
-        // SUBCONTRACT 合并生成一张委外申请；明细行仍逐 action 锚定（撤回/绑定粒度不变），
-        // 订货侧照旧按供应商分组拆订货单。MAKE 与委外前置自制保持逐条任务。
+        // ADR-065 同批合并：一次通知的全部 BUY 合并生成一张采购申请、全部
+        // SUBCONTRACT 合并生成一张委外申请(ADR-143：委外节点一律下达为委外申请)；
+        // 明细行仍逐 action 锚定（撤回/绑定粒度不变），订货侧照旧按供应商分组拆订货单。
         PreparedExternalDocuments prepared =
-                prepareExternalDocuments(analysisId, created, subcontractMakeFirst);
+                prepareExternalDocuments(analysisId, created);
         for (ActionDraft action : created) {
             createExternalDocument(analysisId, action, prepared);
         }
@@ -502,17 +441,13 @@ public class MaterialAnalysisCommandService {
                 null, List.of(), request.actionGroupKeys(), List.of());
         List<ActionGroup> groups = selectedGroups(view, selector);
         Map<String,SharedFutureClaimQuantity> requestedQuantities=sharedFutureQuantities(request,groups);
-        Set<UUID> subcontractBomParents = activeBomParentIds(groups.stream()
-                .filter(group -> "SUBCONTRACT".equals(group.route()))
-                .map(group -> group.dimension().goodsId()).toList());
         var coverage = supplyCoverage(analysisId, groups);
         List<UUID> createdIds = new ArrayList<>();
         List<Map<String,String>> acceptedLateSources=new ArrayList<>();
         for (ActionGroup group : groups) {
             // 2026-09-13 起自制（车间）物料也可采用公共在途：到达的合格供给
-            // 直接冲减本计划自制需求，剩余仍走原下达车间流程。
-            // ADR-101 起「我方供料 BOM 委外件」也能认领——认领的是别人已经备好料下好单的
-            // 那一批，本计划不会因此多出无人负责的子件需求；禁止的只是自己超量备货。
+            // 直接冲减本计划自制需求，剩余仍走原下达车间流程。委外件同样可以认领——
+            // 认领的是别人已经备好料下好单的那一批，本计划不会因此多出无人负责的直属物料需求。
             if (!Set.of("BUY", "SUBCONTRACT", "MAKE").contains(group.route())) {
                 throw validation("只有采购、委外或自制物料可以采用公共在途");
             }
@@ -1041,10 +976,10 @@ public class MaterialAnalysisCommandService {
             UUID analysisId, IssueWorkshopPlansRequest request,
             Map<UUID, BigDecimal> typedOutputByMaterialLine) {
         tx.bind();
-        // 本命令会嵌套进 notifySupplyInternal 的 ARRANGE 腿(委外件有自制子层时建台账),
-        // 那一腿按 ADR-099 要锁「本分析 + 可认领公共在途」。预锁一旦 prepared 就只允许
-        // 覆盖检查、不允许补拿, 所以这里必须一次锁到同样宽, 否则同主仓只要存在可认领的
-        // 公共在途, 下达车间与 issue-plans/preview 就必然 409(还会被自动重跑放大 5 次)。
+        // 顶层产品行下达车间前会按 ADR-099 自动认领同主仓公共在途(引用别的分析的单据),
+        // 要锁「本分析 + 可认领公共在途」。预锁一旦 prepared 就只允许覆盖检查、不允许
+        // 补拿, 所以这里必须一次锁到同样宽, 否则同主仓只要存在可认领的公共在途,
+        // 下达车间就必然 409(还会被自动重跑放大 5 次)。
         var mutationGuard = lockAnalysisWithClaimableShared(analysisId);
         MaterialAnalysisService.AnalysisHeader header = analysisService.headerAfterPrelock(analysisId);
         requireNotFqcRecoveryWorkspace(analysisId);
@@ -1076,94 +1011,21 @@ public class MaterialAnalysisCommandService {
         analysisService.refreshLocked(analysisId);
         // 1) 候选行建「子件锚点行」（2026-09-05 简化：计划侧不再接管子树需求、
         //    不搬权益——物料行保持原位单一份数据，计划员照常在采购/委外桶下达；
-        //    锚点行仅承载计划链接与执行进度）。MAKE 只建锚点行；有子层委外
-        //    同时登记「先自制后通知」台账（notifySupply 既有链路，无权益委托）。
+        //    锚点行仅承载计划链接与执行进度）。只有自制节点进车间；委外节点(任何
+        //    层级)一律走下达委外，委外商只领它的直属物料(ADR-143 §4.5)。
         AnalysisView preArrange = analysisService.detailInternal(analysisId, false);
-        Map<UUID, String> candidateRoutes = candidateRoutesByMaterialLine(preArrange);
-        Map<UUID, UUID> subcontractMaterialByAnchor = new HashMap<>();
-        for (MaterialView material : preArrange.flatMaterials()) {
-            if (material.planAnchorAnalysisLineId() != null
-                    && "SUBCONTRACT".equals(material.sourceConfirmed())) {
-                subcontractMaterialByAnchor.put(material.planAnchorAnalysisLineId(), material.materialLineId());
-            }
-        }
-        List<UUID> makeLines = new ArrayList<>();
-        List<UUID> subcontractLines = new ArrayList<>();
-        // 2026-09-09 性能（保守优化）：flatMaterials 逐行线性扫描 + 每行一次
-        // BOM 父检查查询 → 预建索引一次 + 候选货品集合一次批量父检查。
-        Map<UUID, UUID> goodsByMaterialLine = new java.util.HashMap<>();
-        for (MaterialView material : preArrange.flatMaterials()) {
-            goodsByMaterialLine.putIfAbsent(material.materialLineId(), material.goodsId());
-        }
-        List<UUID> subcontractCandidateGoods = request.lines().stream()
-                .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
-                .filter(java.util.Objects::nonNull)
-                .filter(id -> "SUBCONTRACT".equals(candidateRoutes.get(id)))
-                .map(goodsByMaterialLine::get)
-                .filter(java.util.Objects::nonNull)
-                .distinct().toList();
-        java.util.Set<UUID> goodsWithMakeChildren = new java.util.HashSet<>(
-                activeBomParentIds(subcontractCandidateGoods));
-        // V581：只有一个直属子件的委外件不进车间——它直接发子件给委外商。
-        goodsWithMakeChildren.removeAll(
-                soleComponentSubcontractGoodsIds(subcontractCandidateGoods));
-        for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
-            if (line.materialLineId() == null) {
-                UUID preparationMaterial = subcontractMaterialByAnchor.get(line.analysisLineId());
-                if (preparationMaterial != null) subcontractLines.add(preparationMaterial);
-                continue;
-            }
-            String route = candidateRoutes.get(line.materialLineId());
-            if (route == null) {
-                throw validation("候选物料节点不存在或路线未确认，请刷新后重试");
-            }
-            if ("MAKE".equals(route)) {
-                makeLines.add(line.materialLineId());
-                continue;
-            }
-            if (!"SUBCONTRACT".equals(route)) {
-                throw validation("只有自制路线的物料才能直接下达车间");
-            }
-            UUID goodsId = goodsByMaterialLine.get(line.materialLineId());
-            if (goodsId == null || !goodsWithMakeChildren.contains(goodsId)) {
-                throw validation("无自制子层、或只有一个直属子件（直接发子件给委外商）的委外件"
-                        + "请走委外下达，不能直接建生产计划");
-            }
-            subcontractLines.add(line.materialLineId());
-        }
-        // 入场已按实时库存刷新。先建立 MAKE 锚点，再让委外通知复用或更新该快照；
-        // 仅在锚点实际改变且没有委外通知覆盖时，另作锚点后刷新。计划生成结束后
-        // 再投影正式计划覆盖，始终满足 ADR-071 的「以当前权威快照逐行生成」。
+        List<UUID> makeLines = workshopMakeLines(candidateRoutesByMaterialLine(preArrange), request);
+        // 入场已按实时库存刷新。先建立 MAKE 锚点，仅在锚点实际改变时另作锚点后刷新。
+        // 计划生成结束后再投影正式计划覆盖，始终满足 ADR-071 的「以当前权威快照逐行生成」。
         boolean anchorsChanged = !makeLines.isEmpty()
                 && ensureWorkshopChildAnchors(analysisId, preArrange, makeLines);
         AnalysisView view = preArrange;
-        if (!subcontractLines.isEmpty()) {
-            // V589：把候选行的「本次数量」带给 ARRANGE——车间腿超量时台账与
-            // 行动按「归需求量 + 公共备货产出」承接（用户口径：顶层做 5000，
-            // 委外件就要加工 5000）。
-            Map<UUID, BigDecimal> arrangeQty = new HashMap<>();
-            for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
-                UUID materialId = line.materialLineId() != null ? line.materialLineId()
-                        : subcontractMaterialByAnchor.get(line.analysisLineId());
-                if (materialId != null && line.qty() != null && subcontractLines.contains(materialId)) {
-                    arrangeQty.merge(materialId, line.qty(), BigDecimal::max);
-                }
-            }
-            view = notifySupplyInternal(analysisId, new NotifyRequest(
-                    preArrange.version(), preArrange.fingerprint(),
-                    request.idempotencyKey() + "-ARRANGE", "SUBCONTRACT",
-                    subcontractLines, null, null,
-                    request.skipClaims() ? Boolean.TRUE : null), !anchorsChanged, arrangeQty);
-            anchorsChanged = false;
-        }
         // 2) 以最新快照逐行生成计划：产品行直接用行 id，候选行解析到刚建/既有子件行。
         if (anchorsChanged) {
             analysisService.refreshLocked(analysisId);
             view = analysisService.detailInternal(analysisId, false);
         }
         // Reuse the exact same transaction snapshot when anchors did not change.
-        // notifySupply already returns its post-write view; discarding it would
-        // repeat every warehouse, entitlement and document-chain projection.
         Map<UUID, ProductView> products = view.products().stream()
                 .collect(Collectors.toMap(ProductView::analysisLineId, value -> value));
         Map<UUID,BigDecimal> newlyAdopted=new HashMap<>();
@@ -1550,38 +1412,7 @@ public class MaterialAnalysisCommandService {
     private List<MaterialAnalysisService.IssuePreviewSeed> issuePreviewSeeds(
             UUID analysisId, IssueWorkshopPlansRequest request, MaterialAnalysisIssuePreviewOverlay overlay) {
         AnalysisView current = analysisService.issuePreviewDetail(analysisId, overlay);
-        Map<UUID, String> candidateRoutes = candidateRoutesByMaterialLine(current);
-        Map<UUID, UUID> goodsByMaterialLine = new HashMap<>();
-        for (MaterialView material : current.flatMaterials()) {
-            goodsByMaterialLine.putIfAbsent(material.materialLineId(), material.goodsId());
-        }
-        List<UUID> subcontractCandidateGoods = request.lines().stream()
-                .map(IssueWorkshopPlansRequest.IssuePlanLine::materialLineId)
-                .filter(Objects::nonNull)
-                .filter(id -> "SUBCONTRACT".equals(candidateRoutes.get(id)))
-                .map(goodsByMaterialLine::get).filter(Objects::nonNull).distinct().toList();
-        Set<UUID> goodsWithMakeChildren = new HashSet<>(activeBomParentIds(subcontractCandidateGoods));
-        goodsWithMakeChildren.removeAll(soleComponentSubcontractGoodsIds(subcontractCandidateGoods));
-        List<UUID> makeLines = new ArrayList<>();
-        for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
-            if (line.materialLineId() == null) continue;
-            String route = candidateRoutes.get(line.materialLineId());
-            if (route == null) {
-                throw validation("候选物料节点不存在或路线未确认，请刷新后重试");
-            }
-            if ("MAKE".equals(route)) {
-                makeLines.add(line.materialLineId());
-                continue;
-            }
-            if (!"SUBCONTRACT".equals(route)) {
-                throw validation("只有自制路线的物料才能直接下达车间");
-            }
-            UUID goodsId = goodsByMaterialLine.get(line.materialLineId());
-            if (goodsId == null || !goodsWithMakeChildren.contains(goodsId)) {
-                throw validation("无自制子层、或只有一个直属子件（直接发子件给委外商）的委外件"
-                        + "请走委外下达，不能直接建生产计划");
-            }
-        }
+        List<UUID> makeLines = workshopMakeLines(candidateRoutesByMaterialLine(current), request);
         // 与 ensureWorkshopChildAnchors 同口径的锚点安排：真实下达在建计划之前先新建锚点(初始配额
         // 计入父节点内部承诺)、给既有锚点补让料配额, 随后刷新一次。预览把同样的事实叠进投影再投一次。
         Map<UUID, BigDecimal> newAnchorQuota = new HashMap<>();
@@ -1628,9 +1459,7 @@ public class MaterialAnalysisCommandService {
                     line.productNo(), line.allowedOverproductionRate()), defaults);
             if (lineId == null) {
                 UUID material = line.materialLineId();
-                boolean newAnchor = newAnchorQuota.containsKey(material)
-                        || "SUBCONTRACT".equals(candidateRoutes.get(material));
-                if (!newAnchor || !seen.add(material)) {
+                if (!newAnchorQuota.containsKey(material) || !seen.add(material)) {
                     throw validation("物料库存或候选任务已变化，本次未下达；请点击刷新重新核对后再提交");
                 }
                 seeds.add(new MaterialAnalysisService.IssuePreviewSeed(null, material,
@@ -1846,23 +1675,44 @@ public class MaterialAnalysisCommandService {
     }
 
     /**
-     * 候选行的已确认路线（仅 actionable 物料节点）。自制根产品不是候选——它的
-     * 产品行本身就是排产对象；确认为委外的根供给行可以是候选（ADR-099）：
-     * 有自制子层的顶层委外件与中层同款，直接走 ARRANGE 建前置自制台账 +
-     * 锚点 + 计划，不再需要客户端先走整量接管的通知通道。
+     * 候选行的已确认路线（仅 actionable 的 BOM 物料节点）。根产品不是候选——它的
+     * 产品行本身就是排产对象，顶层委外件走下达委外(ADR-143 §4.5)。
      */
     private Map<UUID, String> candidateRoutesByMaterialLine(AnalysisView view) {
         return view.flatMaterials().stream()
                 .filter(material -> material.actionable()
-                        && (!"ROOT_SUPPLY".equals(material.nodeRole())
-                            || "SUBCONTRACT".equals(material.sourceConfirmed())))
+                        && !"ROOT_SUPPLY".equals(material.nodeRole()))
                 .filter(material -> material.sourceConfirmed() != null)
                 .collect(Collectors.toMap(MaterialView::materialLineId,
                         MaterialView::sourceConfirmed, (left, right) -> left));
     }
 
     /**
-     * 批量解析候选物料对应的分析子件行 id（MAKE_COMPONENT / SUBCONTRACT_MAKE，按父锚点）：
+     * 本批下达车间的候选物料行：只接受确认为自制的节点。委外节点(任何层级)不进车间，
+     * 委外商只领它的直属物料、由下达委外负责(ADR-143 §4.5)。真实下达与下达预览同一判定。
+     */
+    private static List<UUID> workshopMakeLines(
+            Map<UUID, String> candidateRoutes, IssueWorkshopPlansRequest request) {
+        List<UUID> makeLines = new ArrayList<>();
+        for (IssueWorkshopPlansRequest.IssuePlanLine line : request.lines()) {
+            if (line.materialLineId() == null) continue;
+            String route = candidateRoutes.get(line.materialLineId());
+            if (route == null) {
+                throw validation("候选物料节点不存在或路线未确认，请刷新后重试");
+            }
+            if ("SUBCONTRACT".equals(route)) {
+                throw validation("委外件请走「下达委外」，委外商按工序领它的直属物料，不能直接建生产计划");
+            }
+            if (!"MAKE".equals(route)) {
+                throw validation("只有自制路线的物料才能直接下达车间");
+            }
+            makeLines.add(line.materialLineId());
+        }
+        return makeLines;
+    }
+
+    /**
+     * 批量解析候选物料对应的分析子件行 id（MAKE_COMPONENT，按父锚点）：
      * parent_analysis_material_id → 子件 item id，一次 IN 查询替代逐行查询。
      * 唯一部分索引 uq_production_material_analysis_make_component_parent 保证每个父行
      * 至多一条未删除子件，故不需要 GROUP BY/聚合（也绕开 PostgreSQL 没有 min(uuid) 的坑）；
@@ -1878,7 +1728,7 @@ public class MaterialAnalysisCommandService {
                         FROM production_material_analysis_items item
                         WHERE item.analysis_id = :analysisId
                           AND item.parent_analysis_material_id IN (:materialLineIds)
-                          AND item.source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
+                          AND item.source_type = 'MAKE_COMPONENT'
                           AND item.is_deleted = FALSE
                         """)
                         .setParameter("analysisId", analysisId)
@@ -2029,8 +1879,6 @@ public class MaterialAnalysisCommandService {
         mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
         if (rootSupply != null) rootSupply.requireAnalysisCancellationSafe(analysisId);
-        subcontractPreparationHandoffs.requireSourceAnalysisCancellationSafe(
-                analysisId);
         Number planned = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM production_material_analysis_plan_links
                 WHERE analysis_id = :id
@@ -2039,8 +1887,6 @@ public class MaterialAnalysisCommandService {
         if (planned.longValue() > 0) {
             throw conflict("分析已有待审核或已审核生产计划，必须先删除、驳回或红冲计划");
         }
-        subcontractPreparationHandoffs.restoreForTargetAnalysis(
-                analysisId, request.idempotencyKey());
         @SuppressWarnings("unchecked")
         List<UUID> actionIds = (List<UUID>) em.createNativeQuery("""
                 SELECT id FROM preplan_supply_actions
@@ -2089,13 +1935,11 @@ public class MaterialAnalysisCommandService {
     /**
      * 本分析 + 它可认领的同主仓公共在途(别的分析名下的申请/委外申请)的合并足迹。
      *
-     * <p>ADR-099 的外部路线下达会先自动认领公共在途, 认领引用的是别的分析的单据,
-     * 必须与本分析一起预锁。**凡是可能嵌套进 notifySupplyInternal 的入口都要用这一份**:
-     * 预锁一旦 prepared, 嵌套的 acquire 只做覆盖检查(requireCovered), 不允许持锁补拿;
-     * 外层若只锁了本分析, 嵌套那腿的合并足迹必然超出, 抛可重跑冲突, 再被最外层的自动
-     * 重跑放大成 5 次同样的确定性失败, 最后仍是 409。2026-09-21 发布前审查实测:
-     * issueWorkshopPlans 的 ARRANGE 腿(委外件有自制子层时建台账)正是这条路径,
-     * 同主仓一旦存在可认领的公共在途, 下达车间与「父件+下层一起下单」的预览必挂。</p>
+     * <p>ADR-099 的外部路线下达(以及顶层产品行下达车间前)会先自动认领公共在途, 认领
+     * 引用的是别的分析的单据, 必须与本分析一起预锁。**凡是可能自动认领的入口都要用这一份**:
+     * 预锁一旦 prepared, 后续的 acquire 只做覆盖检查(requireCovered), 不允许持锁补拿;
+     * 外层若只锁了本分析, 认领的合并足迹必然超出, 抛可重跑冲突, 再被最外层的自动
+     * 重跑放大成 5 次同样的确定性失败, 最后仍是 409。</p>
      */
     com.uten.imp.application.concurrency.FulfillmentMutationLocks.Guard lockAnalysisWithClaimableShared(UUID analysisId) {
         return mutationLocks.acquire(
@@ -2173,22 +2017,17 @@ public class MaterialAnalysisCommandService {
                 String reason = view.planningBlockedReasons().get(line.analysisLineId());
                 if (reason != null) throw conflict(reason);
             }
-            if (lines.stream().flatMap(line -> line.downstreamReferences().stream())
-                    .anyMatch(DownstreamReference::notificationReversalPending)) {
-                throw conflict("该物料有历史委外通知待同步撤回，请先在详情完成同步后再下达");
-            }
             Set<String> routes = lines.stream().map(MaterialView::sourceConfirmed)
                     .filter(Objects::nonNull).collect(Collectors.toSet());
             if (routes.size() != 1 || lines.stream().anyMatch(line -> !line.routeConfirmed())) {
                 throw conflict("通知前必须确认操作组内全部物料路线");
             }
             String route = routes.iterator().next();
-            // MAKE and a SUBCONTRACT item with an own-supply BOM may create
-            // their explicit child task before lower-level materials arrive.
-            // The child can then be assigned to a workshop; approval creates a
-            // WAITING segment (zero reservation, no DRAW) until its own direct
-            // materials are complete.  lowerLevelPending remains a diagnostic,
-            // never an implicit create or a notification side effect.
+            // Any route may be issued before lower-level materials arrive. A MAKE
+            // child gets a WAITING segment until its own direct materials are
+            // complete; a SUBCONTRACT application waits for draws of its direct
+            // materials (ADR-143). lowerLevelPending remains a diagnostic, never
+            // an implicit create or a notification side effect.
             if (target != null && !target.equals(route)) {
                 throw validation("所选物料路线与通知目标不一致");
             }
@@ -2332,12 +2171,11 @@ public class MaterialAnalysisCommandService {
     /**
      * ADR-065：一次通知的外部单据聚合预建。
      * 全部 BUY 行合并为一张采购申请（每 action 一条需求明细，安全库存补库单独成行）；
-     * 全部无子层 SUBCONTRACT 行合并为一张委外申请。表头需求日期取各行最早日期，
-     * 明细交期仍逐行保留各自操作组的 need_date。
+     * 全部 SUBCONTRACT 行合并为一张委外申请(ADR-143：委外节点不分有没有子层)。表头需求
+     * 日期取各行最早日期，明细交期仍逐行保留各自操作组的 need_date。
      */
     private PreparedExternalDocuments prepareExternalDocuments(
-            UUID analysisId, List<ActionDraft> created,
-            Set<UUID> subcontractMakeFirst) {
+            UUID analysisId, List<ActionDraft> created) {
         UUID employeeId = currentUser.requireEmployeeId();
         // 来源单据展示标签（V719）：优先分析编号 WL…，采购/委外「来源计划」列可排序；
         // 谱系回溯仍走 materialAnalysisId，与展示解耦。analyzed_at 实时查（refreshLocked
@@ -2377,7 +2215,6 @@ public class MaterialAnalysisCommandService {
         LocalDate purchaseNeedDate = null;
         List<ProductionSubcontractRequestPort.DraftLine> subcontractLines = new ArrayList<>();
         LocalDate subcontractNeedDate = null;
-        Set<UUID> subcontractLeafActionIds = new LinkedHashSet<>();
         for (ActionDraft action : created) {
             LocalDate needDate = action.group().needDate();
             if ("BUY".equals(action.group().route())) {
@@ -2421,9 +2258,7 @@ public class MaterialAnalysisCommandService {
                             needDate, "公共安全库存补库(不绑定单一物料分析)"));
                 }
                 purchaseNeedDate = earliest(purchaseNeedDate, needDate);
-            } else if ("SUBCONTRACT".equals(action.group().route())
-                    && !subcontractMakeFirst.contains(action.group().dimension().goodsId())) {
-                subcontractLeafActionIds.add(action.actionId());
+            } else if ("SUBCONTRACT".equals(action.group().route())) {
                 if (action.demandQty().signum() > 0
                         && action.publicExtraQty().signum() > 0) {
                     // 同 BUY：需求片与公共超量片合成一条委外申请明细（2026-09-15）。
@@ -2463,8 +2298,7 @@ public class MaterialAnalysisCommandService {
                 : subcontractRequests.createProductionDraft(
                         sourceLabel, analysisId, subcontractNeedDate, warehouseId,
                         List.copyOf(subcontractLines), employeeId, employeeId);
-        return new PreparedExternalDocuments(
-                purchase, subcontract, Set.copyOf(subcontractLeafActionIds));
+        return new PreparedExternalDocuments(purchase, subcontract);
     }
 
     private static LocalDate earliest(LocalDate current, LocalDate candidate) {
@@ -2505,13 +2339,6 @@ public class MaterialAnalysisCommandService {
             return;
         }
         if ("SUBCONTRACT".equals(action.group().route())) {
-            // V458：有子层级的委外件不在此刻生成委外申请（不通知委外部）。
-            // 先在原分析内创建前置自制任务，待自制成品入库后按账本
-            // 满批自动/手动分批生成委外申请。
-            if (!prepared.subcontractLeafActionIds().contains(action.actionId())) {
-                createSubcontractMakeTask(analysisId, action);
-                return;
-            }
             ProductionSubcontractRequestPort.DraftResult result =
                     prepared.subcontractApplication();
             ProductionSubcontractRequestPort.DraftLineResult demandLine =
@@ -2623,216 +2450,6 @@ public class MaterialAnalysisCommandService {
                 .setParameter("actorId", currentUser.requireId())
                 .executeUpdate();
         return itemId;
-    }
-
-    /**
-     * V458：有子层级的委外件在下达时改为「先自制、后通知委外」。
-     * 在原分析内创建 SUBCONTRACT_MAKE 前置自制任务行（子树需求委托给该行），
-     * 同步维护 preplan_subcontract_make_tasks 账本；不生成委外申请、不通知委外部。
-     */
-    private void createSubcontractMakeTask(UUID analysisId, ActionDraft action) {
-        UUID itemId = createOrIncrementSubcontractMakeDemand(analysisId, action);
-        String sourceRef = makeDemandSourceRef(itemId);
-        markCreated(action.actionId(), "SUBCONTRACT_MAKE_TASK",
-                itemId, sourceRef, itemId, null, null);
-        UUID representative = action.group().materials().getFirst().materialLineId();
-        UUID warehouseId = selectedWarehouse(analysisId);
-        UUID actorId = currentUser.requireId();
-        List<UUID> existing = NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT id FROM preplan_subcontract_make_tasks
-                WHERE analysis_id = :analysisId
-                  AND analysis_material_id = :materialId
-                  AND status = 'ACTIVE'
-                FOR UPDATE
-                """).setParameter("analysisId", analysisId)
-                .setParameter("materialId", representative), UUID.class);
-        BigDecimal requiredQty = action.demandQty()
-                .add(Optional.ofNullable(action.publicExtraQty()).orElse(BigDecimal.ZERO));
-        UUID taskId;
-        if (existing.isEmpty()) {
-            taskId = UUID.randomUUID();
-            em.createNativeQuery("""
-                    INSERT INTO preplan_subcontract_make_tasks (
-                        id, analysis_id, analysis_material_id, supply_action_id,
-                        preparation_item_id, goods_id, color_id, unit_id,
-                        warehouse_id, required_qty, created_by, updated_by)
-                    VALUES (
-                        :id, :analysisId, :materialId, :actionId,
-                        :itemId, :goodsId, :colorId, :unitId,
-                        :warehouseId, :requiredQty, :actorId, :actorId)
-                    """)
-                    .setParameter("id", taskId)
-                    .setParameter("analysisId", analysisId)
-                    .setParameter("materialId", representative)
-                    .setParameter("actionId", action.actionId())
-                    .setParameter("itemId", itemId)
-                    .setParameter("goodsId", action.group().dimension().goodsId())
-                    .setParameter("colorId", action.group().dimension().colorId())
-                    .setParameter("unitId", action.group().dimension().unitId())
-                    .setParameter("warehouseId", warehouseId)
-                    .setParameter("requiredQty", requiredQty)
-                    .setParameter("actorId", actorId)
-                    .executeUpdate();
-        } else {
-            taskId = existing.getFirst();
-            // 任务需求量 = 任务行需求量（重下达只增不减）+ 仍未撤销的前置自制
-            // 行动带来的公共备货产出（V589：车间腿超量由台账如实承接）。
-            // 公共备货合计写成 SET 里的标量子查询：UPDATE ... FROM 的 LATERAL
-            // 不允许引用更新目标别名 task（PG 报 invalid reference to FROM-clause）。
-            em.createNativeQuery("""
-                    UPDATE preplan_subcontract_make_tasks task
-                    SET required_qty = item.requested_qty + COALESCE((
-                            SELECT SUM(action.public_surplus_qty)
-                            FROM preplan_supply_actions action
-                            WHERE action.analysis_id = task.analysis_id
-                              AND action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
-                              AND action.external_document_id = task.preparation_item_id
-                              AND action.status <> 'CANCELLED'
-                        ), 0),
-                        version = task.version + 1,
-                        updated_by = :actorId, updated_at = now()
-                    FROM production_material_analysis_items item
-                    WHERE task.id = :taskId
-                      AND item.id = task.preparation_item_id
-                    """)
-                    .setParameter("taskId", taskId)
-                    .setParameter("actorId", actorId)
-                    .executeUpdate();
-        }
-        chainNotice.notifySubcontractMakeTaskCreated(taskId);
-    }
-
-    /** 委外前置自制任务行：与自制备料同构，但来源类型独立、可读编号前缀为「委外自制」。 */
-    private UUID createOrIncrementSubcontractMakeDemand(UUID analysisId, ActionDraft action) {
-        UUID representative = action.group().materials().getFirst().materialLineId();
-        List<Object[]> existing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id, source_type, requested_qty
-                FROM production_material_analysis_items
-                WHERE analysis_id = :analysisId
-                  AND source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE')
-                  AND parent_analysis_material_id = :parentId
-                  AND is_deleted = FALSE
-                FOR UPDATE
-                """).setParameter("analysisId", analysisId)
-                .setParameter("parentId", representative));
-        if (!existing.isEmpty()) {
-            String type = Objects.toString(existing.getFirst()[1], "");
-            if (!"SUBCONTRACT_MAKE".equals(type)) {
-                throw conflict("该节点已存在自制备料任务，路线互斥，请先刷新物料分析");
-            }
-            UUID itemId = (UUID) existing.getFirst()[0];
-            em.createNativeQuery("""
-                    UPDATE production_material_analysis_items
-                    SET requested_qty = requested_qty + :qty,
-                        delivery_date = COALESCE(:needDate, delivery_date),
-                        updated_at = now(), updated_by = :actorId
-                    WHERE id = :id
-                    """)
-                    .setParameter("qty", action.demandQty())
-                    .setParameter("needDate", action.group().needDate())
-                    .setParameter("actorId", currentUser.requireId())
-                    .setParameter("id", itemId).executeUpdate();
-            MaterialView material=action.group().materials().getFirst();
-            BigDecimal attributed=material.priorityMakeSupplementQty().min(action.demandQty());
-            if(attributed.signum()>0) new PreplanReallocationMakeSupplement(em).recordExistingIncrease(
-                    analysisId,representative,itemId,attributed,decimal(existing.getFirst()[2]),
-                    decimal(existing.getFirst()[2]).add(action.demandQty()),currentUser.requireId());
-            return itemId;
-        }
-        UUID itemId = UUID.randomUUID();
-        // 可读来源编号「委外自制 <日期> <4位尾码>」；(source_type, source_ref)
-        // 有全局唯一索引，插入前查重避免碰撞（PG 唯一冲突会中止整个事务）。
-        String sourceRef = nextSubcontractMakeSourceRef(itemId);
-        int linePriority = nextLinePriority(analysisId);
-        em.createNativeQuery("""
-                INSERT INTO production_material_analysis_items (
-                    id, analysis_id, source_type, goods_id, color_id, unit_id,
-                    source_ref, source_reason, requested_qty, delivery_date,
-                    line_priority, parent_analysis_material_id,
-                    created_by, updated_by
-                ) VALUES (
-                    :id, :analysisId, 'SUBCONTRACT_MAKE', :goodsId, :colorId, :unitId,
-                    :sourceRef, :sourceReason, :qty, :needDate,
-                    :linePriority, :parentId, :actorId, :actorId
-                )
-                """)
-                .setParameter("id", itemId)
-                .setParameter("analysisId", analysisId)
-                .setParameter("goodsId", action.group().dimension().goodsId())
-                .setParameter("colorId", action.group().dimension().colorId())
-                .setParameter("unitId", action.group().dimension().unitId())
-                .setParameter("sourceRef", sourceRef)
-                .setParameter("sourceReason", "父级委外件缺口确认前置自制")
-                .setParameter("qty", action.demandQty())
-                .setParameter("needDate", action.group().needDate())
-                .setParameter("linePriority", linePriority)
-                .setParameter("parentId", representative)
-                .setParameter("actorId", currentUser.requireId())
-                .executeUpdate();
-        return itemId;
-    }
-
-    /** 生成未占用的委外前置自制来源编号；尾码碰撞时换码重试。 */
-    private String nextSubcontractMakeSourceRef(UUID itemId) {
-        String candidate = "委外自制 " + BusinessTime.today()
-                + " " + itemId.toString().substring(0, 4);
-        if (subcontractMakeSourceRefAvailable(candidate)) return candidate;
-        for (int attempt = 0; attempt < 8; attempt++) {
-            candidate = "委外自制 " + BusinessTime.today()
-                    + " " + UUID.randomUUID().toString().substring(0, 4);
-            if (subcontractMakeSourceRefAvailable(candidate)) return candidate;
-        }
-        throw conflict("委外自制来源编号生成冲突，请重试");
-    }
-
-    private boolean subcontractMakeSourceRefAvailable(String ref) {
-        return em.createNativeQuery("""
-                SELECT 1
-                FROM production_material_analysis_items
-                WHERE source_type = 'SUBCONTRACT_MAKE'
-                  AND is_deleted = FALSE
-                  AND lower(btrim(source_ref)) = lower(btrim(:ref))
-                """).setParameter("ref", ref).getResultList().isEmpty();
-    }
-
-    /** 同批委外分流共用一次查询快照，避免多产品重复物料造成逐行往返。 */
-    Set<UUID> activeBomParentIds(Collection<UUID> goodsIds) {
-        List<UUID> distinctGoodsIds = goodsIds.stream().distinct().sorted().toList();
-        if (distinctGoodsIds.isEmpty()) return Set.of();
-        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT DISTINCT bom.goods_id
-                FROM goods_bom_items bom
-                JOIN goods child ON child.id = bom.component_goods_id
-                 AND child.is_deleted = FALSE
-                 AND COALESCE(child.auto_created, FALSE) = FALSE
-                 AND child.issue_method <> 'PERIODIC'
-                WHERE bom.goods_id IN (:goodsIds) AND bom.is_deleted = FALSE
-                """, UUID.class).setParameter("goodsIds", distinctGoodsIds), UUID.class));
-    }
-
-    /**
-     * V581：「只有一个直属子件」的委外货品——这类件不先自制，直接把那个子件
-     * 发给委外商，委外商加工后交回目标件。
-     *
-     * <p>判据与 {@code SubcontractMaterialPlanService.soleOutboundComponent} 及
-     * 迁移 V581 的 {@code fn_guard_subcontract_target_quantity_basis_insert}
-     * 逐字同口径：活动直属边恰好 1 条、该边 PER_UNIT 且是真实投入阶段；
-     * V646 起子件可有自己的制造 BOM。其余形态按既有「先自制再发外」处理。
-     *
-     * <p>与 {@link #activeBomParentIds} 一样，同批只发一次查询。
-     */
-    Set<UUID> soleComponentSubcontractGoodsIds(Collection<UUID> goodsIds) {
-        List<UUID> distinctGoodsIds = goodsIds.stream()
-                .filter(java.util.Objects::nonNull).distinct().sorted().toList();
-        if (distinctGoodsIds.isEmpty()) return Set.of();
-        // 判据本体是 V581 的 fn_subcontract_sole_component_goods（与订货批准侧
-        // 共用同一个函数），这里只做一次批量过滤，不再抄一遍判据。
-        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
-                SELECT goods.id
-                FROM goods
-                WHERE goods.id IN (:goodsIds)
-                  AND fn_subcontract_sole_component_goods(goods.id)
-                """, UUID.class).setParameter("goodsIds", distinctGoodsIds), UUID.class));
     }
 
     /** 分析内下一行序（与既有 line_priority 递增口径一致；行锁由调用方 lockHeader 保证串行）。 */
@@ -3147,8 +2764,6 @@ public class MaterialAnalysisCommandService {
      * @return 实际撤回的 action id 集合（目标 + 共享同单据的兄弟任务）
      */
     private List<UUID> cancelActionLocked(UUID analysisId, UUID actionId, String reason) {
-        subcontractPreparationHandoffs.requireSupplyActionCancellationSafe(
-                analysisId, actionId);
         Object[] row = one(em.createNativeQuery("""
                 SELECT id, status, route, requested_qty, external_document_type,
                        external_document_id, operation_type, public_surplus_qty
@@ -3163,9 +2778,6 @@ public class MaterialAnalysisCommandService {
         boolean sharedFutureClaim = "SHARED_FUTURE_CLAIM".equals(
                 Objects.toString(row[6], "SUPPLY"));
         if ("CANCELLED".equals(status)) {
-            if (!sharedFutureClaim && "SUBCONTRACT_APPLICATION".equals(type)) {
-                subcontractMakeTasks.reverseNotificationBatchesForApplication(documentId, reason);
-            }
             return List.of();
         }
         List<UUID> batch = !sharedFutureClaim
@@ -3211,8 +2823,6 @@ public class MaterialAnalysisCommandService {
 
     /** 撤回单个任务行：外部单据（合并生成，可能已被同批兄弟先撤）红冲幂等。 */
     private void cancelSingleActionLocked(UUID analysisId, UUID actionId, String reason) {
-        subcontractPreparationHandoffs.requireSupplyActionCancellationSafe(
-                analysisId, actionId);
         Object[] row = one(em.createNativeQuery("""
                 SELECT id, status, route, requested_qty, external_document_type,
                        external_document_id, operation_type, public_surplus_qty
@@ -3244,9 +2854,6 @@ public class MaterialAnalysisCommandService {
                     ProductionSubcontractRequestPort.LifecycleAction.REVERSE);
         } else if ("PREPLAN_MAKE_TASK".equals(type)) {
             cancelMakeDemand(analysisId, actionId, documentId, decimal(row[3]));
-        } else if ("SUBCONTRACT_MAKE_TASK".equals(type)) {
-            cancelSubcontractMakeDemand(analysisId, actionId,
-                    documentId, decimal(row[3]), decimal(row[7]));
         } else if (!"OPEN".equals(status)) {
             throw conflict("备料任务缺少可撤回的真实下游单据引用");
         }
@@ -3260,9 +2867,6 @@ public class MaterialAnalysisCommandService {
                 .setParameter("actorId", currentUser.requireId())
                 .setParameter("reason", reason.strip())
                 .setParameter("id", actionId).executeUpdate();
-        if (!sharedFutureClaim && "SUBCONTRACT_APPLICATION".equals(type)) {
-            subcontractMakeTasks.reverseNotificationBatchesForApplication(documentId, reason);
-        }
         // 分析备料绑定对称释放（V298）：该任务外部单据明细（申请行/委外申请行）
         // 已收货入库并被绑定的量，随任务撤回回到公共现货池。
         List<UUID> externalItemIds = NativeQueryResults.typedRows(em.createNativeQuery("""
@@ -3280,72 +2884,8 @@ public class MaterialAnalysisCommandService {
         }
     }
 
-    /**
-     * V458：撤回委外前置自制任务。已有自制成品入库或已通知委外的量一律失败关闭；
-     * 纯任务按自制备料同构口径回退任务行数量并作废账本行。
-     */
-    private void cancelSubcontractMakeDemand(
-            UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty, BigDecimal surplusQty) {
-        List<Object[]> taskRows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id, required_qty, produced_qty, notified_qty
-                FROM preplan_subcontract_make_tasks
-                WHERE analysis_id = :analysisId
-                  AND preparation_item_id = :itemId
-                  AND status = 'ACTIVE'
-                FOR UPDATE
-                """).setParameter("analysisId", analysisId)
-                .setParameter("itemId", itemId));
-        if (!taskRows.isEmpty()) {
-            Object[] taskRow = taskRows.getFirst();
-            if (decimal(taskRow[2]).signum() > 0
-                    || decimal(taskRow[3]).signum() > 0) {
-                throw conflict("委外前置自制已有成品入库或已通知委外，不能撤回");
-            }
-            BigDecimal nextRequired = decimal(taskRow[1]).subtract(qty).subtract(surplusQty);
-            BigDecimal planned = decimal(em.createNativeQuery("""
-                    SELECT COALESCE(SUM(submitted_qty + public_surplus_qty), 0)
-                    FROM production_material_analysis_plan_links
-                    WHERE analysis_id = :analysisId AND analysis_item_id = :itemId
-                      AND allocation_status IN ('SUBMITTED', 'APPROVED')
-                    """).setParameter("analysisId", analysisId).setParameter("itemId", itemId)
-                    .getSingleResult());
-            if (nextRequired.compareTo(planned) < 0) {
-                throw conflict("委外前置自制已有待审核或已审核计划，不能撤回其生产数量");
-            }
-            if (nextRequired.signum() > 0) {
-                em.createNativeQuery("""
-                        UPDATE preplan_subcontract_make_tasks
-                        SET required_qty = :requiredQty,
-                            version = version + 1,
-                            updated_by = :actorId, updated_at = now()
-                        WHERE id = :id
-                        """)
-                        .setParameter("requiredQty", nextRequired)
-                        .setParameter("actorId", currentUser.requireId())
-                        .setParameter("id", taskRow[0]).executeUpdate();
-            } else {
-                em.createNativeQuery("""
-                        UPDATE preplan_subcontract_make_tasks
-                        SET status = 'CANCELLED', version = version + 1,
-                            updated_by = :actorId, updated_at = now()
-                        WHERE id = :id
-                        """)
-                        .setParameter("actorId", currentUser.requireId())
-                        .setParameter("id", taskRow[0]).executeUpdate();
-            }
-        }
-        cancelMakeDemandRow(analysisId, actionId, itemId, qty,
-                "委外前置自制备料需求不存在");
-    }
-
     private void cancelMakeDemand(
             UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty) {
-        cancelMakeDemandRow(analysisId, actionId, itemId, qty, "自制备料需求不存在");
-    }
-
-    private void cancelMakeDemandRow(
-            UUID analysisId, UUID actionId, UUID itemId, BigDecimal qty,
-            String notFoundMessage) {
         if(Boolean.TRUE.equals(em.createNativeQuery("""
                 SELECT EXISTS(SELECT 1 FROM preplan_aggregate_batches batch JOIN production_plans plan ON plan.id=batch.plan_id
                     WHERE batch.action_id=:action AND plan.status IN(0,1) AND NOT plan.is_deleted AND NOT plan.is_canceled)
@@ -3354,11 +2894,11 @@ public class MaterialAnalysisCommandService {
                 SELECT requested_qty, submitted_qty, approved_qty
                 FROM production_material_analysis_items
                 WHERE id = :id AND analysis_id = :analysisId
-                  AND source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE','AGGREGATE_MAKE')
+                  AND source_type IN ('MAKE_COMPONENT','AGGREGATE_MAKE')
                   AND is_deleted = FALSE
                 FOR UPDATE
                 """).setParameter("id", itemId).setParameter("analysisId", analysisId),
-                notFoundMessage);
+                "自制备料需求不存在");
         BigDecimal minimum = decimal(item[1]).add(decimal(item[2]));
         BigDecimal next = decimal(item[0]).subtract(qty);
         if (next.compareTo(minimum) < 0) {
@@ -3369,8 +2909,7 @@ public class MaterialAnalysisCommandService {
         Number other = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM preplan_supply_actions
                 WHERE analysis_id = :analysisId AND id <> :actionId
-                  AND external_document_type IN (
-                      'PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK')
+                  AND external_document_type = 'PREPLAN_MAKE_TASK'
                   AND external_document_id = :itemId AND status <> 'CANCELLED'
                 """).setParameter("analysisId", analysisId)
                 .setParameter("actionId", actionId).setParameter("itemId", itemId)
@@ -3628,11 +3167,10 @@ public class MaterialAnalysisCommandService {
             UUID safetySliceId) {
     }
 
-    /** ADR-065 同批合并的外部单据结果：整批一张采购申请 + 整批无子层委外一张申请。 */
+    /** ADR-065 同批合并的外部单据结果：整批一张采购申请 + 整批委外一张申请。 */
     private record PreparedExternalDocuments(
             ProductionPurchaseRequestFacade.DraftResult purchaseRequest,
-            ProductionSubcontractRequestPort.DraftResult subcontractApplication,
-            Set<UUID> subcontractLeafActionIds) {
+            ProductionSubcontractRequestPort.DraftResult subcontractApplication) {
     }
 
     private record ActionSequence(int generation, UUID predecessorId) {

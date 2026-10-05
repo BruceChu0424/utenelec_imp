@@ -55,24 +55,25 @@ class MaterialAnalysisSupplyCoverageReaderTest {
         verify(active).setParameter("groupKeys", java.util.Set.of("current", "legacy"));
     }
 
+    /** ADR-143 §五: 委外前置自制任务(SUBCONTRACT_MAKE_TASK)已删除, 委外路线只认委外申请在途与补货在途。 */
     @Test
-    void subcontractApplicationAndPreparationCoverageAreAddedWithoutMixingRoutes() {
+    void subcontractCoverageReadsOnlyTheApplicationRouteWithoutMixingRoutes() {
         EntityManager em = mock(EntityManager.class);
         Query aliases = query(List.of());
         Query external = query(java.util.Collections.singletonList(new Object[]{"sc", new BigDecimal("2")}));
-        Query preparation = query(java.util.Collections.singletonList(new Object[]{"sc", new BigDecimal("5")}));
         Query replacement = query(java.util.Collections.singletonList(new Object[]{"sc", new BigDecimal("3")}));
         Query crossRoute = query(java.util.Collections.emptyList());
         when(em.createNativeQuery(anyString()))
-                .thenReturn(aliases, external, preparation, replacement, crossRoute);
+                .thenReturn(aliases, external, replacement, crossRoute);
 
         var coverage = new MaterialAnalysisSupplyCoverageReader(em).read(UUID.randomUUID(), List.of(
                 new MaterialAnalysisSupplyCoverageReader.Group("sc", "SUBCONTRACT", List.of(UUID.randomUUID()))));
 
-        assertThat(coverage.active("sc", "SUBCONTRACT")).isEqualByComparingTo("7");
+        assertThat(coverage.active("sc", "SUBCONTRACT")).isEqualByComparingTo("2");
         assertThat(coverage.replacement("sc", "SUBCONTRACT")).isEqualByComparingTo("3");
         assertThat(coverage.active("sc", "BUY")).isZero();
-        verify(em, times(5)).createNativeQuery(anyString());
+        verify(em, times(4)).createNativeQuery(anyString());
+        verify(em, never()).createNativeQuery(contains("SUBCONTRACT_MAKE"));
     }
 
     @Test

@@ -39,7 +39,9 @@ import 'package:flutter_test/flutter_test.dart';
 // 2026-10-03 +8：AI 业务查询与表单辅助填写批次（报价模板下载/学习范围、销售模板
 // 辅助等操作按钮）继续按同口径本地预演。
 // 2026-10-03 +3：AI 使用审计面板（管理页查看计价/审计入口）同口径预演。
-const _baseline = 683;
+// 2026-10-04 -6：ADR-143 委外按工序领直属物料(委外申请进度弹窗、订货单进度区改由服务端
+// priceMasked 判金额可见、仓库委外领料拣货页等)退掉本地权限引用，净 683 -> 677。
+const _baseline = 677;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
 

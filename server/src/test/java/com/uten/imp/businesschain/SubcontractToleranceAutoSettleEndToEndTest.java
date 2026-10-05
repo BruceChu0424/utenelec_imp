@@ -106,8 +106,9 @@ class SubcontractToleranceAutoSettleEndToEndTest {
     void warehouseStockInAutoSettlesToleratedShortDeliveryWithoutWeakeningTheManualOwnerGuard() {
         var w = fixture.seedWorld("sc-tolerance-settle");
         fixture.loginAs(w.superAdminUserId());
-        // 我方供料是委外件本身 (DIRECT_OUTBOUND): 先把 1000 件铺进仓, 才发得出去。
-        ReflectionTestUtils.invokeMethod(fixture, "receiveOpeningInputsForA", w, "1000");
+        // ADR-143: 我方供料是委外件的直属物料 M(按件用量 1): 先把 1000 件 M 铺进仓, 才领得出去。
+        UUID material = fixture.ensureSubcontractDirectMaterial(w, w.goodsE());
+        fixture.receiveSubcontractMaterial(w, material, "1000");
 
         // ① 订 1000 件、允许损耗 10% -> 允许下限 900。用户口径就是这一组数。
         UUID orderId = orders.create(orderRequest(w, "1000", "10")).getId();
@@ -126,12 +127,7 @@ class SubcontractToleranceAutoSettleEndToEndTest {
 
         // ③ 我方供料全部发完。severity 判定的前提是 materialFullyIssued(): 料没发完一律不判短交,
         //    这一步不做的话后面整条自动结案根本不会触发, 用例会假绿。
-        UUID issueId = db.queryForObject("""
-                SELECT issue.id FROM subcontract_material_issues issue
-                JOIN subcontract_material_issue_items item ON item.issue_id=issue.id
-                WHERE item.order_item_id=? AND issue.status=0 AND issue.is_deleted=FALSE
-                """, UUID.class, itemId);
-        materialIssues.approve(issueId);
+        fixture.drawAndIssueSubcontract(itemId, new BigDecimal("1000"), "sc-tolerance-draw-" + itemId);
         qty("1000", db.queryForObject(
                 "SELECT SUM(at_supplier_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",
                 BigDecimal.class, itemId));

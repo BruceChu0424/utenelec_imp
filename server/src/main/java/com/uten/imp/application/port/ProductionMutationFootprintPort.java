@@ -22,7 +22,7 @@ public interface ProductionMutationFootprintPort {
     }
     FulfillmentMutationLockPlan forSharedFutureClaim(UUID analysisId);
     FulfillmentMutationLockPlan forPreview(
-            Collection<UUID> salesItemIds, Collection<UUID> subcontractItemIds,
+            Collection<UUID> salesItemIds,
             Collection<WarehouseDimension> manualRoots, Collection<UUID> warehouseIds,
             Collection<UUID> existingAnalysisIds);
 

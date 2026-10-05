@@ -15,7 +15,9 @@ import com.uten.imp.features.warehouse.outbound.WarehouseSubcontractOutboundCont
 import java.util.List;
 
 /**
- * 仓库与品质入库链的计数来源: 预计到货/到货异常、超量到货财务审批、待退回供应商、IQC 待检、产成品待点收、品质结果、委外待出仓。
+ * 仓库与品质入库链的计数来源: 预计到货/到货异常、超量到货财务审批、待退回供应商、IQC 待检、产成品待点收、品质结果、
+ * 委外出库(ADR-143: subcontractOutbound.count = 委外人员已提交、仓库未发出的领料草稿张数; 与待发料列表同一口径,
+ * 汇总不带仓库范围 = 全部仓库, 与列表默认范围一致)。
  *
  * <p>工作台徽章汇总(ADR-108)的计数来源: 读取函数直接调用原计数端点的控制器方法,
  * 资格判定与数字都沿用端点本身, 不另写口径。
@@ -43,6 +45,6 @@ class WarehouseWorkbenchBadgeSources implements WorkbenchBadgeSources {
                 new Source("iqcPending", () -> WorkbenchBadgeSources.numbers(inspections.pendingCount())),
                 new Source("finishedInbound", () -> WorkbenchBadgeSources.numbers(finishedInbound.count())),
                 new Source("qualityResult", () -> WorkbenchBadgeSources.numbers(qualityResults.typeCounts())),
-                new Source("subcontractOutbound", () -> WorkbenchBadgeSources.numbers(subcontractOutbound.taskCount())));
+                new Source("subcontractOutbound", () -> WorkbenchBadgeSources.numbers(subcontractOutbound.taskCount("", null))));
     }
 }

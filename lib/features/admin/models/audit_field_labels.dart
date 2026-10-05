@@ -261,7 +261,7 @@ abstract final class AuditFieldLabels {
       'no_data': '还没有已完工且核清余料的生产数据',
       'not_linear': '整包或固定批次不能按平均用量算',
       'output_unit_changed': '父件单位变了，需重新学习',
-      'subcontract_outbound': '本次由委外单一子件发料，按委外合同用量',
+      'subcontract_outbound': '上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量',
     },
     'production_plan_items.allowed_overproduction_rate_source': {
       'default': '系统默认',

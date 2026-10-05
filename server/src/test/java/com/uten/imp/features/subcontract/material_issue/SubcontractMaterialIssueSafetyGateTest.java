@@ -74,7 +74,7 @@ class SubcontractMaterialIssueSafetyGateTest {
         ApiException error = assertThrows(ApiException.class, () -> service.approve(id));
 
         assertEquals(ErrorCode.BUSINESS, error.getCode());
-        assertTrue(error.getMessage().contains("委外订货明细"));
+        assertTrue(error.getMessage().contains("委外人员提交的领料"));
         verifyNoInteractions(stockService);
     }
 }

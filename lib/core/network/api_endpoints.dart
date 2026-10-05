@@ -161,16 +161,24 @@ abstract final class ApiEndpoints {
   static const warehouseInboundArrivalBatchComplete =
       '/warehouse/inbound/arrivals/batch-complete';
 
-  // 委外出仓工作台（V304）：财务批准委外订货后按 BOM 展开发料计划并自动生出仓草稿；
-  // 仓库在此看任务、拣货、审核出仓（编辑/审核走既有 /subcontract/material-issues 端点）。
+  // 委外领料待发料(ADR-143)：委外部在任务中心「领料」提交后，每张待发的领料单是一行；
+  // 仓库在此拣货、改少、审核出仓（编辑/审核走既有 /subcontract/material-issues 端点）。
   static const warehouseSubcontractOutboundTasks =
       '/warehouse/subcontract-outbound/tasks';
-  static String warehouseSubcontractOutboundTask(String planId) =>
-      '/warehouse/subcontract-outbound/tasks/$planId';
-  static String warehouseSubcontractOutboundDraft(String planId) =>
-      '/warehouse/subcontract-outbound/tasks/$planId/draft';
-  static String warehouseSubcontractOutboundClose(String planId) =>
-      '/warehouse/subcontract-outbound/tasks/$planId/close';
+  static String warehouseSubcontractOutboundTask(String issueId) =>
+      '/warehouse/subcontract-outbound/tasks/$issueId';
+
+  /// 整单不发：仓库把这张领料单退回委外(必填原因；作废领料单、退回占用库存、通知委外)。
+  static String warehouseSubcontractOutboundReturnToDraw(String issueId) =>
+      '/warehouse/subcontract-outbound/tasks/$issueId/return-to-draw';
+
+  // 委外申请明细缺 BOM(ADR-143 §二.3)：任务中心「通知研发完善」——给工程研发部建
+  // (或复用未完成的)「完善 BOM」任务，并把当前账号加入等待名单。
+  static String subcontractApplicationItemForwardBom(
+    String applicationItemId,
+  ) =>
+      '/subcontract/applications/items/'
+      '${Uri.encodeComponent(applicationItemId)}/forward-bom';
   static const procurementInspectionPendingReceipts =
       '/procurement/inspection/pending-receipts';
   static const procurementInspectionRecords = '/procurement/inspection/records';

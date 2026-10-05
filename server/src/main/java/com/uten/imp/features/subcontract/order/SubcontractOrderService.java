@@ -135,10 +135,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         if (shortDeliveryHooks != null) shortDeliveryHooks.ifAvailable(action);
     }
     @Autowired
-    private com.uten.imp.application.port.SubcontractOrderPreparationPort orderPreparation;
-
-    @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
+    /** ADR-143 §二.3 委外件缺 BOM 转研发(研发任务模块实现)；单测手工构造时为空，只跳过登记。 */
+    @Autowired(required = false)
+    private com.uten.imp.application.port.RdBomGapPort rdBomGaps;
 
     @Transactional(readOnly = true)
     public PageResponse<OrderListItem> list(OrderQueryFilter f, int page, int size, String sort, String order) {
@@ -342,6 +342,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         requireRowsMatchHeaderCommercial(req);
         var mutationGuard=lockOrderRequest(null,req);
         mutationGuard.verifyUnchanged();
+        requireDrawableBomForApplicationLines(req);
         SubcontractOrder r = new SubcontractOrder();
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
@@ -352,7 +353,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         mutationLocks.registerCreatedOrder(orderType(),r.getId());
         List<OrderItemDto> items = saveItems(r, req.getItems());
         applyTotals(r, items);
-        prepareDraft(r);
         // 主档写回必须在明细落库并 flush 之后: 写回服务按订单 id 用 JDBC 读
         // subcontract_orders/subcontract_order_items 取事实, Hibernate 未 flush 的头/行它看不见
         // (此前放在 save 之后、明细之前, 新建单永远学不到货品委外商与加工单价)。
@@ -579,15 +579,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     .sorted(java.util.Comparator.comparingInt(old->Objects.equals(old.getLineNo(),sameLine)?0:1)).findFirst();
             if(match.isPresent()){retained.put(line,match.get());remaining.remove(match.get());}
         }
-        if(!Objects.equals(r.getWarehouseId(),req.getWarehouseId()))
-            orderPreparation.releaseDraftPreparations(oldItems.stream().map(SubcontractOrderItem::getId).toList(),"委外草稿改仓，重新检查前置准备");
-        orderPreparation.releaseDraftPreparations(remaining.stream().map(SubcontractOrderItem::getId).toList(),"委外草稿修改或删除原行");
         applyHeader(req, r);
         for(var removed:remaining){removed.setDeleted(true);itemRepo.save(removed);}
         itemRepo.flush();
         List<OrderItemDto> items = saveItems(r, req.getItems(),retained, previousColumns);
         applyTotals(r, items);
-        prepareDraft(r);
         // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
         orderRepo.flush();
         masterDefaultsSync.syncFromSubcontractOrder(r.getId());
@@ -604,7 +600,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         com.uten.imp.common.web.StandardDocumentLifecycleCapabilities.requireDraftForDelete(r.getStatus());
         approvalProjection.requireMutable(orderType(), id);
         mutationGuard.verifyUnchanged();
-        orderPreparation.releaseDraftPreparations(itemRepo.findByOrderIdOrderByLineNoAsc(id).stream().map(SubcontractOrderItem::getId).toList(),"委外草稿删除");
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         orderRepo.save(r);
@@ -674,8 +669,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 "委外订货");
         requireFinanceCommercialAuthority(order, items);
         lockAndValidateSourcesIncludingPending(order, items);
-        materialPlanService.lockOrderInventoryDimensions(id);
-        materialPlanService.requireNoMakeThenShortage(id);
+        // ADR-143：下单与送审不受物料库存约束(物料到齐后再由委外人员领料)，但委外件必须先有
+        // 可发外的直属物料(BOM)；缺的先转研发，提交人进等待名单。
+        requireDrawableBom(order, items, null);
         return snapshot(order, items);
     }
 
@@ -698,9 +694,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     /**
      * V486 财务批准后受控改量（对齐销售 V482）：立即生效 + 自动开财务复核 case
-     * + 逐行 old→new 事实账。最低量来自真实回厂与实发/实退的冻结量纲，
-     * 未执行出仓草稿和未消费预留同步收回；来源与毛实发历史保持可追溯。
-     * 已有前置生产分析不得静默改需求，有子层增量仍经真实前置生产链。
+     * + 逐行 old→new 事实账。最低量来自真实回厂与委外商处物料结存折算的套数；
+     * 领料计划行按新订货量整体重算(ADR-143 §二.14)，已提交未发的领料超出新计划量时
+     * 先撤回再改量。
      */
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:change_qty')")
@@ -765,7 +761,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     ErrorCode.BUSINESS, "仅财务批准后的委外订货单可改量");
         }
         mutationGuard.verifyUnchanged();
-        materialPlanService.lockOrderInventoryDimensions(id);
         if (rejectWhenReconfirmationPending) requireNoPendingApprovalCase(id);
         List<SubcontractOrderItem> items =
                 itemRepo.findByOrderIdOrderByLineNoAsc(id);
@@ -798,7 +793,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "第 " + item.getLineNo() + " 行新数量不能低于已锁定数量 "
                                 + locked.stripTrailingZeros().toPlainString()
-                                + "（已回厂净量/已出仓目标件）");
+                                + "(已回厂净量/已发外物料折算套数)");
             }
             changes.add(new Object[]{item, oldQty, newQty,receiptBound,UUID.randomUUID()});
         }
@@ -935,7 +930,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 + ", 累计到 " + plainNumber(first[5]) + unit + ")。"
                 + (overdue ? "此前判定的分批到货已过预计到齐日, 需要重新判定。" : "")
                 + "仓库已登记并通知委外, 正等委外判定是分批到货继续等还是接受损耗结案; "
-                + "判定完成前这批货先不入库, 本单也不改量。";
+                + "判定完成前这批货先不入库(已按先入库后质检上架的货先不转为可用库存, 判定后系统自动转入), "
+                + "本单也不改量。";
         return new OrderDetail.ShortDeliveryHold(
                 (UUID) first[0], rows.size(), summary, overdue);
     }
@@ -1001,11 +997,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
-        materialPlanService.lockOrderInventoryDimensions(id);
-        materialPlanService.requireNoMakeThenShortage(id);
         references.requireSelectableSupplier(order.getSupplierId());
         List<SubcontractOrderItem> items =
                 itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        // ADR-143 §二.3：批准时再兜底检查一次(送审后 BOM 可能被改到没有可发外直属物料)；
+        // 缺的转研发时登记订货单制单人等结果，而不是财务审核人。
+        requireDrawableBom(order, items, order.getMakerId());
         captureGoodsSnapshots(
                 items,
                 SubcontractGoodsSnapshot.APPLICATION_ITEM_AT_APPROVAL,
@@ -1045,7 +1042,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         orderRepo.flush();
         publicSupplyCapture.afterOrderApproved(
                 PreplanPublicSupplyCapturePort.SUBCONTRACT, id);
-        // V304：按批准时 BOM 展开发料计划并自动生成仓库出仓草稿（无 BOM 子件=委外商自备料则不建）。
+        // ADR-143：按批准时可发外的直属物料冻结领料计划行(物料、颜色、单耗)；每条明细都必须有
+        // (缺 BOM 已在上面拒绝，§二.3)。不生成出仓草稿，由委外人员按齐套情况提交领料。
         materialPlanService.createPlanOnApproval(id);
     }
 
@@ -1062,7 +1060,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         mutationGuard.verifyUnchanged();
         reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
-        materialPlanService.lockOrderInventoryDimensions(id);
         List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         if (items.stream().anyMatch(it ->
                 positive(it.getReceivedQty())
@@ -1077,7 +1074,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     ErrorCode.BUSINESS,
                     "委外订货仍有已审核发料/退料/损耗单，请先红冲下游单据");
         }
-        materialPlanService.requireOrderReversalAllowed(id);
         // V463：红冲按来源分配份额对称扣回（与审批回写同口径）。
         Map<UUID, List<Object[]>> reverseSources = orderItemSources(
                 items.stream().map(SubcontractOrderItem::getId).toList());
@@ -1107,7 +1103,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         reopenedApplicationItems.forEach(this::recalcApplicationClosed);
         arrivalControl.cancelForOrderReversal(
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
-        // V304：软删未审出仓草稿 + 发料计划置 CANCELED（已审出仓由上方守卫先行拦截）。
+        // 撤回未发出的领料草稿并释放预留 + 领料计划置 CANCELED（已审出仓由上方守卫先行拦截）。
         materialPlanService.cancelForOrderReversal(id);
         // ADR-098：红冲守卫全部通过后, 开放的短交案件作废并撤回通知卡(同事务)。
         shortDeliveryHook(hooks -> hooks.cancelOpenCasesForOrder(id, "ORDER_REVERSED"));
@@ -1117,6 +1113,83 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         publicSupplyCapture.afterOrderReversed(
                 PreplanPublicSupplyCapturePort.SUBCONTRACT, id);
         return assembleDetail(r);
+    }
+
+    /**
+     * ADR-143 §二.3：委外件必须先有可发外的直属物料(BOM，唯一判定 {@code fn_subcontract_draw_edges})
+     * 才能提交财务或获批；手工草稿可以先保存。缺 BOM 的委外件逐个转工程研发部完善(独立事务立即提交，
+     * 随后的 409 不撤销；[reporterEmployeeId] 进等待名单，为空时取当前操作人)，再逐个点名拒绝。
+     */
+    private void requireDrawableBom(SubcontractOrder order, List<SubcontractOrderItem> items,
+                                    UUID reporterEmployeeId) {
+        List<Object[]> missing = goodsWithoutDrawableBom(
+                items.stream().map(SubcontractOrderItem::getGoodsId).toList());
+        if (missing.isEmpty()) return;
+        for (Object[] row : missing) {
+            forwardBomGap((UUID) row[0], com.uten.imp.application.port.RdBomGapPort.SOURCE_SUBCONTRACT_ORDER,
+                    order.getId(), order.getBillNo(), goodsLabel(row), reporterEmployeeId);
+        }
+        throw bomMissing(missing);
+    }
+
+    /** 委外申请分解的订货行：申请行缺 BOM 时不能生成订货单(ADR-143 §二.3)，同样先转研发。 */
+    private void requireDrawableBomForApplicationLines(OrderSaveRequest req) {
+        if (req == null || req.getItems() == null) return;
+        Map<UUID, UUID> applicationItemByGoods = new LinkedHashMap<>();
+        for (OrderItemLine line : req.getItems()) {
+            if (line == null || line.getGoodsId() == null || line.resolvedApplicationItemIds().isEmpty()) continue;
+            applicationItemByGoods.putIfAbsent(line.getGoodsId(), line.resolvedApplicationItemIds().getFirst());
+        }
+        List<Object[]> missing = goodsWithoutDrawableBom(List.copyOf(applicationItemByGoods.keySet()));
+        if (missing.isEmpty()) return;
+        for (Object[] row : missing) {
+            List<Object[]> application = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT application.id, application.bill_no
+                    FROM subcontract_application_items item
+                    JOIN subcontract_applications application ON application.id = item.application_id
+                    WHERE item.id = :itemId
+                    """).setParameter("itemId", applicationItemByGoods.get((UUID) row[0])));
+            forwardBomGap((UUID) row[0], com.uten.imp.application.port.RdBomGapPort.SOURCE_SUBCONTRACT_APPLICATION,
+                    application.isEmpty() ? null : (UUID) application.getFirst()[0],
+                    application.isEmpty() ? null : Objects.toString(application.getFirst()[1], null),
+                    goodsLabel(row), null);
+        }
+        throw bomMissing(missing);
+    }
+
+    /** [goodsId, 名称, 编号]：这些委外件里没有任何可发外直属物料的(按编号排序)。 */
+    private List<Object[]> goodsWithoutDrawableBom(List<UUID> requestedGoodsIds) {
+        List<UUID> goodsIds = requestedGoodsIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (goodsIds.isEmpty()) return List.of();
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT goods.id, COALESCE(goods.name, ''), COALESCE(goods.code, '')
+                FROM goods
+                WHERE goods.id IN (:goodsIds)
+                  AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(goods.id))
+                ORDER BY goods.code, goods.id
+                """).setParameter("goodsIds", goodsIds));
+    }
+
+    private void forwardBomGap(UUID goodsId, String sourceDocType, UUID sourceDocId, String sourceDocNo,
+                               String goodsLabel, UUID reporterEmployeeId) {
+        if (rdBomGaps == null) return;
+        boolean order = com.uten.imp.application.port.RdBomGapPort.SOURCE_SUBCONTRACT_ORDER.equals(sourceDocType);
+        String source = sourceDocNo == null || sourceDocNo.isBlank() ? "" : sourceDocNo + " ";
+        rdBomGaps.forwardBomGap(goodsId, sourceDocType, sourceDocId, sourceDocNo,
+                (order ? "委外订货单 " : "委外申请 ") + source + "里的委外件 " + goodsLabel
+                        + " 还没有维护 BOM(直属物料)，" + (order ? "不能提交财务" : "不能生成订货单"),
+                reporterEmployeeId);
+    }
+
+    private static String goodsLabel(Object[] row) {
+        return com.uten.imp.application.port.RdBomGapPort.goodsLabel(
+                Objects.toString(row[1], ""), Objects.toString(row[2], ""));
+    }
+
+    private static ApiException bomMissing(List<Object[]> missing) {
+        return new ApiException(ErrorCode.CONFLICT,
+                com.uten.imp.application.port.RdBomGapPort.subcontractBomMissingMessage(
+                        missing.stream().map(SubcontractOrderService::goodsLabel).toList(), false));
     }
 
     private void normalizePersistedUnits(
@@ -1418,7 +1491,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
-        // V476 运营红线：委外订货仓库必须选具体叶子仓（发料/回厂沿用）。
+        // 订货仓库只作单据记录、可不填(ADR-143)：领料按物料所在仓出、回厂按到货登记仓收。
+        // 填了仍须是具体叶子仓(V476 运营红线)。
         if (warehouseScopes != null) {
             warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
         }
@@ -1489,7 +1563,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return saveItems(r,lines,Map.of(), Map.of());
     }
 
-    /** Preserve terms independently of preparation-row replacement when quantities or sources change. */
+    /** Preserve terms independently of row replacement when quantities or sources change. */
     static Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns(
             List<OrderItemLine> requested, List<SubcontractOrderItem> stored) {
         Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> snapshots = new java.util.IdentityHashMap<>();
@@ -1517,32 +1591,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return snapshots;
     }
 
-    private void prepareDraft(SubcontractOrder order){
-        orderRepo.flush();itemRepo.flush();
-        materialPlanService.lockOrderInventoryDimensions(order.getId());
-        // ADR-103 路线 B: 单一子件委外件的子件仓里一件都没有时, 建单/改单就拦下 (与送审/批准同一把锁)。
-        materialPlanService.requireSoleComponentStockAvailable(order.getId());
-        var shortage=materialPlanService.draftChildrenShortageByOrderItem(order.getId());
-        for(var item:itemRepo.findByOrderIdOrderByLineNoAsc(order.getId())){
-            if(item.getApplicationItemId()!=null)continue;
-            UUID baseUnit=(UUID)em.createNativeQuery("SELECT unit_id FROM goods WHERE id=:id",UUID.class).setParameter("id",item.getGoodsId()).getSingleResult();
-            orderPreparation.ensureDraftPreparation(new com.uten.imp.application.port.SubcontractOrderPreparationPort.DraftPreparationCommand(
-                    order.getId(),item.getId(),order.getBillNo(),item.getGoodsId(),item.getColorId(),baseUnit,
-                    shortage.getOrDefault(item.getId(),BigDecimal.ZERO),order.getWarehouseId(),
-                    item.getDeliverDate()==null?order.getDeliverDate():item.getDeliverDate()));
-        }
-    }
-
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines,Map<OrderItemLine,SubcontractOrderItem> retained,
             Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额）；application_item_id 落首来源（主锚点）。
         Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines);
-        // 前置谱系守卫：合并行不得包含「先做后审（前置自制已完成）」来源——
-        // V458 的准备/出仓谱线（preparedLineage/sourceLineage）按单一来源设计，
-        // 合并会在财务批准/准备启动深处 409；提前到保存时给出可操作指引。
-        requireMergeSourcesWithoutMakeTaskLineage(lines, splits);
         // V304：applicationItemId 允许为空 = 委外自建手工行（无申请来源）；
         // 快照回落货品主档（preferred 对空来源行自动走 master）。
         Map<UUID, SubcontractGoodsSnapshot> upstream =
@@ -1632,58 +1686,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     /** V463 合并行来源分配结果：applicationItemId + 归属本行的数量份额。 */
     record SourceSplit(UUID applicationItemId, BigDecimal allocQty) {}
-
-    /**
-     * 前置谱系守卫（V463）：多来源合并行只要包含任一「先做后审（V458 前置自制
-     * 已完成、申请行挂 make 任务批次）」来源即拒绝——该类需求的准备权益/出仓
-     * 谱系按单一来源设计，合并会让财务批准（createPlanOnApproval→preparedLineage）
-     * 或准备启动（sourceLineage）在深处 409。保存时拦截并给出可操作指引。
-     */
-    private void requireMergeSourcesWithoutMakeTaskLineage(
-            List<OrderItemLine> lines,
-            Map<OrderItemLine, List<SourceSplit>> splits) {
-        Map<UUID, OrderItemLine> mergedSources = new java.util.LinkedHashMap<>();
-        for (OrderItemLine line : lines) {
-            List<SourceSplit> lineSplits = splits.getOrDefault(line, List.of());
-            if (lineSplits.size() <= 1) {
-                continue;
-            }
-            for (SourceSplit split : lineSplits) {
-                mergedSources.putIfAbsent(split.applicationItemId(), line);
-            }
-        }
-        if (mergedSources.isEmpty()) {
-            return;
-        }
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                        SELECT batch.application_item_id, application.bill_no
-                        FROM preplan_subcontract_make_task_batches batch
-                        JOIN preplan_subcontract_make_tasks task
-                          ON task.id = batch.task_id
-                         AND task.status = 'ACTIVE'
-                        JOIN subcontract_application_items item
-                          ON item.id = batch.application_item_id
-                         AND item.is_deleted = FALSE
-                        LEFT JOIN subcontract_applications application
-                          ON application.id = item.application_id
-                        WHERE batch.application_item_id IN (:ids)
-                        ORDER BY batch.application_item_id
-                        """).setParameter("ids", mergedSources.keySet()));
-        if (rows.isEmpty()) {
-            return;
-        }
-        UUID blockedSource = (UUID) rows.getFirst()[0];
-        OrderItemLine line = mergedSources.get(blockedSource);
-        String billNo = rows.getFirst()[1] == null ? "" : rows.getFirst()[1].toString();
-        throw new ApiException(
-                ErrorCode.VALIDATION_FAILED,
-                "第 " + (line.getLineNo() != null ? line.getLineNo() : "?")
-                        + " 行包含「前置自制已完成」的委外申请来源"
-                        + (billNo.isEmpty() ? "" : "（" + billNo + "）")
-                        + "：该类需求的准备/出仓谱系只支持单一来源，不能与其它申请合并，"
-                        + "请去掉该来源后分开生成订货单");
-    }
 
     /**
      * 同货品合并行的来源 FIFO 拆分（采购侧对称）：按各申请行当前剩余量
@@ -1880,7 +1882,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getAmountLocal(), it.getReceivedQty(), it.getReturnedQty(), it.getIssuedQty(),
                 it.getMaterialReturnedQty(), it.getApplicationItemId(), it.getDeliverDate(),
                 it.getWeight(), it.getSourceDocNo(), it.getRemark(),
-                sourceApplications, it.getAllowedLossPct(), BigDecimal.ZERO);
+                sourceApplications, it.getAllowedLossPct(), BigDecimal.ZERO, false);
         dto.setTotalAmountInput(it.getTotalAmountInput());
         dto.setExtraColumns(it.getExtraColumns());
         return dto;
@@ -1916,6 +1918,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             FinanceApproval approval,
             OrderDetail.ShortDeliveryHold shortDeliveryHold) {
         boolean priceMasked = subcontractPriceMasked();
+        markBomMissing(order, items);
         boolean productionLinked =
                 productionSourceGuard.isSubcontractOrderLinked(order.getId());
         boolean pending = approval != null
@@ -1947,6 +1950,16 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 shortDeliveryHold);
     }
 
+    /** ADR-143 §二.3：草稿上缺 BOM 的委外件逐行标出(提交财务会被拒并通知研发完善)。 */
+    private void markBomMissing(SubcontractOrder order, List<OrderItemDto> items) {
+        if (items.isEmpty() || order.getStatus() == null || order.getStatus() != STATUS_DRAFT) return;
+        java.util.Set<UUID> missing = goodsWithoutDrawableBom(
+                items.stream().map(OrderItemDto::getGoodsId).toList()).stream()
+                .map(row -> (UUID) row[0]).collect(Collectors.toSet());
+        if (missing.isEmpty()) return;
+        items.forEach(item -> item.setBomMissing(missing.contains(item.getGoodsId())));
+    }
+
     private boolean subcontractPriceMasked() {
         return commercialPriceVisibility == null
                 || !commercialPriceVisibility.canViewSubcontractOrder();
@@ -1959,7 +1972,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 it.getQty(), null, null, null, it.getReceivedQty(), it.getReturnedQty(),
                 it.getIssuedQty(), it.getMaterialReturnedQty(), it.getApplicationItemId(),
                 it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
-                it.getSourceApplications(), it.getAllowedLossPct(), it.getSettledLossQty());
+                it.getSourceApplications(), it.getAllowedLossPct(), it.getSettledLossQty(), it.isBomMissing());
         dto.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.visible(it.getExtraColumns(), true));
         return dto;
     }

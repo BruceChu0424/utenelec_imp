@@ -432,62 +432,6 @@ abstract class _MaterialAnalysisPageBase
   final Map<String, TextEditingController> _sourceQtyControllers = {};
   final Map<String, String> _selectedCandidateLabels = {};
   final Map<String, TextEditingController> _batchQtyControllers = {};
-  final Map<String, String> _systemSeededBatchQtyTexts = {};
-
-  /// Seed a planning quantity only when the planner has not entered one.
-  /// Every product/child entry uses the same complete-kit-first suggestion.
-  void _seedSuggestedPlanBatchQty(ProductionMaterialAnalysisProduct product) {
-    final controller = _batchQtyControllers.putIfAbsent(
-      product.analysisLineId,
-      TextEditingController.new,
-    );
-    final existingSeed = _systemSeededBatchQtyTexts[product.analysisLineId];
-    if (existingSeed != null && controller.text != existingSeed) {
-      // The value no longer equals our last seed, so it is user-authored.
-      _systemSeededBatchQtyTexts.remove(product.analysisLineId);
-      return;
-    }
-    if (controller.text.trim().isNotEmpty && existingSeed == null) return;
-    // 2026-09-05 ADR-71：默认数量=剩余需求（齐不齐料由车间侧判断，计划侧
-    // 不再按齐套量预拆批）。
-    final suggested = product.remainingQty;
-    // Do not write the placeholder string "0": a later refresh must be able to
-    // seed the newly positive remaining quantity.
-    if (!suggested.isFinite || suggested <= 0) return;
-    final text = _qty(suggested);
-    controller.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-    _systemSeededBatchQtyTexts[product.analysisLineId] = text;
-  }
-
-  void _refreshSystemSeededPlanBatchQty(
-    ProductionMaterialAnalysisProduct product,
-  ) {
-    final id = product.analysisLineId;
-    final previousSeed = _systemSeededBatchQtyTexts[id];
-    final controller = _batchQtyControllers[id];
-    if (previousSeed == null || controller == null) return;
-    if (controller.text != previousSeed) {
-      _systemSeededBatchQtyTexts.remove(id);
-      return;
-    }
-    final suggested = product.remainingQty;
-    if (!suggested.isFinite || suggested <= 0) {
-      controller.clear();
-      _systemSeededBatchQtyTexts.remove(id);
-      return;
-    }
-    final text = _qty(suggested);
-    if (controller.text != text) {
-      controller.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
-    }
-    _systemSeededBatchQtyTexts[id] = text;
-  }
 
   // Shared by preparation and bucket detail. Recalculation only changes quantities,
   // never a planner's per-line tolerance. These are next-issue inputs, not edits of
@@ -1125,10 +1069,8 @@ abstract class _MaterialAnalysisPageBase
       // ADR-102：主表现在整张铺开了行内数量输入与下单勾选，轮询期间必须一并让路。
       // 少了这一条，45 秒一次的静默刷新会把人填了一屏的数和勾选一起冲掉。
       _hasUnsubmittedMaterialTableInput ||
-      _batchQtyControllers.entries.any(
-        (entry) =>
-            entry.value.text.trim().isNotEmpty &&
-            _systemSeededBatchQtyTexts[entry.key] != entry.value.text,
+      _batchQtyControllers.values.any(
+        (controller) => controller.text.trim().isNotEmpty,
       );
 
   /// 动态投影键按快照对象缓存：当前快照每次轮询都要比一次，不必每次重拼整串。
@@ -1298,7 +1240,6 @@ abstract class _MaterialAnalysisPageBase
         controller.dispose();
       }
       _batchQtyControllers.clear();
-      _systemSeededBatchQtyTexts.clear();
       // 换了一份分析，主表行内输入与指派草稿全部作废(ADR-102)。
       _resetMaterialTableInputsForNewAnalysis();
     }
@@ -1398,14 +1339,12 @@ abstract class _MaterialAnalysisPageBase
             .where((key) => !validProductIds.contains(key))
             .toList()) {
       _batchQtyControllers.remove(key)?.dispose();
-      _systemSeededBatchQtyTexts.remove(key);
     }
     for (final product in view.products) {
       _batchQtyControllers.putIfAbsent(
         product.analysisLineId,
         TextEditingController.new,
       );
-      _refreshSystemSeededPlanBatchQty(product);
       // Existing non-empty input is an explicit planner decision. A stock or
       // supply refresh may change the suggestion/cap, but must not silently
       // replace that draft; final validation still checks the latest cap.
@@ -1540,10 +1479,9 @@ abstract class _MaterialAnalysisPageBase
     ProductionMaterialAnalysisView view,
   ) => [
     for (final product in view.products)
-      // MAKE_COMPONENT / SUBCONTRACT_MAKE 都是系统生成的子件任务行，
+      // MAKE_COMPONENT / AGGREGATE_MAKE 是系统生成的子件任务行，
       // 与服务端 requireSameSources 排除口径一致，不能回填为用户来源。
       if (product.sourceType != 'MAKE_COMPONENT' &&
-          product.sourceType != 'SUBCONTRACT_MAKE' &&
           product.sourceType != 'AGGREGATE_MAKE')
         (product.salesOrderItemId?.isNotEmpty ?? false)
             ? MaterialAnalysisSourceInput(
@@ -1988,17 +1926,15 @@ abstract class _MaterialAnalysisPageBase
     return null;
   }
 
-  /// 解析已确认路线的「先自制」委托子产品（MAKE 与有子层委外共用一套：
+  /// 已建自制子件任务的节点 → 真实子件产品(MAKE_COMPONENT，或并入的共享制造批次
+  /// AGGREGATE_MAKE)。BOM 原节点内联进度/计划入口统一走这里解析。
   /// 优先取持久材料锚点 planAnchorAnalysisLineId，旧载荷只认显式
-  /// delegated child ID 或对应 MAKE_TASK.documentId；
-  /// 同货可能出现在多条路径，禁止按 parentAnalysisLineId + goodsId 猜测）。
-  /// 子产品经 productsById 索引取（原为全产品线性扫描）。
-  ProductionMaterialAnalysisProduct? _delegatedChildProductOf(
-    ProductionMaterialAnalysisMaterial material, {
-    required MaterialSupplyRoute route,
-    required String documentType,
-    required String sourceType,
-  }) {
+  /// delegated child ID 或对应 PREPLAN_MAKE_TASK.documentId；
+  /// 同货可能出现在多条路径，禁止按 parentAnalysisLineId + goodsId 猜测。
+  /// 子产品经 productsById 索引取(原为全产品线性扫描)。
+  ProductionMaterialAnalysisProduct? _taskChildProductOf(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
     final analysis = _analysis;
     if (analysis == null) return null;
     final indexes = _analysisIndexes(analysis);
@@ -2006,12 +1942,13 @@ abstract class _MaterialAnalysisPageBase
         material.planAnchorAnalysisLineId ?? material.delegatedToAnalysisLineId;
     if (childId == null) {
       for (final target in material.notifiedTargets) {
-        if (target.target != route ||
+        if (target.target != MaterialSupplyRoute.make ||
             target.isRootOutput ||
             target.status?.toUpperCase() == 'CANCELLED') {
           continue;
         }
-        if (target.documentType == documentType && target.documentId != null) {
+        if (target.documentType == 'PREPLAN_MAKE_TASK' &&
+            target.documentId != null) {
           childId = target.documentId;
           break;
         }
@@ -2019,18 +1956,14 @@ abstract class _MaterialAnalysisPageBase
     }
     if (childId == null) return null;
     final product = indexes.productsById[childId];
-    if (product == null) return null;
-    if (product.sourceType != sourceType) {
-      // 同料合并共享批次的产品(AGGREGATE_MAKE)与 MAKE/SUBCONTRACT_MAKE 子任务同一条
-      // 委托链：并入共享批次的行也解析得到「已建任务」的子产品，进度/计划入口
-      // 内联展示，不再误报「计划同步中」(2026-09-26 用户实机)。
-      if (sourceType == 'MAKE_COMPONENT' &&
-          product.sourceType == 'AGGREGATE_MAKE') {
-        return product;
-      }
-      return null;
-    }
-    return product;
+    // 同料合并共享批次的产品(AGGREGATE_MAKE)与 MAKE 子任务同一条委托链：并入共享
+    // 批次的行也解析得到「已建任务」的子产品，进度/计划入口内联展示，不再误报
+    // 「计划同步中」(2026-09-26 用户实机)。
+    return product != null &&
+            (product.sourceType == 'MAKE_COMPONENT' ||
+                product.sourceType == 'AGGREGATE_MAKE')
+        ? product
+        : null;
   }
 
   /// 本行需求并入的共享制造批次(AGGREGATE_MAKE)产品；没并进共享批次时返回 null。
@@ -2041,38 +1974,6 @@ abstract class _MaterialAnalysisPageBase
     final child = _taskChildProductOf(material);
     if (child?.sourceType == 'AGGREGATE_MAKE') return child;
     return null;
-  }
-
-  /// 解析自制通知对应的 MAKE_COMPONENT 子产品（用于待生产/生产中/已完工）。
-  ProductionMaterialAnalysisProduct? _makeChildProductOf(
-    ProductionMaterialAnalysisMaterial material,
-  ) => _delegatedChildProductOf(
-    material,
-    route: MaterialSupplyRoute.make,
-    documentType: 'PREPLAN_MAKE_TASK',
-    sourceType: 'MAKE_COMPONENT',
-  );
-
-  /// 解析有子层级委外件「先自制」对应的 SUBCONTRACT_MAKE 子产品——与
-  /// MAKE 同一条委托链，入库满批/分批后由服务端通知委外部（V458）。
-  ProductionMaterialAnalysisProduct? _subcontractMakeChildProductOf(
-    ProductionMaterialAnalysisMaterial material,
-  ) => _delegatedChildProductOf(
-    material,
-    route: MaterialSupplyRoute.subcontract,
-    documentType: 'SUBCONTRACT_MAKE_TASK',
-    sourceType: 'SUBCONTRACT_MAKE',
-  );
-
-  /// 已建子件任务节点（MAKE 或有子层 SUBCONTRACT）→ 真实子件产品。
-  /// 两类任务完全同构，BOM 原节点内联进度/计划入口统一走这里解析。
-  /// 任意一种子任务存在时均视为“已下达”，避免因 route 的首个通知项
-  /// 落到其他类型上导致重复出现「等待下达车间」。
-  ProductionMaterialAnalysisProduct? _taskChildProductOf(
-    ProductionMaterialAnalysisMaterial material,
-  ) {
-    return _makeChildProductOf(material) ??
-        _subcontractMakeChildProductOf(material);
   }
 
   /// A server-reported issued plan must not become a second executable MAKE
@@ -2088,7 +1989,6 @@ abstract class _MaterialAnalysisPageBase
               target.status != 'CANCELLED' &&
               const {
                 'PREPLAN_MAKE_TASK',
-                'SUBCONTRACT_MAKE_TASK',
                 'PRODUCTION_PLAN',
               }.contains(target.documentType),
         )) {
@@ -2476,8 +2376,6 @@ class _ProductionMaterialAnalysisPageState
         padding: const EdgeInsets.only(top: UtenSpacing.s8),
         child: _productSection(theme, analysis),
       ),
-      // 2026-09-03：独立「委外件前置自制」区块下线——委外子件与自制同构，
-      // 账本数量与「通知委外」入口内嵌在产品卡（见 _subcontractMakeTaskPanel）。
       if (_error != null)
         Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -2681,7 +2579,7 @@ class _ProductionMaterialAnalysisPageState
   /// 顶部卡片「关联销售订单」区块(ADR-088)。
   ///
   /// 口径：**本张分析的来源行**去重后的订单集合(与服务端 salesCandidates 同一过滤：
-  /// 排除 MAKE_COMPONENT / SUBCONTRACT_MAKE 这类子层锚点行)。注意与「进行中」列表
+  /// 排除 MAKE_COMPONENT / AGGREGATE_MAKE 这类子层锚点行)。注意与「进行中」列表
   /// 那一列「关联订单」不是同一口径——那一列还并进了执行段的销售分摊，跨分摊/让单
   /// 会带进不属于本分析来源的订单，数量可能比这里多。
   ///
@@ -2750,11 +2648,7 @@ class _ProductionMaterialAnalysisPageState
   /// 来源行去重出的订单列表(按单号升序，稳定顺序)。
   List<({String orderId, String billNo, String? clientName})>
   _linkedSalesOrders(ProductionMaterialAnalysisView analysis) {
-    const childSourceTypes = {
-      'MAKE_COMPONENT',
-      'SUBCONTRACT_MAKE',
-      'AGGREGATE_MAKE',
-    };
+    const childSourceTypes = {'MAKE_COMPONENT', 'AGGREGATE_MAKE'};
     final byId =
         <String, ({String orderId, String billNo, String? clientName})>{};
     for (final product in analysis.products) {

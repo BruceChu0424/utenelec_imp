@@ -239,33 +239,15 @@ class AggregateMaterialOrderEndToEndTest {
     }
 
     @Test void directSubcontractIsOneApplicationLineWithThreeExactSources(){
-        Case c=create(false,false,"1");setRoute(c,c.material(),"SUBCONTRACT");
+        Case c=create(false,false,"1");
+        // ADR-143 §二.3: 委外件(汇总下单也一样)要先有可发外直属物料才能下达。
+        fixture.addSubcontractDirectMaterial(c.world(),c.material(),"1");
+        setRoute(c,c.material(),"SUBCONTRACT");
         var batch=writer.submit(c.analysis(),command(c,List.of(input(c,c.material(),"SUBCONTRACT","6",false)))).batches().getFirst();
         assertEquals("SUBCONTRACT_APPLICATION",batch.documentType());assertNull(batch.planId());
         assertEquals(1,count("SELECT count(*) FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",batch.documentId()));
         amount("6",db.queryForObject("SELECT qty FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",BigDecimal.class,batch.documentId()));
         assertEquals(3,count("SELECT count(*) FROM preplan_supply_action_allocations WHERE action_id=(SELECT action_id FROM preplan_aggregate_batches WHERE id=?)",batch.batchId()));
-    }
-
-    @Test void sharedSubcontractPreparationActuallyProducesAndNotifiesOneQualifiedBatch(){
-        Case c=create(true,true,"1");setRoute(c,c.common(),"SUBCONTRACT");
-        var raw=input(c,c.common(),"SUBCONTRACT","3",false);
-        var group=new GroupInput(raw.clientGroupKey(),raw.materialLineIds(),raw.route(),raw.qty(),false,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
-        var batch=writer.submit(c.analysis(),command(c,List.of(group))).batches().getFirst();
-        UUID task=db.queryForObject("SELECT id FROM preplan_subcontract_make_tasks WHERE preparation_item_id=? AND status='ACTIVE'",UUID.class,batch.anchorAnalysisItemId());
-        var visible=beans.getBean(SubcontractMakeTaskService.class).task(task);assertEquals(3,visible.sources().size());assertEquals("WAITING_MATERIALS",visible.workshopStatus());
-        UUID preparedInbound=produce(c,batch);
-        assertEquals(0,count("SELECT count(*) FROM preplan_analysis_stock_exact_pegs WHERE source_receipt_id=?",preparedInbound));
-        amount("3",db.queryForObject("SELECT SUM(qty-consumed_qty-released_qty) FROM stock_reservations WHERE owner_type='SUBCONTRACT_PREPARE_TASK' AND owner_id=? AND status=0 AND NOT is_deleted",BigDecimal.class,task));
-        amount("3",db.queryForObject("SELECT produced_qty FROM preplan_subcontract_make_tasks WHERE id=?",BigDecimal.class,task));
-        amount("3",db.queryForObject("SELECT notified_qty FROM preplan_subcontract_make_tasks WHERE id=?",BigDecimal.class,task));
-        UUID application=db.queryForObject("SELECT application_id FROM preplan_subcontract_make_task_batches WHERE task_id=?",UUID.class,task);
-        assertEquals(1,count("SELECT count(*) FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",application));
-        assertEquals(3,count("SELECT COUNT(DISTINCT allocation.analysis_material_id) FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id WHERE action.external_document_id=?",application));
-        amount("3",db.queryForObject("SELECT SUM(allocation.allocated_qty) FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id WHERE action.external_document_id=?",BigDecimal.class,application));
-        var displayed=preview.preview(c.analysis(),request(c,List.of(input(c,c.common(),"SUBCONTRACT","0",false)))).groups().getFirst();amount("3",displayed.orderedQty());
-        for(SourcePreview source:displayed.sources())amount("1",source.orderedQty());
-        finishSubcontract(c,application);
     }
 
     @Test void newPurePublicBatchKeepsContextAndRecipeWithoutFabricatingPrivateShares(){
@@ -283,43 +265,24 @@ class AggregateMaterialOrderEndToEndTest {
         var shown=preview.preview(c.analysis(),request(c,List.of(input(c,c.common(),"MAKE","0",false)))).groups().getFirst();amount("5",shown.orderedQty());amount("0",shown.remainingQty());
     }
 
-    @Test void subcontractRenotificationFillsTheReversedPrivateSourceEvenAfterPublicWasNotified(){
-        Case c=create(true,true,"1");setRoute(c,c.common(),"SUBCONTRACT");var input=input(c,c.common(),"SUBCONTRACT","5",true);
-        var group=new GroupInput(input.clientGroupKey(),input.materialLineIds(),input.route(),input.qty(),true,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
-        var batch=writer.submit(c.analysis(),command(c,List.of(group))).batches().getFirst();produce(c,batch);
-        UUID task=db.queryForObject("SELECT id FROM preplan_subcontract_make_tasks WHERE preparation_item_id=? AND status='ACTIVE'",UUID.class,batch.anchorAnalysisItemId());
-        UUID automatic=db.queryForObject("SELECT application_id FROM preplan_subcontract_make_task_batches WHERE task_id=?",UUID.class,task);cancelNotification(c,automatic);
-        var service=beans.getBean(SubcontractMakeTaskService.class);
-        var first=service.notifyBatch(task,new SubcontractMakeTaskService.NotifyRequest(BigDecimal.ONE,"first-private-"+task));
-        service.notifyBatch(task,new SubcontractMakeTaskService.NotifyRequest(BigDecimal.ONE,"second-private-"+task));
-        service.notifyBatch(task,new SubcontractMakeTaskService.NotifyRequest(new BigDecimal("3"),"last-private-and-public-"+task));
-        UUID original=db.queryForObject("SELECT allocation.analysis_material_id FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id WHERE action.external_document_id=?",UUID.class,first.applicationId());
-        cancelNotification(c,first.applicationId());
-        var replacement=service.notifyBatch(task,new SubcontractMakeTaskService.NotifyRequest(BigDecimal.ONE,"replace-private-hole-"+task));
-        assertEquals(original,db.queryForObject("SELECT allocation.analysis_material_id FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id WHERE action.external_document_id=?",UUID.class,replacement.applicationId()));
-        amount("0",db.queryForObject("SELECT public_surplus_qty FROM preplan_supply_actions WHERE external_document_id=?",BigDecimal.class,replacement.applicationId()));
-        List<BigDecimal> quantities=db.queryForList("SELECT SUM(sent.allocated_qty) FROM preplan_subcontract_make_task_batches notified JOIN preplan_supply_action_allocations marker ON marker.id=notified.allocation_id JOIN preplan_supply_action_allocations sent ON sent.action_id=marker.action_id WHERE notified.task_id=? AND NOT EXISTS(SELECT 1 FROM preplan_subcontract_make_batch_reversals reversal WHERE reversal.batch_id=notified.id) GROUP BY sent.analysis_material_id",BigDecimal.class,task);
-        assertEquals(3,quantities.size());quantities.forEach(qty->amount("1",qty));
-        amount("5",db.queryForObject("SELECT notified_qty FROM preplan_subcontract_make_tasks WHERE id=?",BigDecimal.class,task));
-    }
-
     @Test void productViewProjectsDelegatedSharesTargetsAndStagesAtEveryDepthAfterSelectAll(){
         // 三层共享结构(顶层→共享件→子件→采购料)全选下单后的产品视图投影：
         // 原树任意深度的行都要拿回自己的 BOM 份额、共享批次树上的目标行与真实
-        // 进度阶段(2026-09-26 用户实机「深层行全是 0/未下达、下达委外幻影红 1」)。
-        Case c=createWithChild("1");setRoute(c,c.common(),"SUBCONTRACT");
-        var raw=input(c,c.common(),"SUBCONTRACT","3",false);
+        // 进度阶段(2026-09-26 用户实机「深层行全是 0/未下达」)。共享件走共享制造批次
+        // (ADR-143 起委外汇总只建外部批次，共享锚点只来自自制)。
+        Case c=createWithChild("1");
+        var raw=input(c,c.common(),"MAKE","3",false);
         var group=new GroupInput(raw.clientGroupKey(),raw.materialLineIds(),raw.route(),raw.qty(),false,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
         var shared=writer.submit(c.analysis(),command(c,List.of(group))).batches().getFirst();
         // 全选下单的其余两层也走汇总：子件(制造批)与采购料各成一批，嵌套共享批次。
         writer.submit(c.analysis(),command(c,List.of(input(c,c.child(),"MAKE","3",false),input(c,c.material(),"BUY","6",false))));
         AnalysisView view=analyses.detail(c.analysis());
-        Set<UUID> originalProducts=view.products().stream().filter(product->!Set.of("AGGREGATE_MAKE","MAKE_COMPONENT","SUBCONTRACT_MAKE").contains(product.sourceType()))
+        Set<UUID> originalProducts=view.products().stream().filter(product->!Set.of("AGGREGATE_MAKE","MAKE_COMPONENT").contains(product.sourceType()))
                 .map(ProductView::analysisLineId).collect(java.util.stream.Collectors.toSet());
         List<MaterialView> originals=view.flatMaterials().stream()
                 .filter(row->originalProducts.contains(row.analysisLineId())).toList();
         // 原树分层断言：成员行(共享件本体的原行)仍持有毛需求——它的「还缺」必须由
-        // 共享委外批次的先自制备料任务按 INTERNAL 覆盖清零；覆盖要落到**批次成员行**
+        // 共享制造批次按 INTERNAL 覆盖清零；覆盖要落到**批次成员行**
         // 上：锚点树没有 ROOT_SUPPLY 行(锚点树只长 BOM 组件)，关联锚点根行永远落空
         // (2026-09-26 用户实机「等待下发委外」幻影计数的根因)。子层/孙层份额按 BOM
         // 折算，目标行经嵌套解析落到最终真实下达行——不再有可填的 0 或找不到目标。
@@ -611,9 +574,6 @@ class AggregateMaterialOrderEndToEndTest {
         return new CohortCase(c,List.copyOf(outputs));
     }
 
-    void cancelNotification(Case c,UUID application){var current=analyses.detail(c.analysis());UUID action=db.queryForObject("SELECT id FROM preplan_supply_actions WHERE external_document_id=?",UUID.class,application);
-        ordinary.cancelAction(c.analysis(),action,new CancelRequest(current.version(),current.fingerprint(),"cancel-notification-"+UUID.randomUUID(),"按本次通知完整撤回并保留准备成品"));}
-
     UUID produce(Case c,BatchResult batch){
         var stock=beans.getBean(com.uten.imp.features.stock.StockDocService.class);
         receive(c,c.material(),"1");
@@ -640,34 +600,6 @@ class AggregateMaterialOrderEndToEndTest {
     }
 
     void setRoute(Case c,UUID goods,String route){var view=analyses.detail(c.analysis());analyses.saveRoutes(c.analysis(),new RouteRequest(view.version(),view.fingerprint(),"route-change-"+UUID.randomUUID(),view.flatMaterials().stream().filter(row->row.goodsId().equals(goods)).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),route,"汇总委外测试明确路线")).toList()));}
-
-    void finishSubcontract(Case c,UUID application){
-        var orders=beans.getBean(com.uten.imp.features.subcontract.order.SubcontractOrderService.class);
-        var order=new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();UUID settlement=ReflectionTestUtils.invokeMethod(fixture,"activeSettlementMethodId");order.setSettlementMethodId(settlement);
-        order.setBillDate(BusinessTime.today());order.setSupplierId(c.world().supplierId());order.setWarehouseId(c.world().warehouseId());order.setCurrencyId(c.world().currencyId());order.setExchangeRate(BigDecimal.ONE);order.setTaxRate(BigDecimal.ZERO);
-        UUID applicationItem=db.queryForObject("SELECT id FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",UUID.class,application);
-        var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();line.setGoodsId(c.common());line.setApplicationItemId(applicationItem);line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("3"));line.setPrice(BigDecimal.TEN);order.setItems(List.of(line));
-        UUID orderId=orders.create(order).getId(),reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",c.world());
-        beans.getBean(com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService.class).submit("SUBCONTRACT",orderId);fixture.loginAs(reviewer);ReflectionTestUtils.invokeMethod(fixture,"approvePendingFinance","SUBCONTRACT",orderId);fixture.loginAs(c.world().superAdminUserId());
-        assertEquals(1,count("SELECT count(*) FROM subcontract_material_plan_items item JOIN subcontract_material_plans plan ON plan.id=item.plan_id WHERE plan.order_id=? AND item.flow_mode='PREPARED_OUTBOUND' AND item.preparation_status='READY_OUTBOUND' AND item.prepared_qty=3 AND NOT item.is_deleted",orderId));
-        UUID orderItem=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=? AND NOT is_deleted",UUID.class,orderId);
-        UUID issueId=db.queryForObject("SELECT issue.id FROM subcontract_material_issues issue JOIN subcontract_material_issue_items item ON item.issue_id=issue.id WHERE item.order_item_id=? AND issue.status=0 AND NOT issue.is_deleted AND NOT item.is_deleted",UUID.class,orderItem);
-        beans.getBean(com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueService.class).approve(issueId);
-        amount("0",db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id='"+c.common()+"'",BigDecimal.class,c.world().warehouseId()));
-        var receipts=beans.getBean(com.uten.imp.features.subcontract.receipt.SubcontractReceiptService.class);var receipt=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
-        receipt.setBillDate(BusinessTime.today());receipt.setSupplierId(c.world().supplierId());receipt.setWarehouseId(c.world().warehouseId());receipt.setCurrencyId(c.world().currencyId());receipt.setExchangeRate(BigDecimal.ONE);receipt.setTaxRate(BigDecimal.ZERO);receipt.setSettlementMethodId(settlement);
-        var receiptLine=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();receiptLine.setGoodsId(c.common());receiptLine.setOrderItemId(orderItem);receiptLine.setUnitId(c.world().unitId());receiptLine.setUnitRate(BigDecimal.ONE);receiptLine.setQty(new BigDecimal("3"));receiptLine.setPrice(BigDecimal.TEN);receipt.setItems(List.of(receiptLine));
-        UUID receiptId=receipts.create(receipt).getId();receipts.approve(receiptId);
-        UUID inspection=db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,receiptId);
-        var inspections=beans.getBean(com.uten.imp.features.warehouse.inbound.ProcurementInspectionService.class);
-        inspections.dispose("SUBCONTRACT",receiptId,inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest("PASS",null,"共享委外质量合格","shared-inspection-"+inspection));
-        var stockIn=beans.getBean(com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInService.class);
-        com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest incoming=ReflectionTestUtils.invokeMethod(fixture,"latestIqcStockInRequest","SUBCONTRACT",receiptId,inspection,new BigDecimal("3"),"shared-iqc-"+inspection,"AGG-SUB");
-        stockIn.confirm("SUBCONTRACT",receiptId,incoming);
-        amount("3",db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id='"+c.common()+"'",BigDecimal.class,c.world().warehouseId()));
-        assertEquals(3,count("SELECT COUNT(DISTINCT origin_analysis_material_id) FROM preplan_analysis_stock_exact_pegs WHERE source_receipt_id=?",receiptId));
-        amount("3",db.queryForObject("SELECT SUM(qty) FROM preplan_analysis_stock_exact_pegs WHERE source_receipt_id=?",BigDecimal.class,receiptId));
-    }
 
     void receive(Case c,UUID goods,String qty){var stock=beans.getBean(com.uten.imp.features.stock.StockDocService.class);var request=new com.uten.imp.features.stock.dto.StockDocSaveRequest();request.setDocType("OTHER_IN");request.setWarehouseId(c.world().warehouseId());request.setBillDate(BusinessTime.today());
         var line=new com.uten.imp.features.stock.dto.StockDocItemLine();line.setGoodsId(goods);line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(BigDecimal.TEN);line.setAmountOriginal(new BigDecimal(qty).multiply(BigDecimal.TEN));line.setAmountLocal(line.getAmountOriginal());request.setItems(List.of(line));stock.approve(stock.create(request).getId());}

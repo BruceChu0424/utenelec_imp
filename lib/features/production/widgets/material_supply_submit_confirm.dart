@@ -161,7 +161,7 @@ class MaterialSupplySubmitConfirmDialog extends StatelessWidget {
               Text(
                 isBuy
                     ? '确认后合并为采购需求单并通知采购部；需要改数量请先在表格中修改。'
-                    : '无子层委外合并为委外申请并通知委外部；有子层先转前置自制。'
+                    : '确认后合并为委外申请并通知委外部；有直属物料的委外件下单后在委外任务中心领料发外。'
                           '需要改数量请先在表格中修改。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,

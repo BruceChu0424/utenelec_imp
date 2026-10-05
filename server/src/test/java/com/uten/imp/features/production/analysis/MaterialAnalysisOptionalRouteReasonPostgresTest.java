@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.analysis;
 
-import com.uten.imp.application.port.SubcontractPreparationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
@@ -105,7 +104,7 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
         ProductionDocumentAccessPolicy access = mock(ProductionDocumentAccessPolicy.class);
         when(access.scope()).thenReturn(new OwnerVisibility.OwnerScope(true, Set.of()));
         service = new MaterialAnalysisService(em, current, mock(TxSessionVars.class), access,
-                mock(OwnerVisibility.class), mock(SubcontractPreparationPort.class),
+                mock(OwnerVisibility.class),
                 mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 mock(com.uten.imp.features.production.analysis.PreplanStockEntitlementService.class),
                 new MaterialAnalysisFlowStageService(em),

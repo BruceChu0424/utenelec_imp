@@ -109,6 +109,31 @@ void main() {
       containsAll(<String>{'qty', 'price', 'amount'}),
     );
   });
+
+  testWidgets('ADR-144 订货详情的允许超收列不随价格遮蔽，未设显示「未设」', (tester) async {
+    await _pumpDetail(
+      tester,
+      permissions: const {},
+      priceMasked: true,
+      docType: PurchaseDocType.order,
+    );
+    final table = tester.widget<MasterDataTableView<PurchaseDocItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<PurchaseDocItem>,
+      ),
+    );
+    final column = table.columns.singleWhere(
+      (column) => column.key == 'allowedOverReceiptPct',
+    );
+    expect(column.label, '允许超收%');
+    expect(column.value(table.items.single), '未设');
+    expect(_detailColumnKeys(tester), isNot(contains('price')));
+  });
+
+  testWidgets('ADR-144 收货详情没有允许超收列', (tester) async {
+    await _pumpDetail(tester, permissions: const {}, priceMasked: false);
+    expect(_detailColumnKeys(tester), isNot(contains('allowedOverReceiptPct')));
+  });
 }
 
 Set<String> _detailColumnKeys(WidgetTester tester) {

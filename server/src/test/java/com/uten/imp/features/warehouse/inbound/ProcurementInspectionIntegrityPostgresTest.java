@@ -589,7 +589,117 @@ class ProcurementInspectionIntegrityPostgresTest {
 
     private ReceiptFixture seedReceipt(
             String type, int lineCount, String receivedQty, String receivedAmount) {
+        if (ProcurementInspectionPort.SUBCONTRACT.equals(type)) {
+            if (lineCount != 1) throw new IllegalArgumentException("subcontract IQC fixture seeds one real draw line");
+            return seedSubcontractReceipt(receivedQty, receivedAmount);
+        }
         return transactions.execute(ignored -> seedReceiptInTransaction(type,lineCount,receivedQty,receivedAmount));
+    }
+
+    /**
+     * ADR-143: an approved subcontract receipt line is only legal for an order line with a frozen draw-plan line
+     * whose direct material was really issued to the supplier, and it carries the frozen material basis that the
+     * per-material consumption matches (f(R) = R x 1). Seeds the subcontract goods with one direct material
+     * (per-unit 1), the approved order and its frozen plan line, zero-priced material stock and the approved
+     * issue of the whole quantity through the value fixture, then the approved receipt that consumes it.
+     */
+    private ReceiptFixture seedSubcontractReceipt(String receivedQty, String receivedAmount) {
+        BigDecimal qty = decimal(receivedQty);
+        BigDecimal amount = decimal(receivedAmount);
+        UUID warehouseId = UUID.randomUUID();
+        UUID unitId = UUID.randomUUID();
+        UUID goodsId = UUID.randomUUID();
+        UUID materialId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID orderItemId = UUID.randomUUID();
+        UUID planId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        UUID issueId = UUID.randomUUID();
+        UUID issueItemId = UUID.randomUUID();
+        UUID receiptId = UUID.randomUUID();
+        UUID receiptItemId = UUID.randomUUID();
+        UUID inspectionItemId = UUID.randomUUID();
+        String suffix = UUID.randomUUID().toString();
+        String goodsCode = "G-IQC-" + suffix + "-0";
+        String goodsName = "IQC integrity goods 0";
+        LocalDate billDate = com.uten.imp.common.time.BusinessTime.today();
+        String orderNo = businessIdentifier("EO", billDate);
+        String issueNo = businessIdentifier("EC", billDate);
+        String receiptNo = businessIdentifier("EJ", billDate);
+        ReceiptSource source = createReceiptSource();
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'piece')", unitId, "IQC-U-" + unitId);
+            // V563：IQC 实际入库仓必须是「使用」状态的记账叶子仓。
+            jdbc.update("INSERT INTO warehouses(id,code,name,is_accountable,status) VALUES (?,?,?,?, '使用')",
+                    warehouseId, "W-IQC-" + suffix, "IQC integrity warehouse", true);
+            jdbc.update("INSERT INTO goods(id,code,name,unit_id,min_qty,code_sequence) "
+                            + "VALUES (?,?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
+                    goodsId, goodsCode, goodsName, unitId);
+            jdbc.update("INSERT INTO goods(id,code,name,unit_id,min_qty,code_sequence) "
+                            + "VALUES (?,?,?,?,0,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",
+                    materialId, "M-IQC-" + suffix, "IQC integrity direct material", unitId);
+            jdbc.update("INSERT INTO goods_bom_items(goods_id,component_goods_id,qty) VALUES (?,?,1)",
+                    goodsId, materialId);
+            jdbc.update("""
+                    INSERT INTO subcontract_orders(id,bill_no,bill_date,warehouse_id,supplier_id,currency_id,settlement_method_id,exchange_rate,
+                        total_original,total_local,status,maker_id,created_by) VALUES(?,?,?,?,?,?,?,1,?,?,1,?,?)
+                    """, orderId, orderNo, billDate, warehouseId, source.supplier(), source.currency(), source.settlement(),
+                    amount, amount, source.actor().getEmployeeId(), source.actor().getId());
+            jdbc.update("""
+                    INSERT INTO subcontract_order_items(id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,unit_rate,qty,price,
+                        amount_original,amount_local,received_qty,goods_snapshot_source)
+                    VALUES(?,?,?,?,1,?,?,1,?,?,?,?,0,'MASTER_AT_SAVE')
+                    """, orderItemId, orderNo, billDate, orderId, goodsId, unitId, qty,
+                    amount.divide(qty), amount, amount);
+            jdbc.update("""
+                    INSERT INTO subcontract_material_plans(id,order_id,order_bill_no,status,created_by,updated_by)
+                    VALUES (?,?,?,'OPEN',?,?)
+                    """, planId, orderId, orderNo, source.actor().getId(), source.actor().getId());
+            jdbc.update("""
+                    INSERT INTO subcontract_material_plan_items(id,plan_id,order_item_id,line_no,parent_goods_id,goods_id,unit_id,
+                        unit_rate,bom_unit_qty,planned_qty,issued_qty,created_by,updated_by)
+                    VALUES (?,?,?,1,?,?,?,1,1,?,0,?,?)
+                    """, planItemId, planId, orderItemId, goodsId, materialId, unitId, qty,
+                    source.actor().getId(), source.actor().getId());
+        });
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            ProcurementReceiptFixtureSupport.seedZeroPriceQualifiedStock(connection, warehouseId, materialId, unitId,
+                    source.supplier(), source.currency(), source.settlement(), qty, source.actor().getId(), billDate);
+            ProcurementReceiptFixtureSupport.postSubcontractIssueFixture(connection, issueId, issueItemId, orderItemId,
+                    planItemId, warehouseId, materialId, unitId, qty, source.actor().getId(), issueNo, billDate);
+            return null;
+        });
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.update("INSERT INTO subcontract_receipts"
+                            + "(id,bill_no,bill_date,warehouse_id,supplier_id,currency_id,settlement_method_id,exchange_rate,total_original,total_local,status,is_deleted) "
+                            + "VALUES (?,?,?,?,?,?,?,1,?,?,1,FALSE)",
+                    receiptId, receiptNo, billDate, warehouseId, source.supplier(), source.currency(), source.settlement(),
+                    amount, amount);
+            jdbc.update("INSERT INTO subcontract_receipt_items("
+                            + "id,bill_no,bill_date,receipt_id,line_no,goods_id,order_item_id,"
+                            + "goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,"
+                            + "goods_snapshot_locked_at,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,"
+                            + "material_basis_qty,is_deleted) "
+                            + "VALUES (?,?,?,?,1,?,?,?,?,'MASTER_AT_APPROVAL',now(),?,1,?,?,?,?,'NORMAL',?,FALSE)",
+                    receiptItemId, receiptNo, billDate, receiptId, goodsId, orderItemId, goodsCode, goodsName, unitId,
+                    qty, amount.divide(qty), amount, amount, qty);
+            jdbc.update("UPDATE subcontract_order_items SET received_qty=? WHERE id=?", qty, orderItemId);
+            jdbc.update("UPDATE subcontract_material_issue_items SET consumed_qty=? WHERE id=?", qty, issueItemId);
+            jdbc.update("""
+                    INSERT INTO subcontract_receipt_material_consumptions(id,receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by)
+                    VALUES (?,?,?,?,?,'FROZEN_BOM_ESTIMATE',?)
+                    """, UUID.randomUUID(), receiptItemId, issueItemId, qty, qty, source.actor().getId());
+            jdbc.update("""
+                    INSERT INTO procurement_inspection_items (
+                        id, receipt_type, receipt_id, receipt_item_id,
+                        warehouse_id, goods_id, unit_id,unit_rate,
+                        received_base_qty, received_amount_local, status)
+                    VALUES (?, 'SUBCONTRACT', ?, ?, ?, ?, ?,1, ?, ?, 'PENDING')
+                    """, inspectionItemId, receiptId, receiptItemId, warehouseId, goodsId, unitId, qty, amount);
+            completeReceiptSource(ProcurementInspectionPort.SUBCONTRACT, receiptId, source);
+        });
+        return new ReceiptFixture(ProcurementInspectionPort.SUBCONTRACT, receiptId, warehouseId,
+                List.of(new InspectionLine(goodsId, receiptItemId, inspectionItemId)));
     }
 
     private ReceiptFixture seedReceiptInTransaction(

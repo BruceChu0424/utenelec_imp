@@ -91,7 +91,7 @@ void main() {
     expect(texts['OUTPUT_UNIT_CHANGED'], contains('需重新学习'));
     expect(
       texts['SUBCONTRACT_OUTBOUND'],
-      '每件按设计使用数量 0.1 计算：本次由委外单一子件发料，按委外合同用量',
+      '每件按设计使用数量 0.1 计算：上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量',
     );
     for (final text in texts.values) {
       expect(text, isNot(matches(RegExp('[A-Z_]{4,}'))));
@@ -106,7 +106,7 @@ void main() {
         actualQty: 0.105,
         reason: 'SUBCONTRACT_OUTBOUND',
       ),
-      '每件按设计使用数量 0.1 计算：本次由委外单一子件发料，按委外合同用量(真实使用数量 0.105)',
+      '每件按设计使用数量 0.1 计算：上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量(真实使用数量 0.105)',
     );
   });
 

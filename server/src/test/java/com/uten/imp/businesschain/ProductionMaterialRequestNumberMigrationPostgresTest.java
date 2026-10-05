@@ -109,6 +109,17 @@ class ProductionMaterialRequestNumberMigrationPostgresTest {
                         .findFirst().orElseThrow();
                 db.execute(java.nio.file.Files.readString(bridge));
             }
+            // V798(ADR-143 §二.19/§三.2): 当前 Java 判「委外件有没有可发外直属物料」只认 fn_subcontract_draw_edges,
+            // 物料分析的委外领料覆盖按冻结单耗换算 f(S)/sets(x)。整个 V798 在 V730 库上放不了; 这三个只读/纯函数
+            // 原样建出(edges 读的货品/BOM 列由上面的 V739/V740 桥补齐), 不读也不改物料发现请求、编号注册/序列或数量事实。
+            String stepDraw=java.nio.file.Files.readString(migrationFiles.stream()
+                    .filter(file->file.getFileName().toString().endsWith("__subcontract_step_draw.sql"))
+                    .findFirst().orElseThrow());
+            for(String function:new String[]{"fn_subcontract_draw_f","fn_subcontract_draw_sets","fn_subcontract_draw_edges"}){
+                int start=stepDraw.indexOf("CREATE FUNCTION "+function+"(");
+                if(start<0)throw new IllegalStateException("V798 no longer defines "+function);
+                db.execute(stepDraw.substring(start,stepDraw.indexOf("$$;",start)+3));
+            }
         }catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
         assertEquals(730,latestRecordedMigration(),"compatibility bridges must not advance Flyway history");
         assertFalse(db.queryForObject("""

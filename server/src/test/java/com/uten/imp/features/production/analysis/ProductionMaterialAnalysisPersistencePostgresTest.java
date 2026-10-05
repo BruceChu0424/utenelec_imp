@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -324,7 +325,8 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                 String systemIndex = scalarIndexDefinition(connection,
                         "uq_production_material_analysis_system_source_ref");
                 assertTrue(systemIndex.contains("CREATE UNIQUE INDEX"), systemIndex);
-                assertTrue(systemIndex.contains("'SC-ORDER:%'"), systemIndex);
+                // V798(ADR-143 §五): 委外前置自制分析来源 SUBCONTRACT_PREPARATION(SC-ORDER:) 已删除, 索引不再为它开例外。
+                assertFalse(systemIndex.contains("SC-ORDER") || systemIndex.contains("SUBCONTRACT_PREPARATION"), systemIndex);
                 assertTrue(systemIndex.contains("'REWORK'") && systemIndex.contains("'OTHER'"), systemIndex);
                 String manualIndex = scalarIndexDefinition(connection,
                         "uq_production_material_analysis_manual_source_line");

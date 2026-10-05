@@ -11,10 +11,6 @@ import 'package:uten_imp/features/production/pages/production_material_analysis_
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
-  // V458：委外前置自制工作区曾并入委外准备中心（/subcontract/preparations）；
-  // 准备中心已退役（2026-09-05），旧深链由路由重定向到委外管理 hub，
-  // 本页只保留物料分析记录。
-
   testWidgets(
     'desktop history exposes server facts and resumes by analysis id',
     (tester) async {
@@ -61,7 +57,7 @@ void main() {
 
       expect(find.byKey(const Key('analysis-history-table')), findsOneWidget);
       expect(find.text('部分已下达，剩余待料'), findsWidgets);
-      expect(find.textContaining('返工、委外前置自制'), findsOneWidget);
+      expect(find.textContaining('返工、自制子需求'), findsOneWidget);
       expect(find.textContaining('RW-20260808-001'), findsOneWidget);
       expect(find.text('生产调度员'), findsOneWidget);
       expect(find.text('12 / 30'), findsOneWidget);
@@ -115,7 +111,7 @@ Map<String, dynamic> _analysisPage() => {
       'makerId': 'employee-1',
       'makerName': '生产调度员',
       'sourceCount': 1,
-      'sourceTypes': ['REWORK', 'SUBCONTRACT_PREPARATION'],
+      'sourceTypes': ['REWORK', 'MAKE_COMPONENT'],
       'sourceRefs': ['RW-20260808-001'],
       'productLabels': ['P-001 返工产品'],
       'requestedQty': 100,

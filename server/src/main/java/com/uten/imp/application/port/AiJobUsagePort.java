@@ -16,10 +16,12 @@ public interface AiJobUsagePort {
      */
     Optional<Map<String, Object>> resultFor(UUID jobId, UUID userId);
 
-    /** Pin an owned successful result to one saved document while its confirmed learning is retryable. */
-    default boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId) { return false; }
+    /**
+     * Pin an owned successful result to one saved document while its confirmed learning is retryable.
+     * {@code retryUntil} is the receipt's database-computed deadline; it is bounded in SQL with the same clock/calendar.
+     */
     default boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId, java.time.OffsetDateTime retryUntil) {
-        return reserveLearning(jobId,userId,docType,docId);
+        return false;
     }
 
     /** Transactional reservation only: validate saved source keys in SQL without returning source contents. */

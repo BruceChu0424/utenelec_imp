@@ -258,12 +258,14 @@ class AiJobRepository {
                 .stream().findFirst();
     }
 
+    /** 期限必须在未来且不超过回执默认期限(now()+30 天, 日历天)再宽 1 分钟; 同一数据库时钟与日历, 跨夏令时一致。 */
     int reserveLearning(UUID id, UUID user, String docType, UUID docId, java.time.OffsetDateTime retryUntil) {
         return jdbc.update("""
                 UPDATE ai_jobs SET used_doc_type=:type,used_doc_id=:doc,
                     learning_retry_until=GREATEST(COALESCE(learning_retry_until,'-infinity'::timestamptz),:until),updated_at=now()
                 WHERE id=:id AND submitted_by_user=:actor AND kind='SALES_DOCUMENT_INTAKE' AND status='SUCCEEDED' AND result IS NOT NULL
                     AND used_at IS NULL AND (used_doc_id IS NULL OR (used_doc_type=:type AND used_doc_id=:doc))
+                    AND :until>now() AND :until<=now()+interval '30 days'+interval '1 minute'
                 """, new MapSqlParameterSource().addValue("id",id).addValue("actor",user)
                 .addValue("type",docType).addValue("doc",docId).addValue("until",java.sql.Timestamp.from(retryUntil.toInstant())));
     }

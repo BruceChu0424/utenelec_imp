@@ -391,24 +391,25 @@ String subcontractShortDeliveryEventLabel(String code) =>
 
 /// 任务中心状态列的文案 (display_stage)。
 ///
-/// ADR-103：路线 B (单一子件直发) 的申请行按子件到货锁 / 解锁两档，财务已通过的
-/// 订货单在待发料出仓之前多一档「等子件到货·待发料」；三码与路线 A 车间文案
-/// (正在等待安排生产 / 正在生产中) 同风格。
+/// ADR-143 §4.1：已批准的委外订货单按各明细聚合取第一个命中——回厂短交待判定 >
+/// 分批等待中 > 容差内待结案 > 已回厂待入库 > 可领料 > 已提交领料·待仓库发料 >
+/// 部分回厂 > 委外加工中 > 等待物料。委外申请行缺 BOM(§二.3)时为「缺 BOM·已通知研发」，
+/// 等研发完善，不能生成订货单。
 String subcontractProgressStatusLabel(String code) =>
     switch (code.toUpperCase()) {
-      'WAITING_COMPONENT_STOCK' => '等子件到货',
-      'COMPONENT_STOCK_READY' => '子件已到货·可下单',
-      'OUTBOUND_WAITING_COMPONENT' => '等子件到货·待发料',
       'ORDER_PENDING_APPROVAL' => '等待财务审核',
       'FINANCE_REJECTED' => '财务已退回',
       'FINANCE_APPROVED' => '财务已通过',
-      'AWAITING_OUTBOUND' => '待发料出仓',
-      'AT_SUPPLIER' => '委外加工中',
-      'PARTIAL_RECEIVED' => '部分回厂',
-      'RECEIVED_PENDING_STOCK' => '已回厂待入库',
-      'WAITING_MORE_BATCH' => '分批等待中',
       'SHORT_DELIVERY' => '回厂短交待判定',
+      'WAITING_MORE_BATCH' => '分批等待中',
       'TOLERANT_SHORT' => '容差内待结案',
+      'RECEIVED_PENDING_STOCK' => '已回厂待入库',
+      'DRAWABLE' => '可领料·去领料',
+      'DRAW_SUBMITTED' => '已提交领料·待仓库发料',
+      'PARTIAL_RECEIVED' => '部分回厂',
+      'AT_SUPPLIER' => '委外加工中',
+      'WAITING_MATERIAL' => '等待物料',
+      'BOM_MISSING' => '缺 BOM·已通知研发',
       // 待处理段的行沿用既有「计划申请已下达 / 待分解」文案（与分段名区分），这里不翻译。
       'COMPLETED' => '已完成',
       _ => code,

@@ -369,6 +369,88 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 2026-10-05 委外批量登记实测：服务端 409(数据库守卫)只显示「批量登记失败，请保持当前内容后重试」。
+  // 服务端明确拒绝必须给出服务端原因；只有结果不确定(5xx/超时/断网)才说「保持当前内容重试」。
+  // 合一后提交是一个批量命令(一个事务)，提示口径同一份(arrivalRegistrationFailureReason)。
+  for (final failure in <String, Object>{
+    'definite409': ApiException(
+      'CONFLICT',
+      '回厂数量超过委外商用已发直属物料能做成的套数，超出部分要先在到货异常里经财务批准(委外商自带料)',
+      httpStatus: 409,
+    ),
+    'definite422': ApiException(
+      'VALIDATION_FAILED',
+      '先入库后质检：第 1 行必须填写上架库位',
+      httpStatus: 422,
+    ),
+    'server500': ApiException('INTERNAL', '服务器繁忙，请稍后再试', httpStatus: 500),
+    'timeout': NetworkTimeoutException(),
+  }.entries) {
+    testWidgets('登记失败提示口径 ${failure.key}', (tester) async {
+      tester.view.physicalSize = const Size(1600, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final api = _BatchApi(arrivalError: failure.value);
+      final router = _router(ids: [_ids.first]);
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sessionProvider.overrideWith(_TestSessionNotifier.new),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseInboundView,
+              Perm.warehouseInboundStockIn,
+              Perm.warehouseIqcStockInBeforeInspection,
+            }),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            builder: (context, child) => Column(
+              children: [
+                const AppNotificationHost(),
+                Expanded(child: child ?? const SizedBox()),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final submit = find.byKey(const Key('inbound-route-submit-inspectFirst'));
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认登记送检'));
+      await tester.pump();
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(api.arrivalPostBodies, hasLength(1));
+      final toasts = ProviderScope.containerOf(
+        tester.element(find.byType(MaterialApp)),
+        listen: false,
+      ).read(appNotificationProvider).map((notice) => notice.message).toList();
+      final error = failure.value as ApiException;
+      final definite = failure.key.startsWith('definite');
+      expect(
+        toasts.last,
+        definite
+            ? error.message
+            : '登记结果未确认(网络中断、超时或服务器异常)，请保持当前内容直接重试，同一内容重试不会重复登记',
+      );
+      expect(toasts.last, isNot(contains('登记失败，请保持当前内容后重试')));
+      // 停在原页，内容保留，可改后再提交。
+      expect(find.text('预计到货任务中心'), findsNothing);
+      expect(submit, findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('双击 1 个来源：两条路线按钮并排，点哪条走哪条', (tester) async {
     tester.view.physicalSize = const Size(1600, 2000);
     tester.view.devicePixelRatio = 1;
@@ -875,8 +957,11 @@ class _ExpectationsApi extends ApiClient {
 
 /// 登记页桩：主档字典 + 按 id 读预计到货 + 批量登记命令回执。
 class _BatchApi extends ApiClient {
-  _BatchApi({this.disabledFirst = false}) : super(Dio());
+  _BatchApi({this.disabledFirst = false, this.arrivalError}) : super(Dio());
   final bool disabledFirst;
+
+  /// 非空时登记端点按它失败(服务端明确拒绝 / 结果不确定)。
+  final Object? arrivalError;
 
   final List<Map<String, dynamic>> arrivalPostBodies = [];
   final List<Map<String, dynamic>?> byIdsQueries = [];
@@ -924,6 +1009,8 @@ class _BatchApi extends ApiClient {
     if (path == arrivalBatchPath) {
       final request = Map<String, dynamic>.from(body! as Map);
       arrivalPostBodies.add(request);
+      final error = arrivalError;
+      if (error != null) throw error;
       return arrivalBatchAnswer(request);
     }
     if (path == '/warehouse/inbound/goods-profile-hints') {

@@ -215,23 +215,6 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
-    void returnedSubcontractPreparationCannotCoverNewWaitingInputsAndOpenCoverageIsSharedOnce() {
-        UUID itemId=UUID.randomUUID(),child=UUID.randomUUID();
-        var node=bomNode(itemId,UUID.randomUUID(),UUID.randomUUID(),"component","10",
-                "START","PER_UNIT","1","1",true);
-        var returned=MaterialAnalysisService.planFormalCoverage(List.of(
-                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
-                        "component",bd("10"),BigDecimal.ZERO,child)),List.of(node));
-        assertThat(returned.securedTotal(itemId+"|component")).isZero();
-        var reserved=MaterialAnalysisService.planFormalCoverage(List.of(
-                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
-                        "component",bd("10"),bd("4"),child),
-                new MaterialAnalysisService.FormalMaterialCoverage(UUID.randomUUID(),itemId,
-                        "component",bd("4"),bd("4"),child)),List.of(node));
-        assertThat(reserved.securedTotal(itemId+"|component")).isEqualByComparingTo("4");
-    }
-
-    @Test
     void siblingWarehousesKeepTheirOwnSafetyFloorAndCannotLendExactPriority() {
         UUID itemId=UUID.randomUUID();
         UUID warehouseA=UUID.randomUUID();
@@ -263,16 +246,6 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
-    void subcontractHandoffFutureCapacityPreventsDuplicateSupplyWithoutFakingStock() {
-        assertThat(MaterialAnalysisService.unboundDemandSupplyGap(
-                bd("10"), BigDecimal.ZERO, BigDecimal.ZERO, bd("6")))
-                .isEqualByComparingTo("4.0000");
-        assertThat(MaterialAnalysisService.unboundDemandSupplyGap(
-                bd("10"), bd("2"), bd("4"), bd("6")))
-                .isEqualByComparingTo("0.0000");
-    }
-
-    @Test
     void manualSourceRequiresAStableReference() {
         MaterialAnalysisService service = service(mock(EntityManager.class),
                 mock(ProductionDocumentAccessPolicy.class));
@@ -280,8 +253,8 @@ class MaterialAnalysisServiceBehaviorTest {
 
         ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
                 service, "normalizePreviewItems",
-                new Class<?>[]{List.class, boolean.class, UUID.class},
-                List.of(missingReference), false, null));
+                new Class<?>[]{List.class},
+                List.of(missingReference)));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
     }
@@ -317,13 +290,13 @@ class MaterialAnalysisServiceBehaviorTest {
         UUID goodsA = UUID.randomUUID(), goodsB = UUID.randomUUID(), goodsC = UUID.randomUUID();
 
         List<PreviewItem> normalized = invokePrivate(service, "normalizePreviewItems",
-                new Class<?>[]{List.class, boolean.class, UUID.class},
+                new Class<?>[]{List.class},
                 List.of(manualItem("REWORK", goodsA, "RW-7"),
                         manualItem("rework", goodsB, "  rw-7 "),
                         manualItem("REWORK", goodsC, "Rw-7"),
                         // 同一货品换一个编号或换一个来源类型都是另一张需求单，不算重复
                         manualItem("REWORK", goodsA, "RW-8"),
-                        manualItem("SAMPLE", goodsA, "RW-7")), false, null);
+                        manualItem("SAMPLE", goodsA, "RW-7")));
 
         assertThat(normalized).extracting(PreviewItem::sourceRef)
                 .containsExactly("RW-7", "RW-7", "RW-7", "RW-8", "RW-7");
@@ -342,9 +315,9 @@ class MaterialAnalysisServiceBehaviorTest {
 
         ApiException error = assertThrows(ApiException.class, () -> invokePrivate(
                 service, "normalizePreviewItems",
-                new Class<?>[]{List.class, boolean.class, UUID.class},
+                new Class<?>[]{List.class},
                 List.of(manualItem("REWORK", goods, "RW-1"),
-                        manualItem("REWORK", goods, " rw-1 ")), false, null));
+                        manualItem("REWORK", goods, " rw-1 "))));
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
         assertThat(error.getMessage()).isEqualTo("需求编号 RW-1 下货品重复，请合并为一行");
@@ -376,9 +349,11 @@ class MaterialAnalysisServiceBehaviorTest {
 
         assertThat(reused).isEqualTo(analysisId);
         assertThat(statements).hasSize(2);
+        // ADR-143 §五: 委外前置自制分析(SUBCONTRACT_PREPARATION / SC-ORDER: 来源)整体删除, 复用查找不再排除它。
         assertThat(statements.getFirst())
                 .contains("source.source_type IN ('REWORK','TRIAL','SAMPLE','STOCK','OTHER')")
-                .contains("source.source_ref LIKE 'SC-ORDER:%'");
+                .doesNotContain("SC-ORDER")
+                .doesNotContain("SUBCONTRACT_PREPARATION");
     }
 
     /**
@@ -442,8 +417,6 @@ class MaterialAnalysisServiceBehaviorTest {
 
         assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
         assertThat(error.getMessage()).isEqualTo("需求编号 RW-1 已被另一份物料分析使用，请换一个需求编号");
-        // 委外前置池的旁路与打开分析同一套判定：本例不在池里，照样看不到。
-        verify(draftPreparationAccessOf(service)).canAccess(analysisId);
     }
 
     private static ProductionDocumentAccessPolicy accessWithScope(OwnerVisibility.OwnerScope scope) {
@@ -451,12 +424,6 @@ class MaterialAnalysisServiceBehaviorTest {
         when(access.scope()).thenReturn(scope);
         when(access.canRead(any(UUID.class), any(OwnerVisibility.OwnerScope.class))).thenCallRealMethod();
         return access;
-    }
-
-    private static com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy draftPreparationAccessOf(
-            MaterialAnalysisService service) {
-        return (com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy)
-                org.springframework.test.util.ReflectionTestUtils.getField(service, "draftPreparationAccess");
     }
 
     /** findReusableAnalysis 手工编号分组查询的行：id, status, analysis_no, goods, color, unit, maker_id。 */
@@ -956,38 +923,47 @@ class MaterialAnalysisServiceBehaviorTest {
                 "PER_UNIT", BigDecimal.ONE, true, bd(designQty), null, 0L, null);
     }
 
-    /** 父节点有效路线是委外且父件是单一子件委外货品时，子节点按发出合同用量；第 1 层看根产品确认路线。 */
+    /**
+     * ADR-143 §4.5: 父节点有效路线是委外时, 它的直属物料都发给委外商, 一律按设计用量(合同用量);
+     * 不再区分「单一子件」, 也不查任何委外判定 SQL。第 1 层看根产品确认的路线, 下层看父节点的有效路线。
+     */
     @Test
-    void subcontractOutboundNodesUseTheParentsEffectiveRouteAndOneBatchedPredicate() {
+    void subcontractOutboundNodesFollowOnlyTheParentsEffectiveRouteWithoutQueryingTheDatabase() {
         EntityManager em = mock(EntityManager.class);
         MaterialAnalysisService service = service(em, mock(ProductionDocumentAccessPolicy.class));
         UUID itemId = UUID.randomUUID(), unit = UUID.randomUUID(), root = UUID.randomUUID();
-        UUID sole = UUID.randomUUID(), leaf = UUID.randomUUID();
-        UUID edgeA = UUID.randomUUID(), edgeB = UUID.randomUUID();
-        String keyA = edgeA.toString(), keyB = keyA + "/" + edgeB;
-        // 根产品整件委外，只发出唯一子件 S；S 在本分析里也确认为委外，只发出它的唯一子件。
+        UUID middle = UUID.randomUUID(), leaf = UUID.randomUUID(), sibling = UUID.randomUUID();
+        UUID edgeA = UUID.randomUUID(), edgeB = UUID.randomUUID(), edgeC = UUID.randomUUID();
+        String keyA = edgeA.toString(), keyB = keyA + "/" + edgeB, keyC = edgeC.toString();
+        // 根产品整件委外, 直属物料 M(下层还有 L) 与 C 都发给委外商; M 自己确认为委外时, L 也是 M 的委外直属物料。
         List<Object[]> rows = List.of(
-                bomRow(edgeA, root, sole, unit, 1, keyA, null, "1", null, "NO_DATA", "自制", true, "PER_UNIT", "1", true, itemId, 0L),
-                bomRow(edgeB, sole, leaf, unit, 2, keyB, keyA, "1", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L));
+                bomRow(edgeA, root, middle, unit, 1, keyA, null, "1", null, "NO_DATA", "自制", true, "PER_UNIT", "1", true, itemId, 0L),
+                bomRow(edgeB, middle, leaf, unit, 2, keyB, keyA, "1", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L),
+                bomRow(edgeC, root, sibling, unit, 1, keyC, null, "2", null, "NO_DATA", "采购", false, "PER_UNIT", "1", true, itemId, 0L));
         Object[] subcontractedRoot = java.util.Arrays.copyOf(sourceRow(itemId, root, unit), 47);
         subcontractedRoot[46] = "SUBCONTRACT";
-        Query predicate = query(List.of(root, sole));
-        when(em.createNativeQuery(anyString(), org.mockito.ArgumentMatchers.eq(UUID.class))).thenReturn(predicate);
+        List<MaterialAnalysisService.SourceLine> subcontracted =
+                List.of(MaterialAnalysisService.SourceLine.from(subcontractedRoot));
 
-        Set<String> outbound = invokePrivate(service, "subcontractOutboundNodes",
+        Set<String> nested = invokePrivate(service, "subcontractOutboundNodes",
                 new Class<?>[]{List.class, Map.class, Map.class},
-                List.of(MaterialAnalysisService.SourceLine.from(subcontractedRoot)), Map.of(itemId, rows),
-                Map.of(itemId + "|" + keyA, "SUBCONTRACT"));
+                subcontracted, Map.of(itemId, rows), Map.of(itemId + "|" + keyA, "SUBCONTRACT"));
+        assertThat(nested).containsExactlyInAnyOrder(
+                itemId + "|" + keyA, itemId + "|" + keyB, itemId + "|" + keyC);
 
-        assertThat(outbound).containsExactlyInAnyOrder(itemId + "|" + keyA, itemId + "|" + keyB);
-        verify(predicate).setParameter("goodsIds", java.util.stream.Stream.of(root, sole).sorted().toList());
-        // 根产品未确认委外、S 确认为自制：两层都是本厂消耗，不查委外判定。
+        // M 确认为自制: M 本身仍是根产品发外的直属物料, 但 L 是厂内做 M 的消耗, 不按合同用量。
+        Set<String> middleMade = invokePrivate(service, "subcontractOutboundNodes",
+                new Class<?>[]{List.class, Map.class, Map.class},
+                subcontracted, Map.of(itemId, rows), Map.of(itemId + "|" + keyA, "MAKE"));
+        assertThat(middleMade).containsExactlyInAnyOrder(itemId + "|" + keyA, itemId + "|" + keyC);
+
+        // 根产品未确认委外、M 确认为自制: 全部是本厂消耗。
         Set<String> ownMade = invokePrivate(service, "subcontractOutboundNodes",
                 new Class<?>[]{List.class, Map.class, Map.class},
                 List.of(MaterialAnalysisService.SourceLine.from(sourceRow(itemId, root, unit))),
                 Map.of(itemId, rows), Map.of(itemId + "|" + keyA, "MAKE"));
         assertThat(ownMade).isEmpty();
-        verify(em, org.mockito.Mockito.times(1)).createNativeQuery(anyString(), org.mockito.ArgumentMatchers.eq(UUID.class));
+        org.mockito.Mockito.verifyNoInteractions(em);
     }
 
     /**
@@ -1909,11 +1885,11 @@ class MaterialAnalysisServiceBehaviorTest {
         for (String parentStock : List.of("0", "0.5", "1")) {
             Object projection = invokePrivate(service, "computeAllocationProjection",
                     new Class<?>[]{List.class, List.class, Map.class, Map.class,
-                            Map.class, Set.class, Map.class, Map.class,
+                            Map.class, Set.class, Map.class,
                             MaterialAnalysisService.BorrowTuning.class},
                     sources, List.of(parent, child, direct),
                     Map.of(child.dimension(), bd("1"), parent.dimension(), bd(parentStock)),
-                    Map.of(), Map.of(), Set.of(), Map.of(), Map.of(),
+                    Map.of(), Map.of(), Set.of(), Map.of(),
                     MaterialAnalysisService.BorrowTuning.NONE);
             Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
                     projection, "allocations", new Class<?>[]{});
@@ -1942,11 +1918,11 @@ class MaterialAnalysisServiceBehaviorTest {
 
         Object projection = invokePrivate(service, "computeAllocationProjection",
                 new Class<?>[]{List.class, List.class, Map.class, Map.class,
-                        Map.class, Set.class, Map.class, Map.class,
+                        Map.class, Set.class, Map.class,
                         MaterialAnalysisService.BorrowTuning.class},
                 List.of(allocationSource(itemId, UUID.randomUUID(), unitId, 0, "1")),
                 List.of(parent, child, missing), Map.of(parent.dimension(), bd("1")),
-                Map.of(), Map.of(), Set.of(), Map.of(), Map.of(),
+                Map.of(), Map.of(), Set.of(), Map.of(),
                 MaterialAnalysisService.BorrowTuning.NONE);
         Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
                 projection, "allocations", new Class<?>[]{});
@@ -1987,10 +1963,10 @@ class MaterialAnalysisServiceBehaviorTest {
                     Map.of(exactKey, bd("1")), Map.of(child.dimension(), bd("1")));
             Object projection = invokePrivate(service, "computeAllocationProjection",
                     new Class<?>[]{List.class, List.class, Map.class, Map.class,
-                            Map.class, Set.class, Map.class, Map.class,
+                            Map.class, Set.class, Map.class,
                             MaterialAnalysisService.BorrowTuning.class},
                     sources, List.of(parent, child, direct), Map.of(child.dimension(), bd("1")),
-                    Map.of(), Map.of(), Set.of(), Map.of(), Map.of(), tuning);
+                    Map.of(), Map.of(), Set.of(), Map.of(), tuning);
             Map<String, MaterialAnalysisService.NodeAllocation> allocations = invokePrivate(
                     projection, "allocations", new Class<?>[]{});
 
@@ -2167,41 +2143,6 @@ class MaterialAnalysisServiceBehaviorTest {
     }
 
     @Test
-    void subcontractPreparationTakeoverReducesOnlyItsParentOutputShare() {
-        UUID itemId = UUID.randomUUID();
-        UUID unitId = UUID.randomUUID();
-        MaterialAnalysisService.SourceLine source = allocationSource(
-                itemId, UUID.randomUUID(), unitId, 0, "10");
-        MaterialAnalysisService.BomNode parent = diagnosticNode(
-                itemId, UUID.randomUUID(), unitId, "subcontract-parent", null,
-                1, "10", "1", "SUBCONTRACT", true);
-        MaterialAnalysisService.BomNode child = diagnosticNode(
-                itemId, UUID.randomUUID(), unitId,
-                "subcontract-parent/child", "subcontract-parent",
-                2, "10", "2", "BUY", false);
-        String parentKey = itemId + "|subcontract-parent";
-
-        MaterialAnalysisService.NestedDiagnosticPlan partial =
-                MaterialAnalysisService.allocateNestedDiagnostics(
-                        List.of(source), List.of(parent, child), Map.of(),
-                        Map.of(parentKey, "SUBCONTRACT"), Set.of(),
-                        Map.of(parentKey, bd("4")),
-                        MaterialAnalysisService.BorrowTuning.NONE);
-        assertThat(node(partial, "subcontract-parent/child")
-                .snapshotRequiredQty()).isEqualByComparingTo("12.0000");
-
-        MaterialAnalysisService.NestedDiagnosticPlan complete =
-                MaterialAnalysisService.allocateNestedDiagnostics(
-                        List.of(source), List.of(parent, child), Map.of(),
-                        Map.of(parentKey, "SUBCONTRACT"), Set.of(),
-                        Map.of(parentKey, bd("10")),
-                        MaterialAnalysisService.BorrowTuning.NONE);
-        assertThat(node(complete, "subcontract-parent/child")
-                .snapshotRequiredQty()).isEqualByComparingTo("0.0000");
-        assertThat(complete.hasUncoveredDirectChild(parent)).isFalse();
-    }
-
-    @Test
     void delegatedMakeMovesDescendantDemandToTheChildAnalysisItem() {
         UUID itemId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
@@ -2310,29 +2251,41 @@ class MaterialAnalysisServiceBehaviorTest {
         assertThat(positiveParent.state()).isEqualTo(REQUIREMENT_STATE_ACTIVE);
     }
 
+    /** ADR-143：委外件的直属物料不再交给「前置自制」任务；零需求子件只按通用的上层路线/覆盖规则解释。 */
     @Test
-    void zeroDescendantExplainsSubcontractPreparationOwnership() {
+    void zeroDescendantOfSubcontractParentIsNeverDelegatedToAPreparationTask() {
         UUID itemId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
         MaterialAnalysisService.SourceLine source = allocationSource(
                 itemId, UUID.randomUUID(), unitId, 0, "10");
-        MaterialAnalysisService.MaterialRow parent = requirementRow(
+        MaterialAnalysisService.MaterialRow shortParent = requirementRow(
                 itemId, "subcontract-parent", null, 1,
                 "10", "10", "SUBCONTRACT", "SUBCONTRACT", "START");
-        MaterialAnalysisService.MaterialRow child = requirementRow(
+        MaterialAnalysisService.MaterialRow shortChild = requirementRow(
                 itemId, "subcontract-parent/child", "subcontract-parent", 2,
+                "0", "0", "BUY", null, "START");
+        MaterialAnalysisService.MaterialRow coveredParent = requirementRow(
+                itemId, "covered-parent", null, 1,
+                "10", "0", "SUBCONTRACT", "SUBCONTRACT", "START");
+        MaterialAnalysisService.MaterialRow coveredChild = requirementRow(
+                itemId, "covered-parent/child", "covered-parent", 2,
                 "0", "0", "BUY", null, "START");
         Map<MaterialAnalysisService.MaterialNodeIdentity,
                 MaterialAnalysisService.MaterialRow> rows = Map.of(
-                parent.nodeIdentity(), parent, child.nodeIdentity(), child);
+                shortParent.nodeIdentity(), shortParent, shortChild.nodeIdentity(), shortChild,
+                coveredParent.nodeIdentity(), coveredParent, coveredChild.nodeIdentity(), coveredChild);
 
         MaterialAnalysisService.RequirementProjection projection =
                 MaterialAnalysisService.requirementProjection(
-                        child, rows, Map.of(), Set.of(parent.nodeIdentity()), source);
+                        shortChild, rows, Map.of(), source);
+        MaterialAnalysisService.RequirementProjection covered =
+                MaterialAnalysisService.requirementProjection(
+                        coveredChild, rows, Map.of(), source);
 
-        assertThat(projection.state()).isEqualTo(
-                REQUIREMENT_STATE_DELEGATED_TO_SUBCONTRACT_PREPARATION);
+        assertThat(projection.state()).isEqualTo(REQUIREMENT_STATE_INACTIVE);
         assertThat(projection.delegatedToAnalysisLineId()).isNull();
+        assertThat(covered.state()).isEqualTo(REQUIREMENT_STATE_INACTIVE_PARENT_COVERED);
+        assertThat(covered.delegatedToAnalysisLineId()).isNull();
     }
 
     @Test
@@ -2761,16 +2714,11 @@ class MaterialAnalysisServiceBehaviorTest {
         MaterialAnalysisService service = new MaterialAnalysisService(
                 em, mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class),
                 access, mock(com.uten.imp.security.OwnerVisibility.class),
-                mock(com.uten.imp.application.port.SubcontractPreparationPort.class),
                 mock(com.uten.imp.features.notice.ChainNoticeService.class),
                 mock(PreplanStockEntitlementService.class),
                 new MaterialAnalysisFlowStageService(em),
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
                 org.mockito.Mockito.mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
-        var preparationAccess = mock(com.uten.imp.features.production.SubcontractDraftPreparationAccessPolicy.class);
-        when(preparationAccess.readPredicate(anyString(), anyString()))
-                .thenAnswer(invocation -> invocation.getArgument(1));
-        org.springframework.test.util.ReflectionTestUtils.setField(service, "draftPreparationAccess", preparationAccess);
         return service;
     }
 
@@ -2793,12 +2741,12 @@ class MaterialAnalysisServiceBehaviorTest {
                 mock(EntityManager.class), mock(ProductionDocumentAccessPolicy.class));
         Object projection = invokePrivate(service, "computeAllocationProjection",
                 new Class<?>[]{List.class, List.class, Map.class, Map.class,
-                        Map.class, Set.class, Map.class, Map.class,
+                        Map.class, Set.class, Map.class,
                         MaterialAnalysisService.BorrowTuning.class},
                 List.of(allocationSource(itemId, UUID.randomUUID(), unitId, 0, "100")),
                 List.of(parent, child),
                 Map.of(parent.dimension(), bd(parentStock)),
-                Map.of(), Map.of(), Set.of(), Map.of(),
+                Map.of(), Map.of(), Set.of(),
                 Map.of(itemId + "|parent", new MaterialAnalysisService.ParentSupplyCommitment(
                         bd(parentExternalFuture), bd(parentInternalCommitted))),
                 MaterialAnalysisService.BorrowTuning.NONE);
@@ -3034,7 +2982,8 @@ class MaterialAnalysisServiceBehaviorTest {
                 bd("100"), BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, bd("90"), bd("90"),
-                BigDecimal.ZERO, null,
+                // 预计齐料日、建议/确认路线、路线原因
+                null,
                 "BUY", confirmedRoute, routeConfirmed, null,
                 true, false, REQUIREMENT_STATE_ACTIVE,
                 null, null, null,
@@ -3042,20 +2991,22 @@ class MaterialAnalysisServiceBehaviorTest {
                 List.of(),
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 List.of(), List.of(), List.of(),
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 // additionalSupplyRecommendedQty 之后是货品起订量与订货倍数（未维护）
                 null, null,
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
                 null, List.of(), null, null,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null, null,
+                BigDecimal.ZERO, BigDecimal.ZERO, null, null, null, null,
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 // ADR-099：可认领公共在途、计划产出量
                 BigDecimal.ZERO, BigDecimal.ZERO,
                 // ADR-102：还缺数量(扣掉可认领公共在途后的展示量)
                 BigDecimal.ZERO, bd("100"), BigDecimal.ZERO,
                 // 同料合并共享批次的逐来源转交份额与目标行
-                BigDecimal.ZERO, null, null, null, List.of(), BigDecimal.ZERO, null, null, null, null, null, List.of());
+                BigDecimal.ZERO, null, null, null, List.of(), BigDecimal.ZERO, null, null, null, null, null, List.of(),
+                // ADR-143 §二.3：缺 BOM 标记与研发任务号
+                false, null);
     }
 
     private static MaterialAnalysisService.MaterialRow materialRow(

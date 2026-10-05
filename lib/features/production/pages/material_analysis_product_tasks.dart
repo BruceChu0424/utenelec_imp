@@ -20,8 +20,7 @@ class MaterialAnalysisMakeChildDetails extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final subcontract = child.sourceType == 'SUBCONTRACT_MAKE';
-    final title = subcontract ? '关联委外前置自制任务' : '关联自制子任务';
+    const title = '关联自制子任务';
     final childName = child.goodsName?.trim();
     final childCode = child.goodsCode?.trim();
     final childLabel = childName?.isNotEmpty == true
@@ -201,10 +200,7 @@ abstract class _MaterialAnalysisProductTasksState
             for (final target in material.notifiedTargets)
               if (target.status != 'CANCELLED' &&
                   target.documentId != null &&
-                  const {
-                    'PREPLAN_MAKE_TASK',
-                    'SUBCONTRACT_MAKE_TASK',
-                  }.contains(target.documentType))
+                  target.documentType == 'PREPLAN_MAKE_TASK')
                 target.documentId!,
           };
           for (final anchor in anchors) {
@@ -495,9 +491,8 @@ abstract class _MaterialAnalysisProductTasksState
   /// 已创建（存在活动 MAKE 通知或真实 child）的节点不再出现在这里，
   /// 由真实 MAKE_COMPONENT 产品卡接管。
   ///
-  /// V458/ADR-064 两段式：**有子层级的委外件确认「采用委外」后与自制完全
-  /// 同构**——同样进入候选卡（下层未齐与自制同口径可先建任务、齐套=可安排
-  /// 勾选提交，服务端分流建 SUBCONTRACT_MAKE 任务行），不再要求下达瞬间立即建任务。
+  /// 委外件不进这里(ADR-143)：委外节点无论有没有下层都只下达委外申请，
+  /// 直属物料照常作为需求节点按各自路线准备。
   List<_PendingMakeCandidate> _pendingMakeCandidates(
     ProductionMaterialAnalysisView analysis,
   ) {
@@ -521,17 +516,10 @@ abstract class _MaterialAnalysisProductTasksState
         continue;
       }
       if (material.shortageQty <= 0 && !supplement) continue;
-      final route = material.confirmedRoute;
-      final isMakeCandidate = route == MaterialSupplyRoute.make;
-      final isSubcontractCandidate =
-          route == MaterialSupplyRoute.subcontract &&
-          _hasProductionBomChildren(material, analysis);
-      if (!isMakeCandidate && !isSubcontractCandidate) {
-        continue;
-      }
+      if (material.confirmedRoute != MaterialSupplyRoute.make) continue;
       final hasActiveTask = material.notifiedTargets.any(
         (target) =>
-            target.target == route &&
+            target.target == MaterialSupplyRoute.make &&
             target.status?.toUpperCase() != 'CANCELLED',
       );
       final existingChild = _taskChildProductOf(material);
@@ -576,7 +564,6 @@ abstract class _MaterialAnalysisProductTasksState
         _PendingMakeCandidate(
           material: material,
           group: indexes.groupsByLine[material.materialLineId],
-          route: route!,
           parentLabel: parentLabel,
           shortageKindCount: kindCount,
           shortagePathCount: directShortages.length,
@@ -595,9 +582,9 @@ abstract class _MaterialAnalysisProductTasksState
     return result;
   }
 
-  /// 有子层级委外件判定：分析树中该节点存在生产性 BOM 子件
-  /// （排除 SHIP/REFERENCE 非生产阶段）。只有这类委外件走「先自制」
-  /// 候选两段式；无子层纯外发件确认后仍直接走申请链。
+  /// 分析树中该节点是否存在生产性 BOM 子件(排除 SHIP/REFERENCE 非生产阶段)。
+  /// 委外件有这类下层时由我方领直属物料发外(ADR-143)，不能认领别人的公共在途；
+  /// 补下层物料页也按它决定要不要往下钻。
   /// 经 (analysisLineId, parentNodeKey) 复合索引取直接子件（原为全表扫描）。
   bool _hasProductionBomChildren(
     ProductionMaterialAnalysisMaterial material,
@@ -621,24 +608,6 @@ abstract class _MaterialAnalysisProductTasksState
     return normalized == 'SHIP' || normalized == 'REFERENCE';
   }
 
-  /// 该委外件是否**必须先自制目标件再发外**（MAKE_THEN_OUTBOUND 两段式）。
-  ///
-  /// 与 [_hasProductionBomChildren] 的分工要分清：
-  /// - 「BOM 上还有没有下层要办」→ 用 [_hasProductionBomChildren]（纯结构问题）；
-  /// - 「父件自己走哪条通道、能不能改量」→ 用本方法。
-  ///
-  /// V581 起「只有一个叶子子件」的委外件虽然有下层，却**不进车间**：仓库直接把
-  /// 那个子件发给委外商。服务端以 `subcontractOutboundForm` 明确告知
-  /// （判据含 PER_UNIT / 投入阶段 / 子件无下层，前端无法从快照可靠推断），
-  /// 旧服务端返回 null 时按原口径回退。
-  bool _subcontractNeedsPreparation(
-    ProductionMaterialAnalysisMaterial material,
-    ProductionMaterialAnalysisView analysis,
-  ) {
-    if (material.isComponentOutbound) return false;
-    return _hasProductionBomChildren(material, analysis);
-  }
-
   String _materialKindIdentity(ProductionMaterialAnalysisMaterial material) {
     final key = material.materialKey?.trim();
     if (key?.isNotEmpty == true) return key!;
@@ -654,7 +623,8 @@ abstract class _MaterialAnalysisProductTasksState
   /// 下层未齐只决定后续计划审批为 WAITING，不再阻止建 child。
   bool _canArrangePendingMakeCandidate(_PendingMakeCandidate candidate) {
     final group = candidate.group;
-    return group != null && _isExecutableSupplyGroup(group, candidate.route);
+    return group != null &&
+        _isExecutableSupplyGroup(group, MaterialSupplyRoute.make);
   }
 
   Widget _productSection(
@@ -804,9 +774,7 @@ abstract class _MaterialAnalysisProductTasksState
       final presentIds = products
           .map((product) => product.analysisLineId)
           .toSet();
-      final candidates = _pendingMakeCandidates(analysis)
-          .where((candidate) => candidate.route == MaterialSupplyRoute.make)
-          .toList(growable: false);
+      final candidates = _pendingMakeCandidates(analysis);
       final representedGroups = {
         for (final product in analysis.products.where(_belongsInWorkshop))
           for (final group in _preparationGroupsOf(_BucketRow.product(product)))
@@ -933,6 +901,8 @@ abstract class _MaterialAnalysisProductTasksState
               'BUY_WAIT_STOCK_IN',
               'SC_REQUESTED',
               'SC_PENDING_FINANCE',
+              'SC_WAITING_MATERIAL',
+              'SC_WAITING_DRAW',
               'SC_WAIT_OUTBOUND',
               'SC_WAIT_RETURN',
               'SC_WAIT_IQC',
@@ -997,14 +967,12 @@ abstract class _MaterialAnalysisProductTasksState
   /// ADR-099 父层级追加（用户口径 2026-09-21「即使采购、委外已下达甚至已处理，
   /// 还是可以追加下单；多下的属于公共的」）：已下达段里仍可再下的行。
   ///
-  /// 采购 / 直接外发委外 = 路线已确认且未被挡住（不看余量：填的就是追加量，
-  /// 服务端按超量分账为公共备货，未处理的申请就地改大、已处理的另立）；
+  /// 采购 / 委外 = 路线已确认且未被挡住(不看余量：填的就是追加量，
+  /// 服务端按超量分账为公共备货，未处理的申请就地改大、已处理的另立)；
   /// 下达车间 = 需求已全部转入计划、服务端允许再下一批纯公共备货产出的产品行
-  /// （`canIssueSurplus`；委外前置自制锚点不放开，它的追加走委外超量通道）；
-  /// 自制候选不放开（服务端对已覆盖候选拒绝建锚）。
+  /// (`canIssueSurplus`)；自制候选不放开(服务端对已覆盖候选拒绝建锚)。
   bool _bucketRowCanAppend(_BucketRow row, _AnalysisBucket bucket) {
-    final analysis = _analysis;
-    if (analysis == null || !_bucketRowHasIssued(row, bucket)) return false;
+    if (_analysis == null || !_bucketRowHasIssued(row, bucket)) return false;
     final groups = _preparationGroupsOf(row);
     if (groups.isNotEmpty) return groups.any(_preparationCanAppend);
     final product = row.product;
@@ -1013,17 +981,12 @@ abstract class _MaterialAnalysisProductTasksState
           _canGenerate &&
           product.canIssueSurplus &&
           !product.canSchedule &&
-          product.sourceType != 'SUBCONTRACT_MAKE' &&
           product.sourceType != 'AGGREGATE_MAKE' &&
           _productRouteConfirmedForWorkshop(product);
     }
     final group = row.group;
     final route = bucket.supplyRoute;
     if (group == null || route == null || !_canNotify) return false;
-    if (route == MaterialSupplyRoute.subcontract &&
-        _subcontractNeedsPreparation(group.representative, analysis)) {
-      return false;
-    }
     // 余量为 0 时填的全是公共备货，服务端要超量下达权限——没有的账号这里就
     // 不给勾，不让人填完再被拒。
     return group.representative.confirmedRoute == route &&
@@ -1170,7 +1133,6 @@ abstract class _MaterialAnalysisProductTasksState
         _selectedPlanLineIds.clear();
         for (final line in lines) {
           _batchQtyControllers[line.analysisLineId]?.clear();
-          _systemSeededBatchQtyTexts.remove(line.analysisLineId);
         }
       });
       refreshAfterProductionPlanGenerated(ref);
@@ -1381,8 +1343,6 @@ abstract class _MaterialAnalysisProductTasksState
       if (taskChild == null && delegatedChildStatus != null)
         '接管子任务状态 $delegatedChildStatus',
       if (exactPeggedQty > 0) '本节点合格入库绑定 ${_qty(exactPeggedQty)}',
-      if (material.subcontractHandoffFutureQty > 0)
-        '委外前置自制已接管供给 ${_qty(material.subcontractHandoffFutureQty)}',
       if (material.reservedQty > 0) '已预留 ${_qty(material.reservedQty)}',
       if (coverage != null || material.mainWarehousePublicAvailableQty > 0)
         '公共可用 ${_qty(material.mainWarehousePublicAvailableQty)}',
@@ -1650,8 +1610,8 @@ abstract class _MaterialAnalysisProductTasksState
           facetKey: 'blocked',
         );
       }
-      // MAKE 与有子层 SUBCONTRACT 的子件任务同构：内联真实子件执行状态；
-      // 无子层委外叶子没有子件，落回下方普通已下达口径。
+      // MAKE 子件任务内联真实子件执行状态；委外没有子件任务(ADR-143)，
+      // 落回下方普通已下达口径。
       final taskChild = _taskChildProductOf(material);
       if (route == MaterialSupplyRoute.make || taskChild != null) {
         final child = taskChild;
@@ -1728,7 +1688,7 @@ abstract class _MaterialAnalysisProductTasksState
         );
       }
       return _StatusView(
-        route == MaterialSupplyRoute.subcontract ? '委外准备处理中' : '等待采购入库',
+        route == MaterialSupplyRoute.subcontract ? '委外处理中' : '等待采购入库',
         Icons.local_shipping_outlined,
         route == MaterialSupplyRoute.subcontract
             ? theme.colorScheme.secondary
@@ -1808,21 +1768,13 @@ abstract class _MaterialAnalysisProductTasksState
       return null;
     }
     final route = material.confirmedRoute ?? material.sourceSuggestion;
-    final adoptedMakeOnly =
-        key.startsWith('MAKE_') &&
-        material.preparationAdoptedQty > 0.0001 &&
-        _preparationOrderedQty(group) <= 0.0001 &&
-        (material.aggregatePreparation?.totalOrderedQty ?? 0) <= 0.0001;
     return ProductionFlowStage.fromServerKey(
       key,
-      route: adoptedMakeOnly
-          ? ProductionFlowRoute.make
-          : switch (route) {
-              MaterialSupplyRoute.make => ProductionFlowRoute.make,
-              MaterialSupplyRoute.subcontract =>
-                ProductionFlowRoute.subcontract,
-              _ => ProductionFlowRoute.buy,
-            },
+      route: switch (route) {
+        MaterialSupplyRoute.make => ProductionFlowRoute.make,
+        MaterialSupplyRoute.subcontract => ProductionFlowRoute.subcontract,
+        _ => ProductionFlowRoute.buy,
+      },
     );
   }
 

@@ -325,6 +325,7 @@ class GoodsDetail {
     this.cTotal,
     this.gTotal,
     this.subcontractAllowedLossPct,
+    this.purchaseAllowedOverReceiptPct,
     this.sourceType,
     this.costMasked = false,
     this.discountMasked = false,
@@ -437,6 +438,10 @@ class GoodsDetail {
 
   /// 委外允许损耗默认值(%)（ADR-098）：委外订货明细预填记忆；不是成本字段，不随成本脱敏。
   final double? subcontractAllowedLossPct;
+
+  /// 采购允许超收默认值(%)（ADR-144）：采购订货明细预填记忆；空 = 不预填(按 0%)。
+  /// 不是价格或成本字段，不随成本脱敏；只经 PUT purchase-receipt-policy 修改。
+  final double? purchaseAllowedOverReceiptPct;
 
   final String? sourceType; // 来源（自制/采购/委外）
 
@@ -579,6 +584,8 @@ class GoodsDetail {
     gTotal: ((json['gTotal'] ?? json['gtotal']) as num?)?.toDouble(),
     subcontractAllowedLossPct: (json['subcontractAllowedLossPct'] as num?)
         ?.toDouble(),
+    purchaseAllowedOverReceiptPct:
+        (json['purchaseAllowedOverReceiptPct'] as num?)?.toDouble(),
     sourceType: json['sourceType'] as String?,
     costMasked: json['costMasked'] as bool? ?? false,
     discountMasked: json['discountMasked'] as bool? ?? false,

@@ -171,6 +171,7 @@ class SubcontractDocItem {
     this.remark,
     this.sourceApplications = const [],
     this.allowedLossPct,
+    this.bomMissing = false,
   });
 
   final List<BusinessColumn> extraColumns;
@@ -251,10 +252,15 @@ class SubcontractDocItem {
   /// 订货明细允许损耗百分比（ADR-098）：保存即冻结到本行；空 = 未设。
   final double? allowedLossPct;
 
+  /// 委外订货明细：这个委外件还没有维护可发外的直属物料(缺 BOM，ADR-143 §二.3)。
+  /// 草稿可以保存，提交财务会被拒绝，等研发完善 BOM。
+  final bool bomMissing;
+
   factory SubcontractDocItem.fromJson(Map<String, dynamic> json) =>
       SubcontractDocItem(
         extraColumns: BusinessColumn.read(json['extraColumns']),
         allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
+        bomMissing: json['bomMissing'] == true,
         id: json['id'] as String?,
         lineNo: (json['lineNo'] as num?)?.toInt(),
         goodsId: json['goodsId'] as String?,

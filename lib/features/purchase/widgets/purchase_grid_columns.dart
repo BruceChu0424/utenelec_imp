@@ -12,6 +12,8 @@ import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/inputs/required_field_decoration.dart'
+    show applyAutofillHint;
 import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
@@ -23,6 +25,18 @@ import 'doc_link_picker.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/pricing/line_pricing_controller.dart';
 import '../../../shared/pricing/line_pricing_amount_cell.dart';
+
+/// 「允许超收%」输入解析（ADR-144）：空 = 未填(不允许超收，按 0%)，有效；
+/// 填了须是 0 到 100 的数，提交值按两位小数（服务端 NUMERIC(5,2)）。
+({double? value, bool valid}) parsePurchaseOverReceiptPct(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return (value: null, valid: true);
+  final parsed = double.tryParse(text);
+  if (parsed == null || !parsed.isFinite || parsed < 0 || parsed > 100) {
+    return (value: null, valid: false);
+  }
+  return (value: double.parse(parsed.toStringAsFixed(2)), valid: true);
+}
 
 /// 采购明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。
@@ -74,6 +88,46 @@ class PurchaseGridRow extends EditableGridRow
   final TextEditingController qty = TextEditingController();
   final TextEditingController weight = TextEditingController();
   final TextEditingController price = TextEditingController();
+
+  /// 订货明细允许超收%（ADR-144）：货品主档记忆预填带黄标；用户改成别的值即清黄标。
+  /// 空 = 不允许超收(按 0%)。
+  final TextEditingController allowedOverReceiptPct = TextEditingController();
+  String? _allowedOverReceiptAutofillValue;
+  bool _allowedOverReceiptWatchAttached = false;
+
+  /// 标记允许超收为主档记忆带入值（黄框提醒核对）；改动≠带入值时自动清除。
+  void markAllowedOverReceiptAutofilled(String value) {
+    _allowedOverReceiptAutofillValue = value;
+    markTermsAutofilled('allowedOverReceipt', value);
+    if (!_allowedOverReceiptWatchAttached) {
+      _allowedOverReceiptWatchAttached = true;
+      allowedOverReceiptPct.addListener(_checkAllowedOverReceiptAutofill);
+    }
+  }
+
+  void _checkAllowedOverReceiptAutofill() {
+    if (termsAutofilled.contains('allowedOverReceipt') &&
+        allowedOverReceiptPct.text != _allowedOverReceiptAutofillValue) {
+      clearTermsAutofilled('allowedOverReceipt');
+    }
+  }
+
+  /// 本行当前货品的允许超收预填机会已用过(ADR-144)：每行每个货品只按主档记忆
+  /// 预填一次。之后留空(用户清掉 / 已存单据本来就空)就是「不允许超收(按 0%)」，
+  /// 加行、引入申请等再跑预填也不会把它填回去。随填写草稿保存与恢复；
+  /// 只有换货品([resetAllowedOverReceiptForGoods])才重新给一次机会。
+  bool overReceiptPrefillConsumed = false;
+
+  /// 换货品前调用：货品真的变了才重置预填机会；旧货品带入(黄标)的比例一并清掉，
+  /// 让新货品按自己的记忆预填(没有记忆就留空 = 不允许超收)。用户自己填的比例保留。
+  void resetAllowedOverReceiptForGoods(String? nextGoodsId) {
+    if (goods?.id == nextGoodsId) return;
+    overReceiptPrefillConsumed = false;
+    if (termsAutofilled.contains('allowedOverReceipt')) {
+      allowedOverReceiptPct.clear();
+      clearTermsAutofilled('allowedOverReceipt');
+    }
+  }
 
   /// 库位号（只读，货品主档带出；收货上架/退货拣货指引，异步补全后自动刷新）。
   final ValueNotifier<String?> stockPlaceNotifier = ValueNotifier<String?>(
@@ -200,6 +254,7 @@ class PurchaseGridRow extends EditableGridRow
     'qty': qty,
     'weight': weight,
     'price': price,
+    'allowedOverReceiptPct': allowedOverReceiptPct,
     'remark': remark,
   };
 
@@ -239,6 +294,7 @@ class PurchaseGridRow extends EditableGridRow
     'supplierId': supplierId,
     'sourceLocked': sourceLocked,
     'maxQty': maxQty,
+    'overReceiptPrefillConsumed': overReceiptPrefillConsumed,
     'upstreamItemIds': [...upstreamItemIds],
     'commercial': exportCommercialDraft(),
     'sourceDocs': [
@@ -275,6 +331,7 @@ class PurchaseGridRow extends EditableGridRow
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
     row.restoreExtraColumns(data['extraColumns']);
     row.maxQty = (data['maxQty'] as num?)?.toDouble();
+    row.overReceiptPrefillConsumed = data['overReceiptPrefillConsumed'] == true;
     row.upstreamItemIds = draftStrings(data['upstreamItemIds']);
     row.sourceDocs = draftMaps(
       data['sourceDocs'],
@@ -287,6 +344,9 @@ class PurchaseGridRow extends EditableGridRow
       currentColorId: () => row.colorId,
       currentUnitId: () => row.unitId,
     );
+    if (row.termsAutofilled.contains('allowedOverReceipt')) {
+      row.markAllowedOverReceiptAutofilled(row.allowedOverReceiptPct.text);
+    }
     row.pricing.restoreState(data['pricing']);
     row._sourceAmount = data['sourceAmount'] as String?;
     row._sourceQty = data['sourceQty'] as String?;
@@ -312,6 +372,9 @@ class PurchaseGridRow extends EditableGridRow
     c.qty.text = qty.text;
     c.weight.text = weight.text;
     c.price.text = price.text;
+    c.allowedOverReceiptPct.text = allowedOverReceiptPct.text;
+    // 同货品的复制行沿用原行的预填状态：原行清空(不允许超收)的，复制行也不回填。
+    c.overReceiptPrefillConsumed = overReceiptPrefillConsumed;
     c.copyCommercialFrom(this);
     c.copyDefaultPriceFrom(
       this,
@@ -334,6 +397,7 @@ class PurchaseGridRow extends EditableGridRow
     qty.dispose();
     weight.dispose();
     price.dispose();
+    allowedOverReceiptPct.dispose();
     stockPlaceNotifier.dispose();
     supplierIdNotifier.dispose();
     super.dispose();
@@ -352,6 +416,8 @@ class PurchaseGridRow extends EditableGridRow
 /// [showCommercial]+[currencyEntries]/[settlementEntries]/[onPickCurrency]/[onPickSettlement]
 /// （订货单）：金额列后加「币种/汇率/税率/结账方式」四列（行级商业条款，保存按组合拆单）。
 /// [showRemark]：明细末尾加「备注」列（随行提交 remark）。
+/// [showAllowedOverReceipt]（订货单，ADR-144）：金额列后加「允许超收%」列
+/// （货品主档记忆预填带黄标，改值即清）。
 /// 列序（2026-09-04 口径）：数量之后紧跟单位（实际重量列已下线，行模型 weight
 /// 字段保留供既有单回填/保存透传）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
@@ -372,6 +438,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   ValueChanged<String?> Function(PurchaseGridRow row)? onPickCurrency,
   ValueChanged<String?> Function(PurchaseGridRow row)? onPickSettlement,
   bool showRemark = false,
+  bool showAllowedOverReceipt = false,
 }) {
   final showSupplier = supplierEntries.isNotEmpty;
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
@@ -652,6 +719,37 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             )
           : LinePricingAmountCell(controller: row.pricing),
     ),
+    // ADR-144 允许超收%（订货单）：货品主档记忆预填（黄标提醒核对，改值即清）；
+    // 累计收货在 数量×(1+允许超收) 以内照常入库立应付，超出部分才转财务。空 = 0%。
+    if (showAllowedOverReceipt)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'allowedOverReceiptPct',
+        label: '允许超收%',
+        width: 120,
+        numeric: true,
+        headerInfo:
+            '供应商送货允许多于订货量的比例。例如填 5，订 100 件累计最多可收 105 件，'
+            '在这以内照常入库、立应付；超过的部分才转财务审批。留空 = 不允许超收(按 0%)。'
+            '按货品主档记忆预填，保存后记住本次填写值；财务批准后不能再改。',
+        textOf: (r) => r.allowedOverReceiptPct.text,
+        listenableOf: (r) => r.allowedOverReceiptPct,
+        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+          valueListenable: row.termsAutofilledNotifier,
+          builder: (context, marks, _) => TextField(
+            key: ValueKey('purchase-allowed-over-receipt-${row.hashCode}'),
+            controller: row.allowedOverReceiptPct,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: applyAutofillHint(
+              const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '0'),
+              ),
+              Theme.of(context),
+              autofilled: marks.contains('allowedOverReceipt'),
+            ),
+          ),
+        ),
+      ),
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
     if (showCommercial)
       ...procurementCommercialColumns<PurchaseGridRow>(

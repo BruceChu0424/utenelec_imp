@@ -62,6 +62,16 @@ public interface SubcontractShortDeliveryPort {
     String stockInHoldReason(UUID receiptId);
 
     /**
+     * 同一道闸, 「先入库后质检」的说法(ADR-098 × ADR-090, 2026-10-05): 货在登记时已经按库位上架,
+     * 品质合格照常出结论, 只是转为可用库存要等委外判定; 判定完成系统自动转正, 仓库不用再点确认入库。
+     *
+     * @return 不放行时的原因; 可以转正时返回 null
+     */
+    default String preStockedHoldReason(UUID receiptId) {
+        return stockInHoldReason(receiptId);
+    }
+
+    /**
      * ADR-101 容差内自动结案：仓库把这张收货单的货确认入库之后，累计回厂已经落在本单约定的
      * 允许损耗范围内、且该行的料已经全部发给委外商的，直接按接受损耗结案(损耗单 + 受控改量
      * + 记损耗率)，不再挂在「容差内待结案」等人点一下。

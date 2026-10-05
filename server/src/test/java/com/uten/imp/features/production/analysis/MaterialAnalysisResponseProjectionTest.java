@@ -191,7 +191,7 @@ class MaterialAnalysisResponseProjectionTest {
     private MockMvc controller(MaterialAnalysisService service, MaterialAnalysisCommandService commands) {
         return MockMvcBuilders.standaloneSetup(new MaterialAnalysisController(service, commands,
                         mock(MaterialStockReallocationService.class), mock(ProductionGoodsWorkshopPreferenceService.class),
-                        mock(MaterialAnalysisSupplyProgressService.class), mock(SubcontractMakeTaskService.class),
+                        mock(MaterialAnalysisSupplyProgressService.class),
                         mock(AnalysisLinkedSalesOrderService.class),
                         mock(AuditDetailViewRecorder.class), null))
                 .setControllerAdvice(new MaterialAnalysisResponseProjection())

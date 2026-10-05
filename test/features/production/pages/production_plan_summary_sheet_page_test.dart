@@ -76,7 +76,7 @@ void main() {
       // 自制件状态：已有计划号 / 待安排
       expect(find.text('SJ-2026-006'), findsOneWidget);
       expect(find.text('待安排'), findsWidgets);
-      expect(find.text('委外前置自制 · WW-2026-001'), findsOneWidget);
+      expect(find.text('WW-2026-001'), findsOneWidget);
 
       // 采购件聚合：两条路径的同货品缺口合并为一行，已通知的显示申请单号
       expect(find.textContaining('ABS 粒料'), findsOneWidget);
@@ -381,7 +381,7 @@ ProductionMaterialAnalysisView _analysis() =>
       products: [
         ProductionMaterialAnalysisProduct(
           analysisLineId: 'p-1',
-          sourceType: 'SUBCONTRACT_PREPARATION',
+          sourceType: 'REWORK',
           sourceRef: 'WW-2026-001',
           goodsId: 'goods-inject',
           goodsCode: 'A1001',

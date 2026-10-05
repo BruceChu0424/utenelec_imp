@@ -98,7 +98,6 @@ public class SubcontractWasteService {
     private final SubcontractLossClaimPort lossClaimPort;
     private final com.uten.imp.application.port.SubcontractMaterialValuePort materialValue;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
-    private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
     private final GlPostingService glPostingService;
 
     @Autowired
@@ -229,75 +228,70 @@ public class SubcontractWasteService {
     }
 
     /**
-     * ADR-098 委外回厂短交「接受损耗结案」自动登记并审核一张损耗单：按该订货行在供应商处仍未清的
-     * 发料(发出 + 补料 − 已消费 − 已退 − 已损耗)为短交量折算材料损耗——发子件的流向按冻结单耗,
-     * 发目标件的流向按订货换算率; 允许量 = 允许损耗对应的那一份, 其余是超耗(审核后走 ADR-047 责任判定)。
+     * ADR-098 委外回厂短交「接受损耗结案」自动登记并审核一张损耗单：整单结损耗时，把该订货明细
+     * 在委外商处的剩余物料(发出 + 补料 − 已核销 − 已退 − 已损耗)逐种全部记损耗(ADR-143 §二.13，
+     * 不按短交量×单耗重算，避免 0.0001 尾差)。每种物料的允许量 = f_i(允许短交量)
+     * = CEIL(允许短交量 × 冻结单耗, 4)，其余是超耗(审核后走 ADR-047 责任判定)。
      * 权限点是 subcontract_short_delivery:decide(判定服务校验), 不再要求 subcontract_waste:create/approve;
-     * 守恒 CAS、期间、来源一致等业务守卫与手工损耗单完全一致。供应商处没有剩料时不生成, 返回 null。
+     * 守恒 CAS、期间、来源一致等业务守卫与手工损耗单完全一致。委外商处没有剩料时不生成, 返回 null。
      *
-     * @param orderUnitRate      订货行换算率(发目标件流向的折算因子)
-     * @param shortfallQty       短交量(订货单位)
+     * @param shortfallQty        短交量(订货单位)，不大于 0 时不结损耗
      * @param allowedShortfallQty 短交量里落在允许损耗范围内的份额(订货单位)
-     * @param allowedLossPct     允许损耗百分比(写进损耗率列, 只作说明)
+     * @param allowedLossPct      允许损耗百分比(写进损耗率列, 只作说明)
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public UUID recordShortDeliveryLoss(UUID orderItemId, BigDecimal orderUnitRate, BigDecimal shortfallQty,
+    public UUID recordShortDeliveryLoss(UUID orderItemId, BigDecimal shortfallQty,
                                         BigDecimal allowedShortfallQty, BigDecimal allowedLossPct,
                                         String cause, java.time.LocalDate billDate) {
         if (orderItemId == null || shortfallQty == null || shortfallQty.signum() <= 0) return null;
+        // 先按 id 顺序锁住本订货明细的发料明细，再按物料与发料先进先出读取。
+        em.createNativeQuery("""
+                SELECT issue_item.id FROM subcontract_material_issue_items issue_item
+                WHERE issue_item.order_item_id = :orderItemId AND issue_item.is_deleted = FALSE
+                ORDER BY issue_item.id
+                FOR UPDATE
+                """).setParameter("orderItemId", orderItemId).getResultList();
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT issue_item.id, issue_item.goods_id, issue_item.color_id, issue_item.unit_id,
-                       COALESCE(issue_item.unit_rate, 1), COALESCE(issue_item.frozen_unit_qty, 0),
+                       COALESCE(issue_item.unit_rate, 1), plan_item.bom_unit_qty,
                        issue.warehouse_id, issue.supplier_id,
                        GREATEST(COALESCE(issue_item.at_supplier_qty, 0) + COALESCE(issue_item.compensated_qty, 0)
                                 - COALESCE(issue_item.consumed_qty, 0) - COALESCE(issue_item.returned_qty, 0)
                                 - COALESCE(issue_item.wasted_qty, 0), 0) AS remaining,
-                       CASE WHEN plan_item.flow_mode IN ('DIRECT_OUTBOUND', 'MAKE_THEN_OUTBOUND', 'PREPARED_OUTBOUND')
-                            THEN 'TARGET' ELSE 'COMPONENT' END AS kind
+                       plan_item.id
                 FROM subcontract_material_issue_items issue_item
                 JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
                  AND issue.status = 1 AND issue.is_deleted = FALSE
-                LEFT JOIN subcontract_material_plan_items plan_item ON plan_item.id = issue_item.plan_item_id
+                JOIN subcontract_material_plan_items plan_item ON plan_item.id = issue_item.plan_item_id
                 WHERE issue_item.order_item_id = :orderItemId AND issue_item.is_deleted = FALSE
-                ORDER BY issue_item.goods_id, issue_item.color_id NULLS FIRST, issue_item.created_at, issue_item.id
-                FOR UPDATE OF issue_item
+                ORDER BY plan_item.line_no ASC NULLS LAST, plan_item.id,
+                         issue.bill_date ASC NULLS LAST, issue.created_at ASC,
+                         issue_item.line_no ASC NULLS LAST, issue_item.id
                 """).setParameter("orderItemId", orderItemId).getResultList();
-        BigDecimal rate = orderUnitRate == null || orderUnitRate.signum() <= 0 ? BigDecimal.ONE : orderUnitRate;
         BigDecimal allowed = allowedShortfallQty == null ? BigDecimal.ZERO : allowedShortfallQty.max(BigDecimal.ZERO);
-        // 按子件(货品+颜色+流向)分组: 每组需要核销的量 = 短交量 × 折算因子, 允许份额同样折算。
-        Map<String, List<Object[]>> groups = new java.util.LinkedHashMap<>();
+        // 按物料(冻结计划行)分组：每组的允许量 = f_i(允许短交量)，组内按发料先进先出先占允许量。
+        Map<UUID, List<Object[]>> groups = new java.util.LinkedHashMap<>();
         for (Object[] row : rows) {
             if (((BigDecimal) row[8]).signum() <= 0) continue;
-            groups.computeIfAbsent(row[9] + ":" + row[1] + ":" + row[2], ignored -> new ArrayList<>()).add(row);
+            groups.computeIfAbsent((UUID) row[9], ignored -> new ArrayList<>()).add(row);
         }
         List<WasteItemLine> lines = new ArrayList<>();
         UUID warehouseId = null;
         UUID supplierId = null;
         for (List<Object[]> group : groups.values()) {
-            Object[] first = group.getFirst();
-            boolean target = "TARGET".equals(first[9]);
-            BigDecimal issueRate = (BigDecimal) first[4];
-            BigDecimal frozen = (BigDecimal) first[5];
-            BigDecimal factor = target
-                    ? rate.divide(issueRate.signum() <= 0 ? BigDecimal.ONE : issueRate, 6, java.math.RoundingMode.HALF_UP)
-                    : frozen;
-            if (factor.signum() <= 0) continue;
-            BigDecimal needed = shortfallQty.multiply(factor).setScale(4, java.math.RoundingMode.HALF_UP);
-            BigDecimal allowedRemaining = allowed.multiply(factor).setScale(4, java.math.RoundingMode.HALF_UP);
+            BigDecimal perSet = (BigDecimal) group.getFirst()[5];
+            BigDecimal allowedRemaining = allowed.multiply(perSet).setScale(4, java.math.RoundingMode.CEILING);
             for (Object[] row : group) {
-                if (needed.signum() <= 0) break;
-                BigDecimal take = needed.min((BigDecimal) row[8]);
-                if (take.signum() <= 0) continue;
+                BigDecimal take = (BigDecimal) row[8];
                 BigDecimal standard = take.min(allowedRemaining);
                 allowedRemaining = allowedRemaining.subtract(standard);
-                needed = needed.subtract(take);
                 WasteItemLine line = new WasteItemLine();
                 line.setMaterialIssueItemId((UUID) row[0]);
                 line.setGoodsId((UUID) row[1]);
                 line.setColorId((UUID) row[2]);
                 line.setUnitId((UUID) row[3]);
-                line.setUnitRate(issueRate);
+                line.setUnitRate((BigDecimal) row[4]);
                 line.setQty(take);
                 line.setStandardQty(standard);
                 line.setWasteRate(allowedLossPct);
@@ -393,7 +387,6 @@ public class SubcontractWasteService {
         wasteRepo.save(r);
         em.flush();
         materialValue.wasteRecorded(id,currentUser.requireId(),false);
-        materialPlans.synchronizeWasteAllowance(id);
         lossClaimPort.openForApprovedWaste(approvedWaste);
         return detail(id);
     }
@@ -459,7 +452,6 @@ public class SubcontractWasteService {
         em.flush();
         if (shortDeliveryHooks != null) shortDeliveryHooks.ifAvailable(hooks -> hooks.lossReversed(id));
         materialValue.wasteRecorded(id,currentUser.requireId(),true);
-        materialPlans.synchronizeWasteAllowance(id);
         return detail(id);
     }
 

@@ -425,12 +425,6 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         String route=material==null ? null : material.sourceConfirmed();
         boolean open=List.of("OPEN","PARTIAL").contains(relation.status());
         BigDecimal pending=open ? relation.qty().subtract(relation.priorityFulfilledQty()).max(BigDecimal.ZERO) : BigDecimal.ZERO;
-        boolean preparation=material!=null && "SUBCONTRACT".equals(route) && Boolean.TRUE.equals(em.createNativeQuery("""
-                SELECT EXISTS(SELECT 1 FROM goods_bom_items bom JOIN goods child ON child.id=bom.component_goods_id
-                    AND NOT child.is_deleted AND NOT COALESCE(child.auto_created,FALSE)
-                    AND child.issue_method<>'PERIODIC'
-                    WHERE bom.goods_id=:goods AND NOT bom.is_deleted)
-                """).setParameter("goods",material.goodsId()).getSingleResult());
         String operation="MAKE".equals(route) ? "ISSUE_WORKSHOP_PLANS" : "NOTIFY_SUPPLY";
         BigDecimal remaining=BigDecimal.ZERO;
         UUID childId=null;
@@ -451,11 +445,11 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 : !knownRoute ? "请先在原计划确认合法供料路线"
                 : remaining.signum()<=0 ? "已有补供责任覆盖待补量，请从原计划跟进现有任务"
                 : !canExecute ? "当前账号没有原计划对应补供操作权限" : null;
-        boolean over=canExecute && ("BUY".equals(route) || "SUBCONTRACT".equals(route) && !preparation)
+        boolean over=canExecute && ("BUY".equals(route) || "SUBCONTRACT".equals(route))
                 && access.hasAuthority("production_material_analysis:over_supply");
         return new CrossReallocationReplenishmentView(relation.id(),view,relation.fromMaterialId(),relation.toAnalysisId(),
                 relation.qty(),pending,remaining,relation.qty().min(remaining),route,
-                knownRoute && canExecute ? List.of(route) : List.of(),operation,over,preparation,childId,
+                knownRoute && canExecute ? List.of(route) : List.of(),operation,over,childId,
                 material!=null && "BUY".equals(route) ? material.mainWarehouseSafetyReplenishmentGapQty() : BigDecimal.ZERO,blocked);
     }
 

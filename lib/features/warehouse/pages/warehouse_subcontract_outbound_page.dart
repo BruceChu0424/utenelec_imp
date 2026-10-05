@@ -1,5 +1,5 @@
-// 委外目标件出仓任务中心独立页（/warehouse/subcontract-outbound，深链保底；
-// V436 仓库专属）。正文逻辑在 widgets/warehouse_subcontract_outbound_workbench.dart，
+// 委外领料待发料独立页(/warehouse/subcontract-outbound，深链保底；
+// V436 仓库专属)。正文逻辑在 widgets/warehouse_subcontract_outbound_workbench.dart，
 // 2026-09-01 起主入口是「出库任务中心 · 委外出库」分段（/warehouse/tasks/outbound）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

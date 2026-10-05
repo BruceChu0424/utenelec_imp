@@ -67,9 +67,10 @@ class SubcontractOrderSystemQtyChangeTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.setParameter(anyInt(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
-        // ProcurementOrderQuantityBounds.receipts：received / returned / iqc_returned / excess 基本量全 0。
+        // ProcurementOrderQuantityBounds.receipts：received / returned / iqc_returned / excess 基本量全 0;
+        // 第 5 列是采购允许超收比例(ADR-144), 委外行恒为 NULL。
         when(query.getSingleResult()).thenReturn(
-                new Object[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                new Object[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null});
         // ADR-114(V688): 改量下限另加本行已独立结清的损耗量(标量查询), 本用例无损耗。
         Query settledLoss = mock(Query.class);
         when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("fn_subcontract_settled_loss_qty")))

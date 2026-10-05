@@ -27,6 +27,8 @@ public class MaterialIssueItemDto {
     private UUID unitId;
     private BigDecimal unitRate;
     private BigDecimal qty;
+    /** 委外人员提交领料时的数量；仓库实发只能 ≤ 它(ADR-143)。 */
+    private BigDecimal requestedQty;
     private BigDecimal price;
     private BigDecimal amountOriginal;
     private BigDecimal amountLocal;

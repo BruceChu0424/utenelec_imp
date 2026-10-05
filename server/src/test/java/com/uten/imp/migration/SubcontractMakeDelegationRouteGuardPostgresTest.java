@@ -25,7 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 迁移 exact 权益）后仍写死 MAKE 形状，真库「下达委外」被
  * 23514「invalid preplan MAKE entitlement delegation」整体回滚（2026-09-04
  * 事故）。源码文本断言测不到 DB 触发器，本测试在干净库 V1→head 上分别以
- * MAKE 与 SUBCONTRACT 形状插入委托对，并验证配对不匹配仍失败关闭。
+ * MAKE 形状插入委托对，并验证配对不匹配仍失败关闭。V798(ADR-143 §4.5/§五) 删除了
+ * 「下达车间先做委外件」(SUBCONTRACT_MAKE 子件 / SUBCONTRACT_MAKE_TASK 行动)，SUBCONTRACT 形状
+ * 委托随之删除；不匹配用例改为「父物料确认委外、却挂自制委托」，同样必须失败关闭。
  * （SQL 一律调用点内联单行字面量 + ? 绑定，符合 Mimosa 门禁配方：
  * prepareStatement 的 SQL 参数为变量/文本块均拦截。）
  */
@@ -55,34 +57,6 @@ class SubcontractMakeDelegationRouteGuardPostgresTest {
     @AfterAll
     static void stopPostgres() {
         POSTGRES.stop();
-    }
-
-    @Test
-    void subcontractPairInsertsAndMovesExactLot() throws Exception {
-        Fixture fixture;
-        UUID delegationId = UUID.randomUUID();
-        UUID outEventId = UUID.randomUUID();
-        String delegationKey = String.format("V467-DELEGATION-%s", delegationId);
-        String outKey = String.format("V467-OUT-%s", delegationId);
-        String inKey = String.format("V467-IN-%s", delegationId);
-        try (Connection connection = connection()) {
-            fixture = createFixture(connection, RouteShape.SUBCONTRACT);
-            setActor(connection, fixture.userId());
-            connection.setAutoCommit(false);
-            insertDelegation(connection, delegationId, fixture, 4, delegationKey);
-            insertOutEvent(connection, outEventId, delegationId, fixture, 4, outKey);
-            insertInEvent(connection, delegationId, outEventId, fixture, 4, inKey);
-            connection.commit();
-        }
-
-        try (Connection connection = connection()) {
-            assertBalance(connection, fixture.reservationId(),
-                    fixture.sourceMaterialId(), "6.0000");
-            assertBalance(connection, fixture.reservationId(),
-                    fixture.targetMaterialId(), "4.0000");
-            assertTotalBalance(connection, fixture.reservationId(), "10.0000");
-            assertEquals("ACTIVE", delegationState(connection, delegationId));
-        }
     }
 
     @Test
@@ -127,7 +101,7 @@ class SubcontractMakeDelegationRouteGuardPostgresTest {
     }
 
     private enum RouteShape {
-        MAKE, SUBCONTRACT, MISMATCHED
+        MAKE, MISMATCHED
     }
 
     private record Fixture(
@@ -328,19 +302,14 @@ class SubcontractMakeDelegationRouteGuardPostgresTest {
         UUID stockDocumentItemId = UUID.randomUUID();
         UUID supplyId = UUID.randomUUID();
 
+        // MISMATCHED：action/child 是 MAKE 形状，但父物料确认的是委外路线(委外件只下达委外申请,
+        // ADR-143 §4.5)，触发器的 parent_material.confirmed_route = action.route 必须拒绝。
         String parentRoute = shape == RouteShape.MAKE ? "MAKE" : "SUBCONTRACT";
-        String childType = shape == RouteShape.MAKE
-                ? "MAKE_COMPONENT" : "SUBCONTRACT_MAKE";
-        String actionRoute = shape == RouteShape.MISMATCHED
-                ? "SUBCONTRACT" : parentRoute;
-        String documentType = shape == RouteShape.MAKE
-                ? "PREPLAN_MAKE_TASK" : "SUBCONTRACT_MAKE_TASK";
-        // MISMATCHED：action/child 是 SUBCONTRACT 形状，但父物料路线仍是 MAKE，
-        // 触发器的 parent_material.confirmed_route = action.route 必须拒绝。
-        String parentConfirmedRoute = shape == RouteShape.MISMATCHED
-                ? "MAKE" : parentRoute;
-        String parentRouteReason = shape == RouteShape.MISMATCHED
-                ? "测试：确认路线与建议不一致" : null;
+        String childType = "MAKE_COMPONENT";
+        String actionRoute = "MAKE";
+        String documentType = "PREPLAN_MAKE_TASK";
+        String parentConfirmedRoute = parentRoute;
+        String parentRouteReason = null;
 
         try (Statement statement = connection.createStatement()) {
             statement.execute("SET session_replication_role = replica");

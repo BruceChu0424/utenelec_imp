@@ -63,6 +63,9 @@ Map<String, dynamic> expectationJsonOf(ProcurementReceiptPrefill prefill) {
           'registeredQty': 0,
           'lastReceiptWarehouseId': item.lastReceiptWarehouseId,
           'lastReceiptWarehouseName': item.lastReceiptWarehouseName,
+          // ADR-144：采购明细的允许超收%与最多可收(已登记待审核量为 0, 原样带回)。
+          'allowedOverReceiptPct': item.allowedOverReceiptPct,
+          'maxReceivableQty': item.maxReceivableQty,
           'expectedAllocations': [
             for (final allocation in item.expectedAllocations)
               allocationJsonOf(allocation),

@@ -617,13 +617,11 @@ final class _MaterialAggregateTableController {
     return sources;
   }
 
-  /// 这批来源走不走车间通道：自制，以及要先自制目标件的委外。服务端对这两类
-  /// (manufacture)一律要求车间 / 负责人 / 超产比例，权限也只看「下达车间」——
-  /// 与 [workshopGroups] 同一口径(2026-09-25 对齐修正)。
+  /// 这批来源走不走车间通道：只有自制(ADR-143 起委外汇总永远是外部批次)。服务端对
+  /// 自制(manufacture)一律要求车间 / 负责人 / 超产比例，权限也只看「下达车间」——
+  /// 与 [workshopGroups] 同一口径。
   bool viaWorkshop(List<_MaterialGroup> groups) =>
-      groups.isNotEmpty &&
-      (owner._draftRoute(groups.first) == MaterialSupplyRoute.make ||
-          owner._tableIssueTarget(groups.first).viaWorkshop);
+      groups.isNotEmpty && owner._tableIssueTarget(groups.first).viaWorkshop;
 
   /// 超产比例按数值比较：'10' 与 '10.0' 是同一个比例、同一张工单。
   static double? _rateValue(String text) =>
@@ -648,7 +646,7 @@ final class _MaterialAggregateTableController {
   /// 比例(按数值)」分成几张工单——参数相同的来源并成一张，不同就各开一张，
   /// 不再报错要求先统一。本页不选班组，服务端合并键里的班组恒为空，不参与拆分；
   /// 父件也不参与，下层做好后送给哪个上层工单在报工时再分(见 ADR-127)。
-  /// 采购 / 直接委外整组一张。只拆出一张时提交键就是草稿键；拆成多张时是
+  /// 采购 / 委外整组一张。只拆出一张时提交键就是草稿键；拆成多张时是
   /// 「草稿键|part-指纹」，指纹只由这张工单的参数决定，参数不变键就不变。
   /// 顺序稳定：按来源在 [sources] 里第一次出现的先后。
   List<_MaterialAggregatePart> partsOf(
@@ -1598,12 +1596,8 @@ final class _MaterialAggregateTableController {
     return result.values.toList(growable: false);
   }
 
-  /// 走车间通道的来源组：自制，以及**要先自制目标件的委外**。
-  ///
-  /// 2026-09-25 对齐修正：服务端 aggregate-orders 对这两类(manufacture)一律要求
-  /// 生产车间+负责人，原来这里只认自制，导致「前置自制委外」的聚合行车间/负责人
-  /// 两列显示「—」没处填、预览永远被拒——用户实机「按物料汇总很多物料下不了单」
-  /// 的死结。判定与主表 [_tableIssueTarget].viaWorkshop 同源。
+  /// 走车间通道的来源组(只有自制)：服务端 aggregate-orders 对自制(manufacture)
+  /// 一律要求生产车间+负责人。判定与主表 [_tableIssueTarget].viaWorkshop 同源。
   List<_MaterialGroup> workshopGroups(_MaterialAggregate aggregate) => groupsOf(
     aggregate,
   ).where((group) => owner._tableIssueTarget(group).viaWorkshop).toList();
@@ -1885,7 +1879,6 @@ final class _MaterialAggregateTableController {
     return material.requiredQty <= 0 &&
         const {
           MaterialRequirementState.delegatedToMakeChild,
-          MaterialRequirementState.delegatedToSubcontractPreparation,
           MaterialRequirementState.inactiveParentCovered,
           MaterialRequirementState.inactiveParentRoute,
           MaterialRequirementState.inactiveReference,
@@ -1983,15 +1976,11 @@ final class _MaterialAggregateTableController {
       final route = owner._draftRoute(group);
       if (owner._tableUsesMakeAnchor(group)) {
         final anchor = owner._tableMakeAnchorOf(group, authoritative: true);
-        if (anchor != null) {
-          if (anchors.add(anchor.analysisLineId)) {
-            total +=
-                anchor.issuedPlanQty *
-                owner._tableAnchorUnitRate(group, anchor);
-          }
-          continue;
+        if (anchor != null && anchors.add(anchor.analysisLineId)) {
+          total +=
+              anchor.issuedPlanQty * owner._tableAnchorUnitRate(group, anchor);
         }
-        if (route == MaterialSupplyRoute.make) continue;
+        continue;
       }
       final legacy = owner._tableLegacyAnchorWithSharedSupply(
         group,
@@ -2009,7 +1998,6 @@ final class _MaterialAggregateTableController {
               const {
                 'FUTURE_TRANSFER',
                 'SHARED_FUTURE_CLAIM',
-                'AGGREGATE_CONTINUATION',
               }.contains(owner._supplyOperationType(target.actionId)) ||
               !references.add('${path.materialLineId}|${target.actionId}')) {
             continue;
@@ -2164,7 +2152,7 @@ final class _MaterialAggregateMakeParams {
 }
 
 /// 一个汇总草稿拆出的一张工单：一组「怎么做」参数相同的来源。
-/// 非车间通道(采购 / 直接委外)不拆，[params] 为 null。
+/// 非车间通道(采购 / 委外)不拆，[params] 为 null。
 final class _MaterialAggregatePart {
   _MaterialAggregatePart(this.params);
   _MaterialAggregateMakeParams? params;

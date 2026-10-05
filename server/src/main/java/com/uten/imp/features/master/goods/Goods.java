@@ -212,6 +212,13 @@ public class Goods extends SoftDeletableEntity {
     @Column(name = "subcontract_allowed_loss_pct", precision = 5, scale = 2)
     private BigDecimal subcontractAllowedLossPct;
 
+    /**
+     * 采购允许超收百分比默认值(ADR-144, V799)：采购订货明细新增行的预填记忆, 保存采购订货单时
+     * 按该货品最后一行非空值回写(空行不清记忆)。货品主档「采购默认」区单独修改, 只要 goods:edit。
+     */
+    @Column(name = "purchase_allowed_over_receipt_pct", precision = 5, scale = 2)
+    private BigDecimal purchaseAllowedOverReceiptPct;
+
     // ===== 采购批量口径（V575；软约束，只影响下达采购的默认数量，服务端不硬拦） =====
     /** 最小起订量（供应商 MOQ，基本单位）。NULL=未登记；0=已确认无起订量。 */
     @Column(name = "min_order_qty", precision = 18, scale = 4)

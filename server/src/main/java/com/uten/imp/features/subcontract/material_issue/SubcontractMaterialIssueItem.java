@@ -74,6 +74,13 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     @Column(name = "qty", nullable = false, precision = 18, scale = 4)
     private BigDecimal qty;              // 发料量
 
+    /**
+     * 委外人员提交领料时的数量(ADR-143)：领料草稿行创建时写入，之后不可改；
+     * 仓库只能把 qty 改少(qty ≤ requested_qty，库内守卫兜底)。
+     */
+    @Column(name = "requested_qty", precision = 18, scale = 4, updatable = false)
+    private BigDecimal requestedQty;
+
     /** 无 Price；空（材料按成本发出）。 */
     @Column(name = "price", precision = 18, scale = 4)
     private BigDecimal price;

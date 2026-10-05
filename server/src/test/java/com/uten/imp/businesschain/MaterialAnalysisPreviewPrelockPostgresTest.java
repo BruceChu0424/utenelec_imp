@@ -81,7 +81,7 @@ class MaterialAnalysisPreviewPrelockPostgresTest {
                 .allMatch(row -> row.requiredQty().compareTo(new BigDecimal("5")) == 0));
         // ADR-107: the outermost preview prelock runs one discovery and one post-lock version recheck;
         // the nested refresh only checks, in memory, that its analysis is inside that prelock.
-        verify(target(), times(2)).forPreview(any(), any(), any(), any(), any());
+        verify(target(), times(2)).forPreview(any(), any(), any(), any());
         verify(target(), never()).forAnalyses(List.of(before.analysisId()));
         assertEquals(0, jdbc.queryForObject("select count(*) from production_plans where material_analysis_id=?",
                 Integer.class, before.analysisId()));
@@ -95,7 +95,7 @@ class MaterialAnalysisPreviewPrelockPostgresTest {
             FulfillmentMutationLockPlan plan = (FulfillmentMutationLockPlan) invocation.callRealMethod();
             return new FulfillmentMutationLockPlan(plan.commercialSources(), plan.inventoryDimensions(),
                     plan.mainWarehouseIds(), Set.of(), plan.fingerprint());
-        }).when(target()).forPreview(any(), any(), any(), any(), any());
+        }).when(target()).forPreview(any(), any(), any(), any());
 
         ApiException error = assertThrows(ApiException.class, () -> analysis.preview(request(scenario, before,
                 withQuantity(scenario.sources(), new BigDecimal("5")))));

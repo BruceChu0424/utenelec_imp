@@ -409,6 +409,7 @@ class FinanceProcurementReviewLine {
     this.weight,
     this.giftQty,
     this.allowedLossPct,
+    this.allowedOverReceiptPct,
     this.remark,
     this.sourceApplicationNos,
     this.sourceAllocations,
@@ -443,6 +444,10 @@ class FinanceProcurementReviewLine {
   final String? weight;
   final String? giftQty;
   final String? allowedLossPct;
+
+  /// 采购订货行允许超收%（ADR-144，服务端十进制原文）；空 = 不允许超收(按 0%)，
+  /// 委外行恒为空。提交快照里非空才出现，因此历史快照也能如实比较。
+  final String? allowedOverReceiptPct;
   final String? remark;
   final String? sourceApplicationNos;
   final String? sourceAllocations;
@@ -474,6 +479,9 @@ class FinanceProcurementReviewLine {
       weight: _firstNullableString([json['weight']]),
       giftQty: _firstNullableString([json['giftQty']]),
       allowedLossPct: _firstNullableString([json['allowedLossPct']]),
+      allowedOverReceiptPct: _firstNullableString([
+        json['allowedOverReceiptPct'],
+      ]),
       remark: _string(json['remark']),
       sourceApplicationNos: _string(json['sourceApplicationNos']),
       sourceAllocations: _string(json['sourceAllocations']),

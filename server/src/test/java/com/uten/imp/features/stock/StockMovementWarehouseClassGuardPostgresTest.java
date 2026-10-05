@@ -241,6 +241,14 @@ class StockMovementWarehouseClassGuardPostgresTest {
         assertThat(jdbc.queryForObject(
                 "SELECT pg_get_functiondef('fn_guard_qualified_origin_reservation_identity()'::regprocedure)",
                 String.class)).doesNotContain("is_defective");
+        // 委外领料候选仓(精确专属批次 + 公共可用)与草稿占用、锁发现同一个仓谓词。
+        for (String drawFunction : List.of("fn_subcontract_component_entitled_lots(uuid)",
+                "fn_subcontract_draw_line_stock(uuid)")) {
+            assertThat(jdbc.queryForObject("SELECT pg_get_functiondef(CAST(? AS regprocedure))",
+                    String.class, drawFunction)).as(drawFunction)
+                    .contains("fn_warehouse_counts_as_usable(")
+                    .doesNotContain("fn_warehouse_is_operational_leaf(");
+        }
     }
 
     // ------------------------------------------------------------------ fixture

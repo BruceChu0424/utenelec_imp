@@ -659,7 +659,9 @@ class ProductionExecutionSegmentPostgresTest {
 
     @Test
     void subcontractReturnPromotesOnlyAfterTheWholeWaitingKitIsAvailable() {
-        assertTimeoutPreemptively(Duration.ofSeconds(25), () -> {
+        // ADR-143: the subcontract supply now also seeds its frozen draw line, zero-price material stock and the
+        // approved draw issue through the real value writer, so the hang guard allows for that setup.
+        assertTimeoutPreemptively(Duration.ofSeconds(60), () -> {
             try (Connection connection = connection()) {
                 SegmentFixture fixture =
                         createSegmentFixture(connection, false);
@@ -922,12 +924,15 @@ class ProductionExecutionSegmentPostgresTest {
                         )
                         """,
                         first.id());
+                // ADR-143: the frozen material basis can never exceed the returned quantity
+                // (subcontract_receipt_item_material_basis_chk), so the shrink carries it along and
+                // reaches the allocation capacity guard.
                 assertConstraint(
                         connection,
                         "production_subcontract_receipt_item_capacity_guard",
                         """
                         update subcontract_receipt_items
-                        set qty = 1
+                        set qty = 1, material_basis_qty = least(material_basis_qty, 1)
                         where id = ?
                         """,
                         first.itemId());
@@ -2418,8 +2423,21 @@ class ProductionExecutionSegmentPostgresTest {
         UUID orderItemId = UUID.randomUUID();
         UUID orderPegId = UUID.randomUUID();
         UUID transferId = UUID.randomUUID();
+        // ADR-143 §二.3/§三: the subcontract goods B issues its own direct material (per-unit 1); the order line
+        // freezes one draw-plan line and the supplier receives the whole 4 before any return is registered.
+        UUID directMaterialId = UUID.randomUUID();
+        // The material stock is received through IQC, which only accepts an active accounting leaf warehouse (V613).
+        UUID materialWarehouseId = UUID.randomUUID();
+        UUID drawPlanId = UUID.randomUUID();
+        UUID drawPlanItemId = UUID.randomUUID();
+        UUID supplierId = UUID.randomUUID();
+        UUID currencyId = UUID.randomUUID();
+        UUID issueId = UUID.randomUUID();
+        UUID issueItemId = UUID.randomUUID();
+        UUID actorId;
         String applicationNo = businessIdentifier("EB", BILL_DATE);
         String orderNo = businessIdentifier("EO", BILL_DATE);
+        String issueNo = businessIdentifier("EC", BILL_DATE);
 
         connection.setAutoCommit(false);
         try {
@@ -2567,6 +2585,73 @@ class ProductionExecutionSegmentPostgresTest {
                     applicationItemId,
                     orderItemId,
                     "sub-transfer-" + transferId);
+            execute(
+                    connection,
+                    """
+                    insert into goods(id, code, name, unit_id, min_qty, code_sequence)
+                    values (?, ?, 'fixture subcontract direct material', ?, 0,
+                            (select coalesce(max(code_sequence), 0) + 1 from goods))
+                    """,
+                    directMaterialId,
+                    "GOODS-" + directMaterialId,
+                    fixture.unitId());
+            execute(
+                    connection,
+                    "insert into goods_bom_items(goods_id, component_goods_id, qty) values (?, ?, 1)",
+                    fixture.materialBId(),
+                    directMaterialId);
+            execute(
+                    connection,
+                    """
+                    insert into subcontract_material_plans(id, order_id, order_bill_no, status)
+                    values (?, ?, ?, 'OPEN')
+                    """,
+                    drawPlanId,
+                    orderId,
+                    orderNo);
+            execute(
+                    connection,
+                    """
+                    insert into subcontract_material_plan_items(
+                        id, plan_id, order_item_id, line_no, parent_goods_id, goods_id, unit_id,
+                        unit_rate, bom_unit_qty, planned_qty, issued_qty)
+                    values (?, ?, ?, 1, ?, ?, ?, 1, 1, 4, 0)
+                    """,
+                    drawPlanItemId,
+                    drawPlanId,
+                    orderItemId,
+                    fixture.materialBId(),
+                    directMaterialId,
+                    fixture.unitId());
+            execute(
+                    connection,
+                    """
+                    insert into suppliers(id, code, name, status, category_id, code_sequence, code_managed)
+                    select ?, ?, 'fixture subcontractor', '使用', category.id,
+                           (select coalesce(max(code_sequence), 0) + 1 from suppliers), false
+                    from supplier_categories category
+                    where category.is_deleted = false
+                    order by category.id limit 1
+                    """,
+                    supplierId,
+                    "SUP-" + supplierId);
+            execute(
+                    connection,
+                    """
+                    insert into currencies(id, code, name, exchange_rate, status)
+                    values (?, ?, 'fixture currency', 1, '使用')
+                    """,
+                    currencyId,
+                    "CUR-" + currencyId);
+            execute(
+                    connection,
+                    """
+                    insert into warehouses(id, code, name, status)
+                    values (?, ?, 'fixture subcontract material warehouse', '使用')
+                    """,
+                    materialWarehouseId,
+                    "WH-" + materialWarehouseId);
+            actorId = ProcurementReceiptFixtureSupport.createActor(connection);
             connection.commit();
         } catch (Exception error) {
             connection.rollback();
@@ -2574,6 +2659,21 @@ class ProductionExecutionSegmentPostgresTest {
         } finally {
             connection.setAutoCommit(true);
         }
+        UUID settlementId;
+        try (PreparedStatement statement = connection.prepareStatement("""
+                select id from settlement_methods
+                where status = '使用' and coalesce(is_deleted, false) = false
+                order by code limit 1
+                """); ResultSet row = statement.executeQuery()) {
+            assertTrue(row.next());
+            settlementId = row.getObject(1, UUID.class);
+        }
+        ProcurementReceiptFixtureSupport.seedZeroPriceQualifiedStock(connection, materialWarehouseId,
+                directMaterialId, fixture.unitId(), supplierId, currencyId, settlementId, new BigDecimal("4"),
+                actorId, BILL_DATE);
+        ProcurementReceiptFixtureSupport.postSubcontractIssueFixture(connection, issueId, issueItemId, orderItemId,
+                drawPlanItemId, materialWarehouseId, directMaterialId, fixture.unitId(), new BigDecimal("4"),
+                actorId, issueNo, BILL_DATE);
         return new SubcontractSupply(
                 applicationId,
                 applicationItemId,
@@ -2582,7 +2682,9 @@ class ProductionExecutionSegmentPostgresTest {
                 orderItemId,
                 orderPegId,
                 transferId,
-                orderNo);
+                orderNo,
+                issueItemId,
+                actorId);
     }
 
     private static Receipt createApprovedSubcontractReceipt(
@@ -2616,10 +2718,11 @@ class ProductionExecutionSegmentPostgresTest {
                             id, bill_no, bill_date, receipt_id,
                             order_item_id, line_no, goods_id, unit_id,
                             unit_rate, qty, order_qty, source_doc_no,
-                            price, amount_original, amount_local, replacement_intent, goods_snapshot_source)
+                            price, amount_original, amount_local, replacement_intent, goods_snapshot_source,
+                            material_basis_qty)
                         values (
                             ?, ?, ?, ?, ?, 1, ?, ?,
-                            1, ?, 4, ?, 0, 0, 0, 'NORMAL', 'ORDER_ITEM_AT_SAVE')
+                            1, ?, 4, ?, 0, 0, 0, 'NORMAL', 'ORDER_ITEM_AT_SAVE', ?)
                     """,
                     receiptItemId,
                     receiptNo,
@@ -2629,7 +2732,31 @@ class ProductionExecutionSegmentPostgresTest {
                     fixture.materialBId(),
                     fixture.unitId(),
                     quantity,
-                    supply.orderNo());
+                    supply.orderNo(),
+                    quantity);
+            // ADR-143 §三.7: the approved return consumes the issued direct material by target f(R) = R x 1.
+            execute(
+                    connection,
+                    """
+                    insert into subcontract_receipt_material_consumptions(
+                        id, receipt_item_id, issue_item_id, qty_doc, qty_base, consumption_basis, created_by)
+                    values (?, ?, ?, ?, ?, 'FROZEN_BOM_ESTIMATE', ?)
+                    """,
+                    UUID.randomUUID(),
+                    receiptItemId,
+                    supply.issueItemId(),
+                    quantity,
+                    quantity,
+                    supply.actorId());
+            execute(
+                    connection,
+                    """
+                    update subcontract_material_issue_items
+                    set consumed_qty = consumed_qty + ?
+                    where id = ?
+                    """,
+                    quantity,
+                    supply.issueItemId());
             execute(
                     connection,
                     """
@@ -3138,6 +3265,8 @@ class ProductionExecutionSegmentPostgresTest {
             UUID orderItemId,
             UUID orderPegId,
             UUID transferId,
-            String orderNo) {
+            String orderNo,
+            UUID issueItemId,
+            UUID actorId) {
     }
 }

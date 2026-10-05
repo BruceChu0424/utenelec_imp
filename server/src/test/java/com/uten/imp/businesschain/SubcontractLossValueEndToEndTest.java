@@ -29,7 +29,13 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Actual commercial approval, physical source, loss classification, receipt and value-worker integration. */
+/**
+ * Actual commercial approval, physical source, loss classification, receipt and value-worker integration.
+ *
+ * <p>ADR-143: 委外件 E 发外的是它的直属物料 M(按件用量 1); 期初入库的是 M, 委外人员提交领料、仓库审核发出,
+ * 损耗登记的也是委外商处的 M。M 与原来目标件出仓的数量、单价一一对应, 所以回厂后 E 的金额口径不变。
+ * ADR-143 §二.13/§二.14: 损耗独立结清不改订货量, 已发外的量不能被改量压到计划量以下; §七: 不做损耗后补发料。
+ */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
@@ -62,50 +68,23 @@ class SubcontractLossValueEndToEndTest {
     private final java.util.List<UUID> worldGoods=new java.util.ArrayList<>();
     @BeforeEach void fixture(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
 
-    @Test void normalLossKeepsApprovedFiveAndReallocatesOnlyAfterFinancialApprovalOfThree(){
+    @Test void normalLossIsSettledIndependentlyAndNeverLetsTheOrderShrinkBelowTheIssuedFive(){
         var c=ready("normal-approved-target","5","5");
         assertThrows(ApiException.class,()->changeQty(c,"3"),"尚无实退或损耗时不能减少已实发五件的商业目标");
         money(decimal("select qty from subcontract_order_items where id=?",c.item()),"5");
         UUID loss=loss(c,"2","2");
         receive(c,"1");drain();money(stock(c),"51.4");money(normalHeld(c),"1.6");
         receive(c,"2");drain();money(stock(c),"154.2");money(normalHeld(c),"0.8");
-        fixture.loginAs(c.world().superAdminUserId());changeQty(c,"3");
+        // ADR-143 §二.13/§二.14: 损耗独立结清不改订货量; 已发外 5 覆盖的物料需求不能被改量压到 f(3)=3。
+        fixture.loginAs(c.world().superAdminUserId());
+        ApiException shrink=assertThrows(ApiException.class,()->changeQty(c,"3"));
+        assertTrue(shrink.getMessage().contains("已发外"),shrink.getMessage());
+        money(decimal("select qty from subcontract_order_items where id=?",c.item()),"5");
         money(decimal("select sum(planned_qty) from subcontract_material_plan_items where order_item_id=? and not is_deleted",c.item()),"5");
         money(decimal("select sum(issued_qty) from subcontract_material_plan_items where order_item_id=? and not is_deleted",c.item()),"5");
-        money(decimal("select sum(loss_replacement_qty_base) from subcontract_material_plan_items where order_item_id=? and not is_deleted",c.item()),"2");
         money(decimal("select target_qty_base from v_subcontract_normal_loss_basis where order_item_id=?",c.item()),"5");
-        drain();money(stock(c),"154.2");
-        fixture.loginAs(c.submitted().reviewerUserId());fixture.approvePendingFinance("SUBCONTRACT",c.submitted().orderId());
-        org.springframework.security.core.context.SecurityContextHolder.clearContext();drain();
-        money(stock(c),"155");money(normalHeld(c),"0");
-        assertEquals(2,integer("select count(*) from stock_value_production_cost_outputs where execution_segment_id=?",c.item()));
-        assertEquals(2,integer("select count(*) from stock_value_production_cost_tasks task join stock_value_production_cost_objects object on object.current_revision_id=task.revision_id where object.execution_segment_id=? and task.denominator=3 and task.input_quantity_basis=2",c.item()),
-                "正常损耗2件仍为原投入，仅价值按1/3和2/3分配，不能把实物数量圆成0.6667");
+        drain();money(stock(c),"154.2");money(normalHeld(c),"0.8");
         assertEquals(0,integer("select count(*) from stock_value_nodes node join stock_value_pools pool on pool.id=node.pool_id where pool.goods_id=? and node.owner_kind='LOSS'",c.world().goodsE()));
-        assertTwoChildren();
-    }
-
-    @Test void physicalLossAllowsTwoMorePiecesWithoutInflatingTheCommercialTargetToSeven(){
-        var c=ready("normal-replenishment","5","5");loss(c,"2","2");receive(c,"3");drain();
-        fixture.loginAs(c.world().superAdminUserId());opening(c.world(),"2","2");
-        // ADR-101：receive 落库那一刻 wakeOutboundAfterStockIn 已按补量额度替这行补好
-        // 未审草稿(按当时可动用量截断)——「补齐出仓单」的 regenerateDraft 只服务红冲后
-        // 手工补开, 有草稿在就 409「计划已无待出仓余量」, 这里直接认领自动草稿。
-        UUID additional=db.queryForObject("""
-                SELECT issue.id FROM subcontract_material_issues issue
-                JOIN subcontract_material_issue_items item ON item.issue_id=issue.id
-                WHERE item.order_item_id=? AND issue.status=0 AND NOT issue.is_deleted
-                """,UUID.class,c.item());
-        approveIssue(c.world(),additional,c.item(),"2");
-        receive(c,"2");drain();money(stock(c),"257");
-        money(decimal("select qty from subcontract_order_items where id=?",c.item()),"5");
-        money(decimal("select sum(at_supplier_qty) from subcontract_material_issue_items where order_item_id=?",c.item()),"7");
-        money(decimal("select sum(consumed_qty) from subcontract_material_issue_items where order_item_id=?",c.item()),"5");
-        money(normalHeld(c),"0");
-        money(new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status->{
-            db.queryForObject("select id from subcontract_orders where id=? for update",UUID.class,c.submitted().orderId());
-            return plans.minimumOrderQtyFromIssued(c.item(),BigDecimal.ONE);
-        }),"5");
         assertTwoChildren();
     }
 
@@ -114,8 +93,8 @@ class SubcontractLossValueEndToEndTest {
         UUID line=db.queryForObject("select item.id from subcontract_waste_items item where item.waste_id=?",UUID.class,loss);
         var actual=db.queryForMap("select * from v_subcontract_waste_actual_value where waste_item_id=?",line);
         money((BigDecimal)actual.get("normal_value_local"),"2.00000001");money((BigDecimal)actual.get("excess_value_local"),"1.000000005");
-        money(decimal("select item.amount_local from stock_document_items item join stock_documents document on document.id=item.doc_id where document.doc_type='OTHER_IN' and item.goods_id=?",c.world().goodsE()),"5.000000025");
-        money(decimal("select node.source_amount_exact from stock_value_nodes node join stock_value_pools pool on pool.id=node.pool_id where pool.goods_id=? and node.kind='SOURCE' and node.movement_id is not null",c.world().goodsE()),"5.000000025");
+        money(decimal("select item.amount_local from stock_document_items item join stock_documents document on document.id=item.doc_id where document.doc_type='OTHER_IN' and item.goods_id=?",c.material()),"5.000000025");
+        money(decimal("select node.source_amount_exact from stock_value_nodes node join stock_value_pools pool on pool.id=node.pool_id where pool.goods_id=? and node.kind='SOURCE' and node.movement_id is not null",c.material()),"5.000000025");
         UUID caseId=db.queryForObject("select id from subcontract_loss_cases where waste_id=?",UUID.class,loss);
         fixture.loginAs(c.world().superAdminUserId());var detail=claims.detail(caseId);
         BigDecimal amount=new BigDecimal("7.000000123456789012345678");
@@ -244,39 +223,34 @@ class SubcontractLossValueEndToEndTest {
                 seeded.warehouseId(),seeded.unitId(),base,seeded.colorId(),seeded.unitLegacy()),quantity,amount,false);
     }
     private CaseFixture ready(FullChainEndToEndTest.World w,String quantity,String amount,boolean omitOrderWarehouse){
-        worldGoods.addAll(List.of(w.goodsA(),w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE()));
-        fixture.loginAs(w.superAdminUserId());opening(w,quantity,amount);
+        UUID material=fixture.ensureSubcontractDirectMaterial(w,w.goodsE());
+        worldGoods.addAll(List.of(w.goodsA(),w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE(),material));
+        fixture.loginAs(w.superAdminUserId());opening(w,material,quantity,amount);
         var orderWorld=omitOrderWarehouse?new FullChainEndToEndTest.World(w.departmentId(),w.employeeId(),w.superAdminUserId(),
                 w.goodsA(),w.goodsB(),w.goodsC(),w.goodsD(),w.goodsE(),w.clientId(),w.supplierId(),null,
                 w.unitId(),w.currencyId(),w.colorId(),w.unitLegacy()):w;
         var submitted=fixture.submitLeafSubcontractForFinance(orderWorld,new BigDecimal(quantity));
         fixture.loginAs(submitted.reviewerUserId());fixture.approvePendingFinance("SUBCONTRACT",submitted.orderId());fixture.loginAs(w.superAdminUserId());
         UUID item=db.queryForObject("select id from subcontract_order_items where order_id=?",UUID.class,submitted.orderId());
-        UUID issue=db.queryForObject("select header.id from subcontract_material_issues header join subcontract_material_issue_items line on line.issue_id=header.id where line.order_item_id=? and header.status=0 and not header.is_deleted",UUID.class,item);
-        UUID issueItem=approveIssue(w,issue,item,quantity);
+        // ADR-143 §4.2: 委外人员领满订货量, 仓库按提交量发出直属物料。
+        UUID issue=fixture.drawAndIssueSubcontract(item,new BigDecimal(quantity),"loss-draw-"+item).getFirst();
+        UUID issueItem=db.queryForObject("select id from subcontract_material_issue_items where issue_id=? and not is_deleted",UUID.class,issue);
         UUID plan=db.queryForObject("select plan.plan_id from subcontract_material_issue_items issue join subcontract_material_plan_items plan on plan.id=issue.plan_item_id where issue.id=?",UUID.class,issueItem);
-        return new CaseFixture(w,submitted,item,issue,issueItem,plan);
+        return new CaseFixture(w,submitted,item,issue,issueItem,plan,material);
     }
 
-    private void opening(FullChainEndToEndTest.World w,String quantity,String amount){
+    private void opening(FullChainEndToEndTest.World w,UUID material,String quantity,String amount){
         fixture.loginAs(w.superAdminUserId());var command=new com.uten.imp.features.stock.dto.StockDocSaveRequest();
         command.setDocType("OTHER_IN");command.setBillDate(BusinessTime.today());command.setWarehouseId(w.warehouseId());
-        var line=new com.uten.imp.features.stock.dto.StockDocItemLine();line.setGoodsId(w.goodsE());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(quantity));
+        var line=new com.uten.imp.features.stock.dto.StockDocItemLine();line.setGoodsId(material);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(quantity));
         if(amount!=null){line.setAmountOriginal(new BigDecimal(amount));line.setAmountLocal(new BigDecimal(amount));
             line.setPrice(new BigDecimal(amount).divide(new BigDecimal(quantity),10,java.math.RoundingMode.HALF_UP));}
         command.setItems(List.of(line));stockDocs.approve(stockDocs.create(command).getId());
     }
-    private UUID approveIssue(FullChainEndToEndTest.World w,UUID issue,UUID item,String quantity){
-        var original=issues.detail(issue).getItems().getFirst();var command=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest();
-        command.setBillDate(BusinessTime.today());command.setSupplierId(w.supplierId());command.setWarehouseId(w.warehouseId());
-        var line=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine();line.setGoodsId(w.goodsE());line.setParentGoodsId(w.goodsE());
-        line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(quantity));line.setOrderItemId(item);line.setPlanItemId(original.getPlanItemId());command.setItems(List.of(line));
-        issues.update(issue,command);return issues.approve(issue).getItems().getFirst().getId();
-    }
     private UUID loss(CaseFixture c,String quantity,String normal){
         fixture.loginAs(c.world().superAdminUserId());var command=new com.uten.imp.features.subcontract.waste.dto.WasteSaveRequest();
         command.setBillDate(BusinessTime.today());command.setSupplierId(c.world().supplierId());command.setWarehouseId(c.world().warehouseId());
-        var line=new com.uten.imp.features.subcontract.waste.dto.WasteItemLine();line.setGoodsId(c.world().goodsE());line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);
+        var line=new com.uten.imp.features.subcontract.waste.dto.WasteItemLine();line.setGoodsId(c.material());line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);
         line.setMaterialIssueItemId(c.issueItem());line.setQty(new BigDecimal(quantity));line.setStandardQty(new BigDecimal(normal));line.setCause("核对实际材料损耗和合同允许数量");command.setItems(List.of(line));
         UUID id=wastes.create(command).getId();wastes.approve(id);return id;
     }
@@ -315,5 +289,5 @@ class SubcontractLossValueEndToEndTest {
     private int integer(String sql,Object...args){return db.queryForObject(sql,Integer.class,args);}
     private void money(BigDecimal actual,String expected){assertNotNull(actual);assertEquals(0,actual.compareTo(new BigDecimal(expected)),"actual="+actual+", expected="+expected);}
     private void assertTwoChildren(){assertEquals(0,integer("select count(*) from (select parent_node_id from stock_value_edges group by parent_node_id having count(*)>2) invalid"));}
-    private record CaseFixture(FullChainEndToEndTest.World world,FullChainEndToEndTest.ProcurementCase submitted,UUID item,UUID issue,UUID issueItem,UUID plan){}
+    private record CaseFixture(FullChainEndToEndTest.World world,FullChainEndToEndTest.ProcurementCase submitted,UUID item,UUID issue,UUID issueItem,UUID plan,UUID material){}
 }

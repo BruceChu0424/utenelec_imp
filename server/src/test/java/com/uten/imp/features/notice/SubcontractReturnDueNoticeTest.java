@@ -50,9 +50,9 @@ class SubcontractReturnDueNoticeTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
         Map<String, Object> neverOutbound = row(
-                UUID.randomUUID(), today, 0, "5", 0);
+                UUID.randomUUID(), today, 0, "5");
         Map<String, Object> fullyReturnedPendingIqc = row(
-                UUID.randomUUID(), today, 1, "0", 0);
+                UUID.randomUUID(), today, 1, "0");
         fullyReturnedPendingIqc.put("pending_iqc_lines", 1L);
         when(jdbc.queryForList(anyString(), eq(deadline)))
                 .thenReturn(List.of(neverOutbound, fullyReturnedPendingIqc));
@@ -63,19 +63,22 @@ class SubcontractReturnDueNoticeTest {
     }
 
     @Test
-    void schedulerUsesStableOrderAndBusinessDatePublishOnceKeyForBothFlows() {
+    void schedulerUsesStableOrderAndBusinessDatePublishOnceKey() {
         LocalDate today = BusinessTime.today();
         LocalDate deadline = today.plusDays(DUE_DAYS);
         UUID newOrder = UUID.randomUUID();
         UUID legacyOrder = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
+        // ADR-143 §三.6: 未回厂 = 委外商能做成的完整套数 - 已审核回厂的物料口径量, 逐明细取, 从不把物料相加。
         when(jdbc.queryForList(
-                argThat(sql -> sql.contains("issue_item.supplier_ending")
+                argThat(sql -> sql.contains("fn_subcontract_returnable_qty(order_item.id)")
+                        && sql.contains("receipt_item.material_basis_qty")
+                        && !sql.contains("supplier_ending")
                         && !sql.contains("procurement_inspection_items")),
                 eq(deadline))).thenReturn(List.of(
-                        row(newOrder, today.plusDays(2), 1, "2", 0),
-                        row(legacyOrder, today.minusDays(1), 1, "0", 1)));
+                        row(newOrder, today.plusDays(2), 1, "2"),
+                        row(legacyOrder, today.minusDays(1), 1, "1")));
 
         scheduler(jdbc, outbox).scan();
 
@@ -102,7 +105,7 @@ class SubcontractReturnDueNoticeTest {
         UUID orderId = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
-        Map<String, Object> staleHeader = row(orderId, today, 1, "1", 0);
+        Map<String, Object> staleHeader = row(orderId, today, 1, "1");
         staleHeader.put("is_closed", true);
         staleHeader.put("fulfill", true);
         when(jdbc.queryForList(
@@ -123,12 +126,12 @@ class SubcontractReturnDueNoticeTest {
     }
 
     @Test
-    void materialReturnOrApprovedLossWithZeroSupplierEndingDoesNotWarn() {
+    void materialReturnOrApprovedLossLeavingNothingReturnableDoesNotWarn() {
         LocalDate today = BusinessTime.today();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
         Map<String, Object> settledAtSupplier = row(
-                UUID.randomUUID(), today.minusDays(2), 1, "0", 0);
+                UUID.randomUUID(), today.minusDays(2), 1, "0");
         settledAtSupplier.put("material_returned_or_wasted", true);
         when(jdbc.queryForList(anyString(), eq(today.plusDays(DUE_DAYS))))
                 .thenReturn(List.of(settledAtSupplier));
@@ -144,7 +147,7 @@ class SubcontractReturnDueNoticeTest {
         UUID orderId = UUID.randomUUID();
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
-        Map<String, Object> returned = row(orderId, today, 1, "0", 0);
+        Map<String, Object> returned = row(orderId, today, 1, "0");
         returned.put("pending_iqc_lines", 1L);
         when(jdbc.queryForList(
                 contains("approved_outbound_lines"),
@@ -179,7 +182,7 @@ class SubcontractReturnDueNoticeTest {
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         Map<String, Object> due = row(
-                orderId, today.minusDays(2), 1, "3", 0);
+                orderId, today.minusDays(2), 1, "3");
         due.put("maker_id", orderMakerEmployee);
         when(jdbc.queryForList(
                 contains("approved_outbound_lines"),
@@ -228,7 +231,7 @@ class SubcontractReturnDueNoticeTest {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         NoticeService notice = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
-        Map<String, Object> due = row(orderId, today, 1, "1", 0);
+        Map<String, Object> due = row(orderId, today, 1, "1");
         due.put("maker_id", makerEmployee);
         when(jdbc.queryForList(
                 contains("approved_outbound_lines"),
@@ -254,16 +257,14 @@ class SubcontractReturnDueNoticeTest {
             UUID orderId,
             LocalDate deliverDate,
             long approvedOutboundLines,
-            String newUnreturnedBase,
-            long legacyUnreturnedLines) {
+            String unreturnedQty) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("order_id", orderId);
         row.put("bill_no", "WO-DUE");
         row.put("deliver_date", deliverDate);
         row.put("maker_id", UUID.randomUUID());
         row.put("approved_outbound_lines", approvedOutboundLines);
-        row.put("new_unreturned_base", new BigDecimal(newUnreturnedBase));
-        row.put("legacy_unreturned_lines", legacyUnreturnedLines);
+        row.put("unreturned_qty", new BigDecimal(unreturnedQty));
         return row;
     }
 

@@ -1,10 +1,11 @@
-import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../../shared/platform_tables/platform_table_binding.dart';
-// 委外订货单「全链路进度」区（V304 · 委外全链路重设计）。
+// 委外订货单「全链路进度」区(ADR-143 §4.6)。
 //
-// 委外模块只留订货单 + 进度：本区把 财务审批 → 目标件准备/出仓 → 加工回厂/IQC/仓库入库 →
-// 退货/损耗 → 委外商处货品台账 → 应付摘要 一次聚合展示；出仓/进仓单号可点击进
-// 对应只读详情（数据通用，委外视角不进入仓库作业页面）。
+// 每条订货明细 = 一个委外任务，一条时间线：下单 → 财务审批 → 领料发外(已领 x/Q) →
+// 加工回厂 → 品质检验 → 仓库确认入仓 → 结案核销。节点状态与说明全部由服务端算好，
+// 这里只显示。物料段与委外任务详情的物料表同列(每套用量 / 需求 / 已发外 / 待仓库发 /
+// 仓库可用 / 本次可领 / 还缺 / 供应来源 / 状态)。其后是领料出仓单、回厂进仓单(品质与
+// 入仓状态)、退货单、损耗单、委外商处物料台账与应付摘要；单号可点进只读详情(委外视角
+// 不进入仓库作业页面)。金额是否可见只看服务端的 priceMasked。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,23 +13,18 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/auth/permissions.dart';
-import '../../../shared/presentation/workflow_field_guidance.dart';
+import '../../../shared/platform_tables/platform_table_binding.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
+import '../models/subcontract_doc.dart';
+import '../models/subcontract_draw.dart';
 import '../models/subcontract_order_progress.dart';
 import '../repositories/subcontract_repository.dart';
-import '../models/subcontract_doc.dart';
+import 'subcontract_draw_status.dart';
 
 class SubcontractOrderProgressSection extends ConsumerStatefulWidget {
-  const SubcontractOrderProgressSection({
-    super.key,
-    required this.orderId,
-    this.orderClosed = false,
-  });
+  const SubcontractOrderProgressSection({super.key, required this.orderId});
 
   final String orderId;
-
-  /// 结清由订货详情的服务端 closed 判定，不能因缩减订货量或材料结存归零推断。
-  final bool orderClosed;
 
   @override
   ConsumerState<SubcontractOrderProgressSection> createState() =>
@@ -126,17 +122,38 @@ class _SubcontractOrderProgressSectionState
   }
 
   Widget _buildContent(ThemeData theme, SubcontractOrderProgress p) {
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canViewPrice =
-        (permissions.contains(Perm.subcontractOrderPriceView) ||
-            permissions.contains(Perm.financeViewAll)) &&
-        !p.priceMasked;
+    final canViewPrice = !p.priceMasked;
+    final closeReason = (p.planCloseReason ?? '').trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _nodeStrip(theme, p),
-        const SizedBox(height: UtenSpacing.s12),
-        _materialSection(theme, p),
+        if (p.planStatus == 'CLOSED')
+          _hint(theme, '领料计划已关闭${closeReason.isEmpty ? '' : '：$closeReason'}')
+        else if (p.planStatus == 'CANCELED')
+          _hint(theme, '订货单已红冲，领料计划已取消'),
+        if (p.items.isEmpty)
+          _hint(theme, '订货单还没有明细')
+        else
+          for (var index = 0; index < p.items.length; index++) ...[
+            if (index > 0) const SizedBox(height: UtenSpacing.s12),
+            _itemSection(theme, p.items[index]),
+          ],
+        if (p.issues.isNotEmpty) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          _docSection(
+            theme,
+            title: '领料出仓单',
+            docs: p.issues,
+            segment: 'material-issues',
+            // 一张出仓单含多种物料，单位各不相同，不显示合计数量。
+            showQty: false,
+            statusLabel: (d) => switch (d.status) {
+              1 => '已发出',
+              0 => '待仓库发料',
+              _ => '已红冲',
+            },
+          ),
+        ],
         if (p.receipts.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s12),
           _docSection(
@@ -164,7 +181,7 @@ class _SubcontractOrderProgressSectionState
             docs: p.wastes,
             segment: 'wastes',
             trailing: (d) => canViewPrice && (d.deductAmount ?? 0) > 0
-                ? '建议索赔 ${_fmt(d.deductAmount!)}'
+                ? '建议索赔 ${d.deductAmount!.toStringAsFixed(2)}'
                 : null,
           ),
         ],
@@ -180,79 +197,96 @@ class _SubcontractOrderProgressSectionState
     );
   }
 
-  // 下单后先完成所需内部生产，再交财务，随后实际目标件出仓。
-  // 加工回厂 → 品质检验 → 仓库确认入仓 → 结案。品质与入库不得合并推断。
-  Widget _nodeStrip(ThemeData theme, SubcontractOrderProgress p) {
-    final reversed = p.status == -1;
-    final financeDone = p.financeCaseStatus == 'APPROVED' || p.status == 1;
-    final preparationLines = p.materialLines
-        .where(
-          (line) =>
-              line.flowMode == 'MAKE_THEN_OUTBOUND' || line.isDraftPreparation,
-        )
-        .toList(growable: false);
-    final preparationDone =
-        preparationLines.isNotEmpty &&
-        preparationLines.every(
-          (line) =>
-              line.preparationStatus == 'READY_FOR_FINANCE' ||
-              line.preparationStatus == 'READY_OUTBOUND' ||
-              line.preparationStatus == 'OUTBOUND_COMPLETE',
-        );
-    final outboundRelevant =
-        p.materialRequired || p.materialLines.isNotEmpty || p.issues.isNotEmpty;
-    final outboundDone = p.materialLines.isNotEmpty
-        ? p.materialLines.every(
-            (line) =>
-                line.preparationStatus == 'OUTBOUND_COMPLETE' ||
-                (line.remainingQty <= 0 && line.issuedQty > 0),
-          )
-        : p.issues.any((issue) => issue.status == 1);
-    final outboundCurrent = financeDone && outboundRelevant && !outboundDone;
-    final receivedTotal = p.receipts
-        .where((r) => r.status == 1)
-        .fold<double>(0, (a, b) => a + (b.totalQty ?? 0));
-    final approvedReceipts = p.receipts
-        .where((receipt) => receipt.status == 1)
-        .toList(growable: false);
-    final receiptsFinalized = p.receipts.every(
-      (receipt) => receipt.status != 0,
-    );
-    final qualityDone =
-        receivedTotal > 0 &&
-        receiptsFinalized &&
-        approvedReceipts.isNotEmpty &&
-        approvedReceipts.every((receipt) => receipt.qualityResolved);
-    final warehouseStockInDone =
-        qualityDone &&
-        approvedReceipts.every((receipt) => receipt.warehouseStocked);
-
-    final nodes = <_Node>[
-      const _Node('下单', true),
-      if (preparationLines.isNotEmpty)
-        _Node(
-          workflowFieldText(context).subcontractInternalProduction,
-          preparationDone,
-          current: !reversed && !preparationDone,
-        ),
-      _Node('财务审批', financeDone),
-      if (outboundRelevant)
-        _Node('目标件出仓', outboundDone, current: outboundCurrent),
-      _Node('加工回厂', receivedTotal > 0),
-      _Node('品质检验', qualityDone, current: receivedTotal > 0 && !qualityDone),
-      _Node(
-        '仓库确认入仓',
-        warehouseStockInDone,
-        current: qualityDone && !warehouseStockInDone,
+  /// 一个委外任务：委外件身份 + 时间线 + 直属物料表。
+  Widget _itemSection(ThemeData theme, SubcontractItemProgress item) {
+    final identity = [
+      if (item.goodsCode.isNotEmpty) item.goodsCode,
+      if (item.colorName.isNotEmpty) item.colorName,
+    ].join(' · ');
+    return Container(
+      key: ValueKey('subcontract-progress-item-${item.orderItemId}'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: UtenRadius.mdAll,
       ),
-      _Node('结案核销', widget.orderClosed),
-    ];
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                item.goodsName.isEmpty ? '委外件' : item.goodsName,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (identity.isNotEmpty)
+                Text(
+                  identity,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              Text(
+                '订货 ${_qty(item.orderQty, item.unitName)}',
+                style: theme.textTheme.bodySmall,
+              ),
+              if (item.bomMissing) _bomMissingTag(theme),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          _timelineStrip(theme, item),
+          if (item.materials.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Text(
+              '直属物料 · 已备 ${item.readyKindCount}/${item.materialKindCount} 种',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            _materialTable(item),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _bomMissingTag(ThemeData theme) => Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: UtenSpacing.s8,
+      vertical: 2,
+    ),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.error.withValues(alpha: 0.10),
+      borderRadius: UtenRadius.smAll,
+      border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.5)),
+    ),
+    child: Text(
+      '缺 BOM',
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.error,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+
+  /// 下单 → 财务审批 → 领料发外 → 加工回厂 → 品质检验 → 仓库确认入仓 → 结案核销。
+  Widget _timelineStrip(ThemeData theme, SubcontractItemProgress item) {
+    final nodes = item.timeline;
+    if (nodes.isEmpty) return _hint(theme, '进度暂未生成');
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
           for (var i = 0; i < nodes.length; i++) ...[
-            _nodeChip(theme, nodes[i], reversed && i > 0),
+            _nodeChip(theme, item, nodes[i]),
             if (i != nodes.length - 1)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -268,208 +302,76 @@ class _SubcontractOrderProgressSectionState
     );
   }
 
-  Widget _nodeChip(ThemeData theme, _Node node, bool dimmed) {
-    final done = node.done && !dimmed;
-    final color = dimmed
-        ? theme.colorScheme.onSurfaceVariant
-        : done
-        ? theme.colorScheme.primary
-        : node.current
-        ? theme.colorScheme.tertiary
-        : theme.colorScheme.onSurfaceVariant;
+  Widget _nodeChip(
+    ThemeData theme,
+    SubcontractItemProgress item,
+    SubcontractProgressNode node,
+  ) {
+    final (color, icon) = switch (node.state) {
+      SubcontractProgressNodeState.done => (
+        theme.colorScheme.primary,
+        Icons.check_circle_rounded,
+      ),
+      SubcontractProgressNodeState.active => (
+        theme.colorScheme.tertiary,
+        Icons.timelapse_rounded,
+      ),
+      SubcontractProgressNodeState.pending => (
+        theme.colorScheme.onSurfaceVariant,
+        Icons.radio_button_unchecked,
+      ),
+      SubcontractProgressNodeState.skipped => (
+        theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+        Icons.remove_circle_outline,
+      ),
+    };
+    final emphasized =
+        node.state == SubcontractProgressNodeState.done ||
+        node.state == SubcontractProgressNodeState.active;
+    final detail = node.detail?.trim();
     return Container(
+      key: ValueKey(
+        'subcontract-progress-node-${item.orderItemId}-${node.key}',
+      ),
+      constraints: const BoxConstraints(maxWidth: 240),
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
         vertical: UtenSpacing.s4,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: done || node.current ? 0.12 : 0.06),
-        borderRadius: BorderRadius.circular(UtenRadius.md),
+        color: color.withValues(alpha: emphasized ? 0.12 : 0.06),
+        borderRadius: UtenRadius.mdAll,
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            done
-                ? Icons.check_circle_rounded
-                : node.current
-                ? Icons.timelapse_rounded
-                : Icons.radio_button_unchecked,
-            size: 13,
-            color: color,
-          ),
-          const SizedBox(width: 4),
-          Text(
-            node.label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: done || node.current ? FontWeight.w700 : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _materialSection(ThemeData theme, SubcontractOrderProgress p) {
-    final hasOutboundPlan =
-        p.materialRequired || p.materialLines.isNotEmpty || p.issues.isNotEmpty;
-    if (!hasOutboundPlan) {
-      return _sectionBox(
-        theme,
-        title: '目标件出仓',
-        child: Text(
-          '该历史订货尚未形成目标件出仓计划；不能据此认定“无 BOM 无需出仓”。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-    return _sectionBox(
-      theme,
-      title: '目标件准备与出仓',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (p.planStatus == 'CLOSED')
-            _hint(
-              theme,
-              '出仓计划已关闭${p.planCloseReason != null ? '：${p.planCloseReason}' : ''}',
-            )
-          else if (p.planStatus == 'CANCELED')
-            _hint(theme, '出仓计划已随订货红冲取消'),
-          if (p.materialLines.isNotEmpty) ...[
-            for (var index = 0; index < p.materialLines.length; index++) ...[
-              _materialLineCard(theme, p.materialLines[index]),
-              if (index != p.materialLines.length - 1)
-                const SizedBox(height: UtenSpacing.s8),
-            ],
-          ],
-          if (p.issues.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            _docSection(
-              theme,
-              title: '目标件出仓单',
-              docs: p.issues,
-              segment: 'material-issues',
-              dense: true,
-            ),
-          ] else if (p.planStatus == 'OPEN')
-            _hint(theme, '未备齐的目标件不会进入仓库；已放行行正在等待生成出仓草稿或仓库拣货'),
-        ],
-      ),
-    );
-  }
-
-  Widget _materialLineCard(ThemeData theme, SubcontractMaterialPlanLine line) {
-    final target = '${line.goodsCode ?? ''} ${line.goodsName ?? ''}'.trim();
-    final legacyParent =
-        '${line.parentGoodsCode ?? ''} ${line.parentGoodsName ?? ''}'.trim();
-    final blocker = line.blocker?.trim();
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: UtenRadius.smAll,
-      ),
-      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  target.isEmpty ? '未命名委外目标件' : target,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 4),
               Text(
-                _preparationStatusLabel(line.preparationStatus),
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
-                  fontWeight: FontWeight.w700,
+                node.label,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: emphasized ? FontWeight.w700 : null,
+                  decoration: node.state == SubcontractProgressNodeState.skipped
+                      ? TextDecoration.lineThrough
+                      : null,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            line.isLegacyBomComponent
-                ? '历史 BOM 子件发料'
-                      '${legacyParent.isEmpty ? '' : ' · 父件 $legacyParent'}'
-                : _flowModeLabel(line.flowMode, line.isStockDirectLine),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s4,
-            children: [
-              _quantityFact(theme, '目标量', line.plannedQty, line.unitName),
-              if (line.isDraftPreparation) ...[
-                _quantityFact(
-                  theme,
-                  workflowFieldText(context).subcontractPreparedQuantity,
-                  line.preparedQty,
-                  line.unitName,
+          if (detail != null && detail.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                detail,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-                _quantityFact(
-                  theme,
-                  workflowFieldText(context).subcontractPreparationShortage,
-                  line.remainingQty,
-                  line.unitName,
-                ),
-              ] else ...[
-                if (!line.isLegacyBomComponent)
-                  _quantityFact(
-                    theme,
-                    '前置已完成',
-                    line.preparedQty,
-                    line.unitName,
-                  ),
-                _quantityFact(
-                  theme,
-                  '当前可出',
-                  line.readyOutboundQty,
-                  line.unitName,
-                ),
-                _quantityFact(theme, '已出仓', line.issuedQty, line.unitName),
-                _quantityFact(theme, '订单未出', line.remainingQty, line.unitName),
-              ],
-            ],
-          ),
-          if (blocker != null && blocker.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              blocker,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: line.isDraftPreparation
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.error,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          if (line.preparationAnalysisId != null &&
-              line.allowedActions.contains('OPEN_ANALYSIS'))
-            TextButton.icon(
-              onPressed: () => context.push(
-                RoutePath.productionMaterialAnalysisSummary(
-                  line.preparationAnalysisId!,
-                ),
-              ),
-              icon: const Icon(Icons.account_tree_outlined, size: 18),
-              label: Text(
-                workflowFieldText(context).subcontractOpenPreparation,
               ),
             ),
         ],
@@ -477,45 +379,78 @@ class _SubcontractOrderProgressSectionState
     );
   }
 
-  Widget _quantityFact(
-    ThemeData theme,
+  /// 与委外任务详情物料表同列；数量都是服务端算好的结果。
+  Widget _materialTable(SubcontractItemProgress item) =>
+      MasterDataTableView<SubcontractDrawMaterial>(
+        key: ValueKey('subcontract-progress-materials-${item.orderItemId}'),
+        tableKey: 'subcontract.order.progress.materials',
+        embedded: true,
+        compactCards: true,
+        showFullscreenToggle: false,
+        facets: const {},
+        nullCounts: const {},
+        filters: const {},
+        onFilterChanged: (_, _) {},
+        columns: [
+          MasterColumnDef(
+            key: 'goodsName',
+            label: '物料名称',
+            width: 180,
+            value: (row) => _label(row.goodsName),
+          ),
+          MasterColumnDef(
+            key: 'goodsCode',
+            label: '编号',
+            width: 130,
+            value: (row) => _label(row.goodsCode),
+          ),
+          MasterColumnDef(
+            key: 'colorName',
+            label: '颜色',
+            width: 90,
+            value: (row) => _label(row.colorName),
+          ),
+          MasterColumnDef(
+            key: 'unitName',
+            label: '单位',
+            width: 70,
+            value: (row) => _label(row.unitName),
+          ),
+          _qtyColumn('perUnitQty', '每套用量', (row) => row.perUnitQty),
+          _qtyColumn('requiredQty', '需求', (row) => row.requiredQty),
+          _qtyColumn('sentQty', '已发外', (row) => row.sentQty),
+          _qtyColumn('pendingQty', '待仓库发', (row) => row.pendingQty),
+          _qtyColumn('availableQty', '仓库可用', (row) => row.availableQty),
+          _qtyColumn('drawableQty', '本次可领', (row) => row.drawableQty),
+          _qtyColumn('shortQty', '还缺', (row) => row.shortQty),
+          const MasterColumnDef(
+            key: 'supplySources',
+            label: '供应来源',
+            width: 240,
+            value: subcontractDrawSupplyText,
+          ),
+          const MasterColumnDef(
+            key: 'state',
+            label: '状态',
+            width: 110,
+            value: subcontractDrawMaterialStateLabel,
+          ),
+        ],
+        items: item.materials,
+        emptyMessage: '本任务没有需要领的物料',
+      );
+
+  MasterColumnDef<SubcontractDrawMaterial> _qtyColumn(
+    String key,
     String label,
-    double value,
-    String? unit,
-  ) => Text(
-    '$label ${_fmt(value)}${unit?.trim().isNotEmpty == true ? ' ${unit!.trim()}' : ''}',
-    style: theme.textTheme.bodySmall,
+    double Function(SubcontractDrawMaterial row) qty,
+  ) => MasterColumnDef(
+    key: key,
+    label: label,
+    width: 96,
+    type: 'number',
+    value: (row) => subcontractDrawQty(qty(row)),
   );
-
-  String _flowModeLabel(String flowMode, [bool stockDirect = false]) =>
-      switch (flowMode) {
-        'DRAFT_PREPARATION' => workflowFieldText(
-          context,
-        ).subcontractDraftPreparationHint,
-        // 直下单销售式供货：有子层但现货充足拆出的直发行，区别于真无子层件。
-        'DIRECT_OUTBOUND' =>
-          stockDirect ? '有子层级 · 仓库现货直发（缺口另行走前置自制）' : '无子层级 · 目标件库存放行后直接出仓',
-        'MAKE_THEN_OUTBOUND' => '有子层级 · 先自制、FQC 和入仓，可分批出仓',
-        // V458：分析来源的有子层级件在下单前已完成前置自制并通知委外。
-        'PREPARED_OUTBOUND' => '前置自制已先行完成 · 批准即出仓',
-        'LEGACY_BOM_COMPONENT' => '历史 BOM 子件发料',
-        _ => '准备路线待确认',
-      };
-
-  String _preparationStatusLabel(String status) => switch (status) {
-    'WAITING_PLAN' => workflowFieldText(context).subcontractWaitingPlan,
-    'READY_FOR_FINANCE' => workflowFieldText(
-      context,
-    ).subcontractReadyForFinance,
-    'ACTION_REQUIRED' => '待计划员开始物料分析',
-    'IN_PREPARATION' || 'WAITING_PREPARATION' => '前置自制中',
-    'WAITING_FQC' => '等待品质检查',
-    'WAITING_INBOUND' => '等待自制件入仓',
-    'READY_OUTBOUND' || 'LEGACY_READY' => '已备齐，等待仓库出仓',
-    'OUTBOUND_COMPLETE' => '目标件已出仓',
-    'CANCELLED' => '已取消',
-    _ => '状态待确认',
-  };
 
   Widget _docSection(
     ThemeData theme, {
@@ -523,93 +458,90 @@ class _SubcontractOrderProgressSectionState
     required List<SubcontractProgressDoc> docs,
     required String segment,
     String? Function(SubcontractProgressDoc)? trailing,
-    bool dense = false,
+    String Function(SubcontractProgressDoc)? statusLabel,
+    bool showQty = true,
   }) {
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (!dense)
-          Text(
-            title,
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        if (dense)
-          Text(
-            title,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        const SizedBox(height: UtenSpacing.s4),
-        for (final d in docs)
-          InkWell(
-            borderRadius: BorderRadius.circular(UtenRadius.md),
-            onTap: () =>
-                context.push(RoutePath.subcontractDocDetail(segment, d.id)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-              child: Row(
-                children: [
-                  Icon(
-                    switch (d.status) {
-                      1 => Icons.check_circle_outline,
-                      0 => Icons.pending_actions_outlined,
-                      _ => Icons.undo_rounded,
-                    },
-                    size: 15,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '${d.billNo ?? '—'} · ${_fmt(d.totalQty ?? 0)}'
-                      '${d.billDate != null ? ' · ${d.billDate}' : ''}'
-                      '${d.approverName != null ? ' · ${d.approverName}' : ''}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600,
+    return _sectionBox(
+      theme,
+      title: title,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final d in docs)
+            InkWell(
+              borderRadius: BorderRadius.circular(UtenRadius.md),
+              onTap: () =>
+                  context.push(RoutePath.subcontractDocDetail(segment, d.id)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+                child: Row(
+                  children: [
+                    Icon(
+                      switch (d.status) {
+                        1 => Icons.check_circle_outline,
+                        0 => Icons.pending_actions_outlined,
+                        _ => Icons.undo_rounded,
+                      },
+                      size: 15,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        [
+                          d.billNo ?? '—',
+                          if ((d.warehouseName ?? '').trim().isNotEmpty)
+                            d.warehouseName!.trim(),
+                          if (showQty) subcontractDrawQty(d.totalQty ?? 0),
+                          if (d.billDate != null) d.billDate!,
+                          if (d.approverName != null) d.approverName!,
+                        ].join(' · '),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  if (trailing?.call(d) != null)
-                    Flexible(
-                      flex: 2,
-                      child: Text(
-                        trailing!(d)!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.right,
+                    if (trailing?.call(d) case final text?)
+                      Flexible(
+                        flex: 2,
+                        child: Text(
+                          text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      )
+                    else
+                      Text(
+                        (statusLabel ?? _docStatusText)(d),
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
-                    )
-                  else
-                    Text(
-                      switch (d.status) {
-                        1 => '已审核',
-                        0 => '草稿',
-                        _ => '已红冲',
-                      },
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
-    return dense ? body : _sectionBox(theme, child: body);
   }
+
+  static String _docStatusText(SubcontractProgressDoc doc) =>
+      switch (doc.status) {
+        1 => '已审核',
+        0 => '草稿',
+        _ => '已红冲',
+      };
 
   Widget _ledgerSection(ThemeData theme, SubcontractOrderProgress p) {
     return _sectionBox(
       theme,
-      title: '委外商处货品台账(守恒)',
+      title: '委外商处物料台账(守恒)',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -632,7 +564,7 @@ class _SubcontractOrderProgressSectionState
             columns: [
               MasterColumnDef(
                 key: 'goodsName',
-                label: '货品名称',
+                label: '物料名称',
                 width: 180,
                 value: (row) => row.goodsName,
               ),
@@ -659,37 +591,37 @@ class _SubcontractOrderProgressSectionState
                 label: '发出',
                 width: 120,
                 type: 'number',
-                value: (row) => _fmt(row.atSupplierQty),
+                value: (row) => subcontractDrawQty(row.atSupplierQty),
               ),
               MasterColumnDef(
                 key: 'consumedQty',
-                label: '已加工/消费',
+                label: '回厂核销',
                 width: 140,
                 type: 'number',
-                value: (row) => _fmt(row.consumedQty),
+                value: (row) => subcontractDrawQty(row.consumedQty),
               ),
               MasterColumnDef(
                 key: 'returnedQty',
                 label: '已退',
                 width: 110,
                 type: 'number',
-                value: (row) => _fmt(row.returnedQty),
+                value: (row) => subcontractDrawQty(row.returnedQty),
               ),
               MasterColumnDef(
                 key: 'wastedQty',
                 label: '损耗',
                 width: 110,
                 type: 'number',
-                value: (row) => _fmt(row.wastedQty),
+                value: (row) => subcontractDrawQty(row.wastedQty),
               ),
               MasterColumnDef(
                 key: 'supplierEnding',
                 label: '结存',
                 width: 120,
                 type: 'number',
-                value: (row) => _fmt(row.supplierEnding),
+                value: (row) => subcontractDrawQty(row.supplierEnding),
                 cellBuilder: (_, row) => Text(
-                  _fmt(row.supplierEnding),
+                  subcontractDrawQty(row.supplierEnding),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -704,9 +636,8 @@ class _SubcontractOrderProgressSectionState
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
               child: Text(
-                '新流按目标件追踪发出、加工回厂、退回、损耗与结存；'
-                '历史 BOM 子件发料单仍按子件守恒解释。'
-                '未清结存必须由真实退回或损耗单核销，不能因回厂入仓自动抹平。',
+                '委外商处物料逐种按发出、回厂核销、退回、损耗守恒；'
+                '未清结存要由退料单或损耗单核销，回厂入仓不会自动抹平。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -799,6 +730,8 @@ class _SubcontractOrderProgressSectionState
         _ => null,
       };
 
+  /// 进仓单的品质与入仓状态。仓库入库状态缺失或不认识时显示「待回传」，
+  /// 不从质检结案推断已入仓。
   String _receiptProgressText(SubcontractProgressDoc receipt) {
     final status = switch (receipt.warehouseStockInStatus
         ?.trim()
@@ -807,27 +740,26 @@ class _SubcontractOrderProgressSectionState
       'PENDING_STOCK_IN' => '合格待仓库入库',
       'PARTIAL_STOCK_IN' => '仓库部分入库',
       'STOCKED' => '仓库已确认入仓',
+      'NO_QUALIFIED_STOCK' => '无合格品入库',
       'REVERSED' => '入库已撤销',
       _ => '仓库入库状态待回传',
     };
     final quantities = <String>[
       if (receipt.iqcPassedBaseQty != null)
-        '合格 ${_fmt(receipt.iqcPassedBaseQty!)}',
+        '合格 ${subcontractDrawQty(receipt.iqcPassedBaseQty!)}',
       if (receipt.warehouseStockedBaseQty != null)
-        '已入库 ${_fmt(receipt.warehouseStockedBaseQty!)}',
+        '已入库 ${subcontractDrawQty(receipt.warehouseStockedBaseQty!)}',
       if (receipt.pendingStockInBaseQty != null)
-        '待入库 ${_fmt(receipt.pendingStockInBaseQty!)}',
+        '待入库 ${subcontractDrawQty(receipt.pendingStockInBaseQty!)}',
     ];
     return [?_iqcText(receipt.iqcStatus), status, ...quantities].join(' · ');
   }
 
-  static String _fmt(double v) =>
-      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
-}
+  static String _qty(double value, String unit) {
+    final trimmed = unit.trim();
+    return '${subcontractDrawQty(value)}${trimmed.isEmpty ? '' : ' $trimmed'}';
+  }
 
-class _Node {
-  const _Node(this.label, this.done, {this.current = false});
-  final String label;
-  final bool done;
-  final bool current;
+  static String _label(String? value) =>
+      value?.trim().isNotEmpty == true ? value!.trim() : '—';
 }

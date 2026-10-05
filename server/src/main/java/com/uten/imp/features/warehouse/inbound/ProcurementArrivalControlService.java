@@ -3,12 +3,12 @@ package com.uten.imp.features.warehouse.inbound;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
-import com.uten.imp.features.subcontract.SubcontractOutboundFlowSql;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
+import com.uten.imp.common.finance.PurchaseOverReceiptTolerance;
 import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.util.PostgresUuidOrder;
@@ -121,17 +121,21 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     /**
-     * 当前预计到货行还能登记的数量。采购和历史委外沿用财务快照；V436 新委外
-     * 只释放已经审核出仓的目标件数量，并扣除已审核回厂。IQC 失败已实物退回的
-     * 总量按 V440 加回；补货收货仍由“全部已审核回厂”统一扣除，不能再按 ACTIVE
-     * allocation 重复扣减。最终容量仍受订单净未收量约束。
-     * 已全发且回厂数量进入允许损耗范围的开放短交案件，不再催仓库补登记余量；
+     * 当前预计到货行还能登记的数量(订货单位)。采购沿用财务快照(收满订货量即关闭, 允许超收量
+     * 不进预计到货, ADR-144)。委外(ADR-143 §三.6): 只放行委外商用我方已发直属物料能做成的完整套数
+     * ({@code fn_subcontract_returnable_qty}) + 财务已批准入库的委外商自带料
+     * ({@code arrival_overage_posted_qty}) + IQC 不合格已实物退回待补的量, 再扣全部已审核回厂;
+     * 从不把不同物料折算后相加。已批准的委外明细一定有冻结计划行(缺 BOM 不能下单, §二.3);
+     * 万一没有, 可回厂套数按 0 计(fail-closed)。
+     * 最终容量仍受订单净未收量约束。
+     * 已发齐(或已结束领料)且回厂数量进入允许损耗范围的开放短交案件，不再催仓库补登记余量；
      * 待检与损耗结账仍由品质放行后的原流程处理。本方法仅用于任务查询，不改变财务批准额度。
      */
     private static String currentReceivableQty(String itemAlias) {
-        // 共享折算式作为 %2$s **参数**注入，而不是拼进文本块：`.formatted(...)` 只会
+        // 共享片段作为 %2$s **参数**注入，而不是拼进文本块：`.formatted(...)` 只会
         // 作用于紧挨它的那一段字面量，把带 %1$s 的模板拆成多段拼接会让前面几段的
         // 占位符原样留在 SQL 里（真库直接 42601）。这条 SQL 一旦拆段就必炸，别再拆。
+        // 供料上限按订货单位算, 再换算成预计到货明细单位; 换算率缺失时按 0 处理(fail-closed)。
         return """
                 CASE
                   WHEN EXISTS (
@@ -174,63 +178,41 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                              AND tolerance_plan.status = 'OPEN' AND NOT tolerance_plan.is_deleted
                             WHERE tolerance_plan_item.order_item_id = tolerance_order.id
                               AND NOT tolerance_plan_item.is_deleted
-                              AND tolerance_plan_item.issued_qty < tolerance_plan_item.planned_qty
+                              AND tolerance_plan_item.draw_closed_at IS NULL
+                              -- 「料已发完」按我方需发量(ADR-143 §三.4a, 委外商自带料那部分不用我方物料)
+                              AND tolerance_plan_item.issued_qty < fn_subcontract_draw_needed_qty(
+                                  tolerance_order.id, tolerance_plan_item.planned_qty,
+                                  tolerance_plan_item.bom_unit_qty)
                         )
                   ) THEN 0::numeric
-                  WHEN NOT EXISTS (
-                      SELECT 1
-                      FROM subcontract_material_plan_items release_plan
-                      WHERE release_plan.order_item_id = %1$s.order_item_id
-                        AND release_plan.flow_mode IN (
-                            'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                        AND release_plan.is_deleted = FALSE
-                  ) THEN %3$s
-                  ELSE LEAST(
-                      %3$s,
-                      GREATEST((
-                          COALESCE((
-                              SELECT %2$s
-                              FROM subcontract_material_issue_items issue_item
-                              JOIN subcontract_material_issues issue
-                                ON issue.id = issue_item.issue_id
-                               AND issue.status = 1
-                               AND issue.is_deleted = FALSE
-                              JOIN subcontract_material_plan_items plan_item
-                                ON plan_item.id = issue_item.plan_item_id
-                               AND plan_item.flow_mode IN (
-                                   'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                               AND plan_item.is_deleted = FALSE
-                              JOIN subcontract_order_items order_unit
-                                ON order_unit.id = issue_item.order_item_id
-                              WHERE issue_item.order_item_id = %1$s.order_item_id
-                                AND issue_item.is_deleted = FALSE
-                          ), 0)
-                          + COALESCE((
-                              SELECT SUM(rejection.failed_base_qty)
-                              FROM procurement_iqc_rejection_cases rejection
-                              WHERE rejection.receipt_type = 'SUBCONTRACT'
-                                AND rejection.order_item_id = %1$s.order_item_id
-                                AND rejection.is_deleted = FALSE
-                                AND rejection.return_recorded_at IS NOT NULL
-                                AND rejection.status IN (
-                                    'RETURN_RECORDED','CREDIT_CONFIRMED',
-                                    'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
-                          ), 0)
-                          - COALESCE((
-                              SELECT SUM(receipt_item.qty
-                                  * COALESCE(receipt_item.unit_rate, 1))
-                              FROM subcontract_receipt_items receipt_item
-                              JOIN subcontract_receipts receipt
-                                ON receipt.id = receipt_item.receipt_id
-                               AND receipt.status = 1
-                               AND receipt.is_deleted = FALSE
-                              WHERE receipt_item.order_item_id = %1$s.order_item_id
-                                AND receipt_item.is_deleted = FALSE
-                          ), 0)
-                      ) / NULLIF(%1$s.unit_rate, 0), 0)
-                  )
+                  ELSE COALESCE((
+                      SELECT LEAST(
+                          %2$s,
+                          COALESCE(ROUND(GREATEST(
+                              COALESCE(supplied.returnable_qty, 0)
+                              + COALESCE(supplied_item.arrival_overage_posted_qty, 0)
+                              + COALESCE((
+                                  SELECT SUM(rejection.failed_qty)
+                                  FROM procurement_iqc_rejection_cases rejection
+                                  WHERE rejection.receipt_type = 'SUBCONTRACT'
+                                    AND rejection.order_item_id = supplied_item.id
+                                    AND rejection.is_deleted = FALSE
+                                    AND rejection.return_recorded_at IS NOT NULL
+                                    AND rejection.status IN (
+                                        'RETURN_RECORDED','CREDIT_CONFIRMED',
+                                        'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                              ), 0)
+                              - COALESCE(supplied_item.received_qty, 0), 0)
+                              * COALESCE(supplied_item.unit_rate, 1)
+                              / NULLIF(%1$s.unit_rate, 0), 4), 0))
+                      FROM subcontract_order_items supplied_item
+                      CROSS JOIN LATERAL (
+                          SELECT fn_subcontract_returnable_qty(supplied_item.id) AS returnable_qty
+                      ) supplied
+                      WHERE supplied_item.id = %1$s.order_item_id
+                  ), %2$s)
                 END
-                """.formatted(itemAlias, SubcontractOutboundFlowSql.ISSUED_TARGET_BASE_SUM,
+                """.formatted(itemAlias,
                         SubcontractLossSettlementSql.expectationRemainingQty(itemAlias, "'SUBCONTRACT'"));
     }
 
@@ -428,6 +410,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             throw new ProcurementArrivalBlockedException(blockedBySuppliedMaterial
                     ? "回厂数量超过我方发给委外商的材料能做出来的数量，多出来的部分用的是委外商"
                         + "自己的材料；本次未入库、未立应付，已转交财务审核组确认价格和归属"
+                    : PURCHASE.equals(orderType)
+                    ? "实际到货超过最多可收数量(订货量加允许超收比例)；本次未入库、未立应付，"
+                        + "已转交财务审核组共享待审"
                     : "实际到货超过财务已批准的可收数量；本次未入库、未立应付，已转交财务审核组共享待审");
         }
     }
@@ -1202,7 +1187,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 task.financeReason(), task.acceptedQty(), task.unacceptedQty(),
                 task.status(), task.decision(), task.version(),
                 task.detectedAt(), task.decidedAt(), task.returnTask(),
-                task.allowedActions(), true);
+                task.allowedActions(), task.orderQtySnapshot(),
+                task.allowedOverReceiptPctSnapshot(), task.toleranceQtySnapshot(),
+                task.priorNetReceivedQtySnapshot(), true);
     }
 
     /**
@@ -1918,7 +1905,28 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        COALESCE(inflight.registered_qty, 0) AS registered_qty,
                        item.expected_date,
                        remembered.id AS last_receipt_warehouse_id,
-                       remembered.name AS last_receipt_warehouse_name
+                       remembered.name AS last_receipt_warehouse_name,
+                       -- ADR-144 采购允许超收(只用于显示「最多可收」): 订货量 + 已过账超量 + 允许超收量
+                       -- - 已收净量, 与数据库收货守卫同一口径; 委外为 NULL。
+                       purchase_item.allowed_over_receipt_pct,
+                       CASE WHEN purchase_item.id IS NULL THEN NULL
+                            ELSE GREATEST(item.ordered_qty
+                                + fn_purchase_over_receipt_tolerance(
+                                    purchase_item.qty, purchase_item.allowed_over_receipt_pct)
+                                - (COALESCE(purchase_item.received_qty, 0)
+                                   - COALESCE(purchase_item.returned_qty, 0)
+                                   - COALESCE((
+                                       SELECT SUM(rejection.failed_qty)
+                                       FROM procurement_iqc_rejection_cases rejection
+                                       WHERE rejection.receipt_type = 'PURCHASE'
+                                         AND rejection.order_item_id = purchase_item.id
+                                         AND rejection.is_deleted = FALSE
+                                         AND rejection.return_recorded_at IS NOT NULL
+                                         AND rejection.status IN (
+                                             'RETURN_RECORDED','CREDIT_CONFIRMED',
+                                             'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                                   ), 0)), 0)
+                       END AS max_receivable_qty
                 FROM inbound_expectation_items item
                 JOIN inbound_expectations expectation
                   ON expectation.id = item.expectation_id
@@ -1926,6 +1934,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
                 LEFT JOIN units base_unit ON base_unit.id = goods.unit_id
+                LEFT JOIN purchase_order_items purchase_item
+                  ON expectation.order_type = 'PURCHASE'
+                 AND purchase_item.id = item.order_item_id
                 """ + com.uten.imp.features.warehouse.WarehouseMasterDefaultsSql.owningWarehouseJoin("goods", "remembered") + """
                     AND (CAST(? AS uuid) IS NULL OR fn_warehouse_same_main(remembered.id,CAST(? AS uuid)))
                     AND NOT EXISTS (
@@ -1983,7 +1994,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getObject("expected_date", LocalDate.class),
                         List.of(),
                         rs.getObject("last_receipt_warehouse_id", UUID.class),
-                        rs.getString("last_receipt_warehouse_name")),
+                        rs.getString("last_receipt_warehouse_name"),
+                        rs.getBigDecimal("allowed_over_receipt_pct"),
+                        rs.getBigDecimal("max_receivable_qty")),
                 suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
                 suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
                 header.id());
@@ -2012,7 +2025,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                                 .map(ProcurementArrivalControlService::toInboundAllocation)
                                 .toList(),
                         item.lastReceiptWarehouseId(),
-                        item.lastReceiptWarehouseName())).toList();
+                        item.lastReceiptWarehouseName(),
+                        item.allowedOverReceiptPct(),
+                        item.maxReceivableQty())).toList();
         BigDecimal registeredQty = items.stream()
                 .map(InboundExpectationItem::registeredQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -2106,6 +2121,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        exception.accepted_qty, exception.unaccepted_qty,
                        exception.status, exception.decision,
                        exception.version, exception.detected_at, exception.decided_at,
+                       exception.order_qty_snapshot,
+                       exception.allowed_over_receipt_pct_snapshot,
+                       exception.tolerance_qty_snapshot,
+                       exception.prior_net_received_qty_snapshot,
                        return_task.id AS return_task_id, return_task.qty AS return_qty,
                        return_task.status AS return_status,
                        return_task.version AS return_version,
@@ -2185,6 +2204,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     rs.getObject("decided_at", OffsetDateTime.class),
                     returnTask,
                     actions,
+                    rs.getBigDecimal("order_qty_snapshot"),
+                    rs.getBigDecimal("allowed_over_receipt_pct_snapshot"),
+                    rs.getBigDecimal("tolerance_qty_snapshot"),
+                    rs.getBigDecimal("prior_net_received_qty_snapshot"),
                     false);
         }, args);
     }
@@ -2215,7 +2238,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 rs.getBigDecimal("finance_approved_qty"),
                 rs.getObject("owner_user_id", UUID.class),
                 rs.getObject("owner_employee_id", UUID.class),
-                rs.getString("owner_name"),rs.getString("replacement_intent")), receiptId);
+                rs.getString("owner_name"),rs.getString("replacement_intent"),
+                rs.getBigDecimal("allowed_over_receipt_pct")), receiptId);
     }
 
     private String purchaseArrivalSql() {
@@ -2224,7 +2248,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 "purchase_receipt_items",
                 "purchase_order_items",
                 "purchase_orders",
-                "PURCHASE");
+                "PURCHASE",
+                "order_item.allowed_over_receipt_pct");
     }
 
     private String subcontractArrivalSql() {
@@ -2233,7 +2258,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 "subcontract_receipt_items",
                 "subcontract_order_items",
                 "subcontract_orders",
-                "SUBCONTRACT");
+                "SUBCONTRACT",
+                "CAST(NULL AS numeric)");
     }
 
     private String arrivalSql(
@@ -2241,7 +2267,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             String receiptItemTable,
             String orderItemTable,
             String orderTable,
-            String orderType) {
+            String orderType,
+            String allowedOverReceiptPctExpression) {
         return """
                 SELECT receipt.id AS receipt_id,
                        receipt_item.id AS receipt_item_id,
@@ -2260,6 +2287,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        receipt_item.qty AS declared_qty,
                        receipt_item.replacement_intent,
                        order_item.qty AS order_qty,
+                       %s AS allowed_over_receipt_pct,
                        COALESCE(order_item.received_qty, 0) AS received_qty,
                        COALESCE(order_item.returned_qty, 0) AS returned_qty,
                        CASE WHEN expectation.id IS NULL
@@ -2333,7 +2361,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   AND procurement_order.status = 1
                 ORDER BY order_item.id, receipt_item.line_no NULLS LAST, receipt_item.id
                 FOR UPDATE OF receipt, receipt_item, order_item, procurement_order
-                """.formatted(
+                """.formatted(allowedOverReceiptPctExpression,
                 receiptItemTable, receiptTable, orderItemTable, orderTable, orderType);
     }
 
@@ -2404,6 +2432,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 nonNegative(row.declaredQty().subtract(approvedRemaining));
         BigDecimal excessAmountLocal = proportionalAmount(
                 row.amountLocal(), excessQty, row.declaredQty());
+        ReceiptToleranceSnapshot tolerance = receiptToleranceSnapshot(row, orderType);
 
         if (existing == null) {
             UUID id = UUID.randomUUID();
@@ -2423,10 +2452,12 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         finance_assignee_employee_id,
                         finance_assignee_name_snapshot,
                         status, version,
-                        detected_by_user_id, detected_by_employee_id
+                        detected_by_user_id, detected_by_employee_id,
+                        order_qty_snapshot, allowed_over_receipt_pct_snapshot,
+                        tolerance_qty_snapshot, prior_net_received_qty_snapshot
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                              'PENDING_FINANCE', 1, ?, ?)
+                              'PENDING_FINANCE', 1, ?, ?, ?, ?, ?, ?)
                     """,
                     id,
                     orderType,
@@ -2456,7 +2487,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     null,
                     null,
                     actorUser,
-                    actorEmployee);
+                    actorEmployee,
+                    tolerance.orderQty(),
+                    tolerance.allowedOverReceiptPct(),
+                    tolerance.toleranceQty(),
+                    tolerance.priorNetReceivedQty());
             Map<String, Object> snapshot = new LinkedHashMap<>();
             snapshot.put("declaredQty", row.declaredQty());
             snapshot.put("approvedRemainingQty", approvedRemaining);
@@ -2465,6 +2500,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             putIfNotNull(snapshot, "declaredAmountOriginal", row.amountOriginal());
             putIfNotNull(snapshot, "declaredAmountLocal", row.amountLocal());
             putIfNotNull(snapshot, "excessAmountLocal", excessAmountLocal);
+            tolerance.putInto(snapshot);
             appendEvent(id, "DETECTED", actorUser, actorEmployee, snapshot);
             publish(EVENT_DETECTED, id, 1);
             return new ExistingException(
@@ -2501,6 +2537,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     detected_by_user_id = ?,
                     detected_by_employee_id = ?,
                     detected_at = now(),
+                    order_qty_snapshot = ?,
+                    allowed_over_receipt_pct_snapshot = ?,
+                    tolerance_qty_snapshot = ?,
+                    prior_net_received_qty_snapshot = ?,
                     version = version + 1,
                     updated_at = now()
                 WHERE id = ?
@@ -2519,16 +2559,56 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 null,
                 actorUser,
                 actorEmployee,
+                tolerance.orderQty(),
+                tolerance.allowedOverReceiptPct(),
+                tolerance.toleranceQty(),
+                tolerance.priorNetReceivedQty(),
                 existing.id());
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("declaredQty", row.declaredQty());
         snapshot.put("approvedRemainingQty", approvedRemaining);
         snapshot.put("requestedExcessQty", excessQty);
+        tolerance.putInto(snapshot);
         appendEvent(existing.id(), "REDETECTED", actorUser, actorEmployee, snapshot);
         publish(EVENT_DETECTED, existing.id(), existing.version() + 1);
         return new ExistingException(
                 existing.id(), existing.receiptItemId(), row.declaredQty(),
                 null, PENDING_FINANCE, existing.version() + 1);
+    }
+
+    /**
+     * 到货异常的采购允许超收快照(ADR-144 §2.3, 订货单位)。只有采购写: 订货量、允许超收百分数
+     * (空 = 0)、允许超收量 T(与数据库 {@code fn_purchase_over_receipt_tolerance} 同式, CHECK 校验)、
+     * 本单之前已收净量(已收 − 已退货 − 来料质检不合格已退回, 不小于 0)。委外四项全部为 null。
+     */
+    private ReceiptToleranceSnapshot receiptToleranceSnapshot(ArrivalRow row, String orderType) {
+        if (!PURCHASE.equals(orderType) || row.orderQty() == null || row.orderQty().signum() <= 0) {
+            return ReceiptToleranceSnapshot.NONE;
+        }
+        BigDecimal priorNet = nonNegative(zero(row.receivedQty())
+                .subtract(zero(row.returnedQty()))
+                .subtract(returnedIqcFailureQty(orderType, row.orderItemId())));
+        return new ReceiptToleranceSnapshot(
+                row.orderQty(),
+                row.allowedOverReceiptPct(),
+                PurchaseOverReceiptTolerance.toleranceQty(row.orderQty(), row.allowedOverReceiptPct()),
+                priorNet);
+    }
+
+    private record ReceiptToleranceSnapshot(
+            BigDecimal orderQty,
+            BigDecimal allowedOverReceiptPct,
+            BigDecimal toleranceQty,
+            BigDecimal priorNetReceivedQty) {
+        private static final ReceiptToleranceSnapshot NONE =
+                new ReceiptToleranceSnapshot(null, null, null, null);
+
+        private void putInto(Map<String, Object> snapshot) {
+            putIfNotNull(snapshot, "orderQty", orderQty);
+            putIfNotNull(snapshot, "allowedOverReceiptPct", allowedOverReceiptPct);
+            putIfNotNull(snapshot, "toleranceQty", toleranceQty);
+            putIfNotNull(snapshot, "priorNetReceivedQty", priorNetReceivedQty);
+        }
     }
 
     private String requireOrderTypeFromRow(ArrivalRow row) {
@@ -2545,19 +2625,6 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 SELECT EXISTS(SELECT 1 FROM purchase_orders WHERE id = ?)
                 """, Boolean.class, orderId);
         return Boolean.TRUE.equals(purchase) ? PURCHASE : SUBCONTRACT;
-    }
-
-    private BigDecimal approvedRemaining(ArrivalRow row,String orderType) {
-        if (row.financeApprovedQty() == null) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "财务批准的预计到货明细缺失，禁止入库");
-        }
-        return nonNegative(row.financeApprovedQty()
-                .add(zero(row.returnedQty()))
-                .add(returnedIqcFailureQty(orderType,row.orderItemId()))
-                .subtract(zero(row.receivedQty()))
-                .subtract(settledSubcontractLoss(orderType,row.orderItemId())));
     }
 
     /** A settled loss occupies contract fulfilment, but never becomes a receipt or warehouse stock. */
@@ -2603,81 +2670,68 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 WHERE rejection.receipt_type=? AND rejection.order_item_id=? AND allocation.status='ACTIVE'
                   AND allocation.replacement_receipt_id<>?
                 """,BigDecimal.class,orderType,row.orderItemId(),row.receiptId()));
-        BigDecimal normal=nonNegative(row.financeApprovedQty().add(zero(row.returnedQty()))
-                .add(allocated).subtract(zero(row.receivedQty())));
+        // 欠交 owed(原口径, 不含允许超收量): 财务批准量 + 已退货 + 其它收货单的补回分配 − 已收。
+        BigDecimal owedRaw=row.financeApprovedQty().add(zero(row.returnedQty()))
+                .add(allocated).subtract(zero(row.receivedQty()));
+        BigDecimal owed=nonNegative(owedRaw);
         BigDecimal replacement=nonNegative(returnedIqcFailureQty(orderType,row.orderItemId()).subtract(allocated));
-        // ADR-101 委外：回厂上限除了财务批准量，还有一条更硬的物理上限——我方一共发出去多少料。
-        // 发了 1000 个子件就只能交回 1000 个委外件；交回 1050 说明多出来的 50 个用的是委外商
-        // 自己的料，那是价格和归属问题，要财务定案，而不是仓库在登记页面上被一句
-        // 「禁止超量回仓」挡回去。这里把上限压到实际供料量，超出的部分照 ADR-019 落
-        // PENDING_FINANCE 到货异常：货不入库、不立应付，转到货异常任务中心等财务。
-        // 返修补回(replacement)不压：那是拿已退回的不合格品换回来的，本来就不占新发的料。
-        // ADR-103 §2.5：供料上限只要起作用(<=, 含相等)就按「自带料」措辞。路线 B 子件:委外件
-        // 1:1 全发时供料上限与财务批准剩余量恰好相等, 严格小于会让它永远落到
-        // 「超过财务批准可收量」那句, 财务看不出多出来的是委外商自己的料。
-        BigDecimal supplied=subcontractSuppliedCapacity(orderType,row);
+        // ADR-143 §三.6 委外：回厂上限除了财务批准量，还有一条更硬的物理上限——委外商用我方已发
+        // 直属物料能做成的完整套数。交回超过这个数，多出来的用的是委外商自己的料，那是价格和归属
+        // 问题，要财务定案(ADR-019)，而不是仓库在登记页面上被一句「禁止超量回仓」挡回去：超出的
+        // 部分落 PENDING_FINANCE 到货异常，货不入库、不立应付。已收量里含返修补回(已从退回的
+        // 不合格品额度另算，不占我方的料)，所以与正常额度一样加回 allocated；返修补回本身不压。
+        // 供料上限只要起作用(<=, 含相等)就按「自带料」措辞：全发时供料上限与财务批准剩余量恰好
+        // 相等, 严格小于会让它永远落到「超过财务批准可收量」那句, 财务看不出多出来的是委外商自己的料。
         boolean materialBound=false;
-        if(supplied!=null){
-            BigDecimal materialRemaining=nonNegative(supplied.subtract(zero(row.receivedQty())));
-            if(materialRemaining.compareTo(normal)<=0){normal=materialRemaining;materialBound=true;}
-        }
+        BigDecimal tolerance=BigDecimal.ZERO;
         if(SUBCONTRACT.equals(orderType)) {
+            BigDecimal supplied=subcontractSuppliedCapacity(row);
+            BigDecimal materialRemaining=nonNegative(supplied.add(allocated).subtract(zero(row.receivedQty())));
+            if(materialRemaining.compareTo(owed)<=0){owed=materialRemaining;materialBound=true;}
             BigDecimal settled=settledSubcontractLoss(orderType,row.orderItemId());
             // Deduct once from the shared remaining obligation. Marking a late
             // shipment as an IQC replacement cannot reopen an accepted loss.
-            BigDecimal beyondNormal=nonNegative(settled.subtract(normal));
-            normal=nonNegative(normal.subtract(settled));
-            replacement=nonNegative(replacement.subtract(beyondNormal));
+            BigDecimal beyondOwed=nonNegative(settled.subtract(owed));
+            owed=nonNegative(owed.subtract(settled));
+            replacement=nonNegative(replacement.subtract(beyondOwed));
+        } else if(PURCHASE.equals(orderType)) {
+            // ADR-144 §2.2 采购允许超收: 容差 = T(订货量, p) 的剩余; 已收超过欠交口径的部分先吃掉 T。
+            // 与数据库收货守卫、ProcurementIqcReplacementAllocationService 同一拆分。
+            tolerance=nonNegative(PurchaseOverReceiptTolerance
+                    .toleranceQty(row.orderQty(),row.allowedOverReceiptPct())
+                    .add(owedRaw.min(BigDecimal.ZERO)));
         }
-        return new ArrivalCapacity(normal,replacement,materialBound);
+        return new ArrivalCapacity(owed,tolerance,replacement,materialBound);
     }
 
     /**
-     * 委外订货明细「我方已发出的料」折算到订货单位的合计；没有新流发料计划的历史单返回 null
-     * (V304 之前的手工发料不受这条物理上限约束，口径与既有守恒守卫一致)。
-     *
-     * <p>发子件的流向(COMPONENT_OUTBOUND)按冻结单耗倒扣：子件基本量 ÷ 冻结单耗 = 目标件订货
-     * 单位数；发目标件的三种流向按订货换算率折算。缺冻结单耗的行按 NULL 传播、不计入，
-     * 与 {@code SubcontractOutboundFlowSql} 的 fail-closed 口径一致。
+     * 委外订货明细的供料上限(订货单位, ADR-143 §三.6)：委外商用我方已发直属物料能做成的完整套数
+     * ({@code fn_subcontract_returnable_qty}，逐种物料取短板，从不相加) + 财务已批准并入库的
+     * 委外商自带料。已批准的委外明细一定有冻结计划行(缺 BOM 不能下单, §二.3); 万一没有, 可回厂
+     * 套数按 0 计(fail-closed): 多出来的一律转财务按委外商自带料审核。
      */
-    private BigDecimal subcontractSuppliedCapacity(String orderType,ArrivalRow row) {
-        if(!SUBCONTRACT.equals(orderType))return null;
-        Boolean newFlow=jdbc.queryForObject("""
-                SELECT EXISTS(
-                    SELECT 1 FROM subcontract_material_plan_items plan_item
-                    WHERE plan_item.order_item_id = ?
-                      AND plan_item.flow_mode IN (
-                          'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                      AND plan_item.is_deleted = FALSE)
-                """,Boolean.class,row.orderItemId());
-        if(!Boolean.TRUE.equals(newFlow))return null;
-        return zero(jdbc.queryForObject("""
-                SELECT COALESCE(SUM(CASE
-                         WHEN plan_item.flow_mode = 'COMPONENT_OUTBOUND'
-                           THEN ROUND(issue_item.qty * COALESCE(issue_item.unit_rate, 1)
-                                / NULLIF(issue_item.frozen_unit_qty, 0), 4)
-                         ELSE issue_item.qty * COALESCE(issue_item.unit_rate, 1)
-                              / NULLIF(COALESCE(order_unit.unit_rate, 1), 0)
-                       END), 0)
-                FROM subcontract_material_issue_items issue_item
-                JOIN subcontract_material_issues issue
-                  ON issue.id = issue_item.issue_id
-                 AND issue.status = 1 AND issue.is_deleted = FALSE
-                JOIN subcontract_material_plan_items plan_item
-                  ON plan_item.id = issue_item.plan_item_id
-                 AND plan_item.flow_mode IN (
-                     'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                 AND plan_item.is_deleted = FALSE
-                JOIN subcontract_order_items order_unit
-                  ON order_unit.id = issue_item.order_item_id
-                WHERE issue_item.order_item_id = ?
-                  AND issue_item.is_deleted = FALSE
-                """,BigDecimal.class,row.orderItemId()));
+    private BigDecimal subcontractSuppliedCapacity(ArrivalRow row) {
+        List<BigDecimal> supplied=jdbc.query("""
+                SELECT COALESCE(supplied.returnable_qty, 0)
+                       + COALESCE(order_item.arrival_overage_posted_qty, 0) AS supplied_qty
+                FROM subcontract_order_items order_item
+                CROSS JOIN LATERAL (
+                    SELECT fn_subcontract_returnable_qty(order_item.id) AS returnable_qty
+                ) supplied
+                WHERE order_item.id = ?
+                """,(rs,rowNum)->rs.getBigDecimal("supplied_qty"),row.orderItemId());
+        return supplied.isEmpty()?BigDecimal.ZERO:zero(supplied.get(0));
     }
 
-    /** Normal arrivals cannot consume a physically returned replacement entitlement. */
+    /**
+     * 到货容量拆三份(ADR-144 §2.2)：欠交 owed(原口径, 不含允许超收量)、容差 tolerance(采购允许
+     * 超收量 T 的剩余, 委外恒为 0)、质检补回 replacement。来源歧义只看 owed > 0 且 replacement > 0;
+     * 自动来源下 owed = 0 且 replacement > 0 按补回; 按 补回 → 欠交 → 容差 的顺序消耗。
+     * 正常到货不能占用已实物退回的补回额度。
+     */
     private static final class ArrivalCapacity {
-        private BigDecimal normal;
+        private BigDecimal owed;
+        private BigDecimal tolerance;
         private BigDecimal replacement;
         /**
          * 委外专用(ADR-101)：本行的上限是被「我方发出去的料」压住的，而不是被财务批准量压住的。
@@ -2685,21 +2739,28 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
          * 「超过财务已批准的可收数量」。
          */
         private final boolean materialBound;
-        private ArrivalCapacity(BigDecimal normal,BigDecimal replacement){
-            this(normal,replacement,false);
-        }
-        private ArrivalCapacity(BigDecimal normal,BigDecimal replacement,boolean materialBound){
-            this.normal=normal;this.replacement=replacement;this.materialBound=materialBound;}
+        private ArrivalCapacity(BigDecimal owed,BigDecimal tolerance,BigDecimal replacement,boolean materialBound){
+            this.owed=owed;this.tolerance=tolerance;this.replacement=replacement;this.materialBound=materialBound;}
         private boolean usesReplacement(String intent){
-            if(intent==null&&normal.signum()>0&&replacement.signum()>0)
+            if(intent==null&&owed.signum()>0&&replacement.signum()>0)
                 throw new ApiException(ErrorCode.CONFLICT,"该订单同时存在正常待到货和已退未补数量，请明确选择到货来源");
             return "RETURN_REPLACEMENT".equals(intent)||(intent==null&&replacement.signum()>0);
         }
-        private BigDecimal available(String intent){return usesReplacement(intent)?normal.add(replacement):normal;}
+        private BigDecimal available(String intent){
+            BigDecimal ordinary=owed.add(tolerance);
+            return usesReplacement(intent)?ordinary.add(replacement):ordinary;
+        }
         private void consume(String intent,BigDecimal quantity){
-            BigDecimal replacementTake=usesReplacement(intent)?quantity.min(replacement):BigDecimal.ZERO;
-            replacement=replacement.subtract(replacementTake);
-            normal=normal.subtract(quantity.subtract(replacementTake));
+            BigDecimal remaining=quantity;
+            if(usesReplacement(intent)){
+                BigDecimal replacementTake=remaining.min(replacement);
+                replacement=replacement.subtract(replacementTake);
+                remaining=remaining.subtract(replacementTake);
+            }
+            BigDecimal owedTake=remaining.min(owed);
+            owed=owed.subtract(owedTake);
+            remaining=remaining.subtract(owedTake);
+            tolerance=tolerance.subtract(remaining.min(tolerance));
         }
     }
 
@@ -3339,7 +3400,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             UUID ownerUserId,
             UUID ownerEmployeeId,
             String ownerName,
-            String replacementIntent) {
+            String replacementIntent,
+            /** 采购明细允许超收百分数(ADR-144, 空 = 0)；委外恒为 null。 */
+            BigDecimal allowedOverReceiptPct) {
     }
 
     private record ExistingException(

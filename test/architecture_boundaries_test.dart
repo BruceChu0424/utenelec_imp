@@ -129,9 +129,6 @@ void main() {
     'suggestion->basic_data',
     'visitor->basic_data',
     'visitor_approval->basic_data',
-    // 2026-09-01：委外前置准备页（V447）读取生产物料分析模型与仓储——前置准备
-    // 本质是生产分析的一个视图，与后端 SubcontractPreparation 依赖同构。
-    'subcontract->production',
     // 2026-09-05 的 production->dashboard / production->notice(计划生成后的刷新扇出)
     // 于 2026-09-23 随 ADR-108 消失: 扇出只剩 bumpListRefresh(写修订号 + 徽章汇总)。
     // 2026-09-13：领料/退料出库单详情过账后复用同一扇出失效生产执行列表，

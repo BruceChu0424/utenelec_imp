@@ -5,7 +5,6 @@
 // Flutter client never derives availability from inventory fields.
 
 import '../../../shared/models/progress_ratio.dart';
-import '../../../shared/models/subcontract_task_source.dart';
 import 'material_analysis_projection.dart';
 import 'material_preparation_supply_slice.dart';
 
@@ -36,7 +35,6 @@ enum MaterialSupplyRoute {
 enum MaterialRequirementState {
   active('ACTIVE'),
   delegatedToMakeChild('DELEGATED_TO_MAKE_CHILD'),
-  delegatedToSubcontractPreparation('DELEGATED_TO_SUBCONTRACT_PREPARATION'),
   inactiveParentCovered('INACTIVE_PARENT_COVERED'),
   inactiveParentRoute('INACTIVE_PARENT_ROUTE'),
   inactiveReference('INACTIVE_REFERENCE'),
@@ -293,143 +291,6 @@ class MaterialAnalysisListItem {
         readyNowQty: _double(json['readyNowQty']) ?? 0,
         readyByDateQty: _double(json['readyByDateQty']) ?? 0,
         analysisNo: _string(json['analysisNo']),
-      );
-}
-
-/// One production-owned task that prepares a subcontract target item before
-/// warehouse outbound.
-///
-/// The server owns the state, blocker, allowed actions, target warehouse and
-/// all quantities. Flutter must not inspect the BOM or infer readiness locally.
-class SubcontractMakeTask {
-  const SubcontractMakeTask({
-    required this.taskId,
-    required this.analysisId,
-    required this.status,
-    this.preparationItemId,
-    this.analysisStatus,
-    this.itemSourceRef,
-    this.goodsId,
-    this.goodsCode,
-    this.goodsName,
-    this.colorName,
-    this.unitName,
-    this.warehouseName,
-    this.requiredQty = 0,
-    this.producedQty = 0,
-    this.notifiedQty = 0,
-    this.availableQty = 0,
-    this.plannedQty = 0,
-    this.needDate,
-    this.workshopStatus,
-    this.allowedActions = const {},
-    this.updatedAt,
-    this.sources = const [],
-  });
-
-  final String taskId;
-  final String analysisId;
-  final String status;
-
-  /// 对应 SUBCONTRACT_MAKE 分析行 id（preparation_item_id）——物料分析页
-  /// 用它把任务精确挂回自己的产品卡，不按货号猜。
-  final String? preparationItemId;
-  final String? analysisStatus;
-  final String? itemSourceRef;
-  final List<SubcontractTaskSource> sources;
-  final String? goodsId;
-  final String? goodsCode;
-  final String? goodsName;
-  final String? colorName;
-  final String? unitName;
-  final String? warehouseName;
-
-  /// 需求量 / 已产未通知口径（服务端账本权威）。
-  final double requiredQty;
-  final double producedQty;
-  final double notifiedQty;
-  final double availableQty;
-  final double plannedQty;
-  final String? needDate;
-
-  /// 车间进度（2026-09-05 委外=自制同构直下）：服务端按委托行名下
-  /// 执行段聚合——NOTIFYING_WORKSHOP（正在通知车间生产）/WAITING_MATERIALS
-  /// （车间正在等物料）/IN_PRODUCTION（车间生产中）/PRODUCED（已完工入库
-  /// ·待通知委外）/FULLY_NOTIFIED（已通知委外）/CANCELLED。
-  final String? workshopStatus;
-  final Set<String> allowedActions;
-  final String? updatedAt;
-
-  /// 车间进度展示文案（2026-09-05 用户口径）：未排计划=「正在等待安排
-  /// 生产」，已排（等料/生产中）=「正在生产中」；完成后看「已完工入库·
-  /// 待通知委外 → 已通知委外」。等料/生产中的更细状态由车间任务页承载。
-  String get workshopStatusLabel => workshopStatusLabelFor(workshopStatus);
-
-  static String workshopStatusLabelFor(String? status) => switch (status) {
-    'NOTIFYING_WORKSHOP' => '正在等待安排生产',
-    'PRODUCED' => '已完工入库·待通知委外',
-    'FULLY_NOTIFIED' => '已通知委外',
-    'CANCELLED' => '已取消',
-    _ => '正在生产中',
-  };
-
-  bool allows(String action) => allowedActions.contains(action);
-
-  String get goodsLabel {
-    final code = goodsCode ?? '';
-    final name = goodsName ?? '';
-    return '$code $name'.trim();
-  }
-
-  factory SubcontractMakeTask.fromJson(Map<String, dynamic> json) =>
-      SubcontractMakeTask(
-        taskId: _string(json['taskId']) ?? '',
-        analysisId: _string(json['analysisId']) ?? '',
-        preparationItemId: _string(json['preparationItemId']),
-        analysisStatus: _string(json['analysisStatus']),
-        itemSourceRef: _string(json['itemSourceRef']),
-        sources: SubcontractTaskSource.listFromJson(json['sources']),
-        goodsId: _string(json['goodsId']),
-        goodsCode: _string(json['goodsCode']),
-        goodsName: _string(json['goodsName']),
-        colorName: _string(json['colorName']),
-        unitName: _string(json['unitName']),
-        warehouseName: _string(json['warehouseName']),
-        requiredQty: _double(json['requiredQty']) ?? 0,
-        producedQty: _double(json['producedQty']) ?? 0,
-        notifiedQty: _double(json['notifiedQty']) ?? 0,
-        availableQty: _double(json['availableQty']) ?? 0,
-        plannedQty: _double(json['plannedQty']) ?? 0,
-        needDate: _string(json['needDate']),
-        workshopStatus: _string(json['workshopStatus']),
-        status: (_string(json['status']) ?? 'UNKNOWN').toUpperCase(),
-        allowedActions: _stringList(json['allowedActions']).toSet(),
-        updatedAt: _string(json['updatedAt']),
-      );
-}
-
-class SubcontractMakeNotifyResult {
-  const SubcontractMakeNotifyResult({
-    required this.taskId,
-    required this.applicationId,
-    required this.applicationBillNo,
-    required this.notifiedQty,
-    required this.availableQty,
-  });
-
-  final String taskId;
-  final String applicationId;
-  final String applicationBillNo;
-  final double notifiedQty;
-  final double availableQty;
-
-  factory SubcontractMakeNotifyResult.fromJson(Map<String, dynamic> json) =>
-      SubcontractMakeNotifyResult(
-        taskId: _string(json['taskId']) ?? '',
-        applicationId: _string(json['applicationId']) ?? '',
-        applicationBillNo: _string(json['applicationBillNo']) ?? '',
-        notifiedQty: _double(json['notifiedQty']) ?? 0,
-        availableQty: _double(json['availableQty']) ?? 0,
       );
 }
 
@@ -1206,7 +1067,6 @@ class ProductionMaterialAnalysisMaterial {
     this.sharedFutureSupplyRefs = const [],
     this.shortageQty = 0,
     this.demandSupplyGapQty = 0,
-    this.subcontractHandoffFutureQty = 0,
     this.requirementState,
     this.planAnchorAnalysisLineId,
     this.delegatedToAnalysisLineId,
@@ -1219,6 +1079,8 @@ class ProductionMaterialAnalysisMaterial {
     this.sourceConfirmed,
     this.routeConfirmed = false,
     this.lowerLevelPending = false,
+    this.bomMissing = false,
+    this.rdTaskNo,
     this.expectedReadyDate,
     this.status,
     this.controlStage,
@@ -1238,7 +1100,6 @@ class ProductionMaterialAnalysisMaterial {
     this.crossReallocationRefs = const [],
     this.warehouseStocks = const [],
     this.flowStage,
-    this.subcontractOutboundForm,
     required this.actionable,
     this.owningWarehouseId,
     this.owningWarehouseName,
@@ -1267,19 +1128,6 @@ class ProductionMaterialAnalysisMaterial {
   /// 见 ProductionFlowStage 词表）；旧服务端无此字段时为 null，
   /// 由客户端按行内事实回退。
   final String? flowStage;
-
-  /// V581 委外发出物形态。只有一个取值有意义：`COMPONENT_OUTBOUND` 表示该委外件
-  /// 的活动 BOM 恰好只有一个 PER_UNIT 投入的叶子子件——**不先自制**，仓库直接把
-  /// 那个子件发给委外商，委外商加工后交回目标件。
-  ///
-  /// null 表示其余全部情况（无子层的纯外协、需要先自制的有子层件、非委外路线，
-  /// 以及旧服务端）。**null 一律按旧口径回退（有子层 ⇒ 先自制），绝不能当成
-  /// COMPONENT_OUTBOUND。**
-  final String? subcontractOutboundForm;
-
-  /// 该委外件是否「只发一个子件出去」（见 [subcontractOutboundForm]）。
-  bool get isComponentOutbound =>
-      subcontractOutboundForm == 'COMPONENT_OUTBOUND';
   final String? goodsId;
   final String? goodsCode;
   final String? goodsName;
@@ -1384,7 +1232,7 @@ class ProductionMaterialAnalysisMaterial {
   /// 另外下单的量。服务端权威，**客户端不得自己做这个减法**(ADR-099 不变量 2)。
   ///
   /// 与 [shortageQty] 不是一回事：后者是物理缺口，同时是可操作判据、让料候选与
-  /// 入库齐套的口径，算法不动。自制、需先自制的委外等不会自动认领的行，这里与
+  /// 入库齐套的口径，算法不动。自制、有直属物料的委外等不会自动认领的行，这里与
   /// [additionalSupplyRecommendedQty] 相等。
   final double netShortageQty;
 
@@ -1393,7 +1241,7 @@ class ProductionMaterialAnalysisMaterial {
   final double? planningUncoveredQty;
 
   /// 计划产出量（ADR-099）：顶层供给行 = 来源计划产出量换成基本单位；已建
-  /// 自制 / 前置自制锚点的物料行 = 锚点已下达且仍有效的计划总量。
+  /// 自制锚点的物料行 = 锚点已下达且仍有效的计划总量。
   final double plannedOutputQty;
 
   /// 货品主档的最小起订量与订货倍数（整箱/整包）。只用于把采购桶的
@@ -1415,10 +1263,6 @@ class ProductionMaterialAnalysisMaterial {
   /// 这与 [shortageQty] 不同：后者仍包含安全库存硬保护造成的阻断；提交
   /// 采购/委外/自制的“本批生产需求”只能使用本字段，避免合格到货后重复下达。
   final double demandSupplyGapQty;
-
-  /// 已由 V447 从原分析供给分摊接管、但尚未形成当前节点合格库存的数量。
-  /// 它阻止重复下达；只有真实批准订单/计划才会另计入 [inboundQty]。
-  final double subcontractHandoffFutureQty;
 
   /// 当前路径为什么有/没有本批需求。服务端按需求、父路线与 MAKE child
   /// ownership 计算；旧响应可为空，界面只做保守兼容展示。
@@ -1453,6 +1297,14 @@ class ProductionMaterialAnalysisMaterial {
   final MaterialSupplyRoute? sourceConfirmed;
   final bool routeConfirmed;
   final bool lowerLevelPending;
+
+  /// 委外件还没有维护可发外的直属物料(缺 BOM，ADR-143 §二.3)。服务端判定，
+  /// 同时已自动给工程研发部建「完善 BOM」任务；这一行不能下达委外，研发保存
+  /// BOM 后物料分析自动刷新，本标记随之消失。
+  final bool bomMissing;
+
+  /// [bomMissing] 时研发「完善 BOM」任务的单号(没有查到任务时为 null)。
+  final String? rdTaskNo;
   final String? expectedReadyDate;
   final String? status;
   final String? controlStage;
@@ -1602,8 +1454,6 @@ class ProductionMaterialAnalysisMaterial {
     ),
     shortageQty: _double(json['shortageQty']) ?? 0,
     demandSupplyGapQty: _demandSupplyGap(json),
-    subcontractHandoffFutureQty:
-        _double(json['subcontractHandoffFutureQty']) ?? 0,
     requirementState: MaterialRequirementState.fromWire(
       json['requirementState'],
     ),
@@ -1628,6 +1478,8 @@ class ProductionMaterialAnalysisMaterial {
     ),
     routeConfirmed: json['routeConfirmed'] == true,
     lowerLevelPending: json['lowerLevelPending'] == true,
+    bomMissing: json['bomMissing'] == true,
+    rdTaskNo: _string(json['rdTaskNo']),
     expectedReadyDate: _string(json['expectedReadyDate']),
     status: _string(json['status'] ?? json['materialStatus']),
     controlStage: _string(json['controlStage']),
@@ -1641,7 +1493,6 @@ class ProductionMaterialAnalysisMaterial {
       json['downstreamReferences'] ?? json['notifiedTargets'],
     ),
     flowStage: _string(json['flowStage']),
-    subcontractOutboundForm: _string(json['subcontractOutboundForm']),
     borrowedInQty: _double(json['borrowedInQty']) ?? 0,
     borrowedOutQty: _double(json['borrowedOutQty']) ?? 0,
     borrowRefs: _mapList(json['borrowRefs'], MaterialBorrowRef.fromJson),

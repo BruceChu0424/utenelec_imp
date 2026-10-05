@@ -13,8 +13,17 @@ public final class NativeQueryResults {
     private NativeQueryResults() {
     }
 
+    /**
+     * Native queries that select a single column return the scalar itself instead of a
+     * one-element array; such rows are wrapped so callers can always index row[0].
+     */
     public static List<Object[]> objectArrayRows(Query query) {
-        return typedRows(query, Object[].class);
+        List<?> rawRows = query.getResultList();
+        List<Object[]> rows = new ArrayList<>(rawRows.size());
+        for (Object rawRow : rawRows) {
+            rows.add(rawRow instanceof Object[] array ? array : new Object[] {rawRow});
+        }
+        return rows;
     }
 
     public static <T> List<T> typedRows(Query query, Class<T> rowType) {

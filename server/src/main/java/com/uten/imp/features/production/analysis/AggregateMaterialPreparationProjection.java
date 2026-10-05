@@ -112,8 +112,7 @@ final class AggregateMaterialPreparationProjection {
     }
     private static BigDecimal privateOrdered(MaterialView row,Map<UUID,ProductView> products,Map<UUID,SupplyActionView> actions) {
         ProductView anchor=products.get(row.level()==0?row.analysisLineId():row.planAnchorAnalysisLineId());
-        if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())
-                &&("MAKE".equals(row.sourceConfirmed())||"SUBCONTRACT_MAKE".equals(anchor.sourceType())))
+        if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())&&"MAKE".equals(row.sourceConfirmed()))
             return number(anchor.submittedQty()).add(number(anchor.approvedQty()))
                     .multiply(row.level()==0&&anchor.unitRate()!=null?anchor.unitRate():BigDecimal.ONE);
         return AggregateMaterialOrderPreviewService.orderedQuantity(row,products,actions);
@@ -122,8 +121,7 @@ final class AggregateMaterialPreparationProjection {
     record LegacyOrder(BigDecimal qty,boolean exact) { }
     static LegacyOrder legacyOrdered(MaterialView row,Map<UUID,ProductView> products,Map<UUID,SupplyActionView> actions) {
         ProductView anchor=products.get(row.level()==0?row.analysisLineId():row.planAnchorAnalysisLineId());
-        if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())
-                &&("MAKE".equals(row.sourceConfirmed())||"SUBCONTRACT_MAKE".equals(anchor.sourceType())))
+        if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())&&"MAKE".equals(row.sourceConfirmed()))
             return new LegacyOrder(number(anchor.issuedPlanQty()),true);
         BigDecimal total=BigDecimal.ZERO;boolean exact=true;Set<UUID> seen=new HashSet<>();
         for(DownstreamReference ref:row.downstreamReferences()) {
@@ -156,7 +154,7 @@ final class AggregateMaterialPreparationProjection {
         BigDecimal total=BigDecimal.ZERO;Set<UUID> seenActions=new HashSet<>(),seenAnchors=new HashSet<>();
         for(MaterialView row:rows) {
             ProductView anchor=products.get(row.level()==0?row.analysisLineId():row.planAnchorAnalysisLineId());
-            boolean manufacturing=anchor!=null&&("MAKE".equals(row.sourceConfirmed())||"SUBCONTRACT_MAKE".equals(anchor.sourceType()));
+            boolean manufacturing=anchor!=null&&"MAKE".equals(row.sourceConfirmed());
             boolean shared=row.downstreamReferences().stream().anyMatch(ref->actions.containsKey(ref.actionId())
                     && "AGGREGATE_SUPPLY".equals(actions.get(ref.actionId()).operationType()));
             boolean legacy=manufacturing&&!"AGGREGATE_MAKE".equals(anchor.sourceType());

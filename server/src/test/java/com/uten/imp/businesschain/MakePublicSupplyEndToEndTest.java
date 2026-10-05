@@ -299,17 +299,6 @@ class MakePublicSupplyEndToEndTest {
         beans.getBean(com.uten.imp.features.production.plan.ProductionPlanService.class).approve(plan);
         amount("20",db.queryForObject("SELECT sum(fn_preplan_make_public_claim_pending_qty(id)) FROM preplan_make_public_claims WHERE source_plan_item_id=?",BigDecimal.class,planItem));
     }
-    @Test void subcontractPreparationIsNotOfferedAsFinishedManufacturingSupply(){
-        var c=support.create(true,true,"1");support.setRoute(c,c.common(),"SUBCONTRACT");
-        var original=support.input(c,c.common(),"SUBCONTRACT","5",true);
-        var group=new AggregateMaterialOrderContracts.GroupInput(original.clientGroupKey(),original.materialLineIds(),original.route(),original.qty(),true,c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
-        var batch=writer.submit(c.analysis(),support.command(c,List.of(group))).batches().getFirst();
-        assertNotNull(batch.planId());
-        UUID planItem=db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=?",UUID.class,batch.planId());
-        assertEquals(0,db.queryForObject("SELECT count(*) FROM v_preplan_make_public_supply_state WHERE source_plan_item_id=?",Integer.class,planItem));
-        var target=target(c,"2");UUID material=target.flatMaterials().stream().filter(row->row.goodsId().equals(c.common())).findFirst().orElseThrow().materialLineId();
-        assertThrows(RuntimeException.class,()->insertClaim(c,planItem,target.analysisId(),material,"1"));
-    }
     @Test void cancellingAnUnreceivedAdoptionReleasesItsSourcePromiseAndReplaysWithoutAnotherEvent() {
         cancelAdoptingAnalysis(false,false);
     }

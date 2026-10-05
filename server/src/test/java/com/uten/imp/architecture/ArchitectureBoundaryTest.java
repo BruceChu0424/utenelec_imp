@@ -219,8 +219,6 @@ class ArchitectureBoundaryTest {
                     "唯一的金额口径类: 累计份额取位、数量 4 位存储、报表占比 2 位都在这里集中定义"),
             Map.entry("features/finance/asset/",
                     "固定资产/待摊: 按月等额 4 位 + 末期吸收全部尾差(守恒已成立), 子账列为 NUMERIC(18,4); 改按累计份额需同步放宽子账列, 另立项"),
-            Map.entry("features/subcontract/plan/SubcontractMaterialPlanService.java",
-                    "BOM 子件用量(数量, 非金额); 用量公式统一见 dup-backend-split-05"),
             Map.entry("features/subcontract/short_delivery/",
                     "委外短交容差的数量与百分比(非金额)"),
             Map.entry("features/subcontract/waste/SubcontractWasteService.java",

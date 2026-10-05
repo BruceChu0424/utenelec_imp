@@ -315,6 +315,10 @@ abstract final class Perm {
   static const subcontractOrderSubmitFinance =
       'subcontract_order:submit_finance';
 
+  /// ADR-143：委外领料(提交、撤回、结束领料)。页面不据此判断，按钮显隐一律读服务端
+  /// capabilities.canSubmitDraw / 行 canDraw / 详情 allowedActions；本常量只供权限目录对齐。
+  static const subcontractOrderDraw = 'subcontract_order:draw';
+
   /// ADR-098：委外回厂短交案件判定(分批到货 / 接受损耗结案)。
   static const subcontractShortDeliveryDecide =
       'subcontract_short_delivery:decide';
@@ -712,7 +716,6 @@ abstract final class Perm {
       'procurement_iqc_rejection:reverse';
   static const visitorVerify = 'visitor:verify';
   static const subcontractOutboundExecute = 'subcontract_outbound:execute';
-  static const subcontractOutboundClose = 'subcontract_outbound:close';
   static const warehouseInboundStockIn = 'warehouse_inbound:stock_in';
 
   /// 清空业务数据(系统测试工具；超管专属码，任何授权入口都授不出去)。

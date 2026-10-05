@@ -27,7 +27,8 @@ class ProcurementIqcRejectionV440FlowContractTest {
                 "com/uten/imp/features/subcontract/receipt/SubcontractReceiptAmountAuthority.java");
 
         assertThat(arrival)
-                .contains(".add(returnedIqcFailureQty(orderType,row.orderItemId()))")
+                // ADR-144 §2.2：质检退回补货额度单列为 replacement(欠交 owed / 容差 tolerance 之外的第三份)。
+                .contains("replacement=nonNegative(returnedIqcFailureQty(orderType,row.orderItemId()).subtract(allocated))")
                 .contains(".subtract(zero(row.receivedQty()))")
                 .contains("return_recorded_at IS NOT NULL")
                 .contains("'RETURN_RECORDED','CREDIT_CONFIRMED',")

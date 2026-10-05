@@ -60,10 +60,14 @@ String workbenchRouteFor(
     RouteName.productionOverproductionRateRequests,
   'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' =>
     RouteName.productionMaterialIncrementRequests,
-  'SALES_ORDER_APPROVED' ||
-  'SUBCONTRACT_PREPARATION_REQUIRED' ||
-  'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED' =>
-    RouteName.productionMaterialAnalysis,
+  'SALES_ORDER_APPROVED' => RouteName.productionMaterialAnalysis,
+  // ADR-143 委外可领料：落委外任务中心「领料」分段(通知自带定位时沿用)。
+  'SUBCONTRACT_DRAW_AVAILABLE' =>
+    actionRoute != null &&
+            actionRoute.startsWith(RouteName.operationsSubcontractWorkbench)
+        ? actionRoute
+        : RouteName.operationsSubcontractDrawSegment(),
+  'SUBCONTRACT_OUTBOUND_READY' => RouteName.warehouseSubcontractOutbound,
   // ADR-117 车间催计划：直落被催的那一份物料分析(?analysisId=)。
   'PRODUCTION_PLANNING_URGED' =>
     actionRoute != null &&
@@ -605,8 +609,8 @@ String _eventGroupLabel(String? sourceEvent) => switch (sourceEvent) {
   'PRODUCTION_PLANNING_URGED' => '车间催下单',
   'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED' => '超产比例待审批',
   'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' => '追加用料待审批',
-  'SUBCONTRACT_PREPARATION_REQUIRED' => '委外准备',
-  'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED' => '委外订货已派出',
+  'SUBCONTRACT_DRAW_AVAILABLE' => '委外可领料',
+  'SUBCONTRACT_OUTBOUND_READY' => '委外领料待发料',
   'PROFILE_CHANGE_SUBMITTED' => '信息变更待审核',
   'VISITOR_APPLY_SUBMITTED' => '访客申请待审批',
   'VISITOR_HOST_CONFIRM_REQUIRED' => '访客待确认接待',

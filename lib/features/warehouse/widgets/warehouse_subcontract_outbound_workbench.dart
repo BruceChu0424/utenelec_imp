@@ -1,11 +1,10 @@
-// 委外出仓工作台（可嵌入）：财务批准委外订货后，服务端逐行判断准备路线——
-// 无子层级核对并预留目标件合格库存；有子层级完成完整前置自制、FQC 与仓库实收
-// 入仓。只有已备齐并释放的目标件才出现在本列表。仓库视角只有数量/重量/库位/
-// 委外商名，无价格金额。
+// 委外出仓工作台(可嵌入; ADR-143 §4.3)：一行 = 委外人员在委外任务中心提交、
+// 仓库还没发出的一张委外领料单(按调用者仓库范围)。仓库核对实际仓与库位后审核
+// 出仓; 数量只能改少不能改多。仓库视角只有数量/重量/库位/委外商名，无价格金额。
 //
-// 2026-09-01 起「出库任务中心 · 委外出库」分段内嵌本组件（embedded=true 时不带
-// 搜索框——关键字由任务中心页级工具条统一下发）；独立路由
-// /warehouse/subcontract-outbound 由对应页面以 embedded=false 包一层继续承接。
+// 「出库任务中心 · 委外出库」分段内嵌本组件(embedded=true 时不带搜索框——
+// 关键字由任务中心页级工具条统一下发)；独立路由 /warehouse/subcontract-outbound
+// 由对应页面以 embedded=false 包一层继续承接。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,12 +16,12 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/providers/master_name_provider.dart';
-import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_outbound.dart';
 import '../pages/warehouse_subcontract_outbound_batch_page.dart';
@@ -70,9 +69,6 @@ class _WarehouseSubcontractOutboundWorkbenchState
   int _requestVersion = 0;
   String _keyword = '';
 
-  /// 表头列筛选（2026-09-16）：委外商（dict 桶，value=UUID）+ 任务状态（派生固定枚举）。
-  String? _supplierIdFilter;
-  String? _statusFilter;
   final _tableRows = MasterDataTableRowsController<OutboundTask>();
   Set<String> _selectedIds = {};
   bool _openingBatch = false;
@@ -88,21 +84,11 @@ class _WarehouseSubcontractOutboundWorkbenchState
     ].every(permissions.contains);
   }
 
-  // 无草稿且服务端明说可发 0(等子件到货)的行不给勾: 勾了进批量页也只会撞 409。
-  bool _selectable(OutboundTask task) => task.selectable;
-
   @override
   void initState() {
     super.initState();
     _keyword = widget.keyword;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // dict 装载完成后补一次 setState：内部缓存变化不触发 provider 通知。
-      ref
-          .read(masterNameServiceProvider)
-          .ensureLoaded()
-          .then((_) => mounted ? setState(() {}) : null);
-      _load(1);
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
   @override
@@ -132,8 +118,6 @@ class _WarehouseSubcontractOutboundWorkbenchState
       final result = await repo.tasks(
         page: page,
         keyword: _keyword,
-        supplierId: _supplierIdFilter,
-        status: _statusFilter,
         scope: WarehouseListScope.of(context),
       );
       if (!mounted || version != _requestVersion) return;
@@ -144,10 +128,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
       // Reconcile after the table has combined any appended pages.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || version != _requestVersion) return;
-        final visibleIds = _tableRows.items
-            .where(_selectable)
-            .map((item) => item.planId)
-            .toSet();
+        final visibleIds = _tableRows.items.map((item) => item.issueId).toSet();
         if (_selectedIds.any((id) => !visibleIds.contains(id))) {
           setState(() => _selectedIds = _selectedIds.intersection(visibleIds));
         }
@@ -162,7 +143,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
     } catch (_) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
-        _error = '委外出仓任务加载失败，请检查网络后重试';
+        _error = '委外领料单加载失败，请检查网络后重试';
         _loading = false;
       });
     }
@@ -172,7 +153,9 @@ class _WarehouseSubcontractOutboundWorkbenchState
     if (_loading || _openingBatch) return;
     // 保存返回时补刷列表；出仓成功会定位任务中心，由父页刷新。
     final version = _requestVersion;
-    await context.push<bool>('/warehouse/subcontract-outbound/${task.planId}');
+    await context.push<bool>(
+      RouteName.warehouseSubcontractOutboundDetail(task.issueId),
+    );
     await WidgetsBinding.instance.endOfFrame;
     if (mounted && _requestVersion == version) {
       await _load(_result?.page ?? 1);
@@ -194,7 +177,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
       final completed = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (batchContext) => WarehouseSubcontractOutboundBatchPage(
-            planIds: ids.toList(),
+            issueIds: ids.toList(),
             onCompleted: () => Navigator.of(batchContext).pop(true),
           ),
         ),
@@ -244,7 +227,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
             _buildStandaloneSearch(result),
             const SizedBox(height: UtenSpacing.s8),
           ],
-          if (widget.showHintBanner) _OutboundHintBanner(l10n: l10n),
+          if (widget.showHintBanner) const _OutboundHintBanner(),
           if (!widget.embedded) const SizedBox(height: UtenSpacing.s12),
           if (_error != null && result.items.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -270,47 +253,15 @@ class _WarehouseSubcontractOutboundWorkbenchState
         key: const Key('subcontract-outbound-task-table'),
         columns: _columns,
         items: result.items,
-        // 表头筛选桶（2026-09-16）：委外商走主档 dict；任务状态为派生三档
-        // （有草稿=待拣货 / 无草稿有可发=已备齐待出仓 / 无草稿可发 0=等子件到货），
-        // 与服务端 tasks() 的状态桶及行 stage 同口径(ADR-103 §2.4)。
-        facets: {
-          'supplierName': masterDictionaryFacets(
-            ref.watch(masterNameServiceProvider).supplierEntries,
-          ),
-          'status': [
-            MasterFacetBucket(
-              value: 'DRAFT_PICKING',
-              count: 0,
-              label: l10n.warehouseSubcontractOutboundStageDraftPicking,
-            ),
-            MasterFacetBucket(
-              value: 'READY_OUTBOUND',
-              count: 0,
-              label: l10n.warehouseSubcontractOutboundStageReadyPlain,
-            ),
-            MasterFacetBucket(
-              value: 'WAITING_COMPONENT',
-              count: 0,
-              label: l10n.warehouseSubcontractOutboundWaitingComponent,
-            ),
-          ],
-        },
+        // 列表只有一种状态(待发料); 委外商/订货单号走关键字搜索。
+        facets: const {},
         nullCounts: const {},
-        filters: {'supplierName': _supplierIdFilter, 'status': _statusFilter},
-        onFilterChanged: (key, value) {
-          setState(() {
-            if (key == 'supplierName') {
-              _supplierIdFilter = value;
-            } else if (key == 'status') {
-              _statusFilter = value;
-            }
-          });
-          _load(1);
-        },
+        filters: const {},
+        onFilterChanged: (_, _) {},
         onRowTap: _openTask,
         selectable: _canExecute,
-        idOf: (task) => _selectable(task) ? task.planId : null,
-        rowKeyOf: (task) => task.planId,
+        idOf: (task) => task.issueId,
+        rowKeyOf: (task) => task.issueId,
         selectedIds: _selectedIds,
         onSelectedIdsChanged: (ids) {
           if (!_loading && !_openingBatch) {
@@ -347,8 +298,8 @@ class _WarehouseSubcontractOutboundWorkbenchState
         error: result.items.isEmpty ? _error : null,
         onRetry: () => _load(result.page),
         emptyMessage: _keyword.isNotEmpty
-            ? '没有匹配「$_keyword」的出仓任务'
-            : '目前没有待出仓任务',
+            ? '没有匹配「$_keyword」的委外领料单'
+            : '目前没有待发料的委外领料单',
         currentPage: result.page,
         totalPages: result.totalPages,
         onPageChange: _load,
@@ -359,7 +310,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
   Widget _buildStandaloneSearch(PagedResult<OutboundTask> result) {
     final search = UtenSearchBar(
       key: const Key('subcontract-outbound-search'),
-      hint: '搜索委外订货单号 / 委外商',
+      hint: '搜索领料单号 / 委外订货单号 / 委外商',
       initialValue: _keyword,
       onInputChanged: (_) => _requestVersion++,
       onChanged: _applySearch,
@@ -394,41 +345,12 @@ class _WarehouseSubcontractOutboundWorkbenchState
     );
   }
 
-  /// 行阶段 → 文案。「已备齐」带可发合计: 单一子件分批到货时仓库一眼看到这次能发多少。
-  String _stageLabel(AppLocalizations l10n, OutboundTask item) =>
-      switch (item.stage) {
-        OutboundTaskStage.draftPicking =>
-          l10n.warehouseSubcontractOutboundStageDraftPicking,
-        OutboundTaskStage.readyOutbound =>
-          item.issuableTotal == null
-              ? l10n.warehouseSubcontractOutboundStageReadyPlain
-              : l10n.warehouseSubcontractOutboundStageReady(
-                  _quantity(item.issuableTotal!),
-                ),
-        OutboundTaskStage.waitingComponent =>
-          l10n.warehouseSubcontractOutboundWaitingComponent,
-        OutboundTaskStage.blockedPreparation =>
-          l10n.warehouseSubcontractOutboundStageBlockedPreparation,
-        OutboundTaskStage.waitingPreparation =>
-          l10n.warehouseSubcontractOutboundStageWaitingPreparation,
-        OutboundTaskStage.pendingDraft =>
-          l10n.warehouseSubcontractOutboundStagePendingDraft,
-      };
-
-  static String _quantity(double value) => value == value.roundToDouble()
-      ? value.toStringAsFixed(0)
-      : value.toString();
-
   List<MasterColumnDef<OutboundTask>> get _columns => [
     MasterColumnDef(
-      key: 'status',
-      label: '任务状态',
-      width: 170,
-      value: (item) => _stageLabel(
-        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
-            AppLocalizationsZh(),
-        item,
-      ),
+      key: 'issueBillNo',
+      label: '领料单号',
+      width: 180,
+      value: (item) => item.issueBillNo ?? '—',
     ),
     MasterColumnDef(
       key: 'orderBillNo',
@@ -443,32 +365,43 @@ class _WarehouseSubcontractOutboundWorkbenchState
       value: (item) => item.supplierName ?? '—',
     ),
     MasterColumnDef(
-      key: 'deliverDate',
-      label: '交货日期',
-      width: 120,
-      type: 'date',
-      value: (item) => item.deliverDate ?? '—',
+      key: 'warehouseName',
+      label: '领料仓',
+      width: 150,
+      value: (item) => item.warehouseName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'materialKindCount',
+      label: '物料种数',
+      width: 100,
+      type: 'number',
+      value: (item) => item.materialKindCount.toString(),
     ),
     MasterColumnDef(
       key: 'lineCount',
-      label: '目标件行数',
+      label: '明细行数',
       width: 100,
       type: 'number',
       value: (item) => item.lineCount.toString(),
     ),
     MasterColumnDef(
-      key: 'draftBillNo',
-      label: '出仓草稿单',
-      width: 180,
-      value: (item) => item.draftBillNo ?? '—',
+      key: 'submittedAt',
+      label: '提交时间',
+      width: 170,
+      value: (item) =>
+          ChinaDateTime.formatIsoInstant(item.submittedAt, fallback: '—'),
+    ),
+    MasterColumnDef(
+      key: 'submittedByName',
+      label: '提交人',
+      width: 120,
+      value: (item) => item.submittedByName ?? '—',
     ),
   ];
 }
 
 class _OutboundHintBanner extends StatelessWidget {
-  const _OutboundHintBanner({required this.l10n});
-
-  final AppLocalizations l10n;
+  const _OutboundHintBanner();
 
   @override
   Widget build(BuildContext context) {
@@ -484,10 +417,9 @@ class _OutboundHintBanner extends StatelessWidget {
         borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Text(
-        '仓库只看到已经备齐并由服务端放行的委外目标件。无子层级时先预留合格库存；'
-        '有子层级时必须完成物料分析、领料、自制报工、FQC 和成品入仓后才会出现在这里。'
-        '历史 BOM 子件发料单仍按原单据只读兼容。'
-        '${l10n.warehouseSubcontractOutboundBannerComponent}',
+        '这里只列委外人员已提交、仓库还没发出的委外领料单(一张单 = 一个委外订货单在一个仓要发的直属物料)。'
+        '核对实际仓与库位后审核出仓；数量只能改少不能改多，少发的部分委外下次领料时系统会自动补齐。'
+        '委外商加工后交回的是委外件，回厂时按委外件登记。',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),

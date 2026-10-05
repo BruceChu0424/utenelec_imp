@@ -386,6 +386,14 @@ public final class ProcurementArrivalContracts {
             OffsetDateTime decidedAt,
             SupplierReturnTask returnTask,
             List<String> allowedActions,
+            /**
+             * 采购允许超收快照(ADR-144, 订货单位, 检出与重新检出时写入)：订货量、允许超收百分数
+             * (空 = 0)、允许超收量、本单之前已收净量。委外与旧记录全部为 null。
+             */
+            BigDecimal orderQtySnapshot,
+            BigDecimal allowedOverReceiptPctSnapshot,
+            BigDecimal toleranceQtySnapshot,
+            BigDecimal priorNetReceivedQtySnapshot,
             /** 价格族字段已对当前用户脱敏（仓库视角无收货单价格权限时置 null；V302）。 */
             boolean priceMasked) {
         public ArrivalExceptionTask {
@@ -417,7 +425,15 @@ public final class ProcurementArrivalContracts {
             LocalDate expectedDate,
             List<ProcurementIqcStockInContracts.InboundAllocation> expectedAllocations,
             UUID lastReceiptWarehouseId,
-            String lastReceiptWarehouseName) {
+            String lastReceiptWarehouseName,
+            /** 采购明细的允许超收百分数(10 = 10%, 空 = 0, ADR-144)；委外为 null。只用于显示。 */
+            BigDecimal allowedOverReceiptPct,
+            /**
+             * 采购明细现在最多还能收的数量(订货单位)：订货量 + 已过账财务批准超量 + 允许超收量
+             * − 已收净量(已收 − 已退货 − 来料质检不合格已退回)，不小于 0；未扣已登记待审核量。
+             * 预计到货仍在收满订货量时关闭，本值只用于显示「最多可收」。委外为 null。
+             */
+            BigDecimal maxReceivableQty) {
 
         public InboundExpectationItem {
             expectedAllocations = expectedAllocations == null
@@ -437,7 +453,8 @@ public final class ProcurementArrivalContracts {
                     goodsSeries, goodsStockPlace, colorId, colorName, unitId,
                     unitName, unitId, unitName, unitRate, unitPrice,
                     orderedQty, acceptedQty,
-                    remainingQty, registeredQty, expectedDate, List.of(), null, null);
+                    remainingQty, registeredQty, expectedDate, List.of(), null, null,
+                    null, null);
         }
     }
 

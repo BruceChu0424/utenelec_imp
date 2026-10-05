@@ -1,426 +1,163 @@
-// 委外出仓工作台模型（V304 · 仓库视角：无价格/金额字段）。
+// 委外出仓工作台模型(ADR-143 §4.3 · 仓库视角：无价格/金额字段)。
 //
-// 新委外单只把订货目标件交给仓库：无子层级直接进入目标件出仓准备；有子层级
-// 先完成前置自制/FQC/成品入仓，再按服务端 readyOutboundQty 交仓库。
-// COMPONENT_OUTBOUND 是唯一发的不是目标件本身的新流向：目标件的活动 BOM 恰好
-// 只有一个叶子子件时，仓库发那颗子件、委外商交回目标件(ADR-085 / V581)。
-// LEGACY_BOM_COMPONENT 仅兼容历史 V304 BOM 子件发料单。
+// 一行 = 委外人员在委外任务中心提交、仓库还没发出的一张委外领料单(草稿)。
+// 每张领料单只含一个委外订货单在一个仓库要发的直属物料；每条明细都是某个
+// 委外件(回厂交回的委外件)的直属物料。仓库只能把数量改少(≤ 提交的领料数量)，
+// 不能改多、不能加行；少发的部分委外下次领料时自动补齐。
 
-enum SubcontractOutboundFlowMode {
-  legacyBomComponent('LEGACY_BOM_COMPONENT', '历史 BOM 子件发料'),
-  directOutbound('DIRECT_OUTBOUND', '目标件直接出仓'),
-  makeThenOutbound('MAKE_THEN_OUTBOUND', '先自制再出仓'),
-  preparedOutbound('PREPARED_OUTBOUND', '已备齐目标件出仓'),
-  componentOutbound('COMPONENT_OUTBOUND', '发子件给委外商'),
-  unknown('UNKNOWN', '路线待确认');
-
-  const SubcontractOutboundFlowMode(this.wireName, this.label);
-
-  final String wireName;
-  final String label;
-
-  factory SubcontractOutboundFlowMode.fromWire(Object? value) {
-    final wire = value?.toString().trim().toUpperCase();
-    return values.firstWhere(
-      (item) => item.wireName == wire,
-      orElse: () => unknown,
-    );
-  }
-}
-
-enum SubcontractPreparationStatus {
-  actionRequired('ACTION_REQUIRED', '待计划员开始前置自制'),
-  waitingPreparation('WAITING_PREPARATION', '等待前置自制'),
-  inPreparation('IN_PREPARATION', '前置自制中'),
-  waitingFqc('WAITING_FQC', '等待品质检查'),
-  waitingInbound('WAITING_INBOUND', '等待自制件入仓'),
-  readyOutbound('READY_OUTBOUND', '可出仓'),
-  outboundComplete('OUTBOUND_COMPLETE', '已出仓'),
-  cancelled('CANCELLED', '已取消'),
-  legacyReady('LEGACY_READY', '历史发料待出仓'),
-  unknown('UNKNOWN', '状态待确认');
-
-  const SubcontractPreparationStatus(this.wireName, this.label);
-
-  final String wireName;
-  final String label;
-
-  factory SubcontractPreparationStatus.fromWire(Object? value) {
-    final wire = value?.toString().trim().toUpperCase();
-    return values.firstWhere(
-      (item) => item.wireName == wire,
-      orElse: () => unknown,
-    );
-  }
-}
-
-/// 出仓任务列表行的阶段(与服务端 tasks() 的状态桶同口径, 文案由页面按 l10n 映射)。
-///
-/// 判定顺序: 有草稿 → [draftPicking]; 服务端下发 issuableTotal 时按它:
-/// > 0 → [readyOutbound], <= 0 且有行在等子件 → [waitingComponent];
-/// 老服务端(字段缺失)回落到 ready/blocked/waitingPreparation 的纯计划口径。
-enum OutboundTaskStage {
-  draftPicking,
-  readyOutbound,
-  waitingComponent,
-  blockedPreparation,
-  waitingPreparation,
-  pendingDraft,
-}
-
-/// 待出仓任务列表行（一张 OPEN 发料计划 = 一个任务）。
+/// 待发料列表行(GET /warehouse/subcontract-outbound/tasks)。
 class OutboundTask {
   const OutboundTask({
+    required this.issueId,
+    required this.issueBillNo,
     required this.planId,
     required this.orderId,
     required this.orderBillNo,
     required this.supplierName,
-    required this.deliverDate,
-    required this.lineCount,
-    required this.plannedQty,
-    required this.issuedQty,
-    required this.remainingQty,
-    required this.draftId,
-    required this.draftBillNo,
-    this.readyOutboundQty = 0,
-    this.readyLineCount = 0,
-    this.waitingPreparationCount = 0,
-    this.blockedLineCount = 0,
-    this.waitingComponentLineCount = 0,
-    this.issuableTotal,
-  });
-
-  final String planId;
-  final String orderId;
-  final String? orderBillNo;
-  final String? supplierName;
-  final String? deliverDate;
-  final int lineCount;
-  final double plannedQty;
-  final double issuedQty;
-  final double remainingQty;
-  final String? draftId;
-  final String? draftBillNo;
-  final double readyOutboundQty;
-  final int readyLineCount;
-  final int waitingPreparationCount;
-  final int blockedLineCount;
-
-  /// 无草稿且可发 0 却仍有余量的行数(单一子件直发, 子件还没到货)。ADR-103 §2.4。
-  final int waitingComponentLineCount;
-
-  /// 服务端算好的可发合计 = 各行 min(计划余量, 该仓合格可动用量) 之和;
-  /// null = 老服务端没下发, 回落纯计划口径。
-  final double? issuableTotal;
-
-  OutboundTaskStage get stage {
-    if (draftId != null) return OutboundTaskStage.draftPicking;
-    if (issuableTotal case final total?) {
-      if (total > 0) return OutboundTaskStage.readyOutbound;
-      if (waitingComponentLineCount > 0) {
-        return OutboundTaskStage.waitingComponent;
-      }
-    }
-    if (readyLineCount > 0 || readyOutboundQty > 0) {
-      return OutboundTaskStage.readyOutbound;
-    }
-    if (blockedLineCount > 0) return OutboundTaskStage.blockedPreparation;
-    if (waitingPreparationCount > 0) {
-      return OutboundTaskStage.waitingPreparation;
-    }
-    return OutboundTaskStage.pendingDraft;
-  }
-
-  /// 列表可勾选进批量出库的行: 有草稿, 或此刻真有可发量。
-  /// 服务端明说可发 0(等子件到货)的行勾了也只会撞 409, 直接不给勾。
-  bool get selectable {
-    if (draftId != null) return true;
-    if (issuableTotal case final total?) return total > 0;
-    return readyOutboundQty > 0 || readyLineCount > 0;
-  }
-
-  factory OutboundTask.fromJson(Map<String, dynamic> json) => OutboundTask(
-    planId: json['planId'] as String,
-    orderId: json['orderId'] as String,
-    orderBillNo: json['orderBillNo'] as String?,
-    supplierName: json['supplierName'] as String?,
-    deliverDate: json['deliverDate'] as String?,
-    lineCount: (json['lineCount'] as num?)?.toInt() ?? 0,
-    plannedQty: (json['plannedQty'] as num?)?.toDouble() ?? 0,
-    issuedQty: (json['issuedQty'] as num?)?.toDouble() ?? 0,
-    remainingQty: (json['remainingQty'] as num?)?.toDouble() ?? 0,
-    draftId: json['draftId'] as String?,
-    draftBillNo: json['draftBillNo'] as String?,
-    readyOutboundQty:
-        (json['readyOutboundQty'] as num?)?.toDouble() ??
-        (json['remainingQty'] as num?)?.toDouble() ??
-        0,
-    readyLineCount: (json['readyLineCount'] as num?)?.toInt() ?? 0,
-    waitingPreparationCount:
-        (json['waitingPreparationCount'] as num?)?.toInt() ?? 0,
-    blockedLineCount: (json['blockedLineCount'] as num?)?.toInt() ?? 0,
-    waitingComponentLineCount:
-        (json['waitingComponentLineCount'] as num?)?.toInt() ?? 0,
-    issuableTotal: (json['issuableTotal'] as num?)?.toDouble(),
-  );
-}
-
-/// One target-item outbound line. For new flows [goodsId] is the subcontract
-/// target item itself. Parent/component fields are retained only for legacy
-/// BOM-component issue documents.
-class OutboundPlanLine {
-  const OutboundPlanLine({
-    required this.planItemId,
-    required this.orderItemId,
-    required this.parentGoodsId,
-    required this.parentColorId,
-    required this.parentGoodsCode,
-    required this.parentGoodsName,
-    required this.goodsId,
-    required this.goodsCode,
-    required this.goodsName,
-    required this.goodsStockPlace,
-    required this.colorId,
-    required this.colorName,
-    required this.unitId,
-    required this.unitName,
-    required this.bomUnitQty,
-    required this.plannedQty,
-    required this.issuedQty,
-    required this.draftQty,
-    this.flowMode = SubcontractOutboundFlowMode.legacyBomComponent,
-    this.preparationStatus = SubcontractPreparationStatus.legacyReady,
-    this.preparedQty = 0,
-    this.readyOutboundQtySnapshot,
-    this.remainingQtySnapshot,
-    this.preparationAnalysisId,
-    this.preparationAnalysisItemId,
-    this.blocker,
-    this.allowedActions = const {},
-    this.issuableQty,
-    this.stockAvailableQty,
-    this.stockWarehouseId,
-    this.stockWarehouseName,
-  });
-
-  final String planItemId;
-  final String orderItemId;
-  final String? parentGoodsId;
-  final String? parentColorId;
-  final String? parentGoodsCode;
-  final String? parentGoodsName;
-  final String goodsId;
-  final String? goodsCode;
-  final String? goodsName;
-  final String? goodsStockPlace;
-  final String? colorId;
-  final String? colorName;
-  final String? unitId;
-  final String? unitName;
-  final double bomUnitQty;
-  final double plannedQty;
-  final double issuedQty;
-  final double draftQty;
-  final SubcontractOutboundFlowMode flowMode;
-  final SubcontractPreparationStatus preparationStatus;
-  final double preparedQty;
-  final double? readyOutboundQtySnapshot;
-  final double? remainingQtySnapshot;
-  final String? preparationAnalysisId;
-  final String? preparationAnalysisItemId;
-  final String? blocker;
-  final Set<String> allowedActions;
-
-  /// 服务端权威的「本次最多可填」= min(计划余量, 该仓合格可动用量)，已把本草稿
-  /// 自己占住的预留加回来。服务端没下发时(旧版本)回落到纯计划口径。
-  final double? issuableQty;
-
-  /// [stockWarehouseId] 这个仓里该货品/颜色当前的合格可动用量，不含本草稿占用。
-  /// 仓库据此判断「为什么只能发这么多」。
-  final double? stockAvailableQty;
-  final String? stockWarehouseId;
-  final String? stockWarehouseName;
-
-  double get remainingQty {
-    if (remainingQtySnapshot case final value?) return value < 0 ? 0 : value;
-    final r = plannedQty - issuedQty - draftQty;
-    return r < 0 ? 0 : r;
-  }
-
-  double get readyOutboundQty {
-    if (flowMode == SubcontractOutboundFlowMode.unknown ||
-        preparationStatus == SubcontractPreparationStatus.unknown) {
-      return 0;
-    }
-    final value = readyOutboundQtySnapshot ?? remainingQty;
-    return value < 0 ? 0 : value;
-  }
-
-  /// 此刻还能再填多少：服务端下发 [issuableQty] 时以它为准(= min(计划余量,
-  /// 该仓合格可动用量)，两边都已扣掉未审草稿占用)，否则回落到纯计划口径。
-  /// 有了它，仓库在界面上看到的上限就是真能存下去的量，不必靠保存被 409 打回来才知道。
-  double get freeIssuableQty {
-    if (flowMode == SubcontractOutboundFlowMode.unknown ||
-        preparationStatus == SubcontractPreparationStatus.unknown) {
-      return 0;
-    }
-    final value = issuableQty ?? readyOutboundQty;
-    return value < 0 ? 0 : value;
-  }
-
-  /// A loaded draft already reserves [draftQty], so editing that same draft may
-  /// reuse its reservation in addition to currently free ready quantity.
-  double get maxEditableQty {
-    if (flowMode == SubcontractOutboundFlowMode.unknown ||
-        preparationStatus == SubcontractPreparationStatus.unknown) {
-      return 0;
-    }
-    return freeIssuableQty + draftQty;
-  }
-
-  bool allows(String action) => allowedActions.contains(action);
-
-  factory OutboundPlanLine.fromJson(Map<String, dynamic> json) =>
-      OutboundPlanLine(
-        planItemId: json['planItemId'] as String,
-        orderItemId: json['orderItemId'] as String,
-        parentGoodsId: json['parentGoodsId'] as String?,
-        parentColorId: json['parentColorId'] as String?,
-        parentGoodsCode: json['parentGoodsCode'] as String?,
-        parentGoodsName: json['parentGoodsName'] as String?,
-        goodsId: json['goodsId'] as String,
-        goodsCode: json['goodsCode'] as String?,
-        goodsName: json['goodsName'] as String?,
-        goodsStockPlace: json['goodsStockPlace'] as String?,
-        colorId: json['colorId'] as String?,
-        colorName: json['colorName'] as String?,
-        unitId: json['unitId'] as String?,
-        unitName: json['unitName'] as String?,
-        bomUnitQty: (json['bomUnitQty'] as num?)?.toDouble() ?? 0,
-        plannedQty: (json['plannedQty'] as num?)?.toDouble() ?? 0,
-        issuedQty: (json['issuedQty'] as num?)?.toDouble() ?? 0,
-        draftQty:
-            (json['draftReservedQty'] as num?)?.toDouble() ??
-            (json['draftQty'] as num?)?.toDouble() ??
-            0,
-        flowMode: json.containsKey('flowMode')
-            ? SubcontractOutboundFlowMode.fromWire(json['flowMode'])
-            : SubcontractOutboundFlowMode.legacyBomComponent,
-        preparationStatus: json.containsKey('preparationStatus')
-            ? SubcontractPreparationStatus.fromWire(json['preparationStatus'])
-            : SubcontractPreparationStatus.legacyReady,
-        preparedQty: (json['preparedQty'] as num?)?.toDouble() ?? 0,
-        readyOutboundQtySnapshot: (json['readyOutboundQty'] as num?)
-            ?.toDouble(),
-        remainingQtySnapshot: (json['remainingQty'] as num?)?.toDouble(),
-        preparationAnalysisId: json['preparationAnalysisId'] as String?,
-        preparationAnalysisItemId: json['preparationAnalysisItemId'] as String?,
-        blocker: json['blocker'] as String?,
-        allowedActions: {
-          for (final action in (json['allowedActions'] as List? ?? const []))
-            if (action != null) action.toString(),
-        },
-        issuableQty: (json['issuableQty'] as num?)?.toDouble(),
-        stockAvailableQty: (json['stockAvailableQty'] as num?)?.toDouble(),
-        stockWarehouseId: json['stockWarehouseId'] as String?,
-        stockWarehouseName: json['stockWarehouseName'] as String?,
-      );
-
-  /// 按服务端发料计划快照构造出仓草稿行，颜色/单位 UUID 不由客户端重选。
-  /// [weight] = 仓库实称千克 (4 位, ADR-135 §3.8); [qtyFromWeight] = 数量按称重推算。
-  Map<String, dynamic> toMaterialIssueItemPayload({
-    required double qty,
-    double? weight,
-    bool qtyFromWeight = false,
-  }) => {
-    'goodsId': goodsId,
-    'colorId': colorId,
-    'unitId': unitId,
-    'qty': qty,
-    'weight': ?weight,
-    'qtyFromWeight': qtyFromWeight,
-    'unitRate': 1,
-    'orderItemId': orderItemId,
-    'planItemId': planItemId,
-    if (parentGoodsId != null) 'parentGoodsId': parentGoodsId,
-    if (parentColorId != null) 'parentColorId': parentColorId,
-  };
-}
-
-/// 计划关联的出仓单（草稿/已审/红冲历史）。
-class OutboundDraftRef {
-  const OutboundDraftRef({
-    required this.issueId,
-    required this.billNo,
-    required this.status,
-    required this.billDate,
+    required this.warehouseId,
     required this.warehouseName,
-    required this.approverName,
-    required this.totalQty,
+    required this.lineCount,
+    required this.materialKindCount,
+    required this.submittedAt,
+    required this.submittedByName,
   });
 
   final String issueId;
-  final String? billNo;
-  final int? status; // 0 草稿 / 1 已审 / -1 红冲
-  final String? billDate;
+  final String? issueBillNo;
+  final String? planId;
+  final String? orderId;
+  final String? orderBillNo;
+  final String? supplierName;
+  final String? warehouseId;
   final String? warehouseName;
-  final String? approverName;
-  final double? totalQty;
+  final int lineCount;
+  final int materialKindCount;
 
-  factory OutboundDraftRef.fromJson(Map<String, dynamic> json) =>
-      OutboundDraftRef(
-        issueId: json['issueId'] as String,
-        billNo: json['billNo'] as String?,
-        status: (json['status'] as num?)?.toInt(),
-        billDate: json['billDate'] as String?,
-        warehouseName: json['warehouseName'] as String?,
-        approverName: json['approverName'] as String?,
-        totalQty: (json['totalQty'] as num?)?.toDouble(),
+  /// 委外人员提交领料的时刻(ISO 时刻串)。
+  final String? submittedAt;
+  final String? submittedByName;
+
+  factory OutboundTask.fromJson(Map<String, dynamic> json) => OutboundTask(
+    issueId: json['issueId'] as String,
+    issueBillNo: json['issueBillNo'] as String?,
+    planId: json['planId'] as String?,
+    orderId: json['orderId'] as String?,
+    orderBillNo: json['orderBillNo'] as String?,
+    supplierName: json['supplierName'] as String?,
+    warehouseId: json['warehouseId'] as String?,
+    warehouseName: json['warehouseName'] as String?,
+    lineCount: (json['lineCount'] as num?)?.toInt() ?? 0,
+    materialKindCount: (json['materialKindCount'] as num?)?.toInt() ?? 0,
+    submittedAt: json['submittedAt'] as String?,
+    submittedByName: json['submittedByName'] as String?,
+  );
+}
+
+/// 领料单的一条明细(直属物料)：数量只能在 (0, [requestedQty]] 之间改。
+class OutboundPickLine {
+  const OutboundPickLine({
+    required this.issueItemId,
+    required this.planItemId,
+    required this.lineNo,
+    required this.parentGoodsName,
+    required this.parentGoodsCode,
+    required this.goodsId,
+    required this.goodsCode,
+    required this.goodsName,
+    required this.colorName,
+    required this.unitName,
+    required this.requestedQty,
+    required this.qty,
+    required this.stockAvailableQty,
+    required this.locationHint,
+  });
+
+  final String issueItemId;
+  final String planItemId;
+  final int? lineNo;
+
+  /// 回厂交回的委外件(本行物料属于它的直属物料)。
+  final String? parentGoodsName;
+  final String? parentGoodsCode;
+  final String goodsId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? colorName;
+  final String? unitName;
+
+  /// 委外人员提交的领料数量：仓库本次出库数量的上限，提交后不可变。
+  final double requestedQty;
+
+  /// 当前草稿里的本次出库数量(仓库保存过拣货修改则是改后的量)。
+  final double qty;
+
+  /// 领料单所在仓里这条物料当前可动用的合格量(服务端口径，仅供核对)。
+  final double? stockAvailableQty;
+
+  /// 库位提示。
+  final String? locationHint;
+
+  factory OutboundPickLine.fromJson(Map<String, dynamic> json) =>
+      OutboundPickLine(
+        issueItemId: json['issueItemId'] as String,
+        planItemId: json['planItemId'] as String,
+        lineNo: (json['lineNo'] as num?)?.toInt(),
+        parentGoodsName: json['parentGoodsName'] as String?,
+        parentGoodsCode: json['parentGoodsCode'] as String?,
+        goodsId: json['goodsId'] as String,
+        goodsCode: json['goodsCode'] as String?,
+        goodsName: json['goodsName'] as String?,
+        colorName: json['colorName'] as String?,
+        unitName: json['unitName'] as String?,
+        requestedQty: (json['requestedQty'] as num?)?.toDouble() ?? 0,
+        qty: (json['qty'] as num?)?.toDouble() ?? 0,
+        stockAvailableQty: (json['stockAvailableQty'] as num?)?.toDouble(),
+        locationHint: json['locationHint'] as String?,
       );
 }
 
+/// 领料单拣货详情(GET /warehouse/subcontract-outbound/tasks/{issueId})。
 class OutboundTaskDetail {
   const OutboundTaskDetail({
+    required this.issueId,
+    required this.issueBillNo,
     required this.planId,
     required this.orderId,
     required this.orderBillNo,
-    required this.status,
-    required this.supplierId,
     required this.supplierName,
-    required this.deliverDate,
-    required this.closeReason,
+    required this.warehouseId,
+    required this.warehouseName,
+    required this.version,
     required this.lines,
-    required this.drafts,
   });
 
-  final String planId;
-  final String orderId;
+  final String issueId;
+  final String? issueBillNo;
+  final String? planId;
+  final String? orderId;
   final String? orderBillNo;
-  final String? status; // OPEN / CLOSED / CANCELED
-  final String? supplierId;
   final String? supplierName;
-  final String? deliverDate;
-  final String? closeReason;
-  final List<OutboundPlanLine> lines;
-  final List<OutboundDraftRef> drafts;
+
+  /// 委外人员提交时服务端选定的发料仓。
+  final String? warehouseId;
+  final String? warehouseName;
+  final int? version;
+  final List<OutboundPickLine> lines;
 
   factory OutboundTaskDetail.fromJson(Map<String, dynamic> json) =>
       OutboundTaskDetail(
-        planId: json['planId'] as String,
-        orderId: json['orderId'] as String,
+        issueId: json['issueId'] as String,
+        issueBillNo: json['issueBillNo'] as String?,
+        planId: json['planId'] as String?,
+        orderId: json['orderId'] as String?,
         orderBillNo: json['orderBillNo'] as String?,
-        status: json['status'] as String?,
-        supplierId: json['supplierId'] as String?,
         supplierName: json['supplierName'] as String?,
-        deliverDate: json['deliverDate'] as String?,
-        closeReason: json['closeReason'] as String?,
+        warehouseId: json['warehouseId'] as String?,
+        warehouseName: json['warehouseName'] as String?,
+        version: (json['version'] as num?)?.toInt(),
         lines: [
           for (final e in (json['lines'] as List? ?? const []))
-            OutboundPlanLine.fromJson((e as Map).cast<String, dynamic>()),
-        ],
-        drafts: [
-          for (final e in (json['drafts'] as List? ?? const []))
-            OutboundDraftRef.fromJson((e as Map).cast<String, dynamic>()),
+            OutboundPickLine.fromJson((e as Map).cast<String, dynamic>()),
         ],
       );
 }

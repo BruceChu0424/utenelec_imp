@@ -169,19 +169,24 @@ class PreplanPrivateFutureTransferEndToEndTest {
         receive(c,replacement,replacementQty,"replacement-received");qty("100",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());
     }
 
-    @Test void leafSubcontractPrivateShareReceivesFirstAfterRealSupplierIssueAndQualifiedReturn() {
-        var c=scenario("private-leaf-subcontract");db.update("UPDATE goods SET source_type='委外' WHERE id=?",c.material());
+    /**
+     * ADR-143 §二.3: 委外件必须有可发外直属物料, 不再有「无子层(委外商自备料)委外件」。带直属物料的委外在途
+     * 不作为私有在途转拨来源(fn_preplan_future_source_private_capacity_qty 只放采购与无按单 BOM 的委外;
+     * 设计复核 analysis note 9: 原分析还在为它备直属物料, 别的分析不能拿走它的委外件), 委外回厂合格入库全部
+     * 精确归原分析。
+     */
+    @Test void subcontractSupplyWithDirectMaterialsIsNotAPrivateTransferSourceAndReturnsToItsOwnAnalysis() {
+        var c=scenario("private-subcontract-direct");db.update("UPDATE goods SET source_type='委外' WHERE id=?",c.material());
+        fixture.addSubcontractDirectMaterial(c.world(),c.material(),"1");
         var a=preview(c,"A","100");var am=material(a,c.material());
         commands.notifySupply(a.analysisId(),new NotifyRequest(a.version(),a.fingerprint(),"future-sc-notify-"+a.analysisId(),"SUBCONTRACT",List.of(am.materialLineId()),List.of(),null));
         UUID application=db.queryForObject("SELECT allocation.external_item_id FROM preplan_supply_actions action JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id WHERE action.analysis_id=? AND action.route='SUBCONTRACT'",UUID.class,a.analysisId());
         UUID orderItem=orderSubcontract(c,application,"100");
-        var b=preview(c,"B","100");var bm=material(b,c.material());var candidate=transfers.sources(b.analysisId(),bm.materialLineId()).getFirst();
-        assertEquals("SUBCONTRACT",candidate.route());qty("100",candidate.availableQty());
-        transfers.create(b.analysisId(),request(candidate,bm.materialLineId(),"40","future-sc-private-"+b.analysisId(),false));
+        var b=preview(c,"B","100");var bm=material(b,c.material());
+        assertTrue(transfers.sources(b.analysisId(),bm.materialLineId()).isEmpty(),"带直属物料的委外在途不能被别的分析私有转拨");
         assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("UPDATE subcontract_order_items SET qty=qty-1 WHERE id=?",orderItem));
-        receiveSubcontract(c,orderItem,"20");qty("20",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());qty("0",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());
-        qty("60",material(analyses.detail(b.analysisId()),c.material()).additionalSupplyRecommendedQty());
-        receiveSubcontract(c,orderItem,"80");qty("40",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());qty("60",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());
+        receiveSubcontract(c,orderItem,"20");qty("20",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());qty("0",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
+        receiveSubcontract(c,orderItem,"80");qty("100",material(analyses.detail(a.analysisId()),c.material()).exactPeggedQty());qty("0",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
     }
 
     @Test void concurrentTargetsCannotTransferTheSamePrivateCapacityTwice() throws Exception {
@@ -316,16 +321,15 @@ class PreplanPrivateFutureTransferEndToEndTest {
     private void receive(Scenario c,UUID orderItem,String quantity,String suffix){fixture.loginAs(c.world().superAdminUserId());ReflectionTestUtils.invokeMethod(fixture,"receiveAndPassPurchase",c.world(),orderItem,c.material(),new BigDecimal(quantity),"future-receive-"+orderItem+suffix);fixture.loginAs(c.world().superAdminUserId());}
     private UUID orderSubcontract(Scenario c,UUID applicationItem,String quantity) {
         var w=c.world();BigDecimal amount=new BigDecimal(quantity);
-        ReflectionTestUtils.invokeMethod(fixture,"putDirectTargetStock",w,c.material(),quantity);
+        // ADR-143: 发外的是委外件的直属物料(按件用量 1), 先真实入库同等数量。
+        fixture.receiveSubcontractMaterial(w,fixture.ensureSubcontractDirectMaterial(w,c.material()),quantity);
         var order=new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
         order.setSettlementMethodId(ReflectionTestUtils.invokeMethod(fixture,"activeSettlementMethodId"));order.setBillDate(BusinessTime.today());order.setSupplierId(w.supplierId());order.setWarehouseId(w.warehouseId());order.setCurrencyId(w.currencyId());order.setExchangeRate(BigDecimal.ONE);order.setTaxRate(BigDecimal.ZERO);
         var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();line.setGoodsId(c.material());line.setApplicationItemId(applicationItem);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(amount);line.setPrice(new BigDecimal("30"));line.setDeliverDate(BusinessTime.today().plusDays(2));order.setItems(List.of(line));
         UUID orderId=subcontractOrders.create(order).getId();UUID orderItem=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
         UUID approver=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);finance.submit("SUBCONTRACT",orderId);fixture.loginAs(approver);ReflectionTestUtils.invokeMethod(fixture,"approvePendingFinance","SUBCONTRACT",orderId);fixture.loginAs(w.superAdminUserId());
-        for(UUID issueId:db.queryForList("SELECT DISTINCT issue.id FROM subcontract_material_issues issue JOIN subcontract_material_issue_items item ON item.issue_id=issue.id WHERE item.order_item_id=? AND issue.status=0 AND NOT issue.is_deleted",UUID.class,orderItem)) {
-            var detail=subcontractIssues.detail(issueId);var issue=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest();issue.setBillDate(detail.getBillDate());issue.setSupplierId(detail.getSupplierId());issue.setWarehouseId(w.warehouseId());issue.setWorkerId(detail.getWorkerId());issue.setDeliverDate(detail.getDeliverDate());
-            issue.setItems(detail.getItems().stream().map(original->{var item=new com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine();item.setLineNo(original.getLineNo());item.setGoodsId(original.getGoodsId());item.setColorId(original.getColorId());item.setUnitId(original.getUnitId());item.setUnitRate(original.getUnitRate());item.setQty(original.getQty());item.setOrderItemId(original.getOrderItemId());item.setPlanItemId(original.getPlanItemId());item.setParentGoodsId(original.getParentGoodsId());item.setParentColorId(original.getParentColorId());return item;}).toList());subcontractIssues.update(issueId,issue);subcontractIssues.approve(issueId);
-        }
+        // ADR-143 §4.2: 委外人员领满订货量, 仓库按提交量发出。
+        fixture.drawAndIssueSubcontract(orderItem,amount,"future-sc-draw-"+orderItem);
         return orderItem;
     }
     private void receiveSubcontract(Scenario c,UUID orderItem,String quantity) {

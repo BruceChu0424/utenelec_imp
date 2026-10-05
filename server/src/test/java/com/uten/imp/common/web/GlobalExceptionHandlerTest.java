@@ -217,7 +217,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void workshopDirectTargetGuardShowsItsPlainReasonAndNeverDriverDetails() {
         // V736/ADR-127：数据库直送断言的原因文案是统一维护的大白话，并发穿透到守卫时原样给用户。
-        String message="无法转到下一道工序：HV5ZJ012 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料";
+        String message="无法转到下一道工序：上层 HV5ZJ012 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商";
         var sql=new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
                 "SERROR\u0000C23514\u0000M"+message+"\u0000Dsecret SQL details\u0000HSUBCONTRACT_ROUTE\u0000nworkshop_direct_target_guard\u0000\u0000"));
         var handler=new GlobalExceptionHandler();
@@ -237,6 +237,76 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void subcontractStepDrawGuardsHavePlainLanguageMessagesForEveryAdapter() {
+        // ADR-143(V798)：委外回厂/领料数据库闸并发穿透时，按约束名给大白话，不落成通用「数据已被其他操作更新」。
+        var handler = new GlobalExceptionHandler();
+        record Case(String constraint, String databaseMessage, String expected) { }
+        var cases = java.util.List.of(
+                new Case("subcontract_target_outbound_first_guard",
+                        "subcontract receipt material basis nets more than IQC replacements and finance-approved supplier material",
+                        "回厂数量超过委外商用已发直属物料能做成的套数，超出部分要先在到货异常里经财务批准(委外商自带料)；"
+                                + "请刷新预计到货后按可回厂数量登记，或先在委外任务中心领料"),
+                new Case("subcontract_target_outbound_first_guard",
+                        "subcontract receipt has no frozen draw plan lines, so its returnable quantity is 0",
+                        "该委外订货明细没有领料计划(直属物料)，可回厂数量为 0；请先维护委外件 BOM，并在委外任务中心领料后再登记回厂"),
+                new Case("subcontract_target_outbound_first_guard",
+                        "subcontract receipt consumes more of a material than the supplier holds",
+                        "委外商手里的直属物料不够核销这次回厂(已被回厂核销的发料也不能再红冲或退料)；"
+                                + "请刷新后核对委外领料、退料与回厂记录"),
+                new Case("subcontract_target_outbound_consumption_guard",
+                        "subcontract receipt material consumption 10.0000 differs from target 20.0000 beyond the reversal tolerance",
+                        "委外回厂核销的直属物料数量与回厂数量对不上，本次操作已回滚；请刷新后重试"),
+                new Case("subcontract_receipt_material_basis_guard",
+                        "approved subcontract receipt line lacks its frozen material basis",
+                        "委外回厂明细缺少物料核销依据，本次操作已回滚；请刷新后重试"),
+                new Case("subcontract_material_issue_item_requested_qty_chk",
+                        "new row for relation \"subcontract_material_issue_items\" violates check constraint \"subcontract_material_issue_item_requested_qty_chk\"",
+                        "仓库出仓数量不能超过委外人员提交的领料数量，只能改少；请改小后再提交"),
+                new Case("subcontract_draw_issue_requested_guard",
+                        "submitted draw quantity and its plan line are immutable",
+                        "委外领料单的物料行和提交数量只能由委外领料生成，仓库只能改少、填 0 不发或整张退回委外；请刷新拣货页后重试"),
+                new Case("subcontract_draw_issue_identity_guard",
+                        "subcontract draw is only accepted on an open plan line",
+                        "该委外任务已结束领料或订货已结清，不能再领料发料；请刷新后核对"),
+                new Case("subcontract_draw_issue_identity_guard",
+                        "subcontract issue line must carry the exact frozen draw-plan material",
+                        "委外领料行必须是该任务领料计划里的物料(物料与颜色不能改)；请刷新拣货页后重试"),
+                new Case("subcontract_draw_plan_basis_guard",
+                        "subcontract draw plan line must freeze one drawable direct BOM edge of the ordered goods",
+                        "委外件的 BOM 刚有改动，领料计划与当前 BOM 的直属物料对不上；请刷新后重新审批"),
+                new Case("subcontract_material_plan_items_check",
+                        "new row for relation \"subcontract_material_plan_items\" violates check constraint \"subcontract_material_plan_items_check\"",
+                        "委外直属物料累计发出不能超过领料计划量；请刷新后核对本次出仓数量"));
+        for (var c : cases) {
+            var postgres = new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
+                    "SERROR\u0000C23514\u0000M" + c.databaseMessage() + "\u0000Dsecret SQL details\u0000Wprivate function stack\u0000n"
+                            + c.constraint() + "\u0000\u0000"));
+            var plain = new java.sql.SQLException("ERROR: " + c.databaseMessage() + "\n  Where: secret", "23514");
+            for (var response : java.util.List.of(
+                    handler.handleDataIntegrity(new DataIntegrityViolationException("x", postgres)),
+                    handler.handleHibernateConstraint(new org.hibernate.exception.ConstraintViolationException("x", postgres, c.constraint())),
+                    handler.handleOther(new org.springframework.transaction.TransactionSystemException("commit failed",
+                            new jakarta.persistence.PersistenceException("wrapped", postgres))),
+                    handler.handleDataIntegrity(new DataIntegrityViolationException("x", plain)))) {
+                assertEquals(409, response.getStatusCode().value(), c.databaseMessage());
+                assertEquals("CONFLICT", response.getBody().getCode());
+                assertEquals(c.expected(), response.getBody().getMessage(), c.databaseMessage());
+                assertFalse(response.getBody().getMessage().contains("secret"));
+                assertFalse(response.getBody().getMessage().contains("private"));
+            }
+        }
+        // 无约束名的出仓占用闸按固定英文句首识别；不相干的 23514 按 ADR-151 §4 是「规则不满足」:
+        // 中性文案 422(不再说「被其他操作更新」)。
+        var allocation = new java.sql.SQLException("ERROR: approved subcontract draw issue lacks exact reservation coverage", "23514");
+        assertEquals("委外领料单的库存占用与出仓明细对不上(可能刚被撤回、退回或改少)，本次操作已回滚；请刷新拣货页后重试",
+                handler.handleDataIntegrity(new DataIntegrityViolationException("x", allocation)).getBody().getMessage());
+        var unrelated = new java.sql.SQLException("ERROR: something else entirely", "23514");
+        var unrelatedResponse = handler.handleDataIntegrity(new DataIntegrityViolationException("x", unrelated));
+        assertEquals(422, unrelatedResponse.getStatusCode().value());
+        assertEquals(GlobalExceptionHandler.RULE_VIOLATION_MESSAGE, unrelatedResponse.getBody().getMessage());
+    }
+
+    @Test
     void downstreamMaterialIssueIsAConsistentActionableConflictForBothDatabaseAdapters() {
         var sql = new java.sql.SQLException("Custody has already been issued by its destination task; secret SQL", "23514");
         var handler = new GlobalExceptionHandler();
@@ -248,24 +318,6 @@ class GlobalExceptionHandlerTest {
             assertEquals("CONFLICT", response.getBody().getCode());
             assertEquals("这批余料已被后续工单领用，请先处理对应后续领料，再撤回收仓", response.getBody().getMessage());
             assertFalse(response.getBody().getMessage().contains("secret SQL"));
-        }
-    }
-
-    @Test
-    void subcontractPreparedOutboundLineageGuardHasAnActionableMessageForBothAdapters() {
-        // V458/V634 DEFERRED 守卫在 COMMIT 时抛; 2026-09-21 之前财务批量批准只看到通用文案。
-        var sql = new java.sql.SQLException(
-                "ERROR: subcontract prepared-outbound lineage is inconsistent\n  Where: PL/pgSQL function secret", "23514");
-        var handler = new GlobalExceptionHandler();
-        var jdbc = handler.handleDataIntegrity(new DataIntegrityViolationException("could not execute statement", sql));
-        var jpa = handler.handleHibernateConstraint(new org.hibernate.exception.ConstraintViolationException(
-                "could not execute statement", sql, "subcontract_prepared_outbound_lineage_guard"));
-        for (var response : java.util.List.of(jdbc, jpa)) {
-            assertEquals(409, response.getStatusCode().value());
-            assertEquals("CONFLICT", response.getBody().getCode());
-            assertEquals("委外订货明细数量超过前置自制台账或通知批次可下单量(或订货行来源与前置自制批次对不上)，"
-                    + "请核对委外前置自制台账与通知批次后重新提交", response.getBody().getMessage());
-            assertFalse(response.getBody().getMessage().contains("PL/pgSQL"));
         }
     }
 

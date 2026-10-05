@@ -113,6 +113,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("rdTask", "/api/rd-tasks/count");
         ORIGINAL_ENDPOINTS.put("purchaseTask", "/api/operations/workbench/purchase/count");
         ORIGINAL_ENDPOINTS.put("subcontractTask", "/api/operations/workbench/subcontract/count");
+        // ADR-143 委外领料: 新事实 subcontractDraw.drawable, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
+        ORIGINAL_ENDPOINTS.put("subcontractDraw", "/api/subcontract/draw-tasks/count");
         ORIGINAL_ENDPOINTS.put("productionDraw", "/api/operations/workbench/warehouse/count");
         ORIGINAL_ENDPOINTS.put("productionReturn", "/api/stock/production-materials/return-requests/warehouse/count");
         ORIGINAL_ENDPOINTS.put("drafts", "/api/documents/drafts/count");
@@ -175,7 +177,9 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("purchaseTaskCenter", List.of("purchaseTask.pending"), List.of("purchaseTask.inProgress"));
         legacy("purchaseSupplierReturn", List.of("purchaseSupplierReturn.count"), List.of());
         legacy("purchaseDrafts", List.of("drafts.purchaseOrder", "drafts.purchaseReceipt", "drafts.purchaseReturn"), List.of());
-        legacy("subcontractTaskCenter", List.of("subcontractTask.pending"), List.of("subcontractTask.inProgress"));
+        // ADR-143 §4.1: 委外任务中心入口红数 = 待处理 + 可领(新增事实 subcontractDraw.drawable)。
+        legacy("subcontractTaskCenter", List.of("subcontractTask.pending", "subcontractDraw.drawable"),
+                List.of("subcontractTask.inProgress"));
         legacy("subcontractSupplierReturn", List.of("subcontractSupplierReturn.count"), List.of());
         legacy("subcontractDrafts", List.of("drafts.subcontractOrder", "drafts.subcontractReturn",
                 "drafts.subcontractMaterialReturn", "drafts.subcontractWaste"), List.of());

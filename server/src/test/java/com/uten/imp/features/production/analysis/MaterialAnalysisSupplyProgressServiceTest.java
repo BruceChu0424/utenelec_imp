@@ -49,34 +49,32 @@ class MaterialAnalysisSupplyProgressServiceTest {
     }
 
     @Test
-    void subcontractSiblingPassAndOpenOutboundDoNotPolluteTargetLine() {
+    void subcontractSiblingPassAndOpenDrawDoNotPolluteTargetLine() {
         ProjectionScenario scenario = new ProjectionScenario(false, true);
 
         MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
                 .supplyProgress(scenario.analysisId, scenario.materialLineId);
 
-        assertThat(step(view, "PREPARATION").state()).isEqualTo("DONE");
-        assertThat(step(view, "PREPARATION").detail())
-                .contains("无活动子层级");
-        assertThat(step(view, "TARGET_OUTBOUND").state()).isEqualTo("DONE");
-        assertThat(step(view, "TARGET_OUTBOUND").detail())
-                .isEqualTo("已出仓 10 / 计划 10");
+        assertThat(step(view, "DRAW").state()).isEqualTo("DONE");
+        assertThat(step(view, "DRAW").detail())
+                .isEqualTo("已领 10 / 10(直属物料已全部发外)");
+        assertThat(step(view, "DRAW").docNo()).isEqualTo("FL-001");
         assertThat(step(view, "RECEIVED").state()).isEqualTo("DONE");
         assertThat(step(view, "QUALITY").state()).isEqualTo("REJECTED");
         assertThat(step(view, "QUALITY").detail()).isEqualTo("全部判定不合格");
         assertThat(step(view, "STOCKED").state()).isEqualTo("WAITING");
-        assertThat(step(view, "STOCKED").detail())
-                .contains("前置自制入库")
-                .contains("不能提前满足原生产需求");
+        assertThat(view.steps()).extracting(MaterialAnalysisContracts.SupplyProgressStep::key)
+                .doesNotContain("PREPARATION", "TARGET_OUTBOUND");
 
         assertThat(scenario.executions)
                 .filteredOn(execution -> execution.sql().contains(
-                        "COUNT(DISTINCT p.id)"))
+                        "fn_subcontract_draw_summary"))
                 .singleElement()
                 .satisfies(execution -> {
                     assertThat(execution.sql())
-                            .contains("pi.order_item_id IN (:orderItemIds)")
-                            .doesNotContain("p.order_id IN (:orderIds)");
+                            .contains("item.id IN (:orderItemIds)")
+                            .doesNotContain("flow_mode")
+                            .doesNotContain("preparation_status");
                     assertThat(execution.parameters())
                             .containsEntry("orderItemIds", List.of(scenario.targetOrderItemId));
                 });
@@ -94,23 +92,72 @@ class MaterialAnalysisSupplyProgressServiceTest {
     }
 
     @Test
-    void approvedSubcontractWithoutPlanIsNotReportedAsNoBomSelfSupply() {
+    void partialDrawShowsDrawnSetsAndDrawableRemainderWithoutSummingMaterials() {
         ProjectionScenario scenario = new ProjectionScenario(false, false);
-        scenario.subcontractPlanExists = false;
+        scenario.drawSummary = new Object[]{new BigDecimal("2"), new BigDecimal("100"), 2,
+                new BigDecimal("40"), new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"),
+                false, true, false, BigDecimal.ZERO};
 
         MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
                 .supplyProgress(scenario.analysisId, scenario.materialLineId);
 
-        assertThat(step(view, "PREPARATION").state()).isEqualTo("CURRENT");
-        assertThat(step(view, "TARGET_OUTBOUND").state()).isEqualTo("WAITING");
-        assertThat(step(view, "TARGET_OUTBOUND").detail())
-                .contains("计划尚未生成")
-                .doesNotContain("委外商自备料")
-                .doesNotContain("无需发料");
-        assertThat(view.steps()).extracting(
-                        MaterialAnalysisContracts.SupplyProgressStep::detail)
-                .filteredOn(java.util.Objects::nonNull)
-                .allMatch(detail -> !detail.contains("委外商自备料"));
+        // 订货单位换算率 2：已领 40 套 = 80，订货 100 = 200(委外件基本量)。
+        assertThat(step(view, "DRAW").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "DRAW").detail())
+                .startsWith("已领 80 / 200")
+                .contains("可领 40")
+                .contains("已提交领料 20");
+        assertThat(step(view, "RECEIVED").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "RECEIVED").detail()).isEqualTo("等待登记委外件回厂");
+    }
+
+    @Test
+    void nothingDrawnYetBlocksReturnRegistration() {
+        ProjectionScenario scenario = new ProjectionScenario(false, false);
+        scenario.drawSummary = new Object[]{BigDecimal.ONE, new BigDecimal("10"), 1,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("10"),
+                false, true, false, BigDecimal.ZERO};
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "DRAW").detail()).contains("等待物料备齐");
+        assertThat(step(view, "RECEIVED").state()).isEqualTo("WAITING");
+        assertThat(step(view, "RECEIVED").detail()).isEqualTo("至少发出一批直属物料后方可登记回厂");
+    }
+
+    @Test
+    void batchReturnBelowOrderQuantityKeepsReturnStepInProgress() {
+        ProjectionScenario scenario = new ProjectionScenario(false, true);
+        scenario.drawSummary = new Object[]{BigDecimal.ONE, new BigDecimal("10"), 1,
+                new BigDecimal("6"), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("4"),
+                false, true, false, new BigDecimal("4")};
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "RECEIVED").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "RECEIVED").detail()).isEqualTo("已回厂 4 / 10(分批回厂)");
+        assertThat(step(view, "RECEIVED").docNo()).isEqualTo("WSH-001");
+    }
+
+    @Test
+    void approvedSubcontractWithoutDrawPlanFailsClosed() {
+        // ADR-143 §二.3：缺 BOM 的委外件不能下单，已批准的明细一定有领料计划行；
+        // 万一没有，进度停在「领料计划尚未生成」，不放行回厂登记。
+        ProjectionScenario scenario = new ProjectionScenario(false, false);
+        scenario.drawSummary = new Object[]{BigDecimal.ONE, new BigDecimal("10"), 0,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                false, false, false, BigDecimal.ZERO};
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "DRAW").state()).isEqualTo("WAITING");
+        assertThat(step(view, "DRAW").detail()).isEqualTo("领料计划尚未生成");
+        assertThat(step(view, "RECEIVED").state()).isEqualTo("WAITING");
+        assertThat(scenario.executions).noneMatch(execution ->
+                execution.sql().contains("FROM subcontract_material_issues i"));
     }
 
     @Test
@@ -223,39 +270,10 @@ class MaterialAnalysisSupplyProgressServiceTest {
                     assertThat(execution.parameters())
                             .containsEntry("analysisId", scenario.analysisId)
                             .containsEntry("makeChildAnalysisItemId",
-                                    scenario.makeChildAnalysisItemId)
-                            .containsEntry("childSourceType", "MAKE_COMPONENT");
+                                    scenario.makeChildAnalysisItemId);
                     assertThat(execution.parameters().values())
                             .doesNotContain(scenario.analysisItemId);
                 });
-    }
-
-    @Test
-    void subcontractMakeProgressUsesPreproductionChainInsteadOfPurchaseChain() {
-        ProjectionScenario scenario = new ProjectionScenario(false, false);
-        scenario.subcontractMake = true;
-
-        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
-                .supplyProgress(scenario.analysisId, scenario.materialLineId);
-
-        assertThat(view.route()).isEqualTo("SUBCONTRACT");
-        assertThat(step(view, "MAKE_TASK").label())
-                .isEqualTo("已创建委外前置自制任务");
-        assertThat(step(view, "PRODUCTION").label())
-                .isEqualTo("委外目标件前置自制入库");
-        assertThat(step(view, "PLAN").documentId())
-                .isEqualTo(scenario.makePlanId);
-        assertThat(scenario.executions)
-                .filteredOn(execution -> execution.sql().contains(
-                        "FROM production_plans plan"))
-                .singleElement()
-                .satisfies(execution -> assertThat(execution.parameters())
-                        .containsEntry("makeChildAnalysisItemId",
-                                scenario.makeChildAnalysisItemId)
-                        .containsEntry("childSourceType", "SUBCONTRACT_MAKE"));
-        assertThat(scenario.executions).noneMatch(execution ->
-                execution.sql().contains("SELECT DISTINCT request.bill_no")
-                        || execution.sql().contains("FROM purchase_order_items"));
     }
 
     private static MaterialAnalysisContracts.SupplyProgressStep step(
@@ -280,9 +298,12 @@ class MaterialAnalysisSupplyProgressServiceTest {
         private BigDecimal delegatedQty = BigDecimal.ZERO;
         private Object[] splitProgress;
         private boolean make;
-        private boolean subcontractMake;
-        private boolean subcontractPlanExists = true;
         private boolean orderExists = true;
+        /** fn_subcontract_draw_summary 行：换算率、订货量、物料种数、已领、待发、可领、还缺(套)、
+         * 全部发齐、领料开放、订货单结案、已回厂(基本量)。默认 10 套全部领齐、全部回厂。 */
+        private Object[] drawSummary = new Object[]{BigDecimal.ONE, new BigDecimal("10"), 1,
+                new BigDecimal("10"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                true, true, false, new BigDecimal("10")};
         private final UUID analysisId = UUID.randomUUID();
         private final UUID materialLineId = UUID.randomUUID();
         private final UUID analysisItemId = UUID.randomUUID();
@@ -337,6 +358,9 @@ class MaterialAnalysisSupplyProgressServiceTest {
         }
 
         private List<?> result(String sql, Map<String, Object> parameters) {
+            if (sql.contains("fn_subcontract_draw_summary")) {
+                return rows(drawSummary);
+            }
             if (sql.contains("SELECT maker_id FROM production_material_analyses")) {
                 return List.of(makerId);
             }
@@ -348,7 +372,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 return rows(new Object[]{purchase ? "SQ-001" : "WW-001", AT});
             }
             if (sql.contains("FROM production_plans plan")) {
-                return make || subcontractMake
+                return make
                         ? rows(new Object[]{makePlanId, "SJ-MAKE-001", 1,
                                 true, AT, makerId})
                         : List.of();
@@ -362,31 +386,8 @@ class MaterialAnalysisSupplyProgressServiceTest {
             if (sql.contains("FROM procurement_order_approval_cases")) {
                 return rows(new Object[]{"APPROVED", AT, makerId});
             }
-            if (sql.contains("FROM subcontract_material_plans p")) {
-                if (sql.contains("pi.flow_mode = 'LEGACY_BOM_COMPONENT'")) {
-                    // 末位是 V581 新增的 COMPONENT_OUTBOUND 行数（本夹具为 0）。
-                    return subcontractPlanExists
-                            ? rows(new Object[]{1L, 0L, 1L, 0L, 1L, 0L, 0L,
-                                    new BigDecimal("10"), new BigDecimal("10"), 0L, 0L})
-                            : rows(new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L,
-                                    BigDecimal.ZERO, BigDecimal.ZERO, 0L, 0L});
-                }
-                if (!subcontractPlanExists) {
-                    return rows(new Object[]{BigDecimal.ZERO, BigDecimal.ZERO,
-                            BigDecimal.ZERO, 0L, 0L, 0L});
-                }
-                // Target line is fully issued. The sibling line remains open; an order-level
-                // projection would incorrectly return the contaminated second aggregate.
-                return parameters.containsKey("orderItemIds")
-                        ? rows(new Object[]{new BigDecimal("10"), new BigDecimal("10"),
-                                BigDecimal.ZERO, 1L, 0L, 1L})
-                        : rows(new Object[]{new BigDecimal("30"), new BigDecimal("20"),
-                                new BigDecimal("10"), 1L, 0L, 1L});
-            }
             if (sql.contains("FROM subcontract_material_issues i")) {
-                return subcontractPlanExists
-                        ? rows(new Object[]{"FL-001", 1, AT, makerId})
-                        : List.of();
+                return rows(new Object[]{"FL-001", AT, makerId});
             }
             if (sql.contains("FROM purchase_receipt_items receipt_item")) {
                 // Only the sibling order line was received and passed. The old order-id filter
@@ -422,10 +423,9 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 return rows(new Object[]{actionId,
                         make ? "MAKE" : purchase ? "BUY" : "SUBCONTRACT",
                         make ? "PREPLAN_MAKE_TASK"
-                                : subcontractMake ? "SUBCONTRACT_MAKE_TASK"
                                 : purchase ? "PURCHASE_REQUEST" : "SUBCONTRACT_APPLICATION",
-                        make || subcontractMake ? makeChildAnalysisItemId : externalItemId,
-                        make || subcontractMake ? "自制备料 2026-08-30 abcd"
+                        make ? makeChildAnalysisItemId : externalItemId,
+                        make ? "自制备料 2026-08-30 abcd"
                                 : purchase ? "SQ-001" : "WW-001",
                         AT, makerId});
             }

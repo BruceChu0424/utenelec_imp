@@ -114,6 +114,8 @@ class ProcurementArrivalGuardPostgresTest {
     void subcontractExpectationAppearsOnlyForTheActuallyOutboundBatch() throws Exception {
         UUID unitId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
+        // ADR-143: 委外件 goodsId 发外的是它的直属物料 materialId(按件用量 1)。
+        UUID materialId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
         UUID supplierId = UUID.randomUUID();
         UUID currencyId = UUID.randomUUID();
@@ -139,6 +141,15 @@ class ProcurementArrivalGuardPostgresTest {
                     VALUES (?, ?, 'outbound released goods', ?,
                             (SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                     """, goodsId, "ARR-REL-G-" + goodsId, unitId);
+            executeSql(connection, """
+                    INSERT INTO goods(id, code, name, unit_id, code_sequence)
+                    VALUES (?, ?, 'outbound released material', ?,
+                            (SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
+                    """, materialId, "ARR-REL-M-" + materialId, unitId);
+            executeSql(connection, """
+                    INSERT INTO goods_bom_items(goods_id, component_goods_id, qty)
+                    VALUES (?, ?, 1)
+                    """, goodsId, materialId);
             executeSql(connection, """
                     INSERT INTO warehouses(id, code, name, status)
                     VALUES (?, ?, 'outbound release warehouse', '使用')
@@ -225,19 +236,15 @@ class ProcurementArrivalGuardPostgresTest {
                         id, plan_id, order_item_id, line_no,
                         parent_goods_id, goods_id, unit_id,
                         unit_rate, bom_unit_qty, planned_qty, issued_qty,
-                        flow_mode, preparation_status, prepared_qty,
-                        bom_has_children_snapshot, preparation_bom_fingerprint,
-                        preparation_warehouse_id, created_by, updated_by)
-                    VALUES (?, ?, ?, 1, ?, ?, ?, 1, 1, 5, 0,
-                            'DIRECT_OUTBOUND', 'READY_OUTBOUND', 5,
-                            FALSE, repeat('b',64), ?, ?, ?)
-                    """, planItemId, planId, orderItemId, goodsId, goodsId,
-                    unitId, warehouseId, actor.userId(), actor.userId());
+                        created_by, updated_by)
+                    VALUES (?, ?, ?, 1, ?, ?, ?, 1, 1, 5, 0, ?, ?)
+                    """, planItemId, planId, orderItemId, goodsId, materialId,
+                    unitId, actor.userId(), actor.userId());
             connection.commit();
         }
 
         try(Connection connection=connection()) {
-            ProcurementReceiptFixtureSupport.seedZeroPriceQualifiedStock(connection,warehouseId,goodsId,unitId,supplierId,currencyId,
+            ProcurementReceiptFixtureSupport.seedZeroPriceQualifiedStock(connection,warehouseId,materialId,unitId,supplierId,currencyId,
                     settlementMethodId,new BigDecimal("5"),actor.userId(),LocalDate.of(2026,8,31));
         }
 
@@ -249,7 +256,7 @@ class ProcurementArrivalGuardPostgresTest {
         UUID issueItemId=UUID.randomUUID();
         try(Connection connection=connection()) {
             ProcurementReceiptFixtureSupport.postSubcontractIssueFixture(connection,issueId,issueItemId,orderItemId,planItemId,
-                    warehouseId,goodsId,unitId,new BigDecimal("2"),actor.userId(),issueNo,LocalDate.of(2026,8,31));
+                    warehouseId,materialId,unitId,new BigDecimal("2"),actor.userId(),issueNo,LocalDate.of(2026,8,31));
         }
 
         var released = service.expectations(1, 20, "SUBCONTRACT", "");
@@ -273,16 +280,19 @@ class ProcurementArrivalGuardPostgresTest {
                     INSERT INTO subcontract_receipt_items(
                         id, bill_no, bill_date, receipt_id, order_item_id, line_no,
                         goods_id, unit_id, unit_rate, qty,price,amount_original,amount_local,replacement_intent,
+                        material_basis_qty,
                         goods_code_snapshot, goods_name_snapshot,
                         goods_snapshot_source, goods_snapshot_locked_at)
                     VALUES (?, ?, DATE '2026-08-31', ?, ?, 1,
-                            ?, ?, 1, 2,0,0,0,'NORMAL', ?, 'outbound released goods',
+                            ?, ?, 1, 2,0,0,0,'NORMAL', 2, ?, 'outbound released goods',
                             'MASTER_AT_APPROVAL', now())
                     """, receiptItemId, receiptNo,
                     receiptId, orderItemId, goodsId, unitId,
                     "ARR-REL-G-" + goodsId);
+            // Same write-back as a real receipt approval: the order line's received quantity (ADR-143 §三.6 capacity input).
+            executeSql(connection,"UPDATE subcontract_order_items SET received_qty=received_qty+2 WHERE id=?",orderItemId);
             executeSql(connection,"UPDATE subcontract_material_issue_items SET consumed_qty=2 WHERE id=?",issueItemId);
-            executeSql(connection,"INSERT INTO subcontract_receipt_material_consumptions(id,receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by) VALUES(?,?,?,2,2,'DIRECT_TARGET',?)",UUID.randomUUID(),receiptItemId,issueItemId,actor.userId());
+            executeSql(connection,"INSERT INTO subcontract_receipt_material_consumptions(id,receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by) VALUES(?,?,?,2,2,'FROZEN_BOM_ESTIMATE',?)",UUID.randomUUID(),receiptItemId,issueItemId,actor.userId());
             ProcurementReceiptFixtureSupport.appendStandardReceipt(connection,"SUBCONTRACT",receiptId,actor.userId());
             executeSql(connection,"""
                     INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,goods_id,
@@ -344,10 +354,11 @@ class ProcurementArrivalGuardPostgresTest {
                     INSERT INTO subcontract_receipt_items(
                         id, bill_no, bill_date, receipt_id, order_item_id, line_no,
                         goods_id, unit_id, unit_rate, qty,price,amount_original,amount_local,replacement_intent,
+                        material_basis_qty,
                         goods_code_snapshot, goods_name_snapshot,
                         goods_snapshot_source, goods_snapshot_locked_at)
                     VALUES (?, ?, DATE '2026-09-02', ?, ?, 1,
-                            ?, ?, 1, 1,0,0,0,'RETURN_REPLACEMENT', ?, 'outbound released goods',
+                            ?, ?, 1, 1,0,0,0,'RETURN_REPLACEMENT', 0, ?, 'outbound released goods',
                             'MASTER_AT_APPROVAL', now())
                     """, replacementReceiptItemId,
                     replacementNo,
@@ -364,6 +375,7 @@ class ProcurementArrivalGuardPostgresTest {
                     """, replacementAllocationId, rejectionCaseId,
                     replacementReceiptId, replacementReceiptItemId, actor.userId());
             ProcurementReceiptFixtureSupport.appendNoChargeReplacement(connection,"SUBCONTRACT",replacementReceiptId,replacementAllocationId,fundingId,actor.userId());
+            executeSql(connection,"UPDATE subcontract_order_items SET received_qty=received_qty+1 WHERE id=?",orderItemId);
             connection.commit();
         }
 

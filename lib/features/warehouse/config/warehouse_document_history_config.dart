@@ -57,7 +57,7 @@ enum WarehouseDocumentHistoryType {
   String get description => switch (this) {
     purchaseReceipt => '查看采购到货的数量、重量、当前建议库位、质量与来源记录',
     subcontractReceipt => '查看委外成品回厂的数量、重量、当前建议库位与质量记录',
-    subcontractMaterialIssue => '查看委外目标件及历史材料的实物出仓记录',
+    subcontractMaterialIssue => '查看发给委外商的直属物料实物出仓记录',
     subcontractReturn => '查看委外成品退回委外商的实物记录',
     subcontractMaterialReturn => '查看委外商退回余料的实物记录',
     subcontractWaste => '查看委外材料损耗的数量、原因与责任记录',

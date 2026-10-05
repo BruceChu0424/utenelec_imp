@@ -51,11 +51,12 @@ import java.util.UUID;
  * <p>审核（status 0→1，同事务内，对每条明细）：
  * <ol>
  *   <li>{@link StockService#recordMovement} {@code TYPE_SUBCONTRACT_MATERIAL_RETURN=16, DIR_IN=+1}</li>
- *   <li>只回写子件权威来源：{@code material_issue_items.returned_qty += qty}</li>
+ *   <li>回写发料明细委外商处台账：{@code material_issue_items.returned_qty += qty}</li>
+ *   <li>领料计划行已发净量扣减退回量(ADR-143 §二.20)：退回的料重新入库后可以再次领出</li>
  * </ol>
  * <b>不立应付</b>（材料退回不是加工费结算）。无 Price。
  *
- * <p>红冲（1→-1）：反向 DIR_OUT + 回减 returned_qty（无 ArAp）。
+ * <p>红冲（1→-1）：反向 DIR_OUT + 回减 returned_qty + 已发净量加回(已被重新领出导致超计划则拒绝)（无 ArAp）。
  */
 @Service
 @RequiredArgsConstructor
@@ -88,6 +89,7 @@ public class SubcontractMaterialReturnService {
     private final SubcontractDocumentAccessPolicy access;
     private final com.uten.imp.features.subcontract.LinkedOrderReadGate linkedOrderReadGate;
     private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
@@ -300,6 +302,9 @@ public class SubcontractMaterialReturnService {
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
         returnRepo.save(r);
+        em.flush();
+        // 领料计划行已发净量扣减退回量(CAS)，退回的料重新计入可领。
+        materialPlans.syncAfterMaterialReturnApproved(id);
         return detail(id);
     }
 
@@ -340,6 +345,9 @@ public class SubcontractMaterialReturnService {
         }
         r.setStatus(STATUS_REVERSED);
         returnRepo.save(r);
+        em.flush();
+        // 已发净量加回；退回的料已被重新领出、加回会超计划量时拒绝红冲。
+        materialPlans.syncAfterMaterialReturnReversed(id);
         return detail(id);
     }
 

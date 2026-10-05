@@ -88,7 +88,7 @@ class ProductionMutationFootprintPostgresTest {
         jdbc.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order) VALUES (?,?,?,3,1)",nested,child,leaf);
         var analysis=analysis(warehouse,root,unit,"ACTIVE");
         material(analysis,child,null,unit,"current-child");
-        var result=footprints.forPreview(List.of(),List.of(),
+        var result=footprints.forPreview(List.of(),
                 List.of(new WarehouseDimension(warehouse,root,null)),List.of(warehouse),List.of(analysis.id()));
         assertThat(result.inventoryDimensions()).containsExactlyInAnyOrder(
                 new InventoryDimension(root,null),new InventoryDimension(child,null),new InventoryDimension(leaf,null));
@@ -96,7 +96,7 @@ class ProductionMutationFootprintPostgresTest {
         assertThat(result.mainWarehouseIds()).containsExactly(warehouse);
         assertThat(footprints.forAnalyses(List.of(analysis.id())).inventoryDimensions()).isEqualTo(result.inventoryDimensions());
         jdbc.update("UPDATE goods_bom_items SET qty=4 WHERE id=?",nested);
-        var changed=footprints.forPreview(List.of(),List.of(),
+        var changed=footprints.forPreview(List.of(),
                 List.of(new WarehouseDimension(warehouse,root,null)),List.of(warehouse),List.of(analysis.id()));
         assertThat(changed.fingerprint()).isNotEqualTo(result.fingerprint());
 

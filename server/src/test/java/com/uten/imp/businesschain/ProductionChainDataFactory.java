@@ -47,6 +47,8 @@ final class ProductionChainDataFactory {
         var w = masters.seedWorld(tag);
         jdbc.update("update goods set default_supplier_id=? where id in (?,?)",
                 w.supplierId(), w.goodsD(), w.goodsE());
+        // ADR-143 §二.3: every subcontract item needs a drawable direct material; the seed's E gets one (per-unit 1).
+        masters.ensureSubcontractDirectMaterial(w, w.goodsE());
         // C is intentionally a childless MAKE node; its route is explicitly confirmed by the scenario.
         UUID assembled = goods(w, tag + "-sc", "委外");
         masters.insertBom(assembled, w.goodsD(), "2");
@@ -83,10 +85,10 @@ final class ProductionChainDataFactory {
                 """, (rs, row) -> new PreviewItem("SALES_ORDER_ITEM", rs.getObject("id", UUID.class),
                         null, null, null, null, null, LocalDate.of(2026, 9, 30), new BigDecimal("10")),
                 orderId);
-        // 13 edges per product, shared B(2), SC(2), 10 assemblies(80), and unused seed A(2).
-        // Expanded per product: root(1) + B/C/D(3) + leafSC(1) + SC/C/D(3) + assemblies/leaves(90).
+        // 13 edges per product, shared B(2), E's direct material(1), SC(2), 10 assemblies(80), and unused seed A(2).
+        // Expanded per product: root(1) + B/C/D(3) + E/its material(2) + SC/C/D(3) + assemblies/leaves(90).
         return new Scenario(w, orderId, List.copyOf(products), sources, assembled,
-                List.copyOf(assemblies), List.copyOf(leaves), 13 * productCount + 86, 98);
+                List.copyOf(assemblies), List.copyOf(leaves), 13 * productCount + 87, 99);
     }
 
     UUID goods(FullChainEndToEndTest.World w, String tag, String sourceType) {

@@ -55,6 +55,8 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
     private static UUID inactiveSettlement;
     private static UUID goods;
     private static UUID warehouse;
+    private static UUID materialUnit;
+    private static UUID directMaterial;
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
@@ -113,6 +115,21 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
             warehouse = UUID.randomUUID();
             exec(connection, "INSERT INTO warehouses(id,code,name,status) VALUES('"
                     + warehouse + "','WH990001','V438锁序仓','使用')");
+            // ADR-143: 委外件发外的是它的直属物料; 委外回厂只能核销按冻结单耗领出的直属物料。
+            materialUnit = UUID.randomUUID();
+            exec(connection, "INSERT INTO units(id,code,name) VALUES('"
+                    + materialUnit + "','V438-U','V438单位')");
+            directMaterial = UUID.randomUUID();
+            exec(connection, """
+                    INSERT INTO goods(
+                        id,code,name,status,category_id,unit_id,code_sequence,code_managed)
+                    SELECT '%s','V438-M','V438直属物料','使用',category.id,'%s',
+                           (SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods),FALSE
+                    FROM material_categories category
+                    ORDER BY category.id LIMIT 1
+                    """.formatted(directMaterial, materialUnit));
+            exec(connection, "INSERT INTO goods_bom_items(goods_id,component_goods_id,qty) VALUES('"
+                    + goods + "','" + directMaterial + "',1)");
         }
     }
 
@@ -594,7 +611,49 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
         UUID itemId = orderItem(connection, type, orderId);
         exec(connection, "UPDATE " + orderTable(type)
                 + " SET status=1 WHERE id='" + orderId + "'");
+        if ("SUBCONTRACT".equals(type)) {
+            issueWholeDirectMaterial(connection, orderId, itemId);
+        }
         return new ClosureSeed(orderId, itemId);
+    }
+
+    /**
+     * ADR-143 §二.3/§三: 已批准的委外明细冻结一条领料计划行(直属物料单耗 1), 委外商先领满 10 套的物料,
+     * 回厂才有物料可核销。零价物料库存经真实入库链入账, 发料经真实的成本写入器出账。
+     */
+    private static void issueWholeDirectMaterial(Connection connection, UUID orderId, UUID orderItemId)
+            throws SQLException {
+        UUID planId = UUID.randomUUID();
+        UUID planItemId = UUID.randomUUID();
+        try (PreparedStatement insert = connection.prepareStatement("""
+                INSERT INTO subcontract_material_plans(id,order_id,order_bill_no,status)
+                SELECT ?,id,bill_no,'OPEN' FROM subcontract_orders WHERE id=?
+                """)) {
+            insert.setObject(1, planId);
+            insert.setObject(2, orderId);
+            insert.executeUpdate();
+        }
+        try (PreparedStatement insert = connection.prepareStatement("""
+                INSERT INTO subcontract_material_plan_items(
+                    id,plan_id,order_item_id,line_no,parent_goods_id,goods_id,unit_id,
+                    unit_rate,bom_unit_qty,planned_qty,issued_qty)
+                VALUES(?,?,?,1,?,?,?,1,1,10,0)
+                """)) {
+            insert.setObject(1, planItemId);
+            insert.setObject(2, planId);
+            insert.setObject(3, orderItemId);
+            insert.setObject(4, goods);
+            insert.setObject(5, directMaterial);
+            insert.setObject(6, materialUnit);
+            insert.executeUpdate();
+        }
+        java.time.LocalDate date = java.time.LocalDate.of(2026, 8, 30);
+        ProcurementReceiptFixtureSupport.seedZeroPriceQualifiedStock(connection, warehouse, directMaterial,
+                materialUnit, supplier, activeCurrency, activeSettlement, BigDecimal.TEN, actorUser, date);
+        ProcurementReceiptFixtureSupport.postSubcontractIssueFixture(connection, UUID.randomUUID(),
+                UUID.randomUUID(), orderItemId, planItemId, warehouse, directMaterial, materialUnit,
+                BigDecimal.TEN, actorUser,
+                "EC20260830%06d".formatted(DOCUMENT_SEQUENCE.incrementAndGet()), date);
     }
 
     private static ReceiptSeed receipt(
@@ -631,14 +690,17 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                 insert.setBigDecimal(9, qty);
                 insert.executeUpdate();
             }
+            // ADR-143 §三.7: 委外回厂行冻结物料口径 R(= 回厂量), 并按冻结单耗核销已发外的直属物料 f(R) = R x 1。
+            String basisColumn = "SUBCONTRACT".equals(type) ? ",material_basis_qty" : "";
+            String basisValue = "SUBCONTRACT".equals(type) ? "," + qty.toPlainString() : "";
             try (PreparedStatement insert = connection.prepareStatement("""
                     INSERT INTO %s(
                         id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_rate,
                         qty,price,amount_original,amount_local,order_item_id,
-                        replacement_intent,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
+                        replacement_intent,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source%s)
                     VALUES(?,?,'2026-08-30',?,1,?,1,?,1,?,?,?,
-                        'NORMAL','V438-G','V438货品','MASTER_AT_SAVE')
-                    """.formatted(receiptItemTable(type)))) {
+                        'NORMAL','V438-G','V438货品','MASTER_AT_SAVE'%s)
+                    """.formatted(receiptItemTable(type), basisColumn, basisValue))) {
                 insert.setObject(1, receiptItemId);
                 insert.setString(2, billNo);
                 insert.setObject(3, receiptId);
@@ -648,6 +710,17 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
                 insert.setBigDecimal(7, qty);
                 insert.setObject(8, orderItemId);
                 insert.executeUpdate();
+            }
+            if ("SUBCONTRACT".equals(type)) {
+                exec(connection, """
+                        INSERT INTO subcontract_receipt_material_consumptions(
+                            receipt_item_id,issue_item_id,qty_doc,qty_base,consumption_basis,created_by)
+                        SELECT '%1$s',issue_item.id,%2$s,%2$s,'FROZEN_BOM_ESTIMATE','%3$s'
+                        FROM subcontract_material_issue_items issue_item
+                        WHERE issue_item.order_item_id='%4$s' AND NOT issue_item.is_deleted
+                        """.formatted(receiptItemId, qty.toPlainString(), actorUser, orderItemId));
+                exec(connection, "UPDATE subcontract_material_issue_items SET consumed_qty=consumed_qty+"
+                        + qty.toPlainString() + " WHERE order_item_id='" + orderItemId + "' AND NOT is_deleted");
             }
             ProcurementReceiptFixtureSupport.postOriginalReceiptPayable(connection,type,receiptId,actorUser);
             ProcurementReceiptFixtureSupport.appendStandardReceipt(connection,type,receiptId,actorUser);

@@ -19,25 +19,31 @@ class ProcurementLastTerms {
     // ADR-098：货品主档「委外允许损耗」默认值（记忆），委外订货行允许损耗列预填用。
     this.allowedLossPct,
     this.allowedLossPctSource,
+    // ADR-144：货品主档「采购允许超收」默认值（记忆），采购订货行允许超收列预填用。
+    this.allowedOverReceiptPct,
+    this.allowedOverReceiptPctSource,
   });
 
-  factory ProcurementLastTerms.fromJson(Map<String, dynamic> json) =>
-      ProcurementLastTerms(
-        supplierId: json['supplierId'] as String?,
-        settlementMethodId: json['settlementMethodId'] as String?,
-        currencyId: json['currencyId'] as String?,
-        exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-        taxRate: (json['taxRate'] as num?)?.toDouble(),
-        purchasePrice: (json['purchasePrice'] as num?)?.toDouble(),
-        subcontractPrice: (json['subcontractPrice'] as num?)?.toDouble(),
-        priceContext: json['priceContext'] is Map<String, dynamic>
-            ? ProcurementPriceContext.fromJson(
-                json['priceContext'] as Map<String, dynamic>,
-              )
-            : null,
-        allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
-        allowedLossPctSource: json['allowedLossPctSource'] as String?,
-      );
+  factory ProcurementLastTerms.fromJson(
+    Map<String, dynamic> json,
+  ) => ProcurementLastTerms(
+    supplierId: json['supplierId'] as String?,
+    settlementMethodId: json['settlementMethodId'] as String?,
+    currencyId: json['currencyId'] as String?,
+    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
+    taxRate: (json['taxRate'] as num?)?.toDouble(),
+    purchasePrice: (json['purchasePrice'] as num?)?.toDouble(),
+    subcontractPrice: (json['subcontractPrice'] as num?)?.toDouble(),
+    priceContext: json['priceContext'] is Map<String, dynamic>
+        ? ProcurementPriceContext.fromJson(
+            json['priceContext'] as Map<String, dynamic>,
+          )
+        : null,
+    allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
+    allowedLossPctSource: json['allowedLossPctSource'] as String?,
+    allowedOverReceiptPct: (json['allowedOverReceiptPct'] as num?)?.toDouble(),
+    allowedOverReceiptPctSource: json['allowedOverReceiptPctSource'] as String?,
+  );
 
   final String? supplierId;
   final String? settlementMethodId;
@@ -51,6 +57,10 @@ class ProcurementLastTerms {
   /// 委外允许损耗默认值(%)；来源目前只有 GOODS_MASTER（货品主档记忆）。
   final double? allowedLossPct;
   final String? allowedLossPctSource;
+
+  /// 采购允许超收默认值(%)；来源目前只有 GOODS_MASTER（货品主档记忆）。不受价格遮蔽。
+  final double? allowedOverReceiptPct;
+  final String? allowedOverReceiptPctSource;
 }
 
 /// 单价必须在原供应商、颜色、单位、币种和税率下使用；缺证据的旧值不猜测。

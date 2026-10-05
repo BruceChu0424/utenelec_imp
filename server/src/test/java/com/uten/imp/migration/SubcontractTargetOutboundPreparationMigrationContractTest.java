@@ -216,8 +216,12 @@ class SubcontractTargetOutboundPreparationMigrationContractTest {
                         + "deferrable initially deferred");
     }
 
+    /**
+     * 出仓预留分配表仍归业务重置清空; 准备命令表 subcontract_outbound_preparation_commands
+     * 已被 V798(ADR-143 §五)删除, 重置策略不再登记它。
+     */
     @Test
-    void businessResetOwnsBothNewAppendOnlyTables() throws Exception {
+    void businessResetOwnsTheSurvivingAppendOnlyTable() throws Exception {
         String reset = Files.readString(RESET, StandardCharsets.UTF_8)
                 .replaceAll("--[^\\r\\n]*", " ")
                 .replaceAll("\\s+", " ")
@@ -227,7 +231,7 @@ class SubcontractTargetOutboundPreparationMigrationContractTest {
         assertThat(reset)
                 .contains("('subcontract_outbound_issue_reservation_allocations', "
                         + "'clear')")
-                .contains("('subcontract_outbound_preparation_commands', 'clear')");
+                .doesNotContain("'subcontract_outbound_preparation_commands'");
     }
 
     private static String compact() throws Exception {

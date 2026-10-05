@@ -1,41 +1,32 @@
 import '../../subcontract/models/subcontract_doc.dart';
 import '../models/subcontract_outbound.dart';
 
+/// 一张委外领料单的拣货视图 [task] 与它自己的出仓单草稿 [document]
+/// (同一个 issueId, 拣货明细按 issueItemId 对上草稿明细)。
 class SubcontractOutboundReadBundle {
   const SubcontractOutboundReadBundle({
     required this.task,
-    required this.documents,
+    required this.document,
   });
   final OutboundTaskDetail task;
-  final List<SubcontractDocDetail> documents;
+  final SubcontractDocDetail document;
 }
 
 /// Independent reads share a fixed concurrency limit. No generation or write
 /// belongs in this loader; submission still rechecks each reviewed document.
 Future<List<SubcontractOutboundReadBundle>> loadSubcontractOutboundDetails({
-  required Iterable<String> planIds,
+  required Iterable<String> issueIds,
   required Future<OutboundTaskDetail> Function(String) taskDetail,
   required Future<SubcontractDocDetail> Function(String) documentDetail,
 }) async {
-  final tasks = await readOutboundInBatches(
-    planIds.toSet().toList(),
-    taskDetail,
-  );
-  final ids = {
-    for (final task in tasks)
-      for (final draft in task.drafts)
-        if (draft.status == 0) draft.issueId,
-  };
-  final documents = await readOutboundInBatches(ids.toList(), documentDetail);
-  final byId = {for (final document in documents) document.id: document};
+  final ids = issueIds.toSet().toList();
+  final tasks = await readOutboundInBatches(ids, taskDetail);
+  final documents = await readOutboundInBatches(ids, documentDetail);
   return [
-    for (final task in tasks)
+    for (var index = 0; index < ids.length; index++)
       SubcontractOutboundReadBundle(
-        task: task,
-        documents: [
-          for (final draft in task.drafts)
-            if (draft.status == 0) byId[draft.issueId]!,
-        ],
+        task: tasks[index],
+        document: documents[index],
       ),
   ];
 }

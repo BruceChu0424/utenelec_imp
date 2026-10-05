@@ -1,13 +1,10 @@
 package com.uten.imp.features.production.execution;
 
 import com.uten.imp.application.port.ProductionCompletionReversePort;
-import com.uten.imp.application.port.SubcontractOrderPreparationPort;
-import com.uten.imp.application.port.SubcontractPreparationInventoryPort;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService;
-import com.uten.imp.features.production.analysis.SubcontractMakeTaskService;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService;
@@ -45,9 +42,6 @@ public class ProductionCompletionReverseService
 
     private final ProductionExecutionReadinessService readiness;
     private final MaterialAnalysisSupplyWakeupService materialAnalysisWakeup;
-    private final SubcontractPreparationInventoryPort subcontractPreparation;
-    private final SubcontractMakeTaskService subcontractMakeTasks;
-    private final SubcontractOrderPreparationPort subcontractOrderPreparation;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -76,30 +70,18 @@ public class ProductionCompletionReverseService
                     ErrorCode.VALIDATION_FAILED,
                     "成品入库触发自制件就绪提升时缺少单据或仓库");
         }
-        // 线边仓入库(车间直送，V595)：料不进公共可用量，不会喂给任何物料分析、委外备料或
-        // 委外订货准备——下面三套唤醒只会把整张分析重算一遍再发现什么都没变(实测占直送审核 0.8s)。
+        // 线边仓入库(车间直送，V595)：料不进公共可用量，不会喂给任何物料分析——
+        // 分析唤醒只会把整张分析重算一遍再发现什么都没变(实测占直送审核 0.8s)。
         // 直送料投给谁由直送服务自己按需求补投，不经这里。
         //
         // 2026-09-22：就绪提升也一样要跳过。直送服务在同一事务里已经按需求调
         // topUpDirectSupply / promoteAfterWorkshopDirectTransfer 投给确定的接收工单，
         // 这里再按 peg 图找一遍并 tryPromote，每条直送行都要白跑一次可用量扫描。
-        // 判定必须排在 onFinishedInboundApproved 之前，否则跳过的只是后面三套唤醒。
+        // 判定必须排在 onFinishedInboundApproved 之前。
+        // 委外领料(ADR-143)不挂在成品入库上：库存内核的入库钩子统一追加「领料重算」事件。
         if (isLineSideWarehouse(warehouseId)) return;
         readiness.onFinishedInboundApproved(
                 stockDocumentId, warehouseId);
-        subcontractPreparation.afterFinishedInboundApproved(
-                stockDocumentId, warehouseId);
-        // V458：有子层级委外件的前置自制产出先转 SUBCONTRACT_PREPARE_TASK
-        // 专属预留并触发满批自动通知，再让分析刷新读 v_stock_available。
-        subcontractMakeTasks.afterFinishedInboundApproved(
-                stockDocumentId, warehouseId);
-        // 2026-09-05 委外收敛：直接下单草稿期的前置生产分析有产出时，
-        // 通知委外制单人目标件开始回笼（全部备齐即可提交财务审核）。
-        subcontractOrderPreparation.afterFinishedInboundApproved(
-                stockDocumentId);
-        // The dedicated outbound reservation must exist before any analysis
-        // refresh reads v_stock_available, otherwise the new target item can
-        // be snapshotted as public stock by another analysis.
     }
 
     @Override
@@ -127,8 +109,6 @@ public class ProductionCompletionReverseService
                     ErrorCode.VALIDATION_FAILED, "成品入库红冲缺少单据标识");
         }
         lockAndRequireApprovedFinishedIn(stockDocumentId);
-        subcontractPreparation.beforeFinishedInboundReversed(stockDocumentId);
-        subcontractMakeTasks.beforeFinishedInboundReversed(stockDocumentId);
         readiness.beforeFinishedInboundReversed(stockDocumentId);
         List<UUID> segmentIds = exactSegmentIds(stockDocumentId);
         if (segmentIds.isEmpty()) {

@@ -458,7 +458,7 @@ RETURNS TEXT LANGUAGE sql STABLE AS $$
         WHEN 'WORKSHOP_BIN_NOT_OPEN' THEN format('%s还没开通内料仓，请仓库在「车间内料仓」开通后再直送，这次先送入仓库',
             COALESCE(p_workshop, '收料车间'))
         WHEN 'DIFFERENT_WORKSHOP' THEN format('%s在%s，跨车间必须送入仓库', receiver, COALESCE(p_workshop, '其它车间'))
-        WHEN 'SUBCONTRACT_ROUTE' THEN format('%s 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料', goods)
+        WHEN 'SUBCONTRACT_ROUTE' THEN format('上层 %s 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商', goods)
         WHEN 'BUY_ROUTE' THEN format('%s的 %s 按采购供应，只能从仓库领料', receiver, goods)
         WHEN 'NO_PARENT_RELATION' THEN format('%s的 %s 不是由本工单供应 (属于别的物料分析或已由其它来源承担)', receiver, goods)
         WHEN 'SELF' THEN '不能转给本工单自己'
@@ -606,14 +606,13 @@ SELECT NULL::UUID, NULL::UUID, NULL::TEXT, NULL::TEXT, FALSE, NULL::UUID, NULL::
 FROM (
     SELECT CASE
                WHEN NOT EXISTS (SELECT 1 FROM producing) THEN 'SOURCE_INVALID'
-               WHEN fn_workshop_direct_source_is_subcontract(p_producing) THEN 'SUBCONTRACT_ROUTE'
                WHEN EXISTS (
                        SELECT 1 FROM producing
                        JOIN production_plans plan ON plan.id = producing.plan_id
                        JOIN production_material_analysis_items item
                          ON item.id = plan.material_analysis_item_id
                         AND item.analysis_id = plan.material_analysis_id AND NOT item.is_deleted
-                       WHERE item.source_type IN ('MAKE_COMPONENT', 'SUBCONTRACT_MAKE', 'AGGREGATE_MAKE'))
+                       WHERE item.source_type IN ('MAKE_COMPONENT', 'AGGREGATE_MAKE'))
                     OR EXISTS (
                        SELECT 1 FROM producing JOIN subplan_links link
                          ON link.subplan_id = producing.plan_id AND NOT link.is_deleted)
@@ -627,8 +626,8 @@ FROM (
            (SELECT COALESCE(NULLIF(goods.code, ''), NULLIF(goods.name, ''), '这个货品')
             FROM producing JOIN goods ON goods.id = producing.product_goods_id) AS goods_label
 ) sentinel
--- 没有一条结构上的上层时才出哨兵(上面已把不是上层的行剔除)。生产侧是委外件时挂钩的行都是委外原因，
--- 一条都没有也由哨兵点名「委外件」。
+-- 没有一条结构上的上层时才出哨兵(上面已把不是上层的行剔除)。V798(ADR-143)起生产侧不再有委外前置自制,
+-- 委外原因只来自上层是委外件(fn_workshop_direct_relation_code)。
 WHERE p_demand IS NULL AND NOT EXISTS (SELECT 1 FROM listed)
 ORDER BY 21
 $$;

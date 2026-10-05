@@ -159,7 +159,7 @@ public class ProductionQualityMutationFootprintService {
         parts.add(new FulfillmentMutationLockPlan(Set.of(),result.inventory,result.mainWarehouses,Set.of(),CanonicalFingerprint.sha256(result.parts)));
         if(!result.plans.isEmpty()) parts.add(plans.discoverPlans(result.plans));
         if(!result.analyses.isEmpty()) parts.add(production.forAnalyses(result.analyses));
-        if(!result.manualRoots.isEmpty()) parts.add(production.forPreview(List.of(),List.of(),result.manualRoots,
+        if(!result.manualRoots.isEmpty()) parts.add(production.forPreview(List.of(),result.manualRoots,
                 result.manualRoots.stream().map(WarehouseDimension::warehouseId).distinct().toList(),List.of()));
         if(!result.preStocked.isEmpty()) parts.add(
                 production.forFutureFinishedInbound(result.preStocked,result.preStockedPlanItems));

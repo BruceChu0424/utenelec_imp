@@ -442,25 +442,17 @@ void main() {
       },
     );
 
-    test('subcontract preparation deep link is retired and routed to hub', () {
-      // 2026-09-05 委外准备中心退役：旧深链由 GoRouter 重定向到 /subcontract；
-      // 守卫与 hub 同源(ADR-109：hub 守卫 = 子卡守卫并集，不再手写清单)，
-      // 持权用户落到 hub 而非 404。
+    test('retired subcontract preparation path is an unknown segment', () {
+      // ADR-143 删除委外前置自制：旧 /subcontract/preparations 不再保留兼容重定向，
+      // 按未知单据段 fail-closed。
       const location = '/subcontract/preparations';
-      expect(
-        requiredAnyPermFor(location)!.toSet(),
-        requiredAnyPermFor(RouteName.subcontract)!.toSet(),
-      );
-      expect(
-        employeePermissionRedirect(_userWith(const []), location),
-        RouteName.accessDenied,
-      );
+      expect(requiredAnyPermFor(location), isEmpty);
       expect(
         employeePermissionRedirect(
           _userWith([Perm.subcontractOrderView]),
           location,
         ),
-        isNull,
+        RouteName.notFound,
       );
     });
 
@@ -498,19 +490,43 @@ void main() {
       );
     });
 
-    test('subcontract decomposition workbench reads applications only', () {
-      expect(
-        requiredAnyPermFor(RouteName.operationsSubcontractWorkbench),
-        const [Perm.subcontractApplicationView],
-      );
-      expect(
-        employeePermissionRedirect(
-          _userWith([Perm.subcontractOrderView]),
-          RouteName.operationsSubcontractWorkbench,
-        ),
-        RouteName.accessDenied,
-      );
-    });
+    test(
+      'subcontract task center opens with application or order view (ADR-143)',
+      () {
+        expect(
+          requiredAnyPermFor(RouteName.operationsSubcontractWorkbench),
+          const [Perm.subcontractApplicationView, Perm.subcontractOrderView],
+        );
+        // 只管领料的委外人员(看订货、无申请查看)也能进任务中心的「领料」分段。
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.subcontractOrderView]),
+            RouteName.operationsSubcontractWorkbench,
+          ),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.subcontractOrderCreate]),
+            RouteName.operationsSubcontractWorkbench,
+          ),
+          RouteName.accessDenied,
+        );
+        expect(
+          requiredAnyPermFor(
+            RouteName.operationsSubcontractDrawRequestFor(['a', 'b']),
+          ),
+          const [Perm.subcontractOrderView],
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.subcontractApplicationView]),
+            RouteName.operationsSubcontractDrawRequest,
+          ),
+          RouteName.accessDenied,
+        );
+      },
+    );
 
     test(
       'historical material issue create path is a view-only guidance page',

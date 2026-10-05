@@ -46,7 +46,7 @@ class _BucketCandidatePlanInput {
   final String? workshopName;
   final String? workerId;
 
-  /// ADR-099：该候选的前置自制锚点已无剩余需求，本次全是追加的公共备货产出。
+  /// ADR-099：该候选的自制锚点已无剩余需求，本次全是追加的公共备货产出。
   final bool publicSurplusOnly;
 }
 
@@ -1030,7 +1030,7 @@ class _MaterialAnalysisBucketPageState
     );
   }
 
-  /// 这条产品行是不是**顶层**成品(销售 / 手工来源),而不是自制 / 委外子件。
+  /// 这条产品行是不是**顶层**成品(销售 / 手工来源),而不是自制子件。
   ///
   /// `parentAnalysisLineId` 是服务端给的结构事实:只有子件行才有父装配行
   /// (模型注释「Null for top-level sales/manual sources」)。`sourceType` 再兜一道,
@@ -1039,7 +1039,6 @@ class _MaterialAnalysisBucketPageState
       product != null &&
       (product.parentAnalysisLineId?.isEmpty ?? true) &&
       product.sourceType != 'MAKE_COMPONENT' &&
-      product.sourceType != 'SUBCONTRACT_MAKE' &&
       product.sourceType != 'AGGREGATE_MAKE';
 
   /// 物料名称格：身份格 + 顶层产品的红色「顶层」小框。

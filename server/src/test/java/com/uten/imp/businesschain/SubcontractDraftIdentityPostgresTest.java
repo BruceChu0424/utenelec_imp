@@ -5,7 +5,6 @@ import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssue
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueSaveRequest;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
-import com.uten.imp.features.subcontract.order.dto.OrderSaveRequest;
 import com.uten.imp.features.stock.weight.GoodsWeightEstimateService;
 import com.uten.imp.features.stock.weight.StockWeightAdjustmentService;
 import com.uten.imp.features.stock.weight.dto.WeightParamsRequest;
@@ -27,7 +26,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 两次真实保存 -> 审核 -> 红冲, 使用完整 Flyway 和真实预留唯一约束。 */
+/**
+ * 两次真实保存 -> 审核 -> 红冲, 使用完整 Flyway 和真实预留唯一约束。ADR-143: 委外件 E 发外的是它的直属物料 M,
+ * 出仓草稿由委外人员提交领料生成(带 requested_qty), 仓库拣货只能改少。
+ */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
@@ -65,37 +67,33 @@ class SubcontractDraftIdentityPostgresTest {
         beans.autowireBean(fixture);
         var world = fixture.seedWorld("stable-issue-row");
         fixture.loginAs(world.superAdminUserId());
-        call(fixture, "putDirectTargetStock", world, world.goodsA(), "1000");
+        UUID material = fixture.ensureSubcontractDirectMaterial(world, world.goodsE());
+        fixture.receiveSubcontractMaterial(world, material, "1000");
         weightAdjustments.setWeight(new StockWeightAdjustmentService.SetWeightCommand(
-                StockWeightAdjustmentService.KIND_MANUAL, world.warehouseId(), world.goodsA(), null,
+                StockWeightAdjustmentService.KIND_MANUAL, world.warehouseId(), material, null,
                 new BigDecimal("20"), null, false, null, null, null, java.time.OffsetDateTime.now(),
                 "出仓预填测试核重", "draft-weight-" + UUID.randomUUID(), world.superAdminUserId()));
         var references = weights.params(List.of(
-                new WeightParamsRequest.Line(world.goodsA(), null, world.warehouseId(), null),
-                new WeightParamsRequest.Line(world.goodsA(), null, UUID.randomUUID(), null),
-                new WeightParamsRequest.Line(world.goodsA(), null, world.warehouseId(), UUID.randomUUID())));
+                new WeightParamsRequest.Line(material, null, world.warehouseId(), null),
+                new WeightParamsRequest.Line(material, null, UUID.randomUUID(), null),
+                new WeightParamsRequest.Line(material, null, world.warehouseId(), UUID.randomUUID())));
         assertThat(references.items()).hasSize(3);
         assertThat(references.stockBalances()).singleElement().satisfies(balance -> {
             assertThat(balance.warehouseId()).isEqualTo(world.warehouseId());
-            assertThat(balance.goodsId()).isEqualTo(world.goodsA());
+            assertThat(balance.goodsId()).isEqualTo(material);
             assertThat(balance.colorId()).isNull();
             assertThat(balance.qtyBase()).isEqualByComparingTo("1000");
             assertThat(balance.weightKg()).isEqualByComparingTo("20");
         });
-        OrderSaveRequest orderRequest = call(fixture, "directSubcontractDraft", world, world.goodsA(),
-                (Object) new String[]{"1000"});
-        var order = orders.create(orderRequest);
-        UUID reviewer = call(fixture, "createApprover", world);
-        Object finance = ReflectionTestUtils.getField(fixture, "financeApproval");
-        call(finance, "submit", "SUBCONTRACT", order.getId());
-        fixture.loginAs(reviewer);
-        call(fixture, "approvePendingFinance", "SUBCONTRACT", order.getId());
+        var submitted = fixture.submitLeafSubcontractForFinance(world, new BigDecimal("1000"));
+        fixture.loginAs(submitted.reviewerUserId());
+        call(fixture, "approvePendingFinance", "SUBCONTRACT", submitted.orderId());
         fixture.loginAs(world.superAdminUserId());
-        UUID issueId = db.queryForObject("""
-                SELECT issue.id FROM subcontract_material_issues issue
-                JOIN subcontract_material_issue_items item ON item.issue_id=issue.id
-                WHERE item.order_item_id=? AND issue.status=0 AND NOT issue.is_deleted
-                """, UUID.class, order.getItems().getFirst().getId());
+        UUID orderItem = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",
+                UUID.class, submitted.orderId());
+        // 委外人员领满 1000 套 → 仓库待发草稿 M 1000(requested_qty 1000)。
+        UUID issueId = fixture.submitSubcontractDraw(orderItem, new BigDecimal("1000"), "stable-issue-draw-" + orderItem)
+                .getFirst();
         var original = issues.detail(issueId).getItems().getFirst();
         var createdAt = db.queryForObject("SELECT created_at FROM subcontract_material_issue_items WHERE id=?",
                 java.sql.Timestamp.class, original.getId());
@@ -103,11 +101,11 @@ class SubcontractDraftIdentityPostgresTest {
         db.update("""
                 INSERT INTO subcontract_material_issue_items(
                     id,bill_no,bill_date,line_no,issue_id,plan_item_id,order_item_id,goods_id,color_id,unit_id,unit_rate,qty,
-                    parent_goods_id,parent_color_id,goods_code_snapshot,goods_name_snapshot,
+                    requested_qty,parent_goods_id,parent_color_id,goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,parent_goods_code_snapshot,parent_goods_name_snapshot,
                     parent_goods_snapshot_source,is_deleted)
                 SELECT ?,bill_no,bill_date,line_no,issue_id,plan_item_id,order_item_id,goods_id,color_id,unit_id,unit_rate,qty,
-                    parent_goods_id,parent_color_id,goods_code_snapshot,goods_name_snapshot,
+                    requested_qty,parent_goods_id,parent_color_id,goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,parent_goods_code_snapshot,parent_goods_name_snapshot,
                     parent_goods_snapshot_source,TRUE
                 FROM subcontract_material_issue_items WHERE id=?
@@ -159,8 +157,8 @@ class SubcontractDraftIdentityPostgresTest {
 
         var approved = issues.approve(issueId);
         assertThat(approved.getItems().getFirst().getId()).isEqualTo(original.getId());
-        assertThat(balance(world.warehouseId(), world.goodsA())).isEqualByComparingTo("500");
-        assertThat(balanceWeight(world.warehouseId(), world.goodsA())).isEqualByComparingTo("10");
+        assertThat(balance(world.warehouseId(), material)).isEqualByComparingTo("500");
+        assertThat(balanceWeight(world.warehouseId(), material)).isEqualByComparingTo("10");
         assertThat(db.queryForObject("SELECT issued_qty FROM subcontract_material_plan_items WHERE id=?",
                 BigDecimal.class, original.getPlanItemId())).isEqualByComparingTo("500");
         assertThat(db.queryForObject("""
@@ -169,8 +167,8 @@ class SubcontractDraftIdentityPostgresTest {
         assertThat(db.queryForObject("SELECT counterpart_kind FROM goods_weight_observations WHERE source_item_id=?",
                 String.class, original.getId())).isEqualTo("SUBCONTRACTOR");
         issues.reverse(issueId);
-        assertThat(balance(world.warehouseId(), world.goodsA())).isEqualByComparingTo("1000");
-        assertThat(balanceWeight(world.warehouseId(), world.goodsA())).isEqualByComparingTo("20");
+        assertThat(balance(world.warehouseId(), material)).isEqualByComparingTo("1000");
+        assertThat(balanceWeight(world.warehouseId(), material)).isEqualByComparingTo("20");
         assertThat(db.queryForObject("SELECT issued_qty FROM subcontract_material_plan_items WHERE id=?",
                 BigDecimal.class, original.getPlanItemId())).isZero();
         assertThat(db.queryForObject("""

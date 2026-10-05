@@ -82,7 +82,7 @@ class SubcontractShortDeliveryAutoSettleTest {
         when(currentUser.requireEmployeeId()).thenReturn(ACTOR_EMPLOYEE);
         SubcontractMaterialPlanService plans = mock(SubcontractMaterialPlanService.class);
         when(plans.minimumOrderQtyFromIssued(eq(ITEM_ID), any())).thenReturn(new BigDecimal("1000"));
-        when(waste.recordShortDeliveryLoss(any(), any(), any(), any(), any(), any(), any())).thenReturn(WASTE_ID);
+        when(waste.recordShortDeliveryLoss(any(), any(), any(), any(), any(), any())).thenReturn(WASTE_ID);
         EntityManager em = mock(EntityManager.class);
         Query closure = mock(Query.class, RETURNS_SELF);
         when(em.createNativeQuery(anyString())).thenReturn(closure);
@@ -111,7 +111,7 @@ class SubcontractShortDeliveryAutoSettleTest {
         assertTrue(sql.contains("expected_complete_by = NULL"), "分批等待的预计到齐日随结案清空");
         assertTrue(sql.contains("status IN ('PENDING_OWNER', 'WAITING_MORE')"), "WAITING_MORE 案件必须能被这条 UPDATE 命中");
         assertTrue(sql.contains("qty_change_log_id = NULL"), "新损耗履约事实不挂缩单日志");
-        verify(waste).recordShortDeliveryLoss(eq(ITEM_ID), eq(BigDecimal.ONE), argThat(q -> q.compareTo(new BigDecimal("50")) == 0),
+        verify(waste).recordShortDeliveryLoss(eq(ITEM_ID), argThat(q -> q.compareTo(new BigDecimal("50")) == 0),
                 argThat(q -> q.compareTo(new BigDecimal("50")) == 0), eq(new BigDecimal("10")), anyString(), any());
         verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
         verify(orders, never()).changeQtyForShortDelivery(any(), any());
@@ -140,7 +140,7 @@ class SubcontractShortDeliveryAutoSettleTest {
 
         assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"), "累计 890 < 下限 900, 继续分批等待");
         verify(orders, never()).changeQtyForShortDeliveryBySystem(any(), any());
-        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any(), any(), any(), any());
+        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any(), any(), any());
     }
 
     @Test

@@ -77,6 +77,9 @@ public class ProductionExecutionPackageCommandService {
     private final com.uten.imp.features.production.plan.ProductionPlanMutationFootprintService mutationFootprint;
     private final org.springframework.beans.factory.ObjectProvider<
             com.uten.imp.features.production.fulfillment.ProductionExecutionReadinessService> readiness;
+    /** 委外件缺 BOM 转研发(ADR-143 §二.3); 字段注入, 手工构造的单测里为空时只拒绝不登记。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.RdBomGapPort rdBomGaps;
 
     private void freezeConsumptionRules(List<SegmentDraft> segments,
                                         List<ProductionMaterialDemand> demands) {
@@ -346,6 +349,7 @@ public class ProductionExecutionPackageCommandService {
                         })
                         .filter(line -> line.qty().signum() > 0)
                         .toList();
+        rejectSubcontractBomGaps(planId, plan, subcontractLines);
         MrpGenerateResult subcontractResult =
                 packageOwnsSupply
                         ? subcontractCoordinator.create(
@@ -1781,6 +1785,45 @@ public class ProductionExecutionPackageCommandService {
 
     private static ApiException validation(String message) {
         return new ApiException(ErrorCode.VALIDATION_FAILED, message);
+    }
+
+    /**
+     * ADR-143 §二.3：委外件必须先有可发外的直属物料(BOM，唯一判定 {@code fn_subcontract_draw_edges})
+     * 计划才能给它下委外申请。旧/手工计划包按缺口生成委外申请前检查：缺 BOM 的委外件逐个转工程研发部
+     * 完善(独立事务立即提交，随后的 409 不撤销；当前操作人进等待名单)，再整次拒绝本次确认。
+     */
+    private void rejectSubcontractBomGaps(
+            UUID planId, PlanHeader plan,
+            List<ProductionSubcontractRequestPort.DraftLine> lines) {
+        List<UUID> goodsIds = lines.stream()
+                .map(ProductionSubcontractRequestPort.DraftLine::goodsId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (goodsIds.isEmpty()) return;
+        List<Object[]> missing = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT goods.id, COALESCE(goods.name, ''), COALESCE(goods.code, '')
+                FROM goods
+                WHERE goods.id IN (:goodsIds)
+                  AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(goods.id))
+                ORDER BY goods.code, goods.id
+                """).setParameter("goodsIds", goodsIds));
+        if (missing.isEmpty()) return;
+        List<String> labels = new ArrayList<>(missing.size());
+        for (Object[] row : missing) {
+            String label = com.uten.imp.application.port.RdBomGapPort.goodsLabel(
+                    Objects.toString(row[1], ""), Objects.toString(row[2], ""));
+            labels.add(label);
+            if (rdBomGaps != null) {
+                rdBomGaps.forwardBomGap((UUID) row[0],
+                        com.uten.imp.application.port.RdBomGapPort.SOURCE_PRODUCTION_PLAN,
+                        planId, plan.billNo(),
+                        "生产计划 " + Objects.toString(plan.billNo(), "") + " 里的委外件 " + label
+                                + " 还没有维护 BOM(直属物料)，计划不能下达委外");
+            }
+        }
+        throw conflict(com.uten.imp.application.port.RdBomGapPort
+                .subcontractBomMissingMessage(labels, false));
     }
 
     private static ApiException conflict(String message) {

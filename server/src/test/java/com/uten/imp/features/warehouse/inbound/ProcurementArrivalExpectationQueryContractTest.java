@@ -55,12 +55,13 @@ class ProcurementArrivalExpectationQueryContractTest {
         for (String sql : List.of(jdbc.expectationListSql, jdbc.expectationCountSql)) {
             assertThat(sql.replaceAll("\\s+", " "))
                     .contains("expectation.order_type <> 'SUBCONTRACT'")
-                    .contains("subcontract_material_issue_items issue_item")
-                    .contains("issue.status = 1")
-                    .contains("release_plan.flow_mode IN")
-                    .contains("'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND'")
+                    // ADR-143 §三.6: 委外可回厂量 = 已发直属物料能做成的完整套数(逐种取短板)
+                    // + 财务已批准入库的自带料 + 已退回待补的 IQC 不合格量 - 已审核回厂。
+                    .contains("fn_subcontract_returnable_qty(supplied_item.id)")
+                    .contains("supplied_item.arrival_overage_posted_qty")
                     .contains("procurement_iqc_rejection_cases rejection")
                     .contains("visible_item.expectation_id = expectation.id")
+                    .doesNotContain("flow_mode")
                     .doesNotContain("procurement_iqc_replacement_allocations");
         }
     }

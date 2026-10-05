@@ -36,6 +36,8 @@ public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputRe
     private String productionPlanNo;
     private String salesOrderNo;
     private String remark;
+    /** 本行允许超收百分比(ADR-144); 空 = 0。不是价格, 不随价格脱敏。 */
+    private BigDecimal allowedOverReceiptPct;
     /**
      * 全部来源申请（V463 合并行多来源；稳定顺序与 sources.line_no 一致）：
      * 申请明细 id + 申请单 id（跳详情用）+ 申请单号。单来源行同样返回一条。

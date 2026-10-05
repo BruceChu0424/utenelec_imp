@@ -371,6 +371,39 @@ void main() {
       },
     );
   }
+  for (final replay in [false, true]) {
+    testWidgets(
+      'definite server rejection survives a failing local checkpoint replay=$replay',
+      (tester) async {
+        // 2026-10-05：批量登记实际到货的服务端 409 被本机草稿写入失败顶替成通用失败文案。
+        final storage = MemoryDraftStorage();
+        final env = await pumpEditor(tester, storage);
+        final editor = tester.state<TestEditorState>(find.byType(TestEditor))
+          ..canReplay = replay;
+        editor.text.text = '原始输入';
+        await expectLater(
+          editor.runFormDraftSubmission(() async {
+            storage.failWrites = true;
+            throw ApiException('CONFLICT', '服务端原因', httpStatus: 409);
+          }),
+          throwsA(
+            isA<ApiException>().having((e) => e.message, 'message', '服务端原因'),
+          ),
+        );
+        await tester.pump();
+        expect(find.textContaining('服务端未接受本次提交'), findsOneWidget);
+        storage.failWrites = false;
+        var calls = 0;
+        await editor.runFormDraftSubmission(() async {
+          calls++;
+        });
+        expect(calls, 1, reason: '明确拒绝后仍可改了再提交');
+        await tester.pumpWidget(const SizedBox.shrink());
+        env.router.dispose();
+        env.container.dispose();
+      },
+    );
+  }
   for (final status in [400, 422]) {
     testWidgets(
       'default $status rejection keeps original editable draft behavior',

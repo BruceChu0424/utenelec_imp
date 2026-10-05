@@ -83,6 +83,52 @@ public class SubcontractApplicationService {
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final ProductionSubcontractSupplyTransitionPort productionSupply;
     private final ProductionSupplySourceGuard productionSourceGuard;
+    /** ADR-143 §二.3 委外件缺 BOM 转研发(研发任务模块实现)；单测手工构造时为空。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.RdBomGapPort rdBomGaps;
+
+    /**
+     * 委外任务中心「通知研发完善」(ADR-143 §二.3)：申请明细的委外件缺 BOM(没有可发外的直属物料，
+     * 唯一判定 fn_subcontract_draw_edges)时转工程研发部完善，当前操作人进等待名单；同一货品已有未完成
+     * 研发任务时只登记等待人、不重复通知研发。研发任务在独立事务里立即提交。
+     */
+    @Transactional(readOnly = true)
+    public com.uten.imp.features.subcontract.application.dto.ForwardBomResult forwardBom(UUID applicationItemId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.goods_id, application.id, application.bill_no,
+                       COALESCE(goods.name, ''), COALESCE(goods.code, ''),
+                       EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(item.goods_id)) AS drawable
+                FROM subcontract_application_items item
+                JOIN subcontract_applications application ON application.id = item.application_id
+                LEFT JOIN goods ON goods.id = item.goods_id
+                WHERE item.id = :itemId
+                  AND item.is_deleted = FALSE
+                  AND application.is_deleted = FALSE
+                """).setParameter("itemId", applicationItemId));
+        if (rows.isEmpty()) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "委外申请明细不存在");
+        }
+        Object[] row = rows.getFirst();
+        UUID goodsId = uuid(row[0]);
+        if (goodsId == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "这条委外申请明细没有货品，不能通知研发");
+        }
+        String goodsLabel = com.uten.imp.application.port.RdBomGapPort.goodsLabel(
+                Objects.toString(row[3], ""), Objects.toString(row[4], ""));
+        if (Boolean.TRUE.equals(row[5])) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外件 " + goodsLabel + " 已经维护好 BOM(直属物料)，刷新后即可生成订货单");
+        }
+        if (rdBomGaps == null) {
+            throw new IllegalStateException("研发任务模块未装配，不能通知研发完善 BOM");
+        }
+        String billNo = Objects.toString(row[2], "");
+        var gap = rdBomGaps.forwardBomGap(goodsId,
+                com.uten.imp.application.port.RdBomGapPort.SOURCE_SUBCONTRACT_APPLICATION,
+                uuid(row[1]), billNo,
+                "委外申请 " + billNo + " 里的委外件 " + goodsLabel + " 还没有维护 BOM(直属物料)，委外不能下单");
+        return new com.uten.imp.features.subcontract.application.dto.ForwardBomResult(gap.taskNo(), gap.created());
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<ApplicationListItem> list(ApplicationQueryFilter f, int page, int size, String sort, String order) {

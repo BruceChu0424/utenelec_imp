@@ -81,8 +81,7 @@ abstract class _MaterialAnalysisBomTreeState
       }
       for (final target in material.notifiedTargets) {
         if (target.status == 'CANCELLED' || target.documentId == null) continue;
-        if (target.documentType == 'PREPLAN_MAKE_TASK' ||
-            target.documentType == 'SUBCONTRACT_MAKE_TASK') {
+        if (target.documentType == 'PREPLAN_MAKE_TASK') {
           link(target.documentId!, material.materialLineId);
         }
       }
@@ -332,7 +331,7 @@ abstract class _MaterialAnalysisBomTreeState
     return count;
   }
 
-  /// MAKE_COMPONENT / SUBCONTRACT_MAKE remain real server-side ownership and
+  /// MAKE_COMPONENT / AGGREGATE_MAKE remain real server-side ownership and
   /// traceability facts. Their real material requirements and plan/progress
   /// stay below the exact source node, rather than becoming extra external
   /// product roots or being hidden after ownership transfers.
@@ -340,7 +339,6 @@ abstract class _MaterialAnalysisBomTreeState
     ProductionMaterialAnalysisProduct? product,
   ) =>
       product?.sourceType == 'MAKE_COMPONENT' ||
-      product?.sourceType == 'SUBCONTRACT_MAKE' ||
       product?.sourceType == 'AGGREGATE_MAKE';
 
   bool _bomModeMatches(ProductionMaterialAnalysisMaterial material) =>

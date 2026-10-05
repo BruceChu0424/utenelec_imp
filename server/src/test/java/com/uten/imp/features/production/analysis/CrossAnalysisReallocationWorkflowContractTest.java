@@ -59,11 +59,13 @@ class CrossAnalysisReallocationWorkflowContractTest {
 
         assertThat(entitlement)
                 .contains("with recursive entitlement_lineage as")
-                .contains("current_positive.event_type in ( 'restore', 'make_delegate_in', 'subcontract_handoff_in')")
+                .contains("current_positive.event_type in ( 'restore', 'make_delegate_in')")
                 .contains("counter_negative.source_entitlement_event_id")
                 .contains("positive.event_type in ('origin_iqc', 'origin_make')")
-                .contains("'make_delegate_out', 'subcontract_handoff_out'")
+                .contains("'make_delegate_out', 'reallocate_out'")
                 .contains("lineage.event_type in ( 'reallocate_in', 'priority_in')");
+        // ADR-143 §五: V447 委外前置自制交接(SUBCONTRACT_HANDOFF_IN/OUT)整体删除, 血缘只剩自制委托与红冲恢复。
+        assertThat(entitlement).doesNotContain("subcontract_handoff");
         assertThat(reallocation).contains(
                 "(from_analysis_id = :analysisid and from_analysis_material_id = :materialid)");
         assertThat(reallocation).contains(

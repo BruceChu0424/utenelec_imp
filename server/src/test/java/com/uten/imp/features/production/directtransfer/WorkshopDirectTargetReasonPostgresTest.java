@@ -123,7 +123,11 @@ class WorkshopDirectTargetReasonPostgresTest {
         jdbc.update("INSERT INTO subplan_links(plan_id,subplan_id) VALUES (?,?)", plan(null, null), leafPlan);
         leafUnrelated = List.of(unlinkedDemand(otherAnalysis, LEAF, "MAKE"), unlinkedDemand(null, LEAF, "BUY"));
 
-        // HV5ZJ012 shape: a shared (aggregate) batch confirmed as subcontract pre-make feeding a same-workshop parent.
+        // HV5ZJ012 shape (before ADR-143): a shared (aggregate) batch confirmed as subcontract pre-make feeding a
+        // same-workshop parent. V798 removed subcontract pre-make: a SUBCONTRACT aggregate batch is external only
+        // (no anchor, preplan_aggregate_subcontract_external_chk) and the producing-side subcontract marker
+        // (fn_workshop_direct_source_is_subcontract) is gone, so such a work order is an ordinary aggregate make;
+        // the subcontract reason now comes only from the receiving demand's own route (see subcontractDemand).
         UUID analysis = analysis();
         subcontractSource = subcontractBatchSource(analysis);
         UUID parentItem = analysisItem(analysis, "OTHER", TOP, "1");
@@ -151,7 +155,9 @@ class WorkshopDirectTargetReasonPostgresTest {
         assertThat(code(source, selfDemand)).isEqualTo("SELF");
         assertThat(code(source, otherGoods)).isEqualTo("GOODS_MISMATCH");
         assertThat(code(source, subcontractDemand)).isEqualTo("SUBCONTRACT_ROUTE");
-        assertThat(code(subcontractSource, aggregateDemand)).isEqualTo("SUBCONTRACT_ROUTE");
+        // V798 (ADR-143): no producing-side subcontract marker any more; a same-goods order of the same analysis is
+        // not a structural parent of the ex-pre-make aggregate work order.
+        assertThat(code(subcontractSource, aggregateDemand)).isEqualTo("NO_PARENT_RELATION");
         assertThat(code(source, buyDemand)).isEqualTo("BUY_ROUTE");
         assertThat(code(source, unrelated)).isEqualTo("NO_PARENT_RELATION");
         assertThat(code(source, otherWorkshop)).isEqualTo("DIFFERENT_WORKSHOP");
@@ -224,13 +230,16 @@ class WorkshopDirectTargetReasonPostgresTest {
         assertThat(rows).extracting(row -> row.get("reason_code")).doesNotContain("NO_PARENT_RELATION");
         assertThat(rows).allSatisfy(row -> assertThat(row.get("reason_rank")).isNotNull());
 
-        var subcontract = jdbc.queryForList("SELECT * FROM fn_workshop_direct_targets(?)", subcontractSource);
-        assertThat(subcontract).singleElement().satisfies(row -> {
-            assertThat(row).containsEntry("demand_id", aggregateDemand).containsEntry("eligible", false)
-                    .containsEntry("reason_code", "SUBCONTRACT_ROUTE");
-            assertThat((String) row.get("reason_text"))
-                    .isEqualTo("HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
-        });
+        // V798 (ADR-143): the subcontract reason comes from the receiving demand's own route; the ex-pre-make
+        // aggregate work order has no structural receiver and only gets the sentinel.
+        var subcontract = single(source, subcontractDemand, null);
+        assertThat(subcontract).containsEntry("demand_id", subcontractDemand).containsEntry("eligible", false)
+                .containsEntry("reason_code", "SUBCONTRACT_ROUTE");
+        assertThat((String) subcontract.get("reason_text"))
+                .isEqualTo("上层 HVT001 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
+        assertThat(jdbc.queryForList("SELECT * FROM fn_workshop_direct_targets(?)", subcontractSource)).singleElement()
+                .satisfies(row -> assertThat(row).containsEntry("reason_code", "NO_RECEIVER_ISSUED_YET")
+                        .containsEntry("eligible", false).containsEntry("demand_id", null));
 
         assertThat(jdbc.queryForList("SELECT * FROM fn_workshop_direct_targets(?)", topSource)).singleElement()
                 .satisfies(row -> assertThat(row).containsEntry("reason_code", "NOT_A_COMPONENT")
@@ -255,18 +264,15 @@ class WorkshopDirectTargetReasonPostgresTest {
         assertThat(single(source, unrelatedSubcontract, null)).containsEntry("reason_code", "NO_PARENT_RELATION")
                 .containsEntry("eligible", false).containsEntry("receiver_open", false);
 
-        // A subcontract pre-make still says so: with its linked parent listed, and as the sentinel when the only
-        // same-goods orders in its workshop belong to other analyses.
-        assertThat(closestReason(subcontractSource)).isEqualTo("SUBCONTRACT_ROUTE");
+        // V798 (ADR-143): subcontract pre-make is gone. The ex-pre-make aggregate work order is an ordinary aggregate
+        // make: same-goods orders that are not its structural parents are neither a subcontract reason nor listed;
+        // without a structural receiver it gets the sentinel (with or without other analyses' same-goods orders).
+        assertThat(closestReason(subcontractSource)).isEqualTo("NO_RECEIVER_ISSUED_YET");
         assertThat(jdbc.queryForList("SELECT demand_id FROM fn_workshop_direct_targets(?)", UUID.class,
-                subcontractSource)).containsExactly(aggregateDemand);
+                subcontractSource)).containsExactly((UUID) null);
         assertThat(jdbc.queryForList("SELECT * FROM fn_workshop_direct_targets(?)", loneSubcontractSource))
-                .singleElement().satisfies(row -> {
-                    assertThat(row).containsEntry("demand_id", null).containsEntry("eligible", false)
-                            .containsEntry("reason_code", "SUBCONTRACT_ROUTE");
-                    assertThat((String) row.get("reason_text"))
-                            .isEqualTo("HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
-                });
+                .singleElement().satisfies(row -> assertThat(row).containsEntry("demand_id", null)
+                        .containsEntry("eligible", false).containsEntry("reason_code", "NO_RECEIVER_ISSUED_YET"));
     }
 
     @Test
@@ -281,7 +287,7 @@ class WorkshopDirectTargetReasonPostgresTest {
         assertThat(text("DEMAND_ALREADY_COVERED", "HVT001")).isEqualTo("上层工单的 HVT001 已经备齐 (仓库备料或其它直送)");
         assertThat(text("RECEIVER_STATUS", null)).isEqualTo("上层工单已开工或已结束，不再接收直送");
         assertThat(text("SUBCONTRACT_ROUTE", "HVZJ12"))
-                .isEqualTo("HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
+                .isEqualTo("上层 HVZJ12 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
         // 数量超出时点名是哪个上层工单(一行分给多个工单时才知道是哪一条)。
         assertThat(single(source, earlier, null)).containsEntry("receiver_label", "上层工单 " + segmentCode(earlier));
         assertThat((String) single(source, earlier, new BigDecimal("60")).get("reason_text"))
@@ -327,12 +333,13 @@ class WorkshopDirectTargetReasonPostgresTest {
     @Test
     void assertRaisesThePlainReasonWithTheCodeAsHint() {
         jdbc.queryForList("SELECT fn_assert_workshop_direct_target(?,?,?)", source, earlier, new BigDecimal("10"));
+        // V798 (ADR-143): the subcontract route reason comes from the receiving demand's own route.
         assertThatThrownBy(() -> jdbc.queryForList("SELECT fn_assert_workshop_direct_target(?,?,?)",
-                subcontractSource, aggregateDemand, BigDecimal.ONE))
+                source, subcontractDemand, BigDecimal.ONE))
                 .rootCause().isInstanceOfSatisfying(PSQLException.class, error -> {
                     assertThat(error.getSQLState()).isEqualTo("23514");
                     assertThat(error.getServerErrorMessage().getMessage())
-                            .isEqualTo("无法转到下一道工序：HVZJ12 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料");
+                            .isEqualTo("无法转到下一道工序：上层 HVT001 是委外件：本工单做的物料先送入仓库，由委外人员领料发给委外商");
                     assertThat(error.getServerErrorMessage().getHint()).isEqualTo("SUBCONTRACT_ROUTE");
                     assertThat(error.getServerErrorMessage().getConstraint()).isEqualTo("workshop_direct_target_guard");
                 });
@@ -399,7 +406,7 @@ class WorkshopDirectTargetReasonPostgresTest {
         jdbc.update("""
                 INSERT INTO preplan_aggregate_batches(analysis_id,action_id,anchor_analysis_item_id,plan_id,route,
                     compatibility_key,configuration_snapshot,created_by) VALUES (?,?,?,?,'SUBCONTRACT',?,'{}'::jsonb,?)
-                """, analysis, UUID.randomUUID(), anchor, aggregatePlan, hex(), UUID.randomUUID());
+                """, analysis, UUID.randomUUID(), null, aggregatePlan, hex(), UUID.randomUUID());
         return segment(aggregatePlan, UUID.randomUUID(), SUBCONTRACTED, W1, "IN_PROGRESS", false);
     }
 

@@ -37,7 +37,6 @@ public class MaterialAnalysisController {
     private final MaterialStockReallocationService stockReallocationService;
     private final ProductionGoodsWorkshopPreferenceService workshopPreferences;
     private final MaterialAnalysisSupplyProgressService supplyProgressService;
-    private final SubcontractMakeTaskService subcontractMakeTasks;
     private final AnalysisLinkedSalesOrderService linkedSalesOrders;
     private final AuditDetailViewRecorder detailViewAudit;
     private final GoodsOwningWarehouseWriteService goodsOwningWarehouses;
@@ -296,36 +295,6 @@ public class MaterialAnalysisController {
             @PathVariable UUID id,
             @Valid @RequestBody ClaimSharedFutureRequest request) {
         return commandService.claimSharedFuture(id, request);
-    }
-
-    /** V458：有子层级委外件的前置自制任务进度（先自制、后通知委外的账本投影）。 */
-    @GetMapping("/subcontract-make-tasks")
-    @PreAuthorize("hasAnyAuthority('production_material_analysis:view',"
-            + " 'subcontract_application:view')")
-    public PageResponse<SubcontractMakeTaskService.TaskView> subcontractMakeTasks(
-            @RequestParam(required = false) UUID analysisId,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String keyword,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return subcontractMakeTasks.tasks(
-                new SubcontractMakeTaskService.TaskPageRequest(
-                        page, size, status, keyword, analysisId));
-    }
-
-    /** V458：按已产未通知量分批通知委外（生成只读委外申请并通知委外部）。 */
-    @GetMapping("/subcontract-make-tasks/{taskId}")
-    @PreAuthorize("hasAnyAuthority('production_material_analysis:view', 'subcontract_application:view')")
-    public SubcontractMakeTaskService.TaskView subcontractMakeTask(@PathVariable UUID taskId) {
-        return subcontractMakeTasks.task(taskId);
-    }
-
-    @PostMapping("/subcontract-make-tasks/{taskId}/notify")
-    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:notify')")
-    public SubcontractMakeTaskService.NotifyResult notifySubcontractMakeBatch(
-            @PathVariable UUID taskId,
-            @Valid @RequestBody SubcontractMakeTaskService.NotifyRequest request) {
-        return subcontractMakeTasks.notifyBatch(taskId, request);
     }
 
     /**

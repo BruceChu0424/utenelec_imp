@@ -246,8 +246,8 @@ abstract class _MaterialAnalysisChildShortageState
       !_isNonProductionStage(material.controlStage) &&
       _childShortageUncovered(material) > 0.0001;
 
-  /// 这一件的下层要不要一起看：自制，或 BOM 上还有生产性下层的委外(含 V581 单一子件
-  /// 委外——那颗子件仍要我方备)。与「父件 + 下层一起下单」同一条下钻口径。
+  /// 这一件的下层要不要一起看：自制，或 BOM 上还有生产性下层的委外(直属物料由我方
+  /// 备好、领料发外，ADR-143)。与「父件 + 下层一起下单」同一条下钻口径。
   bool _childShortageDescends(
     ProductionMaterialAnalysisMaterial material,
     _MaterialGroup? group,

@@ -294,9 +294,18 @@ public class ProcurementIqcStockInService {
     record PreStockedRelease(UUID passEventId, UUID inspectionItemId, UUID warehouseId, String place) {
     }
 
-    /** Auto stock-in outcome: batches that entered stock, plus PASS events that fall back to the warehouse queue. */
-    record PreStockedAutoStockIn(List<ReceiptStockIn> batches, List<UUID> fallbackPassEventIds) {
-        static final PreStockedAutoStockIn NONE = new PreStockedAutoStockIn(List.of(), List.of());
+    /**
+     * Auto stock-in outcome: batches that entered stock, PASS events that fall back to the warehouse queue, and
+     * PASS events held back because the subcontract receipt still waits for a short-delivery decision
+     * (ADR-098 × ADR-090: the goods stay on the shelf, the decision converts them in its own transaction).
+     */
+    record PreStockedAutoStockIn(List<ReceiptStockIn> batches, List<UUID> fallbackPassEventIds,
+                                 List<UUID> heldPassEventIds) {
+        static final PreStockedAutoStockIn NONE = new PreStockedAutoStockIn(List.of(), List.of(), List.of());
+
+        PreStockedAutoStockIn(List<ReceiptStockIn> batches, List<UUID> fallbackPassEventIds) {
+            this(batches, fallbackPassEventIds, List.of());
+        }
     }
 
     /** One batch holds at most this many rows (procurement_iqc_stock_in_item_position_chk / batch_count_chk). */
@@ -326,6 +335,13 @@ public class ProcurementIqcStockInService {
                 throw conflict("先入库后检的自动转正缺少上架位置或放行事件，请刷新后重试");
             }
             if (!seen.add(release.passEventId())) throw conflict("同一品质放行事件在一次结论里只能自动转正一次");
+        }
+        // ADR-098 × ADR-090(2026-10-05)：委外回厂短交待委外判定时，品质结论照常记下(货早已在库位上)，
+        // 只是转为可用库存先扣住，不再整笔 409 把品质结论也挡掉。委外判定(分批到货 / 接受损耗)或后续
+        // 到货让这张单不再被扣住时，判定 / 登记的同一事务补做转正(SubcontractHeldPreStockReleaseService)。
+        if (subcontractStockInHeld(type, receiptId)) {
+            return new PreStockedAutoStockIn(List.of(), List.of(),
+                    releases.stream().map(PreStockedRelease::passEventId).toList());
         }
         // 上架后仓库被停用/改成非叶仓是极少数运维动作：不能因此挡住品质结论，这些行退回原流程
         // (放行进仓库待确认队列，由仓库另选实际仓)；每个上架仓只校验一次。
@@ -474,18 +490,49 @@ public class ProcurementIqcStockInService {
      * 也已送检, 但到底按分批到货继续等还是按接受损耗结案由委外判定, 判定完成即自动放行。
      * 幂等重放在 confirmCommands 里已提前短路, 走不到这里, 所以不会把历史成功单变成 409。
      */
-    private void requireShortDeliveryReleasedForStockIn(String type, UUID receiptId) {
-        if (!SUBCONTRACT.equals(type) || shortDelivery == null) return;
-        String hold = shortDelivery.stockInHoldReason(receiptId);
+    private void requireShortDeliveryReleasedForStockIn(String type, UUID receiptId, boolean preStocked) {
+        String hold = stockInHoldMessage(type, receiptId, preStocked);
         if (hold != null) {
             throw new ApiException(ErrorCode.CONFLICT, hold);
         }
     }
 
+    /**
+     * 入库闸的说法按入库路线分(ADR-098 × ADR-090, 2026-10-05)：先质检后入库的货还在待入库区,
+     * 说「这批先不入库, 货先留在待入库不要上架」; 先入库后质检的货登记时已经上架, 说「货已上架,
+     * 等委外判定短交后才能转为可用库存, 判定完成系统自动转入」。可以入库时返回 null。
+     */
+    String stockInHoldMessage(String type, UUID receiptId, boolean preStocked) {
+        if (!SUBCONTRACT.equals(type) || shortDelivery == null) return null;
+        String hold = shortDelivery.stockInHoldReason(receiptId);
+        if (hold == null || !preStocked) return hold;
+        String preStockedHold = shortDelivery.preStockedHoldReason(receiptId);
+        return preStockedHold == null ? hold : preStockedHold;
+    }
+
+    /** 这张委外收货单此刻是否被回厂短交闸扣住(采购单与未接委外端口时恒为否)。 */
+    boolean subcontractStockInHeld(String type, UUID receiptId) {
+        return SUBCONTRACT.equals(type) && shortDelivery != null && shortDelivery.stockInHoldReason(receiptId) != null;
+    }
+
+    /** 本次入库的放行切片里有没有「先入库后质检」已上架的待检明细(决定入库闸的说法)。 */
+    private boolean anyPreStocked(Collection<UUID> inspectionItemIds) {
+        if (inspectionItemIds.isEmpty()) return false;
+        Object found = em.createNativeQuery("""
+                SELECT EXISTS (SELECT 1 FROM procurement_inspection_items
+                               WHERE id IN (:ids) AND pre_stocked_warehouse_id IS NOT NULL)
+                """).setParameter("ids", List.copyOf(inspectionItemIds)).getSingleResult();
+        return Boolean.TRUE.equals(found);
+    }
+
     private ConfirmResult confirmOne(
             String type, UUID receiptId, NormalizedCommand command, Map<UUID, PassSlice> locked,
             String origin) {
-        requireShortDeliveryReleasedForStockIn(type, receiptId);
+        if (subcontractStockInHeld(type, receiptId)) {
+            boolean preStocked = ORIGIN_PRE_STOCKED_AUTO.equals(origin) || anyPreStocked(command.items().stream()
+                    .map(item -> locked.get(item.passEventId()).inspectionItemId()).distinct().toList());
+            requireShortDeliveryReleasedForStockIn(type, receiptId, preStocked);
+        }
         UUID actorUserId = currentUser.requireId();
         UUID actorEmployeeId = currentUser.requireEmployeeId();
         stockService.lockInventory(command.items().stream()

@@ -115,7 +115,7 @@ final class MaterialPreparationBudgetReader {
                     AND NOT origin.is_deleted
                   LEFT JOIN production_material_analysis_materials parent ON parent.id=origin.parent_analysis_material_id
                   WHERE link.analysis_id=:analysis AND link.allocation_status IN('SUBMITTED','APPROVED')
-                    AND origin.source_type NOT IN('AGGREGATE_MAKE','SUBCONTRACT_MAKE','SUBCONTRACT_PREPARATION')
+                    AND origin.source_type<>'AGGREGATE_MAKE'
                 ), progress AS (
                   SELECT source.*,
                     COALESCE((SELECT SUM(output.base_qty) FROM stock_document_items output

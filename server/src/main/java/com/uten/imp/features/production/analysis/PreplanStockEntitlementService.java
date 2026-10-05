@@ -78,7 +78,6 @@ public class PreplanStockEntitlementService {
                       AND positive.beneficiary_analysis_material_id = :materialId
                       AND positive.event_type IN (
                           'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
-                          'SUBCONTRACT_HANDOFF_IN',
                           'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                     UNION ALL
                     SELECT lineage.lot_id,
@@ -91,8 +90,7 @@ public class PreplanStockEntitlementService {
                          lineage.current_positive_event_id
                     JOIN preplan_stock_entitlement_events counter_negative
                       ON current_positive.event_type IN (
-                         'RESTORE', 'MAKE_DELEGATE_IN',
-                         'SUBCONTRACT_HANDOFF_IN')
+                         'RESTORE', 'MAKE_DELEGATE_IN')
                      AND counter_negative.id =
                          current_positive.counter_event_id
                     JOIN preplan_stock_entitlement_events source_positive
@@ -111,7 +109,7 @@ public class PreplanStockEntitlementService {
                            FROM preplan_stock_entitlement_events negative
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
-                                 'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                                 'MAKE_DELEGATE_OUT',
                                  'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
@@ -132,8 +130,7 @@ public class PreplanStockEntitlementService {
                       positive.event_type IN ('ORIGIN_IQC', 'ORIGIN_MAKE')
                       OR (
                           positive.event_type IN (
-                              'RESTORE', 'MAKE_DELEGATE_IN',
-                              'SUBCONTRACT_HANDOFF_IN')
+                              'RESTORE', 'MAKE_DELEGATE_IN')
                           AND EXISTS (
                               SELECT 1
                               FROM entitlement_lineage lineage
@@ -153,7 +150,7 @@ public class PreplanStockEntitlementService {
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'MAKE_DELEGATE_OUT',
                             'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
@@ -230,7 +227,7 @@ public class PreplanStockEntitlementService {
                            FROM preplan_stock_entitlement_events negative
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
-                                  'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                                  'MAKE_DELEGATE_OUT',
                                   'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
@@ -243,7 +240,6 @@ public class PreplanStockEntitlementService {
                  AND reservation.owner_type = 'PREPLAN_ANALYSIS'
                 WHERE positive.event_type IN (
                         'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
-                        'SUBCONTRACT_HANDOFF_IN',
                         'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                   AND positive.beneficiary_analysis_id = :analysisId
                   AND positive.beneficiary_analysis_material_id = :materialId
@@ -256,7 +252,7 @@ public class PreplanStockEntitlementService {
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'MAKE_DELEGATE_OUT',
                             'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
@@ -305,7 +301,7 @@ public class PreplanStockEntitlementService {
                                        positive.id
                                      AND negative.event_type IN (
                                          'MAKE_DELEGATE_OUT',
-                                         'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
+                                         'REALLOCATE_OUT',
                                          'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                                ), 0) AS remaining_qty,
                                reservation.goods_id, reservation.color_id,
@@ -318,7 +314,6 @@ public class PreplanStockEntitlementService {
                         WHERE positive.id = :eventId
                           AND positive.event_type IN (
                               'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
-                              'SUBCONTRACT_HANDOFF_IN',
                               'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                           AND positive.qty - COALESCE((
                               SELECT SUM(negative.qty)
@@ -327,7 +322,7 @@ public class PreplanStockEntitlementService {
                                   positive.id
                                 AND negative.event_type IN (
                                     'MAKE_DELEGATE_OUT',
-                                    'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
+                                    'REALLOCATE_OUT',
                                     'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                           ), 0) > 0
                         """ + lock).setParameter("eventId", positiveEventId));
@@ -406,111 +401,6 @@ public class PreplanStockEntitlementService {
                 "MAKE", stockDocumentId, null,
                 stockDocumentId, stockDocumentItemId,
                 null, null, null, null, idempotencyKey));
-    }
-
-    /**
-     * Moves exact entitlement from the former parent-tree child path to the
-     * matching depth-one path owned by a newly-created MAKE_COMPONENT item.
-     *
-     * <p>V458/ADR-062 修订二：有子层级的委外件下达后同样创建 SUBCONTRACT_MAKE
-     * 前置自制任务行并整树委托需求，若不把 exact 权益一并迁入新行，
-     * planExactPegs 仍按旧节点的毛需求快照 secured/earmark 共享池，而旧节点
-     * 有效需求已归零——库存被钉死，委外子树永远缺料（自锁）。故 MAKE 与
-     * SUBCONTRACT 共用本迁移，仅路线/任务类型配对不同。</p>
-     *
-     * <p>The caller must already hold inventory-dimension locks and the analysis
-     * header lock. The first refresh creates the target material rows; a second
-     * refresh consumes the new beneficiary projection.</p>
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public BigDecimal delegateMakeEntitlements(UUID analysisId, UUID actionId) {
-        tx.bind();
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT parent_material.id, child.id,
-                       source_material.id, target_material.id,
-                       analysis.warehouse_id,
-                       target_material.goods_id, target_material.color_id,
-                       target_material.unit_id, target_material.required_qty
-                FROM preplan_supply_actions action
-                JOIN production_material_analyses analysis
-                  ON analysis.id = action.analysis_id
-                 AND analysis.is_deleted = FALSE
-                 AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
-                JOIN production_material_analysis_items child
-                  ON child.id = action.external_document_id
-                 AND child.analysis_id = action.analysis_id
-                 AND child.is_deleted = FALSE
-                 AND (action.route, child.source_type,
-                      action.external_document_type) IN (
-                      ('MAKE', 'MAKE_COMPONENT', 'PREPLAN_MAKE_TASK'),
-                      ('SUBCONTRACT', 'SUBCONTRACT_MAKE', 'SUBCONTRACT_MAKE_TASK'))
-                JOIN preplan_supply_action_allocations allocation
-                  ON allocation.action_id = action.id
-                 AND allocation.analysis_id = action.analysis_id
-                JOIN production_material_analysis_materials parent_material
-                  ON parent_material.id = allocation.analysis_material_id
-                 AND parent_material.analysis_id = action.analysis_id
-                 AND parent_material.active = TRUE
-                 AND parent_material.confirmed_route = action.route
-                JOIN production_material_analysis_materials source_material
-                  ON source_material.analysis_id = action.analysis_id
-                 AND source_material.analysis_item_id =
-                     parent_material.analysis_item_id
-                 AND source_material.parent_node_key = parent_material.node_key
-                 AND source_material.active = TRUE
-                JOIN production_material_analysis_materials target_material
-                  ON target_material.analysis_id = action.analysis_id
-                 AND target_material.analysis_item_id = child.id
-                 AND target_material.depth = 1
-                 AND target_material.bom_item_id = source_material.bom_item_id
-                 AND target_material.goods_id = source_material.goods_id
-                 AND target_material.color_id IS NOT DISTINCT FROM
-                     source_material.color_id
-                 AND target_material.unit_id = source_material.unit_id
-                 AND target_material.active = TRUE
-                WHERE action.id = :actionId
-                  AND action.analysis_id = :analysisId
-                  AND action.route IN ('MAKE', 'SUBCONTRACT')
-                  AND action.status <> 'CANCELLED'
-                  AND action.external_document_type IN (
-                      'PREPLAN_MAKE_TASK', 'SUBCONTRACT_MAKE_TASK')
-                  AND child.parent_analysis_material_id = parent_material.id
-                ORDER BY target_material.id, source_material.id
-                FOR UPDATE OF action, allocation, child, parent_material,
-                              source_material, target_material
-                """)
-                .setParameter("analysisId", analysisId)
-                .setParameter("actionId", actionId));
-        Map<UUID, MakeDelegationTarget> targets = new LinkedHashMap<>();
-        for (Object[] row : rows) {
-            MakeDelegationTarget target = new MakeDelegationTarget(
-                    uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
-                    uuid(row[4]), uuid(row[5]), uuid(row[6]), uuid(row[7]),
-                    decimal(row[8]));
-            targets.putIfAbsent(target.targetMaterialId(), target);
-        }
-        BigDecimal transferred = BigDecimal.ZERO;
-        for (MakeDelegationTarget target : targets.values()) {
-            BigDecimal alreadyOwned = beneficiaryBalances(
-                    analysisId, target.warehouseId(),
-                    target.goodsId(), target.colorId()).stream()
-                    .filter(balance -> balance.beneficiaryAnalysisMaterialId()
-                            .equals(target.targetMaterialId()))
-                    .map(BeneficiaryBalance::effectiveQty)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            List<AvailableLot> lots = listAvailableBeneficiaryLots(
-                    analysisId, target.sourceMaterialId(), target.warehouseId(),
-                    target.goodsId(), target.colorId(), true);
-            for (AvailableLot lot : lots) {
-                BigDecimal take = makeDelegationTake(
-                        target.requiredQty(), alreadyOwned, lot.remainingQty());
-                if (take.signum() <= 0) break;
-                appendMakeDelegation(actionId, analysisId, target, lot, take);
-                alreadyOwned = alreadyOwned.add(take);
-                transferred = transferred.add(take);
-            }
-        }
-        return transferred;
     }
 
     /** V712 exact, many-parent path aliases. Origin pegs are never rewritten. */
@@ -705,7 +595,7 @@ public class PreplanStockEntitlementService {
                               AND positive.beneficiary_analysis_material_id=:target
                               AND positive.qty>COALESCE((SELECT sum(negative.qty) FROM preplan_stock_entitlement_events negative
                                   WHERE negative.source_entitlement_event_id=positive.id AND negative.event_type IN(
-                                    'MAKE_DELEGATE_OUT','SUBCONTRACT_HANDOFF_OUT','REALLOCATE_OUT','PRIORITY_OUT','FORMALIZE','RELEASE')),0)
+                                    'MAKE_DELEGATE_OUT','REALLOCATE_OUT','PRIORITY_OUT','FORMALIZE','RELEASE')),0)
                             ORDER BY positive.created_at,positive.id FOR UPDATE OF positive
                             """).setParameter("delegation",delegation).setParameter("reservation",reservation)
                             .setParameter("analysis",analysis).setParameter("target",target),UUID.class).stream()
@@ -724,22 +614,6 @@ public class PreplanStockEntitlementService {
         if(restored.signum()==0)throw conflict("共享来源仍被领料、正式占用或后续让料使用，不能直接红冲来源入库");
         }
         throw conflict("共享来源层级超过允许范围，不能自动红冲");
-    }
-
-    static BigDecimal makeDelegationTake(
-            BigDecimal required, BigDecimal alreadyOwned,
-            BigDecimal lotRemaining) {
-        if (required == null || alreadyOwned == null || lotRemaining == null) {
-            return BigDecimal.ZERO;
-        }
-        return required.subtract(alreadyOwned).max(BigDecimal.ZERO)
-                .min(lotRemaining.max(BigDecimal.ZERO));
-    }
-
-    private void appendMakeDelegation(
-            UUID actionId, UUID analysisId, MakeDelegationTarget target,
-            AvailableLot sourceLot, BigDecimal qty) {
-        appendMakeDelegation(actionId,analysisId,target,sourceLot,qty,null);
     }
 
     private void appendMakeDelegation(
@@ -1098,9 +972,7 @@ public class PreplanStockEntitlementService {
         boolean validPair = ("REALLOCATE_OUT".equals(outEventType)
                 && "REALLOCATE_IN".equals(inEventType))
                 || ("PRIORITY_OUT".equals(outEventType)
-                && "PRIORITY_IN".equals(inEventType))
-                || ("SUBCONTRACT_HANDOFF_OUT".equals(outEventType)
-                && "SUBCONTRACT_HANDOFF_IN".equals(inEventType));
+                && "PRIORITY_IN".equals(inEventType));
         if (!validPair) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "Unsupported entitlement event pair");
@@ -1243,7 +1115,7 @@ public class PreplanStockEntitlementService {
                                        positive.id
                                      AND negative.event_type IN (
                                          'MAKE_DELEGATE_OUT',
-                                         'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
+                                         'REALLOCATE_OUT',
                                          'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                                ), 0) AS remaining_qty,
                                reservation.goods_id, reservation.color_id,
@@ -1264,7 +1136,7 @@ public class PreplanStockEntitlementService {
                                   positive.id
                                 AND negative.event_type IN (
                                     'MAKE_DELEGATE_OUT',
-                                    'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
+                                    'REALLOCATE_OUT',
                                     'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                           ), 0) > 0
                         ORDER BY reservation.created_at, reservation.id,
@@ -1429,7 +1301,7 @@ public class PreplanStockEntitlementService {
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
                                  'MAKE_DELEGATE_OUT',
-                                 'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
+                                 'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
                        reservation.goods_id, reservation.color_id,
@@ -1442,14 +1314,13 @@ public class PreplanStockEntitlementService {
                 WHERE positive.beneficiary_analysis_id = :analysisId
                   AND positive.event_type IN (
                       'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
-                      'SUBCONTRACT_HANDOFF_IN',
                       'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                   AND positive.qty - COALESCE((
                       SELECT SUM(negative.qty)
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'MAKE_DELEGATE_OUT',
                             'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0
@@ -1478,7 +1349,7 @@ public class PreplanStockEntitlementService {
                            WHERE negative.source_entitlement_event_id = positive.id
                              AND negative.event_type IN (
                                  'MAKE_DELEGATE_OUT',
-                                 'SUBCONTRACT_HANDOFF_OUT', 'REALLOCATE_OUT',
+                                 'REALLOCATE_OUT',
                                  'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                        ), 0) AS remaining_qty,
                        reservation.goods_id, reservation.color_id,
@@ -1489,14 +1360,13 @@ public class PreplanStockEntitlementService {
                 WHERE positive.stock_reservation_id = :reservationId
                   AND positive.event_type IN (
                       'ORIGIN_IQC', 'ORIGIN_MAKE', 'MAKE_DELEGATE_IN',
-                      'SUBCONTRACT_HANDOFF_IN',
                       'REALLOCATE_IN', 'PRIORITY_IN', 'RESTORE')
                   AND positive.qty - COALESCE((
                       SELECT SUM(negative.qty)
                       FROM preplan_stock_entitlement_events negative
                       WHERE negative.source_entitlement_event_id = positive.id
                         AND negative.event_type IN (
-                            'MAKE_DELEGATE_OUT', 'SUBCONTRACT_HANDOFF_OUT',
+                            'MAKE_DELEGATE_OUT',
                             'REALLOCATE_OUT',
                             'PRIORITY_OUT', 'FORMALIZE', 'RELEASE')
                   ), 0) > 0

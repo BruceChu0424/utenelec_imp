@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ADR-131 §3.5 与 §6 第 14-17 条: 整批领料的料 (组件发料方式 PERIODIC 的 BOM 行, 期间边) 由车间内料仓
- * 按期盘点计耗, 物料分析、MRP、计划导入、委外单一子件判定与履约足迹都不读它。
+ * 按期盘点计耗, 物料分析、MRP、计划导入、委外领料直属边与履约足迹都不读它。
  *
  * <p>在全链夹具的真实库上走服务层: 期间边与按单边并存时, 按单部分的结果与没有期间边时一样;
  * 颗粒在仓库里有现货也不会被物料分析占用, 也不会进入任何足迹的库存锁维度。
@@ -91,12 +91,12 @@ class PeriodicEdgeReadersPostgresTest {
         SecurityContextHolder.clearContext();
     }
 
-    /** 物料分析快照不含期间边、不预留、不让料; 委外单一子件判定不受期间边影响; 足迹不含颗粒库存键。 */
+    /** 物料分析快照不含期间边、不预留、不让料; 委外领料直属边不含期间边; 足迹不含颗粒库存键。 */
     @Test
     void materialAnalysisAndFootprintsNeverSeeGranules() {
         periodicEdge(world.goodsB(), "0.0125");
         periodicEdge(world.goodsC(), "0.01");
-        // 委外件 E: 一条按单子件 D + 一条期间边, 仍是「只有一个直属子件」
+        // 委外件 E: 一条按单子件 D + 一条期间边, 领料清单只有 D
         fixture.insertBom(world.goodsE(), world.goodsD(), "1");
         periodicEdge(world.goodsE(), "0.002");
         db.update("INSERT INTO stock_balances(warehouse_id, goods_id, color_id, qty) VALUES (?, ?, NULL, 500)",
@@ -118,18 +118,17 @@ class PeriodicEdgeReadersPostgresTest {
                 view.analysisId(), granule), "分析里没有颗粒行, 也就无从让料");
         assertEquals(0, count("SELECT count(*) FROM stock_reservations WHERE goods_id=?", granule),
                 "仓库里的颗粒现货不被预留");
-        MaterialView subcontract = view.flatMaterials().stream()
-                .filter(row -> world.goodsE().equals(row.goodsId())).findFirst().orElseThrow();
-        assertEquals("COMPONENT_OUTBOUND", subcontract.subcontractOutboundForm(),
-                "期间边不算直属子件, 委外件仍直接发唯一的按单子件");
-        assertTrue(bool("SELECT fn_subcontract_sole_component_goods(?)", world.goodsE()));
+        // ADR-143 §二.19: 委外领料清单只认按单直属边(fn_subcontract_draw_edges), 期间边不进
+        assertEquals(List.of(world.goodsD()), db.queryForList(
+                        "SELECT component_goods_id FROM fn_subcontract_draw_edges(?)", UUID.class, world.goodsE()),
+                "期间边不算直属物料, 委外件只领按单子件 D");
 
         FulfillmentMutationLockPlan analysisFootprint =
                 inTransaction(() -> footprints.forAnalyses(List.of(view.analysisId())));
         assertTrue(analysisFootprint.inventoryDimensions().contains(new InventoryDimension(world.goodsD(), null)));
         assertNoGranuleKey(analysisFootprint);
         FulfillmentMutationLockPlan previewFootprint = inTransaction(() -> footprints.forPreview(
-                List.of(item), List.of(), List.of(), List.of(world.warehouseId()), List.of()));
+                List.of(item), List.of(), List.of(world.warehouseId()), List.of()));
         assertTrue(previewFootprint.inventoryDimensions().contains(new InventoryDimension(world.goodsD(), null)));
         assertNoGranuleKey(previewFootprint);
     }

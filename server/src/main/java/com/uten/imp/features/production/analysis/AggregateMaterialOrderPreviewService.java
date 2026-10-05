@@ -161,8 +161,8 @@ public class AggregateMaterialOrderPreviewService {
                     && number(member.priorityMakeSupplementQty()).signum()==0&&!existingResponsibility
                     && !Set.of("ACTIVE","TRANSFERRED_TO_PLAN").contains(Objects.toString(member.requirementState(),"")))reason="部分来源已转交其他任务或本批无需办理，请按当前有效来源重新选择";
         }
-        boolean manufacture="MAKE".equals(input.route()) || ("SUBCONTRACT".equals(input.route()) && !recipe.isEmpty()
-                && !"COMPONENT_OUTBOUND".equals(first.subcontractOutboundForm()));
+        // ADR-143：委外汇总永远建外部批次(委外申请)，只有自制才是制造批次。
+        boolean manufacture="MAKE".equals(input.route());
         LocalDate bill=input.billDate()==null?request.billDate():input.billDate();
         LocalDate delivery=input.deliveryDate()==null?request.deliveryDate():input.deliveryDate();
         if(delivery!=null&&bill!=null&&delivery.isBefore(bill))reason="计划完成日期不能早于下单日期";
@@ -261,6 +261,12 @@ public class AggregateMaterialOrderPreviewService {
         }
         BigDecimal actualNewOutput=number(input.qty()).subtract(adoptableMake);
         if(actualNewOutput.signum()==0&&"请为汇总批次填写生产车间和负责人".equals(reason))reason=null;
+        // ADR-143 §二.3：缺 BOM 的委外件不能汇总下达委外(研发正在完善)，这个原因优先显示。
+        // 与提交时的拦截同一判定(按货品现查)，不看只标真有需求节点的「缺 BOM」角标。
+        if("SUBCONTRACT".equals(input.route())) {
+            List<String> bomGaps=List.copyOf(analysisService.subcontractBomGapLabels(members).values());
+            if(!bomGaps.isEmpty())reason=com.uten.imp.application.port.RdBomGapPort.subcontractBomMissingMessage(bomGaps,true);
+        }
         List<ChildPreview> childRows=sharedChildren(first,prior.add(actualNewOutput),prior,children);
         return new GroupPreview(input.clientGroupKey(),compatibility,input.route(),
                 first.goodsId(),first.goodsCode(),first.goodsName(),first.colorId(),first.colorName(),first.unitId(),first.unitName(),
@@ -278,11 +284,11 @@ public class AggregateMaterialOrderPreviewService {
         });
         ProductView anchor=material.level()==0?products.get(material.analysisLineId()):
                 material.planAnchorAnalysisLineId()==null?null:products.get(material.planAnchorAnalysisLineId());
-        if(!shared&&anchor!=null&&("MAKE".equals(material.sourceConfirmed())||"SUBCONTRACT_MAKE".equals(anchor.sourceType()))) {
+        if(!shared&&anchor!=null&&"MAKE".equals(material.sourceConfirmed())) {
             return number(anchor.issuedPlanQty()).multiply(material.level()==0&&anchor.unitRate()!=null?anchor.unitRate():BigDecimal.ONE);
         }
         boolean legacyManufacturing=anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())
-                &&("MAKE".equals(material.sourceConfirmed())||"SUBCONTRACT_MAKE".equals(anchor.sourceType()));
+                &&"MAKE".equals(material.sourceConfirmed());
         BigDecimal total=shared&&legacyManufacturing?number(anchor.issuedPlanQty()):BigDecimal.ZERO;Set<UUID> seen=new HashSet<>();
         for(DownstreamReference reference:material.downstreamReferences()==null?List.<DownstreamReference>of():material.downstreamReferences()) {
             if(reference.actionId()==null||!seen.add(reference.actionId())||"CANCELLED".equals(reference.status())||!Objects.equals(material.sourceConfirmed(),reference.route()))continue;
@@ -306,7 +312,7 @@ public class AggregateMaterialOrderPreviewService {
                 if(action==null||Set.of("FUTURE_TRANSFER","SHARED_FUTURE_CLAIM","ROOT_OUTPUT","AGGREGATE_CONTINUATION").contains(Objects.toString(action.operationType(),"")))continue;
                 ProductView anchor=material.planAnchorAnalysisLineId()==null?null:products.get(material.planAnchorAnalysisLineId());
                 boolean legacyManufacturing=anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())
-                        &&("MAKE".equals(material.sourceConfirmed())||"SUBCONTRACT_MAKE".equals(anchor.sourceType()));
+                        &&"MAKE".equals(material.sourceConfirmed());
                 if(legacyManufacturing&&!"AGGREGATE_SUPPLY".equals(action.operationType()))continue;
                 covered.merge(action.actionId(),number(reference.allocatedQty()),BigDecimal::add);
             }

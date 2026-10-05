@@ -124,7 +124,8 @@ public class PurchaseOrderController {
      * 货品 → 主档默认条款 (新建单行级预填)。路径沿用 /last-terms (前端在用), 语义自
      * V593 起已是主档默认值: goods.default_supplier_id → 供应商主档条款 → 货品默认采购单价,
      * 不再按最近一张订货单推导。goodsIds 为逗号分隔的货品 UUID, 返回
-     * {goodsId: {supplierId, settlementMethodId, currencyId, exchangeRate, taxRate, purchasePrice}}。
+     * {goodsId: {supplierId, settlementMethodId, currencyId, exchangeRate, taxRate, purchasePrice,
+     * priceContext, allowedOverReceiptPct, allowedOverReceiptPctSource}}; 允许超收%(ADR-144)不随价格脱敏。
      */
     @GetMapping("/last-terms")
     @PreAuthorize("hasAuthority('purchase_order:view')")

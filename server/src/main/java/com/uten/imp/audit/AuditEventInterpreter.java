@@ -840,6 +840,8 @@ public class AuditEventInterpreter {
         values.put("/api/subcontract/material-issues", "委外 · 委外发料");
         values.put("/api/subcontract/material-returns", "委外 · 委外退料");
         values.put("/api/subcontract/wastes", "委外 · 委外废料");
+        values.put("/api/subcontract/draw-tasks", "委外 · 委外领料");
+        values.put("/api/subcontract/applications/items/", "委外 · 委外缺 BOM 转研发");
         values.put("/api/subcontract", "委外");
         values.put("/api/production/daily-reports", "生产 · 生产日报");
         values.put("/api/production/plans", "生产 · 生产计划");
@@ -871,6 +873,7 @@ public class AuditEventInterpreter {
         values.put("/api/finance", "财务");
         values.put("/api/warehouse/iqc-stock-ins", "仓库 · IQC合格确认入库");
         values.put("/api/warehouse/inbound", "仓库 · 到货入库");
+        values.put("/api/warehouse/subcontract-outbound", "仓库 · 委外出仓");
         values.put("/api/procurement/arrival-exceptions", "采购 · 到货异常");
         values.put("/api/warehouse", "仓库");
         values.put("/api/notices", "工作台 · 通知");
@@ -1270,6 +1273,9 @@ public class AuditEventInterpreter {
         values.put("/api/subcontract/material-issues", "委外发料");
         values.put("/api/subcontract/material-returns", "委外退料");
         values.put("/api/subcontract/wastes", "委外废料");
+        values.put("/api/subcontract/draw-tasks", "委外领料");
+        // 目前 /applications/items/{id}/ 下只有 forward-bom 一个端点(ADR-143 §二.3)。
+        values.put("/api/subcontract/applications/items/", "委外缺 BOM 转研发");
         values.put("/api/production/plans", "生产计划");
         values.put("/api/production/daily-reports", "生产日报");
         values.put("/api/production/material-analysis", "生产物料分析");
@@ -1504,7 +1510,7 @@ public class AuditEventInterpreter {
                 "no_data", "还没有已完工且核清余料的生产数据",
                 "not_linear", "整包或固定批次不能按平均用量算",
                 "output_unit_changed", "父件单位变了，需重新学习",
-                "subcontract_outbound", "本次由委外单一子件发料，按委外合同用量"));
+                "subcontract_outbound", "上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量"));
         values.put("production_plan_items.allowed_overproduction_rate_source",
                 Map.of("default", "系统默认", "explicit", "人工确认"));
         return Collections.unmodifiableMap(values);

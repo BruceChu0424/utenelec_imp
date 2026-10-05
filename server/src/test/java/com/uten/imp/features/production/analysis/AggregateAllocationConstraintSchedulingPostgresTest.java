@@ -42,10 +42,11 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
     private String schema;
     private UUID analysis;
 
-    enum Scope { ORDINARY, AGGREGATE, CONTINUATION }
+    // V798(ADR-143) removed the subcontract make-first continuation scope (make-task notification batches);
+    // only the ordinary and the shared-batch aggregate scopes remain.
+    enum Scope { ORDINARY, AGGREGATE }
     enum Mutation { INSERT, UPDATE, DELETE }
     record Action(UUID id, UUID allocation, UUID application, UUID externalItem, UUID anchor) { }
-    record PendingContinuation(Action action, UUID task) { }
 
     @BeforeAll static void start() { DATABASE.start(); }
     @AfterAll static void stop() { DATABASE.stop(); }
@@ -55,10 +56,12 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
         schema = "aggregate_schedule_" + UUID.randomUUID().toString().replace("-", "");
         sql("CREATE SCHEMA " + schema);
         sql("SET search_path TO " + schema + ",public");
-        // Full catalog shapes avoid a second hand-written schema. This test
-        // applies the actual V712 tail, so first restore its pre-signal shape.
-        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(
+        // Full catalog shapes avoid a second hand-written schema. This test applies the actual V712 tail,
+        // so it projects the V712 catalog (V798 later dropped the make-task tables the tail still triggers on)
+        // and first restores its pre-signal shape.
+        com.uten.imp.support.MigratedProjectionSchema.createTables(
                 new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(db, true)),
+                "712",
                 "production_material_analyses", "preplan_supply_actions", "preplan_supply_action_allocations",
                 "preplan_aggregate_batches", "preplan_subcontract_make_tasks", "preplan_subcontract_make_task_batches");
         sql("ALTER TABLE preplan_supply_actions DROP COLUMN aggregate_allocation_check_revision");
@@ -120,11 +123,7 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
 
     @ParameterizedTest @MethodSource("mutations")
     void allImmediateRejectsEachMutationAndSavepointRestoresIt(Scope scope, Mutation mutation) throws Exception {
-        Action seeded = seed(scope);
-        boolean keepsProof = scope == Scope.CONTINUATION && mutation == Mutation.DELETE;
-        // The notification FK protects its proof allocation first. Delete a
-        // second, unreferenced slice to reach this quantity guard specifically.
-        Action action = keepsProof ? withUnreferencedSlice(seeded) : seeded;
+        Action action = seed(scope);
         db.setAutoCommit(false);
         sql("SET CONSTRAINTS ALL IMMEDIATE");
         Savepoint before = db.setSavepoint();
@@ -133,7 +132,7 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
         db.rollback(before);
         sql("UPDATE preplan_supply_action_allocations SET external_item_id=external_item_id WHERE id=?", action.allocation());
         db.commit();
-        balanced(action, keepsProof ? "11" : "10");
+        balanced(action, "10");
     }
 
     @ParameterizedTest @EnumSource(Scope.class)
@@ -178,72 +177,6 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
         assertEquals(0, integer("SELECT aggregate_allocation_check_revision FROM preplan_supply_actions WHERE id=?", action.id()));
     }
 
-    @Test void lateProvenNotificationBindingEnqueuesNamedConstraintAndSavepointRestoresProof() throws Exception {
-        PendingContinuation pending = pendingContinuation();
-        Action action = pending.action();
-        assertScope(action, false);
-        db.setAutoCommit(false);
-        Savepoint before = db.setSavepoint();
-        sql("UPDATE preplan_supply_action_allocations SET allocated_qty=11 WHERE id=?", action.allocation());
-        notify(pending, action.externalItem(), action.allocation());
-        assertScope(action, true);
-        assertMismatch(() -> sql("SET CONSTRAINTS " + ALLOCATION + " IMMEDIATE"));
-        db.rollback(before);
-        db.commit();
-        assertScope(action, false);
-        balanced(action, "10");
-        assertEquals(0, integer("SELECT COUNT(*) FROM preplan_subcontract_make_task_batches WHERE task_id=?", pending.task()));
-        notify(pending, action.externalItem(), action.allocation());
-        assertScope(action, true);
-    }
-
-    @Test void applicationNameWithoutExactAllocationProofRemainsOrdinaryAndGuarded() throws Exception {
-        PendingContinuation pending = pendingContinuation();
-        notify(pending, UUID.randomUUID(), pending.action().allocation());
-        assertScope(pending.action(), false);
-        db.setAutoCommit(false);
-        sql("UPDATE preplan_supply_action_allocations SET allocated_qty=11 WHERE id=?", pending.action().allocation());
-        assertMismatch(() -> sql("SET CONSTRAINTS " + ALLOCATION + " IMMEDIATE"));
-        db.rollback();
-        balanced(pending.action(), "10");
-    }
-
-    @Test void publicOnlyContinuationIsStillCheckedAgainstZeroPrivateAllocation() throws Exception {
-        PendingContinuation pending = pendingContinuation();
-        Action action = pending.action();
-        db.setAutoCommit(false);
-        sql("DELETE FROM preplan_supply_action_allocations WHERE id=?", action.allocation());
-        sql("UPDATE preplan_supply_actions SET requested_qty=0,public_surplus_qty=10,public_surplus_external_item_id=? WHERE id=?", action.externalItem(), action.id());
-        notify(pending, action.externalItem(), null);
-        db.commit();
-        assertScope(action, true);
-        db.setAutoCommit(false);
-        sql("SET CONSTRAINTS " + ALLOCATION + " IMMEDIATE");
-        assertMismatch(() -> mutate(action, Mutation.INSERT));
-        db.rollback();
-        balanced(action, "0");
-    }
-
-    @Test void oneNotificationStatementSignalsEachProvenActionOnlyOnce() throws Exception {
-        PendingContinuation pending = pendingContinuation();
-        Action action = pending.action();
-        UUID secondItem = UUID.randomUUID(), secondAllocation = UUID.randomUUID();
-        db.setAutoCommit(false);
-        sql("UPDATE preplan_supply_action_allocations SET allocated_qty=5 WHERE id=?", action.allocation());
-        sql("INSERT INTO preplan_supply_action_allocations(id,analysis_id,action_id,analysis_material_id,allocated_qty,external_item_id) VALUES(?,?,?,?,5,?)",
-                secondAllocation, analysis, action.id(), UUID.randomUUID(), secondItem);
-        db.commit();
-        int before = integer("SELECT aggregate_allocation_check_revision FROM preplan_supply_actions WHERE id=?", action.id());
-        sql("""
-                INSERT INTO preplan_subcontract_make_task_batches(task_id,application_id,application_item_id,allocation_id)
-                VALUES(?,?,?,?),(?,?,?,?)
-                """, pending.task(), action.application(), action.externalItem(), action.allocation(),
-                pending.task(), action.application(), secondItem, secondAllocation);
-        assertScope(action, true);
-        assertEquals(before + 1, integer("SELECT aggregate_allocation_check_revision FROM preplan_supply_actions WHERE id=?", action.id()));
-        balanced(action, "10");
-    }
-
     @Test void oneBulkStatementChecksEachActionInsteadOfOnlyTheGrandTotal() throws Exception {
         Action first = seed(Scope.AGGREGATE), second = seed(Scope.AGGREGATE);
         db.setAutoCommit(false);
@@ -284,12 +217,6 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
     }
 
     private Action seed(Scope scope) throws Exception {
-        if (scope == Scope.CONTINUATION) {
-            PendingContinuation pending = pendingContinuation();
-            notify(pending, pending.action().externalItem(), pending.action().allocation());
-            assertScope(pending.action(), true);
-            return pending.action();
-        }
         Action action = action();
         db.setAutoCommit(false);
         header(action, "10");
@@ -300,24 +227,7 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
         return action;
     }
 
-    private PendingContinuation pendingContinuation() throws Exception {
-        Action parent = seed(Scope.AGGREGATE);
-        Action continuation = seed(Scope.ORDINARY);
-        sql("UPDATE preplan_supply_actions SET external_document_type='SUBCONTRACT_APPLICATION',external_document_id=? WHERE id=?", continuation.application(), continuation.id());
-        UUID task = UUID.randomUUID();
-        sql("INSERT INTO preplan_subcontract_make_tasks(id,analysis_id,supply_action_id,preparation_item_id) VALUES(?,?,?,?)", task, analysis, parent.id(), parent.anchor());
-        return new PendingContinuation(continuation, task);
-    }
-
     private Action action() { return new Action(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()); }
-    private Action withUnreferencedSlice(Action action) throws Exception {
-        Action extra = new Action(action.id(), UUID.randomUUID(), action.application(), action.externalItem(), action.anchor());
-        db.setAutoCommit(false);
-        sql("UPDATE preplan_supply_actions SET requested_qty=11 WHERE id=?", action.id());
-        allocation(extra, "1");
-        db.commit(); db.setAutoCommit(true);
-        return extra;
-    }
     private void header(Action action, String qty) throws Exception {
         sql("INSERT INTO preplan_supply_actions(id,analysis_id,requested_qty) VALUES(?,?,?)", action.id(), analysis, new BigDecimal(qty));
     }
@@ -327,10 +237,6 @@ class AggregateAllocationConstraintSchedulingPostgresTest {
     }
     private void bind(Action action) throws Exception {
         sql("INSERT INTO preplan_aggregate_batches(analysis_id,action_id,anchor_analysis_item_id,route) VALUES(?,?,?,'SUBCONTRACT')", analysis, action.id(), action.anchor());
-    }
-    private void notify(PendingContinuation pending, UUID item, UUID allocation) throws Exception {
-        sql("INSERT INTO preplan_subcontract_make_task_batches(task_id,application_id,application_item_id,allocation_id) VALUES(?,?,?,?)",
-                pending.task(), pending.action().application(), item, allocation);
     }
     private void mutate(Action action, Mutation mutation) throws Exception {
         switch (mutation) {

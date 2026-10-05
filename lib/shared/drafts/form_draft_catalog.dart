@@ -362,9 +362,9 @@ abstract final class FormDraftCatalog {
   );
 
   static const subcontractOutbound = FormDraftDescriptor(
-    title: '委外拣货出仓填写',
+    title: '委外领料拣货出仓填写',
     module: BadgeModule.warehouse,
-    route: '/warehouse/subcontract-outbound/:planId',
+    route: '/warehouse/subcontract-outbound/:issueId',
     permission: Perm.subcontractMaterialIssueEdit,
   );
 

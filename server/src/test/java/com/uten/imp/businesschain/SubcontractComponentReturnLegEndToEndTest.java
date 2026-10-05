@@ -8,6 +8,8 @@ import com.uten.imp.features.notice.outbox.BusinessOutboxProcessor;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawQueryService;
+import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawTaskRow;
 import com.uten.imp.features.subcontract.material_issue.SubcontractMaterialIssueService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
 import com.uten.imp.features.subcontract.order.dto.OrderItemLine;
@@ -56,24 +58,25 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * ADR-103 §2.5 路线 B (单一子件 COMPONENT_OUTBOUND: 发出去的是子件 goodsD, 回来的是委外件 goodsE)
- * 回厂段真库全链, 按用户第 4 条逐场景验收 (1000 / 允许损耗 10% / 子件:委外件 = 1:1 / 料已全部发出):
+ * 委外件只有一种直属物料时(ADR-143 §二.2: 与多种物料同一流程, 计划行只有一条; 发出去的是直属物料
+ * goodsD, 回来的是委外件 goodsE)的回厂段真库全链, 按用户第 4 条逐场景验收 (1000 / 允许损耗 10% /
+ * 物料:委外件 = 1:1 / 料已全部发出):
  *
  * <ul>
  *   <li>T1 一次到 950 (>= 下限 900): 仓库确认入库那一刻系统按约定损耗自动结案 —— 损耗单 50、案件
  *       ACCEPTED_LOSS、原订货仍为 1000、实收 950 加损耗 50 后关单；不改量、不新开财务复核。</li>
  *   <li>T2 800 → 分批 → 150: 严重短交先锁住不入库, 委外判定「分批到货」后闸解除; 最后一批把累计送进
- *       容差 (950 >= 900) 时, 对 WAITING_MORE 案件同样自动结案 (ADR-103 §2.5 第 4 行)。</li>
+ *       容差 (950 >= 900) 时, 对 WAITING_MORE 案件同样自动结案。</li>
  *   <li>T3 超收 1050 (料只发了 1000): 登记落到货异常通知财务, 文案点明「委外商自带料」; 财务批准后
- *       仓库一键入库必须走得通 —— 回厂消费我方子件时只消费 1000, 多出的 50 按自带料入库, 守恒不放松
- *       (ADR-103 §三.6)。</li>
- *   <li>T4 子件只在不良品仓有货时建单仍锁; 普通调拨不能把不良品搬回良品仓, 只有「不良复判转回」后放行
- *       (ADR-103 §2.1 判据, ADR-146 不良品专门通道)。</li>
+ *       仓库一键入库必须走得通 —— 回厂只核销我方发出的 1000, 多出的 50 按自带料入库, 守恒不放松
+ *       (ADR-143 §二.12)。</li>
+ *   <li>T4 下单不受物料库存限制 (ADR-143 §六.7); 物料只在不良品仓有货时领料任务没有可领 (ADR-143 §三.5
+ *       作业叶仓口径 = ADR-146 计入可用量的仓); 普通调拨不能把不良品搬回良品仓, 只有「不良复判转回」后才可领
+ *       (ADR-146 不良品专门通道)。</li>
  * </ul>
  *
- * <p>骨架复制自 {@link SubcontractToleranceAutoSettleEndToEndTest} (DIRECT 形态) 与
- * {@link SubcontractShortDeliveryEndToEndTest}, 只把 BOM 改成路线 B、到货改成本轮场景。子件到货一律走
- * 其它入库单审核, 由库存内核 (StockService 入库方向) 自动叫醒出仓草稿, 不手工 wake (ADR-103 §2.3)。
+ * <p>骨架复制自 {@link SubcontractToleranceAutoSettleEndToEndTest} 与 {@link SubcontractShortDeliveryEndToEndTest}。
+ * 物料到货一律走其它入库单审核; 财务批准后由委外人员提交领料、仓库审核发出 (ADR-143 §4.2), 系统不自动建出仓草稿。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
@@ -107,6 +110,7 @@ class SubcontractComponentReturnLegEndToEndTest {
     @Autowired ProcurementIqcStockInService iqcStockIn;
     @Autowired StockDocService stockDocs;
     @Autowired BusinessOutboxProcessor outbox;
+    @Autowired SubcontractDrawQueryService drawQueries;
 
     FullChainEndToEndTest fixture;
 
@@ -127,10 +131,10 @@ class SubcontractComponentReturnLegEndToEndTest {
     void singleReturnOf950WithinToleranceIsStockedAndAutoSettledWithoutOpeningAFinanceReviewCase() {
         var w = fixture.seedWorld("sc-comp-return-950");
         fixture.loginAs(w.superAdminUserId());
-        bindSoleComponentBom(w);
+        bindDirectMaterialBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
 
-        // ① 子件已到 1000 → 建单 1000 / 允许损耗 10% → 送审批准 → 批准即按现货开草稿 1000 → 全部发出。
+        // ① 物料已到 1000 → 建单 1000 / 允许损耗 10% → 送审批准 → 委外人员领满 1000 → 仓库全部发出。
         Ordered ordered = orderApproveAndIssueAll(w, "1000");
         qty("1000", db.queryForObject(
                 "SELECT COALESCE(SUM(at_supplier_qty),0) FROM subcontract_material_issue_items WHERE order_item_id=?",
@@ -212,7 +216,7 @@ class SubcontractComponentReturnLegEndToEndTest {
     void severeShortReturnOf800ThenWaitMoreThenFinal150AccumulatesIntoToleranceAndAutoSettlesTheWaitingCase(boolean overdue) {
         var w = fixture.seedWorld("sc-comp-return-split-" + overdue);
         fixture.loginAs(w.superAdminUserId());
-        bindSoleComponentBom(w);
+        bindDirectMaterialBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
         Ordered ordered = orderApproveAndIssueAll(w, "1000");
 
@@ -352,31 +356,30 @@ class SubcontractComponentReturnLegEndToEndTest {
     // ===================== T3 =====================
 
     @Test
-    void productionFactsDoNotMistakeThePreparedBatchForTheWholeMaterialCommitment() {
-        var w = fixture.seedWorld("sc-partial-preparation");
+    void shortDeliveryFactsCountMaterialAsFullyIssuedOnlyWhenTheLineIsSentOrItsDrawIsClosed() {
+        var w = fixture.seedWorld("sc-partial-draw");
         fixture.loginAs(w.superAdminUserId());
-        bindSoleComponentBom(w);
+        bindDirectMaterialBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
         UUID orderId = orders.create(orderRequest(w, "1000")).getId();
         UUID orderItemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
 
-        // 执行生产代码的真实 PostgreSQL facts 查询。CTE 仅提供不同备齐/发出阶段的计划行，
-        // 避免把一条合法 COMPONENT_OUTBOUND 明细强改成不合法的前置生产历史链来搭夹具。
-        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "800", "800", "OPEN"),
-                "首批 800 已备齐且全发, 但总计划仍有 200 未备齐未发, 不能判短交或提前接受损耗");
-        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "0", "0", "OPEN"),
-                "尚未备齐任何材料也不能算全部发完");
-        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "1000", "800", "OPEN"));
-        assertTrue(materialFullyIssuedInFacts(orderItemId, "1000", "1000", "1000", "OPEN"));
-        assertTrue(materialFullyIssuedInFacts(orderItemId, "1000", "800", "800", "CLOSED"),
-                "明确不再出仓关闭计划后仍允许按最终回厂量判定损耗");
+        // 执行生产代码的真实 PostgreSQL facts 查询。CTE 仅提供不同发出阶段的冻结计划行
+        // (ADR-143 §二.13: 「发完」= 每一种直属物料的已发净量 = 计划量, 或该物料已结束领料)。
+        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "800", false),
+                "已发 800, 计划仍有 200 未发, 不能判短交或提前接受损耗");
+        assertFalse(materialFullyIssuedInFacts(orderItemId, "1000", "0", false),
+                "一件都没发不能算全部发完");
+        assertTrue(materialFullyIssuedInFacts(orderItemId, "1000", "1000", false));
+        assertTrue(materialFullyIssuedInFacts(orderItemId, "1000", "800", true),
+                "结束领料(不再发外)后仍允许按最终回厂量判定损耗 (ADR-143 §二.15)");
     }
 
     @Test
     void oneHundredIssuedAndExactlyNinetyFiveReturnedAtFivePercentClosesOnceWithoutConsumingTheRemainingChildStock() {
         var w = fixture.seedWorld("sc-comp-exact-floor");
         fixture.loginAs(w.superAdminUserId());
-        bindSoleComponentBom(w);
+        bindDirectMaterialBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
         Ordered ordered = orderApproveAndIssueAll(w, "100", "5");
         qty("900", onHand(w.goodsD(), w.warehouseId()), "只发 100 个子件, 其余 900 个仍在公司仓");
@@ -411,7 +414,7 @@ class SubcontractComponentReturnLegEndToEndTest {
     void overReturnOf1050AgainstIssued1000GoesToFinanceAsSupplierOwnMaterialAndStocksInAfterApproval() {
         var w = fixture.seedWorld("sc-comp-return-excess");
         fixture.loginAs(w.superAdminUserId());
-        bindSoleComponentBom(w);
+        bindDirectMaterialBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
         Ordered ordered = orderApproveAndIssueAll(w, "1000");
         String orderNo = db.queryForObject("SELECT bill_no FROM subcontract_orders WHERE id=?", String.class, ordered.orderId());
@@ -497,10 +500,11 @@ class SubcontractComponentReturnLegEndToEndTest {
     // ===================== T4 =====================
 
     @Test
-    void childStockOnlyInADefectiveWarehouseKeepsOrderingLockedUntilReleasedBackByQualityRecheck() {
+    void materialOnlyInADefectiveWarehouseIsNotDrawableUntilReleasedBackByQualityRecheck() {
         var w = fixture.seedWorld("sc-comp-return-transfer");
         fixture.loginAs(w.superAdminUserId());
-        bindSoleComponentBom(w);
+        bindDirectMaterialBom(w);
+        // 不良品仓是记账叶仓, 但不计入可用量 (ADR-143 §三.5 作业叶仓口径 / ADR-146)。
         UUID defectiveWarehouseId = UUID.randomUUID();
         db.update("INSERT INTO warehouses(id, code, name, status, is_defective) VALUES (?, ?, ?, '使用', TRUE)",
                 defectiveWarehouseId, "WH-DEF-sc-comp-transfer", "不良品仓-sc-comp-transfer");
@@ -508,34 +512,42 @@ class SubcontractComponentReturnLegEndToEndTest {
         ApiException refused = assertThrows(ApiException.class,
                 () -> receiveChildStock(w, "1000", defectiveWarehouseId));
         assertTrue(refused.getMessage().contains("是不良品仓"), refused.getMessage());
-        // 判为不良的子件只能经「转不良品仓」从良品仓转进来。
+        // 判为不良的物料只能经「转不良品仓」从良品仓转进来。
         receiveChildStock(w, "1000", w.warehouseId());
-        defectiveMove(w, "TO_DEFECTIVE", w.warehouseId(), defectiveWarehouseId, "1000", "子件来料划伤, 判不良");
-        qty("1000", onHand(w.goodsD(), defectiveWarehouseId), "子件必须真的进了不良品仓");
+        defectiveMove(w, "TO_DEFECTIVE", w.warehouseId(), defectiveWarehouseId, "1000", "物料来料划伤, 判不良");
+        qty("1000", onHand(w.goodsD(), defectiveWarehouseId), "物料必须真的进了不良品仓");
         qty("0", onHand(w.goodsD(), w.warehouseId()), "良品仓已转空");
 
-        // ① 子件只在不良品仓有货 → 建单仍锁 (判据只看计入可用量的仓)。
-        ApiException locked = assertThrows(ApiException.class,
-                () -> orders.create(orderRequest(w, "1000")),
-                "子件只在不良品仓时不得建委外订货单 (ADR-103 §2.1)");
-        assertEquals(ErrorCode.CONFLICT, locked.getCode(), "错误码现状 " + locked.getCode() + " 期望 CONFLICT");
-        assertTrue(locked.getMessage().contains("仓里还一件都没有"), locked.getMessage());
-        assertEquals(0, count("SELECT COUNT(*) FROM subcontract_order_items WHERE goods_id=?", w.goodsE()),
-                "被锁的建单不能留下半张单");
+        // ① 下单不受物料库存限制 (ADR-143 §六.7): 建单、送审、批准都放行, 冻结一条计划行。
+        UUID orderId = orders.create(orderRequest(w, "1000")).getId();
+        UUID itemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
+        UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
+        financeApproval.submit("SUBCONTRACT", orderId);
+        fixture.loginAs(reviewer);
+        fixture.approvePendingFinance("SUBCONTRACT", orderId);
+        fixture.loginAs(w.superAdminUserId());
+        assertEquals(1, count("SELECT COUNT(*) FROM subcontract_material_plan_items WHERE order_item_id=? AND is_deleted=FALSE",
+                itemId), "批准后按唯一直属边冻结一条计划行");
 
-        // ② 普通调拨不能把不良品搬回良品仓 (两端必须同类)。
+        // ② 物料只在不良品仓 → 仓库可用 0, 可领 0。
+        DrawTaskRow before = drawRow(orderId);
+        qty("0", before.drawableQty(), "不良品仓里的物料不算可领");
+        assertFalse(before.canDraw(), "没有可领就不能勾选领料");
+        qty("0", drawQueries.materials(itemId).materials().getFirst().availableQty(), "物料仓库可用只看计入可用量的仓");
+
+        // ③ 普通调拨不能把不良品搬回良品仓 (两端必须同类)。
         ApiException mixed = assertThrows(ApiException.class,
                 () -> transferChildStock(w, defectiveWarehouseId, w.warehouseId(), "1000"));
         assertTrue(mixed.getMessage().contains("普通调拨的调出仓和调入仓必须同是良品仓或同是不良品仓"),
                 mixed.getMessage());
 
-        // ③ 品质复判合格 →「不良复判转回」→ 建单放行。
+        // ④ 品质复判合格 →「不良复判转回」→ 整单可领 1000。
         defectiveMove(w, "DEFECT_RELEASE", defectiveWarehouseId, w.warehouseId(), "1000", "复判合格, 转回良品仓");
-        qty("1000", onHand(w.goodsD(), w.warehouseId()), "复判转回后作业叶仓子件量");
-        qty("0", onHand(w.goodsD(), defectiveWarehouseId), "复判转回后不良品仓子件量");
-        UUID orderId = orders.create(orderRequest(w, "1000")).getId();
-        assertNotNull(orderId, "子件复判转回良品仓后建单必须放行");
-        assertEquals(1, count("SELECT COUNT(*) FROM subcontract_order_items WHERE order_id=?", orderId));
+        qty("1000", onHand(w.goodsD(), w.warehouseId()), "复判转回后良品仓物料量");
+        qty("0", onHand(w.goodsD(), defectiveWarehouseId), "复判转回后不良品仓物料量");
+        DrawTaskRow after = drawRow(orderId);
+        qty("1000", after.drawableQty(), "物料复判转回良品仓后可领");
+        assertEquals("DRAWABLE", after.status());
     }
 
     /** ADR-146 不良品专门通道: 一次建单并过账。 */
@@ -548,43 +560,51 @@ class SubcontractComponentReturnLegEndToEndTest {
 
     // ===================== 夹具 =====================
 
-    private boolean materialFullyIssuedInFacts(UUID orderItemId, String planned, String prepared,
-                                                String issued, String status) {
+    private boolean materialFullyIssuedInFacts(UUID orderItemId, String planned, String issued, boolean drawClosed) {
         String facts = (String) ReflectionTestUtils.getField(SubcontractShortDeliveryService.class, "FACT_SQL");
         assertNotNull(facts);
         String stages = """
                 WITH subcontract_material_plan_items AS (
                     SELECT ?::uuid AS order_item_id,
                            '00000000-0000-0000-0000-000000000001'::uuid AS plan_id,
-                           FALSE AS is_deleted, ?::numeric AS planned_qty,
-                           ?::numeric AS prepared_qty, ?::numeric AS issued_qty
+                           FALSE AS is_deleted, ?::numeric AS planned_qty, ?::numeric AS issued_qty,
+                           -- 单耗 1: 没有委外商自带料时我方需发量 LEAST(计划量, f(Qm)) = 计划量(ADR-143 §三.4a)
+                           1::numeric AS bom_unit_qty,
+                           CASE WHEN ?::boolean THEN now() END AS draw_closed_at
                 ), subcontract_material_plans AS (
                     SELECT '00000000-0000-0000-0000-000000000001'::uuid AS id,
-                           ?::text AS status, FALSE AS is_deleted
+                           'OPEN'::text AS status, FALSE AS is_deleted
                 )
                 """;
         return db.queryForObject(stages + facts.formatted("95::numeric", "?"),
                 (rs, row) -> rs.getBoolean("material_fully_issued"),
-                orderItemId, new BigDecimal(planned), new BigDecimal(prepared), new BigDecimal(issued), status, orderItemId);
+                orderItemId, new BigDecimal(planned), new BigDecimal(issued), drawClosed, orderItemId);
+    }
+
+    /** 本订货单在「领料」里的行(按订货单筛选)。 */
+    private DrawTaskRow drawRow(UUID orderId) {
+        List<DrawTaskRow> rows = drawQueries.tasks(1, 50, "", "", orderId, null).page().getItems();
+        assertEquals(1, rows.size(), "一张单一条明细, 现状 " + rows);
+        return rows.getFirst();
     }
 
     private record Ordered(UUID orderId, UUID itemId, UUID planItemId) {}
 
     private record PassSlice(UUID passEventId, BigDecimal qty) {}
 
-    /** 委外件 goodsE 挂唯一一条 PER_UNIT 叶子边到采购件 goodsD (1:1), 命中 fn_subcontract_sole_component_goods。 */
-    private void bindSoleComponentBom(FullChainEndToEndTest.World w) {
+    /** 委外件 goodsE 挂唯一一条 PER_UNIT 直属边到采购件 goodsD (1:1), 是 fn_subcontract_draw_edges 唯一的可发外边。 */
+    private void bindDirectMaterialBom(FullChainEndToEndTest.World w) {
         db.update("""
                 INSERT INTO goods_bom_items(id, goods_id, component_goods_id, qty, sort_order,
                     control_stage, consumption_basis, basis_output_qty, allow_partial_package, hard_gate)
                 VALUES (?, ?, ?, 1, 1, 'START', 'PER_UNIT', 1, TRUE, TRUE)
                 """, UUID.randomUUID(), w.goodsE(), w.goodsD());
-        assertTrue(Boolean.TRUE.equals(db.queryForObject(
-                "SELECT fn_subcontract_sole_component_goods(?)", Boolean.class, w.goodsE())),
-                "夹具必须命中「只有一个叶子子件」判据, 否则测的是路线 A");
+        assertEquals(List.of(w.goodsD()), db.queryForList(
+                "SELECT component_goods_id FROM fn_subcontract_draw_edges(?)", UUID.class, w.goodsE()),
+                "夹具必须只有一条可发外直属边");
     }
 
-    /** 建单 (允许损耗 10%) → 送审 → 财务批准 → 批准即按现货开的草稿全部审核发出。 */
+    /** 建单 (允许损耗 10%) → 送审 → 财务批准 → 委外人员领满订货量 → 仓库审核发出。 */
     private Ordered orderApproveAndIssueAll(FullChainEndToEndTest.World w, String qty) {
         return orderApproveAndIssueAll(w, qty, "10");
     }
@@ -604,20 +624,17 @@ class SubcontractComponentReturnLegEndToEndTest {
         UUID planItemId = db.queryForObject("""
                 SELECT id FROM subcontract_material_plan_items WHERE order_item_id=? AND is_deleted=FALSE
                 """, UUID.class, itemId);
-        assertEquals("COMPONENT_OUTBOUND", db.queryForObject(
-                "SELECT flow_mode FROM subcontract_material_plan_items WHERE id=?", String.class, planItemId),
-                "路线 B 计划行必须是 COMPONENT_OUTBOUND");
         assertEquals(w.goodsD(), db.queryForObject(
                 "SELECT goods_id FROM subcontract_material_plan_items WHERE id=?", UUID.class, planItemId),
-                "发出去的必须是子件 goodsD");
-        UUID issueId = db.queryForObject("""
-                SELECT issue.id FROM subcontract_material_issues issue
-                JOIN subcontract_material_issue_items item ON item.issue_id=issue.id
-                WHERE item.order_item_id=? AND issue.status=0 AND issue.is_deleted=FALSE
-                """, UUID.class, itemId);
+                "发出去的必须是直属物料 goodsD");
+        assertEquals(0, count("SELECT COUNT(*) FROM subcontract_material_issue_items WHERE order_item_id=?", itemId),
+                "财务批准不再自动建出仓草稿 (ADR-143 §五)");
+        List<UUID> drafts = fixture.submitSubcontractDraw(itemId, new BigDecimal(qty), "sc-comp-draw-" + itemId);
+        assertEquals(1, drafts.size(), "物料都在一个仓, 一张领料草稿");
+        UUID issueId = drafts.getFirst();
         qty(qty, db.queryForObject(
                 "SELECT COALESCE(SUM(qty),0) FROM subcontract_material_issue_items WHERE issue_id=?", BigDecimal.class, issueId),
-                "子件现货足额时批准即开整笔草稿");
+                "物料现货足额时领满即开整笔草稿");
         materialIssues.approve(issueId);
         qty(qty, db.queryForObject(
                 "SELECT issued_qty FROM subcontract_material_plan_items WHERE id=?", BigDecimal.class, planItemId),
@@ -646,7 +663,7 @@ class SubcontractComponentReturnLegEndToEndTest {
         return request;
     }
 
-    /** 子件按采购件到货 (其它入库审核), 入库方向由 StockService 内核自动叫醒出仓草稿, 不手工 wake。 */
+    /** 物料按采购件到货 (其它入库审核), 入库方向由 StockService 内核追加领料重算, 不手工 wake。 */
     private void receiveChildStock(FullChainEndToEndTest.World w, String qty, UUID warehouseId) {
         var request = new StockDocSaveRequest();
         request.setDocType("OTHER_IN");

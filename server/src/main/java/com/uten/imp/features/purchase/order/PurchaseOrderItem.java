@@ -112,4 +112,12 @@ public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEn
     private String productionPlanNo;
 
     private String remark;
+
+    /**
+     * 本行允许超收百分比(ADR-144, V799)：保存即冻结, 财务审核后不可改(采购专用冻结触发器)。
+     * 累计净收货不超过 订货量 + ROUND(订货量 × 比例 / 100, 4) + 已退货 + 已过账超量 + 质检退回补货额度
+     * 直接入库立应付, 超过才转财务。空 = 0。
+     */
+    @Column(name = "allowed_over_receipt_pct", precision = 5, scale = 2)
+    private BigDecimal allowedOverReceiptPct;
 }

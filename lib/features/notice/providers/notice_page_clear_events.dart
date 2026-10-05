@@ -29,14 +29,17 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PROCUREMENT_FINANCE_APPROVED',
     'PROCUREMENT_FINANCE_REJECTED',
   ],
-  // 委外任务台（分解订货页）：申请待分解→订货→财务 全链路。
+  // 委外任务中心：申请待处理→订货→财务→领料(可领料卡、发料回执)全链路；
+  // 领料页 /operations/workbench/subcontract/draw-request 作为子路径同样命中。
   '/operations/workbench/subcontract': [
     'PREPLAN_SUPPLY_ACTION_CREATED',
     'PREPLAN_SUPPLY_DOCUMENT_CREATED',
-    'SUBCONTRACT_MAKE_NOTIFIED',
-    'SUBCONTRACT_ORDER_PREPARATION_ARRIVED',
     'PROCUREMENT_FINANCE_APPROVED',
     'PROCUREMENT_FINANCE_REJECTED',
+    'SUBCONTRACT_DRAW_AVAILABLE',
+    'SUBCONTRACT_DRAW_RETURNED',
+    'SUBCONTRACT_OUTBOUND_COMPLETED',
+    'SUBCONTRACT_OUTBOUND_REVERSED',
   ],
   // 仓库履约任务台：领料/备料域（一行=一张 DRAW 领料单）。
   '/operations/workbench/warehouse': ['PRODUCTION_DRAW_PENDING'],
@@ -75,22 +78,15 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PROCUREMENT_FINANCE_SUBMITTED',
     'PROCUREMENT_FINANCE_CHANGE_SUBMITTED',
   ],
-  // —— 计划/生产：物料分析工作台（新订单待分析 / 交货预警计划侧 / 委外前置自制）——
+  // —— 计划/生产：物料分析工作台（新订单待分析 / 交货预警计划侧）——
   '/production/material-analysis': [
     'SALES_ORDER_APPROVED',
     'SALES_DELIVERY_DUE',
-    'SUBCONTRACT_PREPARATION_REQUIRED',
-    'SUBCONTRACT_PREPARE_SHORTAGE',
     // ADR-117 车间催计划下单(卡片本身在计划下够单后由服务端撤回)。
     'PRODUCTION_PLANNING_URGED',
   ],
   // 物料分析历史与分析摘要详情（/production/material-analyses/{id}/summary）
-  '/production/material-analyses': [
-    'SUBCONTRACT_MAKE_TASK_CREATED',
-    'SUBCONTRACT_ORDER_PREPARATION_DISPATCHED',
-    'SUBCONTRACT_OUTBOUND_COMPLETED',
-    'PROCUREMENT_IQC_RESOLVED',
-  ],
+  '/production/material-analyses': ['PROCUREMENT_IQC_RESOLVED'],
   // 计划单列表（缺料提醒的 buyer/planner 副本指向 /production/plans/{id} 详情）
   '/production/plans': ['PRODUCTION_PLAN_SCHEDULED'],
   '/production/overproduction-rate-requests': [
@@ -119,18 +115,13 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PROCUREMENT_FINANCE_APPROVED',
     'PROCUREMENT_FINANCE_REJECTED',
   ],
-  // —— 委外：申请列表（新委外需求 / 前置自制已入库通知指向详情页）——
+  // —— 委外：申请列表（新委外需求通知指向详情页）——
   '/subcontract/applications': [
     'PREPLAN_SUPPLY_ACTION_CREATED',
     'PREPLAN_SUPPLY_DOCUMENT_CREATED',
-    'SUBCONTRACT_MAKE_NOTIFIED',
   ],
   // 订货单列表（委外全链路状态 + IQC 结案 + 财务回执的详情路由落点）
   '/subcontract/orders': [
-    'SUBCONTRACT_PREPARATION_REQUIRED',
-    'SUBCONTRACT_PREPARE_SHORTAGE',
-    'SUBCONTRACT_ORDER_PREPARATION_ARRIVED',
-    'SUBCONTRACT_OUTBOUND_READY',
     'SUBCONTRACT_OUTBOUND_COMPLETED',
     'SUBCONTRACT_OUTBOUND_REVERSED',
     'SUBCONTRACT_RETURN_DUE',
@@ -153,8 +144,12 @@ const Map<String, List<String>> noticePageClearEvents = {
   ],
   // 待检明细列表（先入库后检通知指向 /warehouse/inspections/{type}/{id} 详情）
   '/warehouse/inspections': ['PROCUREMENT_IQC_PRE_STOCKED'],
-  // 委外出仓列表（待执行通知指向 /warehouse/subcontract-outbound/{planId} 详情）
-  '/warehouse/subcontract-outbound': ['SUBCONTRACT_OUTBOUND_READY'],
+  // 委外出仓工作台(委外领料待发料 / 领料已撤回通知都指向
+  // /warehouse/subcontract-outbound/{issueId} 拣货页，一张领料出仓草稿一条)
+  '/warehouse/subcontract-outbound': [
+    'SUBCONTRACT_OUTBOUND_READY',
+    'SUBCONTRACT_DRAW_WITHDRAWN',
+  ],
   // —— 采购/品质：IQC 拒收处置列表（通知指向 /procurement/iqc-rejections/{id} 详情）——
   '/procurement/iqc-rejections': [
     'PROCUREMENT_IQC_REJECTION_OPENED',

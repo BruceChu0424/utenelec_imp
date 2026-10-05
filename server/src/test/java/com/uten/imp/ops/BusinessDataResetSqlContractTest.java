@@ -179,6 +179,8 @@ class BusinessDataResetSqlContractTest {
             Map.entry("stock_count_request_events", 766),
             Map.entry("workshop_material_count_adjustment_postings", 768),
             Map.entry("business_test_object_cleanup_intents", 782),
+            // V798 委外按工序领料(ADR-143)：「可领」通知高水位是系统协调状态, 随业务数据清空。
+            Map.entry("subcontract_draw_notice_marks", 798),
             // V803 (ADR-148): 品质整批决定命令是业务事实, 随业务数据清空。
             Map.entry("production_fqc_lot_decision_commands", 803),
             // V805 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。
@@ -275,7 +277,17 @@ class BusinessDataResetSqlContractTest {
             Map.entry("measurement_capture_profiles", 743),
             Map.entry("legacy_measurement_exceptions", 743),
             Map.entry("legacy_measurement_profile_snapshots", 743),
-            Map.entry("legacy_measurement_source_registry", 743));
+            Map.entry("legacy_measurement_source_registry", 743),
+            // V798 / ADR-143：委外前置自制全家删除(V447 交接五表、前置自制任务三表、准备命令账)。
+            Map.entry("subcontract_outbound_preparation_commands", 798),
+            Map.entry("preplan_subcontract_entitlement_handoff_slices", 798),
+            Map.entry("preplan_subcontract_requirement_handoff_events", 798),
+            Map.entry("preplan_subcontract_requirement_handoff_items", 798),
+            Map.entry("preplan_subcontract_requirement_handoffs", 798),
+            Map.entry("preplan_subcontract_requirement_supply_claims", 798),
+            Map.entry("preplan_subcontract_make_task_batches", 798),
+            Map.entry("preplan_subcontract_make_batch_reversals", 798),
+            Map.entry("preplan_subcontract_make_tasks", 798));
 
     private String opsScript;
     private String migrationSql;
@@ -381,6 +393,15 @@ class BusinessDataResetSqlContractTest {
                 .contains("(''goods_weight_profiles'', ''PRESERVE'')")
                 .contains("(''goods_weight_observations'', ''PRESERVE'')")
                 .contains("(''goods_weight_estimates'', ''PRESERVE'')");
+        // V798：同一个补丁块里先删掉前置自制九张表的策略行, 再在委外子件交接锚点后插入领料通知水位。
+        assertThat(extensionSql(798))
+                .contains("RAISE EXCEPTION 'V798 cannot drop retired subcontract policy row % from business_data_reset'")
+                .contains("RAISE EXCEPTION 'V798 cannot extend business-data reset policy safely'")
+                .contains("(''preplan_subcontract_make_tasks'', ''CLEAR''),")
+                .contains("(''subcontract_outbound_preparation_commands'', ''CLEAR''),")
+                .contains("(''subcontract_draw_notice_marks'', ''CLEAR''),")
+                .contains("DROP TABLE preplan_subcontract_make_tasks;")
+                .contains("DROP TABLE subcontract_outbound_preparation_commands;");
     }
 
     @Test

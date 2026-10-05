@@ -293,13 +293,12 @@ class OperationsWorkbenchTask {
     this.goodsCount = 0,
     this.openLineCount = 0,
     this.actionItemIds = const [],
-    this.preparationTaskId,
-    this.preparationStatus,
     this.issuedAt,
     this.canCreateOrder,
     this.displayStage,
-    this.componentAvailableQty,
     this.sources = const [],
+    this.rdTaskNo,
+    this.bomMissingItemIds = const [],
   });
 
   final String taskId;
@@ -332,8 +331,6 @@ class OperationsWorkbenchTask {
   final int goodsCount;
   final int openLineCount;
   final List<String> actionItemIds;
-  final String? preparationTaskId;
-  final String? preparationStatus;
 
   /// Earliest real planning issue instant for this task, never an order date.
   final String? issuedAt;
@@ -341,29 +338,29 @@ class OperationsWorkbenchTask {
   /// Server-authored ordering readiness; independent from account capability.
   final bool? canCreateOrder;
 
-  /// 展示阶段（服务端 display_stage，与状态列表头筛选同源）：委外订货单在财务已通过
-  /// 之后细分为 待发料出仓 / 委外加工中 / 部分回厂 / 分批等待中 / 回厂短交待判定
-  /// (ADR-098)；委外申请行按路线 B 锁态细分为 WAITING_COMPONENT_STOCK (等子件到货，
-  /// 锁) / COMPONENT_STOCK_READY (子件已到货，解锁)，财务已通过的订货单在待发料
-  /// 之前多一档 OUTBOUND_WAITING_COMPONENT (ADR-103)；其余等于 [taskStatus]。
+  /// 展示阶段（服务端 display_stage，与状态列表头筛选同源）：委外订货单按各明细聚合
+  /// 取第一个命中(ADR-143 §4.1)——回厂短交待判定 / 分批等待中 / 容差内待结案 /
+  /// 已回厂待入库 / 可领料 / 已提交领料·待仓库发料 / 部分回厂 / 委外加工中 /
+  /// 等待物料；委外申请行缺 BOM 时为 BOM_MISSING(§二.3)；其余等于 [taskStatus]。
   final String? displayStage;
-
-  /// ADR-103：路线 B 申请行的子件在作业叶仓的合格可动用量；非路线 B 行为 null。
-  final num? componentAvailableQty;
   final List<SubcontractTaskSource> sources;
+
+  /// 缺 BOM 的委外申请行：研发「完善 BOM」任务单号(没有未完成任务时为 null)。
+  final String? rdTaskNo;
+
+  /// 缺 BOM 的委外申请行里真正缺 BOM 的申请明细 id；服务端未下发时为空，
+  /// 「通知研发完善」回落到本行全部申请明细(服务端对已有 BOM 的明细不做任何事)。
+  final List<String> bomMissingItemIds;
 
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
 
+  /// 委外申请行缺 BOM、正在等研发完善(ADR-143 §二.3)。
+  bool get isBomMissing => progressStatus == 'BOM_MISSING';
+
   bool get isMaterialDiscovery =>
       taskStatus.toUpperCase() == 'MATERIALS_TO_DEFINE' ||
       actionDocument?.docType.toUpperCase() == 'MATERIAL_DISCOVERY';
-
-  /// ADR-103：路线 B 申请行被子件库存锁住 (黄，在办等别人到货，不可下单)。
-  bool get waitingComponentStock => displayStage == 'WAITING_COMPONENT_STOCK';
-
-  /// ADR-103：路线 B 申请行子件已到货，解锁可下单 (红，轮到委外动手)。
-  bool get componentStockReady => displayStage == 'COMPONENT_STOCK_READY';
 
   String get id => taskId;
   String get taskNo => taskId;
@@ -437,8 +434,14 @@ class OperationsWorkbenchTask {
           ? json['canCreateOrder'] as bool
           : null,
       displayStage: _optionalString(json, 'displayStage'),
-      componentAvailableQty: _optionalNumber(json, 'componentAvailableQty'),
       sources: SubcontractTaskSource.listFromJson(json['sources']),
+      rdTaskNo: _optionalString(json, 'rdTaskNo'),
+      bomMissingItemIds:
+          (json['bomMissingItemIds'] as List?)
+              ?.map((id) => id.toString().trim())
+              .where((id) => id.isNotEmpty)
+              .toList(growable: false) ??
+          const [],
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,
@@ -449,18 +452,23 @@ class OperationsWorkbenchTask {
               ?.map((id) => id.toString())
               .toList(growable: false) ??
           const [],
-      preparationTaskId:
-          json['actionDocType'] == 'SUBCONTRACT_MAKE_TASK' &&
-              json['actionDocCanView'] == true
-          ? _optionalString(json, 'taskId')
-          : null,
-      preparationStatus:
-          json['actionDocType'] == 'SUBCONTRACT_MAKE_TASK' &&
-              json['actionDocCanView'] == true
-          ? _optionalString(json, 'actionDocStatus')
-          : null,
     );
   }
+}
+
+/// 「通知研发完善」的结果(POST /subcontract/applications/items/{id}/forward-bom)：
+/// 研发「完善 BOM」任务单号；[created] = 本次新建(否则是复用未完成的任务并加入等待名单)。
+class SubcontractBomForwardResult {
+  const SubcontractBomForwardResult({this.taskNo, this.created = false});
+
+  final String? taskNo;
+  final bool created;
+
+  factory SubcontractBomForwardResult.fromJson(Map<String, dynamic> json) =>
+      SubcontractBomForwardResult(
+        taskNo: _optionalString(json, 'taskNo'),
+        created: json['created'] == true,
+      );
 }
 
 class OperationsWorkbenchCapabilities {

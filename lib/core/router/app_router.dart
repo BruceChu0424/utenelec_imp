@@ -179,6 +179,7 @@ import '../../features/sales/pages/sales_order_progress_page.dart';
 import '../../features/sales/pages/sales_task_center_page.dart';
 import '../../features/subcontract/models/subcontract_doc.dart';
 import '../../features/subcontract/pages/subcontract_decomposition_page.dart';
+import '../../features/subcontract/pages/subcontract_draw_request_page.dart';
 import '../../features/subcontract/pages/subcontract_hub_page.dart';
 import '../../features/subcontract/pages/subcontract_page_factory.dart';
 import '../../features/subcontract/pages/subcontract_short_delivery_page.dart';
@@ -742,10 +743,30 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                       ),
             ),
           ),
+          // 委外任务中心：?segment=draw 直落「领料」分段(可领料通知 / 进行中「可领料」)，
+          // 可带 orderItemId / orderId 定位到某条委外任务或某张订货单。
           DraftAwareGoRoute(
             path: RouteName.operationsSubcontractWorkbench,
             name: 'operations-workbench-subcontract',
-            builder: (_, _) => const SubcontractDecompositionPage(),
+            builder: (_, state) => SubcontractDecompositionPage(
+              initialSegment: state.uri.queryParameters['segment'],
+              initialOrderItemId: state.uri.queryParameters['orderItemId'],
+              initialOrderId: state.uri.queryParameters['orderId'],
+            ),
+          ),
+          // 委外领料页(ADR-143 §4.2)：任务中心的子页，?orderItemIds=a,b。
+          DraftAwareGoRoute(
+            path: RouteName.operationsSubcontractDrawRequest,
+            name: 'operations-subcontract-draw-request',
+            builder: (_, state) => SubcontractDrawRequestPage(
+              orderItemIds:
+                  state.uri.queryParameters['orderItemIds']
+                      ?.split(',')
+                      .map((id) => id.trim())
+                      .where((id) => id.isNotEmpty)
+                      .toList() ??
+                  const [],
+            ),
           ),
           // —— 工程研发部任务中心 ——
           DraftAwareGoRoute(
@@ -1166,7 +1187,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-weigh-count',
             builder: (_, _) => const WarehouseWeighCountPage(),
           ),
-          // 委外出仓任务中心 + 拣货出仓页（V304 仓库专属；静态段，须在 /warehouse/:code 前）。
+          // 委外出仓任务中心 + 拣货出仓页（仓库专属；静态段，须在 /warehouse/:code 前）。
           DraftAwareGoRoute(
             path: RouteName.warehouseSubcontractOutbound,
             name: 'warehouse-subcontract-outbound',
@@ -1197,11 +1218,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'warehouse-sales-outbound',
             builder: (_, _) => const WarehouseSalesOutboundPage(),
           ),
+          // 拣货出仓页：一张委外人员已提交、仓库未发出的领料出仓草稿(ADR-143 §4.3)。
           DraftAwareGoRoute(
-            path: '/warehouse/subcontract-outbound/:planId',
+            path: '/warehouse/subcontract-outbound/:issueId',
             name: 'warehouse-subcontract-outbound-edit',
             builder: (_, s) => WarehouseSubcontractOutboundEditPage(
-              planId: s.pathParameters['planId']!,
+              issueId: s.pathParameters['issueId']!,
             ),
           ),
           // 仓库实物历史专页：静态 history 段必须先于 /warehouse/:code。
@@ -1503,15 +1525,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               initialSupplierId: s.uri.queryParameters['supplierId'],
             ),
           ),
-          // 委外准备中心已退役（2026-09-05 后端 API 下线）：旧深链一律重定向到
-          // 委外管理 hub，避免收藏/通知里的 /subcontract/preparations 404。
-          DraftAwareGoRoute(
-            path: RouteName.subcontractPreparations,
-            name: 'subcontract-preparations',
-            redirect: (_, _) => RouteName.subcontract,
-          ),
-          // 2026-09-06 收口：计划委外申请列表并入「委外任务中心」（含待生产
-          // 合成行与进度弹窗）；只读申请详情深链保留（/:id 路由在下）。
+          // 2026-09-06 收口：计划委外申请列表并入「委外任务中心」；只读申请详情
+          // 深链保留（/:id 路由在下）。
           DraftAwareGoRoute(
             path: '/subcontract/applications',
             name: 'subcontract-applications-list',

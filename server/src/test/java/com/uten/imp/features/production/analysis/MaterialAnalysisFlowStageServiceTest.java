@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
  * 行级流程阶段推导的行为口径（表格进度/待办列唯一词表的服务端源头）。
  *
  * <p>链路 SQL 的真实聚合由 PostgreSQL 聚焦测试覆盖；这里锁定纯推导分支：
- * 未下达第一步、自制锚点执行段映射与零料直制、委外行无申请时的前置自制回退。</p>
+ * 未下达第一步、自制锚点执行段映射与零料直制、委外行按领料读模型分批推进(ADR-143)。</p>
  */
 class MaterialAnalysisFlowStageServiceTest {
 
@@ -111,7 +111,8 @@ class MaterialAnalysisFlowStageServiceTest {
     }
 
     @Test
-    void subcontractWithoutApplicationFallsBackToPrecedingMakeStage() {
+    void subcontractWithoutApplicationIsPendingIssueAndIgnoresMakeAnchors() {
+        // ADR-143：委外节点只下达为委外申请，不再有前置自制；自制锚点状态与委外行无关。
         UUID line = UUID.randomUUID();
         Map<UUID, String> stages = service.lineFlowStages(
                 UUID.randomUUID(),
@@ -120,41 +121,7 @@ class MaterialAnalysisFlowStageServiceTest {
                 Map.of(line, new BigDecimal("10")),
                 Map.of(line, "IN_PROGRESS"),
                 Map.of(line, false));
-        // 无委外申请 = 尚未通知委外：先走前置自制的执行进度。
-        assertThat(stages).containsEntry(line, "MAKE_IN_PROGRESS");
-    }
-
-    @Test
-    void subcontractWithMakeTaskButNoPlanIsPendingWorkshopNotPendingIssue() {
-        // 2026-09-15 用户反馈：委外件下达之后「还是显示未下达」。根因就在这里——
-        // 有自制子层的委外件 notify 之后，服务端建的是「前置自制任务台账 +
-        // 分析产品行」，既不出委外申请、也不出生产计划；于是 hasApplication=false，
-        // childStatus 又因为锚点还没排产而为空，整条回落 SC_PENDING_ISSUE
-        //（界面写「等待下发委外」），与「从未下达」一字不差。
-        UUID line = UUID.randomUUID();
-        UUID action = UUID.randomUUID();
-        Query actions = mock(Query.class);
-        when(actions.setParameter(
-                anyString(), org.mockito.ArgumentMatchers.any()))
-                .thenReturn(actions);
-        // 必须写成 List.<Object[]>of：List.of(new Object[]{..}) 会走可变参数
-        // 重载，把数组元素摊平成三个元素的列表。
-        when(actions.getResultList()).thenReturn(List.<Object[]>of(
-                new Object[]{line, action, "SUBCONTRACT_MAKE_TASK"}));
-        when(em.createNativeQuery(
-                org.mockito.ArgumentMatchers.contains(
-                        "FROM preplan_supply_action_allocations allocation")))
-                .thenReturn(actions);
-
-        Map<UUID, String> stages = service.lineFlowStages(
-                UUID.randomUUID(),
-                Map.of(line, "SUBCONTRACT"),
-                Map.of(line, new BigDecimal("5")),
-                Map.of(line, new BigDecimal("10")),
-                Map.of(),
-                Map.of());
-        // 已建前置自制台账、尚未排产 = 「等待下达车间」，不是「等待下发委外」。
-        assertThat(stages).containsEntry(line, "MAKE_PENDING_ISSUE");
+        assertThat(stages).containsEntry(line, "SC_PENDING_ISSUE");
     }
 
     @Test
@@ -328,6 +295,50 @@ class MaterialAnalysisFlowStageServiceTest {
                 .isEqualTo(prefix(route) + "PENDING_FINANCE");
     }
 
+    @Test
+    void subcontractWithDrawableSetsAsksForDrawEvenWhileEarlierBatchIsInInspection() {
+        // 可领料轮到委外人员动手，排在回厂单的质检子状态之前。
+        assertThat(stage("SUBCONTRACT", "10", "10", false,
+                order("10", 1, draw("4", "0", "3"), receipt("PARTIAL", "2", "0"))))
+                .isEqualTo("SC_WAITING_DRAW");
+    }
+
+    @Test
+    void subcontractSubmittedDrawWaitsForWarehouseOutbound() {
+        assertThat(stage("SUBCONTRACT", "10", "10", false,
+                order("10", 1, draw("0", "6", "0"))))
+                .isEqualTo("SC_WAIT_OUTBOUND");
+    }
+
+    @Test
+    void subcontractWithoutAnyCompleteSetWaitsForMaterial() {
+        assertThat(stage("SUBCONTRACT", "10", "10", false,
+                order("10", 1, draw("0", "0", "0"))))
+                .isEqualTo("SC_WAITING_MATERIAL");
+    }
+
+    @Test
+    void returnedBatchInInspectionShowsBeforeTheRemainingDrawWait() {
+        // 40 套已领已回厂在质检，剩下 60 套还在等物料：质检子状态随回厂单实时显示。
+        assertThat(stage("SUBCONTRACT", "100", "100", false,
+                order("100", 1, draw("40", "0", "0"), receipt("PENDING", "0", "0"))))
+                .isEqualTo("SC_WAIT_IQC");
+    }
+
+    @Test
+    void stockedBatchWithRemainingSetsAtSupplierWaitsForReturn() {
+        assertThat(stage("SUBCONTRACT", "100", "60", false,
+                order("100", 1, draw("70", "0", "0"), receipt("COMPLETE", "40", "40"))))
+                .isEqualTo("SC_WAIT_RETURN");
+    }
+
+    @Test
+    void closedShortDeliveredOrderCompletesOnItsStockedReceipts() {
+        assertThat(stage("SUBCONTRACT", "0", "0", false,
+                closedOrder("100", draw("40", "0", "0"), receipt("COMPLETE", "40", "40"))))
+                .isEqualTo("SC_STOCKED");
+    }
+
     private String stage(String route, String required, String shortage, boolean financePending,
                          OrderFixture... orders) {
         UUID line = UUID.randomUUID();
@@ -352,23 +363,31 @@ class MaterialAnalysisFlowStageServiceTest {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             List<?> rows = List.of();
-            if (sql.contains("FROM preplan_supply_action_allocations allocation")) {
+            if (sql.contains("fn_subcontract_draw_summary")) {
+                // 领料读模型(订货单位)：默认已全部领齐、没有待发与可领；回厂量 = 回厂单合格量之和。
+                rows = java.util.Arrays.stream(orders).map(order -> {
+                    BigDecimal returned = order.receipts.stream().map(receipt -> new BigDecimal(receipt.passed))
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    DrawFixture draw = order.draw == null
+                            ? new DrawFixture(order.quantity, "0", "0") : order.draw;
+                    return new Object[]{order.itemId, new BigDecimal(order.quantity), 1,
+                            new BigDecimal(draw.drawn), new BigDecimal(draw.pending), new BigDecimal(draw.drawable),
+                            true, order.closed, returned};
+                }).toList();
+            } else if (sql.contains("FROM preplan_supply_action_allocations allocation")) {
                 rows = List.<Object[]>of(new Object[]{line, action,
                         purchase ? "PURCHASE_REQUEST" : "SUBCONTRACT_APPLICATION"});
             } else if (sql.contains("SELECT action_id, external_item_id")) {
                 rows = List.<Object[]>of(new Object[]{action, sourceItem});
             } else if (sql.contains("FROM " + kind + "_order_item_sources src")) {
                 rows = java.util.Arrays.stream(orders).map(order -> new Object[]{sourceItem,
-                        order.id, order.status, order.itemId, new BigDecimal(order.quantity)}).toList();
+                        order.id, order.status, order.itemId, new BigDecimal(order.quantity), order.closed}).toList();
             } else if (sql.contains("FROM procurement_order_approval_cases approval") && financePending) {
                 rows = List.<Object[]>of(new Object[]{orders[0].id, "PENDING"});
             } else if (sql.contains("FROM " + kind + "_receipt_items receipt_item")) {
                 rows = receiptRows;
             } else if (sql.contains("FROM procurement_inspection_items inspection")) {
                 rows = inspectionRows;
-            } else if (sql.contains("FROM subcontract_material_plan_items pi")) {
-                rows = java.util.Arrays.stream(orders).map(order -> new Object[]{order.itemId,
-                        new BigDecimal(order.quantity), new BigDecimal(order.quantity)}).toList();
             }
             Query query = mock(Query.class);
             when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenAnswer(binding -> {
@@ -391,10 +410,21 @@ class MaterialAnalysisFlowStageServiceTest {
         return new ReceiptFixture(UUID.randomUUID(), status, passed, stocked);
     }
     private static OrderFixture order(String quantity, int status, ReceiptFixture... receipts) {
-        return new OrderFixture(UUID.randomUUID(), UUID.randomUUID(), status, quantity, List.of(receipts));
+        return new OrderFixture(UUID.randomUUID(), UUID.randomUUID(), status, quantity, List.of(receipts), null, false);
+    }
+    private static OrderFixture order(String quantity, int status, DrawFixture draw, ReceiptFixture... receipts) {
+        return new OrderFixture(UUID.randomUUID(), UUID.randomUUID(), status, quantity, List.of(receipts), draw, false);
+    }
+    private static OrderFixture closedOrder(String quantity, DrawFixture draw, ReceiptFixture... receipts) {
+        return new OrderFixture(UUID.randomUUID(), UUID.randomUUID(), 1, quantity, List.of(receipts), draw, true);
+    }
+    private static DrawFixture draw(String drawn, String pending, String drawable) {
+        return new DrawFixture(drawn, pending, drawable);
     }
     private record ReceiptFixture(UUID id, String status, String passed, String stocked) {}
-    private record OrderFixture(UUID id, UUID itemId, int status, String quantity, List<ReceiptFixture> receipts) {}
+    private record DrawFixture(String drawn, String pending, String drawable) {}
+    private record OrderFixture(UUID id, UUID itemId, int status, String quantity, List<ReceiptFixture> receipts,
+                                DrawFixture draw, boolean closed) {}
 
     /** 让链路事实装载看到一条未取消行动（外部单据类型 [type]），其余查询仍为空。 */
     private void stubAllocationChain(UUID line, UUID action, String type) {

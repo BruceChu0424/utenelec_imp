@@ -27,7 +27,6 @@ void main() {
       'warehouseSalesOutboundCountsProvider',
       'warehouseQualityResultTypeCountsProvider',
       'warehouseSubcontractOutboundCountProvider',
-      'warehouseSubcontractOutboundWaitingComponentCountProvider',
     ];
     final libSources = Directory('lib')
         .listSync(recursive: true)
@@ -72,7 +71,7 @@ void main() {
       // 销售出库详情：拣货/交接状态流转。
       'lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart':
           1,
-      // 委外出仓：保存草稿 / 审核出仓 / 关闭计划。
+      // 委外领料出仓：保存拣货 / 审核出仓 / 回执核实后确认已出仓。
       'lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart':
           3,
       // 三张任务中心页返回即刷新 + hub 返回即刷新。

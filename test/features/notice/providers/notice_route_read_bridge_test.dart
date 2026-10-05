@@ -60,7 +60,18 @@ void main() {
     // 前缀相似但非子路径：material-analysis 与 material-analyses 互不误命中。
     expect(
       noticeClearEventsForLocation('/production/material-analyses/abc/summary'),
-      contains('SUBCONTRACT_MAKE_TASK_CREATED'),
+      contains('PROCUREMENT_IQC_RESOLVED'),
+    );
+    // ADR-143 委外领料页是任务中心子页：进领料页同样清掉可领料卡。
+    expect(
+      noticeClearEventsForLocation(
+        '/operations/workbench/subcontract/draw-request',
+      ),
+      contains('SUBCONTRACT_DRAW_AVAILABLE'),
+    );
+    expect(
+      noticeClearEventsForLocation('/warehouse/subcontract-outbound/issue-1'),
+      ['SUBCONTRACT_OUTBOUND_READY', 'SUBCONTRACT_DRAW_WITHDRAWN'],
     );
     expect(
       noticeClearEventsForLocation('/production/material-analysis'),

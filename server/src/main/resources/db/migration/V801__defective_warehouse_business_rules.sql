@@ -341,6 +341,65 @@ BEGIN
 END;
 $patch$;
 
+-- 委外领料(V798, ADR-143)的精确专属批次: 批次所在仓同样只认「计入可用量的仓」。V798 的内联过滤
+-- (未删、非不良品仓、非车间内料仓、作业叶仓)缺「记账」一条; 把其中的作业叶仓判定换成单一口径函数
+-- (它包含其余几条, 内联的几条留着只是重复判定)。锚点必须恰好一处, 否则中止。
+DO $patch$
+DECLARE
+    definition TEXT;
+    found_count INTEGER;
+BEGIN
+    SELECT replace(pg_get_functiondef('fn_subcontract_component_entitled_lots(uuid)'::regprocedure),
+                   E'\r\n', E'\n') INTO definition;
+    found_count := (length(definition)
+                    - length(replace(definition, 'fn_warehouse_is_operational_leaf(warehouse.id)', '')))
+                   / length('fn_warehouse_is_operational_leaf(warehouse.id)');
+    IF found_count <> 1 THEN
+        RAISE EXCEPTION 'V801: fn_subcontract_component_entitled_lots no longer has the 1 operational-leaf anchor, found %',
+            found_count;
+    END IF;
+    EXECUTE replace(definition, 'fn_warehouse_is_operational_leaf(warehouse.id)',
+                    'fn_warehouse_counts_as_usable(warehouse.id)');
+END;
+$patch$;
+COMMENT ON FUNCTION fn_subcontract_component_entitled_lots(UUID) IS
+    'V798(ADR-143 三.5): 订货明细按冻结计划行可接管的精确专属批次切片(顶层委外件取来源行 depth=1 节点; 认领区间按该物料节点全部在途订货明细切分)。V801(ADR-146): 批次所在仓只认 fn_warehouse_counts_as_usable';
+
+-- 委外领料(V798, ADR-143)的逐仓可动用量: 公共可用部分只认「计入可用量的仓」(fn_warehouse_counts_as_usable,
+-- 与 v_stock_usable / fn_stock_global_usable 同一仓口径), 不良品仓、车间内料仓、主仓、不记账的仓都不出货。
+-- 只把 V798 的内联仓过滤换成单一口径函数, 其余(精确专属批次在前、v_stock_available 扣他人预留)不变。
+-- 精确专属批次(上面)、公共可用、领料提交的锁发现(SubcontractDrawCommandService)和出仓草稿占用
+-- (SubcontractMaterialPlanService.reserveDraft)四处同一个仓谓词: 候选仓 = 锁住的仓 = 允许占用的仓。
+CREATE OR REPLACE FUNCTION fn_subcontract_draw_line_stock(p_plan_item UUID)
+RETURNS TABLE(warehouse_id UUID, exact_qty NUMERIC, public_qty NUMERIC)
+LANGUAGE sql STABLE AS $$
+    WITH line AS (
+        SELECT plan_item.id, plan_item.order_item_id, plan_item.goods_id, plan_item.color_id
+        FROM subcontract_material_plan_items plan_item
+        WHERE plan_item.id = p_plan_item AND NOT plan_item.is_deleted
+    ), exact_stock AS (
+        SELECT lot.warehouse_id, SUM(lot.remaining_qty) AS qty
+        FROM line
+        CROSS JOIN LATERAL fn_subcontract_component_entitled_lots(line.order_item_id) lot
+        WHERE lot.plan_item_id = line.id
+        GROUP BY lot.warehouse_id
+    ), public_stock AS (
+        SELECT stock.warehouse_id, GREATEST(stock.available_qty, 0) AS qty
+        FROM line
+        JOIN v_stock_available stock ON stock.goods_id = line.goods_id
+         AND stock.color_id IS NOT DISTINCT FROM line.color_id
+        WHERE fn_warehouse_counts_as_usable(stock.warehouse_id)
+    )
+    SELECT COALESCE(exact_stock.warehouse_id, public_stock.warehouse_id),
+           COALESCE(exact_stock.qty, 0), COALESCE(public_stock.qty, 0)
+    FROM exact_stock
+    FULL JOIN public_stock ON public_stock.warehouse_id = exact_stock.warehouse_id
+    WHERE COALESCE(exact_stock.qty, 0) > 0 OR COALESCE(public_stock.qty, 0) > 0
+    ORDER BY 1
+$$;
+COMMENT ON FUNCTION fn_subcontract_draw_line_stock(UUID) IS
+    'V798(ADR-143 三.5): 计划行在各作业叶仓的可动用量 = 精确专属批次 exact_qty + 公共可用 public_qty; 两者都为 0 的仓不返回。V801(ADR-146): 公共可用只认 fn_warehouse_counts_as_usable 的仓';
+
 -- 仓库改成不良品仓之前, 上面不能再有没结束的预留: V800 的退出新选前置条件
 -- (fn_warehouse_selection_exit_blockers) 已包含未结预留, 停用/删除/改不核算/改不良品仓同一口径。
 
@@ -388,6 +447,13 @@ JOIN mapping ON surface.surface_key = mapping.surface_key
 JOIN permissions permission ON permission.code = mapping.permission_code
 ON CONFLICT DO NOTHING;
 
+-- 本节是系统种子授权配置, 不是业务事实(同 V798): 部门授权的永久记录身份绑定与删除留档
+-- (V775 trg_bind_business_record_parent / trg_retain_business_record)在本节内暂停, 结束后按 V775 原样
+-- ENABLE ALWAYS 恢复。否则空库(首导目标)迁移后 business_record_identities 就有行, 首导守卫会判成
+-- 「目标已有业务事实」拒绝首导。
+ALTER TABLE department_permissions DISABLE TRIGGER trg_bind_business_record_parent;
+ALTER TABLE department_permissions DISABLE TRIGGER trg_retain_business_record;
+
 -- 转不良品仓: 默认给能审核仓库单据的部门(仓储部); 不良复判转回: 默认给品质管理部(下级部门继承)。
 INSERT INTO department_permissions (department_id, permission_id)
 SELECT holder.department_id, target.id
@@ -402,6 +468,9 @@ FROM departments department
 JOIN permissions permission ON permission.code = 'stock:defective_release'
 WHERE department.code = 'DEPT_QA' AND NOT department.is_deleted
 ON CONFLICT DO NOTHING;
+
+ALTER TABLE department_permissions ENABLE ALWAYS TRIGGER trg_bind_business_record_parent;
+ALTER TABLE department_permissions ENABLE ALWAYS TRIGGER trg_retain_business_record;
 
 -- ---------------------------------------------------------------------------
 -- 8. 事后断言(存量): 不良品仓上没有正向预留, 货品所属仓库不是不良品仓

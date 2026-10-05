@@ -202,6 +202,8 @@ public final class ProcurementApprovalContracts {
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal weight,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal giftQty,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal allowedLossPct,
+            /** 采购允许超收百分比(ADR-144); 委外与未填为空。 */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal allowedOverReceiptPct,
             String remark,
             String sourceApplicationNos,
             String sourceAllocations,

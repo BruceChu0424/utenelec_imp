@@ -25,12 +25,12 @@ import java.util.UUID;
 /**
  * 工程研发部任务中心（rd_tasks）。范式镜像采购财务审批（Pattern B：JdbcTemplate + 记录）。
  *
- * <p>既是研发任务中心数据源，也承载历史「待排产 BOM 缺失」转发任务的等待状态：
+ * <p>既是研发任务中心数据源，也承载「委外件缺 BOM」任务的等待名单(ADR-143 §二.3)：
  * <ul>
- *   <li>{@link #resolveOpenBomTasksForGoods} 由 ChainNoticeService.notifyBomUpdated 调用（BOM 保存后）：
- *       自动完成对应 BOM 任务；通知由 ChainNoticeService 负责。</li>
+ *   <li>建任务与登记等待人在 {@link RdBomGapService}(物料分析、委外订货发现委外件没有可发外直属物料时)；</li>
+ *   <li>{@link #openBomTaskWaiters} / {@link #resolveOpenBomTasksForGoods} 由 ChainNoticeService.notifyBomUpdated
+ *       调用（BOM 保存后）：取等待名单、自动完成对应 BOM 任务；通知由 ChainNoticeService 负责。</li>
  * </ul>
- * V423 起生产侧不再按「缺 BOM」拦截排产，转发入口已下线；存量 BOM 任务照常流转。
  */
 @Service
 public class RdTaskService {
@@ -179,28 +179,42 @@ public class RdTaskService {
     }
 
     /**
-     * 取某货品所有「正在等待研发维护 BOM」的计划员（员工档案 id），供研发维护完成后逐个通知。
-     * 来源：rd_task_forwarders 等待名单（JOIN 未完成任务过滤）；名单为空时兜底取任务自身 reporter。
+     * 某货品「正在等研发完善 BOM」的等待名单（员工档案 id + 他当时被挡住的来源单据），供研发保存 BOM 后
+     * 逐个通知并直达来源单据。来源：rd_task_forwarders（JOIN 未完成任务过滤），同一人取最早登记的那条来源；
+     * 名单为空时兜底取任务自身 reporter 与任务来源。
      */
     @Transactional(readOnly = true)
-    public List<UUID> openBomTaskReporters(UUID goodsId) {
-        List<UUID> forwarders = jdbc.queryForList("""
-                SELECT DISTINCT f.reporter_employee_id
+    public List<BomTaskWaiter> openBomTaskWaiters(UUID goodsId) {
+        List<BomTaskWaiter> waiters = jdbc.query("""
+                SELECT DISTINCT ON (f.reporter_employee_id)
+                       f.reporter_employee_id, f.source_doc_type, f.source_doc_id
                 FROM rd_task_forwarders f
                 JOIN rd_tasks t ON t.id = f.rd_task_id
                 WHERE t.is_deleted = false AND t.category = 'BOM'
                   AND t.status IN ('OPEN','IN_PROGRESS') AND t.goods_id = ?
-                """, UUID.class, goodsId);
-        if (!forwarders.isEmpty()) {
-            return forwarders;
+                ORDER BY f.reporter_employee_id, f.created_at, f.id
+                """, (rs, rowNum) -> new BomTaskWaiter(
+                        rs.getObject("reporter_employee_id", UUID.class),
+                        rs.getString("source_doc_type"),
+                        rs.getObject("source_doc_id", UUID.class)), goodsId);
+        if (!waiters.isEmpty()) {
+            return waiters;
         }
-        // 兜底：任务存在但无 forwarders 行（forwarders 表上线前的旧任务）。
-        return jdbc.queryForList("""
-                SELECT DISTINCT reporter_employee_id FROM rd_tasks
+        return jdbc.query("""
+                SELECT DISTINCT ON (reporter_employee_id)
+                       reporter_employee_id, source_doc_type, source_doc_id
+                FROM rd_tasks
                 WHERE is_deleted = false AND category = 'BOM'
                   AND status IN ('OPEN','IN_PROGRESS') AND goods_id = ?
-                """, UUID.class, goodsId);
+                ORDER BY reporter_employee_id, created_at, id
+                """, (rs, rowNum) -> new BomTaskWaiter(
+                        rs.getObject("reporter_employee_id", UUID.class),
+                        rs.getString("source_doc_type"),
+                        rs.getObject("source_doc_id", UUID.class)), goodsId);
     }
+
+    /** 等研发完善 BOM 的人与他被挡住的来源单据(来源类型见 RdBomGapPort.SOURCE_*，可能为空)。 */
+    public record BomTaskWaiter(UUID employeeId, String sourceDocType, UUID sourceDocId) {}
 
     /** BOM 保存后自动完成对应未完成 BOM 任务（系统完成，无乐观锁）。返回完成条数。 */
     @Transactional

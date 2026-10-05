@@ -1,7 +1,7 @@
 // ADR-088 物料分析顶部卡片「关联销售订单」。
 //
 // 两条口径必须钉死：
-//  ① 去重按 orderId，且**排除 MAKE_COMPONENT / SUBCONTRACT_MAKE 子层锚点行**——
+//  ① 去重按 orderId，且**排除 MAKE_COMPONENT / AGGREGATE_MAKE 子层锚点行**——
 //     子件行不是「这张分析是给谁做的」的答案，混进去会让 chip 数虚高；
 //  ② 点 chip 进的是新写的只读货品清单页，**不是销售订单详情**。
 import 'package:dio/dio.dart';

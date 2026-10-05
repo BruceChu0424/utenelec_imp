@@ -90,10 +90,14 @@ class ChainNoticeWarehouseKeeperRoutingTest {
                 StandardCharsets.UTF_8);
         int routed = source.split("warehouseRecipients\\(warehousePool\\(", -1).length - 1;
         int legacy = source.split("warehouseRecipients\\(departmentUserIdsWithAuthorit", -1).length - 1;
-        // 13 处仓库通知全部按仓分发(最底层自制件实际物料待登记、成品入库待审、成品待登记、领料待出库、IQC 待入库、
-        // IQC 结案、销售待拣货与撤回放行、委外出仓、委外预计回厂与撤回、采购预计到货、到货异常定案)。
-        assertThat(routed).isEqualTo(13);
+        int warehousePools = source.split("\"SUB_WH\"", -1).length - 1;
+        // 14 处仓库通知全部用仓库通知池按仓分发(最底层自制件实际物料待登记、成品入库待审、成品待登记、领料待出库、
+        // IQC 待入库、IQC 结案、销售待拣货与撤回放行、委外领料待发料(ADR-143 每张草稿一条)、委外领料已撤回、
+        // 委外预计回厂与撤回、采购预计到货、到货异常定案)。
+        assertThat(routed).isEqualTo(14);
         assertThat(legacy).isZero();
+        // 「SUB_WH」部门池只在 warehousePool 里出现一次(仓库类通知不再各自拼部门池)。
+        assertThat(warehousePools).isEqualTo(1);
         // 另两处仓库通知(车间内料仓、盘点审核)也只经同一个 router。
         for (String file : List.of("WorkshopMaterialNoticeService.java", "StockCountNoticeHandler.java")) {
             String other = Files.readString(Path.of("src/main/java/com/uten/imp/features/notice/" + file),

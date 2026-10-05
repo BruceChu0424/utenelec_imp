@@ -1350,6 +1350,8 @@ public class GoodsService {
                 owningWorkshopId, owningWorkshopName, null, null,
                 // ADR-098 委外允许损耗默认值：不是成本字段, 不随成本脱敏。
                 g.getSubcontractAllowedLossPct(),
+                // ADR-144 采购允许超收默认值：不是价格或成本字段, 不脱敏。
+                g.getPurchaseAllowedOverReceiptPct(),
                 // ADR-131 发料方式 (只读, 切换走 GoodsIssueMethodService)。
                 g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
                 periodicBomWeights(g.getId()),

@@ -311,7 +311,7 @@ class _PurchaseInboundSegmentState extends State<_PurchaseInboundSegment> {
   }
 }
 
-/// 委外入库分段：预计到货（目标件回厂）｜历史单据（时间门控）。
+/// 委外入库分段：预计到货(委外件回厂)｜历史单据(时间门控)。
 class _SubcontractInboundSegment extends StatefulWidget {
   const _SubcontractInboundSegment({
     required this.keyword,

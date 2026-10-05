@@ -316,8 +316,9 @@ class QualifiedSourceWarehouseEndToEndTest {
         }
     }
 
-    @Test void directMakeQualifiedInboundFollowsItsActualWarehouseButSubcontractPreparationIsNotFinalSupply(){
-        MakeCase c=makeCase("qualified-direct-make",false);
+    // ADR-143 §4.5 删除「下达车间先做委外件」: 原来后半段「委外前置自制产出不是最终供给」随之删除。
+    @Test void directMakeQualifiedInboundFollowsItsActualWarehouse(){
+        MakeCase c=makeCase("qualified-direct-make");
         UUID actual=warehouse("actual-qualified-MAKE",false);
         call("produceInternal",withWarehouse(c.world(),actual),c.childPlanItem(),c.childGoods(),"1");
         assertEquals("READY",segmentStatus(c.parentPlan()));
@@ -333,66 +334,25 @@ class QualifiedSourceWarehouseEndToEndTest {
                 WHERE demand.plan_id=? AND target.warehouse_id=? AND target.requires_qualified_origin
                 """,BigDecimal.class,c.parentPlan(),actual));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND route='MAKE'",Integer.class,c.analysis()));
-
-        MakeCase sc=makeCase("qualified-sc-not-final",true);
-        call("produceInternal",sc.world(),sc.leafPlanItem(),sc.leafGoods(),"1");
-        assertEquals("READY",segmentStatus(sc.childPlan()));
-        var qualifiedScDraws=db.queryForList("SELECT draw_id FROM plan_draw_links WHERE plan_id=? AND NOT is_deleted",UUID.class,sc.childPlan());
-        fixture.requestWorkshopDraws("qualified-sc",qualifiedScDraws);
-        for(UUID draw:qualifiedScDraws){
-            com.uten.imp.features.stock.dto.StockDocIssueRequest request=call("drawIssueRequest",draw,
-                    "qualified-sc-draw-"+draw,null,BigDecimal.ZERO);
-            stockDocuments.approveAndIssue(draw,request);
-        }
-        call("produceInternal",sc.world(),sc.childPlanItem(),sc.childGoods(),"1");
-        assertEquals("WAITING",segmentStatus(sc.parentPlan()));
-        qty("1",db.queryForObject("""
-                SELECT sum(qty-consumed_qty-released_qty) FROM stock_reservations
-                WHERE owner_type='SUBCONTRACT_PREPARE_TASK' AND goods_id=? AND warehouse_id=?
-                  AND status=0 AND NOT is_deleted
-                """,BigDecimal.class,sc.childGoods(),sc.world().warehouseId()));
-        assertEquals(0,db.queryForObject("""
-                SELECT count(*) FROM preplan_stock_entitlement_events event
-                JOIN stock_reservations source ON source.id=event.stock_reservation_id
-                WHERE event.event_type='ORIGIN_MAKE' AND source.goods_id=?
-                """,Integer.class,sc.childGoods()));
-        var waiting=execution.list(sc.parentPlan()).getFirst();
-        assertTrue(assertThrows(ApiException.class,()->execution.recheckMaterial(sc.parentPlan(),waiting.id(),
-                new com.uten.imp.features.production.execution.SegmentTransitionRequest(waiting.lockVersion(),"qualified-sc-not-final-"+waiting.id())))
-                .getMessage().contains("仍缺料"));
-        assertEquals("WAITING",segmentStatus(sc.parentPlan()));
     }
 
-    private MakeCase makeCase(String tag,boolean subcontract){
+    private MakeCase makeCase(String tag){
         var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
-        UUID parent=UUID.randomUUID(),child=UUID.randomUUID(),leaf=subcontract?UUID.randomUUID():null;
+        UUID parent=UUID.randomUUID(),child=UUID.randomUUID();
         fixture.insertGoods(parent,"MAKE-P-"+parent,"父件原需求","自制",w.unitId(),w.unitLegacy());
-        fixture.insertGoods(child,"MAKE-C-"+child,"原树子件",subcontract?"委外":"自制",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(child,"MAKE-C-"+child,"原树子件","自制",w.unitId(),w.unitLegacy());
         fixture.insertBom(parent,child,"1");
-        if(subcontract){
-            fixture.insertGoods(leaf,"MAKE-L-"+leaf,"前置底层子件","自制",w.unitId(),w.unitLegacy());fixture.insertBom(child,leaf,"1");
-            // V581 起「只有一个叶子子件」的委外件属 COMPONENT_OUTBOUND 委外下达，issue-plans
-            // 明确拒收；本用例测「有自制子层的委外件下车间」，挂第二颗采购叶子(已备 100 库存)
-            // 让夹具落回前置自制一类（同 MaterialWorkshopAnchorEndToEndTest#createMixed 的做法）。
-            fixture.insertBom(child,w.goodsD(),"1");
-        }
         var view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"make-preview-"+parent,
                 List.of(new PreviewItem("OTHER",null,parent,null,w.unitId(),"make-source-"+parent,"原树实际自制来源",BusinessTime.today().plusDays(10),BigDecimal.ONE))));
         view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"make-routes-"+parent,
-                view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
-                        m.goodsId().equals(w.goodsD())?"BUY":subcontract&&m.goodsId().equals(child)?"SUBCONTRACT":"MAKE",null)).toList()));
+                view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),"MAKE",null)).toList()));
         UUID parentAnalysis=view.products().getFirst().analysisLineId();
         List<IssueWorkshopPlansRequest.IssuePlanLine> lines=new java.util.ArrayList<>();
-        if(subcontract){UUID leafId=leaf;UUID material=view.flatMaterials().stream().filter(m->m.goodsId().equals(leafId)).map(MaterialView::materialLineId).findFirst().orElseThrow();
-            lines.add(new IssueWorkshopPlansRequest.IssuePlanLine(material,null,BigDecimal.ONE,null,null,null,null,null,null,null));}
         UUID childMaterial=view.flatMaterials().stream().filter(m->m.goodsId().equals(child)).map(MaterialView::materialLineId).findFirst().orElseThrow();
         lines.add(new IssueWorkshopPlansRequest.IssuePlanLine(childMaterial,null,BigDecimal.ONE,null,null,null,null,null,null,null));
         lines.add(new IssueWorkshopPlansRequest.IssuePlanLine(parentAnalysis,BigDecimal.ONE));
         var issuedPlans=commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),"make-issue-"+parent,
                 w.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines));
-        // 第二颗采购叶子(goodsD)的路由与下达都定型后再补库存：preview 时无货才保持
-        // 可行动行，段就绪是实时读库存，晚播不影响（V581 夹具形态见上）。
-        call("putDirectTargetStock",w,w.goodsD(),"100");
         // V599：齐套自动提升按路线放行——把本次下达的全部段确认为齐套路线，
         // 后续到货/产出入库的提升与 startedSegmentFor 才走得通(本组测的是资格与提升机械)。
         issuedPlans.plans().forEach(plan -> fixture.confirmFullKitRoutes(plan.planId()));
@@ -400,9 +360,8 @@ class QualifiedSourceWarehouseEndToEndTest {
         UUID childAnchor=db.queryForObject("SELECT id FROM production_material_analysis_items WHERE analysis_id=? AND parent_analysis_material_id=? AND NOT is_deleted",UUID.class,view.analysisId(),childMaterial);
         UUID childPlan=db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=?",UUID.class,childAnchor);
         UUID childItem=db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=? AND goods_id=?",UUID.class,childPlan,child);
-        UUID leafItem=subcontract?db.queryForObject("SELECT pi.id FROM production_plan_items pi JOIN production_plans p ON p.id=pi.plan_id WHERE p.material_analysis_id=? AND pi.goods_id=?",UUID.class,view.analysisId(),leaf):null;
         assertEquals("WAITING",segmentStatus(parentPlan));
-        return new MakeCase(w,view.analysisId(),parentPlan,childPlan,childItem,childAnchor,child,leafItem,leaf);
+        return new MakeCase(w,view.analysisId(),parentPlan,childPlan,childItem,childAnchor,child);
     }
 
     private String segmentStatus(UUID plan){return db.queryForObject("SELECT status FROM production_execution_segments WHERE plan_id=?",String.class,plan);}
@@ -495,5 +454,5 @@ class QualifiedSourceWarehouseEndToEndTest {
     private static void qty(String expected,BigDecimal actual){assertNotNull(actual);assertEquals(0,new BigDecimal(expected).compareTo(actual),()->"Expected quantity "+expected+", actual "+actual);}
     private record Case(FullChainEndToEndTest.World world,UUID analysis,UUID plan,UUID segment,UUID packageId,UUID material,UUID orderItem){}
     private record MakeCase(FullChainEndToEndTest.World world,UUID analysis,UUID parentPlan,UUID childPlan,UUID childPlanItem,
-                            UUID childAnalysisItem,UUID childGoods,UUID leafPlanItem,UUID leafGoods){}
+                            UUID childAnalysisItem,UUID childGoods){}
 }

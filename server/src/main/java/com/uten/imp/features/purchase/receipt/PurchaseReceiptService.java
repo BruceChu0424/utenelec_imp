@@ -334,7 +334,6 @@ public class PurchaseReceiptService {
                         .setParameter("q", it.getQty())
                         .setParameter("id", it.getOrderItemId())
                         .executeUpdate();
-                recalcOrderClosed(it.getOrderItemId());
             }
         }
         // 正式生产供给由仓库确认 IQC 合格入库量后推进；整单质检结案只做终态校准。
@@ -354,6 +353,10 @@ public class PurchaseReceiptService {
         arrivalControl.recordApproval(
                 ProcurementArrivalControlPort.PURCHASE, id);
         em.flush();
+        // 结案按「已审核收货单的 IQC 合格入库量」算, 必须在本单 status=1 落库之后重算: 否则本明细的
+        // 第一张收货单还是草稿, 结案口径退回历史 received_qty 分支, 质检未完就把订货单关掉。
+        items.stream().map(PurchaseReceiptItem::getOrderItemId).filter(java.util.Objects::nonNull)
+                .distinct().forEach(this::recalcOrderClosed);
         procurementValue.receiptApproved("PURCHASE",id,currentUser.requireId());
     }
     /** Dedicated warehouse-arrival gateway; normal approval keeps its exact action authority. */

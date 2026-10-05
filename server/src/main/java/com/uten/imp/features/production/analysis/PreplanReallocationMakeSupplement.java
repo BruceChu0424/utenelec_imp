@@ -35,8 +35,7 @@ final class PreplanReallocationMakeSupplement {
                 JOIN production_material_analysis_items child ON child.parent_analysis_material_id=material.id
                     AND child.analysis_id=relation.from_analysis_id AND NOT child.is_deleted
                 WHERE relation.from_analysis_id=:analysisId AND relation.status IN ('OPEN','PARTIAL')
-                  AND material.active AND ((material.confirmed_route='MAKE' AND child.source_type='MAKE_COMPONENT')
-                    OR (material.confirmed_route='SUBCONTRACT' AND child.source_type='SUBCONTRACT_MAKE'))
+                  AND material.active AND material.confirmed_route='MAKE' AND child.source_type='MAKE_COMPONENT'
                 ORDER BY relation.created_at,relation.id
                 """).setParameter("analysisId",analysisId))) {
             result.put((UUID)row[0],new Allowance((UUID)row[1],(UUID)row[2],bd(row[3]),bd(row[4])));

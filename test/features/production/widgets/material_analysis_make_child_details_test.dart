@@ -81,13 +81,13 @@ void main() {
     'missing execution projection says pending and uses child demand',
     (tester) async {
       const material = ProductionMaterialAnalysisMaterial(
-        materialLineId: 'subcontract-parent-1',
+        materialLineId: 'make-parent-2',
         actionable: false,
       );
       const child = ProductionMaterialAnalysisProduct(
-        analysisLineId: 'subcontract-child-1',
-        sourceType: 'SUBCONTRACT_MAKE',
-        sourceRef: '委外前置自制任务 001',
+        analysisLineId: 'make-child-2',
+        sourceType: 'MAKE_COMPONENT',
+        sourceRef: '自制备料任务 001',
         requestedQty: 12,
       );
 
@@ -107,7 +107,8 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('关联委外前置自制任务'), findsOneWidget);
+      expect(find.text('关联自制子任务'), findsOneWidget);
+      expect(find.text('自制备料任务 001'), findsOneWidget);
       expect(find.text('已下达自制 12'), findsOneWidget);
       expect(find.text('计划量 待回传'), findsOneWidget);
       expect(find.text('已完工入库 待回传'), findsOneWidget);

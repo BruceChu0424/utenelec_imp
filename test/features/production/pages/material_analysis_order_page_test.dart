@@ -319,8 +319,8 @@ void main() {
     expect(input['qty'], '5');
   });
 
-  testWidgets('直接外发委外桶也进入同一核对页，保留我方供料子件', (tester) async {
-    await _pump(tester, soleComponentSubcontract: true);
+  testWidgets('委外桶也进入同一核对页，保留我方供料子件', (tester) async {
+    await _pump(tester, subcontractRoot: true);
     await _openOrder(tester, route: 'subcontract');
     expect(_inPage('成品A'), findsOneWidget);
     expect(_inPage('外购件B'), findsOneWidget);
@@ -329,15 +329,17 @@ void main() {
     expect(_rate('root-1'), findsNothing);
   });
 
-  testWidgets('前置自制委外显示可见车间指派，统一走制造责任', (tester) async {
-    await _pump(tester, makeFirstSubcontract: true);
+  testWidgets('多种直属物料的委外件照样下达委外，不要求车间指派', (tester) async {
+    // ADR-143：委外节点不管有几种直属物料都只下达委外申请，没有「先自制」。
+    await _pump(tester, subcontractRoot: true, subcontractSecondMaterial: true);
     await _openOrder(tester, route: 'subcontract');
-    expect(_rate('root-1'), findsOneWidget);
+    expect(_inPage('外购件B'), findsOneWidget);
+    expect(_inPage('外购件E'), findsOneWidget);
+    expect(_rate('root-1'), findsNothing);
     expect(
       find.byKey(ValueKey('material-analysis-workshop-${_group('root-1')}')),
-      findsOneWidget,
+      findsNothing,
     );
-    expect(find.text('一车间'), findsWidgets);
   });
 
   testWidgets('已排满顶层仍可从车间桶追加，增量与历史量分开', (tester) async {
@@ -556,9 +558,8 @@ Future<_Harness> _pump(
   bool childrenAlreadyOrdered = false,
   bool previousOrders = false,
   bool topLevelIssued = false,
-  bool subcontractChildIssued = false,
-  bool soleComponentSubcontract = false,
-  bool makeFirstSubcontract = false,
+  bool subcontractRoot = false,
+  bool subcontractSecondMaterial = false,
   Map<String, dynamic> Function(Map<String, dynamic>)? mutate,
 }) async {
   tester.view.physicalSize = const Size(1800, 1400);
@@ -566,15 +567,12 @@ Future<_Harness> _pump(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final harness = _Harness();
-  var persisted = makeFirstSubcontract
-      ? _makeFirstSubcontractAnalysis()
-      : soleComponentSubcontract
-      ? _soleComponentSubcontractAnalysis()
+  var persisted = subcontractRoot
+      ? _subcontractRootAnalysis(secondMaterial: subcontractSecondMaterial)
       : _analysis(
           childrenAlreadyOrdered: childrenAlreadyOrdered,
           previousOrders: previousOrders,
           topLevelIssued: topLevelIssued,
-          subcontractChildIssued: subcontractChildIssued,
         );
   if (mutate != null) persisted = mutate(persisted);
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -588,7 +586,7 @@ Future<_Harness> _pump(
             {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},
           ],
           '/production/material-analyses/default-workshops' => [
-            for (final goods in ['g-a', 'g-c', 'g-s'])
+            for (final goods in ['g-a', 'g-c'])
               {
                 'goodsId': goods,
                 'departmentId': 'dept-1',
@@ -764,52 +762,10 @@ class _WarehousePrefs extends MaterialAnalysisWarehousePrefsNotifier {
   }
 }
 
-/// V581 变体：成品A 改成「只有一个叶子子件」的委外件——树顶走委外下达
-/// （notify SUBCONTRACT），那颗子件仍要我方采购出来，所以仍进「跟父件一起办」。
-Map<String, dynamic> _soleComponentSubcontractAnalysis() {
-  final analysis = Map<String, dynamic>.from(
-    _analysis(childrenAlreadyOrdered: false),
-  );
-  analysis['products'] = [
-    {
-      ...(analysis['products'] as List).first as Map<String, dynamic>,
-      'canSchedule': false,
-    },
-  ];
-  analysis['flatMaterials'] = [
-    _material(
-      id: 'root-1',
-      name: '成品A',
-      goodsId: 'g-a',
-      level: 0,
-      nodeKey: 'root',
-      perProductQty: 1,
-      requiredQty: 10,
-      route: 'SUBCONTRACT',
-      nodeRole: 'ROOT_SUPPLY',
-      actionGroupKey: 'ag-root',
-      subcontractOutboundForm: 'COMPONENT_OUTBOUND',
-      actionable: true,
-    ),
-    _material(
-      id: 'm-b',
-      name: '外购件B',
-      goodsId: 'g-b',
-      level: 1,
-      nodeKey: 'nb',
-      perProductQty: 2,
-      requiredQty: 20,
-      route: 'BUY',
-      actionGroupKey: 'ag-b',
-    ),
-  ];
-  return analysis;
-}
-
-/// 有自制子层的顶层委外件（ADR-062 先自制后通知）：成品A 路线为委外，BOM 上
-/// 还有我方要备的外购件B。ADR-099 起这类行（含顶层供给行）直接走 issue-plans
-/// 的 ARRANGE 段，不再走「整量接管的通知通道」。
-Map<String, dynamic> _makeFirstSubcontractAnalysis() {
+/// 顶层委外件(ADR-143)：成品A 路线为委外，BOM 上有我方要备的外购件B
+/// ([secondMaterial] 时再加一种外购件E)。树顶走委外下达(notify SUBCONTRACT)，
+/// 直属物料仍要我方采购出来，所以仍进「跟父件一起办」。
+Map<String, dynamic> _subcontractRootAnalysis({bool secondMaterial = false}) {
   final analysis = Map<String, dynamic>.from(
     _analysis(childrenAlreadyOrdered: false),
   );
@@ -844,17 +800,18 @@ Map<String, dynamic> _makeFirstSubcontractAnalysis() {
       route: 'BUY',
       actionGroupKey: 'ag-b',
     ),
-    _material(
-      id: 'm-e',
-      name: '外购件E',
-      goodsId: 'g-e',
-      level: 1,
-      nodeKey: 'ne',
-      perProductQty: 1,
-      requiredQty: 10,
-      route: 'BUY',
-      actionGroupKey: 'ag-e',
-    ),
+    if (secondMaterial)
+      _material(
+        id: 'm-e',
+        name: '外购件E',
+        goodsId: 'g-e',
+        level: 1,
+        nodeKey: 'ne',
+        perProductQty: 1,
+        requiredQty: 10,
+        route: 'BUY',
+        actionGroupKey: 'ag-e',
+      ),
   ];
   return analysis;
 }
@@ -863,15 +820,12 @@ Map<String, dynamic> _makeFirstSubcontractAnalysis() {
 /// growableLineQty）、D 已下 PR-0002 且已在处理（无 growableLineQty）。
 /// [topLevelIssued]：成品A 的需求已全部转入计划（剩余 0、不可再按需求排产），
 /// 但服务端允许再追加一批纯公共备货产出（canIssueSurplus）。
-/// [subcontractChildIssued]：再挂一个「有自制子层的委外件 S」，它已经建过前置
-/// 自制任务（锚点 sub-anchor 剩余 0、仍可再下一批公共备货产出）。
 Map<String, dynamic> _analysis({
   required bool childrenAlreadyOrdered,
   bool previousOrders = false,
   bool topLevelIssued = false,
-  bool subcontractChildIssued = false,
 }) => {
-  'overproductionDefaults': {'g-a': 0, 'g-c': 0.1, 'g-s': 0},
+  'overproductionDefaults': {'g-a': 0, 'g-c': 0.1},
   'analysisId': 'analysis-1',
   'status': 'ACTIVE',
   'version': 3,
@@ -919,33 +873,6 @@ Map<String, dynamic> _analysis({
         'planExecutionInboundQty': 0,
       },
     },
-    if (subcontractChildIssued)
-      {
-        'analysisLineId': 'sub-anchor',
-        'sourceType': 'SUBCONTRACT_MAKE',
-        'parentAnalysisLineId': 'p1',
-        'goodsId': 'g-s',
-        'goodsCode': 'g-s-code',
-        'goodsName': '委外件S',
-        'unitName': '个',
-        'requestedQty': 10,
-        'submittedQty': 10,
-        'approvedQty': 10,
-        'remainingQty': 0,
-        'issuedPlanQty': 10,
-        'canIssueSurplus': true,
-        'canSchedule': false,
-        'maxSchedulableQty': 0,
-        'scheduleBlockedReason': '当前分析需求已全部转入生产计划',
-        'readyNowQty': 0,
-        'planExecutionStatus': 'WAITING',
-        'latestPlanId': 'plan-s',
-        'planExecutionWorkshopId': 'dept-1',
-        'planExecutionWorkshopName': '一车间',
-        'planExecutionResponsibleId': 'emp-1',
-        'planExecutionResponsibleName': '张三',
-        'planExecutionPlannedQty': 10,
-      },
   ],
   'flatMaterials': [
     _material(
@@ -1003,35 +930,6 @@ Map<String, dynamic> _analysis({
           ? (documentNo: 'PR-0002', qty: 30.0, growable: false)
           : null,
     ),
-    if (subcontractChildIssued) ...[
-      _material(
-        id: 'm-s',
-        name: '委外件S',
-        goodsId: 'g-s',
-        level: 1,
-        nodeKey: 'ns',
-        perProductQty: 1,
-        requiredQty: 10,
-        route: 'SUBCONTRACT',
-        actionGroupKey: 'ag-s',
-        covered: true,
-        planAnchorAnalysisLineId: 'sub-anchor',
-      ),
-      // S 的子层：有它 S 才算「要先自制目标件再发外」。
-      _material(
-        id: 'm-s-child',
-        name: '委外子件SC',
-        goodsId: 'g-sc',
-        level: 2,
-        nodeKey: 'ns/nsc',
-        parentNodeKey: 'ns',
-        perProductQty: 1,
-        requiredQty: 10,
-        route: 'BUY',
-        actionGroupKey: 'ag-sc',
-        covered: true,
-      ),
-    ],
   ],
   'warehouses': [
     {'warehouseId': 'warehouse-1', 'warehouseName': '主仓'},
@@ -1051,13 +949,9 @@ Map<String, dynamic> _material({
   String? parentNodeKey,
   String nodeRole = 'BOM_COMPONENT',
   bool covered = false,
-  String? subcontractOutboundForm,
   bool? actionable,
   ({String documentNo, double qty, bool growable})? previousOrder,
-  String? planAnchorAnalysisLineId,
 }) => {
-  'subcontractOutboundForm': subcontractOutboundForm,
-  'planAnchorAnalysisLineId': ?planAnchorAnalysisLineId,
   if (previousOrder != null)
     'notifiedTargets': [
       {

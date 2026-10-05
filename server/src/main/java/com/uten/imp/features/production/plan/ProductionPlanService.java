@@ -512,7 +512,7 @@ public class ProductionPlanService {
         // requireCurrentBomSnapshot deliberately does not revalidate their tree.
         // Preserve the complete MRP path for those anchors.
         return Boolean.FALSE.equals(row[17])
-                && !java.util.Set.of("MAKE_COMPONENT", "SUBCONTRACT_MAKE").contains(row[18]);
+                && !"MAKE_COMPONENT".equals(row[18]);
     }
 
     /**

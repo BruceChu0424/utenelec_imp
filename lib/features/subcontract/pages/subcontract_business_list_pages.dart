@@ -88,18 +88,19 @@ class SubcontractOrderWorkspacePage extends StatelessWidget {
   );
 }
 
-/// V304 及更早材料/BOM 子件发料历史，仅供审计和反向兼容（只读，不放仓库动作）。
-class SubcontractLegacyMaterialIssueHistoryPage extends StatelessWidget {
-  const SubcontractLegacyMaterialIssueHistoryPage({super.key});
+/// 委外材料出仓单(ADR-143)：委外人员「领料」提交、仓库发出的直属物料出仓单。
+/// 本页只读查看与红冲，拣货发料在仓库委外出仓工作台办理(不放仓库动作)。
+class SubcontractMaterialIssueListPage extends StatelessWidget {
+  const SubcontractMaterialIssueListPage({super.key});
 
   @override
   Widget build(BuildContext context) => const _SubcontractBusinessListPage(
     presentation: _ListPresentation(
       type: SubcontractDocType.materialIssue,
-      title: '历史委外发料记录',
-      icon: Icons.history_rounded,
-      emptyMessage: '暂无历史委外发料记录',
-      columns: _legacyIssueColumns,
+      title: '委外材料出仓单',
+      icon: Icons.outbound_outlined,
+      emptyMessage: '暂无委外材料出仓单',
+      columns: _issueColumns,
     ),
   );
 }
@@ -1157,10 +1158,10 @@ UtenStatusBadgeType _orderStatusBadgeType(SubcontractDocListItem row) {
   return UtenStatusBadgeType.neutral;
 }
 
-List<MasterColumnDef<SubcontractDocListItem>> _legacyIssueColumns(
+List<MasterColumnDef<SubcontractDocListItem>> _issueColumns(
   mn.MasterNameService names,
   bool _,
-) => _baseColumns(names: names, warehouse: true, statusLabel: '历史执行状态');
+) => _baseColumns(names: names, warehouse: true, statusLabel: '出仓状态');
 
 List<MasterColumnDef<SubcontractDocListItem>> _returnColumns(
   mn.MasterNameService names,

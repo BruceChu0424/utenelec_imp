@@ -183,7 +183,7 @@ public class PreplanFutureSupplyTransferService {
         String blocked=transferred.signum()==0?"该在途归属调整已撤销，无需补供":remaining.signum()==0?"原计划已有其它供给覆盖，请跟进已安排任务":!writable?"当前账号没有原计划补供权限":null;
         return new CrossReallocationReplenishmentView(transferId,view,material.materialLineId(),uuid(row[5]),transferred,
                 remaining,remaining,remaining,route,writable&&remaining.signum()>0?List.of(route):List.of(),"NOTIFY_SUPPLY",
-                writable&&remaining.signum()>0&&access.hasAuthority("production_material_analysis:over_supply"),false,null,
+                writable&&remaining.signum()>0&&access.hasAuthority("production_material_analysis:over_supply"),null,
                 "BUY".equals(route)?material.mainWarehouseSafetyReplenishmentGapQty():BigDecimal.ZERO,blocked);
     }
 

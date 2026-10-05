@@ -149,8 +149,8 @@ class ProductionFlowStage {
 
   /// 解析服务端阶段键（物料行 flowStage 字段）。
   ///
-  /// [route] 为该行的确认路线；委外行的前置自制阶段（MAKE_* 键）会显示
-  /// 「前置自制」前缀，让委外与自制的同构关系一眼可见。
+  /// [route] 为该行的确认路线。不认识的委外键(服务端新增阶段)显示通用的
+  /// 「委外进行中」，其余不认识的键显示「状态待确认」。
   factory ProductionFlowStage.fromServerKey(
     String? serverKey, {
     required ProductionFlowRoute route,
@@ -175,23 +175,12 @@ class ProductionFlowStage {
         detail: '先在「供应方式」里选好采购 / 委外 / 自制，选好即自动保存，这一行才能下单。',
       );
     }
-    final isSubcontractPrefix =
-        route == ProductionFlowRoute.subcontract && key.startsWith('MAKE_');
     final stage = _fromKey(key.isEmpty ? null : key, progress: progress);
-    if (stage == null) return _unknown(route);
-    if (isSubcontractPrefix && stage.route == ProductionFlowRoute.make) {
-      return ProductionFlowStage(
-        route: ProductionFlowRoute.subcontract,
-        key: stage.key,
-        label: '前置自制 · ${stage.label}',
-        tone: stage.tone,
-        stepIndex: stage.stepIndex,
-        stepCount: _subcontractStepCount,
-        detail: stage.detail,
-        progress: stage.progress,
-      );
+    if (stage != null) return stage;
+    if (key.startsWith('SC_')) {
+      return _sc(3, '委外进行中', ProductionFlowTone.active);
     }
-    return stage;
+    return _unknown(route);
   }
 
   static ProductionFlowStage? _fromKey(String? key, {double? progress}) {
@@ -242,12 +231,13 @@ class ProductionFlowStage {
       'SC_PENDING_ISSUE' => _sc(0, '等待下发委外', ProductionFlowTone.pending),
       'SC_REQUESTED' => _sc(1, '等待委外下单', ProductionFlowTone.active),
       'SC_PENDING_FINANCE' => _sc(2, '已下单 · 待财务审批', ProductionFlowTone.active),
-      'SC_WAIT_OUTBOUND' => _sc(
-        3,
-        '财务已审批 · 等待目标件出仓',
-        ProductionFlowTone.active,
-      ),
-      'SC_WAIT_RETURN' => _sc(4, '已出仓 · 等待回厂', ProductionFlowTone.active),
+      // ADR-143 委外按领料推进(与车间领料同一套色调)：财务批准后按齐套领直属物料，
+      // 可领 → 委外人员提交领料 → 仓库发料 → 委外商加工回厂，可分批反复。
+      'SC_WAITING_MATERIAL' => _sc(3, '已审批 · 等待物料', ProductionFlowTone.waiting),
+      'SC_WAITING_DRAW' => _sc(3, '物料可领 · 待委外领料', ProductionFlowTone.toDraw),
+      'SC_WAIT_OUTBOUND' => _sc(3, '已提交领料 · 等仓库发料', ProductionFlowTone.pending),
+      // 直属物料已发给委外商，在委外商那里加工(缺 BOM 的委外件不会走到这一步)。
+      'SC_WAIT_RETURN' => _sc(4, '委外加工中 · 等待回厂', ProductionFlowTone.active),
       'SC_WAIT_IQC' => _sc(5, '已回厂 · 等待品质验货', ProductionFlowTone.active),
       'SC_WAIT_STOCK_IN' => _sc(6, '品质已通过 · 等待入库', ProductionFlowTone.active),
       'SC_STOCKED' => _sc(7, '已入库', ProductionFlowTone.done),

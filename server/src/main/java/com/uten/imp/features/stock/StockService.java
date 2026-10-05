@@ -101,9 +101,9 @@ public class StockService {
     private final com.uten.imp.features.stock.valuation.StockValuationCoordinator valuation;
     private final GoodsOwningWarehouseSyncService owningWarehouseSync;
     /**
-     * ADR-103 委外路线 B「子件到货即解锁」的唯一唤醒口: 库存内核每记一笔入库方向流水就回头
-     * 叫醒等这批货的委外出仓计划行(ADR-017 跨 feature 只经 application.port)。用 ObjectProvider
-     * 是因为纯单测手工 new 时没有委外模块; 生产环境由 SubcontractMaterialPlanService 实现。
+     * ADR-143 委外领料「重算可领」的唯一库存唤醒口: 库存内核每记一笔入库方向流水就登记这个货色,
+     * 提交前交给委外模块追加一条 outbox 重算事件(ADR-017 跨 feature 只经 application.port)。
+     * 用 ObjectProvider 是因为纯单测手工 new 时没有委外模块。
      */
     private final ObjectProvider<SubcontractOutboundWakePort> subcontractOutboundWake;
     /**
@@ -326,9 +326,9 @@ public class StockService {
         // 出库/红冲不翻转；值没变不写。见 GoodsOwningWarehouseSyncService。
         if (req.direction() == DIR_IN) {
             owningWarehouseSync.syncOnInbound(req.goodsId(), req.warehouseId());
-            // The source document still has to attribute qualified stock or restore
-            // reversed custody after this movement. Wake before commit, after those
-            // facts exist, so another order cannot reserve the transient public balance.
+            // ADR-143: only register the stocked goods/colour here; the subcontract module
+            // appends one draw-recheck outbox event per goods/colour before commit and the
+            // drawable quantity is evaluated after commit (no kit reads, no locks here).
             enqueueSubcontractWake(new SubcontractOutboundWakePort.StockedDimension(
                     req.goodsId(), req.colorId(), req.warehouseId()));
         }
@@ -460,7 +460,7 @@ public class StockService {
     }
 
     private void deliverSubcontractWake(List<SubcontractOutboundWakePort.StockedDimension> dimensions) {
-        subcontractOutboundWake.ifAvailable(port -> port.wakeOutboundAfterStockIn(dimensions));
+        subcontractOutboundWake.ifAvailable(port -> port.enqueueDrawRecheck(dimensions));
     }
 
     private final class SubcontractStockInWake implements TransactionSynchronization {
@@ -468,8 +468,8 @@ public class StockService {
 
         @Override
         public void beforeCommit(boolean readOnly) {
-            // Still inside the original transaction: failures roll back stock and
-            // provenance together. Rollbacks never run this callback.
+            // Still inside the original transaction: the outbox append commits or rolls
+            // back together with the stock movement. Rollbacks never run this callback.
             deliverSubcontractWake(List.copyOf(dimensions));
         }
     }

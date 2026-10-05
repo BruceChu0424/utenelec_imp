@@ -501,9 +501,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                       AND anchor_analysis_item_id=:anchor AND plan_id=:plan
                     """).setParameter("analysis",analysisId).setParameter("anchor",analysisItemId).setParameter("plan",planId).getResultList();
             if(routes.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"共享生产缺少准确的来源批次证明");
-            // Shared subcontract preparation remains in its dedicated custody
-            // chain until the final vendor receipt; it is not MAKE supply.
-            if("SUBCONTRACT".equals(routes.getFirst()))return;
             if(!"MAKE".equals(routes.getFirst()))throw new ApiException(ErrorCode.CONFLICT,"共享生产来源路线不匹配");
         }
         boolean activeAnalysis = List.of("ACTIVE", "PARTIALLY_PLANNED")
@@ -520,15 +517,6 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                           WHERE batch.anchor_analysis_item_id=:anchor AND fn_preplan_aggregate_material_has_waiting_demand(allocation.analysis_material_id))
                         """).setParameter("anchor",analysisItemId).getSingleResult())));
         if (!activeAnalysis && !completedWaitingOwner) {
-            return;
-        }
-        if ("SUBCONTRACT_PREPARATION".equals(sourceType)
-                || "SUBCONTRACT_MAKE".equals(sourceType)) {
-            // ProductionCompletionReverseService invokes the neutral
-            // SubcontractPreparationInventoryPort (V447) or
-            // SubcontractMakeTaskService (V458) later in this same
-            // FINISHED_IN transaction. Those ports create the single dedicated
-            // reservation; PREPLAN_ANALYSIS must not reserve the same stock.
             return;
         }
         if (!"MAKE_COMPONENT".equals(sourceType) && !aggregateMake) {
@@ -1892,7 +1880,7 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 """).setParameter("analysisId", analysisId), UUID.class);
         if (!subcontractCustody.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该产品的子件已交接委外发料；请先撤回未出仓草稿，已出仓则先完成出仓红冲，恢复原归属后再取消分析");
+                    "该产品的物料已交给委外领料；请先在委外任务中心撤回仓库还没发出的领料，已发出的先完成发料红冲，恢复原归属后再取消分析");
         }
     }
 

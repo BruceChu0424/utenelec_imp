@@ -114,7 +114,6 @@ abstract class _MaterialAnalysisMaterialTableState
         entry.key: entry.value.text,
     };
     final seeds = Map<String, String>.from(_tableSeededQtyTexts);
-    final batchSeeds = Map<String, String>.from(_systemSeededBatchQtyTexts);
     final typed = Map<String, double>.from(_tableUserTypedQty);
     final selected = Set<String>.from(_selectedMaterialGroupKeys);
     final deselected = Set<String>.from(_tableUserDeselectedKeys);
@@ -145,9 +144,6 @@ abstract class _MaterialAnalysisMaterialTableState
     _tableSeededQtyTexts
       ..clear()
       ..addAll(seeds);
-    _systemSeededBatchQtyTexts
-      ..clear()
-      ..addAll(batchSeeds);
     _tableUserTypedQty
       ..clear()
       ..addAll(typed);
@@ -680,10 +676,9 @@ abstract class _MaterialAnalysisMaterialTableState
     final analysis = _analysis;
     final material = group.representative;
     final route = material.confirmedRoute;
-    // 2026-09-13 起自制（车间）物料也可采用公共在途；叶子委外限制保留
-    // （我方供料 BOM 的委外件不能吃公共超量在途，服务端同口径）。
-    // V581 的单一子件委外**同样受限**——它也是我方供料，多出来的量会凭空产生
-    // 一份无人负责的子件需求。所以这里判的是 BOM 形状，不是「要不要先自制」。
+    // 2026-09-13 起自制（车间）物料也可采用公共在途；委外只放行无下层的纯外协
+    // (有直属物料的委外件由我方领料发外，认领别人的公共在途会凭空多出一份
+    // 无人负责的直属物料需求，服务端同口径，ADR-143)。
     final routeEligible =
         route == MaterialSupplyRoute.buy ||
         route == MaterialSupplyRoute.make ||
@@ -953,12 +948,25 @@ abstract class _MaterialAnalysisMaterialTableState
             : null,
         // idOf 为 null 的行组件默认渲染灰勾选框：已确认未改动的行明确「无勾选框」
         // （勾了也不计数），其余不可勾选行（产品行/只读上下文/不可改路线）保持既有灰框。
-        unselectableLeadingBuilder: (_, row) =>
-            row.isAggregateSource ||
-                (_materialRowGroups(row).isNotEmpty &&
-                    _materialRowSelectableGroups(row).isEmpty)
-            ? const SizedBox.shrink()
-            : const Checkbox(value: false, onChanged: null),
+        // 缺 BOM 的委外件给灰框并说明原因(ADR-143 §二.3)：等研发完善后自动可勾。
+        unselectableLeadingBuilder: (_, row) {
+          final bomMissing = _tableRowBomMissingLabel(row);
+          if (bomMissing != null) {
+            return Tooltip(
+              message: '$bomMissing，研发完善 BOM 前不能下达委外',
+              child: Checkbox(
+                key: ValueKey('material-table-bom-missing-${row.key}'),
+                value: false,
+                onChanged: null,
+              ),
+            );
+          }
+          return row.isAggregateSource ||
+                  (_materialRowGroups(row).isNotEmpty &&
+                      _materialRowSelectableGroups(row).isEmpty)
+              ? const SizedBox.shrink()
+              : const Checkbox(value: false, onChanged: null);
+        },
         selectionSummaryCount: _bomAggregateByMaterial
             ? _materialOrderSelectionCount(
                 _analysisIndexes(analysis).groups
@@ -1178,6 +1186,9 @@ abstract class _MaterialAnalysisMaterialTableState
           )
         : _planningBlockForGroup(row.group!);
     if (block != null) return fixed('blocked');
+    if (_tableRowBomMissingLabel(row) != null) {
+      return (key: 'bomMissing', label: '缺 BOM·已通知研发');
+    }
     if (_rootExternalSupplyRow(row) && (row.product?.remainingQty ?? 1) <= 0) {
       return fixed('covered');
     }
@@ -2397,7 +2408,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 并把根物料行从子行里剔掉不再单独渲染)，它恰恰是「这个产品到底自己做、还是买、
   /// 还是外发」的那一行。原来在这里一律返回 null，导致顶层的物料办理 / 下单数量 /
   /// 追加下单 / 生产车间 / 负责人五列全是横杠，而「还缺数量」走的是另一套判据、
-  /// 对已确认采购或直接外发委外的顶层行**会显示真实数字** —— 于是同一行左边看得见
+  /// 对已确认采购或委外的顶层行**会显示真实数字** —— 于是同一行左边看得见
   /// 缺口、右边办不了事。这条排除没有 ADR 依据也没有用例覆盖，是 ADR-102 之前的
   /// 实现惯性，与「把顶层父件 + 下层一起下单搬进这张表」的立意相反。
   ///
@@ -2437,7 +2448,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 没有锚点——2026-09-23 前这里漏了它：顶层下了 2000 的计划，主表照旧给它一个可填
   /// 的「下单数量」，再全选下单就把它当新计划重下，服务端 409 整批停在第一步)；
   /// 其余已建自制锚点的行，真实已下达量在锚点产品的计划总量上(含公共备货产出)；
-  /// 采购 / 直接外发委外的行在申请明细上 = 归本需求的分摊量 + 同一条行动记的
+  /// 采购 / 委外的行在申请明细上 = 归本需求的分摊量 + 同一条行动记的
   /// 公共备货份。一行只可能是其中一种，不会同时成立。
   ///
   /// [authoritative] = 只看权威快照(下单后比对「这次刚下了什么」用，ADR-117)：模拟快照里
@@ -2452,17 +2463,13 @@ abstract class _MaterialAnalysisMaterialTableState
     ).aggregatePreparation;
     if (preparation != null) return preparation.allocatedOrderedQty;
     final route = _draftRoute(group);
-    // 走车间通道的行(自制、要先自制目标件的委外)按锚点产品的计划总量：要先自制的委外
-    // 建过前置自制任务(SUBCONTRACT_MAKE 锚点)后, 它「已下达」的是那张计划, 不是后面
-    // 发外的委外申请——按申请明细算会把计划多下的那部分(3000 需求下了 4000)看丢,
-    // 父件一追加就把它算成还缺、再送一段 ARRANGE 吃 409(2026-09-22 用户实机
-    // 「有些子层级之前一次多下了, 这次就是不需要下」)。没建过锚点的委外照旧按申请明细。
+    // 自制行按锚点产品的计划总量(含计划多下的公共备货产出)。委外与采购一样按
+    // 申请明细算(ADR-143：委外节点只下达委外申请，没有车间锚点)。
     if (_tableUsesMakeAnchor(group)) {
       final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
-      if (anchor != null) {
-        return anchor.issuedPlanQty * _tableAnchorUnitRate(group, anchor);
-      }
-      if (route == MaterialSupplyRoute.make) return 0;
+      return anchor == null
+          ? 0
+          : anchor.issuedPlanQty * _tableAnchorUnitRate(group, anchor);
     }
     final legacyAnchor = _tableLegacyAnchorWithSharedSupply(
       group,
@@ -2487,7 +2494,6 @@ abstract class _MaterialAnalysisMaterialTableState
         if (const {
           'FUTURE_TRANSFER',
           'SHARED_FUTURE_CLAIM',
-          'AGGREGATE_CONTINUATION',
         }.contains(_supplyOperationType(target.actionId))) {
           continue;
         }
@@ -2559,8 +2565,7 @@ abstract class _MaterialAnalysisMaterialTableState
     return previewed ?? _analysisIndexes(analysis).productsById[anchorId];
   }
 
-  /// 已下过单的车间通道行(自制含顶层、要先自制目标件的委外)的锚点产品；不是这类行
-  /// 返回 null。
+  /// 已下过单的自制行(含顶层)的锚点产品；不是这类行返回 null。
   ProductionMaterialAnalysisProduct? _tableIssuedMakeAnchorOf(
     _MaterialGroup group, {
     bool authoritative = false,
@@ -2570,8 +2575,8 @@ abstract class _MaterialAnalysisMaterialTableState
     return anchor != null && anchor.issuedPlanQty > 0.0001 ? anchor : null;
   }
 
-  /// 这一行的「已下达 / 还需安排 / 能不能再追加」是不是按计划锚点判：自制行与要先自制
-  /// 目标件的委外行(它们的下达都是 issue-plans 出计划, 锚点产品才是事实源)。与级联页
+  /// 这一行的「已下达 / 还需安排 / 能不能再追加」是不是按计划锚点判：只有自制行
+  /// (它的下达是 issue-plans 出计划, 锚点产品才是事实源)。与级联页
   /// `preparationAnchor` 同一口径。
   bool _tableUsesMakeAnchor(_MaterialGroup group) =>
       group.representative.aggregatePreparation == null &&
@@ -2582,8 +2587,7 @@ abstract class _MaterialAnalysisMaterialTableState
               _supplyOperationType(target.actionId) == 'AGGREGATE_SUPPLY',
         ),
       ) &&
-      (_draftRoute(group) == MaterialSupplyRoute.make ||
-          _tableSubcontractNeedsPreparation(group));
+      _draftRoute(group) == MaterialSupplyRoute.make;
 
   ProductionMaterialAnalysisProduct? _tableLegacyAnchorWithSharedSupply(
     _MaterialGroup group, {
@@ -2600,10 +2604,7 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
     if (anchor == null || anchor.sourceType == 'AGGREGATE_MAKE') return null;
-    return _draftRoute(group) == MaterialSupplyRoute.make ||
-            anchor.sourceType == 'SUBCONTRACT_MAKE'
-        ? anchor
-        : null;
+    return _draftRoute(group) == MaterialSupplyRoute.make ? anchor : null;
   }
 
   /// 这一行下过单没有(下过 = 下单数量列锁死、改填追加下单列)。
@@ -2653,22 +2654,11 @@ abstract class _MaterialAnalysisMaterialTableState
         sum + _tableShownQty(material, authoritative: authoritative).residual,
   );
 
-  /// 委外行是不是「要先自制目标件再发外」的那种(有生产性下层, 且不是 V581 单一
-  /// 子件件)。快照还没到手时按「要」处理：格子只读比让人填个数再吃 400 好。
-  bool _tableSubcontractNeedsPreparation(_MaterialGroup group) {
-    if (_draftRoute(group) != MaterialSupplyRoute.subcontract) return false;
-    final analysis = _analysis;
-    if (analysis == null) return true;
-    return _subcontractNeedsPreparation(group.representative, analysis);
-  }
-
   /// 顶层自制行要走的「产品行排产」通道的 analysisLineId；不是这类行就返回 null。
   ///
-  /// 服务端 `candidateRoutesByMaterialLine` 的过滤是
-  /// `!"ROOT_SUPPLY".equals(nodeRole) || "SUBCONTRACT".equals(sourceConfirmed)` ——
-  /// 顶层自制既不是候选、也不该走 notify(自制路线在 notifySupply 开头就被拒),
+  /// 顶层自制不是车间候选、也不该走 notify(自制路线在 notifySupply 开头就被拒),
   /// 它本身就是排产对象, 要按产品的 analysisLineId 送进 issue-plans 的 planDrafts。
-  /// 顶层委外则**是**候选(ADR-099 放开), 照常走 materialLineId 那条。
+  /// 顶层委外与其它委外行一样走 notify 下达委外申请(ADR-143)。
   String? _tableRootMakePlanLineId(_MaterialGroup group) {
     final material = group.representative;
     if (!_tableIsRootSupply(material)) return null;
@@ -2819,8 +2809,7 @@ abstract class _MaterialAnalysisMaterialTableState
   ///
   /// 原先是「不覆盖但把 seed 写成新值」，那样只要系统算出的新预填值某一次
   /// 恰好等于用户手填的数，这一格就被重新归类成「系统预填」，下一次刷新就把
-  /// 它冲掉。宿主页的 _refreshSystemSeededPlanBatchQty 早就是 remove 这个写法，
-  /// 这里漏了。2026-09-22 对抗复查抓出来的真缺陷。
+  /// 它冲掉。2026-09-22 对抗复查抓出来的真缺陷。
   double? _reseedTableQtyCell(_MaterialGroup group, {required bool append}) {
     final controller = append
         ? _tableAppendQtyControllers[group.key]
@@ -2987,7 +2976,7 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 按**表上画出来的那棵树**判(`_bomPresentation` 的父子链)，不按 `parentNodeKey`
   /// 原始桶：顶层产品行的第 1 层子件 `parentNodeKey` 是空的，按原始桶查顶层
   /// 永远「没有下层」——在顶层产品行改数既不当场换算、也不问服务端，正是用户
-  /// 2026-09-22 实机看到的「主表改数值没反应」。前置自制接管的分支同理。
+  /// 2026-09-22 实机看到的「主表改数值没反应」。
   bool _tableGroupHasChildren(_MaterialGroup group) {
     final analysis = _analysis;
     if (analysis == null) return false;
@@ -3267,15 +3256,6 @@ abstract class _MaterialAnalysisMaterialTableState
       authoritative: authoritative,
     );
     if (anchor == null) return null;
-    // 需先自制的委外行(SUBCONTRACT_MAKE 锚点)不套这层覆盖：它的配额只在真实下达时
-    // 由 createOrIncrementSubcontractMakeDemand 跟涨，预览/刷新引擎
-    // (planAnchorQuotaChanges)有意不涨它，照自制锚点读 remainingQty 会把「父件追加
-    // 带来的新缺口」也归成 0。而它的委外台账本就作为 INTERNAL 在途扣过
-    // additionalSupplyRecommendedQty(服务端契约注释同口径)，直接用服务端建议量。
-    // 2026-09-25 用户实机「HP000141 追加 1000，HV5ZJ012 追加格先 1000 一会儿
-    // 自动变 0，还缺数量却是对的」——本地估算先给出对的 1000，服务端预览一回来
-    // 就被这层覆盖改成 0。
-    if (anchor.sourceType == 'SUBCONTRACT_MAKE') return null;
     return anchor.canSchedule
         ? anchor.remainingQty * _tableAnchorUnitRate(group, anchor)
         : 0;
@@ -3890,18 +3870,39 @@ abstract class _MaterialAnalysisMaterialTableState
 
   // ------------------------- 物料办理列 -------------------------
 
-  /// 下达去向由真实生产责任决定；缺权限不能把前置制造伪装成直接外发。
-  ({String label, bool viaWorkshop}) _tableIssueTarget(_MaterialGroup group) {
-    final route = _draftRoute(group);
-    if (route == MaterialSupplyRoute.make) {
-      return (label: '下达车间', viaWorkshop: true);
+  /// 下达去向只看路线：自制下达车间；委外(有无下层都一样，ADR-143)下达委外申请；
+  /// 采购下达采购需求。
+  ({String label, bool viaWorkshop}) _tableIssueTarget(_MaterialGroup group) =>
+      switch (_draftRoute(group)) {
+        MaterialSupplyRoute.make => (label: '下达车间', viaWorkshop: true),
+        MaterialSupplyRoute.subcontract => (label: '下达委外', viaWorkshop: false),
+        _ => (label: '下达采购', viaWorkshop: false),
+      };
+
+  /// 委外件缺 BOM(ADR-143 §二.3)：服务端标 [ProductionMaterialAnalysisMaterial.bomMissing]
+  /// 并已自动通知研发完善。只在这一行走委外时生效(改成采购就不拦)；返回进度列与
+  /// 拦截原因共用的短标签「缺 BOM·已通知研发(研发任务号)」，不缺时返回 null。
+  String? _tableBomMissingLabel(_MaterialGroup group) {
+    if (_draftRoute(group) != MaterialSupplyRoute.subcontract) return null;
+    for (final path in group.paths) {
+      if (!path.bomMissing) continue;
+      final taskNo = path.rdTaskNo?.trim() ?? '';
+      return taskNo.isEmpty ? '缺 BOM·已通知研发' : '缺 BOM·已通知研发($taskNo)';
     }
-    if (route == MaterialSupplyRoute.subcontract) {
-      return _tableSubcontractNeedsPreparation(group)
-          ? (label: '下达车间', viaWorkshop: true)
-          : (label: '下达委外', viaWorkshop: false);
+    return null;
+  }
+
+  /// 表格行(原行 / 产品顶层行 / 按物料汇总行)上的缺 BOM 标签。
+  String? _tableRowBomMissingLabel(_MaterialTableRow row) {
+    if (row.contextOnly) return null;
+    if (row.group case final group?) return _tableBomMissingLabel(group);
+    if (row.aggregate case final aggregate?) {
+      for (final group in _aggregateTable.groupsOf(aggregate)) {
+        final label = _tableBomMissingLabel(group);
+        if (label != null) return label;
+      }
     }
-    return (label: '下达采购', viaWorkshop: false);
+    return null;
   }
 
   /// 主表里还有用户手填未提交的数量，或还勾着待下单的行。
@@ -3950,6 +3951,11 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final planningBlock = _planningBlockForGroup(group);
     if (planningBlock != null) return planningBlock;
+    // 缺 BOM 的委外件不能下达(服务端同样拒绝)，勾选框随之不可勾。
+    final bomMissing = _tableBomMissingLabel(group);
+    if (bomMissing != null) {
+      return '$bomMissing：这个委外件还没有维护直属物料，研发完善 BOM 后物料分析会自动更新，再下达委外';
+    }
     if (_tableRootMakePlanLineId(group) != null) {
       final product = _tableMakeAnchorOf(group);
       if (product != null && !product.canSchedule && !product.canIssueSurplus) {
@@ -3964,13 +3970,6 @@ abstract class _MaterialAnalysisMaterialTableState
         !issuedAnchor.canSchedule &&
         !issuedAnchor.canIssueSurplus) {
       return '这一行的生产计划已排满，当前不能再追加公共备货产出';
-    }
-    // 已建前置自制任务的委外行只能经 ARRANGE 段追加(notify 整批接管会再建一次子件
-    // 任务)：没有「下达车间」权限就不能在这里追加。
-    if (issuedAnchor != null &&
-        _draftRoute(group) == MaterialSupplyRoute.subcontract &&
-        !_canGenerate) {
-      return '这一行已建前置自制任务，再追加要「下达车间」权限，请找管理员开通';
     }
     // 服务端会拒的形态在这里就拦掉，别让人勾了、填了数、点了下达才吃 400。
     // 判据复用既有权威谓词的同名分支，不另造一套。走到这里路线必已确认
@@ -4493,8 +4492,7 @@ abstract class _MaterialAnalysisMaterialTableState
 
   // ------------------------- 生产车间 / 负责人 -------------------------
 
-  /// 只有实际需要车间生产的行要求指派。直接采购、直接外发不需要；委外前
-  /// 仍需自制目标件时，与车间桶一样提供指派入口，不藏起必填字段。
+  /// 只有实际需要车间生产的行(自制)要求指派。采购、委外不需要。
   bool _tableAssignable(_MaterialGroup? group) =>
       group != null && _tableIssueTarget(group).viaWorkshop;
 
@@ -4973,8 +4971,8 @@ abstract class _MaterialAnalysisMaterialTableState
       // 2026-09-23 实机：委外件「E极插套(酸洗)」的我方供料子件先按采购 5000 提交，
       // 记成需求 2000 + 公共 3000；委外 5000 随后下达把子件需求抬到 5000，子件行
       // 留下 3000 缺口——原来「采购 → 委外」的顺序正好反了。
-      // 于是：逐层自上而下，同一层先下达车间(自制 + 需先自制的委外)、再直接外发
-      // 委外；采购件没有下层，等全部父件落地后最后一次提交。
+      // 于是：逐层自上而下，同一层先下达车间(自制)、再下达委外；采购件没有下层，
+      // 等全部父件落地后最后一次提交。
       final levels = {
         for (final group in split.separate) group.representative.level,
       }.toList()..sort();
@@ -5129,8 +5127,8 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 车间段的一层：顶层自制走 planDrafts、其余候选走 candidateInputs，一次 issue-plans。
   ///
   /// 顶层自制与其它自制行走的是**两条不同的通道**：服务端
-  /// candidateRoutesByMaterialLine 明确把 ROOT_SUPPLY 排除在候选之外(除非它
-  /// 确认为委外)，顶层产品行本身就是排产对象，要按 analysisLineId 走 planDrafts。
+  /// candidateRoutesByMaterialLine 明确把 ROOT_SUPPLY 排除在候选之外，
+  /// 顶层产品行本身就是排产对象，要按 analysisLineId 走 planDrafts。
   /// 当成候选按 materialLineId 提交的话服务端解析不出候选、整批失败。
   Future<bool> _issueMaterialTableWorkshopBatch(
     List<_MaterialGroup> batch,
@@ -5239,7 +5237,7 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
-  /// 外发段的一批：采购 / 直接外发委外各走既有的 _notifyRoute 链路(裁决 / 分块 /
+  /// 外发段的一批：采购 / 委外各走既有的 _notifyRoute 链路(裁决 / 分块 /
   /// 幂等 / 409 恢复都在那里)，成功与否以它返回的新快照为准。
   Future<bool> _notifyMaterialTableBatch(
     MaterialSupplyRoute route,
@@ -5587,6 +5585,8 @@ abstract class _MaterialAnalysisMaterialTableState
           )
         : _planningBlockForGroup(row.group!);
     if (block != null) return block;
+    final bomMissing = _tableRowBomMissingLabel(row);
+    if (bomMissing != null) return bomMissing;
     if (_rootExternalSupplyRow(row) && (row.product?.remainingQty ?? 1) <= 0) {
       return _l10n.materialRootSupplyCompleted;
     }
@@ -5613,7 +5613,7 @@ abstract class _MaterialAnalysisMaterialTableState
             row.product?.analysisLineId ?? row.material?.analysisLineId ?? '',
           )
         : _planningBlockForGroup(row.group!);
-    if (block != null) {
+    if (block != null || _tableRowBomMissingLabel(row) != null) {
       return MaterialPreparationStatusStyle.resolve(
         theme,
         phase: MaterialPreparationStatusPhase.blocked,
@@ -5668,6 +5668,21 @@ abstract class _MaterialAnalysisMaterialTableState
           planningBlock,
           Icons.info_outline_rounded,
           theme.colorScheme.tertiary,
+        ),
+      );
+    }
+    final bomMissing = _tableRowBomMissingLabel(row);
+    if (bomMissing != null) {
+      return Tooltip(
+        message:
+            '这个委外件还没有维护直属物料，系统已通知研发完善 BOM；'
+            '研发保存后物料分析会自动更新，再下达委外',
+        child: label(
+          _StatusView(
+            bomMissing,
+            Icons.engineering_outlined,
+            theme.colorScheme.tertiary,
+          ),
         ),
       );
     }
@@ -5857,7 +5872,7 @@ abstract class _MaterialAnalysisMaterialTableState
         route != null && _canNotify && _isExecutableSupplyGroup(group, route);
     final actionLabel = switch (route) {
       MaterialSupplyRoute.buy => '提交采购需求',
-      MaterialSupplyRoute.subcontract => '创建委外子件任务',
+      MaterialSupplyRoute.subcontract => '下达委外',
       MaterialSupplyRoute.make => '执行当前任务',
       null => '执行当前任务',
     };
@@ -5887,12 +5902,9 @@ abstract class _MaterialAnalysisMaterialTableState
           var ordered = false;
           switch (route) {
             case MaterialSupplyRoute.buy:
+            case MaterialSupplyRoute.subcontract:
               ordered =
                   await _notifyRoute(route, onlyGroupKeys: {group.key}) != null;
-            case MaterialSupplyRoute.subcontract:
-              ordered = await _arrangeSubcontractProduction(
-                onlyGroupKeys: {group.key},
-              );
             case MaterialSupplyRoute.make:
               break;
           }
@@ -6216,15 +6228,11 @@ abstract class _MaterialAnalysisMaterialTableState
   bool _canCancelSpecificAction(String? actionId) {
     if (!_canCancelAction || actionId == null) return false;
     final operation = _supplyOperationType(actionId);
-    if (operation == 'FUTURE_TRANSFER' ||
-        operation == 'AGGREGATE_CONTINUATION') {
-      return false;
-    }
+    if (operation == 'FUTURE_TRANSFER') return false;
     if (operation == 'AGGREGATE_SUPPLY') {
       final action = _supplyActionOf(actionId);
       return _permissions.contains(
-        (action?.route == MaterialSupplyRoute.make ||
-                action?.documentType == 'SUBCONTRACT_MAKE_TASK')
+        action?.route == MaterialSupplyRoute.make
             ? Perm.productionMaterialAnalysisGenerate
             : Perm.productionMaterialAnalysisNotify,
       );
@@ -6247,9 +6255,7 @@ abstract class _MaterialAnalysisMaterialTableState
               target.actionId?.trim().isNotEmpty == true &&
               (target.status?.toUpperCase() != 'CANCELLED' ||
                   target.notificationReversalPending) &&
-              (target.status?.toUpperCase() != 'DONE' ||
-                  target.documentType == 'SUBCONTRACT_MAKE_TASK' ||
-                  target.documentType == 'SUBCONTRACT_APPLICATION'),
+              target.status?.toUpperCase() != 'DONE',
         )
         .toList(growable: false);
     return Container(
@@ -6534,7 +6540,7 @@ abstract class _MaterialAnalysisMaterialTableState
       // 2026-09-24 用户口径「确认取消后应该返回任务中心并刷新，现在是还停留在
       // 物料分析准备页面」：分析已取消，本页语义失效，不再就地应用已取消视图；
       // 返回来源页（调度台/记录页/补产横幅都是 await push 打开的，返回即重拉），
-      // 深链无栈时归位调度台；徽章（待排产/准备中心计数）随取消立即重拉。
+      // 深链无栈时归位调度台；徽章(待排产计数)随取消立即重拉。
       refreshBadges(ref);
       context.appSuccess('物料分析已取消');
       popOrBackTo(context, defaultPath: RouteName.productionSchedule);

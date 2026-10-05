@@ -214,7 +214,7 @@ void main() {
     expect(bomDesignReasonText(l10n, 'OUTPUT_UNIT_CHANGED'), '父件单位变了，需重新学习');
     expect(
       bomDesignReasonText(l10n, 'SUBCONTRACT_OUTBOUND'),
-      '本次由委外单一子件发料，按委外合同用量',
+      '上级委外件按领料把这个物料发给委外商，按委外合同(设计)用量',
     );
     expect(bomDesignReasonText(l10n, null), '没有可用的真实数据');
     expect(bomDesignReasonText(l10n, 'SOMETHING_NEW'), '没有可用的真实数据');

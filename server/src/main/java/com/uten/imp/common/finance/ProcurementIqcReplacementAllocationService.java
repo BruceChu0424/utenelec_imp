@@ -18,6 +18,12 @@ import java.util.UUID;
 /**
  * Explicitly consumes the receipt capacity released by a physically returned
  * IQC-failed slice.  It never writes ordinary receipt returned_qty.
+ *
+ * <p>ADR-144: arrival capacity is split into owed (the original normal remainder, without the
+ * purchase over-receipt tolerance), tolerance (what is left of T) and replacement. Only
+ * owed &gt; 0 together with replacement &gt; 0 is ambiguous; under the automatic source a receipt
+ * with nothing owed takes the replacement first, then the tolerance. Consumption order is
+ * replacement, owed, tolerance.
  */
 @Service
 @RequiredArgsConstructor
@@ -47,13 +53,31 @@ public class ProcurementIqcReplacementAllocationService {
                 decimal(row[0]),decimal(row[1]),money(row[2]),money(row[3]));
     }
 
+    /** Subcontract (and any line without an over-receipt tolerance). */
     @Transactional(propagation=Propagation.MANDATORY)
     public String allocateForReceiptItem(
             String rawType,UUID receiptId,UUID receiptItemId,UUID orderItemId,
             BigDecimal receiptQty,BigDecimal receiptUnitRate,
             BigDecimal receiptOriginal,BigDecimal receiptLocal,
             BigDecimal authorizedQty,BigDecimal rawPriorQty,String requestedIntent){
+        return allocateForReceiptItem(rawType,receiptId,receiptItemId,orderItemId,receiptQty,receiptUnitRate,
+                receiptOriginal,receiptLocal,authorizedQty,BigDecimal.ZERO,rawPriorQty,requestedIntent);
+    }
+
+    /**
+     * @param authorizedQty order qty + posted and receipt-approved excess, never the tolerance
+     * @param toleranceQty  the line's full over-receipt tolerance T(order qty, pct); 0 for subcontract
+     */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public String allocateForReceiptItem(
+            String rawType,UUID receiptId,UUID receiptItemId,UUID orderItemId,
+            BigDecimal receiptQty,BigDecimal receiptUnitRate,
+            BigDecimal receiptOriginal,BigDecimal receiptLocal,
+            BigDecimal authorizedQty,BigDecimal toleranceQty,BigDecimal rawPriorQty,String requestedIntent){
         String type=type(rawType);
+        if(toleranceQty==null||toleranceQty.signum()<0){
+            throw conflict("允许超收数量无效");
+        }
         if(receiptUnitRate==null||receiptUnitRate.signum()<=0){
             throw conflict("补货收货单位换算率无效");
         }
@@ -110,13 +134,16 @@ public class ProcurementIqcReplacementAllocationService {
                   AND allocation.status='ACTIVE' AND allocation.replacement_receipt_id<>:receipt
                 """).setParameter("type",type).setParameter("id",orderItemId)
                 .setParameter("receipt",receiptId).getSingleResult());
-        BigDecimal normalRemaining=authorizedQty.subtract(rawPriorQty).add(priorAllocated)
-                .add(ordinaryReturned).max(BigDecimal.ZERO);
-        String intent=resolveIntent(requestedIntent,replacementAvailable,normalRemaining);
+        BigDecimal owedRaw=authorizedQty.subtract(rawPriorQty).add(priorAllocated).add(ordinaryReturned);
+        BigDecimal owed=owedRaw.max(BigDecimal.ZERO);
+        BigDecimal toleranceRemaining=toleranceQty.add(owedRaw.min(BigDecimal.ZERO)).max(BigDecimal.ZERO);
+        String intent=resolveIntent(requestedIntent,replacementAvailable,owed);
         BigDecimal neededQty="RETURN_REPLACEMENT".equals(intent)
                 ?receiptQty.min(replacementAvailable):BigDecimal.ZERO;
-        if(receiptQty.subtract(neededQty).compareTo(normalRemaining)>0){
-            throw conflict("本次正常到货超过原订单尚未到货的数量，请确认补回来源或先完成超到审批");
+        if(receiptQty.subtract(neededQty).compareTo(owed.add(toleranceRemaining))>0){
+            throw conflict(toleranceQty.signum()>0
+                    ?"本次正常到货超过原订单尚未到货数量与允许超收数量之和，请确认补回来源或先完成超到审批"
+                    :"本次正常到货超过原订单尚未到货的数量，请确认补回来源或先完成超到审批");
         }
         if(neededQty.signum()==0)return intent;
         BigDecimal qtyLeft=neededQty;
@@ -230,12 +257,13 @@ public class ProcurementIqcReplacementAllocationService {
                 .setParameter("receiptItemId",receiptItemId).getSingleResult());
     }
 
-    static String resolveIntent(String requested,BigDecimal replacementAvailable,BigDecimal normalRemaining){
+    /** Ambiguity is judged on the owed remainder only; the optional tolerance never makes it ambiguous. */
+    static String resolveIntent(String requested,BigDecimal replacementAvailable,BigDecimal owedRemaining){
         if(requested!=null&&!Set.of("NORMAL","RETURN_REPLACEMENT").contains(requested)){
             throw conflict("请选择退回补回或本次正常到货");
         }
         if(requested==null){
-            if(replacementAvailable.signum()>0&&normalRemaining.signum()>0){
+            if(replacementAvailable.signum()>0&&owedRemaining.signum()>0){
                 throw conflict("该订单同时存在正常待到货和已退未补数量，请明确选择退回补回或本次正常到货");
             }
             requested=replacementAvailable.signum()>0?"RETURN_REPLACEMENT":"NORMAL";

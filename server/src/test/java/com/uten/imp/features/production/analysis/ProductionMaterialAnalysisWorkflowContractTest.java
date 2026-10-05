@@ -182,9 +182,15 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // 车间侧 WAITING→READY 自动提升。
         assertThat(commands).contains("candidateRoutesByMaterialLine(preArrange)");
         assertThat(commands).contains("只有自制路线的物料才能直接下达车间");
-        assertThat(commands).contains("无自制子层、或只有一个直属子件（直接发子件给委外商）的委外件");
-        // V581：单一叶子子件的委外件同样不进车间（仓库直接发那个子件）。
-        assertThat(commands).contains("soleComponentSubcontractGoodsIds(subcontractCandidateGoods)");
+        // ADR-143 §4.5：委外节点(任何层级)一律走下达委外, 不进车间; 真实下达与下达预览同一判定。
+        assertThat(commands).contains(
+                "workshopMakeLines(candidateRoutesByMaterialLine(preArrange), request)");
+        assertThat(commands).contains(
+                "workshopMakeLines(candidateRoutesByMaterialLine(current), request)");
+        assertThat(commands).contains("委外件请走「下达委外」，委外商按工序领它的直属物料，不能直接建生产计划");
+        assertThat(commands).doesNotContain("soleComponentSubcontractGoodsIds")
+                .doesNotContain("activeBomParentIds")
+                .doesNotContain("-ARRANGE");
         assertThat(commands).contains(
                 "material.actionable() || \"ROOT_SUPPLY\".equals(material.nodeRole())");
         assertThat(commands).contains("rootSupply.fulfillExisting(analysisId");
@@ -291,9 +297,10 @@ class ProductionMaterialAnalysisWorkflowContractTest {
 
         assertThat(contracts).contains(
                 "MAKE 在显式 delegated_qty 落地前必须等于全部实时余量");
-        assertThat(commands).contains("boolean createsChildOwnership");
-        assertThat(commands).contains("activeBomParentIds");
-        assertThat(commands).contains("if (createsChildOwnership) {");
+        // 只有自制会建下层子件任务; 委外按 ADR-099 可分批、可超量(ADR-143 §4.5), 不再有「先自制」判定。
+        assertThat(commands).contains("boolean createsChildOwnership = \"MAKE\".equals(group.route());");
+        assertThat(commands).doesNotContain("activeBomParentIds");
+        assertThat(commands).contains("if (input != null && createsChildOwnership) {");
         assertThat(commands).contains("if (requested.compareTo(delta) != 0) {");
         assertThat(commands).contains("子件任务当前必须按全部剩余需求");
         assertThat(commands).contains("本批生产数量请在子件任务创建后的计划向导中填写");
@@ -324,8 +331,9 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         // 现在由「父件已承诺内部制造量」那条语句承载，改断言它。
         assertThat(service).contains("parent.id = child.parent_analysis_material_id");
         assertThat(service).contains("SUM(child.requested_qty)");
-        assertThat(service).contains(
-                "child.source_type IN ('MAKE_COMPONENT','SUBCONTRACT_MAKE')");
+        // ADR-143 §五：委外前置自制(SUBCONTRACT_MAKE)删除后, 父件内部制造承诺只来自自制子件任务。
+        assertThat(service).contains("AND child.source_type = 'MAKE_COMPONENT'");
+        assertThat(service).doesNotContain("SUBCONTRACT_MAKE'");
         assertThat(service).contains("SELECT m.id, m.analysis_item_id, m.node_key");
         assertThat(service).contains(
                 "cursor.analysisItemId(), cursor.parentNodeKey()");
@@ -444,19 +452,20 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         String subcontractFacade = source(
                 "features/subcontract/application/ProductionSubcontractRequestFacade.java");
 
-        // ADR-065：一次通知先整批聚合（全部 BUY 一张采购申请 / 全部无子层委外一张
-        // 委外申请，表头日期取最早），再逐 action 挂接明细锚点。
-        assertThat(commands).contains("prepareExternalDocuments(analysisId, created, subcontractMakeFirst)");
-        // V581：委外申请通道 = 无子层叶子 + 单一叶子子件；只有「要先自制」的行才留在车间。
-        assertThat(commands).contains("subcontractMakeFirst = subcontractBomParents.stream()");
+        // ADR-065：一次通知先整批聚合（全部 BUY 一张采购申请 / 全部委外一张委外申请，
+        // 表头日期取最早），再逐 action 挂接明细锚点。ADR-143 §4.5：委外节点不分有没有子层,
+        // 一律进这张委外申请, 不再有「先自制」分流。
+        assertThat(commands).contains("prepareExternalDocuments(analysisId, created)");
+        assertThat(commands).doesNotContain("subcontractMakeFirst");
         assertThat(commands).contains(
                 "createExternalDocument(analysisId, action, prepared)");
         assertThat(commands).contains("earliest(purchaseNeedDate, needDate)");
         assertThat(commands).contains("earliest(subcontractNeedDate, needDate)");
         assertThat(commands).contains("purchaseNeedDate, warehouseId,");
         assertThat(commands).contains("subcontractNeedDate, warehouseId,");
-        // 有子层委外仍走 V458 前置自制，聚合前先按活动 BOM 分类。
-        assertThat(commands).contains("prepared.subcontractLeafActionIds()");
+        // V458 前置自制(SUBCONTRACT_MAKE_TASK)整体删除。
+        assertThat(commands).doesNotContain("subcontractLeafActionIds")
+                .doesNotContain("SUBCONTRACT_MAKE_TASK");
         // 共享单据撤回：整批一并撤回，单据只红冲一次（Facade REVERSE 幂等）。
         assertThat(commands).contains(
                 "sharedDocumentActionIds(analysisId, documentId)");

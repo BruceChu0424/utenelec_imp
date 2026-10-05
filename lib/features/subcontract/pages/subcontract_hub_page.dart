@@ -1,13 +1,13 @@
-// 委外管理入口页：与采购 hub 同构——任务中心 / 单据 / 报表 三组权限过滤卡片。
-// 有子层级委外件的「先自制、后通知委外」由计划部在物料分析准备完成并通知后，
-// 委外部才在任务中心看到申请；本页不放流程教学区。
+// 委外管理入口页：与采购 hub 同构——任务中心 / 新建单据 / 出仓单据 / 报表 四组权限过滤卡片。
+// 物料分析把委外节点下达为委外申请；委外部在任务中心生成订货单，财务批准后直属物料
+// 齐套即可在任务中心「领料」(ADR-143)；本页不放流程教学区。
 //
 // V53 仅是历史默认授权；现行入口按每个页面权限与个人/部门显式配置逐卡显隐。
 //
 // 计数口径（准则 14-徽章与计数口径）：任务中心 / 待退回供应商 / 各单据草稿都是
 // 「必须由我处理」的待办，一律挂红色徽章并逐级累加(入口口径在服务端徽章目录
 // WorkbenchBadgeCatalog, ADR-108；草稿于 2026-09-11 由中性括号改为徽章)；
-// 报表与历史兼容卡无计数。
+// 报表与出仓单据卡无计数。
 //
 // ADR-100(2026-09-21): 右上角再并一枚黄色「进行中」徽章(黄左红右), 回答「我手上还有
 // 多少在跑」。委外只有「委外任务中心」一张卡登记黄色(= 任务中心「进行中」段);
@@ -67,7 +67,8 @@ class SubcontractHubPage extends ConsumerWidget {
         description: l10n.subcontractHubTaskCenterSub,
         location: RouteName.operationsSubcontractWorkbench,
         // 黄=任务中心「进行中」段(已下单、发料在外加工、等财务/等回厂);
-        // 红=待处理与要本部门动手的两类异常。同一张单两枚都算得上不是双计。
+        // 红=待处理与要本部门动手的两类异常 + 「领料」分段可领任务(ADR-143)。
+        // 同一张单两枚都算得上不是双计。
         // 草稿已并入任务中心分类；供应商退货仍由独立入口办理。
         // 本地委外草稿由 effective 汇总按 ID 去重并入 subcontractDrafts 入口后在
         // 这里取到，故**不得**再声明 formDraftModule——否则本地数加两次，任务中心
@@ -139,11 +140,12 @@ class SubcontractHubPage extends ConsumerWidget {
         ),
       ),
     ]);
-    final legacyEntries = visible([
+    // 委外材料出仓单：委外人员在任务中心「领料」提交、仓库发出后的出仓单(查看与红冲)。
+    final issueEntries = visible([
       _Entry(
-        icon: Icons.history_rounded,
-        label: '历史 BOM 子件发料',
-        description: 'V304 历史单据查看与红冲',
+        icon: Icons.outbound_outlined,
+        label: '委外材料出仓单',
+        description: '发给委外商的直属物料出仓单：查看、核对与红冲',
         location: SubcontractRoute.list(
           SubcontractDocConfig.materialIssue.pathSegment,
         ),
@@ -190,7 +192,7 @@ class SubcontractHubPage extends ConsumerWidget {
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '新建单据', docEntries),
               const SizedBox(height: UtenSpacing.s16),
-              _section(context, theme, '历史兼容', legacyEntries),
+              _section(context, theme, '出仓单据', issueEntries),
               const SizedBox(height: UtenSpacing.s16),
               _section(context, theme, '报表中心', reportEntries),
             ],

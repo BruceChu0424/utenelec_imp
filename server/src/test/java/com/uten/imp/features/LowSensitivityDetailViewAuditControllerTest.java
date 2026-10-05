@@ -255,7 +255,6 @@ class LowSensitivityDetailViewAuditControllerTest {
                 mock(MaterialStockReallocationService.class),
                 mock(ProductionGoodsWorkshopPreferenceService.class),
                 mock(MaterialAnalysisSupplyProgressService.class),
-                mock(com.uten.imp.features.production.analysis.SubcontractMakeTaskService.class),
                 mock(com.uten.imp.features.production.analysis.AnalysisLinkedSalesOrderService.class),
                 recorder,
                 mock(com.uten.imp.features.production.analysis

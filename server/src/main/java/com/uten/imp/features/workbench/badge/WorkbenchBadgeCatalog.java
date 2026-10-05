@@ -78,7 +78,7 @@ enum WorkbenchBadgeCatalog {
     rdTaskCenter(Module.rd, facts("rdTask.open"), facts("rdTask.inProgress")),
 
     // —— 仓库(一张任务中心卡一个入口; 卡内分段用事实数) ——
-    /** 出库任务中心: 销售待出库 + 委外待出仓(等子件到货那档只画在分段上, 已在委外任务中心计过黄)。 */
+    /** 出库任务中心: 销售待出库 + 委外出库(委外人员已提交、仓库未发出的领料草稿张数, 按调用者仓库范围)。 */
     warehouseOutboundCenter(Module.warehouse, facts(
             "warehouseSalesOutbound.PENDING_PICK",
             "subcontractOutbound.count"), none()),
@@ -111,8 +111,13 @@ enum WorkbenchBadgeCatalog {
     purchaseDrafts(Module.purchase, facts("drafts.purchaseOrder", "drafts.purchaseReceipt", "drafts.purchaseReturn"), none()),
 
     // —— 委外 ——
-    /** 委外任务中心: 红 = 待处理(含前置生产) + 财务驳回; 黄 = 进行中三档。 */
-    subcontractTaskCenter(Module.subcontract, facts("subcontractTask.pending"), facts("subcontractTask.inProgress")),
+    /**
+     * 委外任务中心: 红 = 待处理(含财务驳回、回厂短交待判定; 缺 BOM 等研发的申请不计, ADR-143 §二.3)
+     * + 可领料的委外任务(ADR-143 「领料」分段,
+     * 无领料权限的人恒为 0); 黄 = 进行中三档(等待物料 / 待仓库发料的单已在其中, 「领料」分段不再挂黄)。
+     */
+    subcontractTaskCenter(Module.subcontract, facts("subcontractTask.pending", "subcontractDraw.drawable"),
+            facts("subcontractTask.inProgress")),
     /** 委外「待退回供应商」任务。 */
     subcontractSupplierReturn(Module.subcontract, facts("subcontractSupplierReturn.count"), none()),
     /** 委外草稿: 订货/退货/退料/废品。 */

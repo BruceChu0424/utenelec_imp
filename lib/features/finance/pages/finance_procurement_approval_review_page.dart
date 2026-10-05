@@ -998,6 +998,15 @@ class _FinanceProcurementApprovalReviewPageState
                 width: 120,
                 value: (it) => extra(it, it.allowedLossPct, numeric: true),
               ),
+            // ADR-144：采购允许超收%（审批哈希快照自带，历史快照也如实；空 = 不允许超收）。
+            if (r.orderType == FinanceProcurementOrderType.purchase)
+              MasterColumnDef(
+                key: 'allowedOverReceiptPct',
+                label: '允许超收(%)',
+                width: 120,
+                info: '供应商累计送货在 数量×(1+允许超收%) 以内照常入库、立应付，超出部分才转财务审核组审批；批准后不能再改。',
+                value: (it) => _trimNum(it.allowedOverReceiptPct) ?? '不允许',
+              ),
             if (r.orderType == FinanceProcurementOrderType.purchase &&
                 [...r.previousItems, ...r.items].any(
                   (line) =>

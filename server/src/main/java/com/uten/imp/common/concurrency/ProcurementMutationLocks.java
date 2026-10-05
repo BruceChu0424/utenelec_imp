@@ -81,15 +81,51 @@ public class ProcurementMutationLocks {
 
     public FulfillmentMutationLocks.Guard receiptInputs(String type,UUID id,Collection<UUID> orderItems,
             Collection<InventoryDimension> dimensions,UUID warehouse) {
+        return locks.acquire(inventoryDeclared(dimensions),()->receiptInputsPlan(type,id,orderItems,dimensions,warehouse));
+    }
+
+    /**
+     * ADR-098 × ADR-090(2026-10-05) 仓库到货登记: 委外回厂时在 {@link #receiptInputs} 之上并进这些订货明细上
+     * 被短交闸扣住的「先入库后质检」合格品所在收货单——这次登记让累计回厂到齐或进入允许损耗范围时,
+     * 同一事务就把它们自动转正(嵌套的品质 / 入库命令只剩覆盖检查, 不能事后补锁)。采购到货原样。
+     */
+    public FulfillmentMutationLocks.Guard arrivalInputs(String type,UUID id,Collection<UUID> orderItems,
+            Collection<InventoryDimension> dimensions,UUID warehouse) {
+        if(!"SUBCONTRACT".equals(type))return receiptInputs(type,id,orderItems,dimensions,warehouse);
+        List<UUID> items=orderItems.stream().filter(java.util.Objects::nonNull).distinct().toList();
         return locks.acquire(inventoryDeclared(dimensions),
-                ()->footprint.withInputs(id==null?empty("new-receipt"):footprint.receipts(List.of(new ProcurementMutationFootprint.ReceiptRef(type,id))),
-                type.equals("PURCHASE")?CommercialType.PURCHASE_ORDER:CommercialType.SUBCONTRACT_ORDER,orderItems,dimensions,warehouse,false));
+                ()->withHeldPreStock(receiptInputsPlan(type,id,orderItems,dimensions,warehouse),items));
+    }
+
+    /**
+     * ADR-098 × ADR-090(2026-10-05) 委外回厂短交判定(分批到货 / 接受损耗): 事务首次预锁 = 订货单足迹
+     * (接受损耗时损耗单审核的足迹落在它里面) ∪ 本明细上被扣住的「先入库后质检」合格品所在收货单的
+     * 品质与入库足迹。判定在案件行锁之前取锁, 与品质结论 / 入库(先预锁、后锁案件)同一顺序。
+     */
+    public FulfillmentMutationLocks.Guard subcontractShortDeliveryDecision(UUID orderId,Collection<UUID> orderItemIds) {
+        var orders=List.of(new ProcurementMutationFootprint.OrderRef("SUBCONTRACT",orderId));
+        List<UUID> items=orderItemIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        var declared=FulfillmentMutationLockPlan.declared(Set.of(new CommercialSource(CommercialType.SUBCONTRACT_ORDER,orderId)),
+                Set.of(),Set.of());
+        return locks.acquire(declared,()->withHeldPreStock(footprint.orders(orders),items));
+    }
+
+    private FulfillmentMutationLockPlan receiptInputsPlan(String type,UUID id,Collection<UUID> orderItems,
+            Collection<InventoryDimension> dimensions,UUID warehouse) {
+        return footprint.withInputs(id==null?empty("new-receipt"):footprint.receipts(List.of(new ProcurementMutationFootprint.ReceiptRef(type,id))),
+                type.equals("PURCHASE")?CommercialType.PURCHASE_ORDER:CommercialType.SUBCONTRACT_ORDER,orderItems,dimensions,warehouse);
+    }
+
+    private FulfillmentMutationLockPlan withHeldPreStock(FulfillmentMutationLockPlan base,Collection<UUID> orderItemIds) {
+        var held=footprint.heldSubcontractPreStock(orderItemIds);
+        return FulfillmentMutationLockPlan.merge(com.uten.imp.common.util.CanonicalFingerprint.sha256(
+                List.of(base.fingerprint(),held.fingerprint())),List.of(base,held));
     }
     public FulfillmentMutationLocks.Guard materialIssueInputs(UUID id,Collection<UUID> orderItems,
             Collection<InventoryDimension> dimensions,UUID warehouse) {
         return locks.acquire(inventoryDeclared(dimensions),
                 ()->footprint.withInputs(id==null?empty("new-issue"):footprint.materialIssue(id),
-                CommercialType.SUBCONTRACT_ORDER,orderItems,dimensions,warehouse,false));
+                CommercialType.SUBCONTRACT_ORDER,orderItems,dimensions,warehouse));
     }
     public FulfillmentMutationLocks.Guard returnInputs(String type,UUID id,boolean materials,Collection<UUID> orderItems,
             Collection<UUID> originalItems,Collection<InventoryDimension> dimensions,UUID warehouse) {
@@ -102,7 +138,7 @@ public class ProcurementMutationLocks {
                 dimensions,Set.of());
         return locks.acquire(declared,()->footprint.withInputs(id==null?empty("new-order"):footprint.order(type,id),
                 type.equals("PURCHASE")?CommercialType.PURCHASE_REQUEST:CommercialType.SUBCONTRACT_APPLICATION,
-                sourceItems,dimensions,warehouse,type.equals("SUBCONTRACT")));
+                sourceItems,dimensions,warehouse));
     }
     public void expectCreatedOrder(String type,UUID id) {
         locks.expectCreatedSource(new CommercialSource(orderType(type),id));

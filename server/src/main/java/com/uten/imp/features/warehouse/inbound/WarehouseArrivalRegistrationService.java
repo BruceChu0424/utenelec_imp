@@ -114,6 +114,16 @@ public class WarehouseArrivalRegistrationService {
 
     private GoodsWeightObservationService weightObservations;
 
+    /**
+     * ADR-098 × ADR-090: 到货让短交闸放行时补做被扣住的先入库合格品转正。setter 注入, 直构测试不注入时跳过。
+     */
+    @Autowired(required = false)
+    void setHeldPreStockRelease(SubcontractHeldPreStockReleaseService value) {
+        this.heldPreStockRelease = value;
+    }
+
+    private SubcontractHeldPreStockReleaseService heldPreStockRelease;
+
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     public WarehouseArrivalRegisterResult register(WarehouseArrivalRegisterRequest request) {
         tx.bind();
@@ -281,7 +291,9 @@ public class WarehouseArrivalRegistrationService {
             }
             return replayResult(replay);
         }
-        var mutationGuard=mutationLocks.receiptInputs(orderType,null,
+        // 委外回厂: 首次预锁并进本次订货明细上被短交闸扣住的「先入库后质检」合格品(ADR-098 × ADR-090),
+        // 这次登记让累计回厂到齐或进入允许损耗范围时, 同一事务把它们自动转正。
+        var mutationGuard=mutationLocks.arrivalInputs(orderType,null,
                 request.items().stream().map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList(),
                 request.items().stream().map(item -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
                         item.goodsId(),item.colorId())).toList(),request.warehouseId());
@@ -359,6 +371,17 @@ public class WarehouseArrivalRegistrationService {
             return;
         }
         shortDelivery.recordArrival(receiptId, billNo, acknowledged);
+        // ADR-098 × ADR-090(2026-10-05): 此前品质已合格、因短交待判定而扣住的「先入库后质检」货,
+        // 这次到货让累计回厂到齐(案件自然完成)或进入允许损耗范围时不再被扣住, 同一事务自动转正;
+        // 仍被扣住的收货单原样跳过(预锁已在登记入口并入)。
+        if (heldPreStockRelease != null) {
+            List<UUID> orderItemIds = jdbc.queryForList("""
+                    SELECT DISTINCT order_item_id FROM subcontract_receipt_items
+                    WHERE receipt_id = ? AND order_item_id IS NOT NULL AND NOT is_deleted
+                    ORDER BY order_item_id
+                    """, UUID.class, receiptId);
+            heldPreStockRelease.releaseHeldPreStock(orderItemIds);
+        }
     }
 
     /** 低于允许损耗下限且仓库尚未确认 → 409 逐行说明(field=订货明细 id, message=大白话数字)。 */
@@ -872,9 +895,10 @@ public class WarehouseArrivalRegistrationService {
     }
 
     /**
-     * 新委外回厂必须晚于目标件真实审核出仓。没有 V436 新流计划行的历史单继续
-     * 按旧口径兼容；新流只认 status=1、未删除的系统计划出仓单，不认财务批准、
-     * READY_OUTBOUND、草稿或通知。精确数量和并发额度由委外进仓 create/approve 再校验。
+     * 委外回厂必须晚于直属物料真实发出(ADR-143 §三.6)：要求委外商用我方已发直属物料至少能做成
+     * 一点委外件({@code fn_subcontract_returnable_qty} > 0, 逐种物料取短板)。已批准明细一定有冻结
+     * 领料计划行; 万一没有, 可回厂套数为 0, 一律不放行。不认财务批准、领料草稿或通知。
+     * 精确数量和并发额度由到货异常闸与委外进仓 create/approve 再校验。
      */
     private void requireSubcontractOutboundReleased(List<UUID> orderItemIds) {
         List<UUID> ids = orderItemIds.stream().filter(Objects::nonNull).distinct().toList();
@@ -885,36 +909,17 @@ public class WarehouseArrivalRegistrationService {
         Long released = jdbc.queryForObject("""
                 SELECT COUNT(*)
                 FROM subcontract_order_items order_item
+                CROSS JOIN LATERAL (
+                    SELECT fn_subcontract_returnable_qty(order_item.id) AS returnable_qty
+                ) supplied
                 WHERE order_item.id IN (%s)
                   AND COALESCE(order_item.is_deleted, FALSE) = FALSE
-                  AND (
-                      NOT EXISTS (
-                          SELECT 1
-                          FROM subcontract_material_plan_items new_flow_plan
-                          WHERE new_flow_plan.order_item_id = order_item.id
-                            AND new_flow_plan.flow_mode IN (
-                                'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                            AND new_flow_plan.is_deleted = FALSE)
-                      OR EXISTS (
-                          SELECT 1
-                          FROM subcontract_material_issue_items issue_item
-                          JOIN subcontract_material_issues issue
-                            ON issue.id = issue_item.issue_id
-                           AND issue.status = 1
-                           AND issue.is_deleted = FALSE
-                          JOIN subcontract_material_plan_items release_plan
-                            ON release_plan.id = issue_item.plan_item_id
-                           AND release_plan.flow_mode IN (
-                               'DIRECT_OUTBOUND','MAKE_THEN_OUTBOUND','PREPARED_OUTBOUND','COMPONENT_OUTBOUND')
-                           AND release_plan.is_deleted = FALSE
-                          WHERE issue_item.order_item_id = order_item.id
-                            AND issue_item.is_deleted = FALSE)
-                  )
+                  AND COALESCE(supplied.returnable_qty, 0) > 0
                 """.formatted(placeholders), Long.class, ids.toArray());
         if (released == null || released != ids.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "委外目标件尚未真实审核出仓，不能登记回厂；请先完成前置自制、仓库实收和目标件出仓");
+                    "委外直属物料还没有发给委外商，不能登记回厂；请先在委外任务中心领料并由仓库发出直属物料");
         }
     }
 

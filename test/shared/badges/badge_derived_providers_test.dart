@@ -56,21 +56,14 @@ void main() {
     expect(breakdown.inProgress, 6);
   });
 
-  test('委外待出仓: 无该来源时为 null(分段不渲染数字); 有则红黄两数各取其键', () {
+  test('委外领料待发料: 无该来源时为 null(分段不渲染数字); 有则取待发领料单张数', () {
     expect(
       _container({}).read(warehouseSubcontractOutboundCountProvider),
       isNull,
     );
 
-    final container = _container({
-      BadgeFact.subcontractOutbound: 3,
-      BadgeFact.subcontractOutboundWaitingComponent: 1,
-    });
+    final container = _container({BadgeFact.subcontractOutbound: 3});
     expect(container.read(warehouseSubcontractOutboundCountProvider), 3);
-    expect(
-      container.read(warehouseSubcontractOutboundWaitingComponentCountProvider),
-      1,
-    );
   });
 
   test('销售出库分组: 无来源为 null; 有来源按三档取数', () {

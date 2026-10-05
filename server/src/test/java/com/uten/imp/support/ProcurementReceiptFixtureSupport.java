@@ -122,11 +122,12 @@ public final class ProcurementReceiptFixtureSupport {
             writer.mutex().lock(new com.uten.imp.features.stock.InventoryKey(goods,null));
             var balance=writer.db().queryForMap("SELECT id,qty FROM stock_balances WHERE warehouse_id=:warehouse AND goods_id=:goods AND color_id IS NULL",java.util.Map.of("warehouse",warehouse,"goods",goods));
             execute(connection,"INSERT INTO subcontract_material_issues(id,bill_no,bill_date,warehouse_id,status,created_by) VALUES(?,?,?,?,1,?)",issue,billNo,date,warehouse,actor);
+            // ADR-143: a draw-plan issue line only exists as a submitted draw, so it carries its requested quantity.
             execute(connection,"""
                     INSERT INTO subcontract_material_issue_items(id,bill_no,bill_date,issue_id,order_item_id,line_no,goods_id,unit_id,
-                        unit_rate,qty,at_supplier_qty,consumed_qty,plan_item_id,frozen_unit_qty,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
-                    SELECT ?,?,?,?,?,1,id,?,1,?,?,0,?,1,code,name,'MASTER_AT_APPROVAL',now() FROM goods WHERE id=?
-                    """,issueItem,billNo,date,issue,orderItem,unit,qty,qty,planItem,goods);
+                        unit_rate,qty,requested_qty,at_supplier_qty,consumed_qty,plan_item_id,frozen_unit_qty,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
+                    SELECT ?,?,?,?,?,1,id,?,1,?,?,?,0,?,1,code,name,'MASTER_AT_APPROVAL',now() FROM goods WHERE id=?
+                    """,issueItem,billNo,date,issue,orderItem,unit,qty,qty,qty,planItem,goods);
             UUID reservation=UUID.randomUUID();
             execute(connection,"""
                     INSERT INTO stock_reservations(id,order_item_id,goods_id,warehouse_id,qty,consumed_qty,released_qty,status,source,
@@ -376,6 +377,30 @@ public final class ProcurementReceiptFixtureSupport {
                     JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id WHERE inspection.receipt_type=? AND inspection.receipt_id=?
                     """,UUID.randomUUID(),actor,type,receipt,UUID.randomUUID(),actor,type,receipt);
             execute(connection,"UPDATE procurement_inspection_items SET passed_base_qty=0,failed_base_qty=0,status='REVERSED',warehouse_stocked_base_qty=0,warehouse_stocked_amount_local=0,warehouse_stocked_weight=NULL WHERE receipt_type=? AND receipt_id=?",type,receipt);
+            if("SUBCONTRACT".equals(type)) {
+                // ADR-143 §三.7: like the real receipt reversal, give every material consumption of the reversed
+                // lines back to its issue line and append the reversal consumption in the same transaction.
+                execute(connection,"""
+                        UPDATE subcontract_material_issue_items issue_item SET consumed_qty=issue_item.consumed_qty-original.qty
+                        FROM (SELECT consumption.issue_item_id,SUM(consumption.qty_doc) qty
+                              FROM subcontract_receipt_material_consumptions consumption
+                              JOIN subcontract_receipt_items item ON item.id=consumption.receipt_item_id
+                              WHERE item.receipt_id=? AND consumption.reversal_of IS NULL
+                                AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=consumption.id)
+                              GROUP BY consumption.issue_item_id) original
+                        WHERE issue_item.id=original.issue_item_id
+                        """,receipt);
+                execute(connection,"""
+                        INSERT INTO subcontract_receipt_material_consumptions(receipt_item_id,issue_item_id,qty_doc,qty_base,
+                            consumption_basis,reversal_of,created_by)
+                        SELECT consumption.receipt_item_id,consumption.issue_item_id,consumption.qty_doc,consumption.qty_base,
+                            consumption.consumption_basis,consumption.id,?
+                        FROM subcontract_receipt_material_consumptions consumption
+                        JOIN subcontract_receipt_items item ON item.id=consumption.receipt_item_id
+                        WHERE item.receipt_id=? AND consumption.reversal_of IS NULL
+                          AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions reversal WHERE reversal.reversal_of=consumption.id)
+                        """,actor,receipt);
+            }
             execute(connection,"UPDATE "+prefix(type)+"_receipts SET status=-1 WHERE id=?",receipt);
             execute(connection,"UPDATE ar_ap_ledger SET status=-1,is_deleted=TRUE,deleted_at=now() WHERE source_doc_type=? AND source_doc_id=? AND amount_settled=0 AND amount_offset_original=0 AND amount_offset_local=0",type+"_RECEIPT",receipt);
             appendReceiptReversal(connection,type,receipt);

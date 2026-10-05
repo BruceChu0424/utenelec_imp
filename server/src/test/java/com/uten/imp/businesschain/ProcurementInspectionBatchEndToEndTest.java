@@ -81,9 +81,13 @@ class ProcurementInspectionBatchEndToEndTest {
             new TransactionTemplate(manager).executeWithoutResult(status->{
                 long audit=orderUpdates(source);
                 inspections.decideBatch(type,source.receipt(),request);
-                assertEquals(audit+1,orderUpdates(source),"Three receipt items of one order require one actual order UPDATE");
+                // Receipt approval recalculates closure after the receipt is status 1, so the order is already open
+                // while IQC is pending (it no longer closes on the registered quantity and reopens here). A decision
+                // that stocks nothing leaves is_closed unchanged, and the change-only row audit (V670) records nothing.
+                assertEquals(audit,orderUpdates(source),"A decision that stocks nothing cannot change the order closure");
             });
         } finally {ProductionJdbcMeasurement.end();}
+        assertEquals(1,closureUpdates(sample,type),"Three receipt items of one order require one actual order UPDATE");
         assertEquals(1,sample.commits);
         assertEquals(1,sample.fingerprints.getOrDefault(receiptLockFingerprint(),0L),
                 "The complete receipt SELECT FOR UPDATE executes once, including PASS+FAIL of the same row");
@@ -208,6 +212,12 @@ class ProcurementInspectionBatchEndToEndTest {
     private BigDecimal decimal(String sql,Object...args){return jdbc.queryForObject(sql,BigDecimal.class,args);}
     private static void money(BigDecimal value,String expected){assertEquals(0,value.compareTo(new BigDecimal(expected)));}
     private long analysisVersion(Case source){return jdbc.queryForObject("SELECT version FROM production_material_analyses WHERE id=?",Long.class,source.analysis());}
+    private static long closureUpdates(ProductionJdbcMeasurement.Sample sample,String type){
+        String label=(type.equals("PURCHASE")?"purchase":"subcontract")+".order_closure";
+        return sample.fingerprints.entrySet().stream()
+                .filter(entry->label.equals(sample.labelsByFingerprint.get(entry.getKey())))
+                .mapToLong(Map.Entry::getValue).sum();
+    }
     private long orderUpdates(Case source){return jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE target_type=? AND target_id=? AND action='update'",Long.class,(source.type().equals("PURCHASE")?"purchase":"subcontract")+"_orders",source.order().toString());}
     private int qualityEvents(Case source){return jdbc.queryForObject("SELECT count(*) FROM procurement_inspection_events event JOIN procurement_inspection_items item ON item.id=event.inspection_item_id WHERE item.receipt_id=? AND event.action IN ('PASS','FAIL')",Integer.class,source.receipt());}
     private String ap(Case source){return jdbc.queryForObject("SELECT md5(coalesce(string_agg(to_jsonb(ledger)::text,',' ORDER BY id),'')) FROM ar_ap_ledger ledger WHERE source_doc_id=?",String.class,source.receipt());}

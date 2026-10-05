@@ -85,7 +85,7 @@ enum BadgeEntry {
   rdTaskCenter(BadgeModule.rd),
 
   // —— 仓库(一张任务中心卡一个入口; 卡内分段读 [BadgeFact]) ——
-  /// 出库任务中心: 销售待出库 + 委外待出仓。
+  /// 出库任务中心: 销售待出库 + 委外领料待发料。
   warehouseOutboundCenter(BadgeModule.warehouse),
 
   /// 入库任务中心: 预计到货 + 到货异常(仓库侧) + 产成品待点收。
@@ -115,7 +115,7 @@ enum BadgeEntry {
   purchaseDrafts(BadgeModule.purchase),
 
   // —— 委外 ——
-  /// 委外任务中心: 红 = 待处理 + 财务驳回; 黄 = 进行中。
+  /// 委外任务中心: 红 = 待处理 + 财务驳回 + 「领料」分段可领任务; 黄 = 进行中。
   subcontractTaskCenter(BadgeModule.subcontract),
 
   /// 委外「待退回供应商」任务。
@@ -209,6 +209,10 @@ abstract final class BadgeFact {
   static const purchaseTaskInProgress = 'purchaseTask.inProgress';
   static const subcontractTaskPending = 'subcontractTask.pending';
   static const subcontractTaskInProgress = 'subcontractTask.inProgress';
+
+  /// 委外任务中心「领料」分段的可领任务数(ADR-143 §4.1, 来源键 subcontractDraw);
+  /// 服务端 subcontractTaskCenter 入口红数 = subcontractTask.pending + 本数。
+  static const subcontractDrawDrawable = 'subcontractDraw.drawable';
   static const purchaseSupplierReturn = 'purchaseSupplierReturn.count';
   static const subcontractSupplierReturn = 'subcontractSupplierReturn.count';
   static const subcontractShortDeliveryPending =
@@ -240,9 +244,9 @@ abstract final class BadgeFact {
   static const warehouseSalesOutboundShipped = 'warehouseSalesOutbound.SHIPPED';
   static const warehouseSalesOutboundLegacyPending =
       'warehouseSalesOutbound.LEGACY_PENDING';
+
+  /// 调用者仓库范围内待发料的委外领料单张数(ADR-143 §4.3)。
   static const subcontractOutbound = 'subcontractOutbound.count';
-  static const subcontractOutboundWaitingComponent =
-      'subcontractOutbound.waitingComponent';
 
   /// 品质结果「轮到仓库动手」按来源大类(后缀 = 收货单类型 apiValue)。
   static String qualityResultActionable(String receiptType) =>

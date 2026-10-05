@@ -68,6 +68,9 @@ Map<String, dynamic> arrivalItemDraft(ProcurementReceiptPrefillItem value) => {
   'baseUnitName': value.baseUnitName,
   'unitRate': value.unitRate,
   'approvedRemainingQty': value.approvedRemainingQty,
+  // ADR-144 采购允许超收(仅展示)：恢复草稿后「最多可收」列照常显示。
+  'allowedOverReceiptPct': value.allowedOverReceiptPct,
+  'maxReceivableQty': value.maxReceivableQty,
   'lastReceiptWarehouseId': value.lastReceiptWarehouseId,
   'lastReceiptWarehouseName': value.lastReceiptWarehouseName,
   'expectedAllocations': [
@@ -119,6 +122,8 @@ ProcurementReceiptPrefillItem restoreArrivalItemDraft(
   baseUnitName: value['baseUnitName'] as String?,
   unitRate: value['unitRate'] as num,
   approvedRemainingQty: value['approvedRemainingQty'] as num,
+  allowedOverReceiptPct: value['allowedOverReceiptPct'] as num?,
+  maxReceivableQty: value['maxReceivableQty'] as num?,
   lastReceiptWarehouseId: value['lastReceiptWarehouseId'] as String?,
   lastReceiptWarehouseName: value['lastReceiptWarehouseName'] as String?,
   expectedAllocations: draftMaps(

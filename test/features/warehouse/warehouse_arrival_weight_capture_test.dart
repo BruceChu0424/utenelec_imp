@@ -278,6 +278,50 @@ void main() {
     expect(item['weight'], 19.3);
     expect(item['qtyFromWeight'], isTrue);
   });
+
+  testWidgets('ADR-144 采购明细显示「最多可收(含允许超收 p%)」，委外不显示该列', (tester) async {
+    await _open(
+      tester,
+      prefill: const ProcurementReceiptPrefill(
+        // 合一登记页按来源 id 读预计到货(_open 打开的是 expectation-weight)。
+        expectationId: 'expectation-weight',
+        orderType: ProcurementInboundOrderType.purchase,
+        orderBillNo: 'PO-TOLERANCE',
+        supplierId: 'supplier-1',
+        supplierName: '测试供应商',
+        warehouseId: 'warehouse-1',
+        suggestedWarehouseId: 'warehouse-1',
+        items: [
+          ProcurementReceiptPrefillItem(
+            orderItemId: _itemId,
+            goodsId: _goodsId,
+            goodsCode: 'SCR-01',
+            goodsName: '螺丝',
+            unitName: '个',
+            unitRate: 1,
+            approvedRemainingQty: 5,
+            allowedOverReceiptPct: 5,
+            maxReceivableQty: 5.25,
+          ),
+        ],
+      ),
+    );
+    final grid = tester.widget<UtenEditableGrid<EditableGridRow>>(_grid());
+    final labels = grid.columns.map((column) => column.label).toList();
+    expect(labels.indexOf('最多可收'), labels.indexOf('批准剩余') + 1);
+    expect(find.text('5.25(含允许超收 5%)'), findsOneWidget);
+    expect(find.textContaining('超过最多可收的部分才转财务'), findsWidgets);
+  });
+
+  testWidgets('ADR-144 委外登记不显示「最多可收」列', (tester) async {
+    await _open(tester, prefill: _prefill());
+    final grid = tester.widget<UtenEditableGrid<EditableGridRow>>(_grid());
+    expect(
+      grid.columns.where((column) => column.key == 'maxReceivableQty'),
+      isEmpty,
+    );
+    expect(find.textContaining('超过最多可收的部分才转财务'), findsNothing);
+  });
 }
 
 class _Session extends SessionNotifier {

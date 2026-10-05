@@ -78,8 +78,6 @@ final class MaterialAnalysisSupplyCoverageReader {
             } else {
                 readQuantities("BUY".equals(kind) ? BUY_SQL : EXTERNAL_SQL,
                         analysisId, keys, kind, null, activeByKey);
-                if ("SUBCONTRACT".equals(kind)) readQuantities(SUBCONTRACT_MAKE_SQL,
-                        analysisId, keys, kind, null, activeByKey);
                 readQuantities(REPLACEMENT_SQL.formatted("BUY".equals(kind) ? PURCHASE_JOIN : SUBCONTRACT_JOIN,
                                 "BUY".equals(kind) ? "request_item_id" : "application_item_id"),
                         analysisId, keys, kind, "BUY".equals(kind) ? "PURCHASE" : "SUBCONTRACT", replacementByKey);
@@ -346,49 +344,6 @@ final class MaterialAnalysisSupplyCoverageReader {
                       ON child.id = active.child_item_id
                      AND child.analysis_id = :analysisId
                      AND child.source_type = 'MAKE_COMPONENT'
-                     AND child.is_deleted = FALSE
-                )
-                SELECT action_group_key, COALESCE(SUM(LEAST(requested_qty, open_qty)),0)
-                FROM child_open
-                GROUP BY action_group_key
-                """;
-
-    private static final String SUBCONTRACT_MAKE_SQL = """
-                WITH active_actions AS (
-                    SELECT action.action_group_key, action.external_document_id AS child_item_id,
-                           SUM(action.requested_qty) AS requested_qty
-                    FROM preplan_supply_actions action
-                    WHERE action.analysis_id = :analysisId
-                      AND action.action_group_key IN (:groupKeys)
-                      AND action.route = 'SUBCONTRACT'
-                      AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
-                      AND action.external_document_type = 'SUBCONTRACT_MAKE_TASK'
-                      AND action.external_document_id IS NOT NULL
-                    GROUP BY action.action_group_key, action.external_document_id
-                ), child_open AS (
-                    SELECT active.action_group_key, active.child_item_id, active.requested_qty,
-                           GREATEST(
-                               child.requested_qty - child.approved_qty
-                               + COALESCE((
-                                   SELECT SUM(GREATEST(
-                                       plan_item.qty - COALESCE(plan_item.iqty,0), 0))
-                                   FROM production_material_analysis_plan_links analysis_link
-                                   JOIN production_plans plan
-                                     ON plan.id = analysis_link.plan_id
-                                    AND plan.status = 1
-                                    AND plan.is_deleted = FALSE
-                                    AND plan.is_canceled = FALSE
-                                   JOIN production_plan_items plan_item
-                                     ON plan_item.plan_id = plan.id
-                                    AND plan_item.is_deleted = FALSE
-                                   WHERE analysis_link.analysis_item_id = child.id
-                                     AND analysis_link.allocation_status = 'APPROVED'
-                               ),0), 0) AS open_qty
-                    FROM active_actions active
-                    JOIN production_material_analysis_items child
-                      ON child.id = active.child_item_id
-                     AND child.analysis_id = :analysisId
-                     AND child.source_type = 'SUBCONTRACT_MAKE'
                      AND child.is_deleted = FALSE
                 )
                 SELECT action_group_key, COALESCE(SUM(LEAST(requested_qty, open_qty)),0)

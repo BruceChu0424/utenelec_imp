@@ -49,16 +49,12 @@ public record FulfillmentTaskRow(
         boolean canCreateOrder,
         /**
          * 展示阶段(display_stage)：与状态列的表头筛选/排序同源。委外订货单在财务已通过之后细分为
-         * 待发料出仓 / 出仓等子件到货(ADR-103) / 委外加工中 / 部分回厂 / 分批等待中 / 回厂短交待判定
-         * (ADR-098); 委外申请行按路线 B 锁态细分为等子件到货 WAITING_COMPONENT_STOCK / 子件有货可下单
-         * COMPONENT_STOCK_READY(ADR-103); 前置自制合成行为车间状态; 其余等于 taskStatus。
+         * 回厂短交待判定 / 分批等待中 / 容差内待结案 / 已回厂待入库 / 可领料 / 已提交领料·待仓库发料
+         * / 部分回厂 / 委外加工中 / 等待物料(ADR-098 / ADR-143 §4.1); 待分解的委外申请里有委外件
+         * 缺 BOM 时为 BOM_MISSING「缺 BOM·已通知研发」(ADR-143 §二.3, 不能生成订货单);
+         * 其余等于 taskStatus。
          */
         String displayStage,
-        /**
-         * ADR-103 路线 B: 单一子件委外申请行的子件可动用合计(多明细取 MIN, 给「可发数量」提示);
-         * 普通委外件 / 多子件先自制的委外件 / 非申请行为 null。
-         */
-        BigDecimal componentAvailableQty,
         List<SubcontractTaskSource> sources,
         boolean materialsDefined,
         String productionProductCode,
@@ -74,7 +70,14 @@ public record FulfillmentTaskRow(
          * 行级明细（仓库 DRAW 段：货品×数量的 jsonb 数组；前端按「批次×货品」
          * 拆分/合并待领任务行）。其他段恒空列表。
          */
-        List<java.util.Map<String, Object>> lines) {
+        List<java.util.Map<String, Object>> lines,
+        /**
+         * 委外申请缺 BOM 时该委外件未完成的「完善 BOM」研发任务编号(多个用「、」连接);
+         * 还没有未完成研发任务或不缺 BOM 时为空(ADR-143 §二.3)。
+         */
+        String rdTaskNo,
+        /** 委外申请里缺 BOM 的明细 id(「通知研发完善」逐条调用); 不缺 BOM 时为空列表。 */
+        List<String> bomMissingItemIds) {
 
     public FulfillmentTaskRow withSources(List<SubcontractTaskSource> value) {
         return new FulfillmentTaskRow(
@@ -84,10 +87,11 @@ public record FulfillmentTaskRow(
                 taskStatus, needDate, expectedDate, exceptionCode, updatedAt,
                 actionDocType, actionDocId, actionDocNo, actionDocItemId, actionDocStatus,
                 actionDocCanView, actionDocCanEdit, actionDocRestricted, goodsCount, openLineCount,
-                actionItemIds, issuedAt, canCreateOrder, displayStage, componentAvailableQty,
+                actionItemIds, issuedAt, canCreateOrder, displayStage,
                 List.copyOf(value), materialsDefined, productionProductCode, productionProductName, materialRequestNo,
                 workshopName, workerName, drawBatchNo,
-                lines == null ? List.of() : List.copyOf(lines));
+                lines == null ? List.of() : List.copyOf(lines),
+                rdTaskNo, bomMissingItemIds == null ? List.of() : List.copyOf(bomMissingItemIds));
     }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */

@@ -36,8 +36,6 @@ public class FulfillmentWorkbenchQueryService {
 
     private static final Set<String> DEPARTMENTS =
             Set.of("WAREHOUSE", "PURCHASE", "SUBCONTRACT");
-    private static final String PENDING_MAKE =
-            "task.status = 'ACTIVE' AND task.notified_qty < task.required_qty";
     /**
      * 「进行中」= 订货单提交财务到结案之间的三档：ADR-098 先在委外任务中心落地，
      * ADR-100 把同一范式铺到采购任务工作台——分段栏只留「申请待分解」(红) 与
@@ -71,37 +69,6 @@ public class FulfillmentWorkbenchQueryService {
                             AND tolerant_case.severity IN ('WITHIN_TOLERANCE', 'UNSET_TOLERANCE'))
                            OR (tolerant_case.status = 'WAITING_MORE'
                                AND tolerant_case.severity = 'WITHIN_TOLERANCE')))""";
-    /**
-     * 单一子件委外使用公共合格库存与该申请精确子节点的到货权益。
-     * 申请、建单和发料共用数据库函数，不能把已经锁给本产品的料误判成缺货。
-     * 两个 %s 分别为申请明细、订货明细；不适用的一项传 NULL::uuid。
-     */
-    static final String COMPONENT_STOCK_AVAILABLE_SQL = """
-            (SELECT COALESCE(SUM(component_stock.available_qty), 0)
-             FROM fn_subcontract_component_available_stock(%s, %s) component_stock)""";
-    /**
-     * ADR-103: 一张委外申请里「单一子件」明细 (fn_subcontract_sole_component_goods 为真) 且还有
-     * 未下单量的行, 一行一明细, 带该明细子件的可动用合计. BOM 边取法与
-     * SubcontractMaterialPlanService.soleOutboundComponent 一致——判据本体在 V581 函数里, 这里只取
-     * 那唯一一条活动边的子件身份 (component_goods_id + edge.color_id). 已订满的明细
-     * (qty <= ordered_qty) 已经不归申请行管, 不再参与锁定. 普通委外件 (无 BOM) 与多子件先自制的
-     * 委外件不出行. %s = 申请 id 表达式.
-     */
-    static final String APPLICATION_SOLE_COMPONENT_ROWS = """
-            SELECT sole_item.id AS application_item_id,
-                   %s AS available_qty
-            FROM subcontract_application_items sole_item
-            JOIN goods_bom_items sole_edge ON sole_edge.goods_id = sole_item.goods_id
-             AND sole_edge.is_deleted = FALSE
-            JOIN goods sole_child ON sole_child.id = sole_edge.component_goods_id
-             AND sole_child.is_deleted = FALSE
-             AND COALESCE(sole_child.auto_created, FALSE) = FALSE
-             AND sole_child.issue_method <> 'PERIODIC'
-            WHERE sole_item.application_id = %s
-              AND NOT sole_item.is_deleted
-              AND COALESCE(sole_item.qty, 0) > COALESCE(sole_item.ordered_qty, 0)
-              AND fn_subcontract_sole_component_goods(sole_item.goods_id)""".formatted(
-            COMPONENT_STOCK_AVAILABLE_SQL.formatted("sole_item.id", "NULL::uuid"), "%s");
 
     /**
      * 仓库待领任务按真实 DRAW 明细映射归组；同一需求跨仓的多张单均独立列出。
@@ -364,13 +331,7 @@ public class FulfillmentWorkbenchQueryService {
                    FROM v_procurement_decomposition_tasks v
                    GROUP BY v.department, v.action_doc_type, v.action_doc_id, v.task_status)
                   """;
-        if ("SUBCONTRACT".equals(department) && accessPolicy.canViewSubcontractPreparationTasks()) {
-            sourceView = "(" + sourceView + " UNION ALL " + subcontractPreparationRows() + ")";
-        }
         sourceView = enrichTableRows(sourceView, department);
-        // ADR-103 (2026-09-22 用户实机纠偏): 路线 B 被锁的申请行(display_stage = WAITING_COMPONENT_STOCK)
-        // **留在「待处理」段**, 与路线 A 的前置自制合成行同款——用户口径「两个都是刚刚下单的, 都是待处理;
-        // 等采购件到了再下委外订货单」。锁只体现在行上(不可勾选、阶段文案), 分段归属与计数一个不动。
         String statusBranches = """
                        OR (:status = 'IN_PROGRESS' AND task_status IN (%s))
                        OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)""";
@@ -419,9 +380,10 @@ public class FulfillmentWorkbenchQueryService {
                        expected_date, exception_code, updated_at,
                        action_doc_type, action_doc_id, action_doc_no, action_item_id, action_doc_status,
                        goods_count, open_line_count, action_item_ids, issued_at, can_create_order,
-                       display_stage, component_available_qty,
+                       display_stage,
                        materials_defined, production_product_code, production_product_name, material_request_no,
-                       workshop_name, worker_name, draw_batch_no, lines
+                       workshop_name, worker_name, draw_batch_no, lines,
+                       rd_task_no, bom_missing_item_ids
                 FROM %s
                 WHERE %s
                 ORDER BY %s
@@ -455,28 +417,25 @@ public class FulfillmentWorkbenchQueryService {
         Object[] summary = (Object[]) summaryQuery.getSingleResult();
         long total = ((Number) summary[0]).longValue();
 
-        // ADR-103: 分段计数仍按 task_status 分桶(锁行留在 WAITING_ORDER 桶里, 与路线 A 合成行同款);
-        // 第三列只是顺带数一下其中有多少行在等子件, 以 WAITING_COMPONENT_STOCK 键给前端做说明用,
-        // 不参与任何分段徽章、也不从 WAITING_ORDER 里减掉。
+        // ADR-143 §二.3：缺 BOM 的委外申请行(display_stage BOM_MISSING)照样列在「待处理」段(task_status
+        // 仍是 WAITING_ORDER), 但球在研发手上, 不计入该段红数; 单独以 BOM_MISSING 计数, 与 countPending 同口径。
+        String statusKey = "SUBCONTRACT".equals(department)
+                ? "CASE WHEN display_stage = 'BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END"
+                : "task_status";
         Query statusQuery = em.createNativeQuery("""
-                SELECT task_status, COUNT(*),
-                       COUNT(*) FILTER (WHERE display_stage = 'WAITING_COMPONENT_STOCK')
+                SELECT %s AS status_key, COUNT(*)
                 FROM %s
                 WHERE %s
-                GROUP BY task_status
-                ORDER BY task_status
-                """.formatted(sourceView, filters));
+                GROUP BY 1
+                ORDER BY 1
+                """.formatted(statusKey, sourceView, filters));
         // Status cards always describe the whole department/keyword result so
         // selecting one card never makes the other card counts disappear.
         bind(statusQuery, department, "", normalizedKeyword, normalizedException, null, null);
         bindScope.accept(statusQuery);
         Map<String, Long> statusCounts = new LinkedHashMap<>();
-        long waitingComponent = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(statusQuery)) {
             statusCounts.put((String) row[0], ((Number) row[1]).longValue());
-            if (row.length > 2 && row[2] != null) {
-                waitingComponent += ((Number) row[2]).longValue();
-            }
         }
         if (usesDecompositionProjection(department)) {
             // 采购与委外的任务中心都把等待财务审核 / 财务已通过 / 财务已退回合并成「进行中」
@@ -484,9 +443,6 @@ public class FulfillmentWorkbenchQueryService {
             // 合并只发生在分段栏这一层, 逐档明细一个都没丢。
             statusCounts.put("IN_PROGRESS", IN_PROGRESS_STATUSES.stream()
                     .mapToLong(code -> statusCounts.getOrDefault(code, 0L)).sum());
-            if ("SUBCONTRACT".equals(department)) {
-                statusCounts.put("WAITING_COMPONENT_STOCK", waitingComponent);
-            }
         }
 
         Query exceptionQuery = em.createNativeQuery("""
@@ -617,6 +573,11 @@ public class FulfillmentWorkbenchQueryService {
      * browsing（中性括号、不累加），这里同步收敛，红徽章合计=各红色分段之和。
      * {@code COMPLETED} 是终态，本就被 {@code open_qty > 0} 挡掉。
      *
+     * <p>委外缺 BOM 的申请(ADR-143 §二.3, 列表状态 {@code BOM_MISSING}「缺 BOM·已通知研发」)
+     * 照样列在「待处理」段, 但球在研发手上(研发任务中心已计红一次), 不计入红数: 与列表同一判据,
+     * 按 (单据, 状态) 归组, 组内任一申请明细的货品没有可发外直属物料({@code fn_subcontract_draw_edges})
+     * 即整组不计。
+     *
      * <p>口径依据 docs/00-项目准则/14-徽章与计数口径.md。
      */
     @Transactional(readOnly = true)
@@ -637,29 +598,43 @@ public class FulfillmentWorkbenchQueryService {
         boolean decomposition = usesDecompositionProjection(department);
         // 与列表同口径：采购/委外按单据归组计数（一张申请/订货单=一个待办）；
         // 仓库按单张领料单计数（一张 DRAW=一个待办，未挂单的行退回行级）。
-        boolean includePreparation = "SUBCONTRACT".equals(department)
-                && accessPolicy.canViewSubcontractPreparationTasks();
-        String preparation = includePreparation
-                ? " UNION ALL SELECT task.id FROM preplan_subcontract_make_tasks task WHERE " + PENDING_MAKE
-                : "";
+        // 委外「可领料」的订货明细不在这里数: 它们是「领料」分段的红数, 由委外领料模块的
+        // subcontractDraw.drawable 计数来源单独登记(ADR-143 §4.1), 这里再数就是同一件活计两次。
         // ADR-098：委外还要数「回厂短交待判定」的订货单(财务已通过但有待判定案件), 与列表异常行同源。
-        String shortDelivery = "SUBCONTRACT".equals(department)
-                ? " OR (decomposition.task_status = 'FINANCE_APPROVED'"
-                        + " AND decomposition.action_doc_type = 'SUBCONTRACT_ORDER' AND "
-                        + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id") + ")"
-                : "";
-        // ADR-103 (2026-09-22 用户实机纠偏): 路线 B 被锁的申请行照样计入红数——与路线 A 的前置自制
-        // 合成行同款, 用户口径「刚下单的都是待处理」; 锁只体现在行上, 不改分段与角标口径。
-        Query query = em.createNativeQuery(decomposition
+        String shortDelivery = " OR (decomposition.task_status = 'FINANCE_APPROVED'"
+                + " AND decomposition.action_doc_type = 'SUBCONTRACT_ORDER' AND "
+                + SHORT_DELIVERY_PENDING_EXISTS.formatted("decomposition.action_doc_id") + ")";
+        Query query = em.createNativeQuery("SUBCONTRACT".equals(department)
+                ? """
+                    SELECT COUNT(*) FROM (
+                        SELECT DISTINCT counted.action_doc_id
+                        FROM (
+                            SELECT decomposition.action_doc_id, decomposition.open_qty,
+                                   bool_or(decomposition.action_doc_type = 'SUBCONTRACT_APPLICATION'
+                                           AND decomposition.task_status = 'WAITING_ORDER'
+                                           AND EXISTS (
+                                               SELECT 1 FROM subcontract_application_items gap_item
+                                               WHERE gap_item.id = decomposition.action_item_id
+                                                 AND gap_item.is_deleted = FALSE
+                                                 AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id))))
+                                       OVER (PARTITION BY decomposition.action_doc_type, decomposition.action_doc_id,
+                                                          decomposition.task_status) AS bom_missing
+                            FROM v_procurement_decomposition_tasks decomposition
+                            WHERE decomposition.department = :department
+                              AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)
+                        ) counted
+                        WHERE counted.open_qty > 0 AND NOT counted.bom_missing
+                    ) documents
+                    """.formatted(shortDelivery)
+                : decomposition
                 ? """
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT decomposition.action_doc_id
                         FROM v_procurement_decomposition_tasks decomposition
                         WHERE decomposition.department = :department AND decomposition.open_qty > 0
-                          AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)
-                        %s
+                          AND decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')
                     ) documents
-                    """.formatted(shortDelivery, preparation)
+                    """
                 : """
                     SELECT COUNT(*) FROM %s documents
                     WHERE department = :department AND open_line_count > 0%s
@@ -764,7 +739,10 @@ public class FulfillmentWorkbenchQueryService {
                 "OPEN_ANY", ready + partial + discovery);
     }
 
-    /** Pending preparation is a server-paged read-only task, never a client-side extra row. */
+    /**
+     * 列表行的服务端派生列: 委外取最早来源行动时间与执行状态列(display_stage), 采购/委外改写
+     * 异常小类, 仓库取来源生产产品与领料申请号。状态列的表头筛选/排序都走 display_stage。
+     */
     private String enrichTableRows(String source, String department) {
         boolean subcontract = "SUBCONTRACT".equals(department);
         boolean purchase = "PURCHASE".equals(department);
@@ -772,7 +750,7 @@ public class FulfillmentWorkbenchQueryService {
                 : purchase && accessPolicy.canCreatePurchaseOrder();
         String requestType = subcontract ? "SUBCONTRACT_APPLICATION" : "PURCHASE_REQUEST";
         List<String> types = "WAREHOUSE".equals(department) ? List.of("DRAW", "MATERIAL_DISCOVERY")
-                : subcontract ? List.of("SUBCONTRACT_APPLICATION", "SUBCONTRACT_ORDER", "SUBCONTRACT_MAKE_TASK")
+                : subcontract ? List.of("SUBCONTRACT_APPLICATION", "SUBCONTRACT_ORDER")
                 : List.of("PURCHASE_REQUEST", "PURCHASE_ORDER");
         String readable = types.stream().filter(type -> accessPolicy.documentAccess(department, type) != null
                         && accessPolicy.documentAccess(department, type).canView())
@@ -790,63 +768,26 @@ public class FulfillmentWorkbenchQueryService {
                         FROM unnest(base.action_item_ids) item
                         JOIN subcontract_order_item_sources source ON source.order_item_id=item::uuid
                         WHERE base.action_doc_type='SUBCONTRACT_ORDER' AND source.alloc_qty > 0
-                    ), origin_actions AS (
-                        SELECT task.supply_action_id AS id
-                        FROM preplan_subcontract_make_tasks task
-                        WHERE base.action_doc_type='SUBCONTRACT_MAKE_TASK' AND task.id=base.action_doc_id
-                        UNION
-                        SELECT task.supply_action_id
-                        FROM source_items source
-                        JOIN preplan_subcontract_make_task_batches batch ON batch.application_item_id=source.application_item_id
-                        JOIN preplan_subcontract_make_tasks task ON task.id=batch.task_id
-                        UNION
-                        SELECT allocation.action_id
-                        FROM source_items source
-                        JOIN preplan_supply_action_allocations allocation ON allocation.external_item_id=source.application_item_id
-                        JOIN preplan_supply_actions action ON action.id=allocation.action_id
-                          AND action.external_document_type='SUBCONTRACT_APPLICATION' AND action.route='SUBCONTRACT'
-                        WHERE NOT EXISTS(SELECT 1 FROM preplan_subcontract_make_task_batches batch
-                                         WHERE batch.application_item_id=source.application_item_id)
                     )
                     SELECT MIN(action.created_at) AS issued_at
-                    FROM origin_actions origin JOIN preplan_supply_actions action ON action.id=origin.id
+                    FROM source_items source
+                    JOIN preplan_supply_action_allocations allocation
+                      ON allocation.external_item_id=source.application_item_id
+                    JOIN preplan_supply_actions action ON action.id=allocation.action_id
+                      AND action.external_document_type='SUBCONTRACT_APPLICATION' AND action.route='SUBCONTRACT'
                 ) issue ON TRUE
                 """ : "";
-        // ADR-103 路线 B: 申请行 (下单前) 按「单一子件的子件仓里有没有货」加锁. 归组行一张申请
-        // 多明细 (base.goods_id 可能为 NULL), 所以按申请 id 展开到 subcontract_application_items,
-        // 任一单一子件明细无货即整张申请锁 (BOOL_OR); available_qty 取各单一子件明细可动用量的 MIN,
-        // 给前端提示「可发数量」. 非申请行把关联键置 NULL, 一行都不扫.
-        String componentJoin = subcontract ? """
-                LEFT JOIN LATERAL (
-                    SELECT BOOL_OR(sole.available_qty <= 0) AS locked,
-                           MIN(sole.available_qty) AS available_qty
-                    FROM (%s) sole
-                ) component ON TRUE
-                """.formatted(APPLICATION_SOLE_COMPONENT_ROWS.formatted(
-                "CASE WHEN base.action_doc_type = 'SUBCONTRACT_APPLICATION' THEN base.action_doc_id END")) : "";
-        // ADR-098：委外订货单在「进行中」里的执行状态(状态列/表头筛选/排序都走 display_stage)：
+        // ADR-143 §4.1「进行中」状态列: 已批准的委外订货单按各明细聚合, 取第一个命中——
         // 回厂短交待判定 > 分批等待中 > 容差内待结案 > 已回厂待入库(回厂净量已到齐, 只差质检入库)
-        // > 部分回厂 > 委外加工中(已发料/已出仓) > 出仓等子件到货 (ADR-103) > 待发料出仓；
+        // > 可领料 > 已提交领料·待仓库发料 > 部分回厂 > 委外加工中(有已发料) > 等待物料。
+        // 已批准的订货单一定有冻结领料计划行(缺 BOM 的委外件不能下单, ADR-143 §二.3)。
+        // 可领料逐明细按 fn_subcontract_draw_summary 判(领料计划开着、明细还有开着的领料行、可领 > 0),
+        // 从不把不同物料的数量相加; 只对财务已通过的订货单才去算。
         // 财务已退回与短交待判定同时写进 exception_code, 让异常小类行挂红徽章。
         String progressJoin = subcontract ? """
                 LEFT JOIN LATERAL (
                     SELECT %s AS short_pending,
                            %s AS tolerant_pending,
-                           EXISTS (SELECT 1 FROM subcontract_material_plan_items waiting_item
-                                   JOIN subcontract_material_plans waiting_plan
-                                     ON waiting_plan.id = waiting_item.plan_id
-                                    AND waiting_plan.status = 'OPEN' AND NOT waiting_plan.is_deleted
-                                   WHERE waiting_plan.order_id = base.action_doc_id
-                                     AND NOT waiting_item.is_deleted
-                                     AND waiting_item.flow_mode = 'COMPONENT_OUTBOUND'
-                                     AND LEAST(waiting_item.planned_qty, waiting_item.prepared_qty)
-                                         - waiting_item.issued_qty > 0
-                                     AND NOT EXISTS (SELECT 1 FROM subcontract_material_issue_items draft_item
-                                                     JOIN subcontract_material_issues draft_doc
-                                                       ON draft_doc.id = draft_item.issue_id
-                                                     WHERE draft_item.plan_item_id = waiting_item.id
-                                                       AND draft_doc.status = 0 AND NOT draft_doc.is_deleted)
-                                     AND %s <= 0) AS waiting_component,
                            EXISTS (SELECT 1 FROM subcontract_short_delivery_cases waiting_case
                                    WHERE waiting_case.order_id = base.action_doc_id
                                      AND waiting_case.status = 'WAITING_MORE'
@@ -863,6 +804,36 @@ public class FulfillmentWorkbenchQueryService {
                                              - COALESCE(pending_item.returned_qty, 0)
                                              + %s
                                              < COALESCE(pending_item.qty, 0)) AS all_received,
+                           EXISTS (SELECT 1 FROM subcontract_order_items draw_item
+                                   CROSS JOIN LATERAL fn_subcontract_draw_summary(draw_item.id) draw_summary
+                                   WHERE base.task_status = 'FINANCE_APPROVED'
+                                     AND draw_item.order_id = base.action_doc_id
+                                     AND NOT draw_item.is_deleted
+                                     AND draw_summary.drawable_qty > 0
+                                     AND GREATEST(COALESCE(draw_item.received_qty, 0)
+                                                  - COALESCE(draw_item.returned_qty, 0), 0)
+                                         + %s < draw_item.qty
+                                     AND EXISTS (SELECT 1 FROM subcontract_material_plans draw_plan
+                                                 JOIN subcontract_material_plan_items open_line
+                                                   ON open_line.plan_id = draw_plan.id
+                                                  AND open_line.order_item_id = draw_item.id
+                                                  AND NOT open_line.is_deleted
+                                                  AND open_line.draw_closed_at IS NULL
+                                                  AND open_line.issued_qty < fn_subcontract_draw_needed_qty(
+                                                      open_line.order_item_id, open_line.planned_qty,
+                                                      open_line.bom_unit_qty)
+                                                 WHERE draw_plan.order_id = base.action_doc_id
+                                                   AND draw_plan.status = 'OPEN'
+                                                   AND NOT draw_plan.is_deleted)) AS any_drawable,
+                           EXISTS (SELECT 1 FROM subcontract_material_issue_items draft_item
+                                   JOIN subcontract_material_issues draft_doc
+                                     ON draft_doc.id = draft_item.issue_id
+                                    AND draft_doc.status = 0 AND NOT draft_doc.is_deleted
+                                   JOIN subcontract_order_items draft_order_item
+                                     ON draft_order_item.id = draft_item.order_item_id
+                                   WHERE draft_order_item.order_id = base.action_doc_id
+                                     AND draft_item.plan_item_id IS NOT NULL
+                                     AND NOT draft_item.is_deleted) AS any_draw_submitted,
                            EXISTS (SELECT 1 FROM subcontract_material_issue_items issued_item
                                    JOIN subcontract_material_issues issued_doc
                                      ON issued_doc.id = issued_item.issue_id
@@ -875,34 +846,24 @@ public class FulfillmentWorkbenchQueryService {
                 ) progress ON TRUE
                 """.formatted(SHORT_DELIVERY_PENDING_EXISTS.formatted("base.action_doc_id"),
                         SHORT_DELIVERY_TOLERANT_EXISTS.formatted("base.action_doc_id"),
-                        COMPONENT_STOCK_AVAILABLE_SQL.formatted("NULL::uuid", "waiting_item.order_item_id"),
-                        SubcontractLossSettlementSql.acceptedLossQty("pending_item.id")) : "";
+                        SubcontractLossSettlementSql.acceptedLossQty("pending_item.id"),
+                        SubcontractLossSettlementSql.acceptedLossQty("draw_item.id")) : "";
         // ADR-100：采购侧的执行状态就是 task_status 本身(等待财务审核 / 财务已通过 /
         // 财务已退回三档), 下面的 ELSE 分支已经把它落进 display_stage —— 采购与委外因此
         // 共用同一列做状态列、表头筛选与排序, 采购不另算一遍。
-        // ADR-103: 申请行两档——锁住 WAITING_COMPONENT_STOCK (等子件到货, 黄) / 解锁 COMPONENT_STOCK_READY
-        // (子件有货可下委外订货, 红, 行带 component_available_qty); 普通委外件仍是 WAITING_ORDER.
-        // 财务已通过的订货单: 计划行还有余量、没有未审草稿、子件仓里又一件都没有 → OUTBOUND_WAITING_COMPONENT,
-        // 排在 AT_SUPPLIER 之前——分批发了一部分、其余还在等子件时, 委外部门要看到的是「还有货发不出去」,
-        // 而不是被「委外加工中」盖住(2026-09-22 8081 冒烟: 发出 6 剩 4994 等料, 原排序显示成 AT_SUPPLIER)。
         String stageExpression = subcontract ? """
-                CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
-                     WHEN base.action_doc_type='SUBCONTRACT_APPLICATION' AND base.task_status='WAITING_ORDER'
-                          AND COALESCE(component.locked, FALSE) THEN 'WAITING_COMPONENT_STOCK'
-                     WHEN base.action_doc_type='SUBCONTRACT_APPLICATION' AND base.task_status='WAITING_ORDER'
-                          AND component.available_qty > 0 THEN 'COMPONENT_STOCK_READY'
-                     WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND base.task_status='FINANCE_APPROVED' THEN
+                CASE WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND base.task_status='FINANCE_APPROVED' THEN
                           CASE WHEN progress.short_pending THEN 'SHORT_DELIVERY'
                                WHEN progress.waiting_more THEN 'WAITING_MORE_BATCH'
                                WHEN progress.tolerant_pending THEN 'TOLERANT_SHORT'
                                WHEN progress.any_received AND progress.all_received THEN 'RECEIVED_PENDING_STOCK'
+                               WHEN progress.any_drawable THEN 'DRAWABLE'
+                               WHEN progress.any_draw_submitted THEN 'DRAW_SUBMITTED'
                                WHEN progress.any_received THEN 'PARTIAL_RECEIVED'
-                               WHEN progress.waiting_component THEN 'OUTBOUND_WAITING_COMPONENT'
                                WHEN progress.any_issued THEN 'AT_SUPPLIER'
-                               ELSE 'AWAITING_OUTBOUND' END
-                     ELSE base.task_status END""" : """
-                CASE WHEN base.action_doc_type='SUBCONTRACT_MAKE_TASK' THEN base.action_doc_status
-                     ELSE base.task_status END""";
+                               ELSE 'WAITING_MATERIAL' END
+                     WHEN base.action_doc_type='SUBCONTRACT_APPLICATION' AND bom_gap.bom_missing THEN 'BOM_MISSING'
+                     ELSE base.task_status END""" : "base.task_status";
         // 采购的财务已退回也写进 exception_code(与委外同构)：分段栏虽把它并进了「进行中」,
         // 但改单重报是本部门要动手的活, 必须继续以异常小类行挂红徽章;
         // countPending 走的是 task_status, 不受这里改写影响, 红数一个不少。
@@ -940,8 +901,27 @@ public class FulfillmentWorkbenchQueryService {
                     JOIN goods ON goods.id=segment.product_goods_id
                 ) production_product ON TRUE
                 """ : "";
+        // ADR-143 §二.3：待分解的委外申请里缺 BOM(没有可发外直属物料)的明细。这张申请不能生成订货单,
+        // 状态列显示「缺 BOM·已通知研发」并带上研发任务编号; 没有未完成研发任务时页面按 bom_missing_item_ids
+        // 逐条「通知研发完善」(POST /api/subcontract/applications/items/{id}/forward-bom)。
+        String bomGapJoin = subcontract ? """
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) > 0 AS bom_missing,
+                           STRING_AGG(DISTINCT open_task.task_no, '、' ORDER BY open_task.task_no) AS rd_task_no,
+                           ARRAY_AGG(DISTINCT gap_item.id::text ORDER BY gap_item.id::text) AS item_ids
+                    FROM unnest(base.action_item_ids) gap_ref(item_id)
+                    JOIN subcontract_application_items gap_item
+                      ON gap_item.id = gap_ref.item_id::uuid AND gap_item.is_deleted = FALSE
+                    LEFT JOIN rd_tasks open_task
+                      ON open_task.goods_id = gap_item.goods_id AND open_task.category = 'BOM'
+                     AND open_task.status IN ('OPEN', 'IN_PROGRESS') AND open_task.is_deleted = FALSE
+                    WHERE base.action_doc_type = 'SUBCONTRACT_APPLICATION'
+                      AND base.task_status = 'WAITING_ORDER'
+                      AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id))
+                ) bom_gap ON TRUE
+                """ : "";
         // A grouped order can contain several real source issues. Its earliest source issue
-        // remains the displayed date; later preparation/app creation never substitutes for it.
+        // remains the displayed date; later application creation never substitutes for it.
         return """
                 (SELECT base.department, base.task_id, base.package_id, base.plan_id, base.plan_no,
                         base.warehouse_id, base.warehouse_name, base.goods_id, base.goods_code,
@@ -956,62 +936,23 @@ public class FulfillmentWorkbenchQueryService {
                             AND base.open_line_count > 0%s) AS can_create_order,
                         %s AS visible_doc_no,
                         %s AS display_stage,
-                        %s AS component_available_qty,
                         (base.action_doc_type IS DISTINCT FROM 'MATERIAL_DISCOVERY' OR base.goods_count>0) AS materials_defined,
                         %s AS production_product_code, %s AS production_product_name, %s AS material_request_no,
                         %s AS execution_segment_codes,
-                        base.workshop_name, base.worker_name, base.draw_batch_no, base.lines
+                        base.workshop_name, base.worker_name, base.draw_batch_no, base.lines,
+                        %s AS rd_task_no, %s AS bom_missing_item_ids
                  FROM %s base %s %s %s %s)
                 """.formatted(exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
-                        // ADR-103: 路线 B 锁住的申请不能生成委外订货单 (与建单/送审/批准的服务端守卫同判据).
-                        subcontract ? " AND NOT COALESCE(component.locked, FALSE)" : "",
+                        subcontract ? " AND NOT COALESCE(bom_gap.bom_missing, FALSE)" : "",
                         visibleDoc, stageExpression,
-                        subcontract ? "component.available_qty" : "NULL::numeric",
                         "WAREHOUSE".equals(department) ? "production_product.product_code" : "NULL::text",
                         "WAREHOUSE".equals(department) ? "production_product.product_name" : "NULL::text",
                         "WAREHOUSE".equals(department) ? "production_product.request_no" : "NULL::text",
                         "WAREHOUSE".equals(department) ? "production_product.segment_codes" : "NULL::text",
-                        source, issueJoin, progressJoin, componentJoin, productionProductJoin);
-    }
-
-    private static String subcontractPreparationRows() {
-        return """
-                SELECT 'SUBCONTRACT'::text AS department, task.id AS task_id,
-                       NULL::uuid AS package_id, NULL::uuid AS plan_id,
-                       COALESCE(item.source_ref, '') AS plan_no,
-                       task.warehouse_id, warehouse.name AS warehouse_name,
-                       task.goods_id, goods.code AS goods_code, goods.name AS goods_name,
-                       ''::text AS spec, task.color_id, color.name AS color_name,
-                       task.unit_id, unit.name AS unit_name, 'SUBCONTRACT'::text AS supply_route,
-                       task.required_qty, 0::numeric AS allocated_qty,
-                       task.produced_qty AS fulfilled_qty, task.notified_qty AS supply_pegged_qty,
-                       task.required_qty - task.notified_qty AS open_qty,
-                       'WAITING_ORDER'::text AS task_status, item.delivery_date AS need_date,
-                       NULL::date AS expected_date, NULL::text AS exception_code, task.updated_at,
-                       'SUBCONTRACT_MAKE_TASK'::text AS action_doc_type,
-                       task.id AS action_doc_id, COALESCE(item.source_ref, '') AS action_doc_no,
-                       NULL::uuid AS action_item_id,
-                       CASE WHEN task.produced_qty > 0 THEN 'PRODUCED'
-                            WHEN EXISTS (
-                                SELECT 1 FROM production_plans plan
-                                JOIN production_execution_segments segment ON segment.plan_id = plan.id
-                                WHERE plan.material_analysis_item_id = task.preparation_item_id
-                                  AND NOT plan.is_deleted AND NOT plan.is_canceled
-                                  AND NOT segment.is_deleted AND segment.status NOT IN ('CANCELLED','REVERSED')
-                            ) THEN 'IN_PRODUCTION' ELSE 'NOTIFYING_WORKSHOP' END AS action_doc_status,
-                       1::bigint AS goods_count, 1::bigint AS open_line_count,
-                       ARRAY[]::text[] AS action_item_ids,
-                       NULL::text AS workshop_name, NULL::text AS worker_name,
-                       NULL::text AS draw_batch_no, '[]'::jsonb AS lines
-                FROM preplan_subcontract_make_tasks task
-                JOIN goods ON goods.id = task.goods_id
-                LEFT JOIN colors color ON color.id = task.color_id
-                LEFT JOIN units unit ON unit.id = task.unit_id
-                LEFT JOIN warehouses warehouse ON warehouse.id = task.warehouse_id
-                LEFT JOIN production_material_analysis_items item ON item.id = task.preparation_item_id
-                WHERE %s
-                """.formatted(PENDING_MAKE);
+                        subcontract ? "bom_gap.rd_task_no" : "NULL::text",
+                        subcontract ? "COALESCE(bom_gap.item_ids, ARRAY[]::text[])" : "ARRAY[]::text[]",
+                        source, issueJoin, progressJoin, bomGapJoin, productionProductJoin);
     }
 
     private static FulfillmentWorkbenchPage emptyPage(int page, int size) {
@@ -1081,15 +1022,16 @@ public class FulfillmentWorkbenchQueryService {
                 stringArray(row[33]), row.length > 34 ? offsetDateTime(row[34]) : null,
                 row.length > 35 && Boolean.TRUE.equals(row[35]),
                 row.length > 36 ? (String) row[36] : null,
-                row.length > 37 && row[37] != null ? new BigDecimal(row[37].toString()) : null,
-                List.of(), row.length <= 38 || Boolean.TRUE.equals(row[38]),
+                List.of(), row.length <= 37 || Boolean.TRUE.equals(row[37]),
+                row.length > 38 ? (String) row[38] : null,
                 row.length > 39 ? (String) row[39] : null,
                 row.length > 40 ? (String) row[40] : null,
                 row.length > 41 ? (String) row[41] : null,
                 row.length > 42 ? (String) row[42] : null,
                 row.length > 43 ? (String) row[43] : null,
-                row.length > 44 ? (String) row[44] : null,
-                row.length > 45 ? parseLines(row[45]) : List.of());
+                row.length > 44 ? parseLines(row[44]) : List.of(),
+                row.length > 45 ? (String) row[45] : null,
+                row.length > 46 ? stringArray(row[46]) : List.of());
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper LINES_MAPPER =
@@ -1244,9 +1186,10 @@ public class FulfillmentWorkbenchQueryService {
                 row.goodsCount(), row.openLineCount(),
                 restricted ? List.of() : row.actionItemIds(), row.issuedAt(),
                 !restricted && row.canCreateOrder(), row.displayStage(),
-                row.componentAvailableQty(), restricted ? List.of() : row.sources(), row.materialsDefined(),
+                restricted ? List.of() : row.sources(), row.materialsDefined(),
                 row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo(),
-                row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines());
+                row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines(),
+                row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds());
     }
 
     private static BigDecimal decimal(Object value) {

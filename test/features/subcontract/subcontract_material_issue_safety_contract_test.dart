@@ -6,15 +6,17 @@ import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 
 void main() {
   group('委外发料安全门禁', () {
-    test('目标件出仓审核已启用且历史 BOM 子件守恒保持兼容', () {
+    test('委外材料出仓单审核发出领料提交的直属物料', () {
       const config = SubcontractDocConfig.materialIssue;
 
-      // V436 新流只审核服务端已放行的订货目标件；LEGACY_BOM_COMPONENT 历史行
-      // 仍按冻结 BOM 单耗和供应商子件台账守恒。两者都由后端 CAS/数量守恒兜底。
+      // ADR-143：出仓单只来自委外人员「领料」提交，仓库实发不超过领料数量；
+      // 数量守恒由后端 CAS/数量守恒兜底。
       expect(config.approvalEnabled, isTrue);
       expect(config.approvalBlockedReason, isNull);
-      expect(config.approveEffect, contains('目标件出仓'));
-      expect(config.approveEffect, contains('历史 BOM 子件发料'));
+      expect(config.approveEffect, contains('直属物料'));
+      expect(config.approveEffect, contains('领料'));
+      expect(config.approveEffect, isNot(contains('目标件')));
+      expect(SubcontractDocConfig.order.approveEffect, isNot(contains('前置自制')));
       expect(SubcontractDocConfig.receipt.approvalEnabled, isTrue);
     });
 

@@ -5,8 +5,8 @@ import '../../../shared/business_columns/business_columns_table.dart';
 // 计划下达的委外申请始终只读；订货走财务审批；其余单据才沿用各自的草稿/审核/红冲动作。
 // 财务决定只存在于财务任务中心；本页仅消费业务动作能力与 SUBMIT_FINANCE。
 // 名称解析：委外商(supplier)/仓库/币种/颜色/单位复用采购 MasterNameService；货品按明细 id 批量 lookup。
-// 审核仅调 approve，库存/应付/累计联动由后端承担；新流出仓草稿由仓库任务生成并只出目标件，
-// LEGACY_BOM_COMPONENT 历史单据继续保留原冻结子件守恒与反向能力。
+// 审核仅调 approve，库存/应付/累计联动由后端承担；委外材料出仓单由委外人员在任务中心
+// 「领料」提交后生成，仓库在委外出仓工作台拣货发出(ADR-143)。
 //
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
 // UtenCollapsingHeaderScrollView——上滑先折叠头部（只读提示/表头卡/横幅/进度/附件），
@@ -662,12 +662,12 @@ class _SubcontractDocDetailPageState
                                 _shortDeliveryHoldBanner(theme),
                               ],
                               const SizedBox(height: UtenSpacing.s12),
-                              // V304 全链路进度包含商业/履约扩展端点；仅持财务审批任务 view
+                              // 全链路进度(ADR-143 §4.6)含履约扩展端点；仅持财务审批任务 view
                               // 的点名审核员可看主订货详情，但不额外放宽完整委外进度权限。
+                              // 每个委外任务的时间线(含结案核销)由服务端判定。
                               if (canViewOrderProgress)
                                 SubcontractOrderProgressSection(
                                   orderId: _detail!.id,
-                                  orderClosed: _detail!.closed,
                                 )
                               else
                                 Text(
@@ -1395,9 +1395,8 @@ class _SubcontractDocDetailPageState
         : rejected
         ? '退回原因：${reason?.isNotEmpty == true ? reason : '未填写'}'
         : approved
-        ? '委外订货单已生效。无子层级目标件在合格库存放行后通知仓库出仓；'
-              '有子层级目标件先进入计划部前置自制，完成领料、报工、FQC 和成品入仓后'
-              '再通知仓库出仓。委外加工完成回厂后仍需 IQC 合格才正式入仓。'
+        ? '委外订货单已生效。直属物料齐套后在委外任务中心「领料」提交，'
+              '仓库发出后委外商加工；回厂仍需 IQC 合格入仓。'
         : '填写委外商、数量和单价并保存后，请点击“提交财务审核”。';
     final background = rejected
         ? theme.colorScheme.errorContainer

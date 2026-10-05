@@ -150,11 +150,11 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     /**
-     * ADR-103 路线 B: 委外红数要剔除「子件仓里一件都没有」的申请行, 判据片段与列表同一常量;
-     * 采购分支的 SQL 一个字都不能带上这段.
+     * 委外红数只数申请待分解、财务驳回与回厂短交待判定; 「可领料」的委外任务是「领料」分段的红数,
+     * 由委外领料模块单独登记, 这里不能再数一遍; 前置自制合成行已经删除。采购分支不带委外片段。
      */
     @Test
-    void subcontractPendingCountExcludesRouteBLockedApplicationsAndPurchaseStaysUntouched() {
+    void subcontractPendingCountLeavesDrawableTasksToTheDrawSegmentAndPurchaseStaysUntouched() {
         EntityManager em = mock(EntityManager.class);
         Query countQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
@@ -167,20 +167,19 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(2)).createNativeQuery(sql.capture());
-        // ADR-103 (2026-09-22 用户实机纠偏): 锁行照计红数, 与路线 A 合成行同款——红数 SQL 不碰子件库存.
         String subcontract = sql.getAllValues().getFirst();
-        assertFalse(subcontract.contains("fn_subcontract_sole_component_goods"));
-        assertFalse(subcontract.contains("v_stock_available"));
         assertTrue(subcontract.contains("decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')"));
+        assertTrue(subcontract.contains("subcontract_short_delivery_cases"));
+        assertFalse(subcontract.contains("fn_subcontract_draw_summary"));
+        assertFalse(subcontract.contains("preplan_subcontract_make_tasks"));
         String purchase = sql.getAllValues().getLast();
-        assertFalse(purchase.contains("fn_subcontract_sole_component_goods"));
-        assertFalse(purchase.contains("v_stock_available"));
+        assertFalse(purchase.contains("subcontract_short_delivery_cases"));
         assertFalse(purchase.contains("decomposition.action_doc_type"));
     }
 
-    /** ADR-103 (2026-09-22 用户实机纠偏): 锁行留在待处理段, 黄数只数财审三档, 不再把锁行加进来. */
+    /** 黄数只数财审三档(等待财务审核 / 财务已通过 / 财务已退回), 采购与委外同一口径。 */
     @Test
-    void subcontractInProgressCountAddsRouteBLockedApplications() {
+    void inProgressCountOnlyCountsTheThreeFinanceStages() {
         EntityManager em = mock(EntityManager.class);
         Query countQuery = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(countQuery);
@@ -193,22 +192,19 @@ class FulfillmentWorkbenchQueryServiceTest {
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(2)).createNativeQuery(sql.capture());
-        String subcontract = sql.getAllValues().getFirst();
-        assertFalse(subcontract.contains("fn_subcontract_sole_component_goods"));
-        assertFalse(subcontract.contains("decomposition.open_qty > 0 AND"));
-        assertTrue(subcontract.contains("task_status IN ('ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED')"));
-        String purchase = sql.getAllValues().getLast();
-        assertFalse(purchase.contains("fn_subcontract_sole_component_goods"));
-        assertTrue(purchase.contains("task_status IN ('ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED')"));
+        for (String captured : sql.getAllValues()) {
+            assertFalse(captured.contains("decomposition.open_qty > 0 AND"));
+            assertTrue(captured.contains(
+                    "task_status IN ('ORDER_PENDING_APPROVAL', 'FINANCE_APPROVED', 'FINANCE_REJECTED')"));
+        }
     }
 
     /**
-     * ADR-103: 委外列表行带路线 B 的三个阶段码与 component_available_qty 列, 锁行不能生成订货单;
-     * 分段计数仍按 task_status 分桶(锁行留在 WAITING_ORDER, 用户口径「刚下单的都是待处理」),
-     * WAITING_COMPONENT_STOCK 键只是其中在等子件的行数(说明用), IN_PROGRESS 只数财审三档.
+     * ADR-143 §4.1: 已批准委外订货单的「进行中」状态列按领料模型取第一个命中, 可领料逐明细按
+     * fn_subcontract_draw_summary 判; 分段计数仍按 task_status 分桶, IN_PROGRESS 只数财审三档。
      */
     @Test
-    void subcontractRowsCarryComponentLockStagesAndStatusCountsSplitTheLockedBucket() {
+    void subcontractOrderStagesFollowTheDrawModelAndStatusCountsStayOnTaskStatus() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
         Query summary = mock(Query.class);
@@ -220,8 +216,8 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(rows.getResultList()).thenReturn(List.of());
         when(summary.getSingleResult()).thenReturn(new Object[]{3L, 0L, 3L, new BigDecimal("30")});
         when(statuses.getResultList()).thenReturn(List.of(
-                new Object[]{"FINANCE_APPROVED", 1L, 0L},
-                new Object[]{"WAITING_ORDER", 4L, 2L}));
+                new Object[]{"FINANCE_APPROVED", 1L},
+                new Object[]{"WAITING_ORDER", 4L}));
         when(exceptions.getResultList()).thenReturn(List.of());
         when(pending.getSingleResult()).thenReturn(3L);
         FulfillmentWorkbenchAccessPolicy accessPolicy = mock(FulfillmentWorkbenchAccessPolicy.class);
@@ -230,34 +226,47 @@ class FulfillmentWorkbenchQueryServiceTest {
         FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(em, accessPolicy)
                 .query("SUBCONTRACT", "WAITING_ORDER", "", "", null, null, 1, 20);
 
-        assertEquals(2L, page.summary().statusCounts().get("WAITING_COMPONENT_STOCK"));
-        assertEquals(4L, page.summary().statusCounts().get("WAITING_ORDER"), "锁行留在 WAITING_ORDER 桶里, 不减");
+        assertEquals(4L, page.summary().statusCounts().get("WAITING_ORDER"));
         assertEquals(1L, page.summary().statusCounts().get("IN_PROGRESS"), "黄数只数财审三档");
+        assertFalse(page.summary().statusCounts().containsKey("WAITING_COMPONENT_STOCK"));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(5)).createNativeQuery(sql.capture());
         String rowsSql = sql.getAllValues().getFirst();
-        assertTrue(rowsSql.contains("'WAITING_COMPONENT_STOCK'"));
-        assertTrue(rowsSql.contains("'COMPONENT_STOCK_READY'"));
-        assertTrue(rowsSql.contains("WHEN progress.waiting_component THEN 'OUTBOUND_WAITING_COMPONENT'"));
-        assertTrue(rowsSql.contains("AND NOT COALESCE(component.locked, FALSE)) AS can_create_order"));
-        assertTrue(rowsSql.contains("component.available_qty AS component_available_qty"));
-        assertTrue(rowsSql.contains("waiting_item.flow_mode = 'COMPONENT_OUTBOUND'"));
-        assertTrue(rowsSql.contains(FulfillmentWorkbenchQueryService.COMPONENT_STOCK_AVAILABLE_SQL
-                .formatted("NULL::uuid", "waiting_item.order_item_id")));
-        assertTrue(rowsSql.contains(FulfillmentWorkbenchQueryService.COMPONENT_STOCK_AVAILABLE_SQL
-                .formatted("sole_item.id", "NULL::uuid")));
-        // 锁行留在「待处理」段: 分段筛选按 task_status, 与采购同一句 SQL; 分桶只顺带数在等子件的行数.
-        assertFalse(rowsSql.contains("display_stage IS DISTINCT FROM 'WAITING_COMPONENT_STOCK'"));
+        List<String> precedence = List.of(
+                "THEN 'SHORT_DELIVERY'", "THEN 'WAITING_MORE_BATCH'", "THEN 'TOLERANT_SHORT'",
+                "THEN 'RECEIVED_PENDING_STOCK'", "WHEN progress.any_drawable THEN 'DRAWABLE'",
+                "WHEN progress.any_draw_submitted THEN 'DRAW_SUBMITTED'", "THEN 'PARTIAL_RECEIVED'",
+                "WHEN progress.any_issued THEN 'AT_SUPPLIER'", "ELSE 'WAITING_MATERIAL' END",
+                "AND bom_gap.bom_missing THEN 'BOM_MISSING'");
+        int previous = -1;
+        for (String stage : precedence) {
+            int at = rowsSql.indexOf(stage);
+            assertTrue(at > previous, "状态列优先级顺序: " + stage);
+            previous = at;
+        }
+        assertTrue(rowsSql.contains("CROSS JOIN LATERAL fn_subcontract_draw_summary(draw_item.id) draw_summary"));
+        // ADR-143 §二.3：委外申请里有缺 BOM 的委外件时不能生成订货单, 状态列为「缺 BOM·已通知研发」。
+        assertTrue(rowsSql.contains(
+                "AND base.open_line_count > 0 AND NOT COALESCE(bom_gap.bom_missing, FALSE)) AS can_create_order"));
+        assertTrue(rowsSql.contains("NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id))"));
+        assertTrue(rowsSql.contains("bom_gap.rd_task_no AS rd_task_no"));
         assertTrue(rowsSql.contains("OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)"));
+        for (String removed : List.of("flow_mode", "component", "AWAITING_OUTBOUND", "OUTBOUND_WAITING_COMPONENT",
+                "preplan_subcontract_make", "SUBCONTRACT_MAKE_TASK", "SUPPLIER_SELF_SUPPLIED", "self_supplied")) {
+            assertFalse(rowsSql.contains(removed), removed);
+        }
         String statusSql = sql.getAllValues().get(2);
-        assertTrue(statusSql.contains("COUNT(*) FILTER (WHERE display_stage = 'WAITING_COMPONENT_STOCK')"));
-        assertTrue(statusSql.contains("GROUP BY task_status"));
+        // ADR-143 §二.3: 缺 BOM 的申请行留在「待处理」段, 但单独按 BOM_MISSING 分桶, 不计入该段红数。
+        assertTrue(statusSql.contains(
+                "SELECT CASE WHEN display_stage = 'BOM_MISSING' THEN 'BOM_MISSING' ELSE task_status END AS status_key"));
+        assertTrue(statusSql.contains("GROUP BY 1"));
+        assertFalse(statusSql.contains("WAITING_COMPONENT_STOCK"));
     }
 
-    /** 采购列表不拼委外的子件锁, 只补一列 NULL 占位, 行映射两边同宽. */
+    /** 采购列表的状态列就是 task_status, 不拼委外的领料片段。 */
     @Test
-    void purchaseRowsDoNotCarryTheSubcontractComponentLock() {
+    void purchaseRowsUseTaskStatusAsDisplayStage() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
         Query summary = mock(Query.class);
@@ -272,23 +281,21 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(exceptions.getResultList()).thenReturn(List.of());
         when(pending.getSingleResult()).thenReturn(0L);
 
-        FulfillmentWorkbenchPage page = new FulfillmentWorkbenchQueryService(
-                em, mock(FulfillmentWorkbenchAccessPolicy.class))
+        new FulfillmentWorkbenchQueryService(em, mock(FulfillmentWorkbenchAccessPolicy.class))
                 .query("PURCHASE", "", "", "", null, null, 1, 20);
 
-        assertFalse(page.summary().statusCounts().containsKey("WAITING_COMPONENT_STOCK"));
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(5)).createNativeQuery(sql.capture());
         String rowsSql = sql.getAllValues().getFirst();
-        assertTrue(rowsSql.contains("NULL::numeric AS component_available_qty"));
-        assertFalse(rowsSql.contains("component.locked"));
-        assertFalse(rowsSql.contains("fn_subcontract_sole_component_goods"));
+        assertTrue(rowsSql.contains("base.task_status AS display_stage"));
+        assertFalse(rowsSql.contains("fn_subcontract_draw_summary"));
+        assertFalse(rowsSql.contains("component"));
         assertTrue(rowsSql.contains("OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)"));
     }
 
-    /** ADR-103: 第 38 列 component_available_qty 读进行对象, 脱敏/透传两条路都不丢, 短行 (旧 34 列) 为 null. */
+    /** 第 37 列 display_stage 读进行对象, 脱敏/透传两条路都不丢; 短行 (旧 34 列) 为 null. */
     @Test
-    void componentAvailableQtyIsReadFromTheRowAndSurvivesActionCopy() {
+    void displayStageAndOrderCapabilityAreReadFromTheRowAndSurviveActionCopy() {
         EntityManager em = mock(EntityManager.class);
         Query rows = mock(Query.class);
         Query summary = mock(Query.class);
@@ -301,10 +308,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         when(pending.getSingleResult()).thenReturn(0L);
         UUID documentId = UUID.randomUUID();
         Object[] wide = java.util.Arrays.copyOf(
-                taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", documentId, UUID.randomUUID()), 38);
+                taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", documentId, UUID.randomUUID()), 37);
         wide[35] = Boolean.TRUE;
-        wide[36] = "COMPONENT_STOCK_READY";
-        wide[37] = new BigDecimal("7.5");
+        wide[36] = "WAITING_ORDER";
         when(rows.getResultList()).thenReturn(List.of(
                 wide, taskRow("SUBCONTRACT", "SUBCONTRACT_APPLICATION", UUID.randomUUID(), UUID.randomUUID())));
         when(summary.getSingleResult()).thenReturn(new Object[]{2L, 0L, 2L, BigDecimal.TEN});
@@ -318,10 +324,9 @@ class FulfillmentWorkbenchQueryServiceTest {
                 .query("SUBCONTRACT", "", "", "", null, null, 1, 20);
 
         FulfillmentTaskRow ready = page.items().getFirst();
-        assertEquals(0, new BigDecimal("7.5").compareTo(ready.componentAvailableQty()));
-        assertEquals("COMPONENT_STOCK_READY", ready.displayStage());
+        assertEquals("WAITING_ORDER", ready.displayStage());
         assertTrue(ready.canCreateOrder());
-        assertEquals(null, page.items().get(1).componentAvailableQty());
+        assertEquals(null, page.items().get(1).displayStage());
     }
 
     @Test

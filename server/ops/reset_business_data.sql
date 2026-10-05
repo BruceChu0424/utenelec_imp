@@ -53,7 +53,7 @@ BEGIN
     FROM flyway_schema_history WHERE success AND type='SQL' AND version ~ '^[0-9]+$';
     -- Historical catalog accounting remains independently recountable. Execution
     -- requires V784+ so earlier reset functions cannot erase goods master settings.
-    -- V507/469、V508/470及V511至V794完整目录
+    -- V507/469、V508/470及V511至V799完整目录
     IF applied_max_version<784 OR (applied_max_version, applied_migration_count) NOT IN (
         (443, 405),
         (446, 408),
@@ -373,9 +373,18 @@ BEGIN
         -- V793：单设备登录撤销原因放行（重建 CHECK，不加表）。
         (793, 719),
         -- V794：AI 脱敏问题审计和调用计价快照。
-        (794, 720)
+        (794, 720),
+        -- V795：盘点申请原因可省略；V796：仓库通知按当前责任仓过滤；V797：已在测试服务器执行后
+        -- 被回退的委外领料方案(文件原样保留, 由 V798 删除或重写其对象)。
+        (795, 721),
+        (796, 722),
+        (797, 723),
+        -- V798(ADR-143)：委外按工序领直属物料与分批回厂, 删除前置自制全家九张表。
+        (798, 724),
+        -- V799(ADR-144)：采购允许超收比例与超出部分财务审批。
+        (799, 725)
     ) THEN
-        RAISE EXCEPTION '测试清空要求已核对的完整目录（最低 V784/710，现已登记 V794/720），实际 V%/%',applied_max_version,applied_migration_count;
+        RAISE EXCEPTION '测试清空要求已核对的完整目录（最低 V784/710，现已登记 V799/725），实际 V%/%',applied_max_version,applied_migration_count;
     END IF;
     IF to_regprocedure('public.fn_business_test_reset_active()') IS NULL THEN
         RAISE EXCEPTION '显式测试清空能力未安装，拒绝执行';
@@ -571,14 +580,6 @@ INSERT INTO reset_business_expected_policy(table_name,disposition) VALUES
 ('preplan_reallocation_make_supplements', 'CLEAR'),
 ('preplan_root_output_events', 'CLEAR'),
 ('preplan_stock_entitlement_events', 'CLEAR'),
-('preplan_subcontract_entitlement_handoff_slices', 'CLEAR'),
-('preplan_subcontract_make_batch_reversals', 'CLEAR'),
-('preplan_subcontract_make_task_batches', 'CLEAR'),
-('preplan_subcontract_make_tasks', 'CLEAR'),
-('preplan_subcontract_requirement_handoff_events', 'CLEAR'),
-('preplan_subcontract_requirement_handoff_items', 'CLEAR'),
-('preplan_subcontract_requirement_handoffs', 'CLEAR'),
-('preplan_subcontract_requirement_supply_claims', 'CLEAR'),
 ('preplan_supply_action_allocations', 'CLEAR'),
 ('preplan_supply_actions', 'CLEAR'),
 ('procurement_arrival_exception_events', 'CLEAR'),
@@ -790,6 +791,7 @@ INSERT INTO reset_business_expected_policy(table_name,disposition) VALUES
 ('subcontract_application_items', 'CLEAR'),
 ('subcontract_applications', 'CLEAR'),
 ('subcontract_component_stock_handoffs', 'CLEAR'),
+('subcontract_draw_notice_marks', 'CLEAR'),
 ('subcontract_inquiries', 'CLEAR'),
 ('subcontract_inquiry_items', 'CLEAR'),
 ('subcontract_loss_case_lines', 'CLEAR'),
@@ -808,7 +810,6 @@ INSERT INTO reset_business_expected_policy(table_name,disposition) VALUES
 ('subcontract_order_items', 'CLEAR'),
 ('subcontract_orders', 'CLEAR'),
 ('subcontract_outbound_issue_reservation_allocations', 'CLEAR'),
-('subcontract_outbound_preparation_commands', 'CLEAR'),
 ('subcontract_receipt_items', 'CLEAR'),
 ('subcontract_receipt_material_consumptions', 'CLEAR'),
 ('subcontract_receipts', 'CLEAR'),

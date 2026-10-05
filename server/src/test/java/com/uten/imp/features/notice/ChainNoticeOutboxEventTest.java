@@ -883,7 +883,7 @@ class ChainNoticeOutboxEventTest {
     }
 
     @Test
-    void subcontractFinanceApprovalReturnsSubmitterToOrderAndExplainsTargetPreparation() {
+    void subcontractFinanceApprovalReturnsSubmitterToOrderAndExplainsTheDrawStep() {
         UUID approvalCaseId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         UUID submitterUserId = UUID.randomUUID();
@@ -911,7 +911,7 @@ class ChainNoticeOutboxEventTest {
         verify(notice).publishForUser(
                 eq(submitterUserId),
                 eq("财务通过：WW-001"),
-                contains("目标件真实审核出仓后才进入仓库预计到货"),
+                contains("委外任务中心「领料」提交领料"),
                 eq(ChainNoticeService.TYPE_WORKFLOW),
                 anyString(),
                 eq("/subcontract/orders/" + orderId),

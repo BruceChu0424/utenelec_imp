@@ -121,7 +121,7 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.subcontractShortDeliveries,
     RouteName.procurementArrivalExceptions,
     // 2026-09-24 三段式：订货/成品退回/余料退回/损耗改 creator-only 新建卡；
-    // 历史 BOM 子件发料是只读历史，保留列表入口。
+    // 委外材料出仓单列表入口(领料由任务中心「领料」提交，仓库发出)。
     for (final seg in const ['orders', 'returns', 'material-returns', 'wastes'])
       '/subcontract/$seg/new',
     '/subcontract/material-issues',

@@ -137,7 +137,7 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         var preview=reallocations.replenishmentPreviewForCommand(a.analysisId(),transfer.idempotencyKey());
         assertEquals(a.analysisId(),preview.sourceAnalysis().analysisId());assertEquals(material(a,goods).materialLineId(),preview.sourceMaterialLineId());
         assertEquals(b.analysisId(),preview.targetAnalysisId());qty("4",preview.defaultQty());qty("4",preview.remainingSupplementQty());
-        assertEquals(List.of("BUY"),preview.allowedRoutes());assertTrue(preview.canOverSupply());assertFalse(preview.requiresPreparation());
+        assertEquals(List.of("BUY"),preview.allowedRoutes());assertTrue(preview.canOverSupply());
         assertEquals("NOTIFY_SUPPLY",preview.operation());
         assertEquals(actions,db.queryForObject("SELECT COUNT(*) FROM preplan_supply_actions WHERE analysis_id=?",Integer.class,a.analysisId()));
         final UUID wrongSource=b.analysisId();assertThrows(ApiException.class,()->reallocations.replenishmentPreview(wrongSource,preview.reallocationId()));

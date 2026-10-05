@@ -3040,7 +3040,7 @@ void main() {
   );
 
   testWidgets(
-    'confirmed SUBCONTRACT with BOM children remains explicitly executable',
+    'confirmed SUBCONTRACT with BOM children issues with notify permission alone',
     (tester) async {
       await _pumpPage(
         tester,
@@ -3049,14 +3049,14 @@ void main() {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
           Perm.productionMaterialAnalysisNotify,
-          Perm.productionMaterialAnalysisGenerate,
         },
         analysisJson: _pendingMakeCandidateAnalysisJson(
           parentRoute: 'SUBCONTRACT',
         ),
       );
 
-      // 有子层委外与自制同构：下层缺料不阻止显式下达，后续计划进入待料。
+      // ADR-143：有直属物料的委外件只下达委外申请(不进车间、不要生产计划权限)；
+      // 下层缺料不阻止下达，委外商的料由委外任务中心按齐套领出。
 
       _expectBucketCount(tester, 'subcontract', 1);
       await _openBucketDetail(tester, 'subcontract');
@@ -3095,41 +3095,6 @@ void main() {
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       expect(find.textContaining(RegExp(r'下达委外.*\(1\)')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'SUBCONTRACT_MAKE child has no second BOM root and no standalone section',
-    (tester) async {
-      await _pumpPage(
-        tester,
-        size: const Size(1200, 900),
-        permissions: const {
-          Perm.productionMaterialAnalysisCreate,
-          Perm.productionMaterialAnalysisRefresh,
-          Perm.productionMaterialAnalysisNotify,
-        },
-        analysisJson: _pendingMakeCandidateAnalysisJson(
-          parentRoute: 'SUBCONTRACT',
-          includeRealChild: true,
-          childSourceType: 'SUBCONTRACT_MAKE',
-        ),
-      );
-
-      // 2026-09-03 收口：委外子件与自制完全同构——不在页面下方重复开
-      // 「委外件前置自制」独立区块，也不在 BOM 树新开第二个产品根。
-      expect(find.text('委外件前置自制'), findsNothing);
-      expect(
-        find.byKey(const ValueKey('material-bom-product-pending-make-child-1')),
-        findsNothing,
-      );
-      // 子件身份只在分桶行表达一次：候选已被真实子件替代（waiting 桶里是
-      // 子件产品行，不再有候选行）。
-
-      await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
-      expect(find.textContaining('待自制壳体(自制备料)'), findsOneWidget);
-      expect(find.text('待自制壳体'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -3408,46 +3373,6 @@ void main() {
   );
 
   testWidgets(
-    'SUBCONTRACT make-first row without generate permission is blocked before any request',
-    (tester) async {
-      // ADR-099：要先自制目标件的委外行只走「下达车间」通道(issue-plans 的
-      // ARRANGE 段 + 级联页)，不再有 notify 整量接管的第二条路；没有生成生产
-      // 计划权限的账号在分桶页当面被拦下，预览/通知一个请求都不发。
-      final harness = await _pumpPage(
-        tester,
-        size: const Size(1600, 1000),
-        permissions: const {
-          Perm.productionMaterialAnalysisCreate,
-          Perm.productionMaterialAnalysisRefresh,
-          Perm.productionMaterialAnalysisNotify,
-        },
-        analysisJson: _priorityMakeSupplementAnalysisJson(
-          net: null,
-          subcontract: true,
-        ),
-      );
-      await _openBucketDetail(tester, 'subcontract');
-      await _tapBucketRowCheckbox(tester, '待自制壳体');
-      await tester.tap(
-        find.byKey(const Key('material-analysis-bucket-action-subcontract')),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        harness.requests.where(
-          (request) =>
-              request.path.endsWith('/notify') ||
-              request.path.endsWith('/issue-plans/preview') ||
-              request.path.endsWith('/aggregate-orders/submit'),
-        ),
-        isEmpty,
-      );
-      expect(find.byKey(const Key('supply-submit-confirm')), findsNothing);
-      expect(find.text('待自制壳体'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
     'MAKE priority supplement remainder uses existing child without adding responsibility twice',
     (tester) async {
       final remaining = _priorityMakeSupplementAnalysisJson(net: 0);
@@ -3712,7 +3637,7 @@ void main() {
         find.descendant(of: subcontractRow, matching: find.byType(Checkbox)),
         findsWidgets,
       );
-      // 委外路线同样在桶详情页勾选批量下达（V458：有子层由服务端转前置自制）。
+      // 委外路线同样在桶详情页勾选批量下达(有无下层都只下达委外申请，ADR-143)。
       await _openBucketDetail(tester, 'subcontract');
       await _tapBucketRowCheckbox(tester, '共享紧固件');
       expect(find.textContaining(RegExp(r'下达委外.*\(1\)')), findsOneWidget);
@@ -10132,7 +10057,6 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
   bool actionable = true,
   bool includeMixedReadyCandidate = false,
   String parentRoute = 'MAKE',
-  String childSourceType = 'MAKE_COMPONENT',
 }) {
   final json = _analysisJson(const ['NOTIFY_SUPPLY', 'GENERATE_PLAN']);
   final childShortage = lowerLevelPending ? 4 : 0;
@@ -10152,9 +10076,7 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
       'notifiedTargets': [
         {
           'target': parentRoute,
-          'documentType': parentRoute == 'SUBCONTRACT'
-              ? 'SUBCONTRACT_MAKE_TASK'
-              : 'PREPLAN_MAKE_TASK',
+          'documentType': 'PREPLAN_MAKE_TASK',
           'documentId': 'pending-make-child-1',
           'status': 'CREATED',
         },
@@ -10248,7 +10170,7 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
   if (includeRealChild) {
     (json['products']! as List<dynamic>).add({
       'analysisLineId': 'pending-make-child-1',
-      'sourceType': childSourceType,
+      'sourceType': 'MAKE_COMPONENT',
       'parentAnalysisLineId': 'product-line-1',
       'parentGoodsName': '测试产品',
       'goodsId': 'goods-pending-make-1',
@@ -10266,7 +10188,6 @@ Map<String, dynamic> _pendingMakeCandidateAnalysisJson({
 
 Map<String, dynamic> _priorityMakeSupplementAnalysisJson({
   required double? net,
-  bool subcontract = false,
 }) {
   final json =
       jsonDecode(
@@ -10274,10 +10195,6 @@ Map<String, dynamic> _priorityMakeSupplementAnalysisJson({
               _pendingMakeCandidateAnalysisJson(
                 includeRealChild: true,
                 lowerLevelPending: false,
-                parentRoute: subcontract ? 'SUBCONTRACT' : 'MAKE',
-                childSourceType: subcontract
-                    ? 'SUBCONTRACT_MAKE'
-                    : 'MAKE_COMPONENT',
               ),
             ),
           )
@@ -10286,16 +10203,16 @@ Map<String, dynamic> _priorityMakeSupplementAnalysisJson({
       .cast<Map<String, dynamic>>()
       .first;
   parent.addAll({
-    'requiredQty': subcontract ? 8 : 0,
+    'requiredQty': 0,
     'shortageQty': 4,
-    'demandSupplyGapQty': subcontract ? 4 : 0,
+    'demandSupplyGapQty': 0,
     // 服务端的「还可下达」= max(0, 缺口 − 有效在途覆盖)，必须与缺口一起改；
     // 只改 demandSupplyGapQty 会留下一个真实服务端不可能返回的快照
     // （界面以该字段为唯一主口径，2026-09-15）。
-    'additionalSupplyRecommendedQty': subcontract ? 4 : 0,
+    'additionalSupplyRecommendedQty': 0,
     'priorityPendingQty': 4,
     'crossReallocatedOutQty': 4,
-    'actionable': subcontract,
+    'actionable': false,
     'planAnchorAnalysisLineId': 'pending-make-child-1',
     'flowStage': 'MAKE_COMPLETED',
     'priorityMakeSupplementQty': ?net,

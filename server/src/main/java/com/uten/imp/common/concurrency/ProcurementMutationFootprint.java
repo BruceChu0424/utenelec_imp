@@ -101,6 +101,38 @@ public class ProcurementMutationFootprint {
         return physical(own,orders,changed);
     }
 
+    /**
+     * ADR-098 × ADR-090(2026-10-05): 这些委外订货明细上被短交闸扣住(或上架仓失效退回)、还没转正的
+     * 「先入库后质检」合格品所在收货单的品质足迹与入库足迹——与品质结论({@code inspection})和自动转正
+     * ({@code stockIn})各自取锁时发现的是同一组收货单引用。没有这种货时返回空计划。
+     */
+    public FulfillmentMutationLockPlan heldSubcontractPreStock(Collection<UUID> orderItemIds) {
+        List<SubcontractHeldPreStock.Release> held = SubcontractHeldPreStock.ofOrderItems(em, orderItemIds);
+        if (held.isEmpty()) {
+            return new FulfillmentMutationLockPlan(Set.of(), Set.of(), Set.of(), Set.of(), "held-pre-stock:none");
+        }
+        Map<UUID, List<SubcontractHeldPreStock.Release>> byReceipt = new LinkedHashMap<>();
+        for (SubcontractHeldPreStock.Release release : held) {
+            byReceipt.computeIfAbsent(release.receiptId(), ignored -> new ArrayList<>()).add(release);
+        }
+        List<ReceiptRef> refs = new ArrayList<>();
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<UUID, List<SubcontractHeldPreStock.Release>> receipt : byReceipt.entrySet()) {
+            Set<UUID> inspections = new LinkedHashSet<>();
+            Map<UUID, UUID> shelves = new LinkedHashMap<>();
+            for (SubcontractHeldPreStock.Release release : receipt.getValue()) {
+                inspections.add(release.inspectionItemId());
+                shelves.put(release.passEventId(), release.warehouseId());
+                parts.add("held-pre-stock:" + release);
+            }
+            refs.add(new ReceiptRef("SUBCONTRACT", receipt.getKey(), inspections));
+            refs.add(stockInReceipt("SUBCONTRACT", receipt.getKey(), shelves.keySet(), shelves));
+        }
+        FulfillmentMutationLockPlan receipts = receipts(refs);
+        parts.add(receipts.fingerprint());
+        return FulfillmentMutationLockPlan.merge(CanonicalFingerprint.sha256(parts), List.of(receipts));
+    }
+
     /** 收货单的已知声明: 明细引用的订货单与明细货品维度; 只读一次明细, 不展开依赖图(ADR-107)。 */
     public FulfillmentMutationLockPlan receiptDeclaration(String type,UUID id) {
         Set<CommercialSource> sources=new LinkedHashSet<>();
@@ -197,18 +229,17 @@ public class ProcurementMutationFootprint {
         var previous=id==null?new FulfillmentMutationLockPlan(Set.of(),Set.of(),Set.of(),Set.of(),"new-return")
                 :materials?materialReturn(id):productReturn(type,id);
         var merged=withInputs(previous,type.equals("PURCHASE")?CommercialType.PURCHASE_ORDER:CommercialType.SUBCONTRACT_ORDER,
-                orderItems,dimensions,warehouse,false);
+                orderItems,dimensions,warehouse);
         parts.add(merged.fingerprint());
         return FulfillmentMutationLockPlan.merge(CanonicalFingerprint.sha256(parts),List.of(merged));
     }
 
     public FulfillmentMutationLockPlan withInputs(FulfillmentMutationLockPlan existing,CommercialType sourceType,
-            Collection<UUID> sourceItemIds,Collection<InventoryDimension> rawDimensions,UUID warehouseId,boolean includeTargetBom) {
+            Collection<UUID> sourceItemIds,Collection<InventoryDimension> rawDimensions,UUID warehouseId) {
         var input=new Discovery();
         var dimensions=rawDimensions.stream().filter(Objects::nonNull).distinct().sorted().toList();
         input.parts.add("requested-dimensions:"+dimensions+":"+warehouseId);
         input.inventory.addAll(dimensions); input.warehouse(warehouseId);
-        if(includeTargetBom)addTargetBom(input,new LinkedHashSet<>(dimensions.stream().map(InventoryDimension::goodsId).toList()));
         var sources=sourceItems(sourceType,sourceItemIds);
         input.analyses.addAll(existing.analysisIds()); input.analyses.addAll(sources.analysisIds());
         var availability=production.forInventoryChange(dimensions.stream()
@@ -333,7 +364,7 @@ public class ProcurementMutationFootprint {
         String sourceColumn=sourceType+"_item_id";
         CommercialType orderType=type.equals("PURCHASE")?CommercialType.PURCHASE_ORDER:CommercialType.SUBCONTRACT_ORDER;
         CommercialType sourceHeaderType=type.equals("PURCHASE")?CommercialType.PURCHASE_REQUEST:CommercialType.SUBCONTRACT_APPLICATION;
-        Set<UUID> itemIds=new LinkedHashSet<>(),sourceIds=new LinkedHashSet<>(),goodsIds=new LinkedHashSet<>();
+        Set<UUID> itemIds=new LinkedHashSet<>(),sourceIds=new LinkedHashSet<>();
         for(Object[] row:rows("""
                 SELECT h.id,h.warehouse_id,i.id,i.goods_id,i.color_id,i.%2$s,
                        h.xmin::text,i.xmin::text
@@ -342,7 +373,6 @@ public class ProcurementMutationFootprint {
                 """.formatted(prefix,sourceColumn),Map.of("ids",ids))) {
             result.row("order",row); result.source(orderType,(UUID)row[0]); result.warehouse((UUID)row[1]);
             if(row[2]!=null)itemIds.add((UUID)row[2]);
-            if(row[3]!=null)goodsIds.add((UUID)row[3]);
             result.inventory((UUID)row[3],(UUID)row[4]);
             if(row[5]!=null)sourceIds.add((UUID)row[5]);
         }
@@ -393,26 +423,38 @@ public class ProcurementMutationFootprint {
         }
         addPlanSales(result,planIds);
         if(type.equals("SUBCONTRACT")) {
+            // ADR-143 §4.2: 领料的库存维度只认财务批准时冻结的计划行(物料 + 冻结颜色), 不读现时 BOM;
+            // 待发领料草稿所在仓一并纳入(撤回、仓库改少、结束领料都会在那里释放预留)。
             for(Object[] row:rows("""
-                    SELECT source.id,source.analysis_id,analysis.warehouse_id,source.xmin::text
-                    FROM production_material_analysis_items source JOIN production_material_analyses analysis ON analysis.id=source.analysis_id
-                    JOIN subcontract_order_items item ON source.source_ref='SC-ORDER:'||item.id::text
-                    WHERE item.order_id IN(:ids) AND source.source_type='SUBCONTRACT_PREPARATION'
-                      AND source.is_deleted=FALSE AND analysis.is_deleted=FALSE AND analysis.status<>'CANCELLED'
-                    ORDER BY source.id
-                    """,Map.of("ids",ids))){result.row("direct-subcontract-preparation",row);result.analysis((UUID)row[1]);result.warehouse((UUID)row[2]);}
-            for(Object[] row:rows("""
-                    SELECT pi.id,pi.goods_id,pi.color_id,pi.preparation_analysis_id,
-                           pi.preparation_warehouse_id,pi.xmin::text
+                    SELECT pi.id,pi.goods_id,pi.color_id,pi.xmin::text
                     FROM subcontract_material_plan_items pi JOIN subcontract_material_plans plan ON plan.id=pi.plan_id
                     WHERE plan.order_id IN (:ids) AND pi.is_deleted=FALSE ORDER BY pi.id
                     """,Map.of("ids",ids))) {
                 result.row("subcontract-plan",row); result.inventory((UUID)row[1],(UUID)row[2]);
-                result.analysis((UUID)row[3]); result.warehouse((UUID)row[4]);
             }
-            // A direct order/quantity increase can create its own preparation analysis after locking.
-            // Include only these target BOMs, not all analyses that happen to share a child SKU.
-            addTargetBom(result,goodsIds);
+            for(Object[] row:rows("""
+                    SELECT DISTINCT issue.id,issue.warehouse_id
+                    FROM subcontract_material_issues issue
+                    JOIN subcontract_material_issue_items item ON item.issue_id=issue.id AND item.is_deleted=FALSE
+                    WHERE item.order_item_id IN (:items) AND item.plan_item_id IS NOT NULL
+                      AND issue.status=0 AND issue.is_deleted=FALSE
+                    ORDER BY issue.id
+                    """,Map.of("items",itemIds))) {
+                result.row("subcontract-draw-draft",row); result.warehouse((UUID)row[1]);
+            }
+            // 尚未批准(还没有冻结计划行)的明细: 财务批准会按 fn_subcontract_draw_edges 冻结这些直属物料,
+            // 预先纳入它们的维度。已冻结的明细不再读现时 BOM。
+            for(Object[] row:rows("""
+                    SELECT item.id,edge.edge_id,edge.component_goods_id,edge.color_id
+                    FROM subcontract_order_items item
+                    CROSS JOIN LATERAL fn_subcontract_draw_edges(item.goods_id) edge
+                    WHERE item.id IN (:items)
+                      AND NOT EXISTS (SELECT 1 FROM subcontract_material_plan_items frozen
+                                      WHERE frozen.order_item_id=item.id AND frozen.is_deleted=FALSE)
+                    ORDER BY item.id,edge.sort_order,edge.edge_id
+                    """,Map.of("items",itemIds))) {
+                result.row("subcontract-draw-edge",row); result.inventory((UUID)row[2],(UUID)row[3]);
+            }
         }
     }
 
@@ -429,33 +471,6 @@ public class ProcurementMutationFootprint {
             result.row("formal-sales",row); result.source(CommercialType.SALES_ORDER,(UUID)row[1]);
             result.source(CommercialType.SALES_ORDER,(UUID)row[3]);
         }
-    }
-
-    private void addTargetBom(Discovery result,Set<UUID> goodsIds) {
-        if(goodsIds.isEmpty())return;
-        List<UUID> roots=goodsIds.stream().sorted(Comparator.comparing(UUID::toString)).toList();
-        for(Object[] row:FulfillmentDiscoveryRound.memo("procurement.target-bom",roots,()->List.copyOf(readTargetBom(roots)))) {
-            result.row("target-bom",row); result.inventory((UUID)row[1],(UUID)row[2]);
-        }
-    }
-
-    private List<Object[]> readTargetBom(List<UUID> goodsIds) {
-        return rows("""
-                WITH RECURSIVE tree AS (
-                    SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id) AS color_id,
-                           ARRAY[bom.goods_id,bom.component_goods_id] AS path,1 AS depth,bom.xmin::text AS snapshot
-                    FROM goods_bom_items bom JOIN goods ON goods.id=bom.component_goods_id
-                     AND goods.issue_method<>'PERIODIC'
-                    WHERE bom.goods_id IN (:ids) AND bom.is_deleted=FALSE AND goods.is_deleted=FALSE
-                    UNION ALL
-                    SELECT bom.id,bom.component_goods_id,COALESCE(bom.color_id,goods.color_id),
-                           tree.path||bom.component_goods_id,tree.depth+1,bom.xmin::text
-                    FROM tree JOIN goods_bom_items bom ON bom.goods_id=tree.component_goods_id
-                    JOIN goods ON goods.id=bom.component_goods_id AND goods.issue_method<>'PERIODIC'
-                    WHERE tree.depth<10 AND NOT bom.component_goods_id=ANY(tree.path)
-                      AND bom.is_deleted=FALSE AND goods.is_deleted=FALSE
-                ) SELECT DISTINCT id,component_goods_id,color_id,snapshot FROM tree ORDER BY id,component_goods_id,color_id
-                """,Map.of("ids",goodsIds));
     }
 
     private FulfillmentMutationLockPlan finish(Discovery result) {

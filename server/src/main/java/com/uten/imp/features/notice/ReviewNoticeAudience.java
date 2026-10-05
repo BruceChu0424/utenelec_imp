@@ -20,7 +20,7 @@ public class ReviewNoticeAudience {
     /** 仓库类待办(销售待拣货、IQC 待入库、生产待领料/领料发现、采购财务通过)的动手权限。 */
     private static final String[] WAREHOUSE_ACTION_PERMISSIONS = {
             "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:confirm", "stock_doc:issue",
-            "warehouse_inbound:stock_in"};
+            "warehouse_inbound:stock_in", "subcontract_outbound:execute"};
     private static final UUID NO_EMPLOYEE = new UUID(0, 0);
 
     /** Bounded organization scope, never a list of all execution segments. */
@@ -136,10 +136,13 @@ public class ReviewNoticeAudience {
                     && permissions.containsAll(Set.of("production_material_analysis:view", "production_material_analysis:create"));
             case "PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED" ->
                     departments.contains("SUB_PLAN") && permissions.contains("production_plan:approve");
-            case "SUBCONTRACT_PREPARATION_REQUIRED", "SUBCONTRACT_ORDER_PREPARATION_DISPATCHED" ->
-                    any(departments, "SUB_PLAN", "DEPT_PROD")
-                    && permissions.contains("production_material_analysis:view")
-                    && any(permissions, "production_material_analysis:route", "production_material_analysis:generate");
+            // ADR-143 委外可领料：收件人在发卡时已按订货单归属可见范围精确算好(不限部门)，这里复核
+            // 「现在还能不能领料」。
+            case "SUBCONTRACT_DRAW_AVAILABLE" ->
+                    permissions.containsAll(Set.of("subcontract_order:view", "subcontract_order:draw"));
+            // 委外领料草稿待发料：草稿所在仓库的仓管(发卡时已按仓分发; ADR-149 部门外登记的负责人同等弹卡)。
+            case "SUBCONTRACT_OUTBOUND_READY" -> warehouseSide
+                    && permissions.containsAll(Set.of("subcontract_outbound:view", "subcontract_outbound:execute"));
             case WORKSHOP_EVENT -> canHandleWorkshop(permissions);
             // ADR-117 车间催计划：能在物料分析页下单的人(下达采购委外或下达车间)。收件人在发卡时已按
             // 计划 / 生产部门池 + 制单计划员 + 分析可见范围精确算好，这里不再卡部门(制单人不在池里也要弹)。

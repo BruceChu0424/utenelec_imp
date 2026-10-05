@@ -369,8 +369,7 @@ public class ProductionExecutionPlanningService {
                                           SELECT 1 FROM production_material_analysis_items anchor
                                           WHERE anchor.id = p.material_analysis_item_id
                                             AND anchor.parent_analysis_material_id IS NOT NULL
-                                            AND anchor.source_type IN (
-                                                'MAKE_COMPONENT', 'SUBCONTRACT_MAKE')))
+                                            AND anchor.source_type = 'MAKE_COMPONENT'))
                                 ) analysis_material ON TRUE
                                 WHERE i.plan_id = :planId
                                   AND i.is_deleted = FALSE

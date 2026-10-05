@@ -95,7 +95,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         when(plan.setParameter(anyString(), any())).thenReturn(plan);
         when(plan.getResultList()).thenReturn(java.util.Arrays.<Object[]>asList(new Object[]{
                 UUID.randomUUID(), null, null, null, goodsId, null, null, BigDecimal.ONE,
-                new BigDecimal("1000"), BigDecimal.ZERO, "OPEN"
+                "OPEN", false, new BigDecimal("1000")
         }));
         Query master = mock(Query.class);
         when(master.setParameter(anyString(), any())).thenReturn(master);
@@ -149,11 +149,11 @@ class SubcontractMaterialIssuePlanAuthorityTest {
 
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
-        when(query.setParameter("id", planItemId)).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
         when(query.getResultList()).thenReturn(java.util.Arrays.<Object[]>asList(new Object[]{
                 planId, orderItemId, parentGoodsId, parentColorId,
                 goodsId, colorId, unitId, new BigDecimal("2.5"),
-                new BigDecimal("100"), new BigDecimal("20"), "OPEN"
+                "OPEN", false, new BigDecimal("80")
         }));
 
         MaterialIssueItemLine line = new MaterialIssueItemLine();
@@ -167,7 +167,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         line.setParentColorId(UUID.randomUUID());
         line.setQty(new BigDecimal("30"));
 
-        service.canonicalizePlanLines(List.of(line), Set.of(planItemId), true);
+        service.canonicalizePlanLines(UUID.randomUUID(), List.of(line), Set.of(planItemId), true);
 
         assertEquals(orderItemId, line.getOrderItemId());
         assertEquals(parentGoodsId, line.getParentGoodsId());
@@ -179,6 +179,29 @@ class SubcontractMaterialIssuePlanAuthorityTest {
     }
 
     @Test
+    void warehouseCanOnlyIssueLessThanTheSubmittedDrawQuantity() {
+        UUID planItemId = UUID.randomUUID();
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(java.util.Arrays.<Object[]>asList(new Object[]{
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null,
+                UUID.randomUUID(), null, UUID.randomUUID(), BigDecimal.ONE,
+                "OPEN", false, new BigDecimal("40")
+        }));
+        MaterialIssueItemLine line = new MaterialIssueItemLine();
+        line.setPlanItemId(planItemId);
+        line.setGoodsId(UUID.randomUUID());
+        line.setQty(new BigDecimal("40.0001"));
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.canonicalizePlanLines(UUID.randomUUID(), List.of(line), Set.of(planItemId), true));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertTrue(error.getMessage().contains("只能少发不能多发"));
+    }
+
+    @Test
     void planGeneratedDraftCannotDropItsPlanBinding() {
         UUID planItemId = UUID.randomUUID();
         MaterialIssueItemLine unbound = new MaterialIssueItemLine();
@@ -186,7 +209,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         unbound.setQty(BigDecimal.ONE);
 
         ApiException error = assertThrows(ApiException.class,
-                () -> service.canonicalizePlanLines(List.of(unbound), Set.of(planItemId), true));
+                () -> service.canonicalizePlanLines(UUID.randomUUID(), List.of(unbound), Set.of(planItemId), true));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
         assertTrue(error.getMessage().contains("不可移除计划行绑定"));
@@ -202,7 +225,7 @@ class SubcontractMaterialIssuePlanAuthorityTest {
         replaced.setQty(BigDecimal.ONE);
 
         ApiException error = assertThrows(ApiException.class,
-                () -> service.canonicalizePlanLines(
+                () -> service.canonicalizePlanLines(UUID.randomUUID(),
                         List.of(replaced), Set.of(currentPlanItemId), true));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());

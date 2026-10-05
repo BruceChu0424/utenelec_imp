@@ -80,6 +80,13 @@ public class SubcontractReturnService {
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
 
+    /**
+     * ADR-143 §4.4 领料重算唤醒(按订货明细): 委外退货审核与红冲(已退量)改变订货明细是否结清, 「可领 N」行动卡要随之收回
+     * 或重新提醒。字段注入可空: 单测手工构造时没有, 只跳过唤醒。
+     */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.application.port.SubcontractOutboundWakePort drawRecheck;
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -482,10 +489,16 @@ public class SubcontractReturnService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** 重算订货单结案：所有明细 qty - received_qty + returned_qty ≤ 0 → is_closed=true。 */
+    /**
+     * 重算订货单结案：所有明细 qty - received_qty + returned_qty ≤ 0 → is_closed=true。已退量/结案变了,
+     * 本明细的委外领料可领量随之变化(退货重新打开即可再领, 红冲结清即收卡), 同事务追加领料重算。
+     */
     private void recalcOrderClosed(UUID orderItemId) {
         ProcurementOrderClosurePolicy.recalculate(
                 em, ProcurementOrderClosurePolicy.SUBCONTRACT, orderItemId);
+        if (drawRecheck != null && orderItemId != null) {
+            drawRecheck.enqueueDrawRecheckForOrderItems(List.of(orderItemId));
+        }
     }
 
     private ProcurementReturnHeaderAuthority.Header returnHeader(ReturnSaveRequest req) {

@@ -51,7 +51,7 @@ final class AggregatePrivateIntentReader {
                                    THEN LEAST(GREATEST(progress.demand_requested_qty-progress.demand_qualified_qty,0),progress.demand_future_qty)
                                    ELSE 0 END
                                FROM v_preplan_buy_action_slice_progress progress WHERE progress.action_id=action.id)
-                          WHEN action.external_document_type IN('PREPLAN_MAKE_TASK','SUBCONTRACT_MAKE_TASK') THEN
+                          WHEN action.external_document_type='PREPLAN_MAKE_TASK' THEN
                                CASE WHEN EXISTS(SELECT 1 FROM production_material_analysis_items child
                                    WHERE child.id=action.external_document_id AND NOT child.is_deleted
                                      AND (child.requested_qty>child.approved_qty OR EXISTS(SELECT 1 FROM production_material_analysis_plan_links link

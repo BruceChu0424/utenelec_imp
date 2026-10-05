@@ -193,6 +193,33 @@ abstract final class RouteName {
   static const String operationsSubcontractWorkbench =
       '/operations/workbench/subcontract';
 
+  /// 委外领料页(ADR-143 §4.2)：委外任务中心子路由，?orderItemIds=a,b。
+  static const String operationsSubcontractDrawRequest =
+      '/operations/workbench/subcontract/draw-request';
+
+  /// 委外领料页深链：带入要领料的委外订货明细(一次最多 50 个)。
+  static String operationsSubcontractDrawRequestFor(
+    Iterable<String> orderItemIds,
+  ) => Uri(
+    path: operationsSubcontractDrawRequest,
+    queryParameters: {'orderItemIds': orderItemIds.join(',')},
+  ).toString();
+
+  /// 委外任务中心「领料」分段深链(可领料通知、进行中「可领料」跳转)：
+  /// ?segment=draw，可按委外订货明细 [orderItemId] 或订货单 [orderId] 定位。
+  static String operationsSubcontractDrawSegment({
+    String? orderItemId,
+    String? orderId,
+  }) => Uri(
+    path: operationsSubcontractWorkbench,
+    queryParameters: {
+      'segment': 'draw',
+      if (orderItemId != null && orderItemId.isNotEmpty)
+        'orderItemId': orderItemId,
+      if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
+    },
+  ).toString();
+
   // 工程研发部任务中心（设计 / 打样 / 试产 / ECN 及历史任务）。
   static const String rdTaskCenter = '/rd/tasks';
 
@@ -351,11 +378,14 @@ abstract final class RouteName {
   /// stock:view，保存抽样另需称样权限；静态段，须先于 /warehouse/:code)。
   static const String warehouseWeighCount = '/warehouse/weigh-count';
 
-  /// 委外出仓任务中心与拣货出仓页（V304；仓库专属，静态段须先于 /warehouse/:code）。
+  /// 委外出仓任务中心与拣货出仓页（仓库专属，静态段须先于 /warehouse/:code）。
+  /// 一行 = 一张委外人员已提交、仓库未发出的领料出仓草稿(ADR-143 §4.3)。
   static const String warehouseSubcontractOutbound =
       '/warehouse/subcontract-outbound';
-  static String warehouseSubcontractOutboundEdit(String planId) =>
-      '/warehouse/subcontract-outbound/$planId';
+
+  /// 拣货出仓页：按领料出仓草稿(委外材料出仓单) id 打开。
+  static String warehouseSubcontractOutboundDetail(String issueId) =>
+      '/warehouse/subcontract-outbound/$issueId';
 
   /// 财务已放行的销售出货仓库作业工作台（静态段须先于 /warehouse/:code）。
   static const String warehouseSalesOutbound = '/warehouse/sales-outbound';
@@ -446,10 +476,6 @@ abstract final class RouteName {
       queryParameters: params,
     ).toString();
   }
-
-  /// 委外准备中心旧路径（2026-09-05 退役）：路由仅保留兼容重定向到
-  /// [subcontract]，不再有页面。
-  static const String subcontractPreparations = '/subcontract/preparations';
 
   // 生产管理（生产部）：hub + 调度 + 计划单 + 日报 + 4 报表入口。
   static const String production = '/production';

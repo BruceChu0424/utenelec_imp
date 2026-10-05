@@ -828,6 +828,7 @@ public class ProcurementFinanceApprovalService {
                        CAST(item.value ->> 'weight' AS numeric) AS weight,
                        CAST(item.value ->> 'giftQty' AS numeric) AS gift_qty,
                        CAST(item.value ->> 'allowedLossPct' AS numeric) AS allowed_loss_pct,
+                       CAST(item.value ->> 'allowedOverReceiptPct' AS numeric) AS allowed_over_receipt_pct,
                        item.value ->> 'remark' AS remark,
                        CASE WHEN c.display_complete THEN item.value ->> 'sourceApplicationNos'
                             ELSE NULL END AS source_application_nos,
@@ -869,6 +870,7 @@ public class ProcurementFinanceApprovalService {
                         rs.getBigDecimal("weight"),
                         rs.getBigDecimal("gift_qty"),
                         rs.getBigDecimal("allowed_loss_pct"),
+                        rs.getBigDecimal("allowed_over_receipt_pct"),
                         rs.getString("remark"),
                         rs.getString("source_application_nos"),
                         rs.getString("source_allocations"),

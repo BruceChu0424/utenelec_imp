@@ -242,9 +242,14 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     ];
   }
   if (location == RouteName.operationsSubcontractWorkbench) {
-    // 委外分解页的首屏权威是计划下达的只读申请；
-    // create/decompose 只是页内动作，不能反向授予申请阅读。
-    return const [Perm.subcontractApplicationView];
+    // 委外任务中心(ADR-143 §4.1)：看申请(待处理)或看订货(领料/进行中)任一即可进入，
+    // 各分段的数据与按钮由服务端按权限与能力下发；create/decompose/draw 只是页内动作，
+    // 不能反向授予阅读。
+    return const [Perm.subcontractApplicationView, Perm.subcontractOrderView];
+  }
+  if (location == RouteName.operationsSubcontractDrawRequest) {
+    // 委外领料页：预览只读订货事实；提交是否放行由服务端 subcontract_order:draw 判定。
+    return const [Perm.subcontractOrderView];
   }
   // 工程研发部任务中心。
   if (location == RouteName.rdTaskCenter) {
@@ -375,7 +380,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.warehouseWeighCount) {
     return const [Perm.stockView];
   }
-  // 委外目标件出仓工作台（V436；LEGACY_BOM_COMPONENT 历史兼容）：独立权限点，
+  // 仓库委外出仓工作台(ADR-143 §4.3：一行 = 一张待发的委外领料出仓草稿)：独立权限点，
   // 权限管理授权后才可见/可操作。
   if (location == RouteName.warehouseSubcontractOutbound ||
       location.startsWith('${RouteName.warehouseSubcontractOutbound}/')) {
@@ -562,14 +567,8 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       location.startsWith('${RouteName.subcontractReport}/')) {
     return const [Perm.subcontractReportView];
   }
-  // /subcontract/preparations 旧深链已由路由重定向到 /subcontract（2026-09-05
-  // 准备中心退役)。守卫沿用 hub 同款并集：无委外入口的用户与直达 hub
-  // 一样进 access-denied，不会 404；持权用户由重定向落到 hub。
   if (location.startsWith('/subcontract/')) {
-    if (routePath == RouteName.subcontractPreparations) {
-      return hubUnionRequiredAny(RouteName.subcontract);
-    }
-    // V436 新出仓流不允许从历史发料页空白新建。
+    // 委外材料出仓单只由任务中心「领料」提交生成，不允许从出仓单列表空白新建。
     if (routePath == '/subcontract/material-issues/new') {
       return const [Perm.subcontractMaterialIssueView];
     }

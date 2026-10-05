@@ -82,13 +82,17 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 当前工作区逐条核对：206 条守卫 / 18 条豁免(2026-09-27 独立草稿页
+/// 当前工作区逐条核对：203 条守卫 / 18 条豁免(2026-10-05 ADR-151 §5 入库登记单批合一：
+/// 采购/委外到货单张页 receipts/new 与批量页 receipts/batch 合成 arrivals/register、
+/// 产成品批量登记页 registrations/batch 并入单个登记页，守卫 205→203；
+/// 2026-10-04 ADR-143 删除
+/// /subcontract/preparations 兼容重定向，守卫 206→205；2026-09-27 独立草稿页
 /// /form-drafts/:categoryId 上线，豁免 17→18；此前 2026-09-25 入口选择页
 /// 下线 /entry 路由移除后豁免 18→17)。
 /// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-const _legacyGuardedCount = 206;
+const _legacyGuardedCount = 203;
 const _expectedExemptCount = 18;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
@@ -140,6 +144,9 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   '/stock/instant-inventory/overview': [Perm.stockView],
   '/warehouse/insights': [Perm.stockReportView],
   '/warehouse/weigh-count': [Perm.stockView],
+  // 2026-10-04 ADR-143 委外领料页：预览只读订货事实，提交由服务端按
+  // subcontract_order:draw 判定，页面不再本地拼权限。
+  '/operations/workbench/subcontract/draw-request': [Perm.subcontractOrderView],
 };
 
 String _samplePath(String pattern) => pattern

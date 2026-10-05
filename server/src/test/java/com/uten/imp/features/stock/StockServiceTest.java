@@ -493,8 +493,8 @@ class StockServiceTest {
 
         service.recordMovement(req);
 
-        // ADR-103: 库存内核每笔入库叫醒一次, 维度就是这笔入库的货品/颜色/实收仓。
-        verify(port, org.mockito.Mockito.times(1)).wakeOutboundAfterStockIn(java.util.List.of(
+        // ADR-143: 库存内核每笔入库登记一次领料重算, 维度就是这笔入库的货品/颜色/实收仓。
+        verify(port, org.mockito.Mockito.times(1)).enqueueDrawRecheck(java.util.List.of(
                 new SubcontractOutboundWakePort.StockedDimension(goodsId, colorId, warehouseId)));
     }
 
@@ -512,7 +512,7 @@ class StockServiceTest {
             var synchronizations = org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations();
             org.junit.jupiter.api.Assertions.assertEquals(1, synchronizations.size());
             synchronizations.forEach(sync -> sync.beforeCommit(false));
-            verify(port).wakeOutboundAfterStockIn(List.of(
+            verify(port).enqueueDrawRecheck(List.of(
                     new SubcontractOutboundWakePort.StockedDimension(goodsId, null, warehouseId)));
         } finally {
             org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
@@ -532,7 +532,7 @@ class StockServiceTest {
             synchronization.afterCompletion(org.springframework.transaction.support.TransactionSynchronization.STATUS_ROLLED_BACK);
             org.mockito.Mockito.verifyNoInteractions(port);
             org.mockito.Mockito.doThrow(new IllegalStateException("wake failed"))
-                    .when(port).wakeOutboundAfterStockIn(org.mockito.ArgumentMatchers.any());
+                    .when(port).enqueueDrawRecheck(org.mockito.ArgumentMatchers.any());
             assertThrows(IllegalStateException.class, () -> synchronization.beforeCommit(false));
         } finally {
             org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
@@ -551,7 +551,7 @@ class StockServiceTest {
         service.recordMovement(request(
                 warehouseId, goodsId, StockService.DIR_OUT, "3", StockService.TYPE_CHECK_LOSS));
 
-        verify(port, never()).wakeOutboundAfterStockIn(org.mockito.ArgumentMatchers.any());
+        verify(port, never()).enqueueDrawRecheck(org.mockito.ArgumentMatchers.any());
         verify(movementRepo).save(org.mockito.ArgumentMatchers.any());
     }
 
@@ -582,10 +582,10 @@ class StockServiceTest {
         UUID goodsId = UUID.randomUUID();
         SubcontractOutboundWakePort port = org.mockito.Mockito.mock(SubcontractOutboundWakePort.class);
         org.mockito.Mockito.doThrow(new IllegalStateException("wake failed"))
-                .when(port).wakeOutboundAfterStockIn(org.mockito.ArgumentMatchers.any());
+                .when(port).enqueueDrawRecheck(org.mockito.ArgumentMatchers.any());
         StockService service = service(quantityTestValuation(), wake(port));
 
-        // ADR-103 fail-closed: 端口抛错就整笔入库抛出(同事务回滚), 不吞错。
+        // ADR-143 fail-closed: 追加重算事件失败就整笔入库抛出(同事务回滚), 不吞错。
         assertThrows(IllegalStateException.class, () -> service.recordMovement(
                 request(warehouseId, goodsId, StockService.DIR_IN, "5")));
     }

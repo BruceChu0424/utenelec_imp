@@ -318,11 +318,9 @@ class WarehouseDataScopeEndToEndTest {
                 finishedInbound.tasks("", null, null, 1, 1, selected, null, null, null, null).getTotal());
         assertThat(facts.get("warehouseSalesOutbound.PENDING_PICK")).as(label + " sales outbound").isEqualTo(
                 salesOutbound.list(null, "PENDING_PICK", null, null, 1, 1, selected, null, null, null).getTotal());
+        // ADR-143: 委外出库红数 = 待发料的领料草稿张数, 所在仓 = 草稿发出仓; 与待发料列表同一谓词。
         assertThat(facts.get("subcontractOutbound.count")).as(label + " subcontract outbound").isEqualTo(
-                subcontractOutbound.tasks(1, 1, "", null, "DRAFT_PICKING", selected).getTotal()
-                        + subcontractOutbound.tasks(1, 1, "", null, "READY_OUTBOUND", selected).getTotal());
-        assertThat(facts.get("subcontractOutbound.waitingComponent")).as(label + " subcontract waiting").isEqualTo(
-                subcontractOutbound.tasks(1, 1, "", null, "WAITING_COMPONENT", selected).getTotal());
+                subcontractOutbound.tasks(1, 1, "", selected).getTotal());
         assertThat(facts.get("productionDraw.count")).as(label + " production draw").isEqualTo(
                 fulfillment.warehouse("OPEN_ANY", "", "", null, null, 1, 1, "", "asc", selected, Map.of()).total());
         assertThat(facts.get("productionReturn.count")).as(label + " production return").isEqualTo(

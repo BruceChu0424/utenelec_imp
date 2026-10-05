@@ -98,8 +98,17 @@ class DemandDecompositionControllerContractTest {
                         controllerType == PurchaseRequestController.class
                                 ? new String[]{"list", "detail", "history", "historyRows", "facets",
                                         "decompositionPreview", "adjustItemQty"}
+                                // ADR-143 §二.3：委外申请面唯一的写口是缺 BOM 时「通知研发完善」，
+                                // 不改申请本身，权限与分解订货同一组。
                                 : new String[]{"list", "detail", "history", "historyRows", "facets",
-                                        "decompositionPreview"});
+                                        "decompositionPreview", "forwardBom"});
+        if (controllerType == SubcontractApplicationController.class) {
+            Method forwardBom = controllerType.getDeclaredMethod("forwardBom", UUID.class);
+            assertThat(forwardBom.getAnnotation(PostMapping.class).value())
+                    .containsExactly("/items/{applicationItemId}/forward-bom");
+            assertThat(forwardBom.getAnnotation(PreAuthorize.class).value())
+                    .isEqualTo("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')");
+        }
     }
 
     private static void assertPreviewContract(Method method, String permission) {

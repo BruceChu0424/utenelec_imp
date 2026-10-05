@@ -79,7 +79,6 @@ class SubcontractWasteStockAccountingTest {
                 lossClaimPort,
                 mock(com.uten.imp.application.port.SubcontractMaterialValuePort.class),
                 mutationLocks,
-                mock(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.class),
                 glPostingService);
     }
 

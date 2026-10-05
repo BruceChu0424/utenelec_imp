@@ -51,6 +51,12 @@ public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputRe
     /** Independently settled loss, in this order line's unit; never a receipt quantity. */
     @lombok.Setter
     private BigDecimal settledLossQty;
+    /**
+     * 缺 BOM(ADR-143 §二.3)：未批准订货单上这一行的委外件没有任何可发外的直属物料，提交财务会被拒
+     * (同时通知研发完善)；编辑页在这一行显示红色提示。已批准的订货单恒为 false。
+     */
+    @lombok.Setter
+    private boolean bomMissing;
 
     /** 订货行的来源委外申请引用（合并行多来源展示/编辑回显/跳转）。 */
     public record SourceApplicationDoc(

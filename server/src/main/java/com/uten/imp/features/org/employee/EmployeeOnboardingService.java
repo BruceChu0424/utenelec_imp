@@ -3,6 +3,7 @@ package com.uten.imp.features.org.employee;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.IdCardProblem;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -14,14 +15,18 @@ import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentLevelPolicy;
 import com.uten.imp.features.org.department.DepartmentRepository;
+import com.uten.imp.features.org.employee.dto.EmployeeAccountReadiness;
 import com.uten.imp.features.org.employee.dto.EmployeeDetail;
 import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
+import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,14 +36,23 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
 
-/** 员工入职：单事务原子建号（员工+敏感+薪资+合同+轨迹+联系人+账号）。 */
+/**
+ * 员工入职：单事务原子建号(员工+敏感+薪资+合同+轨迹+联系人+账号)；以及给存量员工补开登录账号。
+ *
+ * <p>初始密码规则只有一条：档案证件号规范化后够六位就取后六位，派生不出来 (没有证件号或不足六位)
+ * 时由系统随机生成，只显示一次。补开账号时证件号有问题 (缺失、身份证号校验不通过、密文解不开) 只提醒、
+ * 不阻塞 (V798)；入职录入时身份证号仍严格校验。
+ */
 @Service
 @RequiredArgsConstructor
 public class EmployeeOnboardingService {
+
+    private static final Logger log = LoggerFactory.getLogger(EmployeeOnboardingService.class);
 
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
@@ -60,9 +74,10 @@ public class EmployeeOnboardingService {
     private final EmployeeSensitiveWritePolicy sensitiveWritePolicy;
     private final SystemSettingsService settings;
     private final CredentialIssuancePolicy credentialIssuance;
+    private final TemporaryPasswordGenerator passwordGenerator;
 
     // ===== 入职（原子建号） =====
-    /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并以手机号开号 (初始密码为规范证件号后六位)。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
+    /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并以手机号开号 (初始密码为规范证件号后六位，不足六位时随机生成)。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
     @PreAuthorize("hasAuthority('employee:create')")
     @Transactional
     public EmployeeOnboardingResult onboard(OnboardingRequest req) {
@@ -95,8 +110,10 @@ public class EmployeeOnboardingService {
         String normalizedIdNumber = p.idNumber().trim();
         if ("身份证".equals(p.idType())) {
             normalizedIdNumber = IdCardUtil.normalize(p.idNumber());
-            if (!IdCardUtil.isValid(normalizedIdNumber)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号校验未通过");
+            // 录入时严格把关，报出具体哪一位、哪一项不对 (不带号码本身)。
+            IdCardProblem problem = IdCardUtil.check(normalizedIdNumber);
+            if (problem != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, problem.message());
             }
             birthDate = IdCardUtil.birthDate(normalizedIdNumber);
             gender = IdCardUtil.gender(normalizedIdNumber);
@@ -243,15 +260,18 @@ public class EmployeeOnboardingService {
             }
         }
 
-        // 新账号初始密码取规范证件号后六位；不更改已存在账号的密码。
+        // 新账号初始密码取规范证件号后六位 (不足六位时随机)；不更改已存在账号的密码。
         createAccount(e, loginAccount, temporaryPassword);
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
     // ===== 补开登录账号（批量导入等未自带账号的存量员工） =====
-    // 与入职建账号同口径：账号=手机号、初始密码=规范证件号后六位 (限时有效)、Argon2id 入库、首登强制改；
-    // 权限只来自全员基础包与所在部门配置，入职接口不再接受任何角色/权限参数。
+    // 与入职建账号同口径：账号=手机号、初始密码=规范证件号后六位 (派生不出来时随机，限时有效)、
+    // Argon2id 入库、首登强制改；权限只来自全员基础包与所在部门配置，入职接口不再接受任何角色/权限参数。
+    // 只拦确实开不了的情况 (不存在、已离职、已有账号、没有手机号、手机号被占用、高危开号闸)；
+    // 证件号缺失、身份证号校验不通过、证件号密文解不开都不拦 (V798)，返回结果里的 employee.idNumberIssue 带出提醒，
+    // 人事任务中心「证件核对」里同步出现待办。
     // 与重置密码同一道闸 (ADR-110)：操作人会看到明文临时密码，按开号后的有效权限 (部门授权、委派) 判定，
     // 目标持有高危权限时只有超级管理员能开通；控制器入口另要求再认证。
     @PreAuthorize("hasAuthority('account:support')")
@@ -277,10 +297,18 @@ public class EmployeeOnboardingService {
         if (isBlank(loginAccount)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号");
         }
-        String temporaryPassword = initialPassword(e.getIdType(), tx.decrypt(s.getIdCardEnc()));
         if (userRepo.existsByLoginAccount(loginAccount)) {
             throw new ApiException(ErrorCode.CONFLICT, "该手机号已被用作其他账号的登录名，请先修改员工手机号");
         }
+        // 登录名确认可用之后才解密证件号派生密码：开不了的号不碰证件密文。
+        // 证件号密文解不开 (数据损坏、换密钥后没配旧密钥) 也不拦：按派生不出来处理，改用随机临时密码；
+        // 解密在保存点里做，不会让本事务作废。返回的员工详情里 idNumberIssue 说明号码读取不出来。
+        Optional<String> identity = tx.tryDecrypt(s.getIdCardEnc());
+        if (!isBlank(s.getIdCardEnc()) && identity.isEmpty()) {
+            log.warn("Account provisioning: the stored identity number could not be decrypted; "
+                    + "issued a random temporary password instead");
+        }
+        String temporaryPassword = initialPassword(e.getIdType(), identity.orElse(null));
 
         UserAccount account = createAccount(e, loginAccount, temporaryPassword);
         // 在同一事务里按新账号的有效权限判定; 不允许时抛错, 账号随事务回滚, 不留半开的号。
@@ -289,18 +317,44 @@ public class EmployeeOnboardingService {
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
 
-    /** New accounts only: a short/missing identity cannot silently create another default credential. */
-    static String initialPassword(String idType, String idNumber) {
+    /**
+     * 开号就绪检查 (开号确认弹窗打开时先读)：有没有手机号、证件号有没有问题。
+     * 只看有没有密文和已存的校验结果，不解密，所以只要 account:support。
+     */
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional(readOnly = true)
+    public EmployeeAccountReadiness accountReadiness(UUID employeeId) {
+        Employee e = empRepo.findById(employeeId)
+                .filter(row -> !row.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
+        EmployeeSensitive s = sensitiveRepo.findByEmployeeId(e.getId()).orElse(null);
+        boolean superAdmin = userRepo.findByEmployeeId(e.getId())
+                .map(UserAccount::isSuperAdmin)
+                .orElse(false);
+        return new EmployeeAccountReadiness(
+                s != null && !isBlank(s.getPhoneEnc()),
+                EmployeeIdentityCheck.issueOf(
+                        s != null && s.getIdCardEnc() != null,
+                        s == null ? null : s.getIdCardCheck(),
+                        superAdmin));
+    }
+
+    /**
+     * 能从档案证件号派生出的初始密码：规范化后够六位取后六位 (身份证号校验不通过也一样)，
+     * 没有证件号或不足六位时为空。
+     */
+    static Optional<String> idSuffixPassword(String idType, String idNumber) {
         String normalized = "身份证".equals(idType)
                 ? IdCardUtil.normalize(idNumber)
-                : idNumber == null ? null : idNumber.trim();
-        if (normalized == null || normalized.length() < 6) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "证件号不足六位，无法生成初始密码，请先补全员工证件资料");
-        }
-        if ("身份证".equals(idType) && !IdCardUtil.isValid(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号校验未通过，无法开通账号");
-        }
-        return normalized.substring(normalized.length() - 6);
+                : idNumber == null ? null : idNumber.strip();
+        return normalized == null || normalized.length() < 6
+                ? Optional.empty()
+                : Optional.of(normalized.substring(normalized.length() - 6));
+    }
+
+    /** New accounts only: the ID suffix when derivable, otherwise a one-time random credential. */
+    private String initialPassword(String idType, String idNumber) {
+        return idSuffixPassword(idType, idNumber).orElseGet(passwordGenerator::generate);
     }
 
     /** Creates a login account using the same credential rules for onboarding and later provisioning. */

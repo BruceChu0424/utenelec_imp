@@ -25,7 +25,7 @@ enum WorkbenchBadgeCatalog {
     visitorApproval(Module.people, facts("visitorApproval.pending"), facts("visitorApproval.ongoing")),
     /** 信息变更审核: 员工资料变更待审。 */
     hrProfileReview(Module.people, facts("profileReview.count"), none()),
-    /** HR 任务中心: 今日转正/逾期转正/今日生日/今日周年。 */
+    /** HR 任务中心: 今日转正/逾期转正/今日生日/今日周年/证件待核对(仅能修改证件的人计)。 */
     hrTaskCenter(Module.people, facts("hrTask.count"), none()),
     /** 我的报销: 红 = 草稿 + 驳回待修订; 黄 = 已提交在审批/待付款。 */
     expenseMine(Module.people, facts("expense.draftCount", "expense.rejectedCount"),

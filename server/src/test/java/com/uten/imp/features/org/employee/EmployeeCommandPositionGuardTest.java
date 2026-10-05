@@ -122,7 +122,7 @@ class EmployeeCommandPositionGuardTest {
         return new UpdateEmployeeRequest(
                 null, null, null, null, null, null, null, null,
                 null, positionId, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null,
                 null, null); // vehicles, phones（ADR-021，null）
     }

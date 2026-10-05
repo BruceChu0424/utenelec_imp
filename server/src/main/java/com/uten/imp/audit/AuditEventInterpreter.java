@@ -3,6 +3,7 @@ package com.uten.imp.audit;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.uten.imp.common.util.IdCardProblem;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -191,6 +192,10 @@ public class AuditEventInterpreter {
     private static final int MAX_VALUE_LENGTH = 30;
     /** 行审计里敏感列变了只记列名(fn_audit 写入), 内容已脱敏。 */
     private static final String REDACTED_CHANGES_KEY = "_redacted_changes";
+    /** 加密存储的列名后缀 (如 employee_sensitive.birth_date_enc)：变更明细只列名字，不显示密文。 */
+    private static final String ENCRYPTED_COLUMN_SUFFIX = "_enc";
+    /** 员工证件号校验结果列(V798)：取值含问题码(如 length:17)，按 {@link #idCardCheckLabel} 翻译。 */
+    private static final String ID_CARD_CHECK_COLUMN = "employee_sensitive.id_card_check";
 
     public InterpretedEvent interpret(AuditLog value) {
         value = PlatformFieldAuditProjection.presentation(value);
@@ -513,6 +518,8 @@ public class AuditEventInterpreter {
             return List.of();
         }
         List<String> entries = new ArrayList<>();
+        // 密文列 (*_enc) 触发器没有剔除时也不显示密文，和已剔除的列一起只列名字。
+        List<String> names = new ArrayList<>();
         Iterator<String> fields = after.fieldNames();
         while (fields.hasNext()) {
             String field = fields.next();
@@ -524,13 +531,18 @@ public class AuditEventInterpreter {
             if (nodesEqual(oldValue, newValue)) {
                 continue;
             }
+            if (field.endsWith(ENCRYPTED_COLUMN_SUFFIX)) {
+                names.add(fieldLabel(table, field));
+                continue;
+            }
             entries.add(fieldLabel(table, field) + "：" + valueLabel(table, field, oldValue)
                     + " → " + valueLabel(table, field, newValue));
         }
         JsonNode redacted = after.get(REDACTED_CHANGES_KEY);
-        if (redacted != null && redacted.isArray() && !redacted.isEmpty()) {
-            List<String> names = new ArrayList<>();
+        if (redacted != null && redacted.isArray()) {
             redacted.forEach(node -> names.add(fieldLabel(table, node.asText())));
+        }
+        if (!names.isEmpty()) {
             entries.add("敏感信息已修改(内容不记录)：" + String.join("、", names));
         }
         return entries;
@@ -712,16 +724,17 @@ public class AuditEventInterpreter {
     }
 
     private static String translateBusinessReference(String value) {
-        Map<String, String> taskTypes = Map.of(
-                "confirm", "转正任务",
-                "birthday", "生日任务",
-                "anniversary", "入职周年任务",
-                "newhire", "新入职任务",
-                "expense_approve", "费用报销审批",
-                "purchase_decompose", "采购申请分解",
-                "sales_order_approve", "销售订单审核",
-                "fulfillment_task_edit", "库存任务编辑",
-                "fulfillment_task_approve", "库存任务审核");
+        Map<String, String> taskTypes = Map.ofEntries(
+                Map.entry("confirm", "转正任务"),
+                Map.entry("birthday", "生日任务"),
+                Map.entry("anniversary", "入职周年任务"),
+                Map.entry("newhire", "新入职任务"),
+                Map.entry("identity", "证件核对任务"),
+                Map.entry("expense_approve", "费用报销审批"),
+                Map.entry("purchase_decompose", "采购申请分解"),
+                Map.entry("sales_order_approve", "销售订单审核"),
+                Map.entry("fulfillment_task_edit", "库存任务编辑"),
+                Map.entry("fulfillment_task_approve", "库存任务审核"));
         int separator = value.indexOf(" · ");
         if (separator > 0) {
             String prefix = value.substring(0, separator).trim().toLowerCase(Locale.ROOT);
@@ -1388,6 +1401,24 @@ public class AuditEventInterpreter {
         values.put("employment_type", "用工类型");
         values.put("work_location", "工作地点");
         values.put("birth_month_day", "生日(月-日)");
+        // 员工证件 (V798)：密文/查重值只出现在「敏感信息已修改」的列名清单里，内容不记录。
+        values.put("id_type", "证件类型");
+        values.put("id_card_enc", "证件号码");
+        values.put("id_card_hash", "证件号码查重值");
+        values.put("id_card_last4", "证件号码后四位");
+        values.put("id_card_check", "证件号校验结果");
+        // 员工其它加密信息 (employee_sensitive)：同样只列名字，不显示内容。
+        values.put("phone_enc", "手机号");
+        values.put("phone_hash", "手机号查重值");
+        values.put("birth_date_enc", "出生日期");
+        values.put("email_enc", "电子邮箱");
+        values.put("office_phone_enc", "办公电话");
+        values.put("huji_address_enc", "户籍地址");
+        values.put("residence_address_enc", "现居住地址");
+        values.put("marital_status_enc", "婚姻状况");
+        values.put("political_status_enc", "政治面貌");
+        values.put("bank_account_enc", "银行账号");
+        values.put("bank_branch_enc", "开户行");
         values.put("login_account", "登录账号");
         values.put("employee_id", "关联员工");
         values.put("user_id", "用户");
@@ -1558,11 +1589,33 @@ public class AuditEventInterpreter {
     /** 先按表限定的枚举值翻译，其余同 {@link #valueLabel(JsonNode)}。 */
     private static String valueLabel(String table, String field, JsonNode node) {
         if (node != null && node.isTextual()) {
+            if (ID_CARD_CHECK_COLUMN.equals(table + "." + field)) {
+                return idCardCheckLabel(node.asText());
+            }
             String scoped = TABLE_VALUE_LABELS.getOrDefault(table + "." + field, Map.of())
                     .get(node.asText().toLowerCase(Locale.ROOT));
             if (scoped != null) return scoped;
         }
         return valueLabel(node);
+    }
+
+    /**
+     * 员工证件号校验结果 (V798) 的存储码 → 中文：valid 通过、unchecked 未校验、unreadable 读取不出来，其余是问题码
+     * (如 check_digit、length:17)，按 {@link IdCardProblem#fromCode} 还原成和录入时同一句说明；
+     * 不认识的码只说「未通过」，不把原码显示出来。
+     */
+    private static String idCardCheckLabel(String code) {
+        if ("valid".equals(code)) {
+            return "通过";
+        }
+        if ("unchecked".equals(code)) {
+            return "未校验";
+        }
+        if ("unreadable".equals(code)) {
+            return "读取不出来";
+        }
+        IdCardProblem problem = IdCardProblem.fromCode(code);
+        return problem == null ? "未通过" : problem.message();
     }
 
     /** 值可读化：空值/布尔/常见状态翻译，时间戳转"yyyy-MM-dd HH:mm(北京时间)"，UUID 取前 8 位，长文本截断。 */

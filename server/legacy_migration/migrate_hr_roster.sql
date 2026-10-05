@@ -16,6 +16,8 @@
 --   · 工龄：不入库，系统按 hire_date 动态计算（员工列表/详情页显示「X 年 Y 个月」）。
 --   · 敏感信息：身份证/手机 pgcrypto 加密 + HMAC 查重哈希，与服务端同口径
 --     （密钥经 :legacy_key_file 注入，migrate.sh 用后即时删除）。
+--     证件号原样入库、不在 SQL 里校验，id_card_check 记为 unchecked；服务端下次启动时
+--     自动完成证件号校验，有问题的进人事任务中心「证件核对」(V798)。
 --   · 入职事件：名册为权威来源，按 hire_date 写 onboard 轨迹（重跑按 (员工,onboard,日期) 去重）。
 -- 安全闸：若现有 UT 工号员工与名册姓名冲突且非本迁移所建，立即中止（提示先 --hr-cleanup）。
 -- =====================================================================
@@ -150,13 +152,16 @@ WHERE prefix = 'UT';
 -- ---------------- §3 敏感信息：身份证/手机（pgcrypto + HMAC，与服务端同口径） ----------------
 -- V286 后源值空白时 enc/hash/last4 均保持 NULL，不得用空串密文伪造已登记身份；非空才生成派生值。
 -- 名册内身份证/手机均唯一（构建脚本已查重）；仍保留 rn 防御：同证号只给最小工号挂哈希。
-INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_last4, id_card_hash, phone_enc, phone_hash)
+INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_last4, id_card_hash, id_card_check, phone_enc, phone_hash)
 SELECT e.id,
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL
             THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.id_card), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL THEN right(BTRIM(s.id_card), 4) END,
        CASE WHEN s.rn = 1 AND NULLIF(BTRIM(s.id_card), '') IS NOT NULL
             THEN encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex') END,
+       -- V798: 证件号校验结果随密文同写。SQL 里没有解密密钥也不做校验，先记 unchecked，
+       -- 服务端下次启动时 EmployeeIdentityCheckRunner 解密判定 (同一把 advisory lock 串行)。
+       CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL THEN 'unchecked' END,
        CASE WHEN NULLIF(BTRIM(s.phone), '') IS NOT NULL
             THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.phone), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.phone), '') IS NOT NULL
@@ -169,6 +174,7 @@ ON CONFLICT (employee_id) DO UPDATE
     SET id_card_enc   = EXCLUDED.id_card_enc,
         id_card_last4 = EXCLUDED.id_card_last4,
         id_card_hash  = EXCLUDED.id_card_hash,
+        id_card_check = EXCLUDED.id_card_check,
         phone_enc     = EXCLUDED.phone_enc,
         phone_hash    = EXCLUDED.phone_hash;
 

@@ -467,7 +467,6 @@ class AccountSupportBoundaryTest {
         assertEquals(zhangId, rows.get(0).employeeId());
         assertEquals("张三", rows.get(0).name());
         assertTrue(rows.get(0).hasPhone());
-        assertTrue(rows.get(0).hasIdCard());
     }
 
     @Test
@@ -476,7 +475,7 @@ class AccountSupportBoundaryTest {
         Employee li = new Employee();
         li.setCode("UT0002");
         li.setFullName("李四");
-        // 无敏感记录：hasPhone / hasIdCard 均为 false，前端据此置灰
+        // 无敏感记录：hasPhone 为 false，前端据此置灰(证件号码有问题不拦开号，V798)
         when(employees.findProvisionCandidates(eq("李"), any(Pageable.class)))
                 .thenReturn(List.of(li));
         when(sensitive.findAllByEmployeeIdIn(any())).thenReturn(List.of());
@@ -485,7 +484,6 @@ class AccountSupportBoundaryTest {
 
         assertEquals(1, rows.size());
         assertFalse(rows.get(0).hasPhone());
-        assertFalse(rows.get(0).hasIdCard());
     }
 
     private AuthUser superActor() {

@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Array;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Savepoint;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -23,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.Session;
 import org.springframework.core.Ordered;
@@ -269,25 +272,68 @@ public class TxSessionVars {
         if (cipher == null || cipher.isBlank()) {
             return null;
         }
-        String version;
-        String body;
-        int idx = cipher.indexOf(':');
-        if (idx > 0) {
-            version = cipher.substring(0, idx);
-            body = cipher.substring(idx + 1);
-        } else {
-            version = crypto.getPgpKeyVersion();
-            body = cipher;
-        }
-        String key = keyring().get(version);
+        VersionedCipher parsed = parse(cipher);
+        String key = keyring().get(parsed.version());
         if (key == null) {
-            throw new IllegalStateException("未知密钥版本 [" + version + "]，请在 uten.crypto.pgp-legacy-keys 配置旧密钥");
+            throw new IllegalStateException("未知密钥版本 [" + parsed.version() + "]，请在 uten.crypto.pgp-legacy-keys 配置旧密钥");
         }
         return (String) em.createNativeQuery(
                         "SELECT pgp_sym_decrypt(decode(:c, 'base64'), :key)")
-                .setParameter("c", body)
+                .setParameter("c", parsed.body())
                 .setParameter("key", key)
                 .getSingleResult();
+    }
+
+    /**
+     * 解密一条可能解不开的密文 (数据损坏、轮换后没配旧密钥)：解不开返回 empty，不抛错，也不连累当前事务。
+     *
+     * <p>pgp_sym_decrypt 失败会让 PostgreSQL 把整个事务作废，所以这里在保存点里用原生 JDBC 执行，
+     * 失败就回滚到保存点；不经 Hibernate 查询，当前事务也不会被标成只能回滚。只给「解不开也不该拦住业务」
+     * 的地方用 (补开账号时从证件号派生初始密码、员工详情显示证件号、启动时回填证件号校验结果)，
+     * 其它地方仍用 {@link #decrypt}。
+     * 密文为空时同样返回 empty，调用方按自己有没有密文区分「没有」和「解不开」。</p>
+     */
+    public Optional<String> tryDecrypt(String cipher) {
+        if (cipher == null || cipher.isBlank()) {
+            return Optional.empty();
+        }
+        VersionedCipher parsed = parse(cipher);
+        String key = keyring().get(parsed.version());
+        if (key == null) {
+            return Optional.empty();
+        }
+        return em.unwrap(Session.class).doReturningWork(connection -> {
+            Savepoint savepoint = connection.getAutoCommit() ? null : connection.setSavepoint();
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT pgp_sym_decrypt(decode(?, 'base64'), ?)")) {
+                statement.setString(1, parsed.body());
+                statement.setString(2, key);
+                String plain;
+                try (ResultSet row = statement.executeQuery()) {
+                    plain = row.next() ? row.getString(1) : null;
+                }
+                if (savepoint != null) {
+                    connection.releaseSavepoint(savepoint);
+                }
+                return Optional.ofNullable(plain);
+            } catch (SQLException unreadable) {
+                if (savepoint != null) {
+                    connection.rollback(savepoint);
+                }
+                return Optional.empty();
+            }
+        });
+    }
+
+    /** "<version>:<base64>" 拆成版本与正文；没有版本前缀的旧数据按当前密钥版本。 */
+    private VersionedCipher parse(String cipher) {
+        int idx = cipher.indexOf(':');
+        return idx > 0
+                ? new VersionedCipher(cipher.substring(0, idx), cipher.substring(idx + 1))
+                : new VersionedCipher(crypto.getPgpKeyVersion(), cipher);
+    }
+
+    private record VersionedCipher(String version, String body) {
     }
 
     /**
@@ -306,11 +352,9 @@ public class TxSessionVars {
             if (cipher == null || cipher.isBlank()) {
                 continue;
             }
-            int idx = cipher.indexOf(':');
-            String version = idx > 0 ? cipher.substring(0, idx) : crypto.getPgpKeyVersion();
-            String body = idx > 0 ? cipher.substring(idx + 1) : cipher;
-            byVersion.computeIfAbsent(version, ignored -> new ArrayList<>())
-                    .add(new CipherPart(cipher, body));
+            VersionedCipher parsed = parse(cipher);
+            byVersion.computeIfAbsent(parsed.version(), ignored -> new ArrayList<>())
+                    .add(new CipherPart(cipher, parsed.body()));
         }
 
         Map<String, String> decrypted = new HashMap<>();

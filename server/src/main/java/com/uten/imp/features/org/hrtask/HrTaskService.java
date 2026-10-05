@@ -1,5 +1,8 @@
 package com.uten.imp.features.org.hrtask;
 
+import com.uten.imp.features.org.employee.EmployeeIdentityCheck;
+import com.uten.imp.features.org.employee.EmployeeSensitiveWritePolicy;
+import com.uten.imp.features.org.employee.dto.IdNumberIssue;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -17,7 +20,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * HR 任务中心：从员工档案动态计算人事提醒（转正 / 生日 / 入职周年 / 新入职）。
+ * HR 任务中心：从员工档案动态计算人事提醒(转正 / 生日 / 入职周年 / 新入职 / 证件核对)。
  *
  * 设计：
  * - 无任务表、不落库——每次请求按「今天」重算，结果天然随日期滚动；
@@ -26,6 +29,9 @@ import java.util.UUID;
  * - 逾期转正只跟踪近 {@link #CONFIRM_TRACK_MONTHS} 个月入职的员工；更早入职且未登记转正
  *   日期的老员工聚合为 unconfirmedLegacyCount（数据补录提示），避免刷出上百条噪音；
  * - 2 月 29 日生日在非闰年按 2 月 28 日庆祝（{@link #nextOccurrence}）；
+ * - 证件核对(V798)：档案没有证件号码、身份证号没通过校验、历史导入还没校验或号码读取不出来的在职员工；
+ *   只读已存的校验结果(EmployeeIdentityCheck.issueOf，不解密)，只有能改证件的人
+ *   (超管或 employee:pii:edit)看得到、计入徽标；超管账号的员工不列(人事改不了)；
  * - 员工规模（数百人级）一次查询内存计算即可，无需分页/物化视图。
  */
 @Service
@@ -40,10 +46,15 @@ public class HrTaskService {
     private static final String SELECT = """
             SELECT e.id, e.code, e.full_name,
                    d.name AS dept_name, p.name AS position_name,
-                   e.hire_date, e.confirmed_at, e.birth_date
+                   e.hire_date, e.confirmed_at, e.birth_date,
+                   (s.id_card_enc IS NULL) AS id_card_missing,
+                   s.id_card_check,
+                   EXISTS (SELECT 1 FROM users u
+                            WHERE u.employee_id = e.id AND u.is_super_admin) AS super_admin_account
             FROM employees e
             JOIN departments d ON d.id = e.department_id
             LEFT JOIN positions p ON p.id = e.position_id
+            LEFT JOIN employee_sensitive s ON s.employee_id = e.id
             WHERE e.is_deleted = false
               AND e.status IN ('active', 'probation')
             """;
@@ -53,9 +64,10 @@ public class HrTaskService {
     private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
 
     /**
-     * 按「今天」内存重算人事提醒（转正/生日/周年/新入职），无任务表、不落库。
+     * 按「今天」内存重算人事提醒(转正/生日/周年/新入职/证件核对)，无任务表、不落库。
      * 仅需 employee:view 即可调用，但生日派生信息属 PII：无 employee:pii:view 时生日列表清空且不计入徽标；
-     * 本年已发布庆典祝福的生日/周年仍保留在列表（标记 blessed）但不计徽标。
+     * 本年已发布庆典祝福的生日/周年仍保留在列表(标记 blessed)但不计徽标；
+     * 证件核对只给能改证件的人(超管或 employee:pii:edit)列出并计红，其他人拿到空列表。
      */
     public HrTaskSummary summary() {
         LocalDate today = com.uten.imp.common.time.BusinessTime.today();
@@ -67,7 +79,11 @@ public class HrTaskService {
                 rs.getString("position_name"),
                 toLocalDate(rs.getDate("hire_date")),
                 toLocalDate(rs.getDate("confirmed_at")),
-                toLocalDate(rs.getDate("birth_date"))));
+                toLocalDate(rs.getDate("birth_date")),
+                EmployeeIdentityCheck.issueOf(
+                        !rs.getBoolean("id_card_missing"),
+                        rs.getString("id_card_check"),
+                        rs.getBoolean("super_admin_account"))));
 
         List<HrTaskSummary.Item> confirmToday = new ArrayList<>();
         List<HrTaskSummary.Item> confirmUpcoming = new ArrayList<>();
@@ -77,6 +93,7 @@ public class HrTaskService {
         List<HrTaskSummary.Item> birthdayUpcoming = new ArrayList<>();
         List<HrTaskSummary.Item> anniversaryToday = new ArrayList<>();
         List<HrTaskSummary.Item> newHires = new ArrayList<>();
+        List<HrTaskSummary.Item> identityReview = new ArrayList<>();
 
         for (Row r : rows) {
             // ---- 转正：预计转正日 = 入职 + 3 个月；已登记转正日期者不再提醒 ----
@@ -122,6 +139,11 @@ public class HrTaskService {
                     newHires.add(r.item(r.hireDate(), (int) since, since == 0 ? "今日入职" : null));
                 }
             }
+
+            // ---- 证件核对：说明直接用服务端拼好的具体原因(只含位置和长度，不含号码) ----
+            if (r.identityIssue() != null) {
+                identityReview.add(r.item(r.hireDate(), 0, r.identityIssue().reason()));
+            }
         }
 
         // PII 边界：生日派生信息（姓名 + 出生月日 + 年龄）属 PII，仅 employee:pii:view 可见（与
@@ -134,6 +156,15 @@ public class HrTaskService {
         if (!canSeePii) {
             birthdayToday = new ArrayList<>();
             birthdayUpcoming = new ArrayList<>();
+        }
+        // 证件核对只打扰能动手修的人：employee:view 发得很广(总经理与多个部门都有)，
+        // 非人事的管理者不该看到也不该被计数。
+        boolean canFixIdentity = currentUser.get()
+                .map(u -> u.isSuperAdmin()
+                        || u.getPermissions().contains(EmployeeSensitiveWritePolicy.PII_EDIT))
+                .orElse(false);
+        if (!canFixIdentity) {
+            identityReview = new ArrayList<>();
         }
 
         // 本类型本年已出现在任何庆典卡（聚合或单人）的员工（V454 起按主角表口径，
@@ -167,6 +198,8 @@ public class HrTaskService {
         confirmOverdue.sort(byDays);
         birthdayUpcoming.sort(byDays);
         newHires.sort(Comparator.comparing(HrTaskSummary.Item::date).reversed());
+        identityReview.sort(Comparator.comparing(
+                HrTaskSummary.Item::code, Comparator.nullsLast(Comparator.naturalOrder())));
 
         // ---- 软认领装配（ADR-021：任务不隐藏，显示「XXX 处理中」） ----
         Map<String, HrTaskClaim> claims = claimService.activeClaimsByTaskKey();
@@ -180,16 +213,20 @@ public class HrTaskService {
             birthdayUpcoming = attachClaims(birthdayUpcoming, "birthday", claims, names, me);
             anniversaryToday = attachClaims(anniversaryToday, "anniversary", claims, names, me);
             newHires = attachClaims(newHires, "newhire", claims, names, me);
+            identityReview = attachClaims(identityReview, "identity", claims, names, me);
         }
 
+        // 证件核对一律计红(轮到人事办；被认领的也照样计)，列表已按权限过滤。
         long badge = confirmToday.size() + confirmOverdue.size()
                 + birthdayToday.stream().filter(it -> !it.blessed()).count()
-                + anniversaryToday.stream().filter(it -> !it.blessed()).count();
+                + anniversaryToday.stream().filter(it -> !it.blessed()).count()
+                + identityReview.size();
 
         return new HrTaskSummary(
                 today, PROBATION_MONTHS,
                 confirmToday, confirmUpcoming, confirmOverdue, unconfirmedLegacy,
                 birthdayToday, birthdayUpcoming, anniversaryToday, newHires,
+                identityReview,
                 badge);
     }
 
@@ -242,7 +279,8 @@ public class HrTaskService {
     }
 
     private record Row(UUID id, String code, String name, String deptName, String positionName,
-                       LocalDate hireDate, LocalDate confirmedAt, LocalDate birthDate) {
+                       LocalDate hireDate, LocalDate confirmedAt, LocalDate birthDate,
+                       IdNumberIssue identityIssue) {
         HrTaskSummary.Item item(LocalDate date, int days, String note) {
             return new HrTaskSummary.Item(id, code, name, deptName, positionName, date, days, note,
                     null, false, null, false);

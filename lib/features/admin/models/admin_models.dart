@@ -432,14 +432,13 @@ class DataScopeCatalogItem {
 }
 
 /// 开通账号候选员工（GET /admin/users/provision-candidates）。
-/// 最小信息集：姓名/工号/部门 + 是否已登记手机号/证件（不回传 PII 明文）。
+/// 最小信息集：姓名/工号/部门 + 是否已登记手机号(不回传 PII 明文)。
 class AccountProvisionCandidate {
   const AccountProvisionCandidate({
     required this.employeeId,
     required this.name,
     required this.code,
     required this.hasPhone,
-    required this.hasIdCard,
     this.departmentName,
   });
 
@@ -451,12 +450,8 @@ class AccountProvisionCandidate {
   /// 已登记手机号（登录账号=手机号，缺失时无法开通）。
   final bool hasPhone;
 
-  /// 已登记证件号（用于生成新账号初始密码，后端另校验长度及身份证有效性）。
-  final bool hasIdCard;
-
-  /// 满足开通条件：手机号作登录账号。初始密码已改为系统随机生成，
-  /// 证件号不再是开通前提（与测试注释「初始密码改为系统随机生成后，证件号
-  /// 不再是开通条件」同口径）。
+  /// 满足开通条件：只看手机号(手机号就是登录账号)。证件号码缺失或校验不通过
+  /// 都不拦开号：确认弹窗会提前提醒，开通后由人事任务中心跟进核对。
   bool get provisionable => hasPhone;
 
   /// 不可开通的缺失资料说明（如「缺手机号」）。
@@ -469,6 +464,5 @@ class AccountProvisionCandidate {
         code: json['code'] as String? ?? '',
         departmentName: json['departmentName'] as String?,
         hasPhone: json['hasPhone'] as bool? ?? false,
-        hasIdCard: json['hasIdCard'] as bool? ?? false,
       );
 }

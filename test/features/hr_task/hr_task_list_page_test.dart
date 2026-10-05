@@ -1,9 +1,12 @@
 // HR 任务中心（2026-09-10 表格化 + 表头筛选 + 批量登记转正/批量送祝福）。
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_card_list.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
@@ -21,14 +24,32 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   _FakeHrTaskRepository(this.summaryValue);
 
   HrTaskSummary summaryValue;
+  int summaryCalls = 0;
 
   @override
-  Future<HrTaskSummary> summary() async => summaryValue;
+  Future<HrTaskSummary> summary() async {
+    summaryCalls++;
+    return summaryValue;
+  }
 }
 
 class _FakeEmployeeRepository extends Fake implements EmployeeRepository {
   final List<String> confirmed = [];
   final List<String> updated = [];
+  final List<String> identityChanges = [];
+
+  @override
+  Future<EmployeeProfile> getById(String id) async =>
+      EmployeeProfile(id: id, code: 'UT-$id', fullName: '员工$id');
+
+  @override
+  Future<void> changeIdentity(
+    String id, {
+    required String idType,
+    required String idNumber,
+  }) async {
+    identityChanges.add('$id:$idType');
+  }
 
   @override
   Future<void> confirm(String id, {String? confirmedDate}) async {
@@ -78,6 +99,7 @@ HrTaskItem _item(
   String id, {
   String? dept,
   int days = 0,
+  String? note,
   String? claimedByName,
   bool claimedByMe = false,
   bool blessed = false,
@@ -90,6 +112,7 @@ HrTaskItem _item(
   positionName: '工程师',
   date: date,
   days: days,
+  note: note,
   claimedByName: claimedByName,
   claimedByMe: claimedByMe,
   blessed: blessed,
@@ -101,6 +124,7 @@ HrTaskSummary _summary({
   List<HrTaskItem> confirmUpcoming = const [],
   List<HrTaskItem> birthdayToday = const [],
   List<HrTaskItem> birthdayUpcoming = const [],
+  List<HrTaskItem> identityReview = const [],
 }) => HrTaskSummary(
   generatedAt: '2026-09-11T08:00:00+08:00',
   probationMonths: 3,
@@ -112,6 +136,7 @@ HrTaskSummary _summary({
   birthdayUpcoming: birthdayUpcoming,
   anniversaryToday: const [],
   newHires: const [],
+  identityReview: identityReview,
   badgeCount: 0,
 );
 
@@ -141,6 +166,16 @@ Widget _app({
 MasterDataTableView<HrTaskItem> _table(WidgetTester tester) =>
     tester.widget<MasterDataTableView<HrTaskItem>>(
       find.byKey(const Key('hr-task-table')),
+    );
+
+List<String> _menuLabels(WidgetTester tester, HrTaskItem item) => [
+  for (final entry in _table(tester).rowMenuBuilder!(item))
+    if (entry is UtenMenuItem) entry.label,
+];
+
+UtenMenuItem _menuItem(WidgetTester tester, HrTaskItem item, String label) =>
+    _table(tester).rowMenuBuilder!(item).whereType<UtenMenuItem>().firstWhere(
+      (entry) => entry.label == label,
     );
 
 void main() {
@@ -196,6 +231,173 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('identity review shows the reason column without timeline', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(
+        identityReview: [
+          _item('a', days: 120, note: '身份证号应为18位，当前为17位'),
+          _item('b', days: 30, note: '档案里没有证件号码'),
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.identity,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        permissions: {
+          Perm.employeeView,
+          Perm.employeeConfirm,
+          Perm.employeePiiEdit,
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final table = _table(tester);
+    final keys = table.columns.map((c) => c.key).toList();
+    expect(keys, containsAll(<String>['code', 'name', 'date', 'note']));
+    expect(keys, isNot(contains('days')), reason: '证件核对没有天数');
+    expect(keys, isNot(contains('window')), reason: '证件核对没有区间');
+    expect(table.columns.firstWhere((c) => c.key == 'note').label, '原因');
+    expect(table.columns.firstWhere((c) => c.key == 'date').label, '入职日');
+    expect(table.facets.containsKey('window'), isFalse);
+    expect(table.selectable, isFalse, reason: '证件核对逐人修改，不开多选');
+    expect(table.batchActionsBuilder, isNull);
+    final noteColumn = table.columns.firstWhere((c) => c.key == 'note');
+    expect(noteColumn.value(table.items.first), '身份证号应为18位，当前为17位');
+    expect(find.text('身份证号应为18位，当前为17位'), findsWidgets);
+    for (final cell in tester.widgetList<Text>(find.text('身份证号应为18位，当前为17位'))) {
+      expect(cell.overflow, isNot(TextOverflow.ellipsis), reason: '表格里原因折行不截断');
+      expect(cell.maxLines, isNull);
+    }
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('375 宽窄屏卡片：校验码原因红字完整显示，不截断', (tester) async {
+    const reason = '身份证号第18位校验码与前17位不符，通常是某一位数字录错或相邻两位颠倒，请对照证件逐位核对';
+    const viewSize = Size(375, 1200);
+    tester.view.physicalSize = viewSize;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(identityReview: [_item('a', days: 120, note: reason)]),
+    );
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.identity,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        permissions: {Perm.employeeView, Perm.employeePiiEdit},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: '375 宽不溢出');
+    expect(
+      find.byType(MasterDataCardList<HrTaskItem>),
+      findsOneWidget,
+      reason: '窄屏走卡片形态',
+    );
+
+    final reasonFinder = find.text(reason);
+    expect(reasonFinder, findsOneWidget, reason: '原因原样完整，不拼「原因」前缀');
+    final text = tester.widget<Text>(reasonFinder);
+    expect(text.maxLines, isNull);
+    expect(text.overflow, isNot(TextOverflow.ellipsis));
+    expect(
+      text.style?.color,
+      Theme.of(tester.element(reasonFinder)).colorScheme.error,
+      reason: '卡片里也是红字',
+    );
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(of: reasonFinder, matching: find.byType(RichText)),
+    );
+    expect(paragraph.didExceedMaxLines, isFalse);
+    final rect = tester.getRect(reasonFinder);
+    expect(rect.left, greaterThanOrEqualTo(0));
+    expect(rect.right, lessThanOrEqualTo(viewSize.width));
+    expect(rect.bottom, lessThanOrEqualTo(viewSize.height));
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 能不能修由服务端判定：证件核对条目只下发给能修改证件的人(超管或 employee:pii:edit)，
+  // 本页路由守卫也要求 employee:pii:edit(见 page_route_permission_dependency_test)；
+  // 页面只再挡「他人处理中」。
+  testWidgets(
+    'identity correction menu is offered unless someone else handles it',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final free = _item('a', note: '身份证号第18位只能是数字或X');
+      final mine = _item('b', note: '档案里没有证件号码', claimedByMe: true);
+      final others = _item(
+        'c',
+        note: '证件号码来自历史资料导入，系统还没有完成校验',
+        claimedByName: '李四',
+      );
+      final hrTasks = _FakeHrTaskRepository(
+        _summary(identityReview: [free, mine, others]),
+      );
+
+      final employees = _FakeEmployeeRepository();
+      await tester.pumpWidget(
+        _app(
+          type: HrTaskType.identity,
+          hrTasks: hrTasks,
+          preferences: preferences,
+          employees: employees,
+          permissions: {Perm.employeeView, Perm.employeePiiEdit},
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_menuLabels(tester, free), contains('修改证件信息'));
+      expect(_menuLabels(tester, mine), contains('修改证件信息'));
+      expect(
+        _menuLabels(tester, others),
+        isNot(contains('修改证件信息')),
+        reason: '他人处理中不显示，防重复修改',
+      );
+
+      final callsBefore = hrTasks.summaryCalls;
+      _menuItem(tester, free, '修改证件信息').onTap();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('employee-identity-correction-dialog')),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('employee-identity-correction-number')),
+        '11010519491231002X',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('employee-identity-correction-save')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(employees.identityChanges, ['a:身份证']);
+      expect(
+        find.byKey(const ValueKey('employee-identity-correction-dialog')),
+        findsNothing,
+      );
+      expect(
+        hrTasks.summaryCalls,
+        greaterThan(callsBefore),
+        reason: '改完静默重取，任务随之消失',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('batch confirm skips rows claimed by others', (tester) async {
     SharedPreferences.setMockInitialValues(const {});

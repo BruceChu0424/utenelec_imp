@@ -254,6 +254,85 @@ class AuditEventInterpreterTest {
         assertTrue(!interpreter.interpret(other).changeSummary().contains("设计使用数量"));
     }
 
+    /**
+     * V798 证件号校验结果列：列名与取值都读成中文，问题码还原成录入时同一句说明，
+     * 不出现原始代码，也不出现「未登记字段」。
+     */
+    @Test
+    void identityCheckColumnReadsInPlainChineseWithoutRawCodes() {
+        AuditLog migration = sensitiveUpdate("{\"id_card_check\":null}", "{\"id_card_check\":\"unchecked\"}");
+        String backfilled = interpreter.interpret(migration).changeSummary();
+        assertTrue(backfilled.contains("证件号校验结果：空 → 未校验"), backfilled);
+
+        AuditLog runner = sensitiveUpdate(
+                "{\"id_card_check\":\"unchecked\"}", "{\"id_card_check\":\"length:17\"}");
+        String judged = interpreter.interpret(runner).changeSummary();
+        assertTrue(judged.contains("证件号校验结果：未校验 → 身份证号应为18位，当前为17位"), judged);
+
+        AuditLog correction = sensitiveUpdate(
+                "{\"id_card_last4\":\"0021\",\"id_card_check\":\"check_digit\"}",
+                "{\"id_card_last4\":\"002X\",\"id_card_check\":\"valid\","
+                        + "\"_redacted_changes\":[\"id_card_enc\",\"id_card_hash\"]}");
+        String corrected = interpreter.interpret(correction).changeSummary();
+        assertTrue(corrected.contains("证件号校验结果：身份证号第18位校验码与前17位不符，"
+                + "通常是某一位数字录错或相邻两位颠倒，请对照证件逐位核对 → 通过"), corrected);
+        assertTrue(corrected.contains("证件号码后四位："), corrected);
+        assertTrue(corrected.contains("敏感信息已修改(内容不记录)：证件号码、证件号码查重值"), corrected);
+
+        // 改对证件号会连带改出生日期密文 (触发器不剔除 *_enc)：只列名字，不显示密文。
+        AuditLog derivedBirthDate = sensitiveUpdate(
+                "{\"birth_date_enc\":\"1:ww0EBwMColdcipher\"}", "{\"birth_date_enc\":\"1:ww0EBwMCnewcipher\"}");
+        String birthDate = interpreter.interpret(derivedBirthDate).changeSummary();
+        assertEquals("敏感信息已修改(内容不记录)：出生日期", birthDate);
+        AuditLog phone = sensitiveUpdate("{\"employee_id\":\"e-1\"}",
+                "{\"employee_id\":\"e-1\",\"_redacted_changes\":[\"phone_enc\",\"phone_hash\"]}");
+        String phoneChanged = interpreter.interpret(phone).changeSummary();
+        assertTrue(phoneChanged.contains("敏感信息已修改(内容不记录)：手机号、手机号查重值"), phoneChanged);
+
+        AuditLog unknown = sensitiveUpdate(
+                "{\"id_card_check\":\"valid\"}", "{\"id_card_check\":\"character:99\"}");
+        String fallback = interpreter.interpret(unknown).changeSummary();
+        assertTrue(fallback.contains("证件号校验结果：通过 → 未通过"), fallback);
+
+        // 启动回填解不开的号码存 unreadable；人事重新登记后改写为 valid。
+        AuditLog unreadableBackfill = sensitiveUpdate(
+                "{\"id_card_check\":\"unchecked\"}", "{\"id_card_check\":\"unreadable\"}");
+        String unreadable = interpreter.interpret(unreadableBackfill).changeSummary();
+        assertTrue(unreadable.contains("证件号校验结果：未校验 → 读取不出来"), unreadable);
+        AuditLog reentry = sensitiveUpdate(
+                "{\"id_card_check\":\"unreadable\"}", "{\"id_card_check\":\"valid\"}");
+        String reentered = interpreter.interpret(reentry).changeSummary();
+        assertTrue(reentered.contains("证件号校验结果：读取不出来 → 通过"), reentered);
+
+        AuditLog idType = new AuditLog();
+        idType.setAction("update");
+        idType.setTargetType("employees");
+        idType.setBefore("{\"status\":\"active\"}");
+        idType.setAfter("{\"status\":\"active\",\"_redacted_changes\":[\"id_type\"]}");
+        idType.setResult("success");
+        String typeChanged = interpreter.interpret(idType).changeSummary();
+        assertTrue(typeChanged.contains("敏感信息已修改(内容不记录)：证件类型"), typeChanged);
+
+        for (String text : List.of(backfilled, judged, corrected, birthDate, phoneChanged, fallback,
+                unreadable, reentered, typeChanged)) {
+            assertTrue(!text.contains("未登记字段"), text);
+            for (String raw : List.of("unchecked", "unreadable", "valid", "length:", "character:", "check_digit",
+                    "id_card", "id_type", "_enc", "ww0E")) {
+                assertTrue(!text.contains(raw), text);
+            }
+        }
+    }
+
+    private static AuditLog sensitiveUpdate(String before, String after) {
+        AuditLog row = new AuditLog();
+        row.setAction("update");
+        row.setTargetType("employee_sensitive");
+        row.setBefore(before);
+        row.setAfter(after);
+        row.setResult("success");
+        return row;
+    }
+
     /** 新列有中文名；表限定的枚举值只在自己的表上翻译(研发任务类别 DESIGN 不会读成「按设计使用数量」)。 */
     @Test
     void usageAndRateSourceColumnsReadInPlainChineseOnlyOnTheirOwnTable() {
@@ -757,6 +836,17 @@ class AuditEventInterpreterTest {
         assertEquals("认领HR任务", claimEvent.actionLabel());
         assertEquals("认领HR任务 转正任务 · 张三", claimEvent.summary());
         assertEquals("人事 · HR任务中心", claimEvent.pageLabel());
+
+        // V798 证件核对任务：标签照常翻译，目标里只有任务类型与姓名，不含证件号。
+        AuditLog identityClaim = new AuditLog();
+        identityClaim.setAction("hr_task_claim");
+        identityClaim.setTargetType("hr_task_claims");
+        identityClaim.setTargetId("identity · 李四");
+        identityClaim.setEventSource("business");
+        identityClaim.setResult("success");
+        identityClaim.setHttpPath("/api/org/hr-tasks/claims");
+        assertEquals("认领HR任务 证件核对任务 · 李四",
+                interpreter.interpret(identityClaim).summary());
 
         // 认领端点的请求覆盖行也要显示成具体动作，而不是泛化的"新增"
         AuditEventInterpreter.InterpretedEvent httpEvent = interpreter.interpret(

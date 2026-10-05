@@ -2,11 +2,74 @@
 ///
 /// before/after 快照里的键是数据库列名（snake_case），直接展示普通人看不懂。
 /// 这里把常见列名翻译成中文；未收录的键统一显示“其他字段”，原键只留在折叠排查数据中。
+///
+/// 服务端只给整条记录一句 changeSummary(最多 6 项)，不给逐列的中文，所以「数据变更」
+/// 标签页的逐列名称和取值由这里翻译；密文列(*_enc)和查重值只说改了，从不显示内容。
 library;
 
 import '../../../core/utils/display_datetime.dart';
+import '../../../core/utils/id_card_utils.dart';
 
 abstract final class AuditFieldLabels {
+  /// 数据库触发器在快照里写的键：敏感列变了只记列名(值是列名数组)，不记内容。
+  static const String redactedChangesKey = '_redacted_changes';
+
+  /// 不显示内容的列，取值处统一写这句。
+  static const String hiddenValueText = '(内容不显示)';
+
+  /// 由证件号、手机号、口令算出的查重值/摘要：不是密文，但同样不给人看。
+  static const Set<String> _hiddenValueFields = {
+    'id_card_hash',
+    'phone_hash',
+    'password_hash',
+    'token_hash',
+    'preview_token_hash',
+    'code_hash',
+  };
+
+  /// 这一列的内容是否不能显示：密文列(列名以 _enc 结尾)和查重值。
+  static bool hidesValue(String field) {
+    final key = field.trim().toLowerCase();
+    return key.endsWith('_enc') || _hiddenValueFields.contains(key);
+  }
+
+  /// 不显示内容的列改了(含触发器只记了列名的敏感列)。
+  static const String hiddenModifiedText = '已修改(内容不显示)';
+
+  /// 不显示内容的列这次变了什么：从无到有、被清空或改了，只说动作不说内容。
+  static String hiddenChangeText(Object? before, Object? after) {
+    if (before == null && after != null) return '已填写(内容不显示)';
+    if (before != null && after == null) return '已清空';
+    return hiddenModifiedText;
+  }
+
+  /// 快照里 [redactedChangesKey] 列出的列名(只有列名，没有内容)。
+  static List<String> redactedFieldsOf(Map<String, dynamic> after) {
+    final names = after[redactedChangesKey];
+    if (names is! List) return const [];
+    return [
+      for (final name in names)
+        if (name is String && name.trim().isNotEmpty) name.trim(),
+    ];
+  }
+
+  /// 原始快照给人看之前，把不显示内容的列换成 [hiddenValueText](空值保持空值)。
+  static Object? maskHiddenValues(Object? json) {
+    if (json is Map) {
+      return {
+        for (final entry in json.entries)
+          entry.key:
+              entry.key is String &&
+                  hidesValue(entry.key as String) &&
+                  entry.value != null
+              ? hiddenValueText
+              : maskHiddenValues(entry.value),
+      };
+    }
+    if (json is List) return [for (final item in json) maskHiddenValues(item)];
+    return json;
+  }
+
   /// 返回中文标签；未收录时安全回退为“其他字段”。
   ///
   /// [table] 是审计行的 target_type(数据变更即表名)：同名列在个别表里含义
@@ -71,6 +134,38 @@ abstract final class AuditFieldLabels {
     'legacy_category': '旧系统分类',
     'resign_date': '离职日期',
     'offboard_reason': '离职原因',
+    'birth_date': '出生日期',
+    'ethnicity': '民族',
+    'political_status': '政治面貌',
+    'marital_status': '婚姻状况',
+
+    // 员工证件与加密信息(employee_sensitive)：名称与服务端审计摘要逐字一致；
+    // 密文列和查重值只说改了，内容见 hidesValue。
+    'id_type': '证件类型',
+    'id_card_enc': '证件号码',
+    'id_card_hash': '证件号码查重值',
+    'id_card_last4': '证件号码后四位',
+    'id_card_check': '证件号校验结果',
+    'phone_enc': '手机号',
+    'phone_hash': '手机号查重值',
+    'birth_date_enc': '出生日期',
+    'email_enc': '电子邮箱',
+    'office_phone_enc': '办公电话',
+    'huji_address_enc': '户籍地址',
+    'residence_address_enc': '现居住地址',
+    'marital_status_enc': '婚姻状况',
+    'political_status_enc': '政治面貌',
+    'bank_account_enc': '银行账号',
+    'bank_branch_enc': '开户行',
+    // 其它加密列：薪酬、资料修改申请的前后内容、访客车牌。
+    'base_salary_enc': '基本工资',
+    'perf_salary_enc': '绩效工资',
+    'social_insurance_base_enc': '社保基数',
+    'housing_fund_base_enc': '公积金基数',
+    'allowance_standard_enc': '补贴标准',
+    'old_value_enc': '修改前内容',
+    'new_value_enc': '修改后内容',
+    'plate_no_enc': '车牌号',
 
     // 用户账号 / 权限
     'login_account': '登录账号',
@@ -197,12 +292,17 @@ abstract final class AuditFieldLabels {
   ///
   /// 业务编码只在知道 [table] 与 [field] 时按表列翻译(同一个 DESIGN 在研发
   /// 任务分类里是「设计」，在物料分析里才是「按设计使用数量」)；通用字典只收
-  /// 各表含义都一样的状态值。
+  /// 各表含义都一样的状态值。知道 [field] 且是不显示内容的列(见 [hidesValue])时，
+  /// 有值一律只给 [hiddenValueText]。
   static String valueOf(dynamic value, {String? table, String? field}) {
     if (value == null) return '—';
+    if (field != null && hidesValue(field)) return hiddenValueText;
     if (value is bool) return value ? '是' : '否';
     if (value is String) {
       if (value.isEmpty) return '(空)';
+      if (table == _idCardCheckTable && field == _idCardCheckField) {
+        return idCardCheckText(value);
+      }
       final key = value.trim().toLowerCase();
       final translated =
           (table == null || field == null
@@ -268,6 +368,22 @@ abstract final class AuditFieldLabels {
       'explicit': '人工确认',
     },
   };
+
+  static const _idCardCheckTable = 'employee_sensitive';
+  static const _idCardCheckField = 'id_card_check';
+
+  /// 员工证件号校验结果的存储码 → 中文：valid 通过、unchecked 未校验、unreadable 读取
+  /// 不出来；其余是问题码(如 check_digit、length:17)，还原成录入时当场看到的同一句
+  /// 说明([IdCardProblem.fromCode])；不认识的码只说「未通过」，不把原码显示出来。
+  static String idCardCheckText(String code) {
+    final value = code.trim();
+    return switch (value) {
+      'valid' => '通过',
+      'unchecked' => '未校验',
+      'unreadable' => '读取不出来',
+      _ => IdCardProblem.fromCode(value)?.message ?? '未通过',
+    };
+  }
 
   /// 是否为 UUID 形式的值（通常需要再翻译成名称）。
   static bool looksLikeUuid(Object? value) =>

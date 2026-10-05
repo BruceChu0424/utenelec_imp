@@ -73,7 +73,7 @@ public class EmployeeController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('employee:create')")
-    @StepUpExempt("入职是新员工第一次拿到账号: 人事当面把证件号后六位、限时有效的初始密码交给本人, "
+    @StepUpExempt("入职是新员工第一次拿到账号: 人事当面把证件号后六位(不足六位时随机)、限时有效的初始密码交给本人, "
             + "目标是刚建的档案而不是已有账号, 不存在接管; 每办一次入职都要输一次密码会严重拖慢人事日常")
     public EmployeeOnboardingResult onboard(@Valid @RequestBody OnboardingRequest req) {
         return onboardingService.onboard(req);
@@ -83,9 +83,18 @@ public class EmployeeController {
     @PreAuthorize("hasAuthority('account:support')")
     @RequiresStepUp
     public EmployeeOnboardingResult provisionAccount(@PathVariable UUID id) {
-        // 给批量导入等「未开通账号」的存量员工补开登录账号（账号=手机号，初始密码=证件号后六位，
-        // 限时有效、首登必改）。操作人会看到明文临时密码：要求再认证，目标持有高危权限时只有超管能开 (ADR-110)。
+        // 给批量导入等「未开通账号」的存量员工补开登录账号 (账号=手机号，初始密码=证件号后六位，
+        // 证件号缺失或不足六位时随机生成；限时有效、首登必改)。证件号有问题只提醒不阻塞 (V798)，
+        // 结果里 employee.idNumberIssue 带出原因。操作人会看到明文临时密码：要求再认证，
+        // 目标持有高危权限时只有超管能开 (ADR-110)。
         return onboardingService.provisionAccount(id);
+    }
+
+    /** 开号就绪检查：开号确认弹窗打开时先读，确认前就提示没有手机号或证件号有问题。不解密、不含号码。 */
+    @GetMapping("/{id}/account/readiness")
+    @PreAuthorize("hasAuthority('account:support')")
+    public EmployeeAccountReadiness accountReadiness(@PathVariable UUID id) {
+        return onboardingService.accountReadiness(id);
     }
 
     @PostMapping("/{id}/account/lock")
@@ -139,6 +148,13 @@ public class EmployeeController {
     @PreAuthorize("hasAuthority('employee:pii:edit')")
     public void changePhone(@PathVariable UUID id, @Valid @RequestBody ChangePhoneRequest req) {
         commandService.changePhone(id, req.newPhone());
+    }
+
+    /** 修改证件信息 (证件类型和号码一起改；人事核对证件后修正，证件核对任务随之结案)。 */
+    @PostMapping("/{id}/change-identity")
+    @PreAuthorize("hasAuthority('employee:pii:edit')")
+    public void changeIdentity(@PathVariable UUID id, @Valid @RequestBody ChangeIdentityRequest req) {
+        commandService.changeIdentity(id, req.idType(), req.idNumber());
     }
 
     @PostMapping("/{id}/rehire")

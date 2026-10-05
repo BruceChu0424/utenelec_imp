@@ -120,6 +120,28 @@ class EmployeeQueryServiceSelfProfileTest {
         assertNull(detail.getBaseSalary());
     }
 
+    /**
+     * 证件号密文解不开时详情照常返回 (补开账号的结果也走这里)：号码留空，提醒说明号码读取不出来；
+     * 其它字段不受影响。
+     */
+    @Test
+    void undecryptableIdentityLeavesTheNumberEmptyAndSaysItCannotBeRead() {
+        when(currentUser.get()).thenReturn(Optional.of(staff(
+                SELF_ID,
+                Set.of("employee:view", "employee:pii:view"))));
+        stubDetail(OTHER_ID, "其他员工");
+        when(sensitiveRepo.findByEmployeeId(OTHER_ID)).thenReturn(Optional.of(sensitiveWith("corrupt-cipher")));
+
+        EmployeeDetail detail = service.detail(OTHER_ID);
+
+        assertNull(detail.getIdNumber());
+        assertEquals(PRIMARY_PHONE, detail.getPhone());
+        assertEquals("unchecked", detail.getIdNumberIssue().kind());
+        assertEquals("档案里的证件号码读取不出来，系统无法校验，请人事对照证件重新登记",
+                detail.getIdNumberIssue().reason());
+        verify(tx, never()).decrypt("corrupt-cipher");
+    }
+
     @Test
     void unboundStaffFailsClosedBeforeAnyEmployeeLookup() {
         when(currentUser.get()).thenReturn(Optional.of(staff(null, Set.of("profile:edit:self"))));
@@ -206,6 +228,19 @@ class EmployeeQueryServiceSelfProfileTest {
                         "备用",
                         ALTERNATE_PHONE)));
         when(tx.decrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(tx.tryDecrypt(anyString())).thenAnswer(invocation ->
+                "corrupt-cipher".equals(invocation.getArgument(0))
+                        ? Optional.empty()
+                        : Optional.of(invocation.getArgument(0)));
+    }
+
+    private static EmployeeSensitive sensitiveWith(String identityCipher) {
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setEmployeeId(OTHER_ID);
+        sensitive.setIdCardEnc(identityCipher);
+        sensitive.setIdCardCheck("valid");
+        sensitive.setPhoneEnc(PRIMARY_PHONE);
+        return sensitive;
     }
 
     private static AuthUser staff(UUID employeeId, Set<String> permissions) {

@@ -32,8 +32,11 @@ class HrTasksAiChatToolTest {
                 "PRIVATE_BANK_OR_SALARY", "PRIVATE_CLAIMANT",false,null,false);
     }
     private HrTaskSummary summary(List<HrTaskSummary.Item> confirm,List<HrTaskSummary.Item> birthday) {
+        return summary(confirm,birthday,List.of());
+    }
+    private HrTaskSummary summary(List<HrTaskSummary.Item> confirm,List<HrTaskSummary.Item> birthday,List<HrTaskSummary.Item> identity) {
         return new HrTaskSummary(LocalDate.of(2026,10,3),3,confirm,List.of(),List.of(),4,
-                birthday,List.of(),List.of(),List.of(),confirm.size()+birthday.size());
+                birthday,List.of(),List.of(),List.of(),identity,confirm.size()+birthday.size()+identity.size());
     }
     @Test void authorizedHrGetsRealTaskIdentityAndDateWithoutSensitiveOrUnneededFields() {
         when(tasks.summary()).thenReturn(summary(List.of(item("测试员工",LocalDate.of(2026,10,3))),List.of(item("PRIVATE_BIRTHDAY",LocalDate.of(2026,10,3)))));
@@ -43,6 +46,19 @@ class HrTasksAiChatToolTest {
         assertThat(result.get("detailReply").toString()).contains("今日预计转正：1 项","E001","生产部","其他同事已认领")
                 .doesNotContain("PRIVATE_","48岁","权限","来源","薪资","银行");
         assertThat(tool.parameters().toString()).doesNotContain("BIRTHDAY");
+    }
+    @Test void identityReviewTasksNeverReachTheAiReply() {
+        // ADR-141: AI 工具承诺不输出证件信息；证件核对任务 (V798) 不在任何分类里。
+        actor=actor("employee:view","employee:pii:view","employee:pii:edit");
+        var identity=new HrTaskSummary.Item(UUID.randomUUID(),"E009","IDENTITY_TASK_PERSON","生产部",null,
+                LocalDate.of(2026,1,5),0,"身份证号应为18位，当前为17位",null,false,null,false);
+        when(tasks.summary()).thenReturn(summary(List.of(item("测试员工",LocalDate.of(2026,10,3))),List.of(),List.of(identity)));
+        for(Map<String,Object> args:List.<Map<String,Object>>of(Map.of(),Map.of("category","CONFIRM"),
+                Map.of("category","NEW_HIRES"),Map.of("category","BIRTHDAY"),Map.of("keyword","IDENTITY"))) {
+            var result=tool.execute(args);
+            assertThat(result.get("reply").toString()+result.get("detailReply"))
+                    .doesNotContain("IDENTITY_TASK_PERSON","E009","身份证号","当前为17位","证件");
+        }
     }
     @Test void birthdayNeedsSeparatePermissionBeforeTheTaskServiceIsRead() {
         assertThatThrownBy(()->tool.execute(Map.of("category","BIRTHDAY"))).isInstanceOf(ApiException.class);

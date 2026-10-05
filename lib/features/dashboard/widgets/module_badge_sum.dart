@@ -18,7 +18,7 @@ enum WorkbenchBadgeKind {
   visitorHost, // 我的访客(被访人待确认 / 在办)
   visitorApproval, // 访客审批(HR 待审批 / 已批准待来访)
   hrReview, // 信息变更审核
-  hrTask, // HR 任务中心（今日转正/逾期转正/今日生日/今日周年）
+  hrTask, // HR 任务中心(今日转正/逾期转正/今日生日/今日周年/证件待核对)
   production, // 生产管理(待排产 + 生产草稿 / 进行中批次)
   productionWorkshop, // 我的车间任务(红=等待物料；黄=生产中)
   rdTask, // 任务中心

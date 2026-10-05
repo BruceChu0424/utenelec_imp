@@ -17,7 +17,11 @@ import java.util.UUID;
  * @param birthdayUpcoming       30 天内生日（days = 剩余天数）
  * @param anniversaryToday       今日入职周年（days = 满年数）
  * @param newHires               近 30 天新入职（days = 已入职天数）
- * @param badgeCount             工作台徽标数 = 今日转正 + 逾期转正 + 今日生日 + 今日周年（生日/周年中已祝福的不计入）
+ * @param identityReview         证件核对(V798)：档案没有证件号码 / 身份证号没通过校验 / 历史导入还没校验；
+ *                               date = 入职日期，days = 0，note = 具体原因(只含位置和长度，不含号码)；
+ *                               只给能改证件的人(超管或 employee:pii:edit)列出，其他人为空列表
+ * @param badgeCount             工作台徽标数 = 今日转正 + 逾期转正 + 今日生日 + 今日周年 + 证件待核对
+ *                               (生日/周年中已祝福的不计入；证件核对仅能修改证件的人计)
  */
 public record HrTaskSummary(
         LocalDate generatedAt,
@@ -30,12 +34,13 @@ public record HrTaskSummary(
         List<Item> birthdayUpcoming,
         List<Item> anniversaryToday,
         List<Item> newHires,
+        List<Item> identityReview,
         long badgeCount) {
 
     /**
      * 单条提醒。
      *
-     * @param date 相关日期（预计转正日 / 生日（今年或明年落在）/ 入职日期）
+     * @param date 相关日期(预计转正日 / 生日(今年或明年落在)/ 入职日期；证件核对为入职日期，可为 null)
      * @param days 语义随区块：剩余天数 / 逾期天数 / 周岁 / 满年数 / 已入职天数
      * @param note 补充说明（如「入职满 1 年」），可为 null
      * @param claimedByName 软认领人姓名（ADR-021：任务不隐藏，显示「XXX 处理中」），null = 未认领

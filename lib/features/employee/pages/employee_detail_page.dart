@@ -3,6 +3,8 @@
 // 内容 Tab 分组（概览 / 组织与合同 / 联系与车辆 / 薪酬 / 任职记录），
 // 联系与车辆 Tab 内置：更换手机号（同步登录账号）、备用手机号与车辆管理。
 // 敏感字段由后端按权限点脱敏后返回；全断点默认 UtenContentContainer（正文随可用宽度铺满）。
+// 2026-10-05 证件号码有问题(服务端 idNumberIssue)时顶部常驻红/黄提醒，修好之前一直显示；
+// 概览的证件号码行带「待核对」徽标；持 employee:pii:edit 可「修改证件信息」(证件唯一修改入口)。
 // 文档：docs/03-页面/员工详情页.md
 import 'dart:math' as math;
 
@@ -34,10 +36,13 @@ import '../../../shared/attachments/attachment_section.dart';
 import '../../../shared/attachments/employee_avatar.dart';
 import '../../profile/providers/profile_change_providers.dart';
 import '../models/employee_api_models.dart';
+import '../models/employee_id_number_issue.dart';
 import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/contract_attachments_dialog.dart';
 import '../widgets/employee_account_provision_flow.dart';
+import '../widgets/employee_identity_correction_dialog.dart';
+import '../widgets/employee_identity_issue_notice.dart';
 import '../widgets/employee_status_badge.dart';
 import '../widgets/employee_leadership_badge.dart';
 import '../widgets/employee_transfer_dialog.dart';
@@ -160,6 +165,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                         ProfileChangePendingSection(
                           employeeId: widget.employeeId,
                         ),
+                        ?_identityIssueBanner(),
                         ..._expiryBanners(theme, l10n),
                         const SizedBox(height: UtenSpacing.s12),
                       ],
@@ -462,6 +468,78 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   // 注：禁止删除员工——⋯ 菜单与"归档删除"入口已下线。员工离职走「办理离职」流程，
   // status='resigned' 永久留存，可在花名册"离职"筛选查看。
 
+  /// 联系方式与证件(更换手机号 / 备用手机号 / 修改证件信息)写权限：employee:pii:edit。
+  bool get _canPiiEdit =>
+      ref.watch(currentPermissionsProvider).contains(Perm.employeePiiEdit);
+
+  /// 证件号码有问题时的顶部常驻提醒(每个 Tab 都可见，修好之前一直显示)。
+  Widget? _identityIssueBanner() {
+    final issue = _p.idNumberIssue;
+    if (issue == null) return null;
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s12),
+      child: EmployeeIdentityIssueNotice(
+        issue: issue,
+        where: EmployeeIdentityNoticeContext.detail,
+        onCorrect: _canPiiEdit ? _onCorrectIdentity : null,
+      ),
+    );
+  }
+
+  /// 证件号码一行：号码 + 「待核对」徽标(校验未通过红，其余黄) + 修改入口。
+  Widget _idNumberValue(AppLocalizations l10n) {
+    final theme = Theme.of(context);
+    final issue = _p.idNumberIssue;
+    return Wrap(
+      alignment: WrapAlignment.end,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s4,
+      children: [
+        Text(
+          _p.idNumber ?? '—',
+          textAlign: TextAlign.right,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (issue != null)
+          UtenStatusBadge(
+            key: const ValueKey('employee-id-number-issue-badge'),
+            label: l10n.employeeIdIssueBadge,
+            type: issue.kind == EmployeeIdNumberIssueKind.invalid
+                ? UtenStatusBadgeType.danger
+                : UtenStatusBadgeType.warning,
+            size: UtenStatusBadgeSize.small,
+          ),
+        if (_canPiiEdit)
+          TextButton.icon(
+            key: const ValueKey('employee-id-number-correct'),
+            icon: const Icon(Icons.edit_note_rounded, size: 16),
+            label: Text(l10n.employeeIdentityCorrectAction),
+            onPressed: _onCorrectIdentity,
+          ),
+      ],
+    );
+  }
+
+  /// 修改证件信息：成功后提示并重新读取档案(提醒、徽标随之消失或更新)。
+  Future<void> _onCorrectIdentity() async {
+    final profile = _profile;
+    if (profile == null) return;
+    final l10n = AppLocalizations.of(context);
+    final saved = await showEmployeeIdentityCorrectionDialog(
+      context,
+      ref: ref,
+      employeeId: widget.employeeId,
+      employeeName: profile.fullName ?? profile.code,
+      profile: profile,
+    );
+    if (!saved || !mounted) return;
+    context.appSuccess(l10n.employeeIdentityCorrectSaved);
+    await _load();
+  }
+
   // ============================================================
   // Tab 1：概览（人口属性 + 关键用工信息）
   // ============================================================
@@ -479,7 +557,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           value: _genderText(l10n, _p.gender),
         ),
         UtenInfoRow(label: l10n.employeeFieldIdType, value: _p.idType),
-        UtenInfoRow(label: l10n.employeeFieldIdNumber, value: _p.idNumber),
+        UtenInfoRow(
+          label: l10n.employeeFieldIdNumber,
+          value: null,
+          valueWidget: _idNumberValue(l10n),
+        ),
         UtenInfoRow(label: l10n.employeeFieldBirthDate, value: _p.birthDate),
         UtenInfoRow(label: l10n.employeeFieldEthnicity, value: _p.ethnicity),
         UtenInfoRow(
@@ -830,7 +912,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
     final canEdit = perms.contains(Perm.employeeEdit);
-    final canPiiEdit = perms.contains(Perm.employeePiiEdit);
+    final canPiiEdit = _canPiiEdit;
     return _scrollTab([
       _section('联系方式', [
         UtenInfoRow(

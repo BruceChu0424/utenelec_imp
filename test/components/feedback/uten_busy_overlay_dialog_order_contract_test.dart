@@ -87,6 +87,15 @@ const _rules = <_Rule>[
     needle: 'await WidgetsBinding.instance.endOfFrame;',
     why: '补开账号：$_waitFrame',
   ),
+  // ③b 修改证件信息：保存成功 pop 前先清标志，调用方随后的提示 / 重新读档不被遮罩盖住。
+  _Rule(
+    file:
+        'lib/features/employee/widgets/employee_identity_correction_dialog.dart',
+    anchor: 'Navigator.of(context).pop(true);',
+    needle: 'setState(() => _submitting = false);',
+    maxDistance: 400,
+    why: '修改证件信息：$_busyFlagOff，弹窗退场期间遮罩还在，会盖住随后的提示和页面',
+  ),
   // ④ 生产计划详情：审核成功后的「下达结果」弹层。被盖住＝整页卡死。
   _Rule(
     file: 'lib/features/production/pages/production_plan_detail_page.dart',

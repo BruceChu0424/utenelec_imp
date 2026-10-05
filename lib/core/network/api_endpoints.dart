@@ -621,6 +621,14 @@ abstract final class ApiEndpoints {
   static String employeeChangePhone(String id) =>
       '/org/employees/$id/change-phone';
 
+  /// 修改证件类型与号码(employee:pii:edit；身份证严格校验，按号码重算出生日期与性别)。
+  static String employeeChangeIdentity(String id) =>
+      '/org/employees/$id/change-identity';
+
+  /// 开号前就绪检查(account:support；只回「有没有手机号 + 证件问题」，不含号码)。
+  static String employeeAccountReadiness(String id) =>
+      '/org/employees/$id/account/readiness';
+
   // 员工自助：本人车辆 / 备用手机号（ADR-021；profile:edit:self，仅本人）
   static const myProfile = '/profile/me';
   static const myVehicles = '/profile/me/vehicles';

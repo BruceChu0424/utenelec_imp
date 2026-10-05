@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
+import com.uten.imp.features.org.employee.EmployeeSensitiveWritePolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,9 +35,12 @@ public class HrTaskClaimService {
 
     static final long LEASE_HOURS = 24;
 
-    /** 合法任务类型（与 HrTaskService 装配口径一致：confirm/birthday/anniversary/newhire）。 */
+    /** 证件核对(V798)：只有能改证件的人看得到，也只有他们能认领 / 接管。 */
+    static final String IDENTITY_TASK_TYPE = "identity";
+
+    /** 合法任务类型(与 HrTaskService 装配口径一致：confirm/birthday/anniversary/newhire/identity)。 */
     private static final Set<String> ALLOWED_TASK_TYPES =
-            Set.of("confirm", "birthday", "anniversary", "newhire");
+            Set.of("confirm", "birthday", "anniversary", "newhire", IDENTITY_TASK_TYPE);
 
     private final HrTaskClaimRepository claimRepo;
     private final EmployeeRepository empRepo;
@@ -54,6 +58,7 @@ public class HrTaskClaimService {
 
     private ClaimOutcome claimInternal(String taskType, UUID employeeId) {
         requireTaskType(taskType);
+        requireCanHandle(taskType);
         UUID me = currentUser.requireEmployeeId();
         HrTaskClaim existing = claimRepo
                 .findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
@@ -111,6 +116,7 @@ public class HrTaskClaimService {
     @Transactional
     public HrTaskClaimView takeover(String taskType, UUID employeeId) {
         requireTaskType(taskType);
+        requireCanHandle(taskType);
         UUID me = currentUser.requireEmployeeId();
         HrTaskClaim previous = claimRepo
                 .findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
@@ -158,7 +164,21 @@ public class HrTaskClaimService {
         return empRepo.findById(employeeId).map(Employee::getFullName).orElse("同事");
     }
 
-    /** 拒绝白名单外的 taskType，避免写入孤儿认领记录（summary 只装配 4 类）。 */
+    /** 证件核对与列表同一道权限：超管或 employee:pii:edit，否则不能认领 / 接管。 */
+    private void requireCanHandle(String taskType) {
+        if (!IDENTITY_TASK_TYPE.equals(taskType)) {
+            return;
+        }
+        boolean canFixIdentity = currentUser.get()
+                .map(u -> u.isSuperAdmin()
+                        || u.getPermissions().contains(EmployeeSensitiveWritePolicy.PII_EDIT))
+                .orElse(false);
+        if (!canFixIdentity) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "只有能修改员工证件信息的人可以处理证件核对任务");
+        }
+    }
+
+    /** 拒绝白名单外的 taskType，避免写入孤儿认领记录(summary 只装配这几类)。 */
     private static void requireTaskType(String taskType) {
         if (taskType == null || !ALLOWED_TASK_TYPES.contains(taskType)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,

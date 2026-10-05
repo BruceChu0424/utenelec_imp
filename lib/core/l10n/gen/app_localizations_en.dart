@@ -677,10 +677,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get visitorApplyValidateName => 'Please enter your name';
 
   @override
-  String get visitorApplyValidateIdCard =>
-      'Please enter a valid 18-digit resident ID number';
-
-  @override
   String get visitorApplyValidatePurpose => 'Please fill in the purpose';
 
   @override
@@ -1100,7 +1096,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      'Submitting auto-generates the employee code (UT prefix), uses the phone number as the login account, and issues a random one-time password (shown once, time-limited). It must be changed at first sign-in.';
+      'Submitting auto-generates the employee code (UT prefix) and uses the phone number as the login account. The initial password is the last six characters of the ID number, or a system-generated random password when it is shorter than six characters (shown once, time-limited). It must be changed at first sign-in.';
 
   @override
   String get employeeOnboardCodeAutoNote =>
@@ -1168,9 +1164,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOnboardHintIdNumber => 'Enter ID number';
-
-  @override
-  String get employeeOnboardIdNumberInvalid => 'Invalid ID number format';
 
   @override
   String get employeeOnboardHintPhone => '11-digit phone';
@@ -1245,7 +1238,87 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeProvisionConfirm =>
-      'This creates a login account for the employee. The account defaults to the phone number, the initial password is randomly generated (shown once, time-limited), and it must be changed on first login. Continue?';
+      'This creates a login account for the employee. The account defaults to the phone number; the initial password is the last six characters of the ID number on file, or a system-generated random password when there is no ID number or it is shorter than six characters (shown once, time-limited). It must be changed on first login. Continue?';
+
+  @override
+  String get employeeIdIssueBadge => 'To verify';
+
+  @override
+  String get employeeIdIssueInvalidTitle => 'ID number failed validation';
+
+  @override
+  String get employeeIdIssueMissingTitle => 'No ID number on file';
+
+  @override
+  String get employeeIdIssueUncheckedTitle => 'ID number not yet checked';
+
+  @override
+  String employeeIdIssueReason(Object reason) {
+    return 'Problem: $reason';
+  }
+
+  @override
+  String get employeeIdIssueDetailInvalid =>
+      'HR should check it against the employee\'s ID document and correct it. The login account is not affected.';
+
+  @override
+  String get employeeIdIssueDetailMissing =>
+      'HR should add the ID number. The login account is not affected.';
+
+  @override
+  String get employeeIdIssueDetailUnchecked =>
+      'HR should check it against the employee\'s ID document and correct it if needed. The login account is not affected.';
+
+  @override
+  String get employeeIdIssueProvisionHint =>
+      'You can still create the account. The HR task center will remind HR to verify and correct it.';
+
+  @override
+  String get employeeIdIssueCredentialInvalid =>
+      'The initial password comes from the ID number on file (random when shorter than six characters) and may differ from the last six characters of the employee\'s real ID. Give the employee the password shown here.';
+
+  @override
+  String get employeeIdIssueCredentialMissing =>
+      'The initial password is randomly generated. Copy it and give it to the employee.';
+
+  @override
+  String get employeeIdIssueCredentialUnchecked =>
+      'The initial password is the last six characters of the ID number on file; it is randomly generated when the number cannot be read or is shorter than six characters. Give the employee the password shown here.';
+
+  @override
+  String get employeeIdentityCorrectAction => 'Edit ID details';
+
+  @override
+  String get employeeIdentityCorrectTitle => 'Edit ID details';
+
+  @override
+  String get employeeIdentityCorrectHint =>
+      'Resident ID numbers are validated automatically, and the birth date and gender are updated from the number.';
+
+  @override
+  String get employeeIdentityCorrectNoPrefill =>
+      'You cannot view the full ID number. Enter the complete new number.';
+
+  @override
+  String get employeeIdentityCorrectNumberRequired => 'ID number is required';
+
+  @override
+  String get employeeIdentityCorrectNumberTooLong =>
+      'ID number cannot exceed 64 characters';
+
+  @override
+  String get employeeIdentityCorrectLoadFailed =>
+      'Could not load the current ID details. You can still enter the new ID details.';
+
+  @override
+  String get employeeIdentityCorrectFailed =>
+      'Failed to save ID details. Try again later.';
+
+  @override
+  String get employeeIdentityCorrectSaving => 'Saving';
+
+  @override
+  String get employeeIdentityCorrectSaved => 'ID details updated';
 
   @override
   String get employeeTransferTitle => 'Employee transfer';
@@ -2598,6 +2671,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountProvisionInProgress => 'Provisioning';
+
+  @override
+  String get accountProvisionMissingPhone =>
+      'This employee has no phone number on file, so no account can be created. Add the phone number in the employee profile first.';
 
   @override
   String get accountStatusNotProvisioned => 'Not provisioned';

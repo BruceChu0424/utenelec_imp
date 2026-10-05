@@ -943,16 +943,36 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
     final theme = Theme.of(context);
     final before = _decode(widget.detail.beforeJson);
     final after = _decode(widget.detail.afterJson);
-    final keys = {...before.keys, ...after.keys}.toList()..sort();
-    final changed = keys
-        .where((key) => jsonEncode(before[key]) != jsonEncode(after[key]))
-        .toList(growable: false);
+    final table = widget.detail.targetType;
+    final changed = _changedSnapshotKeys(before, after);
     if (changed.isNotEmpty && !_namesRequested) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _ensureNames(before, after),
       );
     }
     final service = ref.watch(masterNameServiceProvider);
+    // 密文列/查重值和触发器只记了列名的敏感列：只说改了，不显示内容。
+    final rows = <_AuditDiffRow>[
+      for (final key in changed)
+        AuditFieldLabels.hidesValue(key)
+            ? _AuditDiffRow(
+                field: AuditFieldLabels.labelOf(key, table: table),
+                hiddenChange: AuditFieldLabels.hiddenChangeText(
+                  before[key],
+                  after[key],
+                ),
+              )
+            : _AuditDiffRow(
+                field: AuditFieldLabels.labelOf(key, table: table),
+                before: _displayValue(service, table, key, before[key]),
+                after: _displayValue(service, table, key, after[key]),
+              ),
+      for (final name in _redactedOnlyFields(after, changed))
+        _AuditDiffRow(
+          field: AuditFieldLabels.labelOf(name, table: table),
+          hiddenChange: AuditFieldLabels.hiddenModifiedText,
+        ),
+    ];
     final related = widget.relatedChanges;
     return ListView(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
@@ -963,9 +983,9 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
               child: Text(
                 related.isNotEmpty
                     ? '本次操作产生 ${related.length} 组业务变化'
-                    : changed.isEmpty
+                    : rows.isEmpty
                     ? '没有字段级快照'
-                    : '共 ${changed.length} 个字段发生变化',
+                    : '共 ${rows.length} 个字段发生变化',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
@@ -1000,14 +1020,14 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
             ),
           const SizedBox(height: UtenSpacing.s12),
         ],
-        if (changed.isEmpty && related.isEmpty)
+        if (rows.isEmpty && related.isEmpty)
           UtenCard(
             child: Text(
               '这条记录可能是读取或安全事件，也可能没有产生字段变化。可在“排查信息”中查看关联线索。',
               style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
             ),
           )
-        else if (changed.isNotEmpty) ...[
+        else if (rows.isNotEmpty) ...[
           Text(
             related.isEmpty ? '字段变化' : '当前记录的字段快照',
             style: theme.textTheme.titleSmall?.copyWith(
@@ -1019,26 +1039,9 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
             padding: EdgeInsets.zero,
             child: Column(
               children: [
-                for (var index = 0; index < changed.length; index++) ...[
-                  _AuditDiffRow(
-                    field: AuditFieldLabels.labelOf(
-                      changed[index],
-                      table: widget.detail.targetType,
-                    ),
-                    before: _displayValue(
-                      service,
-                      widget.detail.targetType,
-                      changed[index],
-                      before[changed[index]],
-                    ),
-                    after: _displayValue(
-                      service,
-                      widget.detail.targetType,
-                      changed[index],
-                      after[changed[index]],
-                    ),
-                  ),
-                  if (index != changed.length - 1) const Divider(height: 1),
+                for (var index = 0; index < rows.length; index++) ...[
+                  rows[index],
+                  if (index != rows.length - 1) const Divider(height: 1),
                 ],
               ],
             ),
@@ -1292,22 +1295,53 @@ List<_AuditChangeEntry> _relatedDetailEntries(AuditLogDetail detail) {
 
   final before = decode(detail.beforeJson);
   final after = decode(detail.afterJson);
-  final keys = {...before.keys, ...after.keys}.toList()..sort();
-  final snapshotEntries = keys
-      .where((key) => jsonEncode(before[key]) != jsonEncode(after[key]))
-      .take(20)
-      .map(
-        (key) => _AuditChangeEntry.ofField(
-          AuditFieldLabels.labelOf(key, table: detail.targetType),
-          safeValue(key, before[key]),
-          safeValue(key, after[key]),
-        ),
-      )
-      .toList(growable: false);
+  final table = detail.targetType;
+  final changed = _changedSnapshotKeys(before, after);
+  // 密文列/查重值和只记了列名的敏感列：一句「某某：已修改(内容不显示)」，不显示内容。
+  final snapshotEntries = <_AuditChangeEntry>[
+    for (final key in changed)
+      AuditFieldLabels.hidesValue(key)
+          ? _AuditChangeEntry.ofNote(
+              '${AuditFieldLabels.labelOf(key, table: table)}：'
+              '${AuditFieldLabels.hiddenChangeText(before[key], after[key])}',
+            )
+          : _AuditChangeEntry.ofField(
+              AuditFieldLabels.labelOf(key, table: table),
+              safeValue(key, before[key]),
+              safeValue(key, after[key]),
+            ),
+    for (final name in _redactedOnlyFields(after, changed))
+      _AuditChangeEntry.ofNote(
+        '${AuditFieldLabels.labelOf(name, table: table)}：'
+        '${AuditFieldLabels.hiddenModifiedText}',
+      ),
+  ].take(20).toList(growable: false);
   return snapshotEntries.isNotEmpty
       ? snapshotEntries
       : _parseChangeEntries(detail);
 }
+
+/// 快照前后不同的列(按列名排序)；触发器写的「只记列名」键不算一列。
+List<String> _changedSnapshotKeys(
+  Map<String, dynamic> before,
+  Map<String, dynamic> after,
+) {
+  final keys = {
+    ...before.keys,
+    ...after.keys,
+  }.where((key) => key != AuditFieldLabels.redactedChangesKey).toList()..sort();
+  return keys
+      .where((key) => jsonEncode(before[key]) != jsonEncode(after[key]))
+      .toList(growable: false);
+}
+
+/// 触发器只记了列名、快照里没有值的敏感列(已在 [changed] 里的不重复列)。
+List<String> _redactedOnlyFields(
+  Map<String, dynamic> after,
+  List<String> changed,
+) => AuditFieldLabels.redactedFieldsOf(
+  after,
+).where((name) => !changed.contains(name)).toList(growable: false);
 
 enum _RefKind {
   warehouse,
@@ -1322,12 +1356,21 @@ enum _RefKind {
 }
 
 class _AuditDiffRow extends StatelessWidget {
-  const _AuditDiffRow({required this.field, this.before, this.after});
+  const _AuditDiffRow({
+    required this.field,
+    this.before,
+    this.after,
+    this.hiddenChange,
+  });
 
   /// 已中文化的字段标签
   final String field;
   final dynamic before;
   final dynamic after;
+
+  /// 不显示内容的列(密文、查重值、只记了列名的敏感列)：只说变了什么；
+  /// 给了这句就不展示 [before]/[after]。
+  final String? hiddenChange;
 
   String _value(dynamic value) {
     if (value == null) return '—';
@@ -1362,6 +1405,10 @@ class _AuditDiffRow extends StatelessWidget {
           const SizedBox(height: UtenSpacing.s8),
           LayoutBuilder(
             builder: (context, constraints) {
+              final hidden = hiddenChange;
+              if (hidden != null) {
+                return _AuditDiffValue(label: '变更情况', value: hidden);
+              }
               final oldValue = _AuditDiffValue(
                 label: '变更前',
                 value: _value(before),

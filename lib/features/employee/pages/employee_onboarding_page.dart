@@ -1,5 +1,6 @@
 // 入职办理页（真实后端）：单表单分组提交 → 后端原子建 employee+敏感+薪资+合同+轨迹+账号。
-// 工号提交时自动生成（UT 前缀）；登录账号 = 手机号；初始密码 = 证件号后六位（只显示一次、限时有效，首登强制改）。
+// 工号提交时自动生成(UT 前缀)；登录账号 = 手机号；初始密码 = 证件号后六位，不足六位时系统随机生成
+// (只显示一次、限时有效，首登强制改)。身份证号仍严格校验，表单直接说出具体哪里不对。
 // 岗位为空起步：可选择部门已有岗位，也可填写新岗位，确认后再回填表单。
 // 表单页全断点套 UtenContentContainer.narrow（无固定最大宽度），分组为 UtenSectionHeader + UtenCard。
 // 2026-09-18 UI 统一收口：日期字段改 UtenDateField（与其它编辑页 outlined 同款）、
@@ -40,6 +41,7 @@ import '../../department/models/position.dart';
 import '../../department/widgets/uten_position_entry_picker.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
+import '../models/employee_id_types.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_credential_dialog.dart';
 
@@ -110,7 +112,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     }
     _hireDate = DateTime.tryParse(data['hireDate'] as String? ?? '');
     _confirmedDate = DateTime.tryParse(data['confirmedDate'] as String? ?? '');
-    _idType = data['idType'] as String? ?? '身份证';
+    _idType = data['idType'] as String? ?? employeeIdTypeIdCard;
     _employmentType = data['employmentType'] as String? ?? 'regular';
     _status = data['status'] as String? ?? 'active';
     _departmentId = data['departmentId'] as String?;
@@ -139,7 +141,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
   PositionEntryValue _position = const PositionEntryValue.empty();
 
   // Backend option codes are unchanged; labels come from l10n at build time.
-  static const _idTypeCodes = ['身份证', '护照', '港澳台通行证', '其他'];
+  // 证件类型代码表与修改证件弹窗共用 employee_id_types.dart。
   static const _employmentTypeCodes = [
     'regular',
     'dispatch',
@@ -148,7 +150,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
   ];
   static const _statusCodes = ['active', 'probation', 'onLeave'];
 
-  String _idType = '身份证';
+  String _idType = employeeIdTypeIdCard;
   String _employmentType = 'regular';
   String _status = 'active';
   String? _departmentId;
@@ -191,14 +193,6 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     super.dispose();
   }
 
-  String _idTypeLabel(AppLocalizations l10n, String code) => switch (code) {
-    '身份证' => l10n.idTypeIdCard,
-    '护照' => l10n.idTypePassport,
-    '港澳台通行证' => l10n.idTypeHmtPermit,
-    '其他' => l10n.idTypeOther,
-    _ => code,
-  };
-
   String _employmentTypeLabel(AppLocalizations l10n, String code) =>
       switch (code) {
         'regular' => l10n.employmentTypeRegular,
@@ -221,7 +215,14 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
       context.appError('无员工入职或敏感信息写入权限'); // TODO(l10n): 补 arb
       return;
     }
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      // 身份证号不对时把具体原因(哪一位/长度)再明确提示一次：表单内只显示在字段提示里。
+      final idProblem = _idType == employeeIdTypeIdCard
+          ? IdCardUtils.problemOf(_idNumber.text)
+          : null;
+      if (idProblem != null) context.appError(idProblem);
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     // 日期字段是 UtenDateField（非 FormField），必填校验在这里收口。
     if (_hireDate == null) {
@@ -405,10 +406,10 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
                             allowClear: false,
                             searchable: false,
                             items: [
-                              for (final c in _idTypeCodes)
+                              for (final c in employeeIdTypeCodes)
                                 UtenDropdownItem(
                                   value: c,
-                                  label: _idTypeLabel(l10n, c),
+                                  label: employeeIdTypeLabel(l10n, c),
                                 ),
                             ],
                             onChanged: (v) =>
@@ -419,11 +420,11 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
                             l10n.employeeFieldIdNumber,
                             l10n.employeeOnboardHintIdNumber,
                             required: true,
-                            validator: (v) =>
-                                _idType == '身份证' && !IdCardUtils.isValid(v)
-                                ? l10n.employeeOnboardIdNumberInvalid
+                            // 身份证给出具体哪里不对(长度/第几位/校验码)，与后端同一句话。
+                            validator: (v) => _idType == employeeIdTypeIdCard
+                                ? IdCardUtils.problemOf(v)
                                 : _req(l10n, v, l10n.employeeFieldIdNumber),
-                            inputFormatters: _idType == '身份证'
+                            inputFormatters: _idType == employeeIdTypeIdCard
                                 ? ChinaInputFormatters.residentId
                                 : null,
                             textCapitalization: TextCapitalization.characters,

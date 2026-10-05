@@ -1,5 +1,8 @@
 // HR 工作台共享组件：任务类型元数据、任务行（认领徽标 + 快捷操作）、转正办理对话框。
 // 文案硬编码中文（与 rd_task 等运维页同惯例）。
+// 2026-10-05 新增「证件核对」(identity)：证件号码缺失 / 校验未通过 / 尚未校验的在职员工，
+// 只给能修改证件的人看(服务端已按权限过滤)，行操作「修改证件信息」；
+// 具体原因在副标题下单独一行红字完整显示(key hr-task-identity-reason)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +13,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../employee/widgets/employee_identity_correction_dialog.dart';
 import '../models/hr_task_summary.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../repositories/hr_task_repository.dart';
@@ -39,6 +43,12 @@ enum HrTaskType {
     title: '新近入职',
     icon: Icons.person_add_alt_outlined,
     emptyText: '近 30 天没有新入职员工',
+  ),
+  identity(
+    taskType: 'identity',
+    title: '证件核对',
+    icon: Icons.fact_check_outlined,
+    emptyText: '没有需要核对的证件信息',
   );
 
   const HrTaskType({
@@ -52,6 +62,9 @@ enum HrTaskType {
   final String title;
   final IconData icon;
   final String emptyText;
+
+  /// 有没有时间线(天数 / 逾期·今日·即将)：证件核对没有，表格不显示这两列。
+  bool get hasTimeline => this != identity;
 
   static HrTaskType? fromTaskType(String? value) {
     for (final t in values) {
@@ -72,7 +85,33 @@ List<HrTaskItem> hrTaskItemsOf(HrTaskSummary s, HrTaskType type) {
     HrTaskType.birthday => [...s.birthdayToday, ...s.birthdayUpcoming],
     HrTaskType.anniversary => s.anniversaryToday,
     HrTaskType.newhire => s.newHires,
+    HrTaskType.identity => s.identityReview,
   };
+}
+
+/// 能否在证件核对任务上「修改证件信息」：没被别人认领处理中即可。
+///
+/// 证件核对列表只下发给能修改证件的人(服务端按超管或 employee:pii:edit 过滤，
+/// 其他人收到空列表)，页面本身也由路由守卫按 employee:pii:edit 把关，
+/// 所以看得到条目就能改，这里不再本地拼权限。
+bool hrTaskCanCorrectIdentity(HrTaskType type, HrTaskItem item) =>
+    type == HrTaskType.identity && !item.claimedByOther;
+
+/// 打开「修改证件信息」弹窗；保存成功后提示并静默重取(任务随之消失，徽标同步)。
+Future<void> showHrIdentityCorrection(
+  BuildContext context,
+  WidgetRef ref,
+  HrTaskItem item,
+) async {
+  final saved = await showEmployeeIdentityCorrectionDialog(
+    context,
+    ref: ref,
+    employeeId: item.employeeId,
+    employeeName: item.name,
+  );
+  if (!saved) return;
+  if (context.mounted) context.appSuccess('${item.name} 的证件信息已更新');
+  await ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
 }
 
 /// 该条目是否为「今日」庆典——决定单行「送祝福」按钮是否显示。
@@ -123,9 +162,16 @@ bool hrTaskIsToday(HrTaskSummary s, HrTaskType type, HrTaskItem item) {
           : it.days <= 7
           ? ('入职 ${it.days} 天', warning)
           : ('入职 ${it.days} 天', normal),
+    // 「轮到人事办」一律红。具体原因(note，服务端原话)可能很长，在副标题下
+    // 单独一行红字完整显示，徽标只放短标签，避免窄屏横向溢出。
+    HrTaskType.identity => ('证件待核对', danger),
   };
   return (label, colors.$1, colors.$2);
 }
+
+/// 任务行可用宽度低于此值(手机竖屏)时，快捷操作按钮另起一行靠右，
+/// 不与姓名/徽标并排(并排时 375 宽手机上左侧只剩约 80 宽，徽标溢出)。
+const double _kHrTaskTileStackBelow = 440;
 
 /// 任务行：名称 + 工号/部门/岗位 + 日期 + 状态 chip + 认领徽标 + 快捷操作。
 class HrTaskTile extends ConsumerWidget {
@@ -152,67 +198,135 @@ class HrTaskTile extends ConsumerWidget {
     final canTakeover = perms.contains(Perm.employeeTaskTakeover);
     final canConfirm = perms.contains(Perm.employeeConfirm);
     final (chipLabel, chipBg, chipFg) = hrTaskChipOf(context, type, item);
+    // 证件核对的具体原因(服务端原话)单独成行、红字、不截断：它就是人事要据此
+    // 去改的依据，拼进灰色副标题会在窄屏被省略号截掉。其他类型的 note 照旧进副标题。
+    final identityReason = type == HrTaskType.identity
+        ? item.note?.trim()
+        : null;
     final subtitle = [
       item.code,
       ?item.deptName,
       ?item.positionName,
       ?item.date,
-      ?item.note,
+      if (type != HrTaskType.identity) ?item.note,
     ].join(' · ');
+
+    final reasonLine = identityReason == null || identityReason.isEmpty
+        ? null
+        : Text(
+            identityReason,
+            key: const ValueKey('hr-task-identity-reason'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+            softWrap: true,
+          );
+    final info = _info(
+      context,
+      theme: theme,
+      chipLabel: chipLabel,
+      chipBg: chipBg,
+      chipFg: chipFg,
+      subtitle: subtitle,
+    );
+    final actions = _actions(context, ref, canTakeover, canConfirm, perms);
 
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s16,
         vertical: UtenSpacing.s8,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: () => context.push('/employee/${item.employeeId}'),
-              child: Column(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // 手机竖屏：右侧按钮(认领 + 修改证件信息/登记转正)要占 200 多宽，
+          // 并排会把姓名和徽标挤成一条窄缝甚至溢出，改为按钮另起一行靠右。
+          if (constraints.maxWidth < _kHrTaskTileStackBelow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                info,
+                if (reasonLine != null) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  reasonLine,
+                ],
+                Align(alignment: Alignment.centerRight, child: actions),
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          item.name,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      _Chip(label: chipLabel, bg: chipBg, fg: chipFg),
-                      if (item.claimedByName != null) ...[
-                        const SizedBox(width: UtenSpacing.s4),
-                        _Chip(
-                          label: '${item.claimedByName} 处理中',
-                          bg: theme.colorScheme.primaryContainer,
-                          fg: theme.colorScheme.onPrimaryContainer,
-                          icon: Icons.person_pin_outlined,
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Expanded(child: info),
+                  const SizedBox(width: UtenSpacing.s8),
+                  actions,
                 ],
               ),
-            ),
+              // 原因占整行宽，不与右侧按钮抢宽度。
+              if (reasonLine != null) ...[
+                const SizedBox(height: UtenSpacing.s4),
+                reasonLine,
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// 左侧信息块：姓名 + 状态徽标 + 认领徽标 + 灰色副标题(点按进档案)。
+  Widget _info(
+    BuildContext context, {
+    required ThemeData theme,
+    required String chipLabel,
+    required Color chipBg,
+    required Color chipFg,
+    required String subtitle,
+  }) {
+    return InkWell(
+      onTap: () => context.push('/employee/${item.employeeId}'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 姓名 + 状态徽标 + 认领徽标：窄屏放不下时徽标换到下一行，不横向溢出。
+          Wrap(
+            spacing: UtenSpacing.s4,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: UtenSpacing.s4),
+                child: Text(
+                  item.name,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              _Chip(label: chipLabel, bg: chipBg, fg: chipFg),
+              if (item.claimedByName != null)
+                _Chip(
+                  label: '${item.claimedByName} 处理中',
+                  bg: theme.colorScheme.primaryContainer,
+                  fg: theme.colorScheme.onPrimaryContainer,
+                  icon: Icons.person_pin_outlined,
+                ),
+            ],
           ),
-          const SizedBox(width: UtenSpacing.s8),
-          _actions(context, ref, canTakeover, canConfirm, perms),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
@@ -272,6 +386,13 @@ class HrTaskTile extends ConsumerWidget {
             onPressed: blocked
                 ? null // 他人处理中：禁用，防重复操作
                 : () => showHrConfirmDialog(context, ref, item),
+          ),
+        // 证件核对：修改证件信息(employee:pii:edit；他人处理中不显示)
+        if (hrTaskCanCorrectIdentity(type, item))
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.edit_note_rounded, size: 18),
+            label: const Text('修改证件信息'),
+            onPressed: () => showHrIdentityCorrection(context, ref, item),
           ),
         // 庆典祝福（仅今日 + 生日/周年 + 有发布权限）：未祝福可单行送祝福，已祝福标记。
         // 未来临近生日不显示送祝福（与一键批量同口径——祝福只针对今日在册）。

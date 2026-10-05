@@ -480,6 +480,46 @@ class ArchitectureBoundaryTest {
         return block.toString();
     }
 
+    /**
+     * V798: 员工证件号密文与它的校验结果只有一个写入口 (EmployeePiiWriter)，存量判定只由启动回填任务写；
+     * 对外的证件问题只由 EmployeeIdentityCheck.issueOf 构造。新写入口忘了同写校验结果时数据库约束也会拒绝，
+     * 这里在编译期就把口子堵住。
+     */
+    @Test
+    void employeeIdentityCipherAndCheckResultHaveOneWriterAndOneIssueSource() throws IOException {
+        Map<Pattern, Set<String>> allowed = Map.of(
+                // 访客申请 visitor_applications 是另一张表，有自己的证件号密文。
+                Pattern.compile("\\.setIdCardEnc\\("),
+                Set.of("features/org/employee/EmployeePiiWriter.java",
+                        "features/visitor/VisitorApplicationService.java"),
+                Pattern.compile("\\.setIdCardCheck\\("),
+                Set.of("features/org/employee/EmployeePiiWriter.java"),
+                Pattern.compile("(?i)\\bid_card_check\\s*="),
+                Set.of("features/org/employee/EmployeeIdentityCheckRunner.java"),
+                Pattern.compile("new\\s+IdNumberIssue\\("),
+                Set.of("features/org/employee/EmployeeIdentityCheck.java"));
+        List<String> violations = new ArrayList<>();
+        Map<Pattern, Integer> seen = new java.util.HashMap<>();
+        for (Path file : javaFiles(MAIN_SOURCE)) {
+            String source = Files.readString(file);
+            String path = relative(file);
+            for (Map.Entry<Pattern, Set<String>> rule : allowed.entrySet()) {
+                if (!rule.getKey().matcher(source).find()) {
+                    continue;
+                }
+                seen.merge(rule.getKey(), 1, Integer::sum);
+                if (!rule.getValue().contains(path)) {
+                    violations.add(path + " -> " + rule.getKey().pattern());
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                () -> "证件号密文/校验结果只能由 EmployeePiiWriter 与启动回填任务写，"
+                        + "证件问题只能由 EmployeeIdentityCheck 构造:\n" + String.join("\n", violations));
+        assertTrue(seen.keySet().containsAll(allowed.keySet()),
+                () -> "识别规则失效，没找到预期的写入口: " + seen);
+    }
+
     private List<Path> javaFiles(Path root) throws IOException {
         try (var files = Files.walk(root)) {
             return files.filter(path -> path.toString().endsWith(".java")).toList();

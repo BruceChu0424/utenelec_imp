@@ -23,7 +23,7 @@ class HrTaskRepository {
     body: {'taskType': taskType, 'employeeId': employeeId},
   );
 
-  /// 释放（本人或持 employee:task_takeover 者；无有效认领时幂等成功）。
+  /// 释放(本人；释放别人的认领需 employee:edit；无有效认领时幂等成功)。
   Future<void> release(String taskType, String employeeId) =>
       _api.delete(ApiEndpoints.hrTaskClaim(taskType, employeeId));
 

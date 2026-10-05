@@ -533,6 +533,7 @@ void main() {
       );
       await tester.pump();
 
+      expect(employeeRepository.readinessCalls, 1);
       expect(employeeRepository.provisionCalls, 1);
       expect(find.text('开通中'), findsOneWidget);
       expect(
@@ -737,6 +738,15 @@ class _ProvisionEmployeeRepository extends Fake implements EmployeeRepository {
   final Completer<EmployeeOnboardingResult> _completer =
       Completer<EmployeeOnboardingResult>();
   int provisionCalls = 0;
+  int readinessCalls = 0;
+
+  /// 开号确认弹窗一打开就读就绪检查：有手机号、证件没问题(提醒类用例见
+  /// test/features/employee/employee_account_provision_flow_test.dart)。
+  @override
+  Future<EmployeeAccountReadiness> accountReadiness(String id) async {
+    readinessCalls++;
+    return const EmployeeAccountReadiness(hasPhone: true);
+  }
 
   @override
   Future<EmployeeOnboardingResult> provisionAccount(String id) {

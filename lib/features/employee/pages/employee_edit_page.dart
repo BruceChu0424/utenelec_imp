@@ -30,7 +30,11 @@ import '../../department/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 
-const _employeePiiFields = {'idNumber', 'phone', 'bankAccount', 'bankBranch'};
+const _employeePiiFields = {'phone', 'bankAccount', 'bankBranch'};
+
+/// 证件类型与号码只走详情页「修改证件信息」(POST change-identity)，编辑页从不提交
+/// (服务端 PUT 也已不再接收证件号码)。
+const _employeeIdentityFields = {'idType', 'idNumber'};
 const _employeeLifecycleFields = {
   'departmentId',
   'positionId',
@@ -52,7 +56,11 @@ Map<String, dynamic> filterEmployeeEditPayloadForPermissions(
   Set<String> permissions,
 ) {
   final filtered = Map<String, dynamic>.of(payload)
-    ..removeWhere((key, _) => _employeeLifecycleFields.contains(key));
+    ..removeWhere(
+      (key, _) =>
+          _employeeLifecycleFields.contains(key) ||
+          _employeeIdentityFields.contains(key),
+    );
   if (!permissions.contains(Perm.employeePiiEdit)) {
     filtered.removeWhere((key, _) => _employeePiiFields.contains(key));
   }

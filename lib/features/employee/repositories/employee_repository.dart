@@ -7,6 +7,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/employee_api_models.dart';
+import '../models/employee_id_number_issue.dart';
 
 abstract interface class EmployeeRepository {
   Future<PagedResult<EmployeeSummary>> list({
@@ -24,6 +25,9 @@ abstract interface class EmployeeRepository {
   Future<EmployeeProfile> getById(String id);
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input);
   Future<EmployeeOnboardingResult> provisionAccount(String id);
+
+  /// 开号前就绪检查：确认弹窗一打开就读，在确认前提示缺手机号 / 证件问题。
+  Future<EmployeeAccountReadiness> accountReadiness(String id);
   Future<void> lockAccount(String id);
   Future<void> unlockAccount(String id);
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
@@ -36,6 +40,13 @@ abstract interface class EmployeeRepository {
   Future<void> offboard(String id, Map<String, dynamic> body);
   Future<void> confirm(String id, {String? confirmedDate});
   Future<void> changePhone(String id, String newPhone);
+
+  /// 修改证件类型与号码(证件信息唯一写入口；身份证不合法时服务端返回具体原因)。
+  Future<void> changeIdentity(
+    String id, {
+    required String idType,
+    required String idNumber,
+  });
   Future<void> rehire(String id);
   Future<void> renewContract(String id, Map<String, dynamic> body);
   Future<void> setAvatar(String id, String attachmentId);
@@ -124,6 +135,12 @@ class DioEmployeeRepository
   Future<EmployeeOnboardingResult> provisionAccount(String id) async {
     final json = await api.post(ApiEndpoints.employeeAccount(id));
     return _credentialResult(json, '开通账号响应缺少员工资料或一次性临时密码');
+  }
+
+  @override
+  Future<EmployeeAccountReadiness> accountReadiness(String id) async {
+    final json = await api.get(ApiEndpoints.employeeAccountReadiness(id));
+    return EmployeeAccountReadiness.fromJson(json);
   }
 
   @override
@@ -217,6 +234,16 @@ class DioEmployeeRepository
   );
 
   @override
+  Future<void> changeIdentity(
+    String id, {
+    required String idType,
+    required String idNumber,
+  }) => api.post(
+    ApiEndpoints.employeeChangeIdentity(id),
+    body: {'idType': idType, 'idNumber': idNumber},
+  );
+
+  @override
   Future<void> rehire(String id) => api.post(ApiEndpoints.employeeRehire(id));
 
   @override
@@ -246,4 +273,26 @@ class EmployeeOnboardingResult {
 
   /// 登录账号（默认=手机号），凭据弹窗展示给 HR。
   final String loginAccount;
+}
+
+/// 开号前就绪检查结果(GET /org/employees/{id}/account/readiness)。
+///
+/// 只回答「能不能开、开了有什么要提醒」：没有手机号就开不了(登录账号就是手机号)；
+/// 证件问题只提醒、不阻塞开号。不含任何号码。
+class EmployeeAccountReadiness {
+  const EmployeeAccountReadiness({required this.hasPhone, this.idNumberIssue});
+
+  final bool hasPhone;
+  final EmployeeIdNumberIssue? idNumberIssue;
+
+  factory EmployeeAccountReadiness.fromJson(Map<String, dynamic> json) {
+    final hasPhone = json['hasPhone'];
+    if (hasPhone is! bool) {
+      throw const FormatException('开号就绪检查响应缺少 hasPhone');
+    }
+    return EmployeeAccountReadiness(
+      hasPhone: hasPhone,
+      idNumberIssue: EmployeeIdNumberIssue.fromJson(json['idNumberIssue']),
+    );
+  }
 }

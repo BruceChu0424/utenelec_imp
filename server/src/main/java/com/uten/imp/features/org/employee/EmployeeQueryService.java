@@ -6,6 +6,7 @@ import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
@@ -24,6 +25,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -176,11 +178,24 @@ public class EmployeeQueryService {
         }
 
         // 登录账号状态（离职冻结后 HR 在详情页可直接确认账号已停用）
-        d.setAccountStatus(userRepo.findByEmployeeId(id)
-                .map(u -> u.isDeleted() ? "disabled" : u.getStatus())
-                .orElse(null));
+        UserAccount account = userRepo.findByEmployeeId(id).orElse(null);
+        d.setAccountStatus(account == null ? null
+                : account.isDeleted() ? "disabled" : account.getStatus());
+        // 证件号码问题 (V798)：按已存的校验结果；修好之前详情页一直提醒。详情要显示号码本来就得解密，
+        // 此刻解不开 (数据损坏、换密钥后没配旧密钥) 时不管存的是什么都按「读取不出来」提醒，和人事任务、
+        // 就绪检查读到回填任务存的 unreadable 是同一句原因；号码留空，不让整个详情报错 (补开账号的返回结果也走这里)。
+        // 解密在保存点里做，不会让本事务作废。
+        boolean hasIdentityCipher = s != null && s.getIdCardEnc() != null;
+        Optional<String> identity = hasIdentityCipher ? tx.tryDecrypt(s.getIdCardEnc()) : Optional.empty();
+        String identityCheck = hasIdentityCipher && identity.isEmpty()
+                ? EmployeeIdentityCheck.UNREADABLE
+                : s == null ? null : s.getIdCardCheck();
+        d.setIdNumberIssue(EmployeeIdentityCheck.issueOf(
+                hasIdentityCipher,
+                identityCheck,
+                account != null && account.isSuperAdmin()));
 
-        fillSensitive(d, s, c, view);
+        fillSensitive(d, s, c, view, identity.orElse(null));
 
         // 紧急联系人电话：管理端按 PII 权限，本人端可见明文。
         List<NestedDtos.EmergencyContactDto> ec = emergencyRepo.findByEmployeeIdOrderBySortOrderAsc(id).stream()
@@ -237,9 +252,10 @@ public class EmployeeQueryService {
                 h.getEventDate(), h.getRemark());
     }
 
-    private void fillSensitive(EmployeeDetail d, EmployeeSensitive s, EmployeeCompensation c, DetailView view) {
+    /** {@code idPlain}：调用方已解密的证件号码 (没有或解不开时为 null)。 */
+    private void fillSensitive(EmployeeDetail d, EmployeeSensitive s, EmployeeCompensation c, DetailView view,
+                               String idPlain) {
         if (s != null) {
-            String idPlain = tx.decrypt(s.getIdCardEnc());
             String phonePlain = tx.decrypt(s.getPhoneEnc());
             // 办公电话/邮箱：联系方式，对 employee:view 全可见（与原 entity 行为一致），仅存储改加密。
             if (s.getOfficePhoneEnc() != null) d.setOfficePhone(tx.decrypt(s.getOfficePhoneEnc()));

@@ -202,7 +202,85 @@ class VisitorRequestValidationTest {
                 assertThrows(ApiException.class, () -> service.submit(request));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, exception.getCode());
+        assertEquals("身份证号第7-14位不是有效的出生日期", exception.getMessage());
         verify(appRepo, org.mockito.Mockito.never()).save(any());
+    }
+
+    /**
+     * 任何非空身份证号都按 18 位居民身份证校验并说出具体哪里不对 (与员工档案、前端 problemOf 同一句话)；
+     * 15 位老证号同样拒绝，不再被 DTO 格式校验笼统地挡成「格式不正确」。
+     */
+    @Test
+    void submitNamesTheSpecificIdentityProblemForAnyNonEmptyNumber() {
+        UUID hostId = UUID.randomUUID();
+        when(employeeRepo.findById(hostId)).thenReturn(Optional.of(eligibleHost(hostId)));
+        when(hostEligibility.isEligible(hostId)).thenReturn(true);
+
+        assertEquals("身份证号应为18位，当前为17位",
+                identityRejection(hostId, "11010519491231002"));
+        assertEquals("身份证号应为18位，当前为15位",
+                identityRejection(hostId, "110105491231002"));
+        assertEquals("身份证号应为18位，当前为19位",
+                identityRejection(hostId, "11010519491231002X1"));
+        assertEquals("身份证号第5位不是数字(只有第18位可以是X)",
+                identityRejection(hostId, "1101A519491231002X"));
+        assertEquals("身份证号第18位校验码与前17位不符，通常是某一位数字录错或相邻两位颠倒，请对照证件逐位核对",
+                identityRejection(hostId, "110105194912310021"));
+        verify(appRepo, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void identityFormatIsLeftToTheServiceSoTheRequestOnlyCapsAbsurdLength() {
+        for (String number : List.of("11010519491231002", "110105491231002", "1101A519491231002X")) {
+            assertEquals(List.of(), validator.validate(withIdentity(UUID.randomUUID(), number)).stream()
+                    .map(violation -> violation.getPropertyPath().toString())
+                    .toList(), "format problems get the specific message from the service");
+        }
+        var tooLong = validator.validate(withIdentity(UUID.randomUUID(), "1".repeat(33)));
+        assertEquals(1, tooLong.size());
+        assertEquals("身份证号过长，应为18位", tooLong.iterator().next().getMessage());
+    }
+
+    @Test
+    void blankIdentityIsOptionalAndAValidOneIsNormalizedBeforeEncryption() {
+        UUID hostId = UUID.randomUUID();
+        when(employeeRepo.findById(hostId)).thenReturn(Optional.of(eligibleHost(hostId)));
+        when(hostEligibility.isEligible(hostId)).thenReturn(true);
+        when(tx.encrypt(any())).thenAnswer(invocation -> "encrypted:" + invocation.getArgument(0));
+        when(appRepo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(stepRepo.findByApplicationIdOrderByActedAtAsc(any())).thenReturn(List.of());
+        when(mapper.hostInfo(any())).thenReturn(new String[]{"接待人", "部门"});
+
+        service.submit(withIdentity(hostId, "   "));
+        service.submit(withIdentity(hostId, " 11010519491231002x "));
+
+        ArgumentCaptor<VisitorApplication> captor = ArgumentCaptor.forClass(VisitorApplication.class);
+        verify(appRepo, org.mockito.Mockito.times(2)).save(captor.capture());
+        assertEquals(null, captor.getAllValues().get(0).getIdCardEnc());
+        assertEquals("encrypted:11010519491231002X", captor.getAllValues().get(1).getIdCardEnc());
+        assertEquals("002X", captor.getAllValues().get(1).getIdCardLast4());
+    }
+
+    private String identityRejection(UUID hostId, String idCardNo) {
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.submit(withIdentity(hostId, idCardNo)));
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        return error.getMessage();
+    }
+
+    private static VisitorApplyRequest withIdentity(UUID hostId, String idCardNo) {
+        return new VisitorApplyRequest(
+                "访客",
+                null,
+                idCardNo,
+                null,
+                "商务洽谈",
+                false,
+                null,
+                hostId,
+                null,
+                OffsetDateTime.now().plusHours(1),
+                null);
     }
 
     @Test

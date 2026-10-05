@@ -1,6 +1,7 @@
 package com.uten.imp.features.visitor;
 
 import com.uten.imp.application.port.HrNoticePort;
+import com.uten.imp.common.util.IdCardProblem;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -51,7 +52,7 @@ public class VisitorApplicationService {
     private final SecurityContextCurrentUser currentUser;
     private final VisitorHostEligibility hostEligibility;
 
-    /** 访客来访登记：校验必填项与时间合法性，接待人必须在岗状态(active/probation/onLeave)、在可对外接待白名单里且与接待部门一致；手机号取自短信登录账号、绝不采信请求体（防顶替），18 位身份证 normalize+校验。 */
+    /** 访客来访登记：校验必填项与时间合法性，接待人必须在岗状态(active/probation/onLeave)、在可对外接待白名单里且与接待部门一致；手机号取自短信登录账号、绝不采信请求体(防顶替)，身份证选填，填了就 normalize 后按 18 位居民身份证校验并报出具体原因。 */
     @Transactional
     public VisitorDetail submit(VisitorApplyRequest req) {
         UUID visitorId = currentVisitorId();
@@ -108,13 +109,15 @@ public class VisitorApplicationService {
 
         tx.bind();   // 审计 actor = 当前访客
 
-        String idCardNo = trimToNull(req.idCardNo());
-        if (idCardNo != null && idCardNo.length() == 18) {
-            idCardNo = IdCardUtil.normalize(idCardNo);
-            if (!IdCardUtil.isValid(idCardNo)) {
+        // 身份证选填；填了就按 18 位居民身份证校验 (15 位老证号同样拒绝，与前端 problemOf 一致)，
+        // 报出具体哪一位、哪一项不对 (不带号码本身)，访客能自己对照证件改。
+        String idCardNo = IdCardUtil.normalize(req.idCardNo());
+        if (idCardNo != null) {
+            IdCardProblem problem = IdCardUtil.check(idCardNo);
+            if (problem != null) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "身份证号码校验未通过");
+                        problem.message());
             }
         }
         VisitorApplication app = new VisitorApplication();

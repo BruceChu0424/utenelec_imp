@@ -654,9 +654,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get visitorApplyValidateName => '이름을 입력해 주세요';
 
   @override
-  String get visitorApplyValidateIdCard => '올바른 18자리 주민등록번호를 입력해 주세요';
-
-  @override
   String get visitorApplyValidatePurpose => '방문 목적을 작성해 주세요';
 
   @override
@@ -1072,7 +1069,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '제출 시 사번(UT 접두사)이 자동 생성되고, 휴대전화번호가 로그인 계정으로 사용되며, 무작위 1회성 비밀번호(한 번만 표시, 유효기간 있음)가 발급됩니다. 최초 로그인 시 반드시 변경해야 합니다.';
+      '제출 시 사번(UT 접두사)이 자동 생성되고 휴대전화번호가 로그인 계정으로 사용됩니다. 초기 비밀번호는 신분증 번호의 마지막 6자리이며, 6자리 미만이면 시스템이 무작위로 생성합니다(한 번만 표시, 유효기간 있음). 최초 로그인 시 반드시 변경해야 합니다.';
 
   @override
   String get employeeOnboardCodeAutoNote => '사번은 제출 시 자동 생성됩니다(UT 접두사, 고유 증가)';
@@ -1133,9 +1130,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeOnboardHintIdNumber => '신분증 번호 입력';
-
-  @override
-  String get employeeOnboardIdNumberInvalid => '신분증 번호 형식이 올바르지 않습니다';
 
   @override
   String get employeeOnboardHintPhone => '11자리 전화번호';
@@ -1210,7 +1204,86 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeProvisionConfirm =>
-      '이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호, 초기 비밀번호는 무작위로 생성되며(한 번만 표시, 유효기간 있음) 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?';
+      '이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호이며, 초기 비밀번호는 등록된 신분증 번호의 마지막 6자리입니다. 신분증 번호가 없거나 6자리 미만이면 시스템이 무작위로 생성합니다(한 번만 표시, 유효기간 있음). 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?';
+
+  @override
+  String get employeeIdIssueBadge => '확인 필요';
+
+  @override
+  String get employeeIdIssueInvalidTitle => '신분증 번호 검증 실패';
+
+  @override
+  String get employeeIdIssueMissingTitle => '신분증 번호 미등록';
+
+  @override
+  String get employeeIdIssueUncheckedTitle => '신분증 번호 미검증';
+
+  @override
+  String employeeIdIssueReason(Object reason) {
+    return '문제: $reason';
+  }
+
+  @override
+  String get employeeIdIssueDetailInvalid =>
+      '인사 담당자가 직원 신분증과 대조하여 수정하세요. 로그인 계정 개통과 사용에는 영향이 없습니다.';
+
+  @override
+  String get employeeIdIssueDetailMissing =>
+      '인사 담당자가 신분증 번호를 등록하세요. 로그인 계정 개통과 사용에는 영향이 없습니다.';
+
+  @override
+  String get employeeIdIssueDetailUnchecked =>
+      '인사 담당자가 직원 신분증과 대조하고 필요하면 수정하세요. 로그인 계정 개통과 사용에는 영향이 없습니다.';
+
+  @override
+  String get employeeIdIssueProvisionHint =>
+      '계속 개통할 수 있으며 영향이 없습니다. 인사 업무 센터에서 인사 담당자에게 확인 및 수정을 알립니다.';
+
+  @override
+  String get employeeIdIssueCredentialInvalid =>
+      '초기 비밀번호는 등록된 신분증 번호로 생성되며(6자리 미만이면 무작위) 직원 본인 신분증의 마지막 6자리와 다를 수 있습니다. 여기에 표시된 비밀번호를 직원에게 알려 주세요.';
+
+  @override
+  String get employeeIdIssueCredentialMissing =>
+      '초기 비밀번호는 시스템이 무작위로 생성했습니다. 복사하여 직원에게 전달하세요.';
+
+  @override
+  String get employeeIdIssueCredentialUnchecked =>
+      '초기 비밀번호는 등록된 신분증 번호의 마지막 6자리입니다. 번호를 읽을 수 없거나 6자리 미만이면 무작위로 생성됩니다. 여기에 표시된 비밀번호를 직원에게 알려 주세요.';
+
+  @override
+  String get employeeIdentityCorrectAction => '신분증 정보 수정';
+
+  @override
+  String get employeeIdentityCorrectTitle => '신분증 정보 수정';
+
+  @override
+  String get employeeIdentityCorrectHint =>
+      '주민등록번호는 자동으로 검증되며, 번호에 따라 생년월일과 성별이 갱신됩니다.';
+
+  @override
+  String get employeeIdentityCorrectNoPrefill =>
+      '신분증 번호 원문을 볼 권한이 없습니다. 새 번호 전체를 입력하세요.';
+
+  @override
+  String get employeeIdentityCorrectNumberRequired => '신분증 번호를 입력하세요';
+
+  @override
+  String get employeeIdentityCorrectNumberTooLong => '신분증 번호는 64자를 넘을 수 없습니다';
+
+  @override
+  String get employeeIdentityCorrectLoadFailed =>
+      '현재 신분증 정보를 불러오지 못했습니다. 새 신분증 정보를 바로 입력할 수 있습니다.';
+
+  @override
+  String get employeeIdentityCorrectFailed =>
+      '신분증 정보를 저장하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get employeeIdentityCorrectSaving => '저장 중';
+
+  @override
+  String get employeeIdentityCorrectSaved => '신분증 정보가 수정되었습니다';
 
   @override
   String get employeeTransferTitle => '부서 이동';
@@ -2534,6 +2607,10 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get accountProvisionInProgress => '개통 중';
+
+  @override
+  String get accountProvisionMissingPhone =>
+      '이 직원의 인사 기록에 휴대폰 번호가 없어 계정을 개통할 수 없습니다. 먼저 인사 기록에 휴대폰 번호를 등록하세요.';
 
   @override
   String get accountStatusNotProvisioned => '미개통';

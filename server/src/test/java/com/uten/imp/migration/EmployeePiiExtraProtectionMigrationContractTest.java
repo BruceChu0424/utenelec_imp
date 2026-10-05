@@ -77,13 +77,20 @@ class EmployeePiiExtraProtectionMigrationContractTest {
                 .contains("if (cipher == null || cipher.isblank()) { return null;");
         assertThat(onboarding)
                 .contains("if (isblank(loginaccount))")
-                // New onboarding/provisioning uses the normalized original identity; invalid/short identity must refuse.
+                // New onboarding/provisioning uses the normalized original identity's last six;
+                // a missing/short identity falls back to a one-time random credential (V798),
+                // and an invalid resident identity no longer refuses provisioning.
                 .contains("initialpassword(p.idtype(), normalizedidnumber)")
-                .contains("initialpassword(e.getidtype(), tx.decrypt(s.getidcardenc()))")
+                // An undecryptable stored identity is treated as "not derivable" (random credential)
+                // inside a savepoint instead of aborting the provisioning transaction.
+                .contains("optional<string> identity = tx.trydecrypt(s.getidcardenc());")
+                .contains("initialpassword(e.getidtype(), identity.orelse(null))")
                 .contains("idcardutil.normalize(idnumber)")
                 .contains("normalized == null || normalized.length() < 6")
-                .contains("!idcardutil.isvalid(normalized)")
-                .contains("return normalized.substring(normalized.length() - 6)");
+                .contains("optional.of(normalized.substring(normalized.length() - 6))")
+                .contains("orelseget(passwordgenerator::generate)")
+                .doesNotContain("身份证号校验未通过")
+                .doesNotContain("证件号不足六位");
         assertThat(writer)
                 .contains("if (idnumber == null || idnumber.isblank())")
                 .contains("chinamobilenumber.normalize(phone)")
